@@ -1,6 +1,6 @@
-# Quantum Consensus
+# consensus
 
-## The Lux Native Quantum-Resistant Consensus Engine
+## Lux Quasar: Post Quantum Consensus Engine
 
 Quasar is a revolutionary unified protocol that secures traditional consensus mechanisms (BFT, Snowman++) into a single quantum-resistant engine. Quasar uses lattice based post-quantum cryptography that delivers **2-round finality** with both classical and quantum security. Every chain in the Lux network - Q, C, X, M - is secured with Quasar. 
 
