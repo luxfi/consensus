@@ -1,0 +1,259 @@
+// Copyright (C) 2019-2025, Lux Industries Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+package beam
+
+import (
+	"crypto/rand"
+	"testing"
+	"time"
+	
+	"github.com/luxfi/crypto/ringtail"
+	"github.com/stretchr/testify/require"
+)
+
+// MockRingtail provides a mock implementation for testing
+type MockRingtail struct{}
+
+func (m *MockRingtail) KeyGen(seed []byte) (sk, pk []byte, err error) {
+	sk = make([]byte, 8192)
+	pk = make([]byte, 4096)
+	rand.Read(sk)
+	rand.Read(pk)
+	return sk, pk, nil
+}
+
+func (m *MockRingtail) Precompute(sk []byte) (ringtail.Precomp, error) {
+	pre := make([]byte, 40960)
+	rand.Read(pre)
+	return pre, nil
+}
+
+func (m *MockRingtail) QuickSign(pre ringtail.Precomp, msg []byte) (ringtail.Share, error) {
+	share := make([]byte, 430)
+	rand.Read(share)
+	return share, nil
+}
+
+func (m *MockRingtail) Aggregate(shares []ringtail.Share) (ringtail.Cert, error) {
+	cert := make([]byte, 3072)
+	rand.Read(cert)
+	return cert, nil
+}
+
+func (m *MockRingtail) Verify(pk, msg, cert []byte) bool {
+	return len(cert) == 3072
+}
+
+func TestQuasarBasic(t *testing.T) {
+	require := require.New(t)
+	
+	// Generate test keys
+	seed := make([]byte, 32)
+	rand.Read(seed)
+	
+	mock := &MockRingtail{}
+	sk, pk, err := mock.KeyGen(seed)
+	require.NoError(err)
+	require.Len(sk, 8192)
+	require.Len(pk, 4096)
+	
+	// Create Quasar config
+	cfg := Config{
+		QPubKey:       pk,
+		QThreshold:    3,
+		QuasarTimeout: 100 * time.Millisecond,
+	}
+	
+	// Create Quasar instance
+	q, err := newQuasar(sk, cfg)
+	require.NoError(err)
+	require.NotNil(q)
+	
+	// Test signing
+	height := uint64(42)
+	blockHash := make([]byte, 32)
+	rand.Read(blockHash)
+	
+	share, err := q.sign(height, blockHash)
+	require.NoError(err)
+	require.NotNil(share)
+}
+
+func TestQuasarAggregation(t *testing.T) {
+	require := require.New(t)
+	
+	// Setup
+	seed := make([]byte, 32)
+	rand.Read(seed)
+	
+	mock := &MockRingtail{}
+	sk, pk, err := mock.KeyGen(seed)
+	require.NoError(err)
+	
+	cfg := Config{
+		QPubKey:       pk,
+		QThreshold:    3,
+		QuasarTimeout: 100 * time.Millisecond,
+	}
+	
+	q, err := newQuasar(sk, cfg)
+	require.NoError(err)
+	
+	// Generate shares
+	height := uint64(100)
+	blockHash := make([]byte, 32)
+	rand.Read(blockHash)
+	
+	// Add shares one by one
+	for i := 0; i < cfg.QThreshold-1; i++ {
+		share := make([]byte, 430)
+		rand.Read(share)
+		
+		ready, cert := q.onShare(height, share)
+		require.False(ready)
+		require.Nil(cert)
+	}
+	
+	// Add final share to reach threshold
+	finalShare := make([]byte, 430)
+	rand.Read(finalShare)
+	
+	ready, cert := q.onShare(height, finalShare)
+	require.True(ready)
+	require.NotNil(cert)
+	require.Len(cert, 3072)
+	
+	// Verify certificate
+	verified := q.verify(blockHash, cert)
+	require.True(verified)
+}
+
+func TestQuasarTimeout(t *testing.T) {
+	require := require.New(t)
+	
+	// Setup with very short timeout
+	seed := make([]byte, 32)
+	rand.Read(seed)
+	
+	mock := &MockRingtail{}
+	sk, pk, err := mock.KeyGen(seed)
+	require.NoError(err)
+	
+	cfg := Config{
+		QPubKey:       pk,
+		QThreshold:    3,
+		QuasarTimeout: 10 * time.Millisecond, // Very short timeout
+	}
+	
+	q, err := newQuasar(sk, cfg)
+	require.NoError(err)
+	
+	// Sign but don't aggregate
+	height := uint64(200)
+	blockHash := make([]byte, 32)
+	rand.Read(blockHash)
+	
+	_, err = q.sign(height, blockHash)
+	require.NoError(err)
+	
+	// Wait for timeout
+	time.Sleep(20 * time.Millisecond)
+	
+	// Should have no certificate
+	val, exists := q.shareBuf.Load(height)
+	if exists {
+		shares := val.(*[]ringtail.Share)
+		require.Less(len(*shares), cfg.QThreshold)
+	}
+}
+
+func BenchmarkQuasarSign(b *testing.B) {
+	// Setup
+	seed := make([]byte, 32)
+	rand.Read(seed)
+	
+	mock := &MockRingtail{}
+	sk, pk, _ := mock.KeyGen(seed)
+	
+	cfg := Config{
+		QPubKey:       pk,
+		QThreshold:    15,
+		QuasarTimeout: 100 * time.Millisecond,
+	}
+	
+	q, _ := newQuasar(sk, cfg)
+	blockHash := make([]byte, 32)
+	rand.Read(blockHash)
+	
+	b.ResetTimer()
+	
+	for i := 0; i < b.N; i++ {
+		_, _ = q.sign(uint64(i), blockHash)
+	}
+}
+
+func BenchmarkQuasarAggregate(b *testing.B) {
+	// Setup
+	seed := make([]byte, 32)
+	rand.Read(seed)
+	
+	mock := &MockRingtail{}
+	sk, pk, _ := mock.KeyGen(seed)
+	
+	cfg := Config{
+		QPubKey:       pk,
+		QThreshold:    15,
+		QuasarTimeout: 100 * time.Millisecond,
+	}
+	
+	q, _ := newQuasar(sk, cfg)
+	
+	// Pre-generate shares
+	shares := make([][]byte, cfg.QThreshold)
+	for i := 0; i < cfg.QThreshold; i++ {
+		shares[i] = make([]byte, 430)
+		rand.Read(shares[i])
+	}
+	
+	b.ResetTimer()
+	
+	for i := 0; i < b.N; i++ {
+		// Clear previous shares
+		q.shareBuf.Delete(uint64(i))
+		
+		// Add all shares
+		for j := 0; j < cfg.QThreshold; j++ {
+			q.onShare(uint64(i), shares[j])
+		}
+	}
+}
+
+func BenchmarkQuasarVerify(b *testing.B) {
+	// Setup
+	seed := make([]byte, 32)
+	rand.Read(seed)
+	
+	mock := &MockRingtail{}
+	sk, pk, _ := mock.KeyGen(seed)
+	
+	cfg := Config{
+		QPubKey:       pk,
+		QThreshold:    15,
+		QuasarTimeout: 100 * time.Millisecond,
+	}
+	
+	q, _ := newQuasar(sk, cfg)
+	
+	blockHash := make([]byte, 32)
+	rand.Read(blockHash)
+	
+	cert := make([]byte, 3072)
+	rand.Read(cert)
+	
+	b.ResetTimer()
+	
+	for i := 0; i < b.N; i++ {
+		_ = q.verify(blockHash, cert)
+	}
+}
