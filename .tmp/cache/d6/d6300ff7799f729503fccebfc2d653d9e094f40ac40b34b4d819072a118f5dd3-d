@@ -1,0 +1,9 @@
+./early_term_traversal.go
+./graph.go
+./interfaces.go
+./prefix.go
+./set.go
+./early_term_traversal_test.go
+./graph_test.go
+./prefix_test.go
+./set_test.go
