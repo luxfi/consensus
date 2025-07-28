@@ -8,7 +8,6 @@ Quasar is a revolutionary unified protocol that secures traditional consensus me
 
 Traditional consensus engines have limitations:
 - Different engines for different chain types
-- C-Chain finality depends on Q-Chain callbacks
 - No native post-quantum security
 - Complex multi-layer architecture
 
