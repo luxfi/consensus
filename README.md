@@ -21,31 +21,30 @@ Quasar solves all these with **"One engine to rule them all"**:
 
 ## Architecture
 
-The consensus package provides the building blocks for Quasar, while the node integrates them:
+Below is the flattened directory layout, grouping by high‑level concerns and cleanly separating core primitives, engine wiring, providers, and helpers.
 
 ```text
-consensus/                  # Consensus building blocks
-├── engine/
-│   ├── pulsar /           # Linear chain consensus
-│   ├── nebula /           # DAG consensus
-│   └── quasar /           # Post-quantum engine (dual-cert finality)
-│
-├── pq/                    # Post-quantum finality layer
-│   ├── keys.go            # RT key management
-│   ├── certificate.go     # Dual certificates (BLS + RT)
-│   ├── precompute.go      # RT share precomputation
-│   └── service.go         # Quasar service orchestrator
-│
-├── poll/                  # Unary/Binary/N-ary sampling
-├── quorum/                # Alpha thresholds
-├── confidence/            # Beta rounds
-└── config/                # Parameter management
+consensus/                  # Core photonic consensus stages
+├── photon/                # Sampling (Photon)
+├── wave/                  # Thresholding (Wave)
+├── focus/                 # Confidence (Focus)
+├── beam/                  # Linear finalizer (Beam)
+├── flare/                 # DAG ordering (Flare)
+└── nova/                  # DAG finalizer (Nova)
 
-node/consensus/            # Node integration
-├── engine/
-│   └── quasar/           # Quasar engine for all chains
-├── qchain/               # Quantum consenus, validation, staking
-└── factories/            # Engine instantiation
+engine/                    # Full node engine layers
+├── chain/                 # Photon→Wave→Beam pipeline (linear chain)
+├── dag/                   # Photon→Wave→Beam→Flare→Nova pipeline (DAG chain)
+└── pq/                    # Quasar dual-cert engine (post-quantum finality)
+
+poll/                      # Photon sampling providers
+quorum/                    # Wave threshold providers
+confidence/                # Focus confidence providers
+networking/                # P2P transport abstractions
+config/                    # Parameter builders & validation
+util/                      # Shared utilities (math, sets, timing)
+test/                      # Integration & fuzz tests
+examples/                  # User-facing sample programs
 ```
 
 ## Framework for Quasar Consensus
