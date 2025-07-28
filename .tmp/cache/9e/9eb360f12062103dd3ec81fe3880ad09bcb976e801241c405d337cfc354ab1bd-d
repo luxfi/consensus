@@ -1,0 +1,4 @@
+./decidable.go
+./status.go
+./test_decidable.go
+./status_test.go
