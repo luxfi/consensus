@@ -2,11 +2,11 @@
 
 ## The Lux Native Quantum-Resistant Consensus Engine
 
-Lux Quasar is THE consensus engine - a revolutionary unified protocol that replaces traditional consensus mechanisms (Snowman++, Avalanche) with a single quantum-resistant engine. Quasar combines Nova DAG with Ringtail PQ to deliver **2-round finality** with both classical and quantum security. Every chain in the Lux network - P, C, X, M - runs on the same Quasar engine.
+Quasar is a revolutionary unified protocol that secures traditional consensus mechanisms (BFT, Snowman++) into a single quantum-resistant engine. Quasar uses lattice based post-quantum cryptography that delivers **2-round finality** with both classical and quantum security. Every chain in the Lux network - Q, C, X, M - is secured with Quasar. 
 
 ## Why Quasar?
 
-Traditional consensus engines (Snowman++, Avalanche) have limitations:
+Traditional consensus engines have limitations:
 - Different engines for different chain types
 - C-Chain finality depends on Q-Chain callbacks
 - No native post-quantum security
@@ -14,9 +14,9 @@ Traditional consensus engines (Snowman++, Avalanche) have limitations:
 
 Quasar solves all these with **"One engine to rule them all"**:
 - **Unified Protocol**: Same engine for DAG, linear, EVM, MPC chains
-- **Dual-Certificate Finality**: Every block requires both BLS and Ringtail certificates
+- **Quantum Finality**: Every block requires post quantum certificates
 - **2-Round Total**: Nova (1 round) + Ringtail PQ (2 phases) = quantum finality
-- **Zero Leaders**: Fully decentralized, no block producers
+- **Zero Leaders**: Fully decentralized, leaderless, highly secure
 - **Sub-Second Performance**: <1s finality with quantum security
 
 ## Architecture
@@ -83,7 +83,7 @@ isFinal := verifyBLS(blsAgg, quorum) && verifyRT(rtCert, quorum)
 |-------|----------|---------|---------|
 | Node-ID | ed25519 | P2P transport auth | `$HOME/.lux/node.key` |
 | Validator-BLS | bls12-381 | Fast finality votes | `$HOME/.lux/bls.key` |
-| Validator-RT | ringtail-lattice | PQ finality shares | `$HOME/.lux/rt.key` |
+| Validator-RT | lattice | PQ finality shares | `$HOME/.lux/rt.key` |
 | Wallet (EVM) | secp256k1 or Lamport | User tx signatures | In wallet |
 | Wallet (X-Chain) | secp256k1 or Ringtail | UTXO locking | In wallet |
 
