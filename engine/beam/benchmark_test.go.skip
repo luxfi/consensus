@@ -1,0 +1,315 @@
+// Copyright (C) 2019-2025, Lux Industries Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+package beam
+
+import (
+	"context"
+	"crypto/rand"
+	"fmt"
+	"sync"
+	"testing"
+	"time"
+	
+	"github.com/luxfi/ids"
+	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/consensus/ringtail"
+	"github.com/stretchr/testify/require"
+)
+
+// BenchmarkResults stores performance metrics
+type BenchmarkResults struct {
+	BLSSignTime       time.Duration
+	RTSignTime        time.Duration
+	BLSAggTime        time.Duration
+	RTAggTime         time.Duration
+	TotalProposeTime  time.Duration
+	VerifyTime        time.Duration
+}
+
+func TestSubSecondFinality(t *testing.T) {
+	require := require.New(t)
+	
+	// Setup 21-node mainnet configuration
+	numValidators := 21
+	threshold := 15 // 2/3 + 1
+	
+	// Generate validator keys
+	validators := make([]*Validator, numValidators)
+	for i := 0; i < numValidators; i++ {
+		val := &Validator{}
+		
+		// BLS keys
+		val.blsSK, val.blsPK, _ = bls.KeyGen()
+		
+		// Ringtail keys
+		rtSeed := make([]byte, 32)
+		rand.Read(rtSeed)
+		mock := &MockRingtail{}
+		val.rtSK, val.rtPK, _ = mock.KeyGen(rtSeed)
+		
+		validators[i] = val
+	}
+	
+	// Create proposer engine
+	proposer := validators[0]
+	cfg := Config{
+		ChainID:       ids.GenerateTestID(),
+		QPubKey:       proposer.rtPK,
+		QThreshold:    threshold,
+		QuasarTimeout: 100 * time.Millisecond,
+	}
+	
+	engine, err := NewEngine(ids.GenerateTestNodeID(), proposer.blsSK, proposer.rtSK, cfg)
+	require.NoError(err)
+	
+	// Simulate block proposal with timing
+	ctx := context.Background()
+	height := uint64(1)
+	parentID := ids.GenerateTestID()
+	txs := generateTransactions(1000) // 1000 transactions
+	
+	// Start timing
+	start := time.Now()
+	
+	// Simulate parallel RT share collection
+	var wg sync.WaitGroup
+	sharesCh := make(chan []byte, numValidators)
+	
+	// Each validator signs in parallel
+	for i := 0; i < threshold; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			
+			// Simulate network latency
+			time.Sleep(time.Duration(5+idx) * time.Millisecond)
+			
+			// Create share
+			share := make([]byte, 430)
+			rand.Read(share)
+			
+			sharesCh <- share
+		}(i)
+	}
+	
+	// Collect shares as they arrive
+	go func() {
+		for share := range sharesCh {
+			engine.OnRTShare(height, share)
+		}
+	}()
+	
+	// Wait for shares
+	wg.Wait()
+	close(sharesCh)
+	
+	// Small delay for aggregation
+	time.Sleep(10 * time.Millisecond)
+	
+	// Propose block
+	err = engine.Propose(ctx, height, parentID, txs)
+	require.NoError(err)
+	
+	// Total time
+	totalTime := time.Since(start)
+	
+	// Verify sub-second finality
+	require.Less(totalTime, 1*time.Second, "Total finality time must be under 1 second")
+	
+	fmt.Printf("\n=== Sub-Second Finality Test Results ===\n")
+	fmt.Printf("Validators: %d\n", numValidators)
+	fmt.Printf("Threshold: %d\n", threshold)
+	fmt.Printf("Transactions: %d\n", len(txs))
+	fmt.Printf("Total Time: %v\n", totalTime)
+	fmt.Printf("Sub-second: %v ✓\n", totalTime < 1*time.Second)
+}
+
+func BenchmarkQuasarMainnet21Node(b *testing.B) {
+	// 21-node mainnet configuration
+	numValidators := 21
+	threshold := 15
+	
+	// Setup validators
+	validators := make([]*Validator, numValidators)
+	for i := 0; i < numValidators; i++ {
+		val := &Validator{}
+		val.blsSK, val.blsPK, _ = bls.KeyGen()
+		
+		rtSeed := make([]byte, 32)
+		rand.Read(rtSeed)
+		mock := &MockRingtail{}
+		val.rtSK, val.rtPK, _ = mock.KeyGen(rtSeed)
+		
+		validators[i] = val
+	}
+	
+	// Create engine
+	proposer := validators[0]
+	cfg := Config{
+		ChainID:       ids.GenerateTestID(),
+		QPubKey:       proposer.rtPK,
+		QThreshold:    threshold,
+		QuasarTimeout: 100 * time.Millisecond,
+	}
+	
+	engine, _ := NewEngine(ids.GenerateTestNodeID(), proposer.blsSK, proposer.rtSK, cfg)
+	
+	ctx := context.Background()
+	parentID := ids.GenerateTestID()
+	txs := generateTransactions(1000)
+	
+	// Benchmark
+	b.ResetTimer()
+	
+	results := make([]time.Duration, b.N)
+	
+	for i := 0; i < b.N; i++ {
+		start := time.Now()
+		
+		// Simulate RT share collection
+		for j := 0; j < threshold; j++ {
+			share := make([]byte, 430)
+			rand.Read(share)
+			engine.OnRTShare(uint64(i), share)
+		}
+		
+		// Propose
+		_ = engine.Propose(ctx, uint64(i), parentID, txs)
+		
+		// Drain block channel
+		<-engine.blockCh
+		
+		results[i] = time.Since(start)
+	}
+	
+	// Calculate statistics
+	var total, min, max time.Duration
+	min = results[0]
+	for _, d := range results {
+		total += d
+		if d < min {
+			min = d
+		}
+		if d > max {
+			max = d
+		}
+	}
+	avg := total / time.Duration(b.N)
+	
+	b.ReportMetric(float64(avg.Milliseconds()), "ms/op")
+	b.ReportMetric(float64(min.Milliseconds()), "min_ms")
+	b.ReportMetric(float64(max.Milliseconds()), "max_ms")
+	
+	fmt.Printf("\n=== Quasar Performance (21 nodes) ===\n")
+	fmt.Printf("Average: %v\n", avg)
+	fmt.Printf("Min: %v\n", min)
+	fmt.Printf("Max: %v\n", max)
+	fmt.Printf("Sub-second: %v\n", max < 1*time.Second)
+}
+
+func BenchmarkComponentTiming(b *testing.B) {
+	// Measure individual component timings
+	
+	b.Run("BLS_Sign", func(b *testing.B) {
+		sk, _, _ := bls.KeyGen()
+		msg := make([]byte, 32)
+		rand.Read(msg)
+		
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = bls.Sign(sk, msg)
+		}
+	})
+	
+	b.Run("RT_QuickSign", func(b *testing.B) {
+		mock := &MockRingtail{}
+		seed := make([]byte, 32)
+		rand.Read(seed)
+		sk, _, _ := mock.KeyGen(seed)
+		pre, _ := mock.Precompute(sk)
+		msg := make([]byte, 32)
+		rand.Read(msg)
+		
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = mock.QuickSign(pre, msg)
+		}
+	})
+	
+	b.Run("BLS_Aggregate_15", func(b *testing.B) {
+		// Generate 15 signatures
+		sigs := make([][]byte, 15)
+		for i := 0; i < 15; i++ {
+			sig := make([]byte, 96)
+			rand.Read(sig)
+			sigs[i] = sig
+		}
+		
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = bls.AggregateSignatures(sigs)
+		}
+	})
+	
+	b.Run("RT_Aggregate_15", func(b *testing.B) {
+		mock := &MockRingtail{}
+		shares := make([]ringtail.Share, 15)
+		for i := 0; i < 15; i++ {
+			share := make([]byte, 430)
+			rand.Read(share)
+			shares[i] = share
+		}
+		
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = mock.Aggregate(shares)
+		}
+	})
+	
+	b.Run("BLS_Verify", func(b *testing.B) {
+		sk, pk, _ := bls.KeyGen()
+		msg := make([]byte, 32)
+		rand.Read(msg)
+		sig, _ := bls.Sign(sk, msg)
+		
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = bls.Verify(pk, msg, sig)
+		}
+	})
+	
+	b.Run("RT_Verify", func(b *testing.B) {
+		mock := &MockRingtail{}
+		seed := make([]byte, 32)
+		rand.Read(seed)
+		_, pk, _ := mock.KeyGen(seed)
+		msg := make([]byte, 32)
+		cert := make([]byte, 3072)
+		rand.Read(cert)
+		
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = mock.Verify(pk, msg, cert)
+		}
+	})
+}
+
+// Helper types and functions
+
+type Validator struct {
+	blsSK []byte
+	blsPK []byte
+	rtSK  []byte
+	rtPK  []byte
+}
+
+func generateTransactions(n int) [][]byte {
+	txs := make([][]byte, n)
+	for i := 0; i < n; i++ {
+		tx := make([]byte, 250) // Average transaction size
+		rand.Read(tx)
+		txs[i] = tx
+	}
+	return txs
+}
