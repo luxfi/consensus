@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/luxfi/consensus"
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/api/health"
 	"github.com/luxfi/consensus/config"
 	basepoll "github.com/luxfi/consensus/poll"
@@ -49,7 +49,7 @@ type Topological struct {
 	pollNumber uint64
 
 	// ctx is the context this linear instance is executing in
-	ctx *consensus.Context
+	ctx *core.Context
 
 	// params are the parameters that should be used to initialize confidence
 	// instances
@@ -102,7 +102,7 @@ type votes struct {
 }
 
 func (ts *Topological) Initialize(
-	ctx *consensus.Context,
+	ctx *core.Context,
 	params config.Parameters,
 	lastAcceptedID ids.ID,
 	lastAcceptedHeight uint64,

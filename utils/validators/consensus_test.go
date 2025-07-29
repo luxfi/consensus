@@ -16,7 +16,7 @@ import (
 
 	"github.com/luxfi/crypto/bls/signer/localsigner"
 	"github.com/luxfi/ids"
-	netzmq4 "github.com/luxfi/consensus/networking/zmq4"
+	netzmq4 "github.com/luxfi/consensus/utils/networking/zmq4"
 	"github.com/luxfi/consensus/validators"
 )
 

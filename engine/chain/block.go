@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus"
+	"github.com/luxfi/consensus/choices"
 )
 
 // Block is a possible decision that dictates the next canonical block.
@@ -22,7 +22,7 @@ import (
 // If the status of the block is Accepted or Rejected; Parent, Verify, Accept,
 // and Reject will never be called.
 type Block interface {
-	consensus.Decidable
+	choices.Decidable
 
 	// Parent returns the ID of this block's parent.
 	Parent() ids.ID

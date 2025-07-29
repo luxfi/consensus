@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/validators"
+	"github.com/luxfi/consensus/utils/validators"
 )
 
 var (

@@ -99,3 +99,39 @@ func (h *Hashmap[K, V]) OldestEntry() (K, V, bool) {
 	entry := node.Value
 	return entry.key, entry.value, true
 }
+
+// Iterator for the hashmap
+type HashmapIterator[K comparable, V any] struct {
+	current *ListNode[*hashmapEntry[K, V]]
+	key     K
+	value   V
+}
+
+// NewIterator returns a new iterator for the hashmap
+func (h *Hashmap[K, V]) NewIterator() *HashmapIterator[K, V] {
+	return &HashmapIterator[K, V]{
+		current: h.list.Front(),
+	}
+}
+
+// Next advances the iterator and returns true if there's a next element
+func (it *HashmapIterator[K, V]) Next() bool {
+	if it.current == nil {
+		return false
+	}
+	entry := it.current.Value
+	it.key = entry.key
+	it.value = entry.value
+	it.current = it.current.Next
+	return true
+}
+
+// Key returns the current key
+func (it *HashmapIterator[K, V]) Key() K {
+	return it.key
+}
+
+// Value returns the current value
+func (it *HashmapIterator[K, V]) Value() V {
+	return it.value
+}

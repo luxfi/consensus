@@ -1,0 +1,94 @@
+// Copyright (C) 2019-2025, Lux Industries Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+package confidence
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestBinaryQuantum(t *testing.T) {
+	require := require.New(t)
+
+	blue := 0
+	red := 1
+
+	alphaPreference, alphaConfidence := 1, 2
+	beta := 2
+	terminationConditions := newSingleTerminationCondition(alphaConfidence, beta)
+
+	sf := newBinaryQuantum(alphaPreference, terminationConditions, red)
+
+	require.Equal(red, sf.Preference())
+	require.False(sf.Finalized())
+
+	sf.RecordPoll(alphaConfidence, blue)
+
+	require.Equal(blue, sf.Preference())
+	require.False(sf.Finalized())
+
+	sf.RecordPoll(alphaConfidence, red)
+
+	require.Equal(red, sf.Preference())
+	require.False(sf.Finalized())
+
+	sf.RecordPoll(alphaConfidence, blue)
+
+	require.Equal(blue, sf.Preference())
+	require.False(sf.Finalized())
+
+	sf.RecordPoll(alphaPreference, red)
+	require.Equal(red, sf.Preference())
+	require.False(sf.Finalized())
+
+	sf.RecordPoll(alphaConfidence, blue)
+	require.Equal(blue, sf.Preference())
+	require.False(sf.Finalized())
+
+	sf.RecordPoll(alphaConfidence, blue)
+	require.Equal(blue, sf.Preference())
+	require.True(sf.Finalized())
+}
+
+type binaryQuantumTest struct {
+	require *require.Assertions
+
+	binaryQuantum
+}
+
+func newBinaryQuantumTest(t *testing.T, alphaPreference int, terminationConditions []terminationCondition) quantumTest[int] {
+	require := require.New(t)
+
+	return &binaryQuantumTest{
+		require:       require,
+		binaryQuantum: newBinaryQuantum(alphaPreference, terminationConditions, 0),
+	}
+}
+
+func (sf *binaryQuantumTest) RecordPoll(count int, choice int) {
+	sf.binaryQuantum.RecordPoll(count, choice)
+}
+
+func (sf *binaryQuantumTest) AssertEqual(expectedConfidences []int, expectedFinalized bool, expectedPreference int) {
+	sf.require.Equal(expectedPreference, sf.Preference())
+	sf.require.Equal(expectedConfidences, sf.binaryQuantum.confidence)
+	sf.require.Equal(expectedFinalized, sf.Finalized())
+}
+
+func TestBinaryQuantumErrorDrivenSingleChoice(t *testing.T) {
+	for _, test := range getErrorDrivenWaveSingleChoiceSuite[int]() {
+		t.Run(test.name, func(t *testing.T) {
+			test.f(t, newBinaryQuantumTest, 0)
+		})
+	}
+}
+
+func TestBinaryQuantumErrorDrivenMultiChoice(t *testing.T) {
+	for _, test := range getErrorDrivenWaveMultiChoiceSuite[int]() {
+		t.Run(test.name, func(t *testing.T) {
+			test.f(t, newBinaryQuantumTest, 0, 1)
+		})
+	}
+}

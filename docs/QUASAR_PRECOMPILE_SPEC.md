@@ -138,7 +138,7 @@ return block.number - Q_LAST_HEIGHT;
 
 ## 6. Integration into Block Validity
 
-Consensus engine (Snowman++) rule:
+Consensus engine rule:
 
 ```go
 func VerifyHeader(header *BlockHeader) error {

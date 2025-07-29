@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	ids "github.com/luxfi/ids"
-	validators "github.com/luxfi/consensus/validators"
+	validators "github.com/luxfi/consensus/utils/validators"
 	gomock "go.uber.org/mock/gomock"
 )
 

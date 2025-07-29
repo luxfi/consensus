@@ -9,7 +9,7 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/api/health"
-	"github.com/luxfi/consensus"
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/utils/bag"
 )
@@ -21,7 +21,7 @@ type Consensus interface {
 
 	// Takes in the context, confidence parameters, and the last accepted block.
 	Initialize(
-		ctx *consensus.Context,
+		ctx *core.Context,
 		params config.Parameters,
 		lastAcceptedID ids.ID,
 		lastAcceptedHeight uint64,

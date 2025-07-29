@@ -1,18 +1,18 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package testing
+package consensustest
 
 import (
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/config"
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/utils/bag"
 )
 
 // Type aliases for convenience
 type (
-	Factory    = consensus.Factory
+	Factory    = core.Factory
 	Parameters = config.Parameters
 )
 

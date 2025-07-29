@@ -17,8 +17,8 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/consensustest"
-	"github.com/luxfi/consensus/engine/chain/lineartest"
+	"github.com/luxfi/consensus/test/consensustest"
+	"github.com/luxfi/consensus/engine/chain/chaintest"
 	"github.com/luxfi/consensus/utils/bag"
 )
 
@@ -96,12 +96,12 @@ func InitializeTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	require.Equal(lineartest.GenesisID, sm.Preference())
+	require.Equal(chaintest.GenesisID, sm.Preference())
 	require.Zero(sm.NumProcessing())
 }
 
@@ -126,12 +126,12 @@ func NumProcessingTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block := lineartest.BuildChild(lineartest.Genesis)
+	block := chaintest.BuildChild(chaintest.Genesis)
 
 	require.Zero(sm.NumProcessing())
 
@@ -165,12 +165,12 @@ func AddToTailTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block := lineartest.BuildChild(lineartest.Genesis)
+	block := chaintest.BuildChild(chaintest.Genesis)
 
 	// Adding to the previous preference will update the preference
 	require.NoError(sm.Add(block))
@@ -203,13 +203,13 @@ func AddToNonTailTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	firstBlock := lineartest.BuildChild(lineartest.Genesis)
-	secondBlock := lineartest.BuildChild(lineartest.Genesis)
+	firstBlock := chaintest.BuildChild(chaintest.Genesis)
+	secondBlock := chaintest.BuildChild(chaintest.Genesis)
 
 	// Adding to the previous preference will update the preference
 	require.NoError(sm.Add(firstBlock))
@@ -243,18 +243,18 @@ func AddOnUnknownParentTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block := &lineartest.Block{
+	block := &chaintest.Block{
 		Decidable: consensustest.Decidable{
 			IDV:    ids.GenerateTestID(),
 			Status: consensustest.Undecided,
 		},
 		ParentV: ids.GenerateTestID(),
-		HeightV: lineartest.GenesisHeight + 2,
+		HeightV: chaintest.GenesisHeight + 2,
 	}
 
 	// Adding a block with an unknown parent should error.
@@ -282,18 +282,18 @@ func StatusOrProcessingPreviouslyAcceptedTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	require.Equal(consensustest.Accepted, lineartest.Genesis.Status)
-	require.False(sm.Processing(lineartest.Genesis.ID()))
-	require.True(sm.IsPreferred(lineartest.Genesis.ID()))
+	require.Equal(consensustest.Accepted, chaintest.Genesis.Status)
+	require.False(sm.Processing(chaintest.Genesis.ID()))
+	require.True(sm.IsPreferred(chaintest.Genesis.ID()))
 
-	pref, ok := sm.PreferenceAtHeight(lineartest.Genesis.Height())
+	pref, ok := sm.PreferenceAtHeight(chaintest.Genesis.Height())
 	require.True(ok)
-	require.Equal(lineartest.Genesis.ID(), pref)
+	require.Equal(chaintest.Genesis.ID(), pref)
 }
 
 func StatusOrProcessingPreviouslyRejectedTest(t *testing.T, factory Factory) {
@@ -316,12 +316,12 @@ func StatusOrProcessingPreviouslyRejectedTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block := lineartest.BuildChild(lineartest.Genesis)
+	block := chaintest.BuildChild(chaintest.Genesis)
 	require.NoError(block.Reject(context.Background()))
 
 	require.Equal(consensustest.Rejected, block.Status)
@@ -352,12 +352,12 @@ func StatusOrProcessingUnissuedTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block := lineartest.BuildChild(lineartest.Genesis)
+	block := chaintest.BuildChild(chaintest.Genesis)
 
 	require.Equal(consensustest.Undecided, block.Status)
 	require.False(sm.Processing(block.ID()))
@@ -387,12 +387,12 @@ func StatusOrProcessingIssuedTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block := lineartest.BuildChild(lineartest.Genesis)
+	block := chaintest.BuildChild(chaintest.Genesis)
 
 	require.NoError(sm.Add(block))
 	require.Equal(consensustest.Undecided, block.Status)
@@ -424,12 +424,12 @@ func RecordPollAcceptSingleBlockTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block := lineartest.BuildChild(lineartest.Genesis)
+	block := chaintest.BuildChild(chaintest.Genesis)
 
 	require.NoError(sm.Add(block))
 
@@ -465,13 +465,13 @@ func RecordPollAcceptAndRejectTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	firstBlock := lineartest.BuildChild(lineartest.Genesis)
-	secondBlock := lineartest.BuildChild(lineartest.Genesis)
+	firstBlock := chaintest.BuildChild(chaintest.Genesis)
+	secondBlock := chaintest.BuildChild(chaintest.Genesis)
 
 	require.NoError(sm.Add(firstBlock))
 	require.NoError(sm.Add(secondBlock))
@@ -513,16 +513,16 @@ func RecordPollSplitVoteNoChangeTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	firstBlock := lineartest.BuildChild(lineartest.Genesis)
-	secondBlock := lineartest.BuildChild(lineartest.Genesis)
+	firstBlock := chaintest.BuildChild(chaintest.Genesis)
+	secondBlock := chaintest.BuildChild(chaintest.Genesis)
 	// Ensure that the blocks have at least one bit as a common prefix
 	for firstBlock.IDV.Bit(0) != secondBlock.IDV.Bit(0) {
-		secondBlock = lineartest.BuildChild(lineartest.Genesis)
+		secondBlock = chaintest.BuildChild(chaintest.Genesis)
 	}
 
 	require.NoError(sm.Add(firstBlock))
@@ -569,15 +569,15 @@ func RecordPollWhenFinalizedTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	votes := bag.Of(lineartest.GenesisID)
+	votes := bag.Of(chaintest.GenesisID)
 	require.NoError(sm.RecordPoll(context.Background(), votes))
 	require.Zero(sm.NumProcessing())
-	require.Equal(lineartest.GenesisID, sm.Preference())
+	require.Equal(chaintest.GenesisID, sm.Preference())
 }
 
 func RecordPollRejectTransitivelyTest(t *testing.T, factory Factory) {
@@ -600,14 +600,14 @@ func RecordPollRejectTransitivelyTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block0 := lineartest.BuildChild(lineartest.Genesis)
-	block1 := lineartest.BuildChild(lineartest.Genesis)
-	block2 := lineartest.BuildChild(block1)
+	block0 := chaintest.BuildChild(chaintest.Genesis)
+	block1 := chaintest.BuildChild(chaintest.Genesis)
+	block2 := chaintest.BuildChild(block1)
 
 	require.NoError(sm.Add(block0))
 	require.NoError(sm.Add(block1))
@@ -655,15 +655,15 @@ func RecordPollTransitivelyResetConfidenceTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block0 := lineartest.BuildChild(lineartest.Genesis)
-	block1 := lineartest.BuildChild(lineartest.Genesis)
-	block2 := lineartest.BuildChild(block1)
-	block3 := lineartest.BuildChild(block1)
+	block0 := chaintest.BuildChild(chaintest.Genesis)
+	block1 := chaintest.BuildChild(chaintest.Genesis)
+	block2 := chaintest.BuildChild(block1)
+	block3 := chaintest.BuildChild(block1)
 
 	require.NoError(sm.Add(block0))
 	require.NoError(sm.Add(block1))
@@ -725,12 +725,12 @@ func RecordPollInvalidVoteTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block := lineartest.BuildChild(lineartest.Genesis)
+	block := chaintest.BuildChild(chaintest.Genesis)
 	unknownBlockID := ids.GenerateTestID()
 
 	require.NoError(sm.Add(block))
@@ -765,16 +765,16 @@ func RecordPollTransitiveVotingTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block0 := lineartest.BuildChild(lineartest.Genesis)
-	block1 := lineartest.BuildChild(block0)
-	block2 := lineartest.BuildChild(block1)
-	block3 := lineartest.BuildChild(block0)
-	block4 := lineartest.BuildChild(block3)
+	block0 := chaintest.BuildChild(chaintest.Genesis)
+	block1 := chaintest.BuildChild(block0)
+	block2 := chaintest.BuildChild(block1)
+	block3 := chaintest.BuildChild(block0)
+	block4 := chaintest.BuildChild(block3)
 
 	require.NoError(sm.Add(block0))
 	require.NoError(sm.Add(block1))
@@ -846,36 +846,36 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block0 := &lineartest.Block{
+	block0 := &chaintest.Block{
 		Decidable: consensustest.Decidable{
 			IDV:    ids.ID{0x06}, // 0110
 			Status: consensustest.Undecided,
 		},
-		ParentV: lineartest.GenesisID,
-		HeightV: lineartest.GenesisHeight + 1,
+		ParentV: chaintest.GenesisID,
+		HeightV: chaintest.GenesisHeight + 1,
 	}
-	block1 := &lineartest.Block{
+	block1 := &chaintest.Block{
 		Decidable: consensustest.Decidable{
 			IDV:    ids.ID{0x08}, // 0001
 			Status: consensustest.Undecided,
 		},
-		ParentV: lineartest.GenesisID,
-		HeightV: lineartest.GenesisHeight + 1,
+		ParentV: chaintest.GenesisID,
+		HeightV: chaintest.GenesisHeight + 1,
 	}
-	block2 := &lineartest.Block{
+	block2 := &chaintest.Block{
 		Decidable: consensustest.Decidable{
 			IDV:    ids.ID{0x01}, // 1000
 			Status: consensustest.Undecided,
 		},
-		ParentV: lineartest.GenesisID,
-		HeightV: lineartest.GenesisHeight + 1,
+		ParentV: chaintest.GenesisID,
+		HeightV: chaintest.GenesisHeight + 1,
 	}
-	block3 := lineartest.BuildChild(block2)
+	block3 := chaintest.BuildChild(block2)
 
 	require.NoError(sm.Add(block0))
 	require.NoError(sm.Add(block1))
@@ -949,15 +949,15 @@ func RecordPollChangePreferredChainTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	a1Block := lineartest.BuildChild(lineartest.Genesis)
-	b1Block := lineartest.BuildChild(lineartest.Genesis)
-	a2Block := lineartest.BuildChild(a1Block)
-	b2Block := lineartest.BuildChild(b1Block)
+	a1Block := chaintest.BuildChild(chaintest.Genesis)
+	b1Block := chaintest.BuildChild(chaintest.Genesis)
+	a2Block := chaintest.BuildChild(a1Block)
+	b2Block := chaintest.BuildChild(b1Block)
 
 	require.NoError(sm.Add(a1Block))
 	require.NoError(sm.Add(a2Block))
@@ -1034,19 +1034,19 @@ func LastAcceptedTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block0 := lineartest.BuildChild(lineartest.Genesis)
-	block1 := lineartest.BuildChild(block0)
-	block2 := lineartest.BuildChild(block1)
-	block1Conflict := lineartest.BuildChild(block0)
+	block0 := chaintest.BuildChild(chaintest.Genesis)
+	block1 := chaintest.BuildChild(block0)
+	block2 := chaintest.BuildChild(block1)
+	block1Conflict := chaintest.BuildChild(block0)
 
 	lastAcceptedID, lastAcceptedHeight := sm.LastAccepted()
-	require.Equal(lineartest.GenesisID, lastAcceptedID)
-	require.Equal(lineartest.GenesisHeight, lastAcceptedHeight)
+	require.Equal(chaintest.GenesisID, lastAcceptedID)
+	require.Equal(chaintest.GenesisHeight, lastAcceptedHeight)
 
 	require.NoError(sm.Add(block0))
 	require.NoError(sm.Add(block1))
@@ -1054,14 +1054,14 @@ func LastAcceptedTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Add(block2))
 
 	lastAcceptedID, lastAcceptedHeight = sm.LastAccepted()
-	require.Equal(lineartest.GenesisID, lastAcceptedID)
-	require.Equal(lineartest.GenesisHeight, lastAcceptedHeight)
+	require.Equal(chaintest.GenesisID, lastAcceptedID)
+	require.Equal(chaintest.GenesisHeight, lastAcceptedHeight)
 
 	require.NoError(sm.RecordPoll(context.Background(), bag.Of(block0.IDV)))
 
 	lastAcceptedID, lastAcceptedHeight = sm.LastAccepted()
-	require.Equal(lineartest.GenesisID, lastAcceptedID)
-	require.Equal(lineartest.GenesisHeight, lastAcceptedHeight)
+	require.Equal(chaintest.GenesisID, lastAcceptedID)
+	require.Equal(chaintest.GenesisHeight, lastAcceptedHeight)
 
 	require.NoError(sm.RecordPoll(context.Background(), bag.Of(block1.IDV)))
 
@@ -1115,9 +1115,9 @@ func MetricsProcessingErrorTest(t *testing.T, factory Factory) {
 	err := sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	)
 	require.Error(err) //nolint:forbidigo // error is not exported https://github.com/prometheus/client_golang/blob/main/prometheus/registry.go#L315
 }
@@ -1149,9 +1149,9 @@ func MetricsAcceptedErrorTest(t *testing.T, factory Factory) {
 	err := sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	)
 	require.Error(err) //nolint:forbidigo // error is not exported https://github.com/prometheus/client_golang/blob/main/prometheus/registry.go#L315
 }
@@ -1183,9 +1183,9 @@ func MetricsRejectedErrorTest(t *testing.T, factory Factory) {
 	err := sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	)
 	require.Error(err) //nolint:forbidigo // error is not exported https://github.com/prometheus/client_golang/blob/main/prometheus/registry.go#L315
 }
@@ -1211,12 +1211,12 @@ func ErrorOnAcceptTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block := lineartest.BuildChild(lineartest.Genesis)
+	block := chaintest.BuildChild(chaintest.Genesis)
 	block.AcceptV = errTest
 
 	require.NoError(sm.Add(block))
@@ -1247,13 +1247,13 @@ func ErrorOnRejectSiblingTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block0 := lineartest.BuildChild(lineartest.Genesis)
-	block1 := lineartest.BuildChild(lineartest.Genesis)
+	block0 := chaintest.BuildChild(chaintest.Genesis)
+	block1 := chaintest.BuildChild(chaintest.Genesis)
 	block1.RejectV = errTest
 
 	require.NoError(sm.Add(block0))
@@ -1285,14 +1285,14 @@ func ErrorOnTransitiveRejectionTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	block0 := lineartest.BuildChild(lineartest.Genesis)
-	block1 := lineartest.BuildChild(lineartest.Genesis)
-	block2 := lineartest.BuildChild(block1)
+	block0 := chaintest.BuildChild(chaintest.Genesis)
+	block1 := chaintest.BuildChild(chaintest.Genesis)
+	block2 := chaintest.BuildChild(block1)
 	block2.RejectV = errTest
 
 	require.NoError(sm.Add(block0))
@@ -1358,12 +1358,12 @@ func ErrorOnAddDecidedBlockTest(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	err := sm.Add(lineartest.Genesis)
+	err := sm.Add(chaintest.Genesis)
 	require.ErrorIs(err, errUnknownParentBlock)
 }
 
@@ -1401,14 +1401,14 @@ func RecordPollWithDefaultParameters(t *testing.T, factory Factory) {
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
 	// "blk1" and "blk2" are in conflict
-	blk1 := lineartest.BuildChild(lineartest.Genesis)
-	blk2 := lineartest.BuildChild(lineartest.Genesis)
+	blk1 := chaintest.BuildChild(chaintest.Genesis)
+	blk2 := chaintest.BuildChild(chaintest.Genesis)
 
 	require.NoError(sm.Add(blk1))
 	require.NoError(sm.Add(blk2))
@@ -1447,14 +1447,14 @@ func RecordPollRegressionCalculateInDegreeIndegreeCalculation(t *testing.T, fact
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
-		lineartest.GenesisID,
-		lineartest.GenesisHeight,
-		lineartest.GenesisTimestamp,
+		chaintest.GenesisID,
+		chaintest.GenesisHeight,
+		chaintest.GenesisTimestamp,
 	))
 
-	blk1 := lineartest.BuildChild(lineartest.Genesis)
-	blk2 := lineartest.BuildChild(blk1)
-	blk3 := lineartest.BuildChild(blk2)
+	blk1 := chaintest.BuildChild(chaintest.Genesis)
+	blk2 := chaintest.BuildChild(blk1)
+	blk3 := chaintest.BuildChild(blk2)
 
 	require.NoError(sm.Add(blk1))
 	require.NoError(sm.Add(blk2))

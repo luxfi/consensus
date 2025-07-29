@@ -67,8 +67,8 @@ func (ns *NetworkSimulator) AddNode(nodeID ids.NodeID, byzantine bool) (*Simulat
 		logger:     ns.logger,
 	}
 	
-	// Initialize snowball
-	node.snowball = snowball.NewSnowball(ns.params, node.preference)
+	// Initialize focus
+	node.focus = focus.NewFocus(ns.params, node.preference)
 	
 	ns.nodes[nodeID] = node
 	if byzantine {
@@ -203,7 +203,7 @@ type SimulatedNode struct {
 	simulator  *NetworkSimulator
 	byzantine  bool
 	inbox      chan Message
-	snowball   *snowball.Snowball
+	focus   *focus.Focus
 	preference ids.ID
 	finalized  bool
 	
@@ -275,7 +275,7 @@ func (n *SimulatedNode) handleMessage(msg Message) {
 		
 	case ResponseMessage:
 		// Process response
-		// TODO: Update snowball with response
+		// TODO: Update focus with response
 	}
 }
 
@@ -416,8 +416,8 @@ func (t *ConsensusTester) TestByzantineResilience(nodeCount int, byzantineRatio 
 	preferences := make(map[ids.ID]int)
 	
 	for _, node := range nodes {
-		if !node.byzantine && node.snowball.Finalized() {
-			pref := node.snowball.Preference()
+		if !node.byzantine && node.focus.Finalized() {
+			pref := node.focus.Preference()
 			preferences[pref]++
 		}
 	}

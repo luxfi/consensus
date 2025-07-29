@@ -1,12 +1,13 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package consensus
+package core
 
 import (
 	"context"
 
 	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/choices"
 	"github.com/luxfi/consensus/utils/bag"
 )
 
@@ -24,13 +25,13 @@ const (
 // Consensus represents a consensus instance
 type Consensus interface {
 	// Add a new item to track
-	Add(context.Context, Decidable) error
+	Add(context.Context, choices.Decidable) error
 	
 	// RecordPoll records the results of a poll
 	RecordPoll(context.Context, bag.Bag[ids.ID]) error
 	
 	// Finalized returns the finalized items
-	Finalized() []Decidable
+	Finalized() []choices.Decidable
 	
 	// HealthCheck returns whether consensus is healthy
 	HealthCheck(context.Context) (interface{}, error)

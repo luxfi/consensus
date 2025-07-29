@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Lux Indutries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package testing
@@ -10,7 +10,7 @@ import (
 	"gonum.org/v1/gonum/mathext/prng"
 )
 
-func TestSnowballGovernance(t *testing.T) {
+func TestFocusGovernance(t *testing.T) {
 	require := require.New(t)
 
 	var (
@@ -23,7 +23,7 @@ func TestSnowballGovernance(t *testing.T) {
 		source              = prng.NewMT19937()
 	)
 
-	nBitwise := NewNetwork(SnowballFactory, params, numColors, source)
+	nBitwise := NewNetwork(FocusFactory, params, numColors, source)
 
 	source.Seed(seed)
 	for i := 0; i < numRed; i++ {

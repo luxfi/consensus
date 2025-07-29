@@ -1,14 +1,14 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package lineartest
+package chaintest
 
 import (
 	"context"
 
 	"github.com/luxfi/database"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/consensustest"
+	"github.com/luxfi/consensus/choices"
 )
 
 func MakeLastAcceptedBlockF(blks ...[]*Block) func(context.Context) (ids.ID, error) {
@@ -19,7 +19,7 @@ func MakeLastAcceptedBlockF(blks ...[]*Block) func(context.Context) (ids.ID, err
 		)
 		for _, blkSlice := range blks {
 			for _, blk := range blkSlice {
-				if blk.Status != consensustest.Accepted {
+				if blk.Status() != choices.Accepted {
 					continue
 				}
 
@@ -37,7 +37,7 @@ func MakeGetBlockIDAtHeightF(blks ...[]*Block) func(context.Context, uint64) (id
 	return func(_ context.Context, height uint64) (ids.ID, error) {
 		for _, blkSlice := range blks {
 			for _, blk := range blkSlice {
-				if blk.Status != consensustest.Accepted {
+				if blk.Status() != choices.Accepted {
 					continue
 				}
 
