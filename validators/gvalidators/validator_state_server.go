@@ -6,13 +6,11 @@ package gvalidators
 import (
 	"context"
 
-	"google.golang.org/protobuf/types/known/emptypb"
-
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/validators"
 	"github.com/luxfi/crypto/bls"
 
-	pb "github.com/luxfi/node/proto/pb/validatorstate"
+	pb "github.com/luxfi/consensus/proto/pb/validatorstate"
 )
 
 var _ pb.ValidatorStateServer = (*Server)(nil)
@@ -26,12 +24,12 @@ func NewServer(state validators.State) *Server {
 	return &Server{state: state}
 }
 
-func (s *Server) GetMinimumHeight(ctx context.Context, _ *emptypb.Empty) (*pb.GetMinimumHeightResponse, error) {
+func (s *Server) GetMinimumHeight(ctx context.Context, _ *pb.GetMinimumHeightRequest) (*pb.GetMinimumHeightResponse, error) {
 	height, err := s.state.GetMinimumHeight(ctx)
 	return &pb.GetMinimumHeightResponse{Height: height}, err
 }
 
-func (s *Server) GetCurrentHeight(ctx context.Context, _ *emptypb.Empty) (*pb.GetCurrentHeightResponse, error) {
+func (s *Server) GetCurrentHeight(ctx context.Context, _ *pb.GetCurrentHeightRequest) (*pb.GetCurrentHeightResponse, error) {
 	height, err := s.state.GetCurrentHeight(ctx)
 	return &pb.GetCurrentHeightResponse{Height: height}, err
 }

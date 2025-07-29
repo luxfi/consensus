@@ -51,6 +51,42 @@ type Engine interface {
 // 	ErrCertificateMismatch = rt.ErrCertificateMismatch
 // )
 
+// stubEngine is a stub implementation of Engine for testing
+type stubEngine struct {
+	level SecurityLevel
+}
+
+// New creates a new ringtail engine
+func New() Engine {
+	return &stubEngine{}
+}
+
+// Initialize sets the security level
+func (e *stubEngine) Initialize(level SecurityLevel) error {
+	e.level = level
+	return nil
+}
+
+// Sign signs a message (stub implementation)
+func (e *stubEngine) Sign(msg []byte, sk SecretKey) (Signature, error) {
+	// Stub implementation
+	return make([]byte, 32), nil
+}
+
+// Verify verifies a signature (stub implementation)
+func (e *stubEngine) Verify(msg []byte, sig Signature, pk PublicKey) bool {
+	// Stub implementation - always return true for now
+	return true
+}
+
+// GenerateKeyPair generates a new key pair (stub implementation)
+func (e *stubEngine) GenerateKeyPair() (SecretKey, PublicKey, error) {
+	// Stub implementation
+	sk := make([]byte, 32)
+	pk := make([]byte, 32)
+	return sk, pk, nil
+}
+
 // KeyGen generates a key pair from seed
 func KeyGen(seed []byte) ([]byte, []byte, error) {
 	return rt.KeyGen(seed)

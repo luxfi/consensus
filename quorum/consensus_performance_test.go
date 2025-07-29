@@ -27,10 +27,11 @@ func TestPhotonPerformance(t *testing.T) {
 
 	network := NewNetwork(params, numColors, seed)
 
+	factory := photon.NewFactory()
 	for i := 0; i < numNodes; i++ {
 		// Create a tree with random initial preference
 		choice := network.colors[i%numColors]
-		node := NewTree(params, choice)
+		node := NewTree(factory, params, choice)
 		network.AddNode(node)
 	}
 
@@ -74,9 +75,10 @@ func BenchmarkPhotonConsensus(b *testing.B) {
 				}
 				network := NewNetwork(params, tt.numColors, seed)
 
+				factory := photon.NewFactory()
 				for j := 0; j < tt.numNodes; j++ {
 					choice := network.colors[j%tt.numColors]
-					node := NewTree(params, choice)
+					node := NewTree(factory, params, choice)
 					network.AddNode(node)
 				}
 

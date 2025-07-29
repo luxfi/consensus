@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/node/utils/logging"
+	"github.com/luxfi/log"
 )
 
 var (
@@ -27,7 +27,7 @@ type Acceptor interface {
 	// If the returned error is non-nil, the chain associated with [ctx] should
 	// shut down and not commit [container] or any other container to its
 	// database as accepted.
-	Accept(ctx *ConsensusContext, containerID ids.ID, container []byte) error
+	Accept(ctx *Context, containerID ids.ID, container []byte) error
 }
 
 type acceptorWrapper struct {
@@ -53,21 +53,21 @@ type AcceptorGroup interface {
 }
 
 type acceptorGroup struct {
-	log logging.Logger
+	log log.Logger
 
 	lock sync.RWMutex
 	// Chain ID --> Acceptor Name --> Acceptor
 	acceptors map[ids.ID]map[string]acceptorWrapper
 }
 
-func NewAcceptorGroup(log logging.Logger) AcceptorGroup {
+func NewAcceptorGroup(log log.Logger) AcceptorGroup {
 	return &acceptorGroup{
 		log:       log,
 		acceptors: make(map[ids.ID]map[string]acceptorWrapper),
 	}
 }
 
-func (a *acceptorGroup) Accept(ctx *ConsensusContext, containerID ids.ID, container []byte) error {
+func (a *acceptorGroup) Accept(ctx *Context, containerID ids.ID, container []byte) error {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 

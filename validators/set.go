@@ -14,7 +14,7 @@ import (
 	"github.com/luxfi/ids"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/consensus/utils/math"
-	"github.com/luxfi/node/utils/sampler"
+	"github.com/luxfi/consensus/utils/sampler"
 	"github.com/luxfi/consensus/utils/set"
 )
 
