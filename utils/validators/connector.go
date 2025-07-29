@@ -7,7 +7,7 @@ import (
 	"context"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/version"
+	"github.com/luxfi/consensus/utils/version"
 )
 
 // Connector represents a handler that is called when a connection is marked as

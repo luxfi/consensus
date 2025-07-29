@@ -117,3 +117,9 @@ func Sort[T any](slice []T, less ...func(i, j int) bool) {
 		return false
 	})
 }
+
+// Zero returns the zero value of type T.
+func Zero[T any]() T {
+	var zero T
+	return zero
+}

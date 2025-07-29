@@ -11,12 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/crypto/bls/signer/localsigner"
+	"github.com/luxfi/database/memdb"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/chains/atomic"
-	"github.com/luxfi/consensus"
+	"github.com/luxfi/node/chains/atomic"
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/api/metrics"
-	"github.com/luxfi/consensus/validators"
-	"github.com/luxfi/consensus/validators/validatorstest"
+	"github.com/luxfi/consensus/utils/validators"
+	"github.com/luxfi/consensus/utils/validators/validatorstest"
 	log "github.com/luxfi/log"
 )
 
@@ -28,16 +29,16 @@ var (
 
 	errMissing = errors.New("missing")
 
-	_ consensus.Acceptor = noOpAcceptor{}
+	_ core.Acceptor = noOpAcceptor{}
 )
 
 type noOpAcceptor struct{}
 
-func (noOpAcceptor) Accept(*consensus.Context, ids.ID, []byte) error {
+func (noOpAcceptor) Accept(*core.Context, ids.ID, []byte) error {
 	return nil
 }
 
-func ConsensusContext(ctx *consensus.Context) *consensus.Context {
+func ConsensusContext(ctx *core.Context) *core.Context {
 	ctx.PrimaryAlias = ctx.ChainID.String()
 	ctx.Metrics = metrics.NewMultiGatherer()
 	ctx.BlockAcceptor = noOpAcceptor{}
@@ -46,14 +47,14 @@ func ConsensusContext(ctx *consensus.Context) *consensus.Context {
 	return ctx
 }
 
-func Context(tb testing.TB, chainID ids.ID) *consensus.Context {
+func Context(tb testing.TB, chainID ids.ID) *core.Context {
 	require := require.New(tb)
 
 	secretKey, err := localsigner.New()
 	require.NoError(err)
 	publicKey := secretKey.PublicKey()
 
-	memory := atomic.NewMemory()
+	memory := atomic.NewMemory(memdb.New())
 	sharedMemory := memory.NewSharedMemory(chainID)
 
 	aliaser := ids.NewAliaser()
@@ -81,7 +82,7 @@ func Context(tb testing.TB, chainID ids.ID) *consensus.Context {
 		},
 	}
 
-	return &consensus.Context{
+	return &core.Context{
 		NetworkID:       10, // UnitTestID
 		SubnetID:        ids.Empty,
 		ChainID:         chainID,

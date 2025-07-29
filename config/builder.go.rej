@@ -1,0 +1,33 @@
+@@ -331,13 +331,11 @@
+ 		MixedQueryNumPushVdr:  10,
+ 		TotalNodes:            21,
+ 		ExpectedFailureRate:   0.20,
+-		QThreshold:            15,
+-		QuasarTimeout:         50 * time.Millisecond,
+ 	}
+ 	
+ 	TestnetConfig = Config{
+ 		K:                     11,
+-		AlphaPreference:       7,
++		AlphaPreference:       8,
+ 		AlphaConfidence:       9,
+ 		Beta:                  6,
+ 		ConcurrentRepolls:     6,
+@@ -348,8 +346,6 @@
+ 		MixedQueryNumPushVdr:  10,
+ 		TotalNodes:            11,
+ 		ExpectedFailureRate:   0.20,
+-		QThreshold:            8,
+-		QuasarTimeout:         100 * time.Millisecond,
+ 	}
+ 	
+ 	LocalConfig = Config{
+@@ -365,8 +361,6 @@
+ 		MixedQueryNumPushVdr:  10,
+ 		TotalNodes:            5,
+ 		ExpectedFailureRate:   0.0,
+-		QThreshold:            4,
+-		QuasarTimeout:         200 * time.Millisecond,
+ 	}
+ )
+ 

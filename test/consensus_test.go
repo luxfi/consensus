@@ -1,7 +1,7 @@
-// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Lux Indutries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package testing
+package consensustest
 
 import (
 	"github.com/luxfi/ids"
@@ -22,7 +22,7 @@ func NewByzantine(_ Factory, _ Parameters, choice ids.ID) Consensus {
 	}
 }
 
-// Byzantine is a naive implementation of a multi-choice snowball instance
+// Byzantine is a naive implementation of a multi-choice focus instance
 type Byzantine struct {
 	// Hardcode the preference
 	preference ids.ID

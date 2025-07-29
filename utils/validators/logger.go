@@ -8,7 +8,7 @@ import (
 	"github.com/luxfi/ids"
 	log "github.com/luxfi/log"
 	"github.com/luxfi/consensus/utils/set"
-	"github.com/luxfi/consensus/vms/types"
+	"github.com/luxfi/consensus/utils/vms/types"
 )
 
 var _ SetCallbackListener = (*logger)(nil)

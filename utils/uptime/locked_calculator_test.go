@@ -13,7 +13,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/uptime/uptimemock"
+	"github.com/luxfi/consensus/utils/uptime/uptimemock"
 	"github.com/luxfi/consensus/utils"
 )
 

@@ -1,17 +1,18 @@
 module github.com/luxfi/consensus/cmd/consensus
 
-go 1.21
+go 1.24.5
 
 require (
 	github.com/luxfi/consensus v0.0.0
 	github.com/luxfi/ids v0.0.0
 	github.com/spf13/cobra v1.8.0
-	github.com/pebbe/zmq4 v1.2.10
+	github.com/luxfi/zmq4 v0.17.0
 )
 
 replace (
 	github.com/luxfi/consensus => ../../
 	github.com/luxfi/ids => ../../../ids
+	github.com/luxfi/zmq4 => ../../../zmq4
 )
 
 require (

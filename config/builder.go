@@ -37,6 +37,10 @@ type Config struct {
 	// Network characteristics (for reference)
 	TotalNodes           int     `json:"totalNodes,omitempty"`
 	ExpectedFailureRate  float64 `json:"expectedFailureRate,omitempty"`
+	
+	// Quantum consensus parameters
+	QThreshold           int           `json:"qThreshold,omitempty"`
+	QuasarTimeout        time.Duration `json:"quasarTimeout,omitempty"`
 }
 
 // Builder provides a fluent interface for constructing consensus configurations
@@ -51,7 +55,7 @@ func NewBuilder() *Builder {
 		config: &Config{
 			// Sensible defaults
 			K:                     11,
-			AlphaPreference:       8,
+			AlphaPreference:       7,
 			AlphaConfidence:       9,
 			Beta:                  10,
 			ConcurrentRepolls:     10,
@@ -316,7 +320,7 @@ func (b *Builder) Build() (*Config, error) {
 var (
 	MainnetConfig = Config{
 		K:                     21,
-		AlphaPreference:       15,
+		AlphaPreference:       13,
 		AlphaConfidence:       18,
 		Beta:                  8,
 		ConcurrentRepolls:     8,
@@ -327,11 +331,13 @@ var (
 		MixedQueryNumPushVdr:  10,
 		TotalNodes:            21,
 		ExpectedFailureRate:   0.20,
+		QThreshold:            15,
+		QuasarTimeout:         50 * time.Millisecond,
 	}
 	
 	TestnetConfig = Config{
 		K:                     11,
-		AlphaPreference:       8,
+		AlphaPreference:       7,
 		AlphaConfidence:       9,
 		Beta:                  6,
 		ConcurrentRepolls:     6,
@@ -342,6 +348,8 @@ var (
 		MixedQueryNumPushVdr:  10,
 		TotalNodes:            11,
 		ExpectedFailureRate:   0.20,
+		QThreshold:            8,
+		QuasarTimeout:         100 * time.Millisecond,
 	}
 	
 	LocalConfig = Config{
@@ -357,5 +365,7 @@ var (
 		MixedQueryNumPushVdr:  10,
 		TotalNodes:            5,
 		ExpectedFailureRate:   0.10,
+		QThreshold:            3,
+		QuasarTimeout:         20 * time.Millisecond,
 	}
 )

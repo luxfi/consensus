@@ -6,7 +6,7 @@ package upgradetest
 import (
 	"time"
 	
-	"github.com/luxfi/consensus/upgrade"
+	"github.com/luxfi/consensus/utils/upgrade"
 )
 
 // Config returns a test upgrade config with all upgrades activated
