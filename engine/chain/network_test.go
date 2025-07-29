@@ -9,8 +9,8 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/consensustest"
-	"github.com/luxfi/consensus/engine/chain/lineartest"
+	"github.com/luxfi/consensus/test/consensustest"
+	"github.com/luxfi/consensus/engine/chain/chaintest"
 	"github.com/luxfi/consensus/utils"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/consensus/utils/sampler"
@@ -18,7 +18,7 @@ import (
 
 type Network struct {
 	params         config.Parameters
-	colors         []*lineartest.Block
+	colors         []*chaintest.Block
 	rngSource      sampler.Source
 	nodes, running []Consensus
 }
@@ -26,13 +26,13 @@ type Network struct {
 func NewNetwork(params config.Parameters, numColors int, rngSource sampler.Source) *Network {
 	n := &Network{
 		params: params,
-		colors: []*lineartest.Block{{
+		colors: []*chaintest.Block{{
 			Decidable: consensustest.Decidable{
 				IDV:    ids.Empty.Prefix(rngSource.Uint64()),
 				Status: consensustest.Undecided,
 			},
-			ParentV: lineartest.GenesisID,
-			HeightV: lineartest.GenesisHeight + 1,
+			ParentV: chaintest.GenesisID,
+			HeightV: chaintest.GenesisHeight + 1,
 		}},
 		rngSource: rngSource,
 	}
@@ -42,7 +42,7 @@ func NewNetwork(params config.Parameters, numColors int, rngSource sampler.Sourc
 		s.Initialize(uint64(len(n.colors)))
 		dependencyInd, _ := s.Next()
 		dependency := n.colors[dependencyInd]
-		n.colors = append(n.colors, &lineartest.Block{
+		n.colors = append(n.colors, &chaintest.Block{
 			Decidable: consensustest.Decidable{
 				IDV:    ids.Empty.Prefix(rngSource.Uint64()),
 				Status: consensustest.Undecided,
@@ -58,7 +58,7 @@ func (n *Network) shuffleColors() {
 	s := sampler.NewDeterministicUniform(int64(n.rngSource.Uint64() % (1 << 63))) // Convert uint64 to int64 range
 	s.Initialize(uint64(len(n.colors)))
 	indices, _ := s.Sample(len(n.colors))
-	colors := []*lineartest.Block(nil)
+	colors := []*chaintest.Block(nil)
 	for _, index := range indices {
 		colors = append(colors, n.colors[int(index)])
 	}
@@ -69,7 +69,7 @@ func (n *Network) shuffleColors() {
 func (n *Network) AddNode(t testing.TB, sm Consensus) error {
 	ctx := consensustest.Context(t, consensustest.CChainID)
 	ctx = consensustest.ConsensusContext(ctx)
-	if err := sm.Initialize(ctx, n.params, lineartest.GenesisID, lineartest.GenesisHeight, lineartest.GenesisTimestamp); err != nil {
+	if err := sm.Initialize(ctx, n.params, chaintest.GenesisID, chaintest.GenesisHeight, chaintest.GenesisTimestamp); err != nil {
 		return err
 	}
 

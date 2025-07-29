@@ -6,7 +6,7 @@ package upgradetest
 import (
 	"time"
 
-	"github.com/luxfi/consensus/upgrade"
+	"github.com/luxfi/consensus/utils/upgrade"
 )
 
 const (

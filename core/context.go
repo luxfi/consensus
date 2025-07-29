@@ -1,7 +1,7 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package consensus
+package core
 
 import (
 	"sync"
@@ -11,12 +11,12 @@ import (
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/api/metrics"
-	"github.com/luxfi/consensus/chains/atomic"
-	"github.com/luxfi/consensus/validators"
-	"github.com/luxfi/consensus/upgrade"
+	"github.com/luxfi/node/chains/atomic"
+	"github.com/luxfi/consensus/utils/validators"
+	"github.com/luxfi/consensus/utils/upgrade"
 	"github.com/luxfi/consensus/utils"
 	log "github.com/luxfi/log"
-	"github.com/luxfi/consensus/vms/platformvm/warp"
+	"github.com/luxfi/consensus/utils/vms/platformvm/warp"
 )
 
 // ContextInitializable represents an object that can be initialized

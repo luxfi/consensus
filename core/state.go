@@ -1,12 +1,12 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package consensus
+package core
 
 import (
 	"errors"
 
-	"github.com/luxfi/consensus/networking/grpc/proto/pb/p2p"
+	"github.com/luxfi/consensus/utils/networking/grpc/proto/pb/p2p"
 )
 
 const (

@@ -1,0 +1,96 @@
+// Copyright (C) 2019-2024, Lux Indutries, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+package confidence
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func UnaryQuantumStateTest(t *testing.T, sf *unaryQuantum, expectedConfidences []int, expectedFinalized bool) {
+	require := require.New(t)
+
+	require.Equal(expectedConfidences, sf.confidence)
+	require.Equal(expectedFinalized, sf.Finalized())
+}
+
+func TestUnaryQuantum(t *testing.T) {
+	require := require.New(t)
+
+	alphaPreference, alphaConfidence := 1, 2
+	beta := 2
+	terminationConditions := newSingleTerminationCondition(alphaConfidence, beta)
+
+	sf := newUnaryQuantum(alphaPreference, terminationConditions)
+
+	sf.RecordPoll(alphaConfidence)
+	UnaryQuantumStateTest(t, &sf, []int{1}, false)
+
+	sf.RecordUnsuccessfulPoll()
+	UnaryQuantumStateTest(t, &sf, []int{0}, false)
+
+	sf.RecordPoll(alphaConfidence)
+	UnaryQuantumStateTest(t, &sf, []int{1}, false)
+
+	sfCloneIntf := sf.Clone()
+	require.IsType(&unaryQuantum{}, sfCloneIntf)
+	sfClone := sfCloneIntf.(*unaryQuantum)
+
+	UnaryQuantumStateTest(t, sfClone, []int{1}, false)
+
+	binaryWave := sfClone.Extend(0)
+
+	binaryWave.RecordUnsuccessfulPoll()
+
+	binaryWave.RecordPoll(alphaConfidence, 1)
+
+	require.False(binaryWave.Finalized())
+
+	binaryWave.RecordPoll(alphaConfidence, 1)
+
+	require.Equal(1, binaryWave.Preference())
+	require.True(binaryWave.Finalized())
+
+	sf.RecordPoll(alphaConfidence)
+	UnaryQuantumStateTest(t, &sf, []int{2}, true)
+
+	sf.RecordUnsuccessfulPoll()
+	UnaryQuantumStateTest(t, &sf, []int{0}, true)
+
+	sf.RecordPoll(alphaConfidence)
+	UnaryQuantumStateTest(t, &sf, []int{1}, true)
+}
+
+type unaryQuantumTest struct {
+	require *require.Assertions
+
+	unaryQuantum
+}
+
+func newUnaryQuantumTest(t *testing.T, alphaPreference int, terminationConditions []terminationCondition) quantumTest[struct{}] {
+	require := require.New(t)
+
+	return &unaryQuantumTest{
+		require:      require,
+		unaryQuantum: newUnaryQuantum(alphaPreference, terminationConditions),
+	}
+}
+
+func (sf *unaryQuantumTest) RecordPoll(count int, _ struct{}) {
+	sf.unaryQuantum.RecordPoll(count)
+}
+
+func (sf *unaryQuantumTest) AssertEqual(expectedConfidences []int, expectedFinalized bool, _ struct{}) {
+	sf.require.Equal(expectedConfidences, sf.unaryQuantum.confidence)
+	sf.require.Equal(expectedFinalized, sf.Finalized())
+}
+
+func TestUnaryQuantumErrorDriven(t *testing.T) {
+	for _, test := range getErrorDrivenWaveSingleChoiceSuite[struct{}]() {
+		t.Run(test.name, func(t *testing.T) {
+			test.f(t, newUnaryQuantumTest, struct{}{})
+		})
+	}
+}

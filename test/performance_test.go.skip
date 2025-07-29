@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Lux Indutries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package testing
@@ -28,10 +28,10 @@ func TestDualAlphaOptimization(t *testing.T) {
 		source        = prng.NewMT19937()
 	)
 
-	singleAlphaNetwork := NewNetwork(SnowballFactory, params, numColors, source)
+	singleAlphaNetwork := NewNetwork(FocusFactory, params, numColors, source)
 
 	params.AlphaPreference = params.K/2 + 1
-	dualAlphaNetwork := NewNetwork(SnowballFactory, params, numColors, source)
+	dualAlphaNetwork := NewNetwork(FocusFactory, params, numColors, source)
 
 	source.Seed(seed)
 	for i := 0; i < numNodes; i++ {
@@ -48,8 +48,8 @@ func TestDualAlphaOptimization(t *testing.T) {
 	runNetworksInLockstep(require, seed, source, dualAlphaNetwork, singleAlphaNetwork)
 }
 
-// Test that a network running the snowball tree converges faster than a network
-// running the flat snowball protocol.
+// Test that a network running the focus tree converges faster than a network
+// running the flat focus protocol.
 func TestTreeConvergenceOptimization(t *testing.T) {
 	require := require.New(t)
 
@@ -61,8 +61,8 @@ func TestTreeConvergenceOptimization(t *testing.T) {
 		source           = prng.NewMT19937()
 	)
 
-	treeNetwork := NewNetwork(SnowballFactory, params, numColors, source)
-	flatNetwork := NewNetwork(SnowballFactory, params, numColors, source)
+	treeNetwork := NewNetwork(FocusFactory, params, numColors, source)
+	flatNetwork := NewNetwork(FocusFactory, params, numColors, source)
 
 	source.Seed(seed)
 	for i := 0; i < numNodes; i++ {

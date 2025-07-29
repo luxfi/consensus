@@ -1,7 +1,7 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package lineartest
+package chaintest
 
 import (
 	"cmp"
@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/consensustest"
+	"github.com/luxfi/consensus/choices"
+	"github.com/luxfi/consensus/test/consensustest"
 	"github.com/luxfi/consensus/utils"
 )
 
@@ -31,8 +32,8 @@ func BuildChild(parent *Block) *Block {
 	blkID := ids.GenerateTestID()
 	return &Block{
 		Decidable: consensustest.Decidable{
-			IDV:    blkID,
-			Status: consensustest.Undecided,
+			IDV:     blkID,
+			StatusV: choices.Processing,
 		},
 		ParentV:    parent.ID(),
 		HeightV:    parent.Height() + 1,
@@ -48,8 +49,8 @@ func BuildLinear(length int) []*Block {
 
 	genesis := &Block{
 		Decidable: consensustest.Decidable{
-			IDV:    GenesisID,
-			Status: consensustest.Accepted,
+			IDV:     GenesisID,
+			StatusV: choices.Accepted,
 		},
 		HeightV:    GenesisHeight,
 		TimestampV: GenesisTimestamp,

@@ -2,9 +2,9 @@
 // See the file LICENSE for licensing terms.
 
 // Package consensus provides a modular, composable consensus framework
-// implementing DAG (Graph) consensus variants including Snowflake, Snowball,
-// and Snowman++, as well as BFT consensus through the integrated BFT package.
-package consensus
+// implementing DAG (Graph) consensus variants including Wave, Focus,
+// and Beam++, as well as BFT consensus through the integrated BFT package.
+package core
 
 import (
 	"time"
