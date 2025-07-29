@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	zmq "github.com/go-zeromq/zmq4"
-	"github.com/luxfi/consensus/transport"
+	"github.com/go-zeromq/zmq4"
+	"github.com/luxfi/consensus/utils/transport"
 	"github.com/luxfi/ids"
 )
 
@@ -47,7 +47,6 @@ func NewTransport(nodeID ids.NodeID, port int) (*Transport, error) {
 	
 	// Create SUB socket for receiving broadcasts
 	sub := zmq.NewSub(ctx)
-	sub.SetSubscribe("") // Subscribe to all messages
 	
 	// Create ROUTER socket for direct messaging
 	routerEndpoint := fmt.Sprintf("tcp://127.0.0.1:%d", port+1000)
@@ -58,7 +57,7 @@ func NewTransport(nodeID ids.NodeID, port int) (*Transport, error) {
 		return nil, fmt.Errorf("failed to bind router socket: %w", err)
 	}
 	
-	return &Transport{
+	t := &Transport{
 		nodeID:   nodeID,
 		endpoint: endpoint,
 		pub:      pub,
@@ -68,7 +67,18 @@ func NewTransport(nodeID ids.NodeID, port int) (*Transport, error) {
 		handlers: make(map[transport.MessageType]transport.Handler),
 		ctx:      ctx,
 		cancel:   cancel,
-	}, nil
+	}
+	
+	// Subscribe to all messages
+	if err := sub.SetOption(zmq4.OptionSubscribe, ""); err != nil {
+		pub.Close()
+		sub.Close()
+		router.Close()
+		cancel()
+		return nil, fmt.Errorf("failed to set subscribe option: %w", err)
+	}
+	
+	return t, nil
 }
 
 // NodeID returns the node ID
@@ -104,7 +114,7 @@ func (t *Transport) Broadcast(msg *transport.Message) error {
 		return err
 	}
 	
-	zmqMsg := zmq.NewMsgBytes(data)
+	zmqMsg := zmq.NewMsgFrom(data)
 	return t.pub.Send(zmqMsg)
 }
 
@@ -123,7 +133,7 @@ func (t *Transport) Send(peerID ids.NodeID, msg *transport.Message) error {
 		return err
 	}
 	
-	zmqMsg := zmq.NewMsgBytes(data)
+	zmqMsg := zmq.NewMsgFrom(data)
 	return dealer.Send(zmqMsg)
 }
 
@@ -175,22 +185,19 @@ func (t *Transport) receiveBroadcasts() {
 		case <-t.ctx.Done():
 			return
 		default:
-			// Set receive timeout
-			ctx, cancel := context.WithTimeout(t.ctx, 100*time.Millisecond)
-			msg, err := t.sub.Recv(ctx)
-			cancel()
-			
+			msg, err := t.sub.Recv()
 			if err != nil {
-				if err == context.DeadlineExceeded {
-					continue
-				}
 				if t.ctx.Err() != nil {
 					return
 				}
+				// Small sleep to avoid busy loop
+				time.Sleep(10 * time.Millisecond)
 				continue
 			}
 			
-			t.handleMessage(msg.Bytes())
+			if len(msg.Frames) > 0 {
+				t.handleMessage(msg.Frames[0])
+			}
 		}
 	}
 }
@@ -204,18 +211,13 @@ func (t *Transport) receiveDirectMessages() {
 		case <-t.ctx.Done():
 			return
 		default:
-			// Set receive timeout
-			ctx, cancel := context.WithTimeout(t.ctx, 100*time.Millisecond)
-			msg, err := t.router.Recv(ctx)
-			cancel()
-			
+			msg, err := t.router.Recv()
 			if err != nil {
-				if err == context.DeadlineExceeded {
-					continue
-				}
 				if t.ctx.Err() != nil {
 					return
 				}
+				// Small sleep to avoid busy loop
+				time.Sleep(10 * time.Millisecond)
 				continue
 			}
 			

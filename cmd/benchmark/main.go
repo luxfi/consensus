@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/engine"
-	"github.com/luxfi/consensus/transport"
-	"github.com/luxfi/consensus/transport/zmq"
+	quantum "github.com/luxfi/consensus/engine/quasar"
+	"github.com/luxfi/consensus/utils/transport"
+	"github.com/luxfi/consensus/utils/transport/zmq"
 	"github.com/luxfi/ids"
 )
 
@@ -41,7 +41,7 @@ var (
 type BenchmarkNode struct {
 	id         ids.NodeID
 	transport  *zmq.Transport
-	engine     *engine.QuantumEngine
+	engine     *quantum.Engine
 	params     config.Parameters
 	
 	// Metrics
@@ -62,7 +62,7 @@ func main() {
 	
 	// Create node ID
 	nodeID := ids.GenerateTestNodeID()
-	log.Printf("🚀 Starting benchmark node %s on port %d", nodeID.ShortString(), *port)
+	log.Printf("🚀 Starting benchmark node %s on port %d", nodeID.String(), *port)
 	
 	// Get consensus parameters
 	params := getConsensusParams(*profile)
@@ -123,7 +123,7 @@ func NewBenchmarkNode(nodeID ids.NodeID, port int, params config.Parameters) (*B
 	}
 	
 	// Create quantum consensus engine
-	quantumEngine := engine.NewQuantumEngine(params)
+	quantumEngine := quantum.New(params, nodeID)
 	
 	return &BenchmarkNode{
 		id:        nodeID,
@@ -361,19 +361,12 @@ func (n *BenchmarkNode) servePrometheus(addr string) {
 }
 
 func getConsensusParams(profile string) config.Parameters {
-	switch profile {
-	case "mainnet":
-		return config.MainnetParameters
-	case "testnet":
-		return config.TestnetParameters
-	case "local":
-		return config.LocalParameters
-	case "hightps":
-		return config.HighTPSParams
-	default:
+	params, err := config.GetPresetParameters(profile)
+	if err != nil {
 		log.Printf("Unknown profile %s, using local", profile)
-		return config.LocalParameters
+		params, _ = config.GetPresetParameters("local")
 	}
+	return params
 }
 
 func splitPeers(peerList string) []string {

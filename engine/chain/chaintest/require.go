@@ -1,12 +1,12 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package lineartest
+package chaintest
 
 import (
 	"github.com/stretchr/testify/require"
 
-	"github.com/luxfi/consensus/consensustest"
+	"github.com/luxfi/consensus/test/consensustest"
 )
 
 func RequireStatusIs(require *require.Assertions, status consensustest.Status, blks ...*Block) {

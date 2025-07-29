@@ -2,7 +2,12 @@
 
 ## Lux Quasar: Post Quantum Consensus Engine
 
-Quasar is a revolutionary unified protocol that secures traditional consensus mechanisms (BFT, Snowman++) into a single quantum-resistant engine. Quasar uses lattice based post-quantum cryptography that delivers **2-round finality** with both classical and quantum security. Every chain in the Lux network - Q, C, X, M - is secured with Quasar. 
+Quasar replaces traditional consensus mechanisms with a single quantum-resistant
+engine. Quasar combines traditional BLS signature aggregation with parallel
+lattice encryption to deliver **2-round
+finality** with both classical and quantum security. Every chain in the Lux
+primary network - Q, C, X - run Quasar, reaching Quantum Finality, in < 1
+second.
 
 ## Why Quasar?
 
@@ -14,7 +19,7 @@ Traditional consensus engines have limitations:
 Quasar solves all these with **"One engine to rule them all"**:
 - **Unified Protocol**: Same engine for DAG, linear, EVM, MPC chains
 - **Quantum Finality**: Every block requires post quantum certificates
-- **2-Round Total**: Nova (1 round) + Ringtail PQ (2 phases) = quantum finality
+- **2-Round Total**: BLS Signatures (1 round) + Lattice Signatures (2 phases) = quantum finality
 - **Zero Leaders**: Fully decentralized, leaderless, highly secure
 - **Sub-Second Performance**: <1s finality with quantum security
 
@@ -34,7 +39,7 @@ consensus/                  # Core photonic consensus stages
 engine/                    # Full node engine layers
 ├── chain/                 # Photon→Wave→Beam pipeline (linear chain)
 ├── dag/                   # Photon→Wave→Beam→Flare→Nova pipeline (DAG chain)
-└── pq/                    # Quasar dual-cert engine (post-quantum finality)
+└── pq/                    # Quasar post-quantum consensus (post-quantum finality)
 
 poll/                      # Photon sampling providers
 quorum/                    # Wave threshold providers
@@ -56,24 +61,24 @@ examples/                  # User-facing sample programs
 - **Thresholds**: β₁ for early preference, β₂ for decision
 - **Time**: ~600-700ms to classical finality
 
-### 2. Ringtail PQ (Quantum Finality)
+### 2. Quasar (Quantum Finality)
 - **Phase I - Propose**: Sample DAG frontier, propose highest confidence
 - **Phase II - Commit**: Aggregate threshold signatures if > α𝚌 agree
 - **Certificates**: Lattice-based post-quantum certificates
 - **Time**: ~200-300ms additional for quantum finality
 
-## Dual-Certificate Finality
+## Quantum Finality
 
 Every block header now contains:
 
 ```go
 type CertBundle struct {
     BLSAgg  []byte  // 96B BLS aggregate signature
-    RTCert  []byte  // ~3KB Ringtail certificate
+    PQCert  []byte  // ~3KB lattice certificate
 }
 
 // Block is only final when BOTH certificates are valid
-isFinal := verifyBLS(blsAgg, quorum) && verifyRT(rtCert, quorum)
+isFinal := verifyBLS(blsAgg, quorum) && verifyPQ(pqCert, quorum)
 ```
 
 ## Key Hierarchy
@@ -82,9 +87,9 @@ isFinal := verifyBLS(blsAgg, quorum) && verifyRT(rtCert, quorum)
 |-------|----------|---------|---------|
 | Node-ID | ed25519 | P2P transport auth | `$HOME/.lux/node.key` |
 | Validator-BLS | bls12-381 | Fast finality votes | `$HOME/.lux/bls.key` |
-| Validator-RT | lattice | PQ finality shares | `$HOME/.lux/rt.key` |
+| Validator-PQ | lattice | PQ finality shares | `$HOME/.lux/rt.key` |
 | Wallet (EVM) | secp256k1 or Lamport | User tx signatures | In wallet |
-| Wallet (X-Chain) | secp256k1 or Ringtail | UTXO locking | In wallet |
+| Wallet (X-Chain) | secp256k1 or Dilithium | UTXO locking | In wallet |
 
 The same `rt.key` registered on Q-Chain is reused by all chains - no extra onboarding.
 
@@ -109,22 +114,22 @@ func main() {
     AlphaPreference: 15,  // Preference threshold
     AlphaConfidence: 18,  // Confidence threshold
     Beta:            8,   // Finalization rounds
-    RTRounds:        2,   // Ringtail rounds
+    QRounds:         2,   // Quantum rounds
   }
 
   // 2. Create Quasar engine
   nodeID := ids.GenerateNodeID()
   engine := quasar.NewQuasar(cfg, nodeID)
 
-  // 3. Initialize with both BLS and RT keys
-  engine.Initialize(ctx, blsKey, rtKey)
+  // 3. Initialize with both BLS and PQ keys
+  engine.Initialize(ctx, blsKey, pqKey)
 
   // 4. Process vertices/blocks
   engine.AddVertex(ctx, vertex)
 
   // 5. Dual-certificate finality
   engine.SetFinalizedCallback(func(qBlock QBlock) {
-    log.Printf("Q-block %d finalized with dual certificates\n", qBlock.Height)
+    log.Printf("Q-block %d finalized with quantum certificates\n", qBlock.Height)
   })
 }
 ```
@@ -145,20 +150,20 @@ Both certificates complete within one consensus slot (~1s).
 ## Security Model
 
 1. **Pre-quantum**: Attacker must corrupt ≥⅓ stake to fork
-2. **Q-day (BLS broken)**: Attacker can forge BLS but not RT
-   - Block fails dual-cert check
+2. **Q-day (BLS broken)**: Attacker can forge BLS but not lattice
+   - Block fails quantum check
    - Consensus halts rather than accepting unsafe fork
 3. **Post-quantum**: Security rests on lattice SVP (2¹⁶⁰ ops)
 
-Attack window ≤ RT round time (≤50ms mainnet).
+Attack window ≤ PQ round time (≤50ms mainnet).
 
 ## Chain Integration
 
 | Chain | Integration | Rule |
 |-------|-------------|------|
 | Q-Chain | Q-blocks as internal txs | All chains read Q-blocks |
-| C-Chain | Every block has CertBundle | Invalid without dual certs |
-| X-Chain | Vertex metadata references Q-block | Epoch sealed by RT cert |
+| C-Chain | Every block has CertBundle | Invalid without quantum certs |
+| X-Chain | Vertex metadata references Q-block | Epoch sealed by quantum cert |
 | M-Chain | MPC rounds reference Q-block height | Custody requires PQ proof |
 
 ## Account-Level PQ Options
@@ -169,7 +174,7 @@ Attack window ≤ RT round time (≤50ms mainnet).
 - EIP-4337 AA wrapper available
 
 ### X-Chain
-- New PQTOutput type with Ringtail pubkey
+- New LatticeOutput type with PQ pubkey
 - Spend verifies single RT signature (~1.8KB)
 - CLI: `lux-wallet generate --pq`
 
@@ -185,20 +190,20 @@ consensus bench --engine quasar
 # Simulate quantum state progression
 consensus sim --quantum
 
-# Analyze dual-certificate safety
-consensus check --dual-cert
+# Analyze quantum-certificate safety
+consensus check --quantum-cert
 ```
 
 ## Implementation Roadmap
 
 | Priority | Task | Status |
 |----------|------|--------|
-| P0 | Quasar engine core (Nova + Ringtail) | ✓ Complete |
-| P0 | Dual-certificate block headers | In Progress |
-| P0 | RT key generation & registration | In Progress |
+| P0 | Quasar engine core (Nova + Quasar) | ✓ Complete |
+| P0 | Quantum-certificate block headers | ✓ Complete |
+| P0 | Quantum key generation & registration | In Progress |
 | P1 | Quasar service with precompute | Planned |
-| P1 | PQ account options (Lamport/RT) | Planned |
-| P2 | Fork-choice for dual-cert finality | Planned |
+| P1 | PQ account options (Lamport) | ✓ Complete |
+| P1 | PQ account options (Dilithium) | Planned |
 
 ## Testing
 
@@ -207,7 +212,7 @@ consensus check --dual-cert
 go test ./engine/quasar/...
 
 # Benchmark dual-certificate performance
-go test -bench=DualCert ./ringtail/
+go test -bench=QuantumCert ./lattice/
 
 # Fuzz test certificate aggregation
 go test -fuzz=Certificate ./testing/
@@ -215,7 +220,7 @@ go test -fuzz=Certificate ./testing/
 
 ## Summary
 
-Quasar is not an add-on or extra layer - it IS the consensus engine for Lux. By combining Nova DAG with Ringtail PQ in a unified protocol, Quasar delivers:
+Quasar is not an add-on or extra layer - it IS the consensus engine for Lux. By combining Nova DAG with Quasar PQ in a unified protocol, Quasar delivers:
 
 - **2-round finality** with both classical and quantum security
 - **Dual certificates** required for every block
@@ -227,7 +232,3 @@ Welcome to the quantum era of consensus.
 ## License
 
 BSD 3-Clause — free for academic & commercial use. See LICENSE.
-
-## Acknowledgements
-
-Quasar builds on the metastable consensus research while introducing the first production dual-certificate quantum-resistant protocol.

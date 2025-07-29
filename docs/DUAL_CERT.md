@@ -31,7 +31,7 @@ The node integrates these components:
    - Manages Q-blocks
 
 2. **Q-Chain** (`qchain/`)
-   - Embeds Q-blocks in P-Chain
+   - Embeds Q-blocks in Q-Chain
    - Provides network-wide finality
    - Chain listeners for cross-chain sync
 
@@ -77,7 +77,7 @@ isFinal := verifyBLS(blsAgg, quorum) && verifyRT(rtCert, quorum)
 
 3. **Q-Block Creation**
    - Contains finalized vertices + dual certificates
-   - Embedded as P-Chain internal transaction
+   - Embedded as Q-Chain internal transaction
    - All chains read Q-blocks for finality
 
 ## Performance Optimization
@@ -111,7 +111,7 @@ RT precompute (parallel) ┘
 ### Attack Scenarios
 
 1. **Pre-quantum**: Attacker needs ≥⅓ stake to fork
-2. **Q-day (BLS broken)**: 
+2. **Q-day (BLS broken)**:
    - Attacker can forge BLS but not RT
    - Block fails `isFinal` check
    - Consensus halts rather than accepting unsafe fork

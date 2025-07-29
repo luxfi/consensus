@@ -22,6 +22,9 @@ var (
 	ErrMaxOutstandingItemsTooLow = errors.New("maxOutstandingItems value must be greater than 0")
 	ErrMaxItemProcessingTimeTooLow = errors.New("maxItemProcessingTime must be greater than 0")
 	ErrMinRoundIntervalTooLow    = errors.New("minRoundInterval must be greater than 0")
+	ErrQThresholdTooLow          = errors.New("qThreshold value must be greater than 0")
+	ErrQThresholdTooHigh         = errors.New("qThreshold value must be at most k")
+	ErrQuasarTimeoutTooLow       = errors.New("quasarTimeout must be greater than 0")
 )
 
 // Parameters contains all configurable values for the Lux consensus engine.
@@ -62,6 +65,15 @@ type Parameters struct {
 	// post-quantum Ringtail certificates. This provides quantum-resistant
 	// finality on top of the fast metastable BLS consensus.
 	Q time.Duration
+	
+	// QThreshold is the Ringtail threshold (post-quantum) - number of shares
+	// required for a valid quantum certificate.
+	QThreshold int
+	
+	// QuasarTimeout is the maximum time allowed for Ringtail certificate
+	// aggregation. If the proposer cannot gather the threshold signature
+	// within this timeout, the block is invalid and the proposer is penalized.
+	QuasarTimeout time.Duration
 }
 
 // Valid returns nil if the parameters describe a valid consensus configuration.
@@ -93,6 +105,14 @@ func (p Parameters) Valid() error {
 		return ErrMaxItemProcessingTimeTooLow
 	case p.MinRoundInterval <= 0:
 		return ErrMinRoundIntervalTooLow
+	case p.QuasarTimeout > 0 && p.QThreshold <= 0:
+		return ErrQThresholdTooLow
+	case p.QThreshold < 0:
+		return ErrQThresholdTooLow
+	case p.QThreshold > p.K:
+		return ErrQThresholdTooHigh
+	case p.QuasarTimeout < 0:
+		return ErrQuasarTimeoutTooLow
 	default:
 		return nil
 	}
@@ -117,6 +137,8 @@ var MainnetParameters = Parameters{
 	MaxItemProcessingTime: 10 * time.Second,           // ~10 s health timeout
 	MinRoundInterval:      200 * time.Millisecond,
 	Q:                     10 * time.Minute,            // quantum finality every 10 minutes
+	QThreshold:            15,                          // quantum threshold for mainnet
+	QuasarTimeout:         50 * time.Millisecond,      // quasar timeout
 }
 
 // TestnetParameters defines consensus parameters for the testnet (11 validators).
@@ -132,6 +154,8 @@ var TestnetParameters = Parameters{
 	MaxItemProcessingTime: 6900 * time.Millisecond,    // 6.9 s health timeout
 	MinRoundInterval:      100 * time.Millisecond,
 	Q:                     5 * time.Minute,             // faster quantum finality for testing
+	QThreshold:            8,                           // quantum threshold for testnet
+	QuasarTimeout:         100 * time.Millisecond,     // quasar timeout
 }
 
 // LocalParameters defines consensus parameters for local networks (5 validators).
@@ -147,6 +171,8 @@ var LocalParameters = Parameters{
 	MaxItemProcessingTime: 3690 * time.Millisecond,    // 3.69 s health timeout
 	MinRoundInterval:      10 * time.Millisecond,
 	Q:                     30 * time.Second,            // rapid quantum finality for testing
+	QThreshold:            3,                           // quantum threshold for local
+	QuasarTimeout:         20 * time.Millisecond,      // quasar timeout
 }
 
 // HighTPSParams defines parameters optimized for maximum throughput.
@@ -163,6 +189,8 @@ var HighTPSParams = Parameters{
 	MinRoundInterval:      5 * time.Millisecond,
 	BatchSize:             4096,                        // maximize throughput
 	Q:                     2 * time.Minute,             // quantum cert every 2 min at high TPS
+	QThreshold:            3,                           // quantum threshold for high TPS
+	QuasarTimeout:         10 * time.Millisecond,      // quasar timeout
 }
 
 // GetParametersByName returns the appropriate parameters for the given network name.
