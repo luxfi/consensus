@@ -1,12 +1,14 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
+//go:build zmq
 // +build zmq
 
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -18,9 +20,8 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/utils/transport/zmq"
 	"github.com/luxfi/ids"
-	zmq4 "github.com/go-zeromq/zmq4"
+	zmq4 "github.com/luxfi/zmq4"
 )
 
 var (
@@ -32,11 +33,84 @@ var (
 	interval  = flag.Duration("interval", 10*time.Millisecond, "Round interval")
 )
 
+// SimpleTransport wraps ZMQ sockets for consensus communication
+type SimpleTransport struct {
+	identity string
+	ctx      context.Context
+	pub      zmq4.Socket
+	sub      zmq4.Socket
+	peers    []string
+	mu       sync.RWMutex
+}
+
+// NewSimpleTransport creates a new transport
+func NewSimpleTransport(identity string, port int) (*SimpleTransport, error) {
+	ctx := context.Background()
+	
+	// Create publisher socket
+	pub := zmq4.NewPub(ctx, zmq4.WithID(zmq4.SocketIdentity(identity)))
+	if err := pub.Listen(fmt.Sprintf("tcp://127.0.0.1:%d", port)); err != nil {
+		return nil, fmt.Errorf("failed to bind publisher: %w", err)
+	}
+	
+	// Create subscriber socket
+	sub := zmq4.NewSub(ctx)
+	
+	return &SimpleTransport{
+		identity: identity,
+		ctx:      ctx,
+		pub:      pub,
+		sub:      sub,
+		peers:    make([]string, 0),
+	}, nil
+}
+
+// Connect adds a peer
+func (t *SimpleTransport) Connect(addr string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	
+	if err := t.sub.Dial(addr); err != nil {
+		return fmt.Errorf("failed to connect to %s: %w", addr, err)
+	}
+	
+	// Subscribe to all messages
+	if err := t.sub.SetOption(zmq4.OptionSubscribe, ""); err != nil {
+		return fmt.Errorf("failed to subscribe: %w", err)
+	}
+	
+	t.peers = append(t.peers, addr)
+	return nil
+}
+
+// Send broadcasts a message
+func (t *SimpleTransport) Send(data []byte) error {
+	msg := zmq4.NewMsg(data)
+	return t.pub.Send(msg)
+}
+
+// Receive gets the next message
+func (t *SimpleTransport) Receive() ([]byte, error) {
+	msg, err := t.sub.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return msg.Bytes(), nil
+}
+
+// Close shuts down the transport
+func (t *SimpleTransport) Close() error {
+	if err := t.pub.Close(); err != nil {
+		return err
+	}
+	return t.sub.Close()
+}
+
 // Node represents a light consensus node using ZMQ
 type Node struct {
 	id        ids.NodeID
 	index     int
-	transport *zmq.Transport
+	transport *SimpleTransport
 	params    config.Parameters
 	
 	// Current state
@@ -122,12 +196,7 @@ func (b *NetworkBenchmark) CreateNodes(count int, basePort int) error {
 		nodeID := ids.GenerateTestNodeID()
 		
 		// Create transport
-		addr := fmt.Sprintf("tcp://127.0.0.1:%d", basePort+i)
-		transport, err := zmq.NewTransport(addr, zmq.Options{
-			Identity:  nodeID.String(),
-			HighWater: 1000,
-			Timeout:   time.Second,
-		})
+		transport, err := NewSimpleTransport(nodeID.String(), basePort+i)
 		if err != nil {
 			return fmt.Errorf("failed to create transport for node %d: %w", i, err)
 		}
@@ -141,12 +210,12 @@ func (b *NetworkBenchmark) CreateNodes(count int, basePort int) error {
 		}
 		
 		b.nodes[i] = node
-		log.Printf("Created node %d: %s at %s", i, nodeID, addr)
+		log.Printf("Created node %d: %s on port %d", i, nodeID, basePort+i)
 	}
 	
 	// Connect nodes in a mesh topology
 	for i, node := range b.nodes {
-		for j, peer := range b.nodes {
+		for j := range b.nodes {
 			if i != j {
 				peerAddr := fmt.Sprintf("tcp://127.0.0.1:%d", basePort+j)
 				if err := node.transport.Connect(peerAddr); err != nil {
@@ -349,7 +418,7 @@ func (n *Node) Broadcast(msg *ConsensusMessage) error {
 		return err
 	}
 	
-	if err := n.transport.Broadcast(data); err != nil {
+	if err := n.transport.Send(data); err != nil {
 		return err
 	}
 	
@@ -363,26 +432,22 @@ func (n *Node) Stop() {
 
 // Message types
 type ConsensusMessage struct {
-	Type      string
-	Round     uint64
-	NodeID    ids.NodeID
-	ItemID    ids.ID
-	VoteFor   ids.ID
-	Height    uint64
-	Timestamp int64
+	Type      string      `json:"type"`
+	Round     uint64      `json:"round"`
+	NodeID    ids.NodeID  `json:"node_id"`
+	ItemID    ids.ID      `json:"item_id"`
+	VoteFor   ids.ID      `json:"vote_for,omitempty"`
+	Height    uint64      `json:"height"`
+	Timestamp int64       `json:"timestamp"`
 }
 
 func (m *ConsensusMessage) Encode() ([]byte, error) {
-	// Simple encoding (in production, use proper serialization)
-	return []byte(fmt.Sprintf("%s|%d|%s|%s|%s|%d|%d",
-		m.Type, m.Round, m.NodeID, m.ItemID, m.VoteFor, m.Height, m.Timestamp)), nil
+	return json.Marshal(m)
 }
 
 func DecodeMessage(data []byte) (*ConsensusMessage, error) {
-	// Simple decoding (matches encoding above)
 	var msg ConsensusMessage
-	_, err := fmt.Sscanf(string(data), "%s|%d|%s|%s|%s|%d|%d",
-		&msg.Type, &msg.Round, &msg.NodeID, &msg.ItemID, &msg.VoteFor, &msg.Height, &msg.Timestamp)
+	err := json.Unmarshal(data, &msg)
 	return &msg, err
 }
 

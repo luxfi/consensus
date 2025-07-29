@@ -9,13 +9,10 @@ import (
 	"sync"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/focus"
-	"github.com/luxfi/consensus/photon"
-	"github.com/luxfi/consensus/types"
-	"github.com/luxfi/consensus/wave"
+	"github.com/luxfi/consensus/core"
+	"github.com/luxfi/consensus/ringtail"
 	"github.com/luxfi/consensus/engine/nebula"
 	"github.com/luxfi/consensus/engine/pulsar"
-	"github.com/luxfi/crypto/ringtail"
 )
 
 // Engine implements the Quasar consensus engine - the most powerful cosmic consensus engine
@@ -25,10 +22,10 @@ type Engine struct {
 	pulsar *pulsar.Engine
 	nebula *nebula.Engine
 
-	// Consensus stages
-	photonStage types.Polyadic
-	waveStage   types.Polyadic
-	focusStage  types.Polyadic
+	// Consensus stages (TODO: implement)
+	// photonStage types.Polyadic
+	// waveStage   types.Polyadic
+	// focusStage  types.Polyadic
 
 	// Post-quantum security
 	ringtail ringtail.Engine
@@ -76,9 +73,9 @@ const (
 )
 
 // New creates a new Quasar engine
-func New(params Parameters) (*Engine, error) {
-	rt, err := ringtail.New(params.SecurityLevel)
-	if err != nil {
+func New(ctx *core.Context, params Parameters) (*Engine, error) {
+	rt := ringtail.New()
+	if err := rt.Initialize(params.SecurityLevel); err != nil {
 		return nil, fmt.Errorf("failed to initialize ringtail: %w", err)
 	}
 
@@ -92,32 +89,12 @@ func New(params Parameters) (*Engine, error) {
 	// Initialize sub-engines based on mode
 	switch params.Mode {
 	case PulsarMode:
-		e.pulsar = pulsar.New(pulsar.Parameters{
-			K:               params.K,
-			AlphaPreference: params.AlphaPreference,
-			AlphaConfidence: params.AlphaConfidence,
-			Beta:            params.Beta,
-		})
+		e.pulsar = pulsar.New(ctx)
 	case NebulaMode:
-		e.nebula = nebula.New(nebula.Parameters{
-			K:               params.K,
-			AlphaPreference: params.AlphaPreference,
-			AlphaConfidence: params.AlphaConfidence,
-			Beta:            params.Beta,
-		})
+		e.nebula = nebula.New(ctx)
 	case HybridMode, QuantumMode:
-		e.pulsar = pulsar.New(pulsar.Parameters{
-			K:               params.K,
-			AlphaPreference: params.AlphaPreference,
-			AlphaConfidence: params.AlphaConfidence,
-			Beta:            params.Beta,
-		})
-		e.nebula = nebula.New(nebula.Parameters{
-			K:               params.K,
-			AlphaPreference: params.AlphaPreference,
-			AlphaConfidence: params.AlphaConfidence,
-			Beta:            params.Beta,
-		})
+		e.pulsar = pulsar.New(ctx)
+		e.nebula = nebula.New(ctx)
 	}
 
 	return e, nil
@@ -231,7 +208,14 @@ func (e *Engine) verifyPQ(decision Decision) error {
 		return fmt.Errorf("failed to get signature: %w", err)
 	}
 	
-	return e.ringtail.Verify(decision.Bytes(), sig)
+	// TODO: Get public key from decision or context
+	pk := make([]byte, 32) // Stub public key
+	
+	if !e.ringtail.Verify(decision.Bytes(), sig, pk) {
+		return fmt.Errorf("signature verification failed")
+	}
+	
+	return nil
 }
 
 // submitToPulsar routes chain decisions to Pulsar engine
@@ -317,7 +301,7 @@ type DAGDecision struct {
 
 // UnifiedDecision for hybrid processing
 type UnifiedDecision struct {
-	ID        ids.ID
+	id        ids.ID
 	Chain     *ChainDecision
 	DAG       *DAGDecision
 	signature ringtail.Signature
@@ -370,7 +354,7 @@ func (d *DAGDecision) Bytes() []byte                             { return d.Payl
 func (d *DAGDecision) Signature() (ringtail.Signature, error)    { return d.signature, nil }
 func (d *DAGDecision) Verify() error                             { return nil }
 
-func (d *UnifiedDecision) ID() ids.ID                            { return d.ID }
+func (d *UnifiedDecision) ID() ids.ID                            { return d.id }
 func (d *UnifiedDecision) Bytes() []byte                         { return append(d.Chain.Bytes(), d.DAG.Bytes()...) }
 func (d *UnifiedDecision) Signature() (ringtail.Signature, error) { return d.signature, nil }
 func (d *UnifiedDecision) Verify() error                         { return nil }

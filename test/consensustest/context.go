@@ -11,9 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/crypto/bls/signer/localsigner"
-	"github.com/luxfi/database/memdb"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/node/chains/atomic"
+	"github.com/luxfi/consensus/chains/atomic"
 	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/api/metrics"
 	"github.com/luxfi/consensus/utils/validators"
@@ -54,8 +53,7 @@ func Context(tb testing.TB, chainID ids.ID) *core.Context {
 	require.NoError(err)
 	publicKey := secretKey.PublicKey()
 
-	memory := atomic.NewMemory(memdb.New())
-	sharedMemory := memory.NewSharedMemory(chainID)
+	sharedMemory := atomic.NewMemory()
 
 	aliaser := ids.NewAliaser()
 	require.NoError(aliaser.Alias(PChainID, "P"))

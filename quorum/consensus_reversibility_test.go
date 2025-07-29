@@ -17,7 +17,6 @@ func TestPhotonGovernance(t *testing.T) {
 	
 	numColors := 2
 	numNodes := 100
-	numByzantine := 10
 	params := photon.Parameters{
 		K:               20,
 		AlphaPreference: 15,
@@ -29,14 +28,15 @@ func TestPhotonGovernance(t *testing.T) {
 	network := NewNetwork(params, numColors, seed)
 	
 	// Add honest nodes - initially 60% prefer color 0
+	factory := photon.NewFactory()
 	for i := 0; i < 60; i++ {
-		node := NewTree(params, network.colors[0])
+		node := NewTree(factory, params, network.colors[0])
 		network.AddNodeSpecificColor(node, 0, []int{1})
 	}
 	
 	// Add 30 honest nodes preferring color 1
 	for i := 0; i < 30; i++ {
-		node := NewTree(params, network.colors[1])
+		node := NewTree(factory, params, network.colors[1])
 		network.AddNodeSpecificColor(node, 1, []int{0})
 	}
 	
@@ -81,15 +81,16 @@ func TestPhotonNetworkSplit(t *testing.T) {
 	
 	// Create two groups that initially can't communicate
 	// Group 1: 25 nodes preferring color 0
+	factory := photon.NewFactory()
 	for i := 0; i < numNodes/2; i++ {
-		node := NewTree(params, network.colors[0])
+		node := NewTree(factory, params, network.colors[0])
 		// Only see color 0 initially
 		network.AddNodeSpecificColor(node, 0, []int{})
 	}
 	
 	// Group 2: 25 nodes preferring color 1
 	for i := numNodes/2; i < numNodes; i++ {
-		node := NewTree(params, network.colors[1])
+		node := NewTree(factory, params, network.colors[1])
 		// Only see color 1 initially
 		network.AddNodeSpecificColor(node, 1, []int{})
 	}

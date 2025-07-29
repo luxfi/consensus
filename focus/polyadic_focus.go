@@ -5,6 +5,7 @@ package focus
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/wave"
@@ -12,7 +13,7 @@ import (
 
 var _ Polyadic = (*polyadicFocus)(nil)
 
-func newPolyadicFocus(alphaPreference int, terminationConditions []terminationCondition, choice ids.ID) polyadicFocus {
+func newPolyadicFocus(alphaPreference int, terminationConditions []terminationCondition, choice ids.ID) *polyadicFocus {
 	// Convert terminationConditions to wave format
 	waveConditions := make([]wave.TerminationCondition, len(terminationConditions))
 	for i, tc := range terminationConditions {
@@ -22,7 +23,7 @@ func newPolyadicFocus(alphaPreference int, terminationConditions []terminationCo
 		}
 	}
 	
-	return polyadicFocus{
+	return &polyadicFocus{
 		Polyadic:           wave.NewPolyadicWave(alphaPreference, waveConditions, choice),
 		alphaPreference:    alphaPreference,
 		preference:         choice,
@@ -34,6 +35,9 @@ func newPolyadicFocus(alphaPreference int, terminationConditions []terminationCo
 type polyadicFocus struct {
 	// wrap the polyadic wave logic
 	wave.Polyadic
+
+	// mu protects the fields below
+	mu sync.RWMutex
 
 	// alphaPreference is the threshold required to update the preference
 	alphaPreference int
@@ -58,10 +62,15 @@ func (pf *polyadicFocus) Preference() ids.ID {
 	if pf.Finalized() {
 		return pf.Polyadic.Preference()
 	}
+	
+	pf.mu.RLock()
+	defer pf.mu.RUnlock()
 	return pf.preference
 }
 
 func (pf *polyadicFocus) RecordPoll(count int, choice ids.ID) {
+	// Update focus state first
+	pf.mu.Lock()
 	if count >= pf.alphaPreference {
 		preferenceStrength := pf.preferenceStrength[choice] + 1
 		pf.preferenceStrength[choice] = preferenceStrength
@@ -71,10 +80,16 @@ func (pf *polyadicFocus) RecordPoll(count int, choice ids.ID) {
 			pf.maxPreferenceStrength = preferenceStrength
 		}
 	}
+	pf.mu.Unlock()
+	
+	// Then delegate to wave
 	pf.Polyadic.RecordPoll(count, choice)
 }
 
 func (pf *polyadicFocus) String() string {
+	pf.mu.RLock()
+	defer pf.mu.RUnlock()
+	
 	return fmt.Sprintf("PolyadicFocus(Preference = %s, PreferenceStrength = %d, %s)",
 		pf.preference, pf.maxPreferenceStrength, pf.Polyadic)
 }

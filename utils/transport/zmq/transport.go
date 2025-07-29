@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-zeromq/zmq4"
+	"github.com/luxfi/zmq4"
 	"github.com/luxfi/consensus/utils/transport"
 	"github.com/luxfi/ids"
 )
@@ -22,10 +22,10 @@ import (
 type Transport struct {
 	nodeID    ids.NodeID
 	endpoint  string
-	pub       zmq.Socket
-	sub       zmq.Socket
-	router    zmq.Socket
-	dealers   map[ids.NodeID]zmq.Socket
+	pub       zmq4.Socket
+	sub       zmq4.Socket
+	router    zmq4.Socket
+	dealers   map[ids.NodeID]zmq4.Socket
 	handlers  map[transport.MessageType]transport.Handler
 	mu        sync.RWMutex
 	ctx       context.Context
@@ -39,18 +39,18 @@ func NewTransport(nodeID ids.NodeID, port int) (*Transport, error) {
 	endpoint := fmt.Sprintf("tcp://127.0.0.1:%d", port)
 	
 	// Create PUB socket for broadcasting
-	pub := zmq.NewPub(ctx)
+	pub := zmq4.NewPub(ctx)
 	if err := pub.Listen(endpoint); err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to bind pub socket: %w", err)
 	}
 	
 	// Create SUB socket for receiving broadcasts
-	sub := zmq.NewSub(ctx)
+	sub := zmq4.NewSub(ctx)
 	
 	// Create ROUTER socket for direct messaging
 	routerEndpoint := fmt.Sprintf("tcp://127.0.0.1:%d", port+1000)
-	router := zmq.NewRouter(ctx)
+	router := zmq4.NewRouter(ctx)
 	if err := router.Listen(routerEndpoint); err != nil {
 		pub.Close()
 		cancel()
@@ -63,7 +63,7 @@ func NewTransport(nodeID ids.NodeID, port int) (*Transport, error) {
 		pub:      pub,
 		sub:      sub,
 		router:   router,
-		dealers:  make(map[ids.NodeID]zmq.Socket),
+		dealers:  make(map[ids.NodeID]zmq4.Socket),
 		handlers: make(map[transport.MessageType]transport.Handler),
 		ctx:      ctx,
 		cancel:   cancel,
@@ -97,7 +97,7 @@ func (t *Transport) Connect(peerID ids.NodeID, endpoint string) error {
 	}
 	
 	// Create DEALER socket for direct messages
-	dealer := zmq.NewDealer(t.ctx)
+	dealer := zmq4.NewDealer(t.ctx)
 	dealerEndpoint := fmt.Sprintf("tcp://%s:%d", getHost(endpoint), getPort(endpoint)+1000)
 	if err := dealer.Dial(dealerEndpoint); err != nil {
 		return fmt.Errorf("failed to connect dealer socket: %w", err)
@@ -114,7 +114,7 @@ func (t *Transport) Broadcast(msg *transport.Message) error {
 		return err
 	}
 	
-	zmqMsg := zmq.NewMsgFrom(data)
+	zmqMsg := zmq4.NewMsgFrom(data)
 	return t.pub.Send(zmqMsg)
 }
 
@@ -133,7 +133,7 @@ func (t *Transport) Send(peerID ids.NodeID, msg *transport.Message) error {
 		return err
 	}
 	
-	zmqMsg := zmq.NewMsgFrom(data)
+	zmqMsg := zmq4.NewMsgFrom(data)
 	return dealer.Send(zmqMsg)
 }
 

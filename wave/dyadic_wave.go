@@ -5,6 +5,7 @@ package wave
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/luxfi/consensus/photon"
 )
@@ -31,6 +32,9 @@ type dyadicWave struct {
 	// wrap the dyadic photon logic
 	photon.DyadicPhoton
 
+	// mu protects all fields below
+	mu sync.RWMutex
+
 	// alphaPreference is the threshold required to update the preference
 	alphaPreference int
 
@@ -49,19 +53,28 @@ type dyadicWave struct {
 	finalized bool
 }
 
+func (dw *dyadicWave) Preference() int {
+	dw.mu.RLock()
+	defer dw.mu.RUnlock()
+	return dw.DyadicPhoton.Preference()
+}
+
 func (dw *dyadicWave) RecordPoll(count, choice int) {
+	dw.mu.Lock()
+	defer dw.mu.Unlock()
+
 	if dw.finalized {
 		return // This instance is already decided.
 	}
 
 	if count < dw.alphaPreference {
-		dw.RecordUnsuccessfulPoll()
+		clear(dw.confidence)
 		return
 	}
 
 	// If I am changing my preference, reset confidence counters
 	// before recording a successful poll on the slush instance.
-	if choice != dw.Preference() {
+	if choice != dw.DyadicPhoton.Preference() {
 		clear(dw.confidence)
 	}
 	dw.DyadicPhoton.RecordSuccessfulPoll(choice)
@@ -86,14 +99,20 @@ func (dw *dyadicWave) RecordPoll(count, choice int) {
 }
 
 func (dw *dyadicWave) RecordUnsuccessfulPoll() {
+	dw.mu.Lock()
+	defer dw.mu.Unlock()
 	clear(dw.confidence)
 }
 
 func (dw *dyadicWave) Finalized() bool {
+	dw.mu.RLock()
+	defer dw.mu.RUnlock()
 	return dw.finalized
 }
 
 func (dw *dyadicWave) String() string {
+	dw.mu.RLock()
+	defer dw.mu.RUnlock()
 	return fmt.Sprintf("DyadicWave(Confidence = %v, Finalized = %v, %s)",
 		dw.confidence,
 		dw.finalized,

@@ -13,24 +13,21 @@ func (focusFactory) NewDyadic(params Parameters, choice int) Dyadic {
 	terminationConditions := []terminationCondition{
 		{alphaConfidence: params.AlphaConfidence, beta: params.Beta},
 	}
-	df := newDyadicFocus(params.AlphaPreference, terminationConditions, choice)
-	return &df
+	return newDyadicFocus(params.AlphaPreference, terminationConditions, choice)
 }
 
 func (focusFactory) NewMonadic(params Parameters) Monadic {
 	terminationConditions := []terminationCondition{
 		{alphaConfidence: params.AlphaConfidence, beta: params.Beta},
 	}
-	mf := newMonadicFocus(params.AlphaPreference, terminationConditions)
-	return &mf
+	return newMonadicFocus(params.AlphaPreference, terminationConditions)
 }
 
 func (focusFactory) NewPolyadic(params Parameters, choice ids.ID) Polyadic {
 	terminationConditions := []terminationCondition{
 		{alphaConfidence: params.AlphaConfidence, beta: params.Beta},
 	}
-	pf := newPolyadicFocus(params.AlphaPreference, terminationConditions, choice)
-	return &pf
+	return newPolyadicFocus(params.AlphaPreference, terminationConditions, choice)
 }
 
 // NewFactory creates a new focus factory for the galaxy runtime

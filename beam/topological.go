@@ -14,6 +14,7 @@ import (
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/photon"
+	"github.com/luxfi/consensus/utils"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/consensus/utils/set"
 )
@@ -500,7 +501,12 @@ func (ts *Topological) vote(ctx context.Context, voteStack []votes) (ids.ID, err
 		}
 
 		// apply the votes for this focus instance
-		pollSuccessful = parentBlock.sb.RecordPoll(vote.votes) || pollSuccessful
+		// Convert bag.Bag[ids.ID] to *utils.Bag
+		utilsBag := utils.NewBag()
+		for _, id := range vote.votes.List() {
+			utilsBag.AddCount(id, vote.votes.Count(id))
+		}
+		pollSuccessful = parentBlock.sb.RecordPoll(utilsBag) || pollSuccessful
 
 		// Only accept when you are finalized and a child of the last accepted
 		// block.

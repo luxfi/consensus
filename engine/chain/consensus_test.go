@@ -14,8 +14,10 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"gonum.org/v1/gonum/mathext/prng"
 
 	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/choices"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/test/consensustest"
 	"github.com/luxfi/consensus/engine/chain/chaintest"
@@ -250,8 +252,8 @@ func AddOnUnknownParentTest(t *testing.T, factory Factory) {
 
 	block := &chaintest.Block{
 		Decidable: consensustest.Decidable{
-			IDV:    ids.GenerateTestID(),
-			Status: consensustest.Undecided,
+			IDV:     ids.GenerateTestID(),
+			StatusV: choices.Processing,
 		},
 		ParentV: ids.GenerateTestID(),
 		HeightV: chaintest.GenesisHeight + 2,
@@ -287,7 +289,7 @@ func StatusOrProcessingPreviouslyAcceptedTest(t *testing.T, factory Factory) {
 		chaintest.GenesisTimestamp,
 	))
 
-	require.Equal(consensustest.Accepted, chaintest.Genesis.Status)
+	require.Equal(choices.Accepted, chaintest.Genesis.Status())
 	require.False(sm.Processing(chaintest.Genesis.ID()))
 	require.True(sm.IsPreferred(chaintest.Genesis.ID()))
 
@@ -324,7 +326,7 @@ func StatusOrProcessingPreviouslyRejectedTest(t *testing.T, factory Factory) {
 	block := chaintest.BuildChild(chaintest.Genesis)
 	require.NoError(block.Reject(context.Background()))
 
-	require.Equal(consensustest.Rejected, block.Status)
+	require.Equal(choices.Rejected, block.Status())
 	require.False(sm.Processing(block.ID()))
 	require.False(sm.IsPreferred(block.ID()))
 
@@ -359,7 +361,7 @@ func StatusOrProcessingUnissuedTest(t *testing.T, factory Factory) {
 
 	block := chaintest.BuildChild(chaintest.Genesis)
 
-	require.Equal(consensustest.Undecided, block.Status)
+	require.Equal(choices.Unknown, block.Status())
 	require.False(sm.Processing(block.ID()))
 	require.False(sm.IsPreferred(block.ID()))
 
@@ -395,7 +397,7 @@ func StatusOrProcessingIssuedTest(t *testing.T, factory Factory) {
 	block := chaintest.BuildChild(chaintest.Genesis)
 
 	require.NoError(sm.Add(block))
-	require.Equal(consensustest.Undecided, block.Status)
+	require.Equal(choices.Unknown, block.Status())
 	require.True(sm.Processing(block.ID()))
 	require.True(sm.IsPreferred(block.ID()))
 
@@ -437,12 +439,12 @@ func RecordPollAcceptSingleBlockTest(t *testing.T, factory Factory) {
 	require.NoError(sm.RecordPoll(context.Background(), votes))
 	require.Equal(block.ID(), sm.Preference())
 	require.Equal(1, sm.NumProcessing())
-	require.Equal(consensustest.Undecided, block.Status)
+	require.Equal(choices.Unknown, block.Status())
 
 	require.NoError(sm.RecordPoll(context.Background(), votes))
 	require.Equal(block.ID(), sm.Preference())
 	require.Zero(sm.NumProcessing())
-	require.Equal(consensustest.Accepted, block.Status)
+	require.Equal(choices.Accepted, block.Status())
 }
 
 func RecordPollAcceptAndRejectTest(t *testing.T, factory Factory) {
@@ -481,14 +483,14 @@ func RecordPollAcceptAndRejectTest(t *testing.T, factory Factory) {
 	require.NoError(sm.RecordPoll(context.Background(), votes))
 	require.Equal(firstBlock.ID(), sm.Preference())
 	require.Equal(2, sm.NumProcessing())
-	require.Equal(consensustest.Undecided, firstBlock.Status)
-	require.Equal(consensustest.Undecided, secondBlock.Status)
+	require.Equal(choices.Unknown, firstBlock.Status())
+	require.Equal(choices.Unknown, secondBlock.Status())
 
 	require.NoError(sm.RecordPoll(context.Background(), votes))
 	require.Equal(firstBlock.ID(), sm.Preference())
 	require.Zero(sm.NumProcessing())
-	require.Equal(consensustest.Accepted, firstBlock.Status)
-	require.Equal(consensustest.Rejected, secondBlock.Status)
+	require.Equal(choices.Accepted, firstBlock.Status())
+	require.Equal(choices.Rejected, secondBlock.Status())
 }
 
 func RecordPollSplitVoteNoChangeTest(t *testing.T, factory Factory) {
@@ -630,9 +632,9 @@ func RecordPollRejectTransitivelyTest(t *testing.T, factory Factory) {
 
 	require.Zero(sm.NumProcessing())
 	require.Equal(block0.ID(), sm.Preference())
-	require.Equal(consensustest.Accepted, block0.Status)
-	require.Equal(consensustest.Rejected, block1.Status)
-	require.Equal(consensustest.Rejected, block2.Status)
+	require.Equal(choices.Accepted, block0.Status())
+	require.Equal(choices.Rejected, block1.Status())
+	require.Equal(choices.Rejected, block2.Status())
 }
 
 func RecordPollTransitivelyResetConfidenceTest(t *testing.T, factory Factory) {
@@ -699,10 +701,10 @@ func RecordPollTransitivelyResetConfidenceTest(t *testing.T, factory Factory) {
 	require.NoError(sm.RecordPoll(context.Background(), votesFor3))
 	require.Zero(sm.NumProcessing())
 	require.Equal(block3.ID(), sm.Preference())
-	require.Equal(consensustest.Rejected, block0.Status)
-	require.Equal(consensustest.Accepted, block1.Status)
-	require.Equal(consensustest.Rejected, block2.Status)
-	require.Equal(consensustest.Accepted, block3.Status)
+	require.Equal(choices.Rejected, block0.Status())
+	require.Equal(choices.Accepted, block1.Status())
+	require.Equal(choices.Rejected, block2.Status())
+	require.Equal(choices.Accepted, block3.Status())
 }
 
 func RecordPollInvalidVoteTest(t *testing.T, factory Factory) {
@@ -805,11 +807,11 @@ func RecordPollTransitiveVotingTest(t *testing.T, factory Factory) {
 
 	require.Equal(4, sm.NumProcessing())
 	require.Equal(block2.ID(), sm.Preference())
-	require.Equal(consensustest.Accepted, block0.Status)
-	require.Equal(consensustest.Undecided, block1.Status)
-	require.Equal(consensustest.Undecided, block2.Status)
-	require.Equal(consensustest.Undecided, block3.Status)
-	require.Equal(consensustest.Undecided, block4.Status)
+	require.Equal(choices.Accepted, block0.Status())
+	require.Equal(choices.Unknown, block1.Status())
+	require.Equal(choices.Unknown, block2.Status())
+	require.Equal(choices.Unknown, block3.Status())
+	require.Equal(choices.Unknown, block4.Status())
 
 	dep2_2_2 := bag.Of(block2.ID(), block2.ID(), block2.ID())
 	require.NoError(sm.RecordPoll(context.Background(), dep2_2_2))
@@ -820,11 +822,11 @@ func RecordPollTransitiveVotingTest(t *testing.T, factory Factory) {
 
 	require.Zero(sm.NumProcessing())
 	require.Equal(block2.ID(), sm.Preference())
-	require.Equal(consensustest.Accepted, block0.Status)
-	require.Equal(consensustest.Accepted, block1.Status)
-	require.Equal(consensustest.Accepted, block2.Status)
-	require.Equal(consensustest.Rejected, block3.Status)
-	require.Equal(consensustest.Rejected, block4.Status)
+	require.Equal(choices.Accepted, block0.Status())
+	require.Equal(choices.Accepted, block1.Status())
+	require.Equal(choices.Accepted, block2.Status())
+	require.Equal(choices.Rejected, block3.Status())
+	require.Equal(choices.Rejected, block4.Status())
 }
 
 func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Factory) {
@@ -854,7 +856,7 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	block0 := &chaintest.Block{
 		Decidable: consensustest.Decidable{
 			IDV:    ids.ID{0x06}, // 0110
-			Status: consensustest.Undecided,
+			StatusV: choices.Unknown,
 		},
 		ParentV: chaintest.GenesisID,
 		HeightV: chaintest.GenesisHeight + 1,
@@ -862,7 +864,7 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	block1 := &chaintest.Block{
 		Decidable: consensustest.Decidable{
 			IDV:    ids.ID{0x08}, // 0001
-			Status: consensustest.Undecided,
+			StatusV: choices.Unknown,
 		},
 		ParentV: chaintest.GenesisID,
 		HeightV: chaintest.GenesisHeight + 1,
@@ -870,7 +872,7 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	block2 := &chaintest.Block{
 		Decidable: consensustest.Decidable{
 			IDV:    ids.ID{0x01}, // 1000
-			Status: consensustest.Undecided,
+			StatusV: choices.Unknown,
 		},
 		ParentV: chaintest.GenesisID,
 		HeightV: chaintest.GenesisHeight + 1,
@@ -898,10 +900,10 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	require.NoError(sm.Add(block3))
 
 	require.Equal(block0.ID(), sm.Preference())
-	require.Equal(consensustest.Undecided, block0.Status, "should not be decided yet")
-	require.Equal(consensustest.Undecided, block1.Status, "should not be decided yet")
-	require.Equal(consensustest.Undecided, block2.Status, "should not be decided yet")
-	require.Equal(consensustest.Undecided, block3.Status, "should not be decided yet")
+	require.Equal(choices.Unknown, block0.Status(), "should not be decided yet")
+	require.Equal(choices.Unknown, block1.Status(), "should not be decided yet")
+	require.Equal(choices.Unknown, block2.Status(), "should not be decided yet")
+	require.Equal(choices.Unknown, block3.Status(), "should not be decided yet")
 
 	// Current graph structure:
 	//       G
@@ -923,10 +925,10 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	require.NoError(sm.RecordPoll(context.Background(), votes3))
 
 	require.Equal(4, sm.NumProcessing())
-	require.Equal(consensustest.Undecided, block0.Status)
-	require.Equal(consensustest.Undecided, block1.Status)
-	require.Equal(consensustest.Undecided, block2.Status)
-	require.Equal(consensustest.Undecided, block3.Status)
+	require.Equal(choices.Unknown, block0.Status())
+	require.Equal(choices.Unknown, block1.Status())
+	require.Equal(choices.Unknown, block2.Status())
+	require.Equal(choices.Unknown, block3.Status())
 }
 
 func RecordPollChangePreferredChainTest(t *testing.T, factory Factory) {
@@ -1320,11 +1322,12 @@ func RandomizedConsistencyTest(t *testing.T, factory Factory) {
 			MaxOutstandingItems:   1,
 			MaxItemProcessingTime: 1,
 		}
-		seed   int64 = 0
-		source        = NewMT19937Source()
+		seed uint64 = 0
+		mt           = prng.NewMT19937()
 	)
 
-	source.Seed(seed)
+	mt.Seed(seed)
+	source := &mt19937Wrapper{mt: mt}
 
 	n := NewNetwork(params, numColors, source)
 
@@ -1464,7 +1467,7 @@ func RecordPollRegressionCalculateInDegreeIndegreeCalculation(t *testing.T, fact
 	votes.AddCount(blk2.ID(), 1)
 	votes.AddCount(blk3.ID(), 2)
 	require.NoError(sm.RecordPoll(context.Background(), votes))
-	require.Equal(consensustest.Accepted, blk1.Status)
-	require.Equal(consensustest.Accepted, blk2.Status)
-	require.Equal(consensustest.Accepted, blk3.Status)
+	require.Equal(choices.Accepted, blk1.Status())
+	require.Equal(choices.Accepted, blk2.Status())
+	require.Equal(choices.Accepted, blk3.Status())
 }

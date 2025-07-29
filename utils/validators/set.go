@@ -20,6 +20,11 @@ import (
 )
 
 var (
+	// ErrInsufficientWeight is returned when there is insufficient weight to sample
+	ErrInsufficientWeight = errors.New("insufficient weight")
+)
+
+var (
 	errDuplicateValidator   = errors.New("duplicate validator")
 	errMissingValidator     = errors.New("missing validator")
 	errTotalWeightNotUint64 = errors.New("total weight is not a uint64")
@@ -258,9 +263,9 @@ func (s *vdrSet) sample(size int) ([]ids.NodeID, error) {
 		s.samplerInitialized = true
 	}
 
-	indices, err := s.sampler.Sample(size)
-	if err != nil {
-		return nil, err
+	indices, ok := s.sampler.Sample(size)
+	if !ok {
+		return nil, ErrInsufficientWeight
 	}
 
 	list := make([]ids.NodeID, size)

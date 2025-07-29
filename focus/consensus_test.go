@@ -54,26 +54,26 @@ func TestDyadicFocusPreferenceStrength(t *testing.T) {
 	
 	// Build up preference strength for 0
 	df.RecordPoll(3, 0)
-	require.Equal([2]int{1, 0}, df.preferenceStrength)
+	require.Equal([2]int{1, 0}, df.getPreferenceStrength())
 	
 	df.RecordPoll(3, 0)
-	require.Equal([2]int{2, 0}, df.preferenceStrength)
+	require.Equal([2]int{2, 0}, df.getPreferenceStrength())
 	
 	// Try to switch but not enough strength (count < alphaPreference)
 	df.RecordPoll(2, 1)
 	require.Equal(0, df.Preference()) // Still 0
-	require.Equal([2]int{2, 0}, df.preferenceStrength)
+	require.Equal([2]int{2, 0}, df.getPreferenceStrength())
 	
 	// Build up strength for 1
 	df.RecordPoll(3, 1)
-	require.Equal([2]int{2, 1}, df.preferenceStrength)
+	require.Equal([2]int{2, 1}, df.getPreferenceStrength())
 	
 	// Now 1 should win with more strength
 	df.RecordPoll(3, 1)
-	require.Equal([2]int{2, 2}, df.preferenceStrength)
+	require.Equal([2]int{2, 2}, df.getPreferenceStrength())
 	df.RecordPoll(3, 1)
 	require.Equal(1, df.Preference()) // Switched to 1
-	require.Equal([2]int{2, 3}, df.preferenceStrength)
+	require.Equal([2]int{2, 3}, df.getPreferenceStrength())
 }
 
 func TestPolyadicFocus(t *testing.T) {

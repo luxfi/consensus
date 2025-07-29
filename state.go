@@ -6,7 +6,7 @@ package consensus
 import (
 	"errors"
 
-	"github.com/luxfi/node/proto/pb/p2p"
+	"github.com/luxfi/consensus/proto/pb/p2p"
 )
 
 const (

@@ -37,7 +37,7 @@ func NewTestNetwork(factory *consensus.Factory, params config.Parameters, numCol
 func (n *TestNetwork) AddNode(newConsensusFunc newConsensusFunc) Consensus {
 	seed := n.rngSource.Uint64()
 	s := sampler.NewDeterministicUniform(int64(seed))
-	s.Initialize(uint64(len(n.colors)))
+	s.Initialize(len(n.colors))
 	indices, _ := s.Sample(len(n.colors))
 
 	consensus := newConsensusFunc(n.factory, n.params, n.colors[int(indices[0])])
@@ -88,13 +88,14 @@ func (n *TestNetwork) Round() {
 		seed := n.rngSource.Uint64()
 		s := sampler.NewDeterministicUniform(int64(seed))
 
-		s.Initialize(uint64(len(n.running)))
-		runningInd, _ := s.Next()
+		s.Initialize(len(n.running))
+		indices, _ := s.Sample(1)
+		runningInd := indices[0]
 		running := n.running[runningInd]
 
-		s.Initialize(uint64(len(n.nodes)))
+		s.Initialize(len(n.nodes))
 		count := min(n.params.K, len(n.nodes))
-		indices, _ := s.Sample(count)
+		indices, _ = s.Sample(count)
 		sampledColors := bag.Bag[ids.ID]{}
 		for _, index := range indices {
 			peer := n.nodes[int(index)]
