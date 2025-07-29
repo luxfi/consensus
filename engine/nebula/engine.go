@@ -25,6 +25,12 @@ type Engine struct {
 	health health.Checker
 }
 
+// Submit submits a decision to the engine
+func (e *Engine) Submit(ctx context.Context, decision types.Decision) error {
+	// Stub implementation
+	return nil
+}
+
 // State represents the engine state
 type State int
 

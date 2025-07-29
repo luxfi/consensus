@@ -27,16 +27,16 @@ func TestMonadicFocusLegacy(t *testing.T) {
 	mf := newMonadicFocus(alphaPreference, terminationConditions)
 
 	mf.RecordPoll(alphaPreference)
-	MonadicFocusStateTest(t, &mf, 1, []int{1}, false)
+	MonadicFocusStateTest(t, mf, 1, []int{1}, false)
 
 	mf.RecordPoll(alphaConfidence)
-	MonadicFocusStateTest(t, &mf, 2, []int{2}, false)
+	MonadicFocusStateTest(t, mf, 2, []int{2}, false)
 
 	mf.RecordUnsuccessfulPoll()
-	MonadicFocusStateTest(t, &mf, 2, []int{0}, false)
+	MonadicFocusStateTest(t, mf, 2, []int{0}, false)
 
 	mf.RecordPoll(alphaConfidence)
-	MonadicFocusStateTest(t, &mf, 3, []int{1}, false)
+	MonadicFocusStateTest(t, mf, 3, []int{1}, false)
 
 	mfCloneIntf := mf.Clone()
 	require.IsType(&monadicFocus{}, mfCloneIntf)

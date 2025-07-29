@@ -7,13 +7,11 @@ import (
 	"context"
 	"errors"
 
-	"google.golang.org/protobuf/types/known/emptypb"
-
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/validators"
 	"github.com/luxfi/crypto/bls"
 
-	pb "github.com/luxfi/node/proto/pb/validatorstate"
+	pb "github.com/luxfi/consensus/proto/pb/validatorstate"
 )
 
 var (
@@ -30,7 +28,7 @@ func NewClient(client pb.ValidatorStateClient) *Client {
 }
 
 func (c *Client) GetMinimumHeight(ctx context.Context) (uint64, error) {
-	resp, err := c.client.GetMinimumHeight(ctx, &emptypb.Empty{})
+	resp, err := c.client.GetMinimumHeight(ctx, &pb.GetMinimumHeightRequest{})
 	if err != nil {
 		return 0, err
 	}
@@ -38,7 +36,7 @@ func (c *Client) GetMinimumHeight(ctx context.Context) (uint64, error) {
 }
 
 func (c *Client) GetCurrentHeight(ctx context.Context) (uint64, error) {
-	resp, err := c.client.GetCurrentHeight(ctx, &emptypb.Empty{})
+	resp, err := c.client.GetCurrentHeight(ctx, &pb.GetCurrentHeightRequest{})
 	if err != nil {
 		return 0, err
 	}

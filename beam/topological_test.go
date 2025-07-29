@@ -7,11 +7,10 @@ import (
 	"testing"
 
 	"github.com/luxfi/consensus/photon"
-	"github.com/luxfi/consensus/wave"
 )
 
 func TestTopological(t *testing.T) {
-	runConsensusTests(t, TopologicalFactory{factory: wave.WaveFactory})
+	runConsensusTests(t, TopologicalFactory{factory: photon.PhotonFactory})
 }
 
 func TestTopologicalWithPhoton(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/api/metrics"
-	"github.com/luxfi/node/chains/atomic"
+	"github.com/luxfi/consensus/chains/atomic"
 	"github.com/luxfi/consensus/utils/validators"
 	"github.com/luxfi/consensus/utils/upgrade"
 	"github.com/luxfi/consensus/utils"
