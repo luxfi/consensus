@@ -2,12 +2,11 @@
 
 ## Lux Quasar: Post Quantum Consensus Engine
 
-Quasar replaces traditional consensus mechanisms with a single quantum-resistant
+Quasar upgrades traditional consensus mechanisms with a Quantum Finality
 engine. Quasar combines traditional BLS signature aggregation with parallel
-lattice encryption to deliver **2-round
-finality** with both classical and quantum security. Every chain in the Lux
-primary network - Q, C, X - run Quasar, reaching Quantum Finality, in < 1
-second.
+lattice encryption to deliver **2-round finality** with both classical and 
+quantum security. Every chain in the Lux primary network - Q, C, X - run Quasar, 
+reaching Quantum Finality, in < 1 second.
 
 ## Why Quasar?
 
