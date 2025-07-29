@@ -5,6 +5,7 @@ package bootstrapper
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/luxfi/consensus/utils/math"
 	"github.com/luxfi/consensus/utils/sampler"
@@ -41,9 +42,9 @@ func Sample[T comparable](elements map[T]uint64, maxSize int) (set.Set[T], error
 	}
 
 	maxSize = int(min(uint64(maxSize), totalWeight))
-	indices, err := weightedSampler.Sample(maxSize)
-	if err != nil {
-		return nil, err
+	indices, ok := weightedSampler.Sample(maxSize)
+	if !ok {
+		return nil, fmt.Errorf("failed to sample %d elements", maxSize)
 	}
 
 	sampledElements := set.NewSet[T](maxSize)

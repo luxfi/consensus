@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/choices"
+	"github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/photon"
 	"github.com/luxfi/consensus/utils/bag"
+	"github.com/luxfi/consensus/api/health"
 )
 
 // Consensus represents a general beam instance that can be used directly to

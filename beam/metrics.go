@@ -11,7 +11,7 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/utils/linked"
-	"github.com/luxfi/node/utils/logging"
+	"github.com/luxfi/log"
 	"github.com/luxfi/consensus/utils/metric"
 	"github.com/luxfi/consensus/utils/wrappers"
 )
@@ -22,7 +22,7 @@ type processingStart struct {
 }
 
 type metrics struct {
-	log logging.Logger
+	log log.Logger
 
 	currentMaxVerifiedHeight uint64
 	maxVerifiedHeight        prometheus.Gauge
@@ -63,7 +63,7 @@ type metrics struct {
 }
 
 func newMetrics(
-	log logging.Logger,
+	log log.Logger,
 	reg prometheus.Registerer,
 	lastAcceptedHeight uint64,
 	lastAcceptedTime time.Time,
@@ -145,18 +145,16 @@ func newMetrics(
 	m.lastAcceptedHeight.Set(float64(lastAcceptedHeight))
 	m.lastAcceptedTimestamp.Set(float64(lastAcceptedTime.Unix()))
 
-	errs.Add(
-		reg.Register(m.maxVerifiedHeight),
-		reg.Register(m.lastAcceptedHeight),
-		reg.Register(m.lastAcceptedTimestamp),
-		reg.Register(m.numProcessing),
-		reg.Register(m.blockSizeAcceptedSum),
-		reg.Register(m.buildLatencyAccepted),
-		reg.Register(m.blockSizeRejectedSum),
-		reg.Register(m.numSuccessfulPolls),
-		reg.Register(m.numFailedPolls),
-	)
-	return m, errs.Err
+	errs.Add(reg.Register(m.maxVerifiedHeight))
+	errs.Add(reg.Register(m.lastAcceptedHeight))
+	errs.Add(reg.Register(m.lastAcceptedTimestamp))
+	errs.Add(reg.Register(m.numProcessing))
+	errs.Add(reg.Register(m.blockSizeAcceptedSum))
+	errs.Add(reg.Register(m.buildLatencyAccepted))
+	errs.Add(reg.Register(m.blockSizeRejectedSum))
+	errs.Add(reg.Register(m.numSuccessfulPolls))
+	errs.Add(reg.Register(m.numFailedPolls))
+	return m, errs.Err()
 }
 
 func (m *metrics) Issued(blkID ids.ID, pollNumber uint64) {
@@ -225,7 +223,7 @@ func (m *metrics) Rejected(blkID ids.ID, pollNumber uint64, blockSize int) {
 }
 
 func (m *metrics) MeasureAndGetOldestDuration() time.Duration {
-	_, oldestOp, exists := m.processingBlocks.Oldest()
+	_, oldestOp, exists := m.processingBlocks.OldestEntry()
 	if !exists {
 		return 0
 	}

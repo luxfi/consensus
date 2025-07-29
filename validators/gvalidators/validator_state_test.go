@@ -19,7 +19,7 @@ import (
 	"github.com/luxfi/crypto/bls/signer/localsigner"
 	"github.com/luxfi/consensus/utils/networking/grpc/grpcutils"
 
-	pb "github.com/luxfi/node/proto/pb/validatorstate"
+	pb "github.com/luxfi/consensus/proto/pb/validatorstate"
 )
 
 var errCustom = errors.New("custom")
@@ -54,7 +54,7 @@ func setupState(t testing.TB, ctrl *gomock.Controller) *testState {
 	state.client = NewClient(pb.NewValidatorStateClient(conn))
 
 	t.Cleanup(func() {
-		serverCloser.Stop()
+		serverCloser.Close()
 		_ = conn.Close()
 		_ = listener.Close()
 	})

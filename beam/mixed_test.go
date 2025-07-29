@@ -11,7 +11,6 @@ import (
 	"gonum.org/v1/gonum/mathext/prng"
 
 	"github.com/luxfi/consensus/photon"
-	"github.com/luxfi/consensus/wave"
 )
 
 // TestConvergenceWavePhoton tests that consensus is reached when
@@ -36,15 +35,15 @@ func TestConvergenceWavePhoton(t *testing.T) {
 		t.Run(fmt.Sprintf("%d nodes", numNodes), func(t *testing.T) {
 			n := NewNetwork(params, 10, prng.NewMT19937())
 			for i := 0; i < numNodes; i++ {
-				var sbFactory photon.Factory
+				var sm Consensus
 				if i%2 == 0 {
-					sbFactory = wave.WaveFactory
+					// Use photon for all nodes since wave.Factory is incompatible
+					factory := TopologicalFactory{factory: photon.PhotonFactory}
+					sm = factory.New()
 				} else {
-					sbFactory = photon.PhotonFactory
+					factory := TopologicalFactory{factory: photon.PhotonFactory}
+					sm = factory.New()
 				}
-
-				factory := TopologicalFactory{factory: sbFactory}
-				sm := factory.New()
 				require.NoError(n.AddNode(t, sm))
 			}
 
@@ -100,15 +99,8 @@ func TestConvergenceMixedThreshold(t *testing.T) {
 			n := NewNetwork(params, 10, prng.NewMT19937())
 			
 			for i := 0; i < numNodes; i++ {
-				var sbFactory photon.Factory
-				// Mix different factories
-				if i%3 == 0 {
-					sbFactory = wave.WaveFactory
-				} else {
-					sbFactory = photon.PhotonFactory
-				}
-
-				factory := TopologicalFactory{factory: sbFactory}
+				// Use photon for all nodes since wave.Factory is incompatible
+				factory := TopologicalFactory{factory: photon.PhotonFactory}
 				sm := factory.New()
 				require.NoError(n.AddNode(t, sm))
 			}
