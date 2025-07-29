@@ -9,20 +9,20 @@ import (
 	"fmt"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus"
+	"github.com/luxfi/consensus/choices"
 )
 
 var (
-	_ consensus.Decidable = (*Decidable)(nil)
+	_ choices.Decidable = (*Decidable)(nil)
 
 	ErrInvalidStateTransition = errors.New("invalid state transition")
 )
 
 type Decidable struct {
-	IDV     ids.ID
-	AcceptV error
-	RejectV error
-	Status  Status
+	IDV        ids.ID
+	AcceptV    error
+	RejectV    error
+	StatusV    choices.Status
 }
 
 func (d *Decidable) ID() ids.ID {
@@ -30,27 +30,31 @@ func (d *Decidable) ID() ids.ID {
 }
 
 func (d *Decidable) Accept(context.Context) error {
-	if d.Status == Rejected {
+	if d.StatusV == choices.Rejected {
 		return fmt.Errorf("%w from %s to %s",
 			ErrInvalidStateTransition,
-			Rejected,
-			Accepted,
+			choices.Rejected,
+			choices.Accepted,
 		)
 	}
 
-	d.Status = Accepted
+	d.StatusV = choices.Accepted
 	return d.AcceptV
 }
 
 func (d *Decidable) Reject(context.Context) error {
-	if d.Status == Accepted {
+	if d.StatusV == choices.Accepted {
 		return fmt.Errorf("%w from %s to %s",
 			ErrInvalidStateTransition,
-			Accepted,
-			Rejected,
+			choices.Accepted,
+			choices.Rejected,
 		)
 	}
 
-	d.Status = Rejected
+	d.StatusV = choices.Rejected
 	return d.RejectV
+}
+
+func (d *Decidable) Status() choices.Status {
+	return d.StatusV
 }

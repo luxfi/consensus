@@ -88,14 +88,14 @@ Given parameters (K, αp, αc, β) and f Byzantine nodes:
 ```go
 import (
     "github.com/luxfi/consensus/config"
-    "github.com/luxfi/consensus/snowball"
+    "github.com/luxfi/consensus/focus"
 )
 
 // Use high-TPS parameters for local testing
 params := config.HighTPSParams
 
-// Create snowball instance
-sb := snowball.NewSnowball(params, initialChoice)
+// Create focus instance
+sb := focus.NewFocus(params, initialChoice)
 
 // Add choices
 sb.Add(choiceA)
@@ -147,7 +147,7 @@ go test -bench=. -benchmem ./...
 
 Example results on 64-core AMD EPYC:
 ```
-BenchmarkSnowballVote-64         1000000      1042 ns/op       0 B/op       0 allocs/op
+BenchmarkFocusVote-64         1000000      1042 ns/op       0 B/op       0 allocs/op
 BenchmarkRecordPoll-64            100000     10234 ns/op     256 B/op       4 allocs/op
 BenchmarkFinalizationCheck-64   10000000       103 ns/op       0 B/op       0 allocs/op
 BenchmarkBLSVerifyAVX512-64       10000    102341 ns/op       0 B/op       0 allocs/op
@@ -164,7 +164,7 @@ BenchmarkBLSVerifyAVX512-64       10000    102341 ns/op       0 B/op       0 all
 
 See `/example` for:
 - `main.go` - Basic parameter usage
-- `snowball_sim.go` - Consensus simulation with Byzantine nodes
+- `focus_sim.go` - Consensus simulation with Byzantine nodes
 - More examples coming soon...
 
 ## License

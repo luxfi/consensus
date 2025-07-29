@@ -18,7 +18,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/snowball"
+	"github.com/luxfi/consensus/focus"
 	"github.com/luxfi/consensus/transport"
 	"github.com/luxfi/consensus/transport/zmq"
 	"github.com/luxfi/ids"
@@ -158,8 +158,8 @@ var _ = Describe("ZeroMQ Transport Benchmarks", Ordered, func() {
 			// Check that honest nodes reached consensus
 			var consensusValues []ids.ID
 			for _, node := range nodes {
-				if !node.byzantine && node.snowball.Finalized() {
-					consensusValues = append(consensusValues, node.snowball.Preference())
+				if !node.byzantine && node.focus.Finalized() {
+					consensusValues = append(consensusValues, node.focus.Preference())
 				}
 			}
 			
@@ -239,7 +239,7 @@ var _ = Describe("ZeroMQ Transport Benchmarks", Ordered, func() {
 type ConsensusNode struct {
 	id        ids.NodeID
 	transport *zmq.Transport
-	snowball  *snowball.Snowball
+	focus  *focus.Focus
 	params    config.Parameters
 	byzantine bool
 	mu        sync.RWMutex
@@ -257,13 +257,13 @@ func createNodes(count int, basePort int, params config.Parameters) []*Consensus
 		nodes[i] = &ConsensusNode{
 			id:        nodeID,
 			transport: transport,
-			snowball:  snowball.NewSnowball(params, initialChoice),
+			focus:  focus.NewFocus(params, initialChoice),
 			params:    params,
 		}
 		
 		// Add more choices for variety
 		for j := 0; j < 10; j++ {
-			nodes[i].snowball.Add(ids.GenerateTestID())
+			nodes[i].focus.Add(ids.GenerateTestID())
 		}
 	}
 	
@@ -288,7 +288,7 @@ func (n *ConsensusNode) handleVoteRequest(from ids.NodeID, msg *transport.Messag
 	}
 	
 	n.mu.RLock()
-	preference := n.snowball.Preference()
+	preference := n.focus.Preference()
 	n.mu.RUnlock()
 	
 	response := &transport.Message{
