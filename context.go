@@ -8,15 +8,15 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/luxfi/node/api/metrics"
-	"github.com/luxfi/node/chains/atomic"
+	"github.com/luxfi/consensus/api/metrics"
+	"github.com/luxfi/consensus/chains/atomic"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/validators"
-	"github.com/luxfi/node/upgrade"
+	"github.com/luxfi/consensus/utils/upgrade"
 	"github.com/luxfi/consensus/utils"
 	"github.com/luxfi/crypto/bls"
-	"github.com/luxfi/node/utils/logging"
-	"github.com/luxfi/node/vms/platformvm/warp"
+	"github.com/luxfi/log"
+	"github.com/luxfi/consensus/vms/platformvm/warp"
 )
 
 // ContextInitializable represents an object that can be initialized
@@ -42,7 +42,7 @@ type Context struct {
 	CChainID    ids.ID
 	LUXAssetID ids.ID
 
-	Log logging.Logger
+	Log log.Logger
 	// Deprecated: This lock should not be used unless absolutely necessary.
 	// This lock will be removed in a future release once it is replaced with
 	// more granular locks.
@@ -59,6 +59,13 @@ type Context struct {
 	ValidatorState validators.State // interface for P-Chain validators
 	// Chain-specific directory where arbitrary data can be written
 	ChainDataDir string
+
+	// Registerer is used to register metrics
+	Registerer Registerer
+
+	// BlockAcceptor is the callback that will be fired whenever a VM is
+	// notified that their block was accepted.
+	BlockAcceptor Acceptor
 }
 
 // Expose gatherer interface for unit testing.

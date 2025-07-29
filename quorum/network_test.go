@@ -10,6 +10,7 @@ import (
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/photon"
+	"github.com/luxfi/consensus/utils"
 	"github.com/luxfi/consensus/utils/sampler"
 )
 
@@ -26,7 +27,7 @@ type Network struct {
 type ConsensusNode interface {
 	Add(choice ids.ID)
 	Preference() ids.ID
-	RecordPoll(votes *consensus.Bag[ids.ID]) bool
+	RecordPoll(votes *utils.Bag) bool
 	RecordUnsuccessfulPoll()
 	Finalized() bool
 	String() string
@@ -52,7 +53,7 @@ func NewNetwork(params photon.Parameters, numColors int, seed int64) *Network {
 func (n *Network) AddNode(node ConsensusNode) {
 	// Initialize with a random color preference
 	s := sampler.NewUniform()
-	s.Initialize(uint64(len(n.colors)))
+	s.Initialize(len(n.colors))
 	
 	indices := make([]uint64, len(n.colors))
 	for i := range indices {
@@ -113,7 +114,7 @@ func (n *Network) Round() {
 	}
 	
 	// Create vote bag
-	votes := &consensus.Bag[ids.ID]{}
+	votes := utils.NewBag()
 	
 	// Sample nodes and collect votes
 	sampled := make(map[int]bool)
@@ -209,7 +210,7 @@ func (b *Byzantine) Preference() ids.ID {
 	return b.preference
 }
 
-func (b *Byzantine) RecordPoll(votes *consensus.Bag[ids.ID]) bool {
+func (b *Byzantine) RecordPoll(votes *utils.Bag) bool {
 	// Byzantine node doesn't update preference based on polls
 	return false
 }

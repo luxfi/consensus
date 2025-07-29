@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	zmq "github.com/go-zeromq/zmq4"
+	zmq "github.com/luxfi/zmq4"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/factories"
 	"github.com/luxfi/consensus/poll"

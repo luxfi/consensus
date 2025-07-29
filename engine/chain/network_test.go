@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/choices"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/test/consensustest"
 	"github.com/luxfi/consensus/engine/chain/chaintest"
@@ -28,8 +29,8 @@ func NewNetwork(params config.Parameters, numColors int, rngSource sampler.Sourc
 		params: params,
 		colors: []*chaintest.Block{{
 			Decidable: consensustest.Decidable{
-				IDV:    ids.Empty.Prefix(rngSource.Uint64()),
-				Status: consensustest.Undecided,
+				IDV:     ids.Empty.Prefix(rngSource.Uint64()),
+				StatusV: choices.Processing,
 			},
 			ParentV: chaintest.GenesisID,
 			HeightV: chaintest.GenesisHeight + 1,
@@ -39,13 +40,14 @@ func NewNetwork(params config.Parameters, numColors int, rngSource sampler.Sourc
 
 	s := sampler.NewDeterministicUniform(0) // Use a temporary seed
 	for i := 1; i < numColors; i++ {
-		s.Initialize(uint64(len(n.colors)))
-		dependencyInd, _ := s.Next()
+		s.Initialize(len(n.colors))
+		indices, _ := s.Sample(1)
+		dependencyInd := indices[0]
 		dependency := n.colors[dependencyInd]
 		n.colors = append(n.colors, &chaintest.Block{
 			Decidable: consensustest.Decidable{
-				IDV:    ids.Empty.Prefix(rngSource.Uint64()),
-				Status: consensustest.Undecided,
+				IDV:     ids.Empty.Prefix(rngSource.Uint64()),
+				StatusV: choices.Processing,
 			},
 			ParentV: dependency.IDV,
 			HeightV: dependency.HeightV + 1,
@@ -56,7 +58,7 @@ func NewNetwork(params config.Parameters, numColors int, rngSource sampler.Sourc
 
 func (n *Network) shuffleColors() {
 	s := sampler.NewDeterministicUniform(int64(n.rngSource.Uint64() % (1 << 63))) // Convert uint64 to int64 range
-	s.Initialize(uint64(len(n.colors)))
+	s.Initialize(len(n.colors))
 	indices, _ := s.Sample(len(n.colors))
 	colors := []*chaintest.Block(nil)
 	for _, index := range indices {
@@ -95,12 +97,13 @@ func (n *Network) Round() error {
 	}
 
 	s := sampler.NewDeterministicUniform(int64(n.rngSource.Uint64() % (1 << 63))) // Convert uint64 to int64 range
-	s.Initialize(uint64(len(n.running)))
+	s.Initialize(len(n.running))
 
-	runningInd, _ := s.Next()
+	indices, _ := s.Sample(1)
+	runningInd := indices[0]
 	running := n.running[runningInd]
 
-	s.Initialize(uint64(len(n.nodes)))
+	s.Initialize(len(n.nodes))
 	indices, _ := s.Sample(n.params.K)
 	sampledColors := bag.Bag[ids.ID]{}
 	for _, index := range indices {

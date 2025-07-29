@@ -5,13 +5,14 @@ package focus
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/luxfi/consensus/wave"
 )
 
 var _ Monadic = (*monadicFocus)(nil)
 
-func newMonadicFocus(alphaPreference int, terminationConditions []terminationCondition) monadicFocus {
+func newMonadicFocus(alphaPreference int, terminationConditions []terminationCondition) *monadicFocus {
 	// Convert terminationConditions to wave format
 	waveConditions := make([]wave.TerminationCondition, len(terminationConditions))
 	for i, tc := range terminationConditions {
@@ -22,7 +23,7 @@ func newMonadicFocus(alphaPreference int, terminationConditions []terminationCon
 	}
 	
 	confidence := make([]int, len(terminationConditions))
-	return monadicFocus{
+	return &monadicFocus{
 		Monadic:         wave.NewMonadicWave(alphaPreference, waveConditions),
 		alphaPreference: alphaPreference,
 		confidence:      confidence,
@@ -33,6 +34,9 @@ func newMonadicFocus(alphaPreference int, terminationConditions []terminationCon
 type monadicFocus struct {
 	// wrap the monadic wave logic
 	wave.Monadic
+
+	// mu protects the fields below
+	mu sync.RWMutex
 
 	// alphaPreference is the threshold required to update the preference
 	alphaPreference int
@@ -45,6 +49,8 @@ type monadicFocus struct {
 }
 
 func (mf *monadicFocus) RecordPoll(count int) {
+	// Update focus state first
+	mf.mu.Lock()
 	if count >= mf.alphaPreference {
 		mf.preferenceStrength++
 		// Update confidence
@@ -57,29 +63,45 @@ func (mf *monadicFocus) RecordPoll(count int) {
 			mf.confidence[i] = 0
 		}
 	}
+	mf.mu.Unlock()
+	
+	// Then delegate to wave
 	mf.Monadic.RecordPoll(count)
 }
 
 func (mf *monadicFocus) RecordUnsuccessfulPoll() {
+	// Update focus state first
+	mf.mu.Lock()
 	// Reset confidence
 	for i := range mf.confidence {
 		mf.confidence[i] = 0
 	}
+	mf.mu.Unlock()
+	
+	// Then delegate to wave
 	mf.Monadic.RecordUnsuccessfulPoll()
 }
 
 func (mf *monadicFocus) Extend(choice int) Dyadic {
+	mf.mu.RLock()
+	strength := mf.preferenceStrength
+	alpha := mf.alphaPreference
+	mf.mu.RUnlock()
+	
 	df := &dyadicFocus{
 		Dyadic:             mf.Monadic.Extend(choice),
-		alphaPreference:    mf.alphaPreference,
+		alphaPreference:    alpha,
 		preference:         choice,
 		preferenceStrength: [2]int{},
 	}
-	df.preferenceStrength[choice] = mf.preferenceStrength
+	df.preferenceStrength[choice] = strength
 	return df
 }
 
 func (mf *monadicFocus) Clone() Monadic {
+	mf.mu.RLock()
+	defer mf.mu.RUnlock()
+	
 	confidence := make([]int, len(mf.confidence))
 	copy(confidence, mf.confidence)
 	return &monadicFocus{
@@ -91,6 +113,9 @@ func (mf *monadicFocus) Clone() Monadic {
 }
 
 func (mf *monadicFocus) String() string {
+	mf.mu.RLock()
+	defer mf.mu.RUnlock()
+	
 	return fmt.Sprintf("MonadicFocus(PreferenceStrength = %d, Confidence = %v, Finalized = %v)",
 		mf.preferenceStrength,
 		mf.confidence,

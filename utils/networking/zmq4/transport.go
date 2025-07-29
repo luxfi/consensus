@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/go-zeromq/zmq4"
+	"github.com/luxfi/zmq4"
 )
 
 // Transport provides high-performance message passing for consensus testing

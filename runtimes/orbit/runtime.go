@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/beam"
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/engine/pulsar"
 	"github.com/luxfi/consensus/photon"
 	"github.com/luxfi/consensus/wave"
 	"github.com/luxfi/consensus/focus"
+	"github.com/luxfi/consensus/utils"
 	"github.com/luxfi/ids"
 )
 
@@ -24,9 +26,9 @@ type Runtime struct {
 	engine *pulsar.Engine
 	
 	// Consensus stages
-	photonStage photon.Photon     // Quantum sampling
-	waveStage   wave.Wave         // Propagation
-	focusStage  focus.Focus       // Confidence aggregation
+	photonStage photon.Monadic    // Quantum sampling
+	waveStage   wave.Monadic      // Propagation
+	focusStage  focus.Monadic     // Confidence aggregation
 	beamStage   beam.Consensus    // Chain finalization
 	
 	// Runtime state
@@ -53,31 +55,30 @@ type Parameters struct {
 }
 
 // New creates a new Orbit runtime
-func New(params Parameters) (*Runtime, error) {
+func New(ctx *core.Context, params Parameters) (*Runtime, error) {
 	// Create consensus stages
-	photonFactory := photon.NewFactory()
-	waveFactory := wave.NewFactory()
-	focusFactory := focus.NewFactory()
+	photonFactory := photon.PhotonFactory
+	waveFactory := wave.WaveFactory
+	focusFactory := focus.FocusFactory
 	
-	photonStage := photonFactory.New()
-	waveStage := waveFactory.New()
-	focusStage := focusFactory.New()
-	
-	// Create beam consensus
-	beamStage := beam.New(beam.Parameters{
+	// Create photon parameters
+	photonParams := photon.Parameters{
 		K:               params.K,
 		AlphaPreference: params.AlphaPreference,
 		AlphaConfidence: params.AlphaConfidence,
 		Beta:            params.Beta,
-	})
+	}
+	
+	photonStage := photonFactory.NewMonadic(photonParams)
+	waveStage := waveFactory.NewMonadic(wave.Parameters(photonParams))
+	focusStage := focusFactory.NewMonadic(focus.Parameters(photonParams))
+	
+	// Create beam consensus using topological factory
+	beamFactory := beam.TopologicalFactory{Factory: photon.PhotonFactory}
+	beamStage := beamFactory.New()
 	
 	// Create pulsar engine
-	engine := pulsar.New(pulsar.Parameters{
-		K:               params.K,
-		AlphaPreference: params.AlphaPreference,
-		AlphaConfidence: params.AlphaConfidence,
-		Beta:            params.Beta,
-	})
+	engine := pulsar.New(ctx)
 	
 	return &Runtime{
 		engine:      engine,
@@ -100,10 +101,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 		return fmt.Errorf("runtime already running")
 	}
 	
-	// Initialize stages
-	r.photonStage.Initialize(r.params.K, r.params.AlphaPreference)
-	r.waveStage.Initialize(r.params.AlphaPreference, r.params.AlphaConfidence)
-	r.focusStage.Initialize(r.params.AlphaConfidence, r.params.Beta)
+	// Stages are already initialized in the constructor
 	
 	// Start engine
 	if err := r.engine.Start(ctx); err != nil {

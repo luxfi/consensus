@@ -4,12 +4,10 @@
 package consensus
 
 import (
-	"testing"
-	"time"
 	"context"
+	"testing"
 	
 	"github.com/stretchr/testify/require"
-	"github.com/luxfi/ids"
 )
 
 // TestFullConsensusIntegration tests the complete consensus flow
@@ -17,7 +15,7 @@ func TestFullConsensusIntegration(t *testing.T) {
 	require := require.New(t)
 	
 	// Test photon -> wave -> focus -> beam flow
-	ctx := context.Background()
+	_ = context.Background()
 	
 	// TODO: Implement full integration test
 	require.True(true)

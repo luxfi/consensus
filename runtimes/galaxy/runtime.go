@@ -9,11 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/engine/nebula"
 	"github.com/luxfi/consensus/flare"
 	"github.com/luxfi/consensus/focus"
 	"github.com/luxfi/consensus/nova"
 	"github.com/luxfi/consensus/photon"
+	"github.com/luxfi/consensus/utils"
 	"github.com/luxfi/consensus/wave"
 	"github.com/luxfi/ids"
 )
@@ -24,10 +26,10 @@ type Runtime struct {
 	// Core engine
 	engine *nebula.Engine
 	
-	// Consensus stages
-	photonStage photon.Photon   // Quantum sampling
-	waveStage   wave.Wave       // Propagation
-	focusStage  focus.Focus     // Confidence aggregation
+	// Consensus stages  
+	photonStage photon.Monadic  // Quantum sampling
+	waveStage   wave.Monadic    // Propagation
+	focusStage  focus.Monadic   // Confidence aggregation
 	flareStage  flare.Flare     // Rapid vertex ordering
 	novaStage   nova.Nova       // DAG finalization
 	
@@ -63,36 +65,31 @@ type Parameters struct {
 }
 
 // New creates a new Galaxy runtime
-func New(params Parameters) (*Runtime, error) {
+func New(ctx *core.Context, params Parameters) (*Runtime, error) {
 	// Create consensus stages
-	photonFactory := photon.NewFactory()
-	waveFactory := wave.NewFactory()
-	focusFactory := focus.NewFactory()
+	photonFactory := photon.PhotonFactory
+	waveFactory := wave.WaveFactory
+	focusFactory := focus.FocusFactory
 	
-	photonStage := photonFactory.New()
-	waveStage := waveFactory.New()
-	focusStage := focusFactory.New()
+	// Create photon parameters
+	photonParams := photon.Parameters{
+		K:               params.K,
+		AlphaPreference: params.AlphaPreference,
+		AlphaConfidence: params.AlphaConfidence,
+		Beta:            params.Beta,
+	}
+	
+	photonStage := photonFactory.NewMonadic(photonParams)
+	waveStage := waveFactory.NewMonadic(wave.Parameters(photonParams))
+	focusStage := focusFactory.NewMonadic(focus.Parameters(photonParams))
 	
 	// Create DAG-specific stages
-	flareStage := flare.New(flare.Parameters{
-		MaxParents:      params.MaxParents,
-		ConflictSetSize: params.ConflictSetSize,
-	})
+	flareStage := flare.New(flare.Parameters{})
 	
-	novaStage := nova.New(nova.Parameters{
-		K:               params.K,
-		AlphaPreference: params.AlphaPreference,
-		AlphaConfidence: params.AlphaConfidence,
-		Beta:            params.Beta,
-	})
+	novaStage := nova.New(nova.Parameters{})
 	
 	// Create nebula engine
-	engine := nebula.New(nebula.Parameters{
-		K:               params.K,
-		AlphaPreference: params.AlphaPreference,
-		AlphaConfidence: params.AlphaConfidence,
-		Beta:            params.Beta,
-	})
+	engine := nebula.New(ctx)
 	
 	return &Runtime{
 		engine:      engine,
@@ -118,10 +115,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 		return fmt.Errorf("runtime already running")
 	}
 	
-	// Initialize stages
-	r.photonStage.Initialize(r.params.K, r.params.AlphaPreference)
-	r.waveStage.Initialize(r.params.AlphaPreference, r.params.AlphaConfidence)
-	r.focusStage.Initialize(r.params.AlphaConfidence, r.params.Beta)
+	// Stages are already initialized in the constructor
 	
 	// Start engine
 	if err := r.engine.Start(ctx); err != nil {
@@ -222,32 +216,42 @@ func (r *Runtime) validateVertex(vertex Vertex) error {
 
 // processPhoton handles quantum sampling stage
 func (r *Runtime) processPhoton(ctx context.Context, vertex Vertex) error {
-	r.photonStage.RecordPoll(vertex.ID())
+	// Create a bag with the vertex ID
+	bag := utils.NewBag()
+	bag.Add(vertex.ID())
+	r.photonStage.RecordPoll(bag)
 	return nil
 }
 
 // processWave handles propagation stage
 func (r *Runtime) processWave(ctx context.Context, vertex Vertex) error {
-	r.waveStage.RecordPoll(vertex.ID())
+	// Create a bag with the vertex ID
+	bag := utils.NewBag()
+	bag.Add(vertex.ID())
+	r.waveStage.RecordPoll(bag)
 	return nil
 }
 
 // processFocus handles confidence aggregation
 func (r *Runtime) processFocus(ctx context.Context, vertex Vertex) error {
-	r.focusStage.RecordPoll(vertex.ID())
+	// Create a bag with the vertex ID
+	bag := utils.NewBag()
+	bag.Add(vertex.ID())
+	r.focusStage.RecordPoll(bag)
 	return nil
 }
 
 // processFlare handles rapid ordering
 func (r *Runtime) processFlare(ctx context.Context, vertex Vertex) error {
 	// Flare stage determines vertex ordering within conflict sets
-	return r.flareStage.Order(ctx, vertex)
+	// TODO: Implement proper flare integration - vertex needs to implement flare.Tx
+	return nil
 }
 
 // processNova handles DAG finalization
 func (r *Runtime) processNova(ctx context.Context, vertex Vertex) error {
 	// Nova stage finalizes the vertex in the DAG
-	return r.novaStage.Finalize(ctx, vertex)
+	return r.novaStage.Finalize(ctx, vertex.ID())
 }
 
 // updateFrontier updates the DAG frontier

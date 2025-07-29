@@ -8,15 +8,15 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/crypto/bls"
-	"github.com/luxfi/node/utils/logging"
+	"github.com/luxfi/log"
 	"github.com/luxfi/consensus/utils/set"
-	"github.com/luxfi/node/vms/types"
+	"github.com/luxfi/consensus/vms/types"
 )
 
 var _ SetCallbackListener = (*logger)(nil)
 
 type logger struct {
-	log      logging.Logger
+	log      log.Logger
 	subnetID ids.ID
 	nodeIDs  set.Set[ids.NodeID]
 }
@@ -24,7 +24,7 @@ type logger struct {
 // NewLogger returns a callback listener that will log validator set changes for
 // the specified validators
 func NewLogger(
-	log logging.Logger,
+	log log.Logger,
 	subnetID ids.ID,
 	nodeIDs ...ids.NodeID,
 ) SetCallbackListener {

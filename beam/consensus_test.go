@@ -17,9 +17,10 @@ import (
 	"gonum.org/v1/gonum/mathext/prng"
 
 	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/choices"
 	"github.com/luxfi/consensus/photon"
 	beamtest "github.com/luxfi/consensus/beam/beamtest"
-	"github.com/luxfi/consensus/test"
+	"github.com/luxfi/consensus/test/consensustest"
 	"github.com/luxfi/consensus/utils/bag"
 )
 
@@ -81,8 +82,7 @@ func InitializeTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -112,8 +112,7 @@ func NumProcessingTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -151,8 +150,7 @@ func AddToTailTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -189,8 +187,7 @@ func AddToNonTailTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -229,8 +226,7 @@ func AddOnUnknownParentTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -251,8 +247,8 @@ func AddOnUnknownParentTest(t *testing.T, factory Factory) {
 
 	block := &beamtest.Block{
 		Decidable: consensustest.Decidable{
-			IDV:    ids.GenerateTestID(),
-			Status: consensustest.Undecided,
+			IDV:     ids.GenerateTestID(),
+			StatusV: choices.Processing,
 		},
 		ParentV: ids.GenerateTestID(),
 		HeightV: beamtest.GenesisHeight + 2,
@@ -268,8 +264,7 @@ func StatusOrProcessingPreviouslyAcceptedTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -288,7 +283,7 @@ func StatusOrProcessingPreviouslyAcceptedTest(t *testing.T, factory Factory) {
 		beamtest.GenesisTimestamp,
 	))
 
-	require.Equal(consensustest.Accepted, beamtest.Genesis.Status)
+	require.Equal(choices.Accepted, beamtest.Genesis.Status)
 	require.False(sm.Processing(beamtest.Genesis.ID()))
 	require.True(sm.IsPreferred(beamtest.Genesis.ID()))
 
@@ -302,8 +297,7 @@ func StatusOrProcessingPreviouslyRejectedTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -325,7 +319,7 @@ func StatusOrProcessingPreviouslyRejectedTest(t *testing.T, factory Factory) {
 	block := beamtest.BuildChild(beamtest.Genesis)
 	require.NoError(block.Reject(context.Background()))
 
-	require.Equal(consensustest.Rejected, block.Status)
+	require.Equal(choices.Rejected, block.Status)
 	require.False(sm.Processing(block.ID()))
 	require.False(sm.IsPreferred(block.ID()))
 
@@ -338,8 +332,7 @@ func StatusOrProcessingUnissuedTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -360,7 +353,7 @@ func StatusOrProcessingUnissuedTest(t *testing.T, factory Factory) {
 
 	block := beamtest.BuildChild(beamtest.Genesis)
 
-	require.Equal(consensustest.Undecided, block.Status)
+	require.Equal(choices.Unknown, block.Status)
 	require.False(sm.Processing(block.ID()))
 	require.False(sm.IsPreferred(block.ID()))
 
@@ -373,8 +366,7 @@ func StatusOrProcessingIssuedTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -396,7 +388,7 @@ func StatusOrProcessingIssuedTest(t *testing.T, factory Factory) {
 	block := beamtest.BuildChild(beamtest.Genesis)
 
 	require.NoError(sm.Add(block))
-	require.Equal(consensustest.Undecided, block.Status)
+	require.Equal(choices.Unknown, block.Status)
 	require.True(sm.Processing(block.ID()))
 	require.True(sm.IsPreferred(block.ID()))
 
@@ -410,8 +402,7 @@ func RecordPollAcceptSingleBlockTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -438,12 +429,12 @@ func RecordPollAcceptSingleBlockTest(t *testing.T, factory Factory) {
 	require.NoError(sm.RecordPoll(context.Background(), votes))
 	require.Equal(block.ID(), sm.Preference())
 	require.Equal(1, sm.NumProcessing())
-	require.Equal(consensustest.Undecided, block.Status)
+	require.Equal(choices.Unknown, block.Status)
 
 	require.NoError(sm.RecordPoll(context.Background(), votes))
 	require.Equal(block.ID(), sm.Preference())
 	require.Zero(sm.NumProcessing())
-	require.Equal(consensustest.Accepted, block.Status)
+	require.Equal(choices.Accepted, block.Status)
 }
 
 func RecordPollAcceptAndRejectTest(t *testing.T, factory Factory) {
@@ -451,8 +442,7 @@ func RecordPollAcceptAndRejectTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -482,22 +472,21 @@ func RecordPollAcceptAndRejectTest(t *testing.T, factory Factory) {
 	require.NoError(sm.RecordPoll(context.Background(), votes))
 	require.Equal(firstBlock.ID(), sm.Preference())
 	require.Equal(2, sm.NumProcessing())
-	require.Equal(consensustest.Undecided, firstBlock.Status)
-	require.Equal(consensustest.Undecided, secondBlock.Status)
+	require.Equal(choices.Unknown, firstBlock.Status)
+	require.Equal(choices.Unknown, secondBlock.Status)
 
 	require.NoError(sm.RecordPoll(context.Background(), votes))
 	require.Equal(firstBlock.ID(), sm.Preference())
 	require.Zero(sm.NumProcessing())
-	require.Equal(consensustest.Accepted, firstBlock.Status)
-	require.Equal(consensustest.Rejected, secondBlock.Status)
+	require.Equal(choices.Accepted, firstBlock.Status)
+	require.Equal(choices.Rejected, secondBlock.Status)
 }
 
 func RecordPollSplitVoteNoChangeTest(t *testing.T, factory Factory) {
 	require := require.New(t)
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	registerer := prometheus.NewRegistry()
 	ctx.Registerer = registerer
 
@@ -555,8 +544,7 @@ func RecordPollWhenFinalizedTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -586,8 +574,7 @@ func RecordPollRejectTransitivelyTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -631,9 +618,9 @@ func RecordPollRejectTransitivelyTest(t *testing.T, factory Factory) {
 
 	require.Zero(sm.NumProcessing())
 	require.Equal(block0.ID(), sm.Preference())
-	require.Equal(consensustest.Accepted, block0.Status)
-	require.Equal(consensustest.Rejected, block1.Status)
-	require.Equal(consensustest.Rejected, block2.Status)
+	require.Equal(choices.Accepted, block0.Status)
+	require.Equal(choices.Rejected, block1.Status)
+	require.Equal(choices.Rejected, block2.Status)
 }
 
 func RecordPollTransitivelyResetConfidenceTest(t *testing.T, factory Factory) {
@@ -641,8 +628,7 @@ func RecordPollTransitivelyResetConfidenceTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -700,10 +686,10 @@ func RecordPollTransitivelyResetConfidenceTest(t *testing.T, factory Factory) {
 	require.NoError(sm.RecordPoll(context.Background(), votesFor3))
 	require.Zero(sm.NumProcessing())
 	require.Equal(block3.ID(), sm.Preference())
-	require.Equal(consensustest.Rejected, block0.Status)
-	require.Equal(consensustest.Accepted, block1.Status)
-	require.Equal(consensustest.Rejected, block2.Status)
-	require.Equal(consensustest.Accepted, block3.Status)
+	require.Equal(choices.Rejected, block0.Status)
+	require.Equal(choices.Accepted, block1.Status)
+	require.Equal(choices.Rejected, block2.Status)
+	require.Equal(choices.Accepted, block3.Status)
 }
 
 func RecordPollInvalidVoteTest(t *testing.T, factory Factory) {
@@ -711,8 +697,7 @@ func RecordPollInvalidVoteTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -751,8 +736,7 @@ func RecordPollTransitiveVotingTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     3,
 		AlphaPreference:       3,
@@ -806,11 +790,11 @@ func RecordPollTransitiveVotingTest(t *testing.T, factory Factory) {
 
 	require.Equal(4, sm.NumProcessing())
 	require.Equal(block2.ID(), sm.Preference())
-	require.Equal(consensustest.Accepted, block0.Status)
-	require.Equal(consensustest.Undecided, block1.Status)
-	require.Equal(consensustest.Undecided, block2.Status)
-	require.Equal(consensustest.Undecided, block3.Status)
-	require.Equal(consensustest.Undecided, block4.Status)
+	require.Equal(choices.Accepted, block0.Status)
+	require.Equal(choices.Unknown, block1.Status)
+	require.Equal(choices.Unknown, block2.Status)
+	require.Equal(choices.Unknown, block3.Status)
+	require.Equal(choices.Unknown, block4.Status)
 
 	dep2_2_2 := bag.Of(block2.ID(), block2.ID(), block2.ID())
 	require.NoError(sm.RecordPoll(context.Background(), dep2_2_2))
@@ -821,19 +805,18 @@ func RecordPollTransitiveVotingTest(t *testing.T, factory Factory) {
 
 	require.Zero(sm.NumProcessing())
 	require.Equal(block2.ID(), sm.Preference())
-	require.Equal(consensustest.Accepted, block0.Status)
-	require.Equal(consensustest.Accepted, block1.Status)
-	require.Equal(consensustest.Accepted, block2.Status)
-	require.Equal(consensustest.Rejected, block3.Status)
-	require.Equal(consensustest.Rejected, block4.Status)
+	require.Equal(choices.Accepted, block0.Status)
+	require.Equal(choices.Accepted, block1.Status)
+	require.Equal(choices.Accepted, block2.Status)
+	require.Equal(choices.Rejected, block3.Status)
+	require.Equal(choices.Rejected, block4.Status)
 }
 
 func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Factory) {
 	sm := factory.New()
 	require := require.New(t)
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -855,7 +838,7 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	block0 := &beamtest.Block{
 		Decidable: consensustest.Decidable{
 			IDV:    ids.ID{0x06}, // 0110
-			Status: consensustest.Undecided,
+			StatusV: choices.Processing,
 		},
 		ParentV: beamtest.GenesisID,
 		HeightV: beamtest.GenesisHeight + 1,
@@ -863,7 +846,7 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	block1 := &beamtest.Block{
 		Decidable: consensustest.Decidable{
 			IDV:    ids.ID{0x08}, // 0001
-			Status: consensustest.Undecided,
+			StatusV: choices.Processing,
 		},
 		ParentV: beamtest.GenesisID,
 		HeightV: beamtest.GenesisHeight + 1,
@@ -871,7 +854,7 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	block2 := &beamtest.Block{
 		Decidable: consensustest.Decidable{
 			IDV:    ids.ID{0x01}, // 1000
-			Status: consensustest.Undecided,
+			StatusV: choices.Processing,
 		},
 		ParentV: beamtest.GenesisID,
 		HeightV: beamtest.GenesisHeight + 1,
@@ -899,10 +882,10 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	require.NoError(sm.Add(block3))
 
 	require.Equal(block0.ID(), sm.Preference())
-	require.Equal(consensustest.Undecided, block0.Status, "should not be decided yet")
-	require.Equal(consensustest.Undecided, block1.Status, "should not be decided yet")
-	require.Equal(consensustest.Undecided, block2.Status, "should not be decided yet")
-	require.Equal(consensustest.Undecided, block3.Status, "should not be decided yet")
+	require.Equal(choices.Unknown, block0.Status, "should not be decided yet")
+	require.Equal(choices.Unknown, block1.Status, "should not be decided yet")
+	require.Equal(choices.Unknown, block2.Status, "should not be decided yet")
+	require.Equal(choices.Unknown, block3.Status, "should not be decided yet")
 
 	// Current graph structure:
 	//       G
@@ -924,10 +907,10 @@ func RecordPollDivergedVotingWithNoConflictingBitTest(t *testing.T, factory Fact
 	require.NoError(sm.RecordPoll(context.Background(), votes3))
 
 	require.Equal(4, sm.NumProcessing())
-	require.Equal(consensustest.Undecided, block0.Status)
-	require.Equal(consensustest.Undecided, block1.Status)
-	require.Equal(consensustest.Undecided, block2.Status)
-	require.Equal(consensustest.Undecided, block3.Status)
+	require.Equal(choices.Unknown, block0.Status)
+	require.Equal(choices.Unknown, block1.Status)
+	require.Equal(choices.Unknown, block2.Status)
+	require.Equal(choices.Unknown, block3.Status)
 }
 
 func RecordPollChangePreferredChainTest(t *testing.T, factory Factory) {
@@ -935,8 +918,7 @@ func RecordPollChangePreferredChainTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -1020,8 +1002,7 @@ func LastAcceptedTest(t *testing.T, factory Factory) {
 	sm := factory.New()
 	require := require.New(t)
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -1094,8 +1075,7 @@ func MetricsProcessingErrorTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -1128,8 +1108,7 @@ func MetricsAcceptedErrorTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -1162,8 +1141,7 @@ func MetricsRejectedErrorTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -1196,8 +1174,7 @@ func ErrorOnAcceptTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -1232,8 +1209,7 @@ func ErrorOnRejectSiblingTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -1270,8 +1246,7 @@ func ErrorOnTransitiveRejectionTest(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -1344,8 +1319,7 @@ func ErrorOnAddDecidedBlockTest(t *testing.T, factory Factory) {
 	sm := factory.New()
 	require := require.New(t)
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     1,
 		AlphaPreference:       1,
@@ -1396,9 +1370,8 @@ func RecordPollWithDefaultParameters(t *testing.T, factory Factory) {
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
-	params := focus.DefaultParameters
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
+	params := photon.DefaultParameters
 	require.NoError(sm.Initialize(
 		ctx,
 		params,
@@ -1433,8 +1406,7 @@ func RecordPollRegressionCalculateInDegreeIndegreeCalculation(t *testing.T, fact
 
 	sm := factory.New()
 
-	photonCtx := consensustest.Context(t, consensustest.CChainID)
-	ctx := consensustest.ConsensusContext(photonCtx)
+	ctx := consensustest.BeamContext(t, consensustest.CChainID)
 	params := photon.Parameters{
 		K:                     3,
 		AlphaPreference:       2,
@@ -1465,7 +1437,7 @@ func RecordPollRegressionCalculateInDegreeIndegreeCalculation(t *testing.T, fact
 	votes.AddCount(blk2.ID(), 1)
 	votes.AddCount(blk3.ID(), 2)
 	require.NoError(sm.RecordPoll(context.Background(), votes))
-	require.Equal(consensustest.Accepted, blk1.Status)
-	require.Equal(consensustest.Accepted, blk2.Status)
-	require.Equal(consensustest.Accepted, blk3.Status)
+	require.Equal(choices.Accepted, blk1.Status)
+	require.Equal(choices.Accepted, blk2.Status)
+	require.Equal(choices.Accepted, blk3.Status)
 }
