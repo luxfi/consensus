@@ -16,11 +16,11 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/validator"
-	"github.com/luxfi/consensus/validators/gvalidators"
-	"github.com/luxfi/consensus/validators/validatorsmock"
+	"github.com/luxfi/consensus/validator/gvalidators"
+	"github.com/luxfi/consensus/validator/validatorsmock"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/bls/signer/localsigner"
-	"github.com/luxfi/consensus/utils/networking/grpc/grpcutils"
+	"github.com/luxfi/consensus/networking/grpc/grpcutils"
 
 	pb "github.com/luxfi/consensus/proto/pb/validatorstate"
 )
