@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	. "github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/core/utils"
@@ -16,12 +17,6 @@ import (
 	"github.com/luxfi/consensus/protocol/wave"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/ids"
-)
-
-var (
-	Red   = ids.Empty.Prefix(0)
-	Blue  = ids.Empty.Prefix(1)
-	Green = ids.Empty.Prefix(2)
 )
 
 // Byzantine is a naive implementation of a multi-choice consensus instance

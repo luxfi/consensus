@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	. "github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/core/utils"

@@ -13,11 +13,6 @@ import (
 	"github.com/luxfi/ids"
 )
 
-var (
-	Red   = ids.Empty.Prefix(0)
-	Blue  = ids.Empty.Prefix(1)
-	Green = ids.Empty.Prefix(2)
-)
 
 // TestWaveBinary tests basic wave binary consensus behavior
 func TestWaveBinary(t *testing.T) {
