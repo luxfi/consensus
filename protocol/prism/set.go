@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 
 	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/consensus/utils/linked"
 	"github.com/luxfi/log"
@@ -44,7 +44,7 @@ func (p pollWrapper) StartTime() time.Time {
 
 type set struct {
 	log      log.Logger
-	numPrisms prometheus.Gauge
+	numPrisms int64
 	durPrisms metric.Averager
 	factory  Factory
 	// maps requestID -> poll
@@ -55,29 +55,12 @@ type set struct {
 func NewSet(
 	factory Factory,
 	log log.Logger,
-	reg prometheus.Registerer,
+	reg interfaces.Registerer,
 ) (Set, error) {
-	numPrisms := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "prisms",
-		Help: "Number of pending network prisms",
-	})
-	if err := reg.Register(numPrisms); err != nil {
-		return nil, fmt.Errorf("%w: %w", errFailedPrismsMetric, err)
-	}
-
-	durPrisms, err := metric.NewAverager(
-		"poll_duration",
-		"time (in ns) this prism took to complete",
-		reg,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errFailedPollDurationMetrics, err)
-	}
-
 	return &set{
 		log:      log,
-		numPrisms: numPrisms,
-		durPrisms: durPrisms,
+		numPrisms: 0,
+		durPrisms: metric.NewAverager(),
 		factory:  factory,
 		prisms:    linked.NewHashmap[uint32, pollHolder](),
 	}, nil
@@ -104,7 +87,7 @@ func (s *set) Add(requestID uint32, vdrs bag.Bag[ids.NodeID]) bool {
 		Poll:  s.factory.New(vdrs), // create the new poll
 		start: time.Now(),
 	})
-	s.numPrisms.Inc() // increase the metrics
+	s.numPrisms++ // increase the metrics
 	return true
 }
 
@@ -173,7 +156,7 @@ func (s *set) processFinishedPrisms() []bag.Bag[ids.ID] {
 			zap.String("poll", holder.GetPoll().PrefixedString("  ")),
 		)
 		s.durPrisms.Observe(float64(time.Since(holder.StartTime())))
-		s.numPrisms.Dec() // decrease the metrics
+		s.numPrisms-- // decrease the metrics
 
 		// Get the result
 		result, ok := p.Result()

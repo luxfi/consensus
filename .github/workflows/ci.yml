@@ -25,6 +25,10 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
+      - name: Install ZeroMQ dependencies
+        run: |
+          echo "Using pure Go ZMQ4 implementation - no system dependencies needed"
+
       - name: Get dependencies
         run: go mod download
 
@@ -37,6 +41,87 @@ jobs:
           file: ./coverage.txt
           flags: unittests
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Install ZeroMQ dependencies
+        run: |
+          echo "Using pure Go ZMQ4 implementation - no system dependencies needed"
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Run ZeroMQ benchmarks
+        run: |
+          echo "=== Running ZeroMQ Benchmarks ==="
+          cd networking/zmq4
+          go test -bench=. -benchmem -benchtime=10s -run=^$ -v | tee ../../zmq-benchmark-results.txt
+          
+      - name: Display benchmark results
+        run: |
+          echo "## ZeroMQ Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat zmq-benchmark-results.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Run consensus benchmarks
+        run: |
+          echo "=== Running Consensus Benchmarks ==="
+          go test -bench=. -benchmem -benchtime=10s -run=^$ ./benchmark/... | tee consensus-benchmark-results.txt
+
+      - name: Display consensus benchmark results
+        run: |
+          echo "## Consensus Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat consensus-benchmark-results.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            zmq-benchmark-results.txt
+            consensus-benchmark-results.txt
+
+      - name: Comment PR with benchmark results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const zmqResults = fs.readFileSync('zmq-benchmark-results.txt', 'utf8');
+            const consensusResults = fs.readFileSync('consensus-benchmark-results.txt', 'utf8');
+            
+            const comment = `## Benchmark Results
+            
+            ### ZeroMQ Benchmarks
+            \`\`\`
+            ${zmqResults}
+            \`\`\`
+            
+            ### Consensus Benchmarks
+            \`\`\`
+            ${consensusResults}
+            \`\`\``;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
 
   lint:
     name: Lint

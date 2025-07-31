@@ -1,8 +1,0 @@
-./compat.go
-./factory.go
-./format.go
-./globals.go
-./glog.go
-./handler.go
-./logger.go
-./types.go
