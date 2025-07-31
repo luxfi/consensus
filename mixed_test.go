@@ -4,6 +4,7 @@
 package consensus_test
 
 import (
+	. "github.com/luxfi/consensus"
 	"testing"
 
 	"github.com/stretchr/testify/require"

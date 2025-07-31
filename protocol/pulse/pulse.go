@@ -105,6 +105,15 @@ func (p *Pulse) recordPoll(count int, choice ids.ID) error {
 
     // Pulse logic: track preference strength
     if count >= p.params.AlphaPreference {
+        // Reset other preference strengths when voting for a new choice
+        if p.preference != choice {
+            for c := range p.preferenceStrength {
+                if c != choice {
+                    p.preferenceStrength[c] = 0
+                }
+            }
+        }
+        
         p.preferenceStrength[choice]++
         
         // Update preference to the strongest choice
