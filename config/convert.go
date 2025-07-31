@@ -10,14 +10,10 @@ func (c Config) ToParameters() Parameters {
 		AlphaPreference:       c.AlphaPreference,
 		AlphaConfidence:       c.AlphaConfidence,
 		Beta:                  c.Beta,
-		ConcurrentRepolls:     c.ConcurrentRepolls,
+		ConcurrentReprisms:     c.ConcurrentReprisms,
 		OptimalProcessing:     c.OptimalProcessing,
 		MaxOutstandingItems:   c.MaxOutstandingItems,
 		MaxItemProcessingTime: c.MaxItemProcessingTime,
 		MinRoundInterval:      c.MinRoundInterval,
-		BatchSize:             100, // Default batch size
-		Q:                     c.MinRoundInterval * 10, // Default Q interval
-		QThreshold:            c.QThreshold,
-		QuasarTimeout:         c.QuasarTimeout,
 	}
 }

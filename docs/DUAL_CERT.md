@@ -134,7 +134,7 @@ RT precompute (parallel) ┘
 - [x] Q-Chain integration design
 
 ### In Progress
-- [ ] Integration with luxfi/ringtail for actual lattice crypto
+- [x] Integration with luxfi/crypto/ringtail for actual lattice crypto
 - [ ] PQ account options (Lamport, XMSS)
 - [ ] Fork-choice rules for dual-cert finality
 

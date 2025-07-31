@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package main
@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/log"
+	"log/slog"
 )
 
-var logger = log.NewLogger("checker")
+var logger = slog.Default().With("module", "checker")
 
 func main() {
 	// Command line flags
@@ -69,7 +69,7 @@ func main() {
 	fmt.Printf("  Alpha Preference:       %d\n", cfg.AlphaPreference)
 	fmt.Printf("  Alpha Confidence:       %d\n", cfg.AlphaConfidence)
 	fmt.Printf("  Beta (rounds):          %d\n", cfg.Beta)
-	fmt.Printf("  Concurrent Repolls:     %d\n", cfg.ConcurrentRepolls)
+	fmt.Printf("  Concurrent Reprisms:     %d\n", cfg.ConcurrentReprisms)
 	fmt.Printf("  Max Processing Time:    %s\n", cfg.MaxItemProcessingTime)
 	fmt.Printf("  Min Round Interval:     %s\n", cfg.MinRoundInterval)
 	
@@ -146,10 +146,10 @@ func main() {
 		fmt.Printf("  Optimal Processing:     %d items\n", cfg.OptimalProcessing)
 		fmt.Printf("  Max Outstanding Items:  %d items\n", cfg.MaxOutstandingItems)
 		
-		if cfg.ConcurrentRepolls < cfg.Beta {
+		if cfg.ConcurrentReprisms < cfg.Beta {
 			fmt.Printf("  Pipelining Efficiency:  %.1f%% (%d/%d rounds)\n",
-				float64(cfg.ConcurrentRepolls)/float64(cfg.Beta)*100,
-				cfg.ConcurrentRepolls, cfg.Beta)
+				float64(cfg.ConcurrentReprisms)/float64(cfg.Beta)*100,
+				cfg.ConcurrentReprisms, cfg.Beta)
 		} else {
 			fmt.Printf("  Pipelining Efficiency:  100%% (full pipelining)\n")
 		}
