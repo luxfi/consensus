@@ -1,7 +1,7 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package consensus_test
+package tests
 
 import (
 	"fmt"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	. "github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/core/utils"
