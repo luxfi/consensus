@@ -4,7 +4,7 @@
 package prism
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/luxfi/consensus/testutils"
 	"github.com/luxfi/log"
 )
 
@@ -15,7 +15,7 @@ func init() {
 	// Initialize with a basic factory
 	DefaultFactory = NewFactory(
 		log.NewNoOpLogger(),
-		prometheus.NewRegistry(),
+		testutils.NewNoOpRegisterer(),
 		1, // alphaPreference
 		1, // alphaConfidence
 	)

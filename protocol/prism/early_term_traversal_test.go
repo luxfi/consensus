@@ -6,11 +6,11 @@ package prism_test
 import (
 	"testing"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/protocol/prism"
+	"github.com/luxfi/consensus/testutils"
 	"github.com/luxfi/consensus/utils/bag"
 )
 
@@ -34,7 +34,7 @@ func (p parentGetter) GetParent(id ids.ID) (ids.ID, bool) {
 }
 
 func newEarlyTermNoTraversalTestFactory(require *require.Assertions, alpha int) prism.Factory {
-	factory, err := prism.NewEarlyTermFactory(alpha, alpha, prometheus.NewRegistry(), parentGetter(returnEmpty))
+	factory, err := prism.NewEarlyTermFactory(alpha, alpha, testutils.NewNoOpRegisterer(), parentGetter(returnEmpty))
 	require.NoError(err)
 	return factory
 }
@@ -149,7 +149,7 @@ func TestEarlyTermNoTraversalTerminatesEarlyWithAlphaPreference(t *testing.T) {
 	alphaPreference := 3
 	alphaConfidence := 5
 
-	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, prometheus.NewRegistry(), parentGetter(returnEmpty))
+	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, testutils.NewNoOpRegisterer(), parentGetter(returnEmpty))
 	require.NoError(err)
 	prism := factory.New(vdrs)
 
@@ -174,7 +174,7 @@ func TestEarlyTermNoTraversalTerminatesEarlyWithAlphaConfidence(t *testing.T) {
 	alphaPreference := 3
 	alphaConfidence := 3
 
-	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, prometheus.NewRegistry(), parentGetter(returnEmpty))
+	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, testutils.NewNoOpRegisterer(), parentGetter(returnEmpty))
 	require.NoError(err)
 	prism := factory.New(vdrs)
 
@@ -205,7 +205,7 @@ func TestEarlyTermForSharedAncestor(t *testing.T) {
 		blkID4: blkID1,
 	}
 
-	factory, err := prism.NewEarlyTermFactory(alpha, alpha, prometheus.NewRegistry(), g)
+	factory, err := prism.NewEarlyTermFactory(alpha, alpha, testutils.NewNoOpRegisterer(), g)
 	require.NoError(err)
 
 	prism := factory.New(vdrs)
@@ -312,7 +312,7 @@ func TestEarlyTermTraversalNotAllBlocksAreVotedOn(t *testing.T) {
 		blkID4: blkID3,
 		blkID5: blkID4,
 	}
-	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, prometheus.NewRegistry(), g)
+	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, testutils.NewNoOpRegisterer(), g)
 	require.NoError(err)
 
 	prism := factory.New(vdrs)
@@ -360,7 +360,7 @@ func TestPollNoPrematureFinish(t *testing.T) {
 		blkID2: blkID1,
 	}
 
-	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, prometheus.NewRegistry(), g)
+	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, testutils.NewNoOpRegisterer(), g)
 	require.NoError(err)
 	prism := factory.New(vdrs)
 
@@ -399,7 +399,7 @@ func TestEarlyTermTraversalForest(t *testing.T) {
 		blkID1: blkID0,
 	}
 
-	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, prometheus.NewRegistry(), g)
+	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, testutils.NewNoOpRegisterer(), g)
 	require.NoError(err)
 	prism := factory.New(vdrs)
 
@@ -450,7 +450,7 @@ func TestEarlyTermTraversalTransitiveTree(t *testing.T) {
 		blkID2: blkID0,
 	}
 
-	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, prometheus.NewRegistry(), g)
+	factory, err := prism.NewEarlyTermFactory(alphaPreference, alphaConfidence, testutils.NewNoOpRegisterer(), g)
 	require.NoError(err)
 	prism := factory.New(vdrs)
 

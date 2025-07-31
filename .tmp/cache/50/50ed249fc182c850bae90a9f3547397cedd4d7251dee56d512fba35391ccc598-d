@@ -1,2 +1,0 @@
-./interrupt_handler.go
-./sigquit_swallower_unix.go
