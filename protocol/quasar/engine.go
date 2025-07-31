@@ -202,6 +202,10 @@ func (e *Engine) Start(ctx context.Context) error {
 	// 	}
 	// }
 	if e.nebula != nil {
+		// Initialize Nebula before starting
+		if err := e.nebula.Initialize(ctx); err != nil {
+			return fmt.Errorf("failed to initialize nebula: %w", err)
+		}
 		if err := e.nebula.Start(ctx); err != nil {
 			return fmt.Errorf("failed to start nebula: %w", err)
 		}
@@ -295,6 +299,10 @@ func (e *Engine) submitToPulsar(ctx context.Context, decision *ChainDecision) er
 	if e.pulsar == nil {
 		return fmt.Errorf("pulsar engine not initialized")
 	}
+	// Process through photonic stages
+	if err := e.processPhotonic(ctx, decision); err != nil {
+		return err
+	}
 	// TODO: implement Submit method for pulse
 	// return e.pulsar.Submit(ctx, decision)
 	return nil
@@ -304,6 +312,10 @@ func (e *Engine) submitToPulsar(ctx context.Context, decision *ChainDecision) er
 func (e *Engine) submitToNebula(ctx context.Context, decision *DAGDecision) error {
 	if e.nebula == nil {
 		return fmt.Errorf("nebula engine not initialized")
+	}
+	// Process through photonic stages
+	if err := e.processPhotonic(ctx, decision); err != nil {
+		return err
 	}
 	// TODO: implement Submit method for nebula
 	// return e.nebula.Submit(ctx, decision)
