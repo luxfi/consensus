@@ -105,7 +105,19 @@ func TestPhotonUnaryRecordPollPreference(t *testing.T) {
 	p := NewPhoton(params)
 	require.NoError(p.Add(Red))
 	
-	// Vote with just preference threshold
+	// With TestParameters, AlphaPreference == AlphaConfidence
+	// So we need to vote with less than AlphaPreference to avoid building confidence
+	weakVotes := bag.Bag[ids.ID]{}
+	for i := 0; i < params.AlphaPreference-1; i++ {
+		weakVotes.Add(Red)
+	}
+	
+	// This won't increment preference strength or confidence
+	require.NoError(p.RecordVotes(weakVotes))
+	require.Equal(Red, p.Preference()) // Still Red as initial choice
+	require.False(p.Finalized())
+	
+	// Vote with exactly AlphaPreference to increment preference but also confidence
 	prefVotes := bag.Bag[ids.ID]{}
 	for i := 0; i < params.AlphaPreference; i++ {
 		prefVotes.Add(Red)
@@ -113,12 +125,7 @@ func TestPhotonUnaryRecordPollPreference(t *testing.T) {
 	
 	require.NoError(p.RecordVotes(prefVotes))
 	require.Equal(Red, p.Preference())
-	// Not enough for confidence
-	require.False(p.Finalized())
-	
-	// Another preference poll
-	require.NoError(p.RecordVotes(prefVotes))
-	// Still not enough for confidence
+	// With TestParameters, this gives confidence = 1, not finalized yet
 	require.False(p.Finalized())
 }
 
@@ -236,10 +243,10 @@ func TestPhotonUnaryReset(t *testing.T) {
 		goodVotes.Add(Red)
 	}
 	
-	// Build confidence
+	// Build confidence but not enough to finalize
+	// With Beta=2, we need to do only 1 round
 	require.NoError(p.RecordVotes(goodVotes))
-	require.NoError(p.RecordVotes(goodVotes))
-	// Should have 2 rounds of confidence
+	// Should have 1 round of confidence, not finalized yet
 	require.False(p.Finalized())
 	
 	// Explicit unsuccessful poll

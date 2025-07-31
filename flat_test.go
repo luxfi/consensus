@@ -153,6 +153,10 @@ func TestFlatSingleVoter(t *testing.T) {
 	singleVote.Add(Blue)
 	
 	require.NoError(p.RecordVotes(singleVote))
+	if !p.Finalized() {
+		t.Logf("Not finalized after single vote. Preference: %v", p.Preference())
+		t.Logf("Pulse state: %v", p.String())
+	}
 	require.True(p.Finalized())
 	require.Equal(Blue, p.Preference())
 }
