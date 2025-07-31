@@ -285,21 +285,23 @@ func TestWaveRecordUnsuccessfulPoll(t *testing.T) {
 	require.NoError(w.Add(Red))
 	require.NoError(w.Add(Blue))
 	
-	// Build up some state
+	// Build up some state but not enough to finalize
 	goodVotes := bag.Bag[ids.ID]{}
 	for i := 0; i < params.AlphaConfidence; i++ {
 		goodVotes.Add(Blue)
 	}
 	
-	require.NoError(w.RecordVotes(goodVotes))
-	require.NoError(w.RecordVotes(goodVotes))
-	require.Equal(2, w.confidence)
-	require.Equal(2, w.preferenceStrength[Blue])
+	// Record only Beta-1 rounds so we're not finalized yet
+	for i := 0; i < params.Beta-1; i++ {
+		require.NoError(w.RecordVotes(goodVotes))
+	}
+	require.Equal(1, w.confidence)
+	require.Equal(1, w.preferenceStrength[Blue])
 	
 	// Explicit unsuccessful poll
 	w.RecordUnsuccessfulPoll()
 	require.Equal(0, w.confidence)
 	// Preference strength is maintained
-	require.Equal(2, w.preferenceStrength[Blue])
+	require.Equal(1, w.preferenceStrength[Blue])
 	require.False(w.Finalized())
 }

@@ -180,8 +180,17 @@ func (ts *Topological) Initialize(
 	ts.params = params
 	ts.lastAcceptedID = lastAcceptedID
 	ts.lastAcceptedHeight = lastAcceptedHeight
+	
+	// Create prism set for the last accepted block
+	prismFactory := prism.NewFactory(ctx.Log, ctx.Registerer, params.AlphaPreference, params.AlphaConfidence)
+	prismSet, err := prism.NewSet(prismFactory, ctx.Log, ctx.Registerer)
+	if err != nil {
+		// For the last accepted block, we can continue without a prism set
+		prismSet = nil
+	}
+	
 	ts.blocks = map[ids.ID]*beamBlock{
-		lastAcceptedID: {},
+		lastAcceptedID: {sb: prismSet},
 	}
 	ts.preferredIDs = set.Set[ids.ID]{}
 	ts.preferredHeights = make(map[uint64]ids.ID)
@@ -218,9 +227,17 @@ func (ts *Topological) Add(ctx context.Context, blk Block) error {
 	// add the block as a child of its parent, and add the block to the tree
 	parentNode.AddChild(blk)
 	
+	// Create prism set for the new block
+	prismFactory := prism.NewFactory(ts.ctx.Log, ts.ctx.Registerer, ts.params.AlphaPreference, ts.params.AlphaConfidence)
+	prismSet, err := prism.NewSet(prismFactory, ts.ctx.Log, ts.ctx.Registerer)
+	if err != nil {
+		return fmt.Errorf("failed to create prism set: %w", err)
+	}
+	
 	ts.blocks[blkID] = &beamBlock{
 		blk:      blk,
 		children: set.Set[ids.ID]{},
+		sb:       prismSet,
 	}
 
 	// If we are extending the preference, this is the new preference

@@ -4,6 +4,7 @@
 package pulse
 
 import (
+    "errors"
     "fmt"
 
     "github.com/luxfi/consensus/config"
@@ -45,6 +46,10 @@ func NewPulse(params config.Parameters) *Pulse {
 
 // Add adds a new choice to the consensus
 func (p *Pulse) Add(choice ids.ID) error {
+    if p.finalized {
+        return errors.New("cannot add choice after finalization")
+    }
+    
     // First choice becomes the initial preference
     if p.preference == ids.Empty {
         p.preference = choice
@@ -140,6 +145,9 @@ func (p *Pulse) recordPoll(count int, choice ids.ID) error {
         // Switch preference and reset confidence
         p.pulsePreference = choice
         p.confidence = 1
+        if p.confidence >= p.params.Beta {
+            p.finalized = true
+        }
     } else {
         // Unsuccessful poll
         p.confidence = 0

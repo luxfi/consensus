@@ -4,6 +4,7 @@
 package wave
 
 import (
+    "errors"
     "fmt"
 
     "github.com/luxfi/consensus/config"
@@ -48,6 +49,10 @@ func NewWave(params config.Parameters) *Wave {
 
 // Add adds a new choice to the consensus
 func (w *Wave) Add(choice ids.ID) error {
+    if w.finalized {
+        return errors.New("cannot add choice after finalization")
+    }
+    
     // First choice becomes the initial preference
     if w.preference == ids.Empty {
         w.preference = choice

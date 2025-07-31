@@ -205,15 +205,16 @@ func TestPhotonRecordUnsuccessfulPoll(t *testing.T) {
 	p := NewPhoton(params)
 	require.NoError(p.Add(Red))
 	
-	// Build up some confidence
+	// Build up some confidence but not enough to finalize
 	goodVotes := bag.Bag[ids.ID]{}
 	for i := 0; i < params.AlphaConfidence; i++ {
 		goodVotes.Add(Red)
 	}
 	
-	require.NoError(p.RecordVotes(goodVotes))
-	require.NoError(p.RecordVotes(goodVotes))
-	// Should have 2 rounds of confidence
+	// Record only Beta-1 rounds so we're not finalized yet
+	for i := 0; i < params.Beta-1; i++ {
+		require.NoError(p.RecordVotes(goodVotes))
+	}
 	require.False(p.Finalized())
 	
 	// Explicit unsuccessful poll
