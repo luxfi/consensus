@@ -1,16 +1,16 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package types
 
 import (
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/choices"
+	"github.com/luxfi/consensus/core/interfaces"
 )
 
 // Polyadic represents a polyadic consensus object
 type Polyadic interface {
-	choices.Decidable
+	interfaces.Decidable
 	
 	// ID returns the unique identifier
 	ID() ids.ID

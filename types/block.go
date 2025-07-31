@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries, Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package types
@@ -6,13 +6,13 @@ package types
 import (
 	"time"
 
-	"github.com/luxfi/consensus/choices"
+	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/ids"
 )
 
 // Block represents a block in the blockchain
 type Block interface {
-	choices.Decidable
+	interfaces.Decidable
 
 	// Parent returns the ID of this block's parent
 	Parent() ids.ID

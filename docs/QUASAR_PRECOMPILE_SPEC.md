@@ -167,7 +167,7 @@ If `verifyQuantumCert` hasn't been called yet for the height range, proposers mu
 
 ## 8. Implementation Notes
 
-The precompile is implemented in Go and integrated into Subnet-EVM at build time. The Ringtail verification uses the `github.com/daryakaviani/ringtail` library v0.3.2.
+The precompile is implemented in Go and integrated into Subnet-EVM at build time. The Ringtail verification uses the `github.com/luxfi/crypto/ringtail` library v0.1.0.
 
 ### 8.1 Precompile Registration
 ```go

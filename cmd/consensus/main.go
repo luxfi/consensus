@@ -30,9 +30,9 @@ func main() {
 		checkCmd(),
 		simCmd(),
 		benchmarkCmd(),
-		benchCmd(),    // New distributed benchmark command
+		// benchCmd(),    // Disabled - needs ZMQ API update
 		paramsCmd(),
-		zmqCmd(),
+		// zmqCmd(),      // Disabled - needs ZMQ API update
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -126,52 +126,53 @@ parameter tuning, and validation.`,
 	return cmd
 }
 
-func zmqCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "zmq",
-		Short: "ZeroMQ-based multi-host consensus testing",
-		Long: `Tools for running consensus tests across multiple hosts using ZeroMQ
-for high-performance message passing between nodes.`,
-	}
+// Disabled until ZMQ API is updated
+// func zmqCmd() *cobra.Command {
+// 	cmd := &cobra.Command{
+// 		Use:   "zmq",
+// 		Short: "ZeroMQ-based multi-host consensus testing",
+// 		Long: `Tools for running consensus tests across multiple hosts using ZeroMQ
+// for high-performance message passing between nodes.`,
+// 	}
 
-	// Add subcommands for ZMQ testing
-	cmd.AddCommand(
-		&cobra.Command{
-			Use:   "coordinator",
-			Short: "Run ZMQ coordinator node",
-			Long: `Start a coordinator node that manages consensus testing across
-multiple hosts connected via ZeroMQ.`,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return runZMQCoordinator(cmd, args)
-			},
-		},
-		&cobra.Command{
-			Use:   "worker",
-			Short: "Run ZMQ worker node",
-			Long: `Start a worker node that participates in consensus testing
-coordinated via ZeroMQ.`,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return runZMQWorker(cmd, args)
-			},
-		},
-		&cobra.Command{
-			Use:   "test",
-			Short: "Run distributed consensus test",
-			Long: `Execute a distributed consensus test across multiple hosts
-using ZeroMQ for communication.`,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return runZMQTest(cmd, args)
-			},
-		},
-	)
+// 	// Add subcommands for ZMQ testing
+// 	cmd.AddCommand(
+// 		&cobra.Command{
+// 			Use:   "coordinator",
+// 			Short: "Run ZMQ coordinator node",
+// 			Long: `Start a coordinator node that manages consensus testing across
+// multiple hosts connected via ZeroMQ.`,
+// 			RunE: func(cmd *cobra.Command, args []string) error {
+// 				return runZMQCoordinator(cmd, args)
+// 			},
+// 		},
+// 		&cobra.Command{
+// 			Use:   "worker",
+// 			Short: "Run ZMQ worker node",
+// 			Long: `Start a worker node that participates in consensus testing
+// coordinated via ZeroMQ.`,
+// 			RunE: func(cmd *cobra.Command, args []string) error {
+// 				return runZMQWorker(cmd, args)
+// 			},
+// 		},
+// 		&cobra.Command{
+// 			Use:   "test",
+// 			Short: "Run distributed consensus test",
+// 			Long: `Execute a distributed consensus test across multiple hosts
+// using ZeroMQ for communication.`,
+// 			RunE: func(cmd *cobra.Command, args []string) error {
+// 				return runZMQTest(cmd, args)
+// 			},
+// 		},
+// 	)
 
-	// Add common ZMQ flags
-	for _, subCmd := range cmd.Commands() {
-		subCmd.Flags().String("connect", "tcp://localhost:5555", "ZeroMQ coordinator address")
-		subCmd.Flags().String("bind", "", "ZeroMQ bind address (coordinator only)")
-		subCmd.Flags().Int("workers", 10, "Number of worker nodes")
-		subCmd.Flags().Duration("timeout", 60, "Test timeout in seconds")
-	}
+// 	// Add common ZMQ flags
+// 	for _, subCmd := range cmd.Commands() {
+// 		subCmd.Flags().String("connect", "tcp://localhost:5555", "ZeroMQ coordinator address")
+// 		subCmd.Flags().String("bind", "", "ZeroMQ bind address (coordinator only)")
+// 		subCmd.Flags().Int("workers", 10, "Number of worker nodes")
+// 		subCmd.Flags().Duration("timeout", 60, "Test timeout in seconds")
+// 	}
 
-	return cmd
-}
+// 	return cmd
+// }

@@ -1,4 +1,4 @@
-# Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+# Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 # See the file LICENSE for licensing terms.
 
 .PHONY: all test build clean lint format check tools help benchmark benchmark-node benchmark-zmq test-parallel test-cluster
@@ -10,34 +10,39 @@ all: build test
 build: ## Build all tools and commands
 	@echo "Building all tools..."
 	@echo "Building params..."
-	@go build -o bin/params ./cmd/params || echo "❌ Failed to build params"
+	@go build -o bin/params ./cmd/params || echo "ERROR: Failed to build params"
 	@echo "Building checker..."
-	@go build -o bin/checker ./cmd/checker || echo "❌ Failed to build checker"
+	@go build -o bin/checker ./cmd/checker || echo "ERROR: Failed to build checker"
 	@echo "Building simulator..."
-	@go build -o bin/sim ./cmd/sim || echo "❌ Failed to build sim"
+	@go build -o bin/sim ./cmd/sim || echo "ERROR: Failed to build sim"
 	@echo "Building zmq-bench (standalone)..."
-	@cd cmd/zmq-bench && go build -tags zmq -o ../../bin/zmq-bench . || echo "⚠️  Skipping zmq-bench - requires ZMQ"
-	@echo "Building consensus CLI plugin (separate module)..."
-	@echo "⚠️  Skipping consensus CLI - separate module"
-	@echo "✅ Build complete! Successfully built tools:"
-	@ls -1 bin/ 2>/dev/null || echo "No tools built"
+	@cd cmd/zmq-bench && go build -tags zmq -o ../../bin/zmq-bench . || echo "WARNING: Skipping zmq-bench - requires ZMQ"
+	@echo "Building consensus CLI..."
+	@go build -o bin/consensus ./cmd/consensus || echo "ERROR: Failed to build consensus CLI"
+	@echo "Build complete! Successfully built tools:"
+	@ls -1 bin/ 2>/dev/null | grep -v '^$$' || echo "No tools built"
 
 # Build tools that depend on node package (currently broken due to unused imports)
 build-full: build ## Build all tools including those with node dependencies
 	@echo "Building benchmark (requires fixing node package imports)..."
-	@go build -tags zmq -o bin/benchmark ./cmd/benchmark 2>&1 || echo "⚠️  Skipping - fix needed in node/network/peer/test_peer.go"
+	@go build -tags zmq -o bin/benchmark ./cmd/benchmark 2>&1 || echo "WARNING: Skipping - fix needed in node/network/peer/test_peer.go"
 	@echo "Building benchmark-simple..."
-	@go build -o bin/benchmark-simple ./cmd/benchmark-simple 2>&1 || echo "⚠️  Skipping - fix needed in node package"
+	@go build -o bin/benchmark-simple ./cmd/benchmark-simple 2>&1 || echo "WARNING: Skipping - fix needed in node package"
 
 # Run all tests
 test: ## Run all tests
 	@echo "Running tests..."
-	@go test -race -timeout 30m -tags="!integration" ./...
+	@go test -race -timeout 5m -tags="!integration" ./... 2>&1 | grep -v "warning.*LD_DYSYMTAB" | grep -v "has malformed LC_DYSYMTAB"
+
+# Run tests (verbose, showing warnings)
+test-verbose: ## Run tests with all output including warnings
+	@echo "Running tests (verbose)..."
+	@go test -race -timeout 5m -tags="!integration" ./...
 
 # Run tests with coverage
 test-coverage: ## Run tests with coverage report
 	@echo "Running tests with coverage..."
-	@go test -race -timeout 30m -coverprofile=coverage.out -covermode=atomic ./...
+	@go test -race -timeout 5m -coverprofile=coverage.out -covermode=atomic ./...
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
