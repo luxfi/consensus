@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package main
@@ -10,10 +10,15 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/factories"
-	"github.com/luxfi/consensus/poll"
 	"github.com/luxfi/ids"
 )
+
+type nodeState struct {
+	id         ids.ID
+	preference ids.ID
+	confidence int
+	byzantine  bool
+}
 
 func runSimulator(cmd *cobra.Command, args []string) error {
 	// Get simulation parameters
@@ -21,190 +26,155 @@ func runSimulator(cmd *cobra.Command, args []string) error {
 	rounds, _ := cmd.Flags().GetInt("rounds")
 	byzantinePercent, _ := cmd.Flags().GetFloat64("byzantine")
 	latencyMs, _ := cmd.Flags().GetInt("latency")
-	factory, _ := cmd.Flags().GetString("factory")
+	dropRate, _ := cmd.Flags().GetFloat64("drop-rate")
 	
 	// Get consensus parameters
-	params := config.DefaultParameters
-	k, _ := cmd.Flags().GetInt("k")
-	if k > 0 {
-		params.K = k
+	preset, _ := cmd.Flags().GetString("preset")
+	params, err := config.GetParametersByName(preset)
+	if err != nil {
+		return fmt.Errorf("invalid preset: %w", err)
 	}
-
-	fmt.Printf("=== Consensus Simulation ===\n")
-	fmt.Printf("Nodes: %d\n", nodes)
-	fmt.Printf("Rounds: %d\n", rounds)
-	fmt.Printf("Byzantine nodes: %.1f%%\n", byzantinePercent*100)
-	fmt.Printf("Network latency: %dms\n", latencyMs)
-	fmt.Printf("Factory: %s\n", factory)
-	fmt.Printf("K: %d\n", params.K)
 	
-	// Initialize random seed
-	rand.Seed(time.Now().UnixNano())
+	byzantineNodes := int(float64(nodes) * byzantinePercent)
+	honestNodes := nodes - byzantineNodes
+	
+	fmt.Printf("=== Consensus Simulation ===\n")
+	fmt.Printf("Total nodes: %d (honest: %d, byzantine: %d)\n", nodes, honestNodes, byzantineNodes)
+	fmt.Printf("Rounds: %d\n", rounds)
+	fmt.Printf("Network latency: %dms\n", latencyMs)
+	fmt.Printf("Packet drop rate: %.1f%%\n", dropRate*100)
+	fmt.Printf("Consensus parameters: %s\n", preset)
+	fmt.Printf("\n")
 	
 	// Create nodes
-	byzantineCount := int(float64(nodes) * byzantinePercent)
-	fmt.Printf("\nInitializing %d honest nodes and %d byzantine nodes...\n", 
-		nodes-byzantineCount, byzantineCount)
-
-	// Select factory
-	var pollFactory poll.Factory
-	switch factory {
-	case "confidence":
-		pollFactory = factories.ConfidenceFactory
-	case "threshold":
-		pollFactory = factories.FlatFactory
-	default:
-		pollFactory = poll.DefaultFactory
-	}
-
-	// Convert config parameters to poll parameters
-	pollParams := poll.ConvertConfigParams(params)
-	
-	// Create consensus instances
-	consensusNodes := make([]poll.Unary, nodes)
-	choices := make([]ids.ID, nodes)
-	
-	// Initialize with random preferences
-	choice0 := ids.GenerateTestID()
-	choice1 := ids.GenerateTestID()
-	
+	nodeStates := make([]nodeState, nodes)
 	for i := 0; i < nodes; i++ {
-		consensusNodes[i] = pollFactory.NewUnary(pollParams)
-		if rand.Float64() < 0.5 {
-			choices[i] = choice0
-		} else {
-			choices[i] = choice1
+		nodeStates[i] = nodeState{
+			id:         ids.GenerateTestID(),
+			preference: ids.Empty,
+			confidence: 0,
+			byzantine:  i < byzantineNodes,
 		}
 	}
-
-	// Mark byzantine nodes
-	byzantineNodes := make(map[int]bool)
-	for i := 0; i < byzantineCount; i++ {
-		idx := rand.Intn(nodes)
-		byzantineNodes[idx] = true
-	}
-
+	
 	// Run simulation
-	fmt.Printf("\nRunning simulation...\n")
 	startTime := time.Now()
-	finalizedCount := 0
+	finalizedRound := -1
+	
+	// Initial preference
+	choiceA := ids.GenerateTestID()
+	choiceB := ids.GenerateTestID()
 	
 	for round := 0; round < rounds; round++ {
-		// Check if all honest nodes have finalized
-		allFinalized := true
-		for i, node := range consensusNodes {
-			if !byzantineNodes[i] && !node.Finalized() {
-				allFinalized = false
-				break
+		// Each node samples k others
+		votesA := 0
+		votesB := 0
+		
+		for i, node := range nodeStates {
+			if node.byzantine {
+				// Byzantine nodes vote randomly
+				if rand.Float64() < 0.5 {
+					votesA++
+				} else {
+					votesB++
+				}
+			} else {
+				// Honest nodes follow protocol
+				sample := sampleNodes(nodeStates, params.K, i)
+				countA, countB := countVotes(sample, choiceA, choiceB)
+				
+				if countA >= params.AlphaPreference {
+					nodeStates[i].preference = choiceA
+					votesA++
+				} else if countB >= params.AlphaPreference {
+					nodeStates[i].preference = choiceB
+					votesB++
+				}
+				
+				// Update confidence
+				if nodeStates[i].preference != ids.Empty {
+					if (nodeStates[i].preference == choiceA && countA >= params.AlphaConfidence) ||
+					   (nodeStates[i].preference == choiceB && countB >= params.AlphaConfidence) {
+						nodeStates[i].confidence++
+					} else {
+						nodeStates[i].confidence = 0
+					}
+				}
 			}
 		}
 		
-		if allFinalized {
-			fmt.Printf("\nAll honest nodes finalized after %d rounds\n", round)
+		// Check finalization
+		finalizedA := 0
+		finalizedB := 0
+		for _, node := range nodeStates {
+			if node.confidence >= params.Beta {
+				if node.preference == choiceA {
+					finalizedA++
+				} else if node.preference == choiceB {
+					finalizedB++
+				}
+			}
+		}
+		
+		fmt.Printf("Round %3d: A=%3d B=%3d (finalized: A=%d B=%d)\n", 
+			round+1, votesA, votesB, finalizedA, finalizedB)
+		
+		// Check if consensus reached
+		if finalizedA > nodes/2 || finalizedB > nodes/2 {
+			finalizedRound = round + 1
 			break
 		}
 		
 		// Simulate network delay
-		if latencyMs > 0 {
-			time.Sleep(time.Duration(latencyMs) * time.Millisecond)
-		}
-		
-		// Each node samples K peers
-		for i, node := range consensusNodes {
-			if node.Finalized() {
-				continue
-			}
-			
-			// Sample K random peers
-			votes := make([]ids.ID, 0, params.K)
-			sampled := make(map[int]bool)
-			
-			for len(votes) < params.K {
-				peer := rand.Intn(nodes)
-				if sampled[peer] {
-					continue
-				}
-				sampled[peer] = true
-				
-				// Byzantine nodes may lie
-				if byzantineNodes[peer] {
-					// Byzantine strategy: always vote for minority
-					if rand.Float64() < 0.8 { // 80% malicious behavior
-						votes = append(votes, choice1) // Assume choice1 is minority
-					} else {
-						votes = append(votes, choices[peer])
-					}
-				} else {
-					votes = append(votes, consensusNodes[peer].Preference())
-				}
-			}
-			
-			// Record poll results
-			node.RecordPoll(votes)
-			
-			// Update choice for this node
-			choices[i] = node.Preference()
-			
-			// Count finalized nodes
-			if node.Finalized() && !byzantineNodes[i] {
-				finalizedCount++
-			}
-		}
-		
-		// Progress update every 10 rounds
-		if round%10 == 0 && round > 0 {
-			finalized := 0
-			for i, node := range consensusNodes {
-				if !byzantineNodes[i] && node.Finalized() {
-					finalized++
-				}
-			}
-			fmt.Printf("Round %d: %d/%d honest nodes finalized\n", 
-				round, finalized, nodes-byzantineCount)
-		}
-	}
-
-	elapsed := time.Since(startTime)
-	
-	// Results
-	fmt.Printf("\n=== Simulation Results ===\n")
-	fmt.Printf("Total time: %v\n", elapsed)
-	
-	// Count final preferences
-	preference0 := 0
-	preference1 := 0
-	for i, node := range consensusNodes {
-		if byzantineNodes[i] {
-			continue
-		}
-		if node.Preference() == choice0 {
-			preference0++
-		} else {
-			preference1++
-		}
+		time.Sleep(time.Duration(latencyMs) * time.Millisecond)
 	}
 	
-	fmt.Printf("Final consensus:\n")
-	fmt.Printf("  Choice 0: %d nodes\n", preference0)
-	fmt.Printf("  Choice 1: %d nodes\n", preference1)
+	duration := time.Since(startTime)
 	
-	// Check if consensus was achieved
-	if preference0 == nodes-byzantineCount || preference1 == nodes-byzantineCount {
-		fmt.Printf("✓ Consensus achieved!\n")
+	fmt.Printf("\n=== Results ===\n")
+	if finalizedRound > 0 {
+		fmt.Printf("Consensus reached in round %d\n", finalizedRound)
+		fmt.Printf("Time to finality: %v\n", duration)
 	} else {
-		fmt.Printf("✗ Consensus not achieved\n")
+		fmt.Printf("No consensus after %d rounds\n", rounds)
 	}
-
+	
 	return nil
 }
 
-func init() {
-	// Add flags to sim command
-	simCmd := simCmd()
-	simCmd.Flags().Int("nodes", 100, "Number of nodes in the network")
-	simCmd.Flags().Int("rounds", 50, "Maximum number of rounds to simulate")
-	simCmd.Flags().Float64("byzantine", 0.2, "Percentage of byzantine nodes (0.0-0.33)")
-	simCmd.Flags().Int("latency", 10, "Network latency in milliseconds")
-	simCmd.Flags().String("factory", "confidence", "Consensus factory: confidence, threshold, default")
-	simCmd.Flags().Int("k", 0, "Sample size (K parameter)")
+
+func sampleNodes(nodes []nodeState, k int, excludeIdx int) []nodeState {
+	sample := make([]nodeState, 0, k)
+	indices := make([]int, 0, len(nodes)-1)
+	
+	for i := range nodes {
+		if i != excludeIdx {
+			indices = append(indices, i)
+		}
+	}
+	
+	rand.Shuffle(len(indices), func(i, j int) {
+		indices[i], indices[j] = indices[j], indices[i]
+	})
+	
+	for i := 0; i < k && i < len(indices); i++ {
+		sample = append(sample, nodes[indices[i]])
+	}
+	
+	return sample
+}
+
+func countVotes(sample []nodeState, choiceA, choiceB ids.ID) (int, int) {
+	countA := 0
+	countB := 0
+	
+	for _, node := range sample {
+		if node.preference == choiceA {
+			countA++
+		} else if node.preference == choiceB {
+			countB++
+		}
+	}
+	
+	return countA, countB
 }

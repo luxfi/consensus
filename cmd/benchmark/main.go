@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
-	quantum "github.com/luxfi/consensus/engine/quasar"
+	quantum "github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/consensus/utils/transport"
 	"github.com/luxfi/consensus/utils/transport/zmq"
 	"github.com/luxfi/ids"

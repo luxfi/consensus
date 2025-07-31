@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package main
@@ -21,7 +21,7 @@ func main() {
 		alphaPref    = flag.Int("alpha-pref", 0, "Preference quorum threshold")
 		alphaConf    = flag.Int("alpha-conf", 0, "Confidence quorum threshold")
 		beta         = flag.Int("beta", 0, "Consecutive rounds threshold")
-		concurrent   = flag.Int("concurrent", 0, "Concurrent repolls")
+		concurrent   = flag.Int("concurrent", 0, "Concurrent reprisms")
 		optimize     = flag.String("optimize", "", "Optimize for: latency, security, throughput")
 		output       = flag.String("output", "", "Output file for parameters (JSON)")
 		summary      = flag.Bool("summary", false, "Show parameter summary")
@@ -106,7 +106,7 @@ func main() {
 		builder = builder.WithBeta(*beta)
 	}
 	if *concurrent > 0 {
-		builder = builder.WithConcurrentRepolls(*concurrent)
+		builder = builder.WithConcurrentReprisms(*concurrent)
 	}
 
 	// Apply target finality

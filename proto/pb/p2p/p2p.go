@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries, Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package p2p
@@ -18,7 +18,7 @@ func (e EngineType) String() string {
 	case EngineType_ENGINE_TYPE_BEAM:
 		return "beam"
 	case EngineType_ENGINE_TYPE_SNOWMAN:
-		return "snowman"
+		return "nova"
 	default:
 		return "unspecified"
 	}

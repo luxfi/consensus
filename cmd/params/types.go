@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package main
@@ -111,7 +111,7 @@ func CalculateOptimalParameters(nc NetworkCharacteristics) (*config.Parameters, 
 	beta := calculateBeta(nc.TargetFinalityMs, nc.NetworkLatencyMs)
 	
 	// Calculate processing parameters
-	concurrentRepolls := min(beta, 10)
+	concurrentReprisms := min(beta, 10)
 	maxItemProcessingTime := time.Duration(nc.TargetFinalityMs) * time.Millisecond
 	
 	params := &config.Parameters{
@@ -119,7 +119,7 @@ func CalculateOptimalParameters(nc NetworkCharacteristics) (*config.Parameters, 
 		AlphaPreference:       alphaPreference,
 		AlphaConfidence:       alphaConfidence,
 		Beta:                  beta,
-		ConcurrentRepolls:     concurrentRepolls,
+		ConcurrentReprisms:     concurrentReprisms,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: maxItemProcessingTime,
@@ -131,9 +131,9 @@ func CalculateOptimalParameters(nc NetworkCharacteristics) (*config.Parameters, 
 		"- AlphaPreference=%d (>K/2) for preference changes\n"+
 		"- AlphaConfidence=%d for strong confidence\n"+
 		"- Beta=%d rounds for %dms finality\n"+
-		"- ConcurrentRepolls=%d for parallel processing",
+		"- ConcurrentReprisms=%d for parallel processing",
 		nc.TotalNodes, nc.ExpectedFailureRate*100,
-		k, alphaPreference, alphaConfidence, beta, nc.TargetFinalityMs, concurrentRepolls)
+		k, alphaPreference, alphaConfidence, beta, nc.TargetFinalityMs, concurrentReprisms)
 	
 	return params, reasoning
 }
@@ -345,7 +345,7 @@ func ConfigToParameters(cfg *config.Config) *config.Parameters {
 		AlphaPreference:       cfg.AlphaPreference,
 		AlphaConfidence:       cfg.AlphaConfidence,
 		Beta:                  cfg.Beta,
-		ConcurrentRepolls:     cfg.ConcurrentRepolls,
+		ConcurrentReprisms:     cfg.ConcurrentReprisms,
 		OptimalProcessing:     cfg.OptimalProcessing,
 		MaxOutstandingItems:   cfg.MaxOutstandingItems,
 		MaxItemProcessingTime: cfg.MaxItemProcessingTime,
@@ -359,7 +359,7 @@ func ParametersToConfig(params *config.Parameters) *config.Config {
 		AlphaPreference:       params.AlphaPreference,
 		AlphaConfidence:       params.AlphaConfidence,
 		Beta:                  params.Beta,
-		ConcurrentRepolls:     params.ConcurrentRepolls,
+		ConcurrentReprisms:     params.ConcurrentReprisms,
 		OptimalProcessing:     params.OptimalProcessing,
 		MaxOutstandingItems:   params.MaxOutstandingItems,
 		MaxItemProcessingTime: params.MaxItemProcessingTime,
@@ -389,12 +389,12 @@ func Summary(p *config.Parameters) string {
 		"  Alpha Preference: %d (%.1f%% of K)\n"+
 		"  Alpha Confidence: %d (%.1f%% of K)\n"+
 		"  Beta (Rounds): %d\n"+
-		"  Concurrent Repolls: %d\n"+
+		"  Concurrent Reprisms: %d\n"+
 		"  Max Processing Time: %v",
 		p.K,
 		p.AlphaPreference, float64(p.AlphaPreference)/float64(p.K)*100,
 		p.AlphaConfidence, float64(p.AlphaConfidence)/float64(p.K)*100,
 		p.Beta,
-		p.ConcurrentRepolls,
+		p.ConcurrentReprisms,
 		p.MaxItemProcessingTime)
 }
