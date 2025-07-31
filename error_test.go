@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	. "github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/protocol/photon"
 	"github.com/luxfi/consensus/protocol/pulse"
