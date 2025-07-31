@@ -5,7 +5,7 @@ go 1.24.5
 require (
 	github.com/luxfi/crypto v1.0.2
 	github.com/luxfi/database v1.1.3
-	github.com/luxfi/ids v0.1.0
+	github.com/luxfi/ids v0.1.1
 	github.com/luxfi/log v0.1.0
 	github.com/luxfi/trace v0.1.0
 	github.com/luxfi/zmq4 v1.0.1
@@ -13,6 +13,7 @@ require (
 	github.com/onsi/gomega v1.37.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.1
+	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/trace v1.37.0
@@ -38,11 +39,13 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
+	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/supranational/blst v0.3.15 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.37.0 // indirect
@@ -59,19 +62,7 @@ require (
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/tools v0.35.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250721164621-a45f3dfb1074 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250721164621-a45f3dfb1074 // indirect
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// Use local packages
-replace github.com/luxfi/crypto => ../crypto
-
-replace github.com/luxfi/database => ../database
-
-replace github.com/luxfi/ids => ../ids
-
-replace github.com/luxfi/log => ../log
-
-replace github.com/luxfi/trace => ../trace

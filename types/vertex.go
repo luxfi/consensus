@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries, Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package types
@@ -6,13 +6,12 @@ package types
 import (
 	"context"
 
-	"github.com/luxfi/consensus/choices"
-	"github.com/luxfi/consensus/flare"
+	"github.com/luxfi/consensus/core/interfaces"
 )
 
 // Vertex represents a vertex in the DAG
 type Vertex interface {
-	choices.Decidable
+	interfaces.Decidable
 
 	// Returns the vertices this vertex depends on
 	Parents() ([]Vertex, error)
@@ -22,7 +21,7 @@ type Vertex interface {
 	Height() (uint64, error)
 
 	// Returns a series of state transitions to be performed on acceptance
-	Txs(context.Context) ([]flare.Tx, error)
+	Txs(context.Context) ([]Tx, error)
 
 	// Returns the binary representation of this vertex
 	Bytes() []byte

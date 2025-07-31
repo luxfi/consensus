@@ -1,83 +1,24 @@
-// Copyright (C) 2025, Lux Indutries, Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package choices
 
-import (
-	"errors"
-
-	"github.com/luxfi/consensus/utils/wrappers"
-)
-
-var errUnknownStatus = errors.New("unknown status")
-
+// Status represents the current status of a block or decision
 type Status uint32
 
-// List of possible status values
-// [Unknown] Zero value, means the operation is not known
-// [Processing] means the operation is known, but hasn't been decided yet
-// [Rejected] means the operation will never be accepted
-// [Accepted] means the operation was accepted
 const (
+	// Unknown The status of this vertex is not yet known
 	Unknown Status = iota
+
+	// Processing The vertex is being processed
 	Processing
+
+	// Rejected The vertex was rejected
 	Rejected
+
+	// Accepted The vertex was accepted
 	Accepted
 )
-
-func (s Status) MarshalJSON() ([]byte, error) {
-	if err := s.Valid(); err != nil {
-		return nil, err
-	}
-	return []byte(`"` + s.String() + `"`), nil
-}
-
-func (s *Status) UnmarshalJSON(b []byte) error {
-	switch string(b) {
-	case "null":
-	case `"Unknown"`:
-		*s = Unknown
-	case `"Processing"`:
-		*s = Processing
-	case `"Rejected"`:
-		*s = Rejected
-	case `"Accepted"`:
-		*s = Accepted
-	default:
-		return errUnknownStatus
-	}
-	return nil
-}
-
-// Fetched returns true if the status has been set.
-func (s Status) Fetched() bool {
-	switch s {
-	case Processing:
-		return true
-	default:
-		return s.Decided()
-	}
-}
-
-// Decided returns true if the status is Rejected or Accepted.
-func (s Status) Decided() bool {
-	switch s {
-	case Rejected, Accepted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Valid returns nil if the status is a valid status.
-func (s Status) Valid() error {
-	switch s {
-	case Unknown, Processing, Rejected, Accepted:
-		return nil
-	default:
-		return errUnknownStatus
-	}
-}
 
 func (s Status) String() string {
 	switch s {
@@ -94,9 +35,32 @@ func (s Status) String() string {
 	}
 }
 
-// Bytes returns the byte repr. of this status
-func (s Status) Bytes() []byte {
-	p := wrappers.Packer{Bytes: make([]byte, 4)}
-	p.PackInt(uint32(s))
-	return p.Bytes
+// Valid returns true if the status is valid
+func (s Status) Valid() bool {
+	switch s {
+	case Unknown, Processing, Rejected, Accepted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Decided returns true if the status is Accepted or Rejected
+func (s Status) Decided() bool {
+	switch s {
+	case Accepted, Rejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Fetched returns true if the status has been fetched
+func (s Status) Fetched() bool {
+	switch s {
+	case Processing, Accepted, Rejected:
+		return true
+	default:
+		return false
+	}
 }

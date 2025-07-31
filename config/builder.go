@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package config
@@ -24,7 +24,7 @@ type Config struct {
 	AlphaPreference       int           `json:"alphaPreference"`
 	AlphaConfidence       int           `json:"alphaConfidence"`
 	Beta                  int           `json:"beta"`
-	ConcurrentRepolls     int           `json:"concurrentRepolls"`
+	ConcurrentReprisms     int           `json:"concurrentReprisms"`
 	OptimalProcessing     int           `json:"optimalProcessing"`
 	MaxOutstandingItems   int           `json:"maxOutstandingItems"`
 	MaxItemProcessingTime time.Duration `json:"maxItemProcessingTime"`
@@ -58,7 +58,7 @@ func NewBuilder() *Builder {
 			AlphaPreference:       7,
 			AlphaConfidence:       9,
 			Beta:                  10,
-			ConcurrentRepolls:     10,
+			ConcurrentReprisms:     10,
 			OptimalProcessing:     10,
 			MaxOutstandingItems:   256,
 			MaxItemProcessingTime: 10 * time.Second,
@@ -158,30 +158,30 @@ func (b *Builder) WithBeta(beta int) *Builder {
 	
 	b.config.Beta = beta
 	
-	// Auto-set concurrent repolls if not explicitly set
-	if b.config.ConcurrentRepolls > beta {
-		b.config.ConcurrentRepolls = beta
+	// Auto-set concurrent reprisms if not explicitly set
+	if b.config.ConcurrentReprisms > beta {
+		b.config.ConcurrentReprisms = beta
 	}
 	
 	return b
 }
 
-// WithConcurrentRepolls sets the pipelining factor
-func (b *Builder) WithConcurrentRepolls(concurrent int) *Builder {
+// WithConcurrentReprisms sets the pipelining factor
+func (b *Builder) WithConcurrentReprisms(concurrent int) *Builder {
 	if b.err != nil {
 		return b
 	}
 	
 	if concurrent < 1 {
-		b.err = fmt.Errorf("ConcurrentRepolls must be at least 1, got %d", concurrent)
+		b.err = fmt.Errorf("ConcurrentReprisms must be at least 1, got %d", concurrent)
 		return b
 	}
 	if concurrent > b.config.Beta {
-		b.err = fmt.Errorf("ConcurrentRepolls cannot exceed Beta, got %d > %d", concurrent, b.config.Beta)
+		b.err = fmt.Errorf("ConcurrentReprisms cannot exceed Beta, got %d > %d", concurrent, b.config.Beta)
 		return b
 	}
 	
-	b.config.ConcurrentRepolls = concurrent
+	b.config.ConcurrentReprisms = concurrent
 	return b
 }
 
@@ -210,7 +210,7 @@ func (b *Builder) WithTargetFinality(target time.Duration, networkLatencyMs int)
 	}
 	
 	b.config.Beta = requiredBeta
-	b.config.ConcurrentRepolls = requiredBeta // Full pipelining
+	b.config.ConcurrentReprisms = requiredBeta // Full pipelining
 	b.config.NetworkLatency = roundTime
 	
 	return b
@@ -243,7 +243,7 @@ func (b *Builder) ForNodeCount(totalNodes int) *Builder {
 	// Adjust Beta for larger networks
 	if totalNodes > 100 && b.config.Beta < 15 {
 		b.config.Beta = 15
-		b.config.ConcurrentRepolls = 15
+		b.config.ConcurrentReprisms = 15
 	}
 	
 	return b
@@ -259,7 +259,7 @@ func (b *Builder) OptimizeForLatency() *Builder {
 	if b.config.Beta > 5 {
 		b.config.Beta = 5
 	}
-	b.config.ConcurrentRepolls = b.config.Beta
+	b.config.ConcurrentReprisms = b.config.Beta
 	
 	// Increase processing capacity
 	b.config.OptimalProcessing = 32
@@ -296,7 +296,7 @@ func (b *Builder) OptimizeForThroughput() *Builder {
 	
 	b.config.OptimalProcessing = 64
 	b.config.MaxOutstandingItems = 4096
-	b.config.ConcurrentRepolls = b.config.Beta // Max pipelining
+	b.config.ConcurrentReprisms = b.config.Beta // Max pipelining
 	
 	return b
 }
@@ -323,7 +323,7 @@ var (
 		AlphaPreference:       13,
 		AlphaConfidence:       18,
 		Beta:                  8,
-		ConcurrentRepolls:     8,
+		ConcurrentReprisms:     8,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: 9630 * time.Millisecond,
@@ -340,7 +340,7 @@ var (
 		AlphaPreference:       7,
 		AlphaConfidence:       9,
 		Beta:                  6,
-		ConcurrentRepolls:     6,
+		ConcurrentReprisms:     6,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: 6300 * time.Millisecond,
@@ -357,7 +357,7 @@ var (
 		AlphaPreference:       4,
 		AlphaConfidence:       4,
 		Beta:                  3,
-		ConcurrentRepolls:     3,
+		ConcurrentReprisms:     3,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: 3690 * time.Millisecond,

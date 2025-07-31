@@ -1,14 +1,28 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 	
 	"github.com/luxfi/log"
+)
+
+// Validation errors
+var (
+	ErrKTooLow                     = errors.New("k is too low")
+	ErrAlphaPreferenceTooLow       = errors.New("alpha preference is too low")
+	ErrAlphaPreferenceTooHigh      = errors.New("alpha preference is too high")
+	ErrAlphaConfidenceTooSmall     = errors.New("alpha confidence is too small")
+	ErrBetaTooLow                  = errors.New("beta is too low")
+	ErrConcurrentReprismsTooLow     = errors.New("concurrent reprisms is too low")
+	ErrOptimalProcessingTooLow     = errors.New("optimal processing is too low")
+	ErrMaxOutstandingItemsTooLow   = errors.New("max outstanding items is too low")
+	ErrMaxItemProcessingTimeTooLow = errors.New("max item processing time is too low")
 )
 
 // ValidationMode determines how strict validation should be
@@ -113,15 +127,15 @@ func (v *Validator) validateBasicParameters(cfg *Config, result *ValidationResul
 		v.addWarning(result, "Beta", cfg.Beta, "very high Beta increases latency", "Consider Beta <= 50")
 	}
 	
-	// ConcurrentRepolls validation
-	if cfg.ConcurrentRepolls < 1 {
-		v.addError(result, "ConcurrentRepolls", cfg.ConcurrentRepolls, 
-			"must be at least 1", "Set ConcurrentRepolls >= 1")
+	// ConcurrentReprisms validation
+	if cfg.ConcurrentReprisms < 1 {
+		v.addError(result, "ConcurrentReprisms", cfg.ConcurrentReprisms, 
+			"must be at least 1", "Set ConcurrentReprisms >= 1")
 	}
-	if cfg.ConcurrentRepolls > cfg.Beta {
-		v.addError(result, "ConcurrentRepolls", cfg.ConcurrentRepolls,
+	if cfg.ConcurrentReprisms > cfg.Beta {
+		v.addError(result, "ConcurrentReprisms", cfg.ConcurrentReprisms,
 			fmt.Sprintf("cannot exceed Beta (%d)", cfg.Beta), 
-			fmt.Sprintf("Set ConcurrentRepolls <= %d", cfg.Beta))
+			fmt.Sprintf("Set ConcurrentReprisms <= %d", cfg.Beta))
 	}
 	
 	// Processing parameters
