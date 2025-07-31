@@ -9,39 +9,15 @@ import (
     "time"
     
     "github.com/stretchr/testify/require"
-    "github.com/prometheus/client_golang/prometheus"
     
     "github.com/luxfi/consensus/config"
     "github.com/luxfi/consensus/core/interfaces"
+    "github.com/luxfi/consensus/testutils"
     "github.com/luxfi/consensus/utils/bag"
     "github.com/luxfi/ids"
     "github.com/luxfi/log"
 )
 
-// testRegisterer wraps prometheus.Registry to ignore duplicate registrations
-type testRegisterer struct {
-    *prometheus.Registry
-    registered map[string]bool
-}
-
-func newTestRegisterer() *testRegisterer {
-    return &testRegisterer{
-        Registry:   prometheus.NewRegistry(),
-        registered: make(map[string]bool),
-    }
-}
-
-func (r *testRegisterer) Register(c prometheus.Collector) error {
-    // Try to register, but ignore duplicate errors
-    err := r.Registry.Register(c)
-    if err != nil {
-        // Check if it's a duplicate registration error
-        if _, ok := err.(prometheus.AlreadyRegisteredError); ok {
-            return nil
-        }
-    }
-    return err
-}
 
 type testBlock struct {
     id        ids.ID
@@ -76,7 +52,7 @@ func TestNovaBasic(t *testing.T) {
     
     ctx := &Context{
         Log:           log.NewNoOpLogger(),
-        Registerer:    newTestRegisterer(),
+        Registerer:    testutils.NewNoOpRegisterer(),
         BlockAcceptor: &testAcceptor{},
     }
     
@@ -107,7 +83,7 @@ func TestNovaLinearChain(t *testing.T) {
     acceptor := &testAcceptor{}
     ctx := &Context{
         Log:           log.NewNoOpLogger(),
-        Registerer:    newTestRegisterer(),
+        Registerer:    testutils.NewNoOpRegisterer(),
         BlockAcceptor: acceptor,
     }
     
@@ -169,7 +145,7 @@ func TestNovaFork(t *testing.T) {
     acceptor := &testAcceptor{}
     ctx := &Context{
         Log:           log.NewNoOpLogger(),
-        Registerer:    newTestRegisterer(),
+        Registerer:    testutils.NewNoOpRegisterer(),
         BlockAcceptor: acceptor,
     }
     
@@ -240,7 +216,7 @@ func TestNovaDoubleAdd(t *testing.T) {
     
     ctx := &Context{
         Log:           log.NewNoOpLogger(),
-        Registerer:    newTestRegisterer(),
+        Registerer:    testutils.NewNoOpRegisterer(),
         BlockAcceptor: &testAcceptor{},
     }
     
@@ -283,7 +259,7 @@ func TestNovaOrphanBlock(t *testing.T) {
     
     ctx := &Context{
         Log:           log.NewNoOpLogger(),
-        Registerer:    newTestRegisterer(),
+        Registerer:    testutils.NewNoOpRegisterer(),
         BlockAcceptor: &testAcceptor{},
     }
     
@@ -324,7 +300,7 @@ func TestNovaRecordUnsuccessfulPoll(t *testing.T) {
     
     ctx := &Context{
         Log:           log.NewNoOpLogger(),
-        Registerer:    newTestRegisterer(),
+        Registerer:    testutils.NewNoOpRegisterer(),
         BlockAcceptor: &testAcceptor{},
     }
     
@@ -373,7 +349,7 @@ func TestNovaProcessingTimeout(t *testing.T) {
     
     ctx := &Context{
         Log:           log.NewNoOpLogger(),
-        Registerer:    newTestRegisterer(),
+        Registerer:    testutils.NewNoOpRegisterer(),
         BlockAcceptor: &testAcceptor{},
     }
     
@@ -424,7 +400,7 @@ func TestNovaString(t *testing.T) {
     
     ctx := &Context{
         Log:           log.NewNoOpLogger(),
-        Registerer:    newTestRegisterer(),
+        Registerer:    testutils.NewNoOpRegisterer(),
         BlockAcceptor: &testAcceptor{},
     }
     

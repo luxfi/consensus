@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/config"
@@ -36,7 +35,7 @@ type BlockAcceptor interface {
 // Context provides the consensus context
 type Context struct {
 	Log           log.Logger
-	Registerer    prometheus.Registerer
+	Registerer    interfaces.Registerer
 	BlockAcceptor BlockAcceptor
 }
 

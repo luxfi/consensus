@@ -7,9 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/consensus/utils/metric"
 	"github.com/luxfi/log"
@@ -34,22 +33,21 @@ type Poll interface {
 // factory implements Factory
 type factory struct {
 	log        log.Logger
-	registerer prometheus.Registerer
+	registerer interfaces.Registerer
 	duration   metric.Averager
 }
 
 // NewFactory returns a new Factory
 func NewFactory(
 	log log.Logger,
-	registerer prometheus.Registerer,
+	registerer interfaces.Registerer,
 	alphaPreference int,
 	alphaConfidence int,
 ) Factory {
-	duration, _ := metric.NewAverager("poll", "duration", registerer)
 	return &factory{
 		log:        log,
 		registerer: registerer,
-		duration:   duration,
+		duration:   metric.NewAverager(),
 	}
 }
 
