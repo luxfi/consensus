@@ -1,10 +1,9 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package consensus_test
+package tests
 
 import (
-	. "github.com/luxfi/consensus"
 	"fmt"
 	"testing"
 
