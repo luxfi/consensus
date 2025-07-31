@@ -6,10 +6,6 @@ package interfaces
 import (
 	"sync"
 
-	"github.com/prometheus/client_golang/prometheus"
-
-	apimetrics "github.com/luxfi/consensus/api/metrics"
-	"github.com/luxfi/consensus/chains/atomic"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/validator"
 	"github.com/luxfi/consensus/utils/upgrade"
@@ -48,9 +44,7 @@ type Context struct {
 	//
 	// Warning: This lock is not correctly implemented over the rpcchainvm.
 	Lock         sync.RWMutex
-	SharedMemory atomic.SharedMemory
 	BCLookup     ids.AliaserReader
-	Metrics      apimetrics.MultiGatherer
 
 	WarpSigner interface{} // TODO: Use proper warp.Signer interface
 
@@ -67,10 +61,10 @@ type Context struct {
 	BlockAcceptor Acceptor
 }
 
-// Expose gatherer interface for unit testing.
+// Registerer is a no-op interface for metrics registration
+// Real metrics should be handled by the parent system
 type Registerer interface {
-	prometheus.Registerer
-	prometheus.Gatherer
+	Register(interface{}) error
 }
 
 type ConsensusContext struct {

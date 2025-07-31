@@ -8,9 +8,9 @@ import (
     "testing"
     
     "github.com/stretchr/testify/require"
-    "github.com/prometheus/client_golang/prometheus"
     
     "github.com/luxfi/consensus/core/interfaces"
+    "github.com/luxfi/consensus/testutils"
     "github.com/luxfi/ids"
     "github.com/luxfi/log"
 )
@@ -57,7 +57,7 @@ func TestNebulaBasic(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: prometheus.NewRegistry(),
+        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -69,7 +69,7 @@ func TestNebulaLinearDAG(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: prometheus.NewRegistry(),
+        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -108,7 +108,7 @@ func TestNebulaDAGWithTransactions(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: prometheus.NewRegistry(),
+        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -156,7 +156,7 @@ func TestNebulaDAGFork(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: prometheus.NewRegistry(),
+        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -213,7 +213,7 @@ func TestNebulaMultipleParents(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: prometheus.NewRegistry(),
+        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -267,7 +267,7 @@ func TestNebulaOrphanVertex(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: prometheus.NewRegistry(),
+        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -302,7 +302,7 @@ func TestNebulaRecordUnsuccessfulPoll(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: prometheus.NewRegistry(),
+        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -335,7 +335,7 @@ func TestNebulaString(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: prometheus.NewRegistry(),
+        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)

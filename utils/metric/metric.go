@@ -6,9 +6,6 @@ package metric
 import (
 	"fmt"
 	"sync"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/luxfi/consensus/utils/wrappers"
 )
 
 // Averager tracks a running average
@@ -22,48 +19,11 @@ type averager struct {
 	mu    sync.RWMutex
 	sum   float64
 	count float64
-	
-	// Prometheus metrics
-	promCount prometheus.Counter
-	promSum   prometheus.Gauge
 }
 
 // NewAverager returns a new Averager
-func NewAverager(name, help string, reg prometheus.Registerer) (Averager, error) {
-	// Register two metrics: one for count and one for sum
-	count := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: name + "_count",
-		Help: "Total # of observations of " + help,
-	})
-	sum := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: name + "_sum",
-		Help: "Sum of " + help,
-	})
-	
-	if err := reg.Register(count); err != nil {
-		return nil, err
-	}
-	if err := reg.Register(sum); err != nil {
-		return nil, err
-	}
-	
-	return &averager{
-		promCount: count,
-		promSum:   sum,
-	}, nil
-}
-
-// NewAveragerWithErrs returns a new Averager and adds any errors to the provided error list
-func NewAveragerWithErrs(name, help string, reg prometheus.Registerer, errs *wrappers.Errs) Averager {
-	a, err := NewAverager(name, help, reg)
-	if err != nil {
-		if errs != nil {
-			errs.Add(err)
-		}
-		// Return a no-op averager on error
-		return &averager{}
-	}
-	return a
+func NewAverager() Averager {
+	return &averager{}
 }
 
 // Observe adds a value to the average
@@ -73,14 +33,6 @@ func (a *averager) Observe(value float64) {
 	
 	a.sum += value
 	a.count++
-	
-	// Update prometheus metrics if available
-	if a.promCount != nil {
-		a.promCount.Inc()
-	}
-	if a.promSum != nil {
-		a.promSum.Add(value)
-	}
 }
 
 // Read returns the current average
