@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries, Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package metrics
@@ -65,37 +65,37 @@ func (mg *multiGatherer) Gather() ([]*dto.MetricFamily, error) {
 
 // Metrics is the interface for consensus metrics
 type Metrics interface {
-	// Polls tracks the number of polls
-	Polls() prometheus.Counter
+	// Prisms tracks the number of prisms
+	Prisms() prometheus.Counter
 	
-	// Successful tracks successful polls
+	// Successful tracks successful prisms
 	Successful() prometheus.Counter
 	
-	// Failed tracks failed polls
+	// Failed tracks failed prisms
 	Failed() prometheus.Counter
 }
 
 // NewMetrics creates a new metrics instance
 func NewMetrics(namespace string, registerer prometheus.Registerer) (Metrics, error) {
 	m := &metrics{
-		polls: prometheus.NewCounter(prometheus.CounterOpts{
+		prisms: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
-			Name:      "polls",
-			Help:      "Number of polls",
+			Name:      "prisms",
+			Help:      "Number of prisms",
 		}),
 		successful: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "successful",
-			Help:      "Number of successful polls",
+			Help:      "Number of successful prisms",
 		}),
 		failed: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "failed",
-			Help:      "Number of failed polls",
+			Help:      "Number of failed prisms",
 		}),
 	}
 	
-	if err := registerer.Register(m.polls); err != nil {
+	if err := registerer.Register(m.prisms); err != nil {
 		return nil, err
 	}
 	if err := registerer.Register(m.successful); err != nil {
@@ -109,13 +109,13 @@ func NewMetrics(namespace string, registerer prometheus.Registerer) (Metrics, er
 }
 
 type metrics struct {
-	polls      prometheus.Counter
+	prisms      prometheus.Counter
 	successful prometheus.Counter
 	failed     prometheus.Counter
 }
 
-func (m *metrics) Polls() prometheus.Counter {
-	return m.polls
+func (m *metrics) Prisms() prometheus.Counter {
+	return m.prisms
 }
 
 func (m *metrics) Successful() prometheus.Counter {

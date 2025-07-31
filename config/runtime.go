@@ -48,104 +48,45 @@ func GetRuntime() Parameters {
 	
 	if !initialized {
 		// Default to testnet if not initialized
-		return TestnetParameters
+		runtimeParams = TestParameters
+		initialized = true
 	}
 	
 	return runtimeParams
 }
 
-// OverrideRuntime updates specific runtime parameters
-// This allows consensus tools to modify parameters at runtime
-func OverrideRuntime(updates map[string]interface{}) error {
+// SetRuntime updates the runtime consensus parameters
+func SetRuntime(params Parameters) {
 	runtimeMu.Lock()
 	defer runtimeMu.Unlock()
 	
-	if !initialized {
-		runtimeParams = TestnetParameters
-		runtimeOverrides = make(map[string]interface{})
-		initialized = true
-	}
-	
-	// Create a copy to modify
-	params := runtimeParams
-	
-	// Apply updates
-	for key, value := range updates {
-		runtimeOverrides[key] = value
-		
-		switch key {
-		case "K", "k":
-			if v, ok := toInt(value); ok {
-				params.K = v
-			}
-		case "AlphaPreference", "alphaPreference":
-			if v, ok := toInt(value); ok {
-				params.AlphaPreference = v
-			}
-		case "AlphaConfidence", "alphaConfidence":
-			if v, ok := toInt(value); ok {
-				params.AlphaConfidence = v
-			}
-		case "Beta", "beta":
-			if v, ok := toInt(value); ok {
-				params.Beta = v
-			}
-		case "ConcurrentRepolls", "concurrentRepolls":
-			if v, ok := toInt(value); ok {
-				params.ConcurrentRepolls = v
-			}
-		case "OptimalProcessing", "optimalProcessing":
-			if v, ok := toInt(value); ok {
-				params.OptimalProcessing = v
-			}
-		case "MaxOutstandingItems", "maxOutstandingItems":
-			if v, ok := toInt(value); ok {
-				params.MaxOutstandingItems = v
-			}
-		case "MaxItemProcessingTime", "maxItemProcessingTime":
-			if d, ok := toDuration(value); ok {
-				params.MaxItemProcessingTime = d
-			}
-		case "MinRoundInterval", "minRoundInterval":
-			if d, ok := toDuration(value); ok {
-				params.MinRoundInterval = d
-			}
-		default:
-			return fmt.Errorf("unknown parameter: %s", key)
-		}
-	}
-	
-	// Validate the new parameters
-	if err := params.Valid(); err != nil {
-		return fmt.Errorf("invalid parameters: %w", err)
-	}
-	
-	// Update runtime params
 	runtimeParams = params
-	return nil
+	initialized = true
 }
 
-// LoadRuntimeFromFile loads consensus parameters from a JSON file
+// UpdateRuntimeParameter updates a single runtime parameter
+// This is temporarily disabled as it requires mutable parameters
+func UpdateRuntimeParameter(key string, value interface{}) error {
+	return fmt.Errorf("runtime parameter updates are temporarily disabled during migration")
+	
+	// TODO: Implement when we have mutable parameter structs
+	// The original implementation tried to modify interface values
+}
+
+// LoadRuntimeFromFile loads runtime parameters from a JSON file
 func LoadRuntimeFromFile(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("failed to read config file: %w", err)
+		return fmt.Errorf("failed to read runtime config file: %w", err)
 	}
 	
-	var params Parameters
-	if err := json.Unmarshal(data, &params); err != nil {
-		return fmt.Errorf("failed to parse config file: %w", err)
+	var config Config
+	if err := json.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("failed to parse runtime config: %w", err)
 	}
 	
-	if err := params.Valid(); err != nil {
-		return fmt.Errorf("invalid parameters in config file: %w", err)
-	}
-	
-	runtimeMu.Lock()
-	runtimeParams = params
-	runtimeOverrides = make(map[string]interface{})
-	initialized = true
-	runtimeMu.Unlock()
+	params := config.ToParameters()
+	SetRuntime(params)
 	
 	return nil
 }
@@ -154,47 +95,29 @@ func LoadRuntimeFromFile(path string) error {
 func SaveRuntimeToFile(path string) error {
 	runtimeMu.RLock()
 	params := runtimeParams
-	overrides := make(map[string]interface{})
-	for k, v := range runtimeOverrides {
-		overrides[k] = v
-	}
 	runtimeMu.RUnlock()
 	
-	// Create output structure with overrides info
-	output := struct {
-		Parameters Parameters             `json:"parameters"`
-		Overrides  map[string]interface{} `json:"overrides,omitempty"`
-		Generated  time.Time              `json:"generated"`
-	}{
-		Parameters: params,
-		Overrides:  overrides,
-		Generated:  time.Now(),
+	// Convert parameters to a map for JSON encoding
+	data := map[string]interface{}{
+		"k":                     params.GetK(),
+		"alphaPreference":       params.GetAlphaPreference(),
+		"alphaConfidence":       params.GetAlphaConfidence(),
+		"beta":                  params.GetBeta(),
+		"concurrentReprisms":     params.ConcurrentReprisms,
+		"optimalProcessing":     params.OptimalProcessing,
+		"maxOutstandingItems":   params.MaxOutstandingItems,
+		"maxItemProcessingTime": params.MaxItemProcessingTime,
+		"minRoundInterval":      params.MinRoundInterval,
 	}
 	
-	data, err := json.MarshalIndent(output, "", "  ")
+	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal parameters: %w", err)
+		return fmt.Errorf("failed to marshal runtime config: %w", err)
 	}
 	
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	if err := os.WriteFile(path, jsonData, 0644); err != nil {
+		return fmt.Errorf("failed to write runtime config file: %w", err)
 	}
-	
-	return nil
-}
-
-// ResetRuntime resets runtime parameters to defaults for the given network
-func ResetRuntime(network string) error {
-	params, err := GetParametersByName(network)
-	if err != nil {
-		return err
-	}
-	
-	runtimeMu.Lock()
-	runtimeParams = params
-	runtimeOverrides = make(map[string]interface{})
-	initialized = true
-	runtimeMu.Unlock()
 	
 	return nil
 }
@@ -204,14 +127,15 @@ func GetRuntimeOverrides() map[string]interface{} {
 	runtimeMu.RLock()
 	defer runtimeMu.RUnlock()
 	
-	overrides := make(map[string]interface{})
+	// Return a copy to prevent external modification
+	copy := make(map[string]interface{})
 	for k, v := range runtimeOverrides {
-		overrides[k] = v
+		copy[k] = v
 	}
-	return overrides
+	return copy
 }
 
-// Helper functions to convert interface{} to specific types
+// Helper functions
 func toInt(v interface{}) (int, bool) {
 	switch val := v.(type) {
 	case int:
@@ -220,9 +144,12 @@ func toInt(v interface{}) (int, bool) {
 		return int(val), true
 	case float64:
 		return int(val), true
-	default:
-		return 0, false
+	case string:
+		var i int
+		_, err := fmt.Sscanf(val, "%d", &i)
+		return i, err == nil
 	}
+	return 0, false
 }
 
 func toDuration(v interface{}) (time.Duration, bool) {
@@ -234,9 +161,6 @@ func toDuration(v interface{}) (time.Duration, bool) {
 		return d, err == nil
 	case int64:
 		return time.Duration(val), true
-	case float64:
-		return time.Duration(val), true
-	default:
-		return 0, false
 	}
+	return 0, false
 }

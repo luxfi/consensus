@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package metric
@@ -22,6 +22,10 @@ type averager struct {
 	mu    sync.RWMutex
 	sum   float64
 	count float64
+	
+	// Prometheus metrics
+	promCount prometheus.Counter
+	promSum   prometheus.Gauge
 }
 
 // NewAverager returns a new Averager
@@ -43,14 +47,21 @@ func NewAverager(name, help string, reg prometheus.Registerer) (Averager, error)
 		return nil, err
 	}
 	
-	return &averager{}, nil
+	return &averager{
+		promCount: count,
+		promSum:   sum,
+	}, nil
 }
 
 // NewAveragerWithErrs returns a new Averager and adds any errors to the provided error list
 func NewAveragerWithErrs(name, help string, reg prometheus.Registerer, errs *wrappers.Errs) Averager {
 	a, err := NewAverager(name, help, reg)
-	if err != nil && errs != nil {
-		errs.Add(err)
+	if err != nil {
+		if errs != nil {
+			errs.Add(err)
+		}
+		// Return a no-op averager on error
+		return &averager{}
 	}
 	return a
 }
@@ -62,6 +73,14 @@ func (a *averager) Observe(value float64) {
 	
 	a.sum += value
 	a.count++
+	
+	// Update prometheus metrics if available
+	if a.promCount != nil {
+		a.promCount.Inc()
+	}
+	if a.promSum != nil {
+		a.promSum.Add(value)
+	}
 }
 
 // Read returns the current average

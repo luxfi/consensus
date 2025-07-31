@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package main
@@ -118,9 +118,9 @@ func customizeParameters(scanner *bufio.Scanner, p *config.Parameters) *config.P
 	p.Beta = promptIntDefault(scanner,
 		fmt.Sprintf("Beta (rounds) [current: %d]", p.Beta), 1, 100, p.Beta)
 	
-	p.ConcurrentRepolls = promptIntDefault(scanner,
-		fmt.Sprintf("ConcurrentRepolls [current: %d, max: %d]", p.ConcurrentRepolls, p.Beta),
-		1, p.Beta, p.ConcurrentRepolls)
+	p.ConcurrentReprisms = promptIntDefault(scanner,
+		fmt.Sprintf("ConcurrentReprisms [current: %d, max: %d]", p.ConcurrentReprisms, p.Beta),
+		1, p.Beta, p.ConcurrentReprisms)
 	
 	return p
 }

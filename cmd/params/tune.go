@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package main
@@ -84,9 +84,9 @@ func getStartingParameters(scanner *bufio.Scanner) *config.Parameters {
 	case 1:
 		return &config.DefaultParameters // Use mainnet-like defaults
 	case 2:
-		return &config.Parameters{K: 11, AlphaPreference: 7, AlphaConfidence: 9, Beta: 6, ConcurrentRepolls: 6, OptimalProcessing: 10, MaxOutstandingItems: 256, MaxItemProcessingTime: 6300 * time.Millisecond}
+		return &config.Parameters{K: 11, AlphaPreference: 7, AlphaConfidence: 9, Beta: 6, ConcurrentReprisms: 6, OptimalProcessing: 10, MaxOutstandingItems: 256, MaxItemProcessingTime: 6300 * time.Millisecond}
 	case 3:
-		return &config.Parameters{K: 5, AlphaPreference: 4, AlphaConfidence: 4, Beta: 3, ConcurrentRepolls: 3, OptimalProcessing: 10, MaxOutstandingItems: 256, MaxItemProcessingTime: 200 * time.Millisecond}
+		return &config.Parameters{K: 5, AlphaPreference: 4, AlphaConfidence: 4, Beta: 3, ConcurrentReprisms: 3, OptimalProcessing: 10, MaxOutstandingItems: 256, MaxItemProcessingTime: 200 * time.Millisecond}
 	case 4:
 		// Start with sensible defaults
 		return &config.Parameters{
@@ -94,7 +94,7 @@ func getStartingParameters(scanner *bufio.Scanner) *config.Parameters {
 			AlphaPreference:       8,
 			AlphaConfidence:       9,
 			Beta:                  10,
-			ConcurrentRepolls:     10,
+			ConcurrentReprisms:     10,
 			OptimalProcessing:     10,
 			MaxOutstandingItems:   256,
 			MaxItemProcessingTime: 10 * time.Second,
@@ -105,7 +105,7 @@ func getStartingParameters(scanner *bufio.Scanner) *config.Parameters {
 
 func displayCurrentParams(p *config.Parameters) {
 	fmt.Printf("K=%d, αPref=%d, αConf=%d, β=%d, Pipeline=%d\n", 
-		p.K, p.AlphaPreference, p.AlphaConfidence, p.Beta, p.ConcurrentRepolls)
+		p.K, p.AlphaPreference, p.AlphaConfidence, p.Beta, p.ConcurrentReprisms)
 	
 	// Calculate and show derived values
 	finality := CalculateExpectedFinality(p, 50) // Assume 50ms network
@@ -139,7 +139,7 @@ func tuneFinalityTime(scanner *bufio.Scanner, p *config.Parameters) *config.Para
 	
 	// Optimize pipelining
 	p.Beta = requiredBeta
-	p.ConcurrentRepolls = requiredBeta
+	p.ConcurrentReprisms = requiredBeta
 	
 	fmt.Printf("✅ Set Beta=%d with full pipelining\n", p.Beta)
 	
@@ -205,7 +205,7 @@ func tuneValidatorCount(scanner *bufio.Scanner, p *config.Parameters) *config.Pa
 	if totalNodes > 50 && p.Beta < 15 {
 		if promptBool(scanner, "Large network detected. Increase Beta for security?", true) {
 			p.Beta = promptInt(scanner, "New Beta", p.Beta, 50, 15)
-			p.ConcurrentRepolls = min(p.Beta, 20)
+			p.ConcurrentReprisms = min(p.Beta, 20)
 		}
 	}
 	
@@ -255,7 +255,7 @@ func tuneByzantineTolerance(scanner *bufio.Scanner, p *config.Parameters) *confi
 		fmt.Println("⚠️  Low safety cutoff detected!")
 		if promptBool(scanner, "Increase Beta for better security?", true) {
 			p.Beta = promptInt(scanner, "New Beta", p.Beta+1, 50, p.Beta*2)
-			p.ConcurrentRepolls = min(p.Beta, 20)
+			p.ConcurrentReprisms = min(p.Beta, 20)
 		}
 	}
 	
@@ -300,7 +300,7 @@ func tuneSafetyCutoff(scanner *bufio.Scanner, p *config.Parameters) *config.Para
 		}
 		
 		// Update pipelining
-		p.ConcurrentRepolls = min(p.Beta, 20)
+		p.ConcurrentReprisms = min(p.Beta, 20)
 	}
 	
 	newCutoff := RunChecker(p, p.K, 50).SafetyCutoff
@@ -318,7 +318,7 @@ func tuneDirectParameter(scanner *bufio.Scanner, p *config.Parameters) *config.P
 	fmt.Println("2. AlphaPreference")
 	fmt.Println("3. AlphaConfidence")
 	fmt.Println("4. Beta")
-	fmt.Println("5. ConcurrentRepolls")
+	fmt.Println("5. ConcurrentReprisms")
 	
 	choice := promptInt(scanner, "Choice", 1, 5, 1)
 	
@@ -344,11 +344,11 @@ func tuneDirectParameter(scanner *bufio.Scanner, p *config.Parameters) *config.P
 	case 4:
 		p.Beta = promptInt(scanner, "Beta", 1, 100, p.Beta)
 		if promptBool(scanner, "Update pipelining to match?", true) {
-			p.ConcurrentRepolls = min(p.Beta, 20)
+			p.ConcurrentReprisms = min(p.Beta, 20)
 		}
 		
 	case 5:
-		p.ConcurrentRepolls = promptInt(scanner, "ConcurrentRepolls", 1, p.Beta, p.ConcurrentRepolls)
+		p.ConcurrentReprisms = promptInt(scanner, "ConcurrentReprisms", 1, p.Beta, p.ConcurrentReprisms)
 	}
 	
 	return p
@@ -393,7 +393,7 @@ func tuneThroughput(scanner *bufio.Scanner, p *config.Parameters) *config.Parame
 			if p.Beta > 4 {
 				newBeta := promptInt(scanner, "Reduce Beta to", 4, p.Beta-1, p.Beta/2)
 				p.Beta = newBeta
-				p.ConcurrentRepolls = newBeta
+				p.ConcurrentReprisms = newBeta
 			}
 		}
 	}

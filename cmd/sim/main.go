@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package main
@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/poll"
+	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/log"
+	"log/slog"
 )
 
-var logger = log.NewLogger("sim")
+var logger = slog.Default().With("module", "sim")
 
 // Node represents a simulated network node
 type Node struct {
@@ -210,9 +210,9 @@ func createNodes(total, byzantine int, initialSplit float64) []Node {
 
 func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRounds int, verbose bool) SimulationResult {
 	// Create sampler
-	var sampler poll.Sampler
+	var sampler prism.Sampler
 	if samplerType == "uniform" {
-		sampler = poll.NewUniformSampler()
+		sampler = prism.NewUniformSampler()
 	} else {
 		logger.Error("Unknown sampler type", "type", samplerType)
 		os.Exit(1)
@@ -274,7 +274,7 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 			newPreference = 1
 		}
 		
-		// Update honest nodes based on poll result
+		// Update honest nodes based on prism result
 		if metAlphaPref && newPreference != preference {
 			// Preference changed - update all honest nodes
 			for i := range nodes {
