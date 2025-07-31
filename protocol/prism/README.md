@@ -7,7 +7,6 @@ The prism package provides an elegant optical metaphor for Lux consensus mechani
 ### 1. Splitter (`splitter.go`)
 The **input face** of our prism. Takes the full beam of validators and splits off exactly the sample you need.
 
-- Maps to: AvalancheGo's `Sample()` method
 - Function: Weighted sampling of k validators
 - Optics parallel: Beam splitter selecting specific wavelengths
 
@@ -39,7 +38,7 @@ for round := 1; round <= maxRounds; round++ {
     if err != nil {
         return err
     }
-    
+
     if finalized {
         fmt.Printf("Consensus reached in round %d\n", round)
         break
@@ -58,10 +57,10 @@ The `Refract` method is the heart of the prism metaphor. It processes light thro
 func (p *Prism) Refract(validators ValidatorSet, decisions []ids.ID) (bool, error) {
     // 1. Split - Light enters the prism
     sample := p.splitter.Sample(validators, k)
-    
+
     // 2. Facet - Light refracts through internal facets
     facets := p.traverser.Traverse(decisions)
-    
+
     // 3. Process - Each ray passes through facets
     for _, validator := range sample {
         for _, facet := range facets {
@@ -71,7 +70,7 @@ func (p *Prism) Refract(validators ValidatorSet, decisions []ids.ID) (bool, erro
             }
         }
     }
-    
+
     // 4. Cut - Evaluate at the output angle
     changed := p.cut.Refract()
     return changed
@@ -107,9 +106,9 @@ The prism abstraction provides several benefits:
 3. **Testability**: Each optical element can be tested in isolation
 4. **Elegance**: The metaphor makes complex consensus intuitive
 
-## Mapping to AvalancheGo
+## Mapping to Snow consensus
 
-| Prism Component | AvalancheGo Equivalent | Purpose |
+| Prism Component | Snow Equivalent | Purpose |
 |-----------------|------------------------|---------|
 | Splitter | `Sample()` | Validator sampling |
 | Facet | Graph traversal | Decision dependencies |
