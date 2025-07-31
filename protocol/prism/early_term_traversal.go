@@ -4,85 +4,43 @@
 package prism
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/utils/bag"
 )
 
-var (
-	errPollDurationVectorMetrics = errors.New("failed to register poll_duration vector metrics")
-	errPollCountVectorMetrics    = errors.New("failed to register poll_count vector metrics")
-
-	terminationReason = "reason"
-	exhaustedReason   = "exhausted"
-	earlyFailReason   = "early_fail"
-	earlyAlphaReason  = "early_alpha"
-
-	exhaustedLabel = prometheus.Labels{
-		terminationReason: exhaustedReason,
-	}
-	earlyFailLabel = prometheus.Labels{
-		terminationReason: earlyFailReason,
-	}
-	earlyAlphaLabel = prometheus.Labels{
-		terminationReason: earlyAlphaReason,
-	}
-)
-
+// earlyTermMetrics is a no-op implementation
+// Real metrics should be handled by the parent system
 type earlyTermMetrics struct {
-	durExhaustedPrisms  prometheus.Gauge
-	durEarlyFailPrisms  prometheus.Gauge
-	durEarlyAlphaPrisms prometheus.Gauge
+	durExhaustedNs  int64
+	durEarlyFailNs  int64
+	durEarlyAlphaNs int64
 
-	countExhaustedPrisms  prometheus.Counter
-	countEarlyFailPrisms  prometheus.Counter
-	countEarlyAlphaPrisms prometheus.Counter
+	countExhausted  int64
+	countEarlyFail  int64
+	countEarlyAlpha int64
 }
 
-func newEarlyTermMetrics(reg prometheus.Registerer) (*earlyTermMetrics, error) {
-	pollCountVec := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "poll_count",
-		Help: "Total # of terminated prisms by reason",
-	}, []string{terminationReason})
-	if err := reg.Register(pollCountVec); err != nil {
-		return nil, fmt.Errorf("%w: %w", errPollCountVectorMetrics, err)
-	}
-	durPrismsVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "poll_duration",
-		Help: "time (in ns) prisms took to complete by reason",
-	}, []string{terminationReason})
-	if err := reg.Register(durPrismsVec); err != nil {
-		return nil, fmt.Errorf("%w: %w", errPollDurationVectorMetrics, err)
-	}
-
-	return &earlyTermMetrics{
-		durExhaustedPrisms:    durPrismsVec.With(exhaustedLabel),
-		durEarlyFailPrisms:    durPrismsVec.With(earlyFailLabel),
-		durEarlyAlphaPrisms:   durPrismsVec.With(earlyAlphaLabel),
-		countExhaustedPrisms:  pollCountVec.With(exhaustedLabel),
-		countEarlyFailPrisms:  pollCountVec.With(earlyFailLabel),
-		countEarlyAlphaPrisms: pollCountVec.With(earlyAlphaLabel),
-	}, nil
+func newEarlyTermMetrics(reg interfaces.Registerer) (*earlyTermMetrics, error) {
+	return &earlyTermMetrics{}, nil
 }
 
 func (m *earlyTermMetrics) observeExhausted(duration time.Duration) {
-	m.durExhaustedPrisms.Add(float64(duration.Nanoseconds()))
-	m.countExhaustedPrisms.Inc()
+	m.durExhaustedNs += duration.Nanoseconds()
+	m.countExhausted++
 }
 
 func (m *earlyTermMetrics) observeEarlyFail(duration time.Duration) {
-	m.durEarlyFailPrisms.Add(float64(duration.Nanoseconds()))
-	m.countEarlyFailPrisms.Inc()
+	m.durEarlyFailNs += duration.Nanoseconds()
+	m.countEarlyFail++
 }
 
 func (m *earlyTermMetrics) observeEarlyAlpha(duration time.Duration) {
-	m.durEarlyAlphaPrisms.Add(float64(duration.Nanoseconds()))
-	m.countEarlyAlphaPrisms.Inc()
+	m.durEarlyAlphaNs += duration.Nanoseconds()
+	m.countEarlyAlpha++
 }
 
 type earlyTermTraversalFactory struct {
@@ -100,7 +58,7 @@ type BlockTraversal interface {
 func NewEarlyTermFactory(
 	alphaPreference int,
 	alphaConfidence int,
-	reg prometheus.Registerer,
+	reg interfaces.Registerer,
 	bt BlockTraversal,
 ) (Factory, error) {
 	metrics, err := newEarlyTermMetrics(reg)
