@@ -35,6 +35,10 @@ jobs:
       - name: Get dependencies
         run: go mod download
 
+      - name: Build benchmark tools
+        run: |
+          make zmq-bench || echo "zmq-bench build skipped"
+
       - name: Run ZeroMQ benchmarks
         run: |
           echo "## ZeroMQ Transport Benchmarks" | tee zmq-benchmark.md
@@ -65,13 +69,50 @@ jobs:
           go test -bench=. -benchmem -benchtime=30s -run=^$ ./benchmark/... 2>&1 | tee -a consensus-benchmark.md
           echo '```' | tee -a consensus-benchmark.md
 
+      - name: Run ZMQ consensus integration benchmarks
+        run: |
+          echo "" | tee -a zmq-consensus-benchmark.md
+          echo "## ZMQ Consensus Integration Benchmarks" | tee -a zmq-consensus-benchmark.md
+          echo "" | tee -a zmq-consensus-benchmark.md
+          echo "### Multi-Validator Network Tests" | tee -a zmq-consensus-benchmark.md
+          echo '```' | tee -a zmq-consensus-benchmark.md
+          go test -bench=BenchmarkPhotonConsensusWithZMQ -benchmem -benchtime=10s -run=^$ ./benchmark/... 2>&1 | tee -a zmq-consensus-benchmark.md
+          go test -bench=BenchmarkPulseConsensusWithZMQ -benchmem -benchtime=10s -run=^$ ./benchmark/... 2>&1 | tee -a zmq-consensus-benchmark.md
+          go test -bench=BenchmarkWaveConsensusWithZMQ -benchmem -benchtime=10s -run=^$ ./benchmark/... 2>&1 | tee -a zmq-consensus-benchmark.md
+          echo '```' | tee -a zmq-consensus-benchmark.md
+          echo "" | tee -a zmq-consensus-benchmark.md
+          echo "### Consensus Scalability Tests" | tee -a zmq-consensus-benchmark.md
+          echo '```' | tee -a zmq-consensus-benchmark.md
+          go test -bench=BenchmarkConsensusScalability -benchmem -benchtime=5s -run=^$ -short ./benchmark/... 2>&1 | tee -a zmq-consensus-benchmark.md
+          echo '```' | tee -a zmq-consensus-benchmark.md
+
+      - name: Run standalone ZMQ benchmark tool
+        run: |
+          echo "" | tee -a zmq-bench-tool.md
+          echo "## Standalone ZMQ Benchmark Tool Results" | tee -a zmq-bench-tool.md
+          echo "" | tee -a zmq-bench-tool.md
+          echo "### Pure Messaging Performance (10 nodes)" | tee -a zmq-bench-tool.md
+          echo '```' | tee -a zmq-bench-tool.md
+          ./bin/zmq-bench -nodes 10 -duration 30s -rate 1000 2>&1 | tee -a zmq-bench-tool.md || true
+          echo '```' | tee -a zmq-bench-tool.md
+          echo "" | tee -a zmq-bench-tool.md
+          echo "### Consensus Simulation Mode (10 nodes)" | tee -a zmq-bench-tool.md
+          echo '```' | tee -a zmq-bench-tool.md
+          ./bin/zmq-bench -nodes 10 -duration 30s -consensus -rounds 100 2>&1 | tee -a zmq-bench-tool.md || true
+          echo '```' | tee -a zmq-bench-tool.md
+
       - name: Combine results
         run: |
-          cat zmq-benchmark.md consensus-benchmark.md > benchmark-results.md
+          cat zmq-benchmark.md consensus-benchmark.md zmq-consensus-benchmark.md zmq-bench-tool.md > benchmark-results.md
           echo "" >> benchmark-results.md
           echo "---" >> benchmark-results.md
           echo "" >> benchmark-results.md
-          echo "### Benchmark Comparison" >> benchmark-results.md
+          echo "### Benchmark Summary" >> benchmark-results.md
+          echo "" >> benchmark-results.md
+          echo "- **ZMQ Transport**: Pure transport layer performance" >> benchmark-results.md
+          echo "- **Consensus Algorithms**: Individual algorithm benchmarks" >> benchmark-results.md
+          echo "- **ZMQ + Consensus**: Full integration with multiple validators" >> benchmark-results.md
+          echo "- **Standalone Tool**: Real-world network simulation" >> benchmark-results.md
           echo "" >> benchmark-results.md
           echo "To compare with previous results, see the [benchmark history](https://github.com/${{ github.repository }}/actions/workflows/benchmark.yml)" >> benchmark-results.md
 
@@ -83,6 +124,8 @@ jobs:
             benchmark-results.md
             zmq-benchmark.md
             consensus-benchmark.md
+            zmq-consensus-benchmark.md
+            zmq-bench-tool.md
           retention-days: 90
 
       - name: Display results in summary
