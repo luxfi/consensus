@@ -273,7 +273,9 @@ func TestErrorDuplicateVotes(t *testing.T) {
 	require.NoError(p.RecordVotes(dupVotes))
 	require.Equal(Blue, p.Preference())
 	
-	// With TestParameters Beta=1, should be finalized
+	// Need Beta rounds to finalize (Beta=2 in TestParameters)
+	require.False(p.Finalized())
+	require.NoError(p.RecordVotes(dupVotes))
 	require.True(p.Finalized())
 	require.Equal(Blue, p.Preference())
 }
