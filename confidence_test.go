@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	. "github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/protocol/photon"
 	"github.com/luxfi/consensus/protocol/pulse"
@@ -20,7 +21,12 @@ import (
 func TestConfidenceReset(t *testing.T) {
 	require := require.New(t)
 
-	params := config.TestParameters
+	params := config.Parameters{
+		K:               2,
+		AlphaPreference: 2,
+		AlphaConfidence: 2,
+		Beta:            5, // Higher beta to test confidence reset
+	}
 	
 	// Test photon confidence reset
 	t.Run("Photon", func(t *testing.T) {
@@ -196,7 +202,12 @@ func TestConfidenceProgression(t *testing.T) {
 func TestConfidenceWithPreferenceChange(t *testing.T) {
 	require := require.New(t)
 
-	params := config.TestParameters
+	params := config.Parameters{
+		K:               3,
+		AlphaPreference: 2,
+		AlphaConfidence: 2,
+		Beta:            1, // Low beta for immediate finalization
+	}
 	
 	p := pulse.NewPulse(params)
 	require.NoError(p.Add(Red))
@@ -211,7 +222,7 @@ func TestConfidenceWithPreferenceChange(t *testing.T) {
 	
 	require.NoError(p.RecordVotes(redVotes))
 	require.Equal(Red, p.Preference())
-	// With TestParameters Beta=1, it should finalize after 1 round
+	// With Beta=1, it should finalize after 1 round
 	require.True(p.Finalized())
 	
 	// Once finalized, preference shouldn't change
