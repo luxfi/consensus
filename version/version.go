@@ -52,6 +52,6 @@ func DefaultVersion() *Application {
 		Name:  "lux",
 		Major: 1,
 		Minor: 0,
-		Patch: 0,
+		Patch: 1,
 	}
 }
