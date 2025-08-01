@@ -11,7 +11,7 @@ import (
 	"github.com/luxfi/ids"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/log"
-	"github.com/luxfi/consensus/utils/set"
+	"github.com/luxfi/consensus/set"
 )
 
 var _ SetCallbackListener = (*logger)(nil)
