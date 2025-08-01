@@ -64,6 +64,9 @@ jobs:
       - name: Get dependencies
         run: go mod download
 
+      - name: Build ZMQ benchmark tool
+        run: make zmq-bench
+
       - name: Run ZeroMQ benchmarks
         run: |
           echo "=== Running ZeroMQ Benchmarks ==="
@@ -88,6 +91,22 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat consensus-benchmark-results.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          
+      - name: Run multi-validator ZMQ benchmarks
+        run: |
+          echo "## Multi-Validator ZMQ Benchmarks" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          CPU_COUNT=$(nproc || echo 4)
+          echo "Running on $CPU_COUNT CPU cores" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          for NODES in 10 100 1000; do
+            echo "### $NODES Nodes (batch=4096)" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            ./bin/zmq-bench -nodes $NODES -batch 4096 -interval 5ms -rounds 50 2>&1 | grep -E "^📊|Nodes:|Duration:|TPS:|Throughput:|Message rate:|latency:" >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          done
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4

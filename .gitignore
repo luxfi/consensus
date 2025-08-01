@@ -6,3 +6,4 @@ GEMINI.md
 *.test
 *.log
 bin/
+*.out
