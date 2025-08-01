@@ -26,8 +26,8 @@ build: ## Build all tools and commands
 build-full: build ## Build all tools including those with node dependencies
 	@echo "Building benchmark (requires fixing node package imports)..."
 	@go build -tags zmq -o bin/benchmark ./cmd/benchmark 2>&1 || echo "WARNING: Skipping - fix needed in node/network/peer/test_peer.go"
-	@echo "Building benchmark-simple..."
-	@go build -o bin/benchmark-simple ./cmd/benchmark-simple 2>&1 || echo "WARNING: Skipping - fix needed in node package"
+	@echo "Building benchmark..."
+	@go build -o bin/benchmark ./cmd/benchmark 2>&1 || echo "WARNING: Skipping - fix needed in node package"
 
 # Run all tests
 test: ## Run all tests
