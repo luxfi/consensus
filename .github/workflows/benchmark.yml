@@ -91,14 +91,28 @@ jobs:
           echo "" | tee -a zmq-bench-tool.md
           echo "## Standalone ZMQ Benchmark Tool Results" | tee -a zmq-bench-tool.md
           echo "" | tee -a zmq-bench-tool.md
-          echo "### Pure Messaging Performance (10 nodes)" | tee -a zmq-bench-tool.md
-          echo '```' | tee -a zmq-bench-tool.md
-          ./bin/zmq-bench -nodes 10 -duration 30s -rate 1000 2>&1 | tee -a zmq-bench-tool.md || true
-          echo '```' | tee -a zmq-bench-tool.md
+          
+          # Get CPU count for optimal node placement
+          CPU_COUNT=$(nproc || sysctl -n hw.ncpu || echo 4)
+          echo "System has $CPU_COUNT CPU cores" | tee -a zmq-bench-tool.md
           echo "" | tee -a zmq-bench-tool.md
-          echo "### Consensus Simulation Mode (10 nodes)" | tee -a zmq-bench-tool.md
+          
+          # Test with different node counts and optimized parameters
+          for NODES in 10 100 1000; do
+            echo "### Multi-Validator Consensus ($NODES nodes)" | tee -a zmq-bench-tool.md
+            echo "Parameters: batch=4096, interval=5ms, rounds=100" | tee -a zmq-bench-tool.md
+            echo '```' | tee -a zmq-bench-tool.md
+            ./bin/zmq-bench -nodes $NODES -batch 4096 -interval 5ms -rounds 100 2>&1 | grep -E "^📊|Nodes:|Duration:|TPS:|Throughput:|Message rate:|latency:" | tee -a zmq-bench-tool.md || true
+            echo '```' | tee -a zmq-bench-tool.md
+            echo "" | tee -a zmq-bench-tool.md
+          done
+          
+          # High-performance test with nodes per core
+          MAX_NODES=$((CPU_COUNT * 2))
+          echo "### High-Performance Test ($MAX_NODES nodes, 2 per core)" | tee -a zmq-bench-tool.md
+          echo "Parameters: batch=8192, interval=1ms, rounds=50" | tee -a zmq-bench-tool.md
           echo '```' | tee -a zmq-bench-tool.md
-          ./bin/zmq-bench -nodes 10 -duration 30s -consensus -rounds 100 2>&1 | tee -a zmq-bench-tool.md || true
+          ./bin/zmq-bench -nodes $MAX_NODES -batch 8192 -interval 1ms -rounds 50 2>&1 | grep -E "^📊|Nodes:|Duration:|TPS:|Throughput:|Message rate:|latency:" | tee -a zmq-bench-tool.md || true
           echo '```' | tee -a zmq-bench-tool.md
 
       - name: Combine results
