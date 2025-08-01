@@ -15,8 +15,8 @@ build: ## Build all tools and commands
 	@go build -o bin/checker ./cmd/checker || echo "ERROR: Failed to build checker"
 	@echo "Building simulator..."
 	@go build -o bin/sim ./cmd/sim || echo "ERROR: Failed to build sim"
-	@echo "Building zmq-bench (standalone)..."
-	@cd cmd/zmq-bench && go build -tags zmq -o ../../bin/zmq-bench . || echo "WARNING: Skipping zmq-bench - requires ZMQ"
+	@echo "Building zmq-bench..."
+	@go build -tags zmq -o bin/zmq-bench ./cmd/zmq-bench || echo "WARNING: Skipping zmq-bench - requires ZMQ"
 	@echo "Building consensus CLI..."
 	@go build -o bin/consensus ./cmd/consensus || echo "ERROR: Failed to build consensus CLI"
 	@echo "Build complete! Successfully built tools:"
@@ -26,7 +26,7 @@ build: ## Build all tools and commands
 build-full: build ## Build all tools including those with node dependencies
 	@echo "Building benchmark (requires fixing node package imports)..."
 	@go build -tags zmq -o bin/benchmark ./cmd/benchmark 2>&1 || echo "WARNING: Skipping - fix needed in node/network/peer/test_peer.go"
-	@echo "Building benchmark..."
+	@echo "Building benchmark tool..."
 	@go build -o bin/benchmark ./cmd/benchmark 2>&1 || echo "WARNING: Skipping - fix needed in node package"
 
 # Run all tests
@@ -49,25 +49,27 @@ test-coverage: ## Run tests with coverage report
 # Run benchmarks
 bench: ## Run performance benchmarks
 	@echo "Running benchmarks..."
-	@go test -bench=. -benchmem ./focus ./poll ./confidence ./testing ./crypto
+	@go test -bench=. -benchmem ./benchmark ./validator ./config ./protocol/... ./engine/...
 
 # Run pure consensus benchmarks
 benchmark: ## Run pure algorithm benchmarks without networking
 	@echo "🚀 Running pure consensus benchmarks..."
-	@go test -bench=. -benchmem ./focus ./poll ./confidence ./testing
-	@./benchmark_all.sh
+	@go test -bench=. -benchmem ./benchmark ./validator ./config ./protocol/... ./engine/...
 
-# Build and run benchmark node (requires ZMQ)
-benchmark-node: check-zmq ## Start a benchmark node with ZMQ transport (PORT=30000)
-	@echo "🔧 Building benchmark node..."
-	@go build -tags zmq -o bin/benchmark-node ./cmd/benchmark-node
-	@echo "✅ Built: bin/benchmark-node"
+# Build zmq-bench tool
+zmq-bench: ## Build the ZMQ benchmark tool
+	@echo "Building zmq-bench tool..."
+	@go build -tags zmq -o bin/zmq-bench ./cmd/zmq-bench || echo "ERROR: zmq-bench requires ZMQ"
+
+# Run zmq-bench tool
+run-zmq-bench: zmq-bench ## Run ZMQ benchmark tool with configurable parameters
+	@echo "🚀 Running ZMQ benchmark..."
+	@echo "   Nodes: $(NODES)"
+	@echo "   Batch: $(BATCH)"
+	@echo "   Interval: $(INTERVAL)"
+	@echo "   Rounds: $(ROUNDS)"
 	@echo ""
-	@echo "📡 Starting benchmark node on port $(PORT)..."
-	@echo "   Connect peers with: -peers tcp://host:port"
-	@echo "   View stats at: http://localhost:$(HTTP_PORT)/stats"
-	@echo ""
-	./bin/benchmark-node -port $(PORT) -http $(HTTP_PORT) $(ARGS)
+	./bin/zmq-bench -nodes $(NODES) -batch $(BATCH) -interval $(INTERVAL) -rounds $(ROUNDS)
 
 # Port configuration for benchmark node
 PORT ?= 30000
