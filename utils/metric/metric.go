@@ -4,8 +4,15 @@
 package metric
 
 import (
-	"fmt"
+	"errors"
 	"sync"
+
+	"github.com/luxfi/metrics"
+)
+
+var (
+	// ErrMetricNotFound is returned when a metric is not found
+	ErrMetricNotFound = errors.New("metric not found")
 )
 
 // Averager tracks a running average
@@ -14,11 +21,11 @@ type Averager interface {
 	Read() float64
 }
 
-// averager implements Averager
+// averager implements an average tracker using internal state
 type averager struct {
-	mu    sync.RWMutex
-	sum   float64
-	count float64
+	mu     sync.RWMutex
+	sum    float64
+	count  int64
 }
 
 // NewAverager returns a new Averager
@@ -30,7 +37,6 @@ func NewAverager() Averager {
 func (a *averager) Observe(value float64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	
 	a.sum += value
 	a.count++
 }
@@ -39,48 +45,45 @@ func (a *averager) Observe(value float64) {
 func (a *averager) Read() float64 {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	
 	if a.count == 0 {
 		return 0
 	}
-	return a.sum / a.count
+	return a.sum / float64(a.count)
 }
 
 // Counter tracks a count
 type Counter interface {
 	Inc()
-	Add(delta int64)
+	Add(delta int64) 
 	Read() int64
 }
 
-// counter implements Counter
+// counter wraps a luxfi/metrics Counter
 type counter struct {
-	mu    sync.RWMutex
-	value int64
+	ctr metrics.Counter
 }
 
 // NewCounter returns a new Counter
 func NewCounter() Counter {
-	return &counter{}
+	m := metrics.New("consensus")
+	return &counter{
+		ctr: m.NewCounter("counter", "A counter metric"),
+	}
 }
 
 // Inc increments the counter by 1
 func (c *counter) Inc() {
-	c.Add(1)
+	c.ctr.Inc()
 }
 
 // Add adds delta to the counter
 func (c *counter) Add(delta int64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.value += delta
+	c.ctr.Add(float64(delta))
 }
 
 // Read returns the current count
 func (c *counter) Read() int64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.value
+	return int64(c.ctr.Get())
 }
 
 // Gauge tracks a value that can go up or down
@@ -90,128 +93,104 @@ type Gauge interface {
 	Read() float64
 }
 
-// gauge implements Gauge  
+// gauge wraps a luxfi/metrics Gauge
 type gauge struct {
-	mu    sync.RWMutex
-	value float64
+	g metrics.Gauge
 }
 
 // NewGauge returns a new Gauge
 func NewGauge() Gauge {
-	return &gauge{}
+	m := metrics.New("consensus")
+	return &gauge{
+		g: m.NewGauge("gauge", "A gauge metric"),
+	}
 }
 
 // Set sets the gauge to a specific value
 func (g *gauge) Set(value float64) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	g.value = value
+	g.g.Set(value)
 }
 
 // Add adds delta to the gauge
 func (g *gauge) Add(delta float64) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	g.value += delta
+	g.g.Add(delta)
 }
 
 // Read returns the current value
 func (g *gauge) Read() float64 {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.value
+	return g.g.Get()
 }
 
 // Registry is a collection of metrics
 type Registry interface {
 	NewCounter(name string) Counter
-	NewGauge(name string) Gauge  
+	NewGauge(name string) Gauge
 	NewAverager(name string) Averager
 	GetCounter(name string) (Counter, error)
 	GetGauge(name string) (Gauge, error)
 	GetAverager(name string) (Averager, error)
 }
 
-// registry implements Registry
+// registry wraps a luxfi/metrics instance and tracks averagers
 type registry struct {
-	mu        sync.RWMutex
-	counters  map[string]Counter
-	gauges    map[string]Gauge
-	averagers map[string]Averager
+	metrics   metrics.Metrics
+	averagers sync.Map // map[string]Averager
+	counters  sync.Map // map[string]Counter
+	gauges    sync.Map // map[string]Gauge
 }
 
 // NewRegistry returns a new Registry
 func NewRegistry() Registry {
 	return &registry{
-		counters:  make(map[string]Counter),
-		gauges:    make(map[string]Gauge),
-		averagers: make(map[string]Averager),
+		metrics: metrics.New("consensus"),
 	}
 }
 
 // NewCounter creates and registers a new counter
 func (r *registry) NewCounter(name string) Counter {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	
-	c := NewCounter()
-	r.counters[name] = c
+	c := &counter{
+		ctr: r.metrics.NewCounter(name, "Counter: "+name),
+	}
+	r.counters.Store(name, c)
 	return c
 }
 
 // NewGauge creates and registers a new gauge
 func (r *registry) NewGauge(name string) Gauge {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	
-	g := NewGauge()
-	r.gauges[name] = g
+	g := &gauge{
+		g: r.metrics.NewGauge(name, "Gauge: "+name),
+	}
+	r.gauges.Store(name, g)
 	return g
 }
 
 // NewAverager creates and registers a new averager
 func (r *registry) NewAverager(name string) Averager {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	
-	// Create a simple averager without prometheus registration
 	a := &averager{}
-	r.averagers[name] = a
+	r.averagers.Store(name, a)
 	return a
 }
 
 // GetCounter returns a counter by name
 func (r *registry) GetCounter(name string) (Counter, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	
-	c, ok := r.counters[name]
-	if !ok {
-		return nil, fmt.Errorf("counter %q not found", name)
+	if v, ok := r.counters.Load(name); ok {
+		return v.(Counter), nil
 	}
-	return c, nil
+	return nil, ErrMetricNotFound
 }
 
 // GetGauge returns a gauge by name
 func (r *registry) GetGauge(name string) (Gauge, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	
-	g, ok := r.gauges[name]
-	if !ok {
-		return nil, fmt.Errorf("gauge %q not found", name)
+	if v, ok := r.gauges.Load(name); ok {
+		return v.(Gauge), nil
 	}
-	return g, nil
+	return nil, ErrMetricNotFound
 }
 
 // GetAverager returns an averager by name
 func (r *registry) GetAverager(name string) (Averager, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	
-	a, ok := r.averagers[name]
-	if !ok {
-		return nil, fmt.Errorf("averager %q not found", name)
+	if v, ok := r.averagers.Load(name); ok {
+		return v.(Averager), nil
 	}
-	return a, nil
+	return nil, ErrMetricNotFound
 }
