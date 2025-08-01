@@ -63,7 +63,7 @@ zmq-bench: ## Build the ZMQ benchmark tool
 
 # Run zmq-bench tool
 run-zmq-bench: zmq-bench ## Run ZMQ benchmark tool with configurable parameters
-	@echo "🚀 Running ZMQ benchmark..."
+	@echo "🚀 Running benchmark..."
 	@echo "   Nodes: $(NODES)"
 	@echo "   Batch: $(BATCH)"
 	@echo "   Interval: $(INTERVAL)"
@@ -71,14 +71,15 @@ run-zmq-bench: zmq-bench ## Run ZMQ benchmark tool with configurable parameters
 	@echo ""
 	./bin/zmq-bench -nodes $(NODES) -batch $(BATCH) -interval $(INTERVAL) -rounds $(ROUNDS)
 
-# Port configuration for benchmark node
-PORT ?= 30000
-HTTP_PORT ?= 8080
-ARGS ?=
+# Configuration for benchmarks
+NODES ?= 10
+BATCH ?= 4096
+INTERVAL ?= 5ms
+ROUNDS ?= 100
 
 # Run massively parallel ZMQ benchmarks with Ginkgo
-benchmark-zmq: check-zmq check-ginkgo ## Run ZeroMQ transport benchmarks
-	@echo "🌐 Running ZeroMQ transport benchmarks..."
+benchmark-zmq: check-ginkgo ## Run ZeroMQ transport benchmarks
+	@echo "🌐 Running transport benchmarks..."
 	go test -tags zmq -v ./benchmark -ginkgo.v
 
 # Run Ginkgo tests in parallel
@@ -86,39 +87,34 @@ test-parallel: check-ginkgo ## Run tests in parallel with Ginkgo
 	@echo "⚡ Running tests in parallel..."
 	ginkgo -p ./...
 
-# Start multi-node local test cluster
-test-cluster: check-zmq ## Start 5-node local test cluster
-	@echo "🌟 Starting 5-node local cluster..."
-	@echo "   Node 1: port 30000 (http: 8080)"
-	@echo "   Node 2: port 30010 (http: 8081)"
-	@echo "   Node 3: port 30020 (http: 8082)"
-	@echo "   Node 4: port 30030 (http: 8083)"
-	@echo "   Node 5: port 30040 (http: 8084)"
+# Run CI benchmark suite (10, 100, 1000 nodes)
+ci-cluster: zmq-bench ## Run CI multi-node consensus benchmarks (10, 100, 1000 nodes)
+	@echo "🌟 Running CI benchmark suite..."
 	@echo ""
-	@echo "Building benchmark node..."
-	@go build -tags zmq -o bin/benchmark-node ./cmd/benchmark-node
+	@echo "### 10 nodes (default)"
+	@./bin/zmq-bench -nodes 10 -batch 8192 -interval 1ms -rounds 500 -quiet
 	@echo ""
-	@echo "Starting nodes..."
-	@for i in 0 1 2 3 4; do \
-		PORT=$$((30000 + i * 10)) HTTP_PORT=$$((8080 + i)) ./bin/benchmark-node -port $$PORT -http $$HTTP_PORT & \
-		sleep 1; \
-	done
+	@echo "### 100 nodes"
+	@./bin/zmq-bench -nodes 100 -batch 8192 -interval 1ms -rounds 100 -quiet
 	@echo ""
-	@echo "✅ Cluster started. View stats:"
-	@for i in 0 1 2 3 4; do \
-		echo "   Node $$((i + 1)): curl http://localhost:$$((8080 + i))/stats"; \
-	done
-	@echo ""
-	@echo "Press Ctrl+C to stop all nodes"
-	@wait
+	@echo "### 500 nodes"
+	@./bin/zmq-bench -nodes 1000 -batch 8192 -interval 1ms -rounds 50 -quiet
 
-# Check if ZMQ is available
-check-zmq:
-	@which pkg-config > /dev/null || (echo "❌ pkg-config not found. Please install pkg-config"; exit 1)
-	@pkg-config --exists libzmq || (echo "❌ ZeroMQ not found. Please install:"; \
-		echo "   macOS:  brew install zeromq"; \
-		echo "   Ubuntu: apt-get install libzmq3-dev"; \
-		echo "   Alpine: apk add zeromq-dev"; exit 1)
+# Run quick benchmark
+benchmark-quick: zmq-bench ## Quick benchmark with 10 nodes
+	@./bin/zmq-bench -nodes 10 -batch 8192 -interval 1ms -rounds 20
+
+# Run maximum TPS benchmark
+benchmark-max-tps: zmq-bench ## Run benchmark optimized for maximum TPS
+	@echo "🚀 Running maximum TPS benchmark..."
+	@CPU_COUNT=$$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4); \
+	echo "   CPU cores: $$CPU_COUNT"; \
+	echo "   Nodes: $$((CPU_COUNT * 2))"; \
+	echo "   Batch: 16384"; \
+	echo "   Interval: 1ms"; \
+	echo ""; \
+	./bin/zmq-bench -nodes $$((CPU_COUNT * 2)) -batch 16384 -interval 1ms -rounds 100
+
 
 # Check if Ginkgo is installed
 check-ginkgo:
