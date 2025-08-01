@@ -19,7 +19,8 @@ var (
 	ErrAlphaPreferenceTooHigh      = errors.New("alpha preference is too high")
 	ErrAlphaConfidenceTooSmall     = errors.New("alpha confidence is too small")
 	ErrBetaTooLow                  = errors.New("beta is too low")
-	ErrConcurrentReprismsTooLow     = errors.New("concurrent reprisms is too low")
+	ErrConcurrentPollsTooLow     = errors.New("concurrent polls is too low")
+	ErrConcurrentPollsTooHigh    = errors.New("concurrent polls is too high")
 	ErrOptimalProcessingTooLow     = errors.New("optimal processing is too low")
 	ErrMaxOutstandingItemsTooLow   = errors.New("max outstanding items is too low")
 	ErrMaxItemProcessingTimeTooLow = errors.New("max item processing time is too low")
@@ -127,15 +128,15 @@ func (v *Validator) validateBasicParameters(cfg *Config, result *ValidationResul
 		v.addWarning(result, "Beta", cfg.Beta, "very high Beta increases latency", "Consider Beta <= 50")
 	}
 	
-	// ConcurrentReprisms validation
-	if cfg.ConcurrentReprisms < 1 {
-		v.addError(result, "ConcurrentReprisms", cfg.ConcurrentReprisms, 
-			"must be at least 1", "Set ConcurrentReprisms >= 1")
+	// ConcurrentPolls validation
+	if cfg.ConcurrentPolls < 1 {
+		v.addError(result, "ConcurrentPolls", cfg.ConcurrentPolls, 
+			"must be at least 1", "Set ConcurrentPolls >= 1")
 	}
-	if cfg.ConcurrentReprisms > cfg.Beta {
-		v.addError(result, "ConcurrentReprisms", cfg.ConcurrentReprisms,
+	if cfg.ConcurrentPolls > cfg.Beta {
+		v.addError(result, "ConcurrentPolls", cfg.ConcurrentPolls,
 			fmt.Sprintf("cannot exceed Beta (%d)", cfg.Beta), 
-			fmt.Sprintf("Set ConcurrentReprisms <= %d", cfg.Beta))
+			fmt.Sprintf("Set ConcurrentPolls <= %d", cfg.Beta))
 	}
 	
 	// Processing parameters

@@ -22,7 +22,7 @@ type Parameters struct {
 	QuasarTimeout         time.Duration `json:"quasarTimeout" yaml:"quasarTimeout"`
 	
 	// Advanced parameters
-	ConcurrentReprisms     int           `json:"concurrentReprisms" yaml:"concurrentReprisms"`
+	ConcurrentPolls       int           `json:"concurrentPolls" yaml:"concurrentPolls"`
 	OptimalProcessing     int           `json:"optimalProcessing" yaml:"optimalProcessing"`
 	MaxOutstandingItems   int           `json:"maxOutstandingItems" yaml:"maxOutstandingItems"`
 	MaxItemProcessingTime time.Duration `json:"maxItemProcessingTime" yaml:"maxItemProcessingTime"`
@@ -65,27 +65,29 @@ func (p Parameters) MinPercentConnectedHealthy() float64 {
 func (p Parameters) Valid() error {
 	switch {
 	case p.K <= 0:
-		return ErrKTooLow
+		return fmt.Errorf("k = %d: fails the condition that: 0 < k", p.K)
 	case p.AlphaPreference <= p.K/2:
-		return ErrAlphaPreferenceTooLow
+		return fmt.Errorf("k = %d, alphaPreference = %d: fails the condition that: k/2 < alphaPreference", p.K, p.AlphaPreference)
 	case p.AlphaPreference > p.K:
-		return ErrAlphaPreferenceTooHigh
+		return fmt.Errorf("k = %d, alphaPreference = %d: fails the condition that: alphaPreference <= k", p.K, p.AlphaPreference)
 	case p.AlphaConfidence < p.AlphaPreference:
-		return ErrAlphaConfidenceTooSmall
+		return fmt.Errorf("alphaPreference = %d, alphaConfidence = %d: fails the condition that: alphaPreference <= alphaConfidence", p.AlphaPreference, p.AlphaConfidence)
 	case p.AlphaConfidence > p.K:
-		return fmt.Errorf("alphaConfidence (%d) must be <= k (%d)", p.AlphaConfidence, p.K)
+		return fmt.Errorf("k = %d, alphaConfidence = %d: fails the condition that: alphaConfidence <= k", p.K, p.AlphaConfidence)
 	case p.Beta <= 0:
-		return ErrBetaTooLow
+		return fmt.Errorf("beta = %d: fails the condition that: 0 < beta", p.Beta)
 	case p.Beta > p.K:
 		return fmt.Errorf("beta (%d) must be <= k (%d)", p.Beta, p.K)
-	case p.ConcurrentReprisms <= 0:
-		return ErrConcurrentReprismsTooLow
+	case p.ConcurrentPolls <= 0:
+		return fmt.Errorf("concurrentPolls = %d: fails the condition that: 0 < concurrentPolls", p.ConcurrentPolls)
+	case p.ConcurrentPolls > p.Beta:
+		return fmt.Errorf("concurrentPolls = %d, beta = %d: fails the condition that: concurrentPolls <= beta", p.ConcurrentPolls, p.Beta)
 	case p.OptimalProcessing <= 0:
-		return ErrOptimalProcessingTooLow
+		return fmt.Errorf("optimalProcessing = %d: fails the condition that: 0 < optimalProcessing", p.OptimalProcessing)
 	case p.MaxOutstandingItems <= 0:
-		return ErrMaxOutstandingItemsTooLow
+		return fmt.Errorf("maxOutstandingItems = %d: fails the condition that: 0 < maxOutstandingItems", p.MaxOutstandingItems)
 	case p.MaxItemProcessingTime <= 0:
-		return ErrMaxItemProcessingTimeTooLow
+		return fmt.Errorf("maxItemProcessingTime = %d: fails the condition that: 0 < maxItemProcessingTime", p.MaxItemProcessingTime)
 	}
 	
 	// Quantum parameter validation - only if they are being used (non-zero)

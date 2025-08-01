@@ -69,7 +69,7 @@ func main() {
 	fmt.Printf("  Alpha Preference:       %d\n", cfg.AlphaPreference)
 	fmt.Printf("  Alpha Confidence:       %d\n", cfg.AlphaConfidence)
 	fmt.Printf("  Beta (rounds):          %d\n", cfg.Beta)
-	fmt.Printf("  Concurrent Reprisms:     %d\n", cfg.ConcurrentReprisms)
+	fmt.Printf("  Concurrent Polls:       %d\n", cfg.ConcurrentPolls)
 	fmt.Printf("  Max Processing Time:    %s\n", cfg.MaxItemProcessingTime)
 	fmt.Printf("  Min Round Interval:     %s\n", cfg.MinRoundInterval)
 	
@@ -146,10 +146,10 @@ func main() {
 		fmt.Printf("  Optimal Processing:     %d items\n", cfg.OptimalProcessing)
 		fmt.Printf("  Max Outstanding Items:  %d items\n", cfg.MaxOutstandingItems)
 		
-		if cfg.ConcurrentReprisms < cfg.Beta {
+		if cfg.ConcurrentPolls < cfg.Beta {
 			fmt.Printf("  Pipelining Efficiency:  %.1f%% (%d/%d rounds)\n",
-				float64(cfg.ConcurrentReprisms)/float64(cfg.Beta)*100,
-				cfg.ConcurrentReprisms, cfg.Beta)
+				float64(cfg.ConcurrentPolls)/float64(cfg.Beta)*100,
+				cfg.ConcurrentPolls, cfg.Beta)
 		} else {
 			fmt.Printf("  Pipelining Efficiency:  100%% (full pipelining)\n")
 		}

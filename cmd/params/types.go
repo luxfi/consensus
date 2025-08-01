@@ -111,7 +111,7 @@ func CalculateOptimalParameters(nc NetworkCharacteristics) (*config.Parameters, 
 	beta := calculateBeta(nc.TargetFinalityMs, nc.NetworkLatencyMs)
 	
 	// Calculate processing parameters
-	concurrentReprisms := min(beta, 10)
+	concurrentPolls := min(beta, 10)
 	maxItemProcessingTime := time.Duration(nc.TargetFinalityMs) * time.Millisecond
 	
 	params := &config.Parameters{
@@ -119,7 +119,7 @@ func CalculateOptimalParameters(nc NetworkCharacteristics) (*config.Parameters, 
 		AlphaPreference:       alphaPreference,
 		AlphaConfidence:       alphaConfidence,
 		Beta:                  beta,
-		ConcurrentReprisms:     concurrentReprisms,
+		ConcurrentPolls:       concurrentPolls,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: maxItemProcessingTime,
@@ -131,9 +131,9 @@ func CalculateOptimalParameters(nc NetworkCharacteristics) (*config.Parameters, 
 		"- AlphaPreference=%d (>K/2) for preference changes\n"+
 		"- AlphaConfidence=%d for strong confidence\n"+
 		"- Beta=%d rounds for %dms finality\n"+
-		"- ConcurrentReprisms=%d for parallel processing",
+		"- ConcurrentPolls=%d for parallel processing",
 		nc.TotalNodes, nc.ExpectedFailureRate*100,
-		k, alphaPreference, alphaConfidence, beta, nc.TargetFinalityMs, concurrentReprisms)
+		k, alphaPreference, alphaConfidence, beta, nc.TargetFinalityMs, concurrentPolls)
 	
 	return params, reasoning
 }
@@ -345,7 +345,7 @@ func ConfigToParameters(cfg *config.Config) *config.Parameters {
 		AlphaPreference:       cfg.AlphaPreference,
 		AlphaConfidence:       cfg.AlphaConfidence,
 		Beta:                  cfg.Beta,
-		ConcurrentReprisms:     cfg.ConcurrentReprisms,
+		ConcurrentPolls:     cfg.ConcurrentPolls,
 		OptimalProcessing:     cfg.OptimalProcessing,
 		MaxOutstandingItems:   cfg.MaxOutstandingItems,
 		MaxItemProcessingTime: cfg.MaxItemProcessingTime,
@@ -359,7 +359,7 @@ func ParametersToConfig(params *config.Parameters) *config.Config {
 		AlphaPreference:       params.AlphaPreference,
 		AlphaConfidence:       params.AlphaConfidence,
 		Beta:                  params.Beta,
-		ConcurrentReprisms:     params.ConcurrentReprisms,
+		ConcurrentPolls:     params.ConcurrentPolls,
 		OptimalProcessing:     params.OptimalProcessing,
 		MaxOutstandingItems:   params.MaxOutstandingItems,
 		MaxItemProcessingTime: params.MaxItemProcessingTime,
@@ -389,12 +389,12 @@ func Summary(p *config.Parameters) string {
 		"  Alpha Preference: %d (%.1f%% of K)\n"+
 		"  Alpha Confidence: %d (%.1f%% of K)\n"+
 		"  Beta (Rounds): %d\n"+
-		"  Concurrent Reprisms: %d\n"+
+		"  Concurrent Polls: %d\n"+
 		"  Max Processing Time: %v",
 		p.K,
 		p.AlphaPreference, float64(p.AlphaPreference)/float64(p.K)*100,
 		p.AlphaConfidence, float64(p.AlphaConfidence)/float64(p.K)*100,
 		p.Beta,
-		p.ConcurrentReprisms,
+		p.ConcurrentPolls,
 		p.MaxItemProcessingTime)
 }
