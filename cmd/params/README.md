@@ -222,8 +222,8 @@ Suggestion: Increase Beta to at least 4 for production use
 
 ⚠️ **Excessive Pipelining**
 ```
-ConcurrentRepolls=20, Beta=10 → No benefit from excessive pipelining
-Suggestion: Set ConcurrentRepolls=10 (same as Beta)
+ConcurrentPolls=20, Beta=10 → No benefit from excessive pipelining
+Suggestion: Set ConcurrentPolls=10 (same as Beta)
 ```
 
 ## Parameter Reference
@@ -236,7 +236,7 @@ Suggestion: Set ConcurrentRepolls=10 (same as Beta)
 - `-alpha-pref` - Preference quorum threshold
 - `-alpha-conf` - Confidence quorum threshold  
 - `-beta` - Consecutive rounds threshold
-- `-concurrent` - Concurrent repolls
+- `-concurrent` - Concurrent polls
 - `-optimize` - Optimization mode (latency, security, throughput)
 - `-output` - Output file path (JSON)
 - `-summary` - Show parameter summary
@@ -272,7 +272,7 @@ Suggestion: Set ConcurrentRepolls=10 (same as Beta)
    - Typical: 10-40 rounds
    - Trade-off between security and latency
 
-5. **ConcurrentRepolls**
+5. **ConcurrentPolls**
    - Should be ≤ Beta
    - Higher = better throughput via pipelining
    - Typical: 4-20
@@ -298,7 +298,7 @@ Suggestion: Set ConcurrentRepolls=10 (same as Beta)
 - Beta = 10-30 for strong finality
 
 ### High-Performance Local Networks
-- Maximize pipelining: ConcurrentRepolls = Beta
+- Maximize pipelining: ConcurrentPolls = Beta
 - Reduce Beta for faster finality (minimum 4)
 - Increase MaxOutstandingItems for throughput
 - Use shorter timeouts (but not less than 2× expected finality)
@@ -344,10 +344,10 @@ For example, with K=21, AlphaConfidence=18, Beta=8:
 
 ### Expected Finality Time
 ```
-Finality ≈ (Beta × NetworkLatency) / ConcurrentRepolls
+Finality ≈ (Beta × NetworkLatency) / ConcurrentPolls
 ```
 
-With Beta=8, 50ms latency, ConcurrentRepolls=8:
+With Beta=8, 50ms latency, ConcurrentPolls=8:
 - Finality ≈ (8 × 50ms) / 8 = 50ms (theoretical minimum)
 - In practice, add processing overhead: ~100-200ms
 

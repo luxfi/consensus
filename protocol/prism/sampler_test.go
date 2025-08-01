@@ -38,14 +38,30 @@ func Sample(elements map[ids.NodeID]uint64, maxSize int) (set.Set[ids.NodeID], e
 		}
 	}
 	
-	result := set.NewSet[ids.NodeID](maxSize)
-	count := 0
-	for nodeID := range elements {
-		if count >= maxSize {
-			break
+	// For deterministic testing, sort by weight (descending) then by nodeID
+	type weightedNode struct {
+		nodeID ids.NodeID
+		weight uint64
+	}
+	
+	nodes := make([]weightedNode, 0, len(elements))
+	for nodeID, weight := range elements {
+		nodes = append(nodes, weightedNode{nodeID, weight})
+	}
+	
+	// Sort by weight descending, then by nodeID for determinism
+	for i := 0; i < len(nodes); i++ {
+		for j := i + 1; j < len(nodes); j++ {
+			if nodes[i].weight < nodes[j].weight ||
+				(nodes[i].weight == nodes[j].weight && nodes[i].nodeID.Compare(nodes[j].nodeID) > 0) {
+				nodes[i], nodes[j] = nodes[j], nodes[i]
+			}
 		}
-		result.Add(nodeID)
-		count++
+	}
+	
+	result := set.NewSet[ids.NodeID](maxSize)
+	for i := 0; i < len(nodes) && i < maxSize; i++ {
+		result.Add(nodes[i].nodeID)
 	}
 	
 	return result, nil

@@ -1,7 +1,7 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package gravity
+package quantum
 
 import (
 	"context"
@@ -11,36 +11,36 @@ import (
 
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/protocol/quasar"
-	"github.com/luxfi/consensus/runtime/galaxy"
-	"github.com/luxfi/consensus/runtime/orbit"
+	"github.com/luxfi/consensus/engine/chain"
+	"github.com/luxfi/consensus/engine/dag"
 	"github.com/luxfi/ids"
 )
 
-// Runtime implements the Gravity runtime for universal consensus coordination
+// Engine implements the Gravity engine for universal consensus coordination
 // This is the largest cosmic scale, coordinating multiple consensus systems
 // like a gravitational field that binds galaxies together
-type Runtime struct {
+type Engine struct {
 	// Core engine - Quasar for quantum-secure unified consensus
 	engine *quasar.Engine
 	
-	// Sub-runtimes
-	orbits   map[string]*orbit.Runtime   // Linear chain runtimes
-	galaxies map[string]*galaxy.Runtime  // DAG runtimes
+	// Sub-engines
+	chains map[string]*chain.Engine // Linear chain engines
+	dags   map[string]*dag.Engine  // DAG engines
 	
-	// Cross-runtime coordination
+	// Cross-engine coordination
 	bridges     map[BridgeID]*ConsensusBridge
 	coordinator *UniversalCoordinator
 	
-	// Runtime state
+	// Engine state
 	params Parameters
-	state  *runtimeState
+	state  *engineState
 	mu     sync.RWMutex
 	
 	// Metrics
 	metrics *Metrics
 }
 
-// Parameters for Gravity runtime
+// Parameters for Gravity engine
 type Parameters struct {
 	// Universal parameters
 	MaxOrbits   int
@@ -50,15 +50,15 @@ type Parameters struct {
 	// Coordination parameters
 	CrossChainTimeout      time.Duration
 	ConsensusThreshold     float64
-	InterRuntimeBatchSize  int
+	InterEngineBatchSize  int
 	
 	// Quasar engine parameters
 	QuantumSecurityLevel   int
 	UnifiedConsensusMode   quasar.EngineMode
 }
 
-// New creates a new Gravity runtime
-func New(ctx *interfaces.Context, params Parameters) (*Runtime, error) {
+// New creates a new Gravity engine
+func New(ctx *interfaces.Context, params Parameters) (*Engine, error) {
 	// Create Quasar engine for unified consensus
 	engine, err := quasar.New(ctx, quasar.Parameters{
 		Mode:          params.UnifiedConsensusMode,
@@ -71,28 +71,28 @@ func New(ctx *interfaces.Context, params Parameters) (*Runtime, error) {
 	// Create universal coordinator
 	coordinator := NewUniversalCoordinator(CoordinatorParams{
 		ConsensusThreshold: params.ConsensusThreshold,
-		BatchSize:         params.InterRuntimeBatchSize,
+		BatchSize:         params.InterEngineBatchSize,
 	})
 	
-	return &Runtime{
+	return &Engine{
 		engine:      engine,
-		orbits:      make(map[string]*orbit.Runtime),
-		galaxies:    make(map[string]*galaxy.Runtime),
+		chains:   make(map[string]*chain.Engine),
+		dags:     make(map[string]*dag.Engine),
 		bridges:     make(map[BridgeID]*ConsensusBridge),
 		coordinator: coordinator,
 		params:      params,
-		state:       newRuntimeState(),
+		state:       newEngineState(),
 		metrics:     NewMetrics(),
 	}, nil
 }
 
-// Start begins the Gravity runtime
-func (r *Runtime) Start(ctx context.Context) error {
+// Start begins the Gravity engine
+func (r *Engine) Start(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	
 	if r.state.running {
-		return fmt.Errorf("runtime already running")
+		return fmt.Errorf("engine already running")
 	}
 	
 	// Initialize and start Quasar engine
@@ -115,25 +115,30 @@ func (r *Runtime) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop halts the Gravity runtime
-func (r *Runtime) Stop(ctx context.Context) error {
+// Stop halts the Gravity engine
+func (r *Engine) Stop(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	
 	if !r.state.running {
-		return fmt.Errorf("runtime not running")
+		return fmt.Errorf("engine not running")
 	}
 	
-	// Stop all sub-runtimes
-	for name, orbitRuntime := range r.orbits {
-		if err := orbitRuntime.Stop(ctx); err != nil {
-			return fmt.Errorf("failed to stop orbit %s: %w", name, err)
+	// Stop all sub-engines
+	for name, chainEngine := range r.chains {
+		if chainEngine.IsRunning() {
+			if err := chainEngine.Stop(ctx); err != nil {
+				return fmt.Errorf("failed to stop chain %s: %w", name, err)
+			}
 		}
 	}
 	
-	for name, galaxyRuntime := range r.galaxies {
-		if err := galaxyRuntime.Stop(ctx); err != nil {
-			return fmt.Errorf("failed to stop galaxy %s: %w", name, err)
+	for name, dagEngine := range r.dags {
+		// Only stop if the DAG engine is running
+		if dagEngine.IsRunning() {
+			if err := dagEngine.Stop(ctx); err != nil {
+				return fmt.Errorf("failed to stop dag %s: %w", name, err)
+			}
 		}
 	}
 	
@@ -151,60 +156,60 @@ func (r *Runtime) Stop(ctx context.Context) error {
 	return nil
 }
 
-// CreateOrbit creates a new linear chain runtime
-func (r *Runtime) CreateOrbit(name string, params orbit.Parameters) error {
+// CreateChain creates a new linear chain engine
+func (r *Engine) CreateChain(name string, params Parameters) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	
-	if len(r.orbits) >= r.params.MaxOrbits {
+	if len(r.chains) >= r.params.MaxOrbits {
 		return fmt.Errorf("maximum orbits reached: %d", r.params.MaxOrbits)
 	}
 	
-	if _, exists := r.orbits[name]; exists {
-		return fmt.Errorf("orbit %s already exists", name)
+	if _, exists := r.chains[name]; exists {
+		return fmt.Errorf("chain %s already exists", name)
 	}
 	
-	// Need to pass context to orbit.New
+	// Need to pass context to chain.New
 	ctx := &interfaces.Context{} // TODO: Get proper context
-	orbitRuntime, err := orbit.New(ctx, params)
+	chainEngine, err := chain.New(ctx, chain.Parameters{})
 	if err != nil {
-		return fmt.Errorf("failed to create orbit: %w", err)
+		return fmt.Errorf("failed to create chain: %w", err)
 	}
 	
-	r.orbits[name] = orbitRuntime
-	r.state.orbitCount = len(r.orbits)
+	r.chains[name] = chainEngine
+	r.state.orbitCount = len(r.chains)
 	
 	return nil
 }
 
-// CreateGalaxy creates a new DAG runtime
-func (r *Runtime) CreateGalaxy(name string, params galaxy.Parameters) error {
+// CreateDAG creates a new DAG engine
+func (r *Engine) CreateDAG(name string, params dag.Parameters) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	
-	if len(r.galaxies) >= r.params.MaxGalaxies {
+	if len(r.dags) >= r.params.MaxGalaxies {
 		return fmt.Errorf("maximum galaxies reached: %d", r.params.MaxGalaxies)
 	}
 	
-	if _, exists := r.galaxies[name]; exists {
-		return fmt.Errorf("galaxy %s already exists", name)
+	if _, exists := r.dags[name]; exists {
+		return fmt.Errorf("dag %s already exists", name)
 	}
 	
-	// Need to pass context to galaxy.New
+	// Need to pass context to dag.New
 	ctx := &interfaces.Context{} // TODO: Get proper context
-	galaxyRuntime, err := galaxy.New(ctx, params)
+	dagEngine, err := dag.New(ctx, params)
 	if err != nil {
-		return fmt.Errorf("failed to create galaxy: %w", err)
+		return fmt.Errorf("failed to create dag: %w", err)
 	}
 	
-	r.galaxies[name] = galaxyRuntime
-	r.state.galaxyCount = len(r.galaxies)
+	r.dags[name] = dagEngine
+	r.state.galaxyCount = len(r.dags)
 	
 	return nil
 }
 
-// CreateBridge creates a consensus bridge between runtimes
-func (r *Runtime) CreateBridge(params BridgeParams) (BridgeID, error) {
+// CreateBridge creates a consensus bridge between engines
+func (r *Engine) CreateBridge(params BridgeParams) (BridgeID, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	
@@ -224,59 +229,59 @@ func (r *Runtime) CreateBridge(params BridgeParams) (BridgeID, error) {
 	return bridgeID, nil
 }
 
-// SubmitCrossRuntimeTransaction submits a transaction that spans multiple runtimes
-func (r *Runtime) SubmitCrossRuntimeTransaction(ctx context.Context, tx CrossRuntimeTx) error {
+// SubmitCrossEngineTransaction submits a transaction that spans multiple engines
+func (r *Engine) SubmitCrossEngineTransaction(ctx context.Context, tx CrossEngineTx) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	
 	if !r.state.running {
-		return fmt.Errorf("runtime not running")
+		return fmt.Errorf("engine not running")
 	}
 	
 	// Validate transaction
-	if err := r.validateCrossRuntimeTx(tx); err != nil {
-		return fmt.Errorf("invalid cross-runtime transaction: %w", err)
+	if err := r.validateCrossEngineTx(tx); err != nil {
+		return fmt.Errorf("invalid cross-engine transaction: %w", err)
 	}
 	
 	// Submit to coordinator for atomic processing
 	return r.coordinator.ProcessTransaction(ctx, tx)
 }
 
-// validateCrossRuntimeTx validates a cross-runtime transaction
-func (r *Runtime) validateCrossRuntimeTx(tx CrossRuntimeTx) error {
-	// Check source runtime exists
+// validateCrossEngineTx validates a cross-engine transaction
+func (r *Engine) validateCrossEngineTx(tx CrossEngineTx) error {
+	// Check source engine exists
 	switch tx.SourceType {
-	case RuntimeTypeOrbit:
-		if _, exists := r.orbits[tx.SourceRuntime]; !exists {
-			return fmt.Errorf("source orbit %s not found", tx.SourceRuntime)
+	case EngineTypeOrbit:
+		if _, exists := r.chains[tx.SourceEngine]; !exists {
+			return fmt.Errorf("source chain %s not found", tx.SourceEngine)
 		}
-	case RuntimeTypeGalaxy:
-		if _, exists := r.galaxies[tx.SourceRuntime]; !exists {
-			return fmt.Errorf("source galaxy %s not found", tx.SourceRuntime)
+	case EngineTypeGalaxy:
+		if _, exists := r.dags[tx.SourceEngine]; !exists {
+			return fmt.Errorf("source dag %s not found", tx.SourceEngine)
 		}
 	default:
-		return fmt.Errorf("unknown source runtime type: %v", tx.SourceType)
+		return fmt.Errorf("unknown source engine type: %v", tx.SourceType)
 	}
 	
-	// Check destination runtime exists
+	// Check destination engine exists
 	switch tx.DestType {
-	case RuntimeTypeOrbit:
-		if _, exists := r.orbits[tx.DestRuntime]; !exists {
-			return fmt.Errorf("destination orbit %s not found", tx.DestRuntime)
+	case EngineTypeOrbit:
+		if _, exists := r.chains[tx.DestEngine]; !exists {
+			return fmt.Errorf("destination chain %s not found", tx.DestEngine)
 		}
-	case RuntimeTypeGalaxy:
-		if _, exists := r.galaxies[tx.DestRuntime]; !exists {
-			return fmt.Errorf("destination galaxy %s not found", tx.DestRuntime)
+	case EngineTypeGalaxy:
+		if _, exists := r.dags[tx.DestEngine]; !exists {
+			return fmt.Errorf("destination dag %s not found", tx.DestEngine)
 		}
 	default:
-		return fmt.Errorf("unknown destination runtime type: %v", tx.DestType)
+		return fmt.Errorf("unknown destination engine type: %v", tx.DestType)
 	}
 	
 	return tx.Verify()
 }
 
 // GetUniversalState returns the universal consensus state
-func (r *Runtime) GetUniversalState() UniversalState {
+func (r *Engine) GetUniversalState() UniversalState {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	
@@ -289,33 +294,61 @@ func (r *Runtime) GetUniversalState() UniversalState {
 	}
 }
 
-// Metrics returns runtime metrics
-func (r *Runtime) Metrics() *Metrics {
+// Metrics returns engine metrics
+func (r *Engine) Metrics() *Metrics {
 	return r.metrics
+}
+
+// IsRunning returns whether the engine is running
+func (r *Engine) IsRunning() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.state.running
+}
+
+// OrbitCount returns the current number of chains
+func (r *Engine) OrbitCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.state.orbitCount
+}
+
+// GalaxyCount returns the current number of DAGs
+func (r *Engine) GalaxyCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.state.galaxyCount
+}
+
+// BridgeCount returns the current number of bridges
+func (r *Engine) BridgeCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.state.bridgeCount
 }
 
 // Types
 
-// RuntimeType identifies the type of runtime
-type RuntimeType int
+// EngineType identifies the type of engine
+type EngineType int
 
 const (
-	RuntimeTypeOrbit RuntimeType = iota
-	RuntimeTypeGalaxy
+	EngineTypeOrbit EngineType = iota
+	EngineTypeGalaxy
 )
 
-// CrossRuntimeTx represents a transaction across runtimes
-type CrossRuntimeTx struct {
+// CrossEngineTx represents a transaction across engines
+type CrossEngineTx struct {
 	ID            ids.ID
-	SourceType    RuntimeType
-	SourceRuntime string
-	DestType      RuntimeType
-	DestRuntime   string
+	SourceType    EngineType
+	SourceEngine string
+	DestType      EngineType
+	DestEngine   string
 	Payload       []byte
 	Timestamp     time.Time
 }
 
-func (tx CrossRuntimeTx) Verify() error {
+func (tx CrossEngineTx) Verify() error {
 	// Simplified verification
 	return nil
 }
@@ -328,14 +361,14 @@ type BridgeID struct {
 
 // BridgeParams configures a consensus bridge
 type BridgeParams struct {
-	SourceRuntime string
-	DestRuntime   string
+	SourceEngine string
+	DestEngine   string
 	Bidirectional bool
 	BatchSize     int
 	Timeout       time.Duration
 }
 
-// ConsensusBridge handles cross-runtime consensus
+// ConsensusBridge handles cross-engine consensus
 type ConsensusBridge struct {
 	params BridgeParams
 	id     BridgeID
@@ -345,8 +378,8 @@ func NewConsensusBridge(params BridgeParams) *ConsensusBridge {
 	return &ConsensusBridge{
 		params: params,
 		id: BridgeID{
-			Source: params.SourceRuntime,
-			Dest:   params.DestRuntime,
+			Source: params.SourceEngine,
+			Dest:   params.DestEngine,
 		},
 	}
 }
@@ -355,7 +388,7 @@ func (b *ConsensusBridge) ID() BridgeID {
 	return b.id
 }
 
-// UniversalCoordinator coordinates consensus across all runtimes
+// UniversalCoordinator coordinates consensus across all engines
 type UniversalCoordinator struct {
 	params  CoordinatorParams
 	bridges []*ConsensusBridge
@@ -390,8 +423,8 @@ func (c *UniversalCoordinator) RegisterBridge(bridge *ConsensusBridge) {
 	c.bridges = append(c.bridges, bridge)
 }
 
-func (c *UniversalCoordinator) ProcessTransaction(ctx context.Context, tx CrossRuntimeTx) error {
-	// Process cross-runtime transaction atomically
+func (c *UniversalCoordinator) ProcessTransaction(ctx context.Context, tx CrossEngineTx) error {
+	// Process cross-engine transaction atomically
 	return nil
 }
 
@@ -404,8 +437,8 @@ type UniversalState struct {
 	Uptime           time.Duration
 }
 
-// Runtime state
-type runtimeState struct {
+// Engine state
+type engineState struct {
 	running          bool
 	startTime        time.Time
 	orbitCount       int
@@ -414,13 +447,13 @@ type runtimeState struct {
 	crossTxProcessed uint64
 }
 
-func newRuntimeState() *runtimeState {
-	return &runtimeState{}
+func newEngineState() *engineState {
+	return &engineState{}
 }
 
 // Metrics tracking
 type Metrics struct {
-	CrossRuntimeTx    Counter
+	CrossEngineTx    Counter
 	BridgeOperations  Counter
 	ConsensusLatency  Histogram
 	UniversalTPS      Gauge
@@ -436,3 +469,4 @@ type Gauge struct{ value float64 }
 func NewMetrics() *Metrics {
 	return &Metrics{}
 }
+

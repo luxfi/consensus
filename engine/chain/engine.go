@@ -6,14 +6,16 @@ package chain
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/consensus/utils/bag"
 )
 
-// Runtime implements a PQ-secured linear chain consensus runtime
-type Runtime struct {
+// Engine implements a PQ-secured linear chain consensus engine
+type Engine struct {
 	// Consensus stages (commented out until protocols are implemented)
 	// photonStage photon.Dyadic
 	// waveStage   wave.Dyadic
@@ -26,9 +28,10 @@ type Runtime struct {
 	// Runtime state
 	params Parameters
 	state  *chainState
+	mu     sync.RWMutex
 }
 
-// Parameters for chain runtime
+// Parameters for chain engine
 type Parameters struct {
 	// Network parameters
 	K               int
@@ -51,14 +54,14 @@ const (
 	CompletedStage
 )
 
-// New creates a new PQ-secured chain runtime
-func New(params Parameters) (*Runtime, error) {
+// New creates a new PQ-secured chain engine
+func New(ctx *interfaces.Context, params Parameters) (*Engine, error) {
 	rt := quasar.NewRingtail()
 	if err := rt.Initialize(params.SecurityLevel); err != nil {
 		return nil, fmt.Errorf("failed to initialize ringtail: %w", err)
 	}
 
-	return &Runtime{
+	return &Engine{
 		ringtail: rt,
 		params:   params,
 		state:    newChainState(),
@@ -66,7 +69,7 @@ func New(params Parameters) (*Runtime, error) {
 }
 
 // Initialize sets up the consensus stages
-func (r *Runtime) Initialize(ctx context.Context) error {
+func (e *Engine) Initialize(ctx context.Context) error {
 	// TODO: Initialize consensus stages when protocols are implemented
 	// // Initialize photon sampling stage
 	// r.photonStage = photon.NewDyadicPhoton(0)
@@ -95,69 +98,98 @@ func (r *Runtime) Initialize(ctx context.Context) error {
 	// factory := beam.TopologicalFactory{}
 	// r.beamStage = factory.New()
 
-	r.state.stage = PhotonStage
+	e.state.stage = PhotonStage
+	return nil
+}
+
+// Start begins the chain engine
+func (e *Engine) Start(ctx context.Context) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	
+	if e.state.running {
+		return fmt.Errorf("engine already running")
+	}
+	
+	e.state.running = true
+	return nil
+}
+
+// Stop halts the chain engine
+func (e *Engine) Stop(ctx context.Context) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	
+	if !e.state.running {
+		return fmt.Errorf("engine not running")
+	}
+	
+	e.state.running = false
 	return nil
 }
 
 // ProcessBlock processes a block through the consensus stages
-func (r *Runtime) ProcessBlock(ctx context.Context, block Block) error {
+func (e *Engine) ProcessBlock(ctx context.Context, block Block) error {
 	// Verify PQ signature
-	if err := r.verifyBlockPQ(block); err != nil {
+	if err := e.verifyBlockPQ(block); err != nil {
 		return fmt.Errorf("PQ verification failed: %w", err)
 	}
 
 	// Process through consensus stages
-	switch r.state.stage {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	
+	switch e.state.stage {
 	case PhotonStage:
-		r.processPhoton(block)
+		e.processPhoton(block)
 	case WaveStage:
-		r.processWave(block)
+		e.processWave(block)
 	case FocusStage:
-		r.processFocus(block)
+		e.processFocus(block)
 	case FinalizationStage:
-		r.processBeam(block)
+		e.processBeam(block)
 	}
 
 	return nil
 }
 
 // State returns the current runtime state
-func (r *Runtime) State() *chainState {
-	return r.state
+func (e *Engine) State() *chainState {
+	return e.state
 }
 
 // verifyBlockPQ verifies block with post-quantum signature
-func (r *Runtime) verifyBlockPQ(block Block) error {
+func (e *Engine) verifyBlockPQ(block Block) error {
 	// For now, we'll skip PQ verification in this stub
 	// In production, you'd need the public key from the block or validator set
 	return nil
 }
 
 // processPhoton handles sampling stage
-func (r *Runtime) processPhoton(block Block) {
+func (e *Engine) processPhoton(block Block) {
 	// TODO: implement when photon protocol is available
 	// Sampling logic
 	// r.photonStage.RecordPrism(1, block.Choice())
 	
 	// Check if we should move to wave stage
-	if r.shouldTransitionToWave() {
-		r.state.stage = WaveStage
+	if e.shouldTransitionToWave() {
+		e.state.stage = WaveStage
 	}
 }
 
 // processWave handles thresholding stage
-func (r *Runtime) processWave(block Block) {
+func (e *Engine) processWave(block Block) {
 	// TODO: implement when wave protocol is available
 	// count := r.countVotes(block)
 	// r.waveStage.RecordPrism(count, block.Choice())
 	
 	// if r.waveStage.Finalized() {
-		r.state.stage = FocusStage
+		e.state.stage = FocusStage
 	// }
 }
 
 // processFocus handles confidence stage
-func (r *Runtime) processFocus(block Block) {
+func (e *Engine) processFocus(block Block) {
 	// TODO: implement when focus protocol is available
 	// count := r.countVotes(block)
 	// r.focusStage.RecordPrism(count, block.Choice())
@@ -168,14 +200,14 @@ func (r *Runtime) processFocus(block Block) {
 }
 
 // processBeam handles linear finalization
-func (r *Runtime) processBeam(block Block) {
+func (e *Engine) processBeam(block Block) {
 	// TODO: Properly convert block to beam.Block
 	// For now, we can't add directly to beam consensus
 	// as it requires a full beam.Block implementation
 	
 	// Just update state for now
-	r.state.stage = CompletedStage
-	r.state.finalized = true
+	e.state.stage = CompletedStage
+	e.state.finalized = true
 }
 
 // Block interface for chain blocks
@@ -188,12 +220,13 @@ type Block interface {
 	Signature() quasar.Signature
 }
 
-// chainState tracks runtime state
+// chainState tracks engine state
 type chainState struct {
 	stage      Stage
 	preference ids.ID
 	finalized  bool
 	confidence map[ids.ID]int
+	running    bool
 }
 
 func newChainState() *chainState {
@@ -220,18 +253,25 @@ func (s *chainState) Confidence() map[ids.ID]int {
 }
 
 // Helper methods
-func (r *Runtime) shouldTransitionToWave() bool {
+func (e *Engine) shouldTransitionToWave() bool {
 	// Transition logic based on sampling results
 	return true // Simplified for example
 }
 
-func (r *Runtime) countVotes(block Block) int {
+func (e *Engine) countVotes(block Block) int {
 	// Vote counting logic
-	return r.params.AlphaPreference // Simplified
+	return e.params.AlphaPreference // Simplified
 }
 
-func (r *Runtime) collectVotes(block Block) bag.Bag[ids.ID] {
+func (e *Engine) collectVotes(block Block) bag.Bag[ids.ID] {
 	// Vote collection for beam
 	votes := bag.Of(block.ID())
 	return votes
+}
+
+// IsRunning returns whether the engine is running
+func (e *Engine) IsRunning() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.state.running
 }
