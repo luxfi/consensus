@@ -25,9 +25,6 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Install ZeroMQ dependencies
-        run: |
-          echo "Using pure Go ZMQ4 implementation - no system dependencies needed"
 
       - name: Get dependencies
         run: go mod download
@@ -57,9 +54,6 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Install ZeroMQ dependencies
-        run: |
-          echo "Using pure Go ZMQ4 implementation - no system dependencies needed"
 
       - name: Get dependencies
         run: go mod download

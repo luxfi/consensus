@@ -31,6 +31,7 @@ var (
 	rounds    = flag.Int("rounds", 100, "Number of consensus rounds")
 	batchSize = flag.Int("batch", 1024, "Transactions per batch")
 	interval  = flag.Duration("interval", 10*time.Millisecond, "Round interval")
+	quiet     = flag.Bool("quiet", false, "Quiet mode - only show summary")
 )
 
 // SimpleTransport wraps ZMQ sockets for consensus communication
@@ -144,7 +145,9 @@ type NetworkBenchmark struct {
 func main() {
 	flag.Parse()
 	
-	log.Printf("🚀 Starting ZMQ consensus benchmark with %d nodes", *nodes)
+	if !*quiet {
+		log.Printf("🚀 Starting ZMQ consensus benchmark with %d nodes", *nodes)
+	}
 	
 	// Get consensus parameters
 	params := getConsensusParams(*profile)
@@ -210,7 +213,9 @@ func (b *NetworkBenchmark) CreateNodes(count int, basePort int) error {
 		}
 		
 		b.nodes[i] = node
-		log.Printf("Created node %d: %s on port %d", i, nodeID, basePort+i)
+		if !*quiet {
+			log.Printf("Created node %d: %s on port %d", i, nodeID, basePort+i)
+		}
 	}
 	
 	// Connect nodes in a mesh topology
@@ -334,7 +339,8 @@ func (n *Node) Run(ctx context.Context, bench *NetworkBenchmark) {
 		default:
 			msg, err := n.transport.Receive()
 			if err != nil {
-				if err.Error() != "timeout" {
+				// Ignore context canceled errors during shutdown
+				if err.Error() != "timeout" && err.Error() != "context canceled" && err.Error() != "EOF" {
 					log.Printf("Node %d receive error: %v", n.index, err)
 				}
 				continue
@@ -408,7 +414,9 @@ func (n *Node) ProcessVote(msg *ConsensusMessage, bench *NetworkBenchmark) {
 		bench.consensusLatency = append(bench.consensusLatency, latency)
 		bench.mu.Unlock()
 		
-		log.Printf("Node %d finalized round %d (latency: %v)", n.index, msg.Round, latency)
+		if !*quiet {
+			log.Printf("Node %d finalized round %d (latency: %v)", n.index, msg.Round, latency)
+		}
 	}
 }
 
@@ -454,7 +462,9 @@ func DecodeMessage(data []byte) (*ConsensusMessage, error) {
 func getConsensusParams(profile string) config.Parameters {
 	params, err := config.GetPresetParameters(profile)
 	if err != nil {
-		log.Printf("Unknown profile %s, using local", profile)
+		if !*quiet {
+			log.Printf("Unknown profile %s, using local", profile)
+		}
 		params, _ = config.GetPresetParameters("local")
 	}
 	return params
