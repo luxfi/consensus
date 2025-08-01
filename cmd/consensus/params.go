@@ -137,7 +137,7 @@ func runParamsTune(cmd *cobra.Command, args []string) error {
 		AlphaPreference:       alphaPreference,
 		AlphaConfidence:       alphaConfidence,
 		Beta:                  beta,
-		ConcurrentReprisms:     8,
+		ConcurrentPolls:     8,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   networkSize / 10,
 		MaxItemProcessingTime: roundTime,
@@ -187,7 +187,7 @@ func runParamsGenerate(cmd *cobra.Command, args []string) error {
 			AlphaPreference:       13,
 			AlphaConfidence:       18,
 			Beta:                  8,
-			ConcurrentReprisms:     8,
+			ConcurrentPolls:     8,
 			OptimalProcessing:     10,
 			MaxOutstandingItems:   369,
 			MaxItemProcessingTime: 9630 * time.Millisecond,
@@ -200,7 +200,7 @@ func runParamsGenerate(cmd *cobra.Command, args []string) error {
 			AlphaPreference:       7,
 			AlphaConfidence:       9,
 			Beta:                  6,
-			ConcurrentReprisms:     4,
+			ConcurrentPolls:     4,
 			OptimalProcessing:     5,
 			MaxOutstandingItems:   100,
 			MaxItemProcessingTime: 6300 * time.Millisecond,
@@ -213,7 +213,7 @@ func runParamsGenerate(cmd *cobra.Command, args []string) error {
 			AlphaPreference:       3,
 			AlphaConfidence:       4,
 			Beta:                  3,
-			ConcurrentReprisms:     2,
+			ConcurrentPolls:     2,
 			OptimalProcessing:     3,
 			MaxOutstandingItems:   50,
 			MaxItemProcessingTime: 3690 * time.Millisecond,
@@ -242,7 +242,7 @@ func displayParams(p config.Parameters) {
 	fmt.Printf("Alpha Preference:       %d (%.1f%%)\n", p.AlphaPreference, float64(p.AlphaPreference)/float64(p.K)*100)
 	fmt.Printf("Alpha Confidence:       %d (%.1f%%)\n", p.AlphaConfidence, float64(p.AlphaConfidence)/float64(p.K)*100)
 	fmt.Printf("Beta:                   %d\n", p.Beta)
-	fmt.Printf("Concurrent Reprisms:     %d\n", p.ConcurrentReprisms)
+	fmt.Printf("Concurrent Polls:        %d\n", p.ConcurrentPolls)
 	fmt.Printf("Optimal Processing:     %d\n", p.OptimalProcessing)
 	fmt.Printf("Max Outstanding Items:  %d\n", p.MaxOutstandingItems)
 	fmt.Printf("Max Processing Time:    %v\n", p.MaxItemProcessingTime)

@@ -36,9 +36,9 @@ consensus/                  # Core photonic consensus stages
 └── nova/                  # DAG finalizer (Nova)
 
 engine/                    # Full node engine layers
-├── chain/                 # Photon→Wave→Beam pipeline (linear chain)
-├── dag/                   # Photon→Wave→Beam→Flare→Nova pipeline (DAG chain)
-└── pq/                    # Quasar post-quantum consensus (post-quantum finality)
+├── chain/                 # PQ-secured linear chain consensus engine
+├── dag/                   # DAG consensus for parallel chains
+└── quantum/               # Universal consensus coordination
 
 poll/                      # Photon sampling providers
 quorum/                    # Wave threshold providers

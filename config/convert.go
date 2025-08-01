@@ -10,7 +10,7 @@ func (c Config) ToParameters() Parameters {
 		AlphaPreference:       c.AlphaPreference,
 		AlphaConfidence:       c.AlphaConfidence,
 		Beta:                  c.Beta,
-		ConcurrentReprisms:     c.ConcurrentReprisms,
+		ConcurrentPolls:     c.ConcurrentPolls,
 		OptimalProcessing:     c.OptimalProcessing,
 		MaxOutstandingItems:   c.MaxOutstandingItems,
 		MaxItemProcessingTime: c.MaxItemProcessingTime,

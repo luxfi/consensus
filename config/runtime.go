@@ -103,7 +103,7 @@ func SaveRuntimeToFile(path string) error {
 		"alphaPreference":       params.GetAlphaPreference(),
 		"alphaConfidence":       params.GetAlphaConfidence(),
 		"beta":                  params.GetBeta(),
-		"concurrentReprisms":     params.ConcurrentReprisms,
+		"concurrentPolls":       params.ConcurrentPolls,
 		"optimalProcessing":     params.OptimalProcessing,
 		"maxOutstandingItems":   params.MaxOutstandingItems,
 		"maxItemProcessingTime": params.MaxItemProcessingTime,

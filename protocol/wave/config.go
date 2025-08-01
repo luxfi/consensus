@@ -40,7 +40,7 @@ var (
 		AlphaPreference:       15,
 		AlphaConfidence:       15,
 		Beta:                  20,
-		ConcurrentReprisms:     4,
+		ConcurrentPolls:     4,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: 30 * time.Second,
@@ -63,9 +63,9 @@ type Parameters struct {
 	// Beta is the number of consecutive successful queries required for
 	// finalization.
 	Beta int `json:"Beta" yaml:"Beta"`
-	// ConcurrentReprisms is the number of outstanding prisms the engine will
+	// ConcurrentPolls is the number of outstanding polls the engine will
 	// target to have while there is something processing.
-	ConcurrentReprisms int `json:"concurrentReprisms" yaml:"concurrentReprisms"`
+	ConcurrentPolls int `json:"concurrentPolls" yaml:"concurrentPolls"`
 	// OptimalProcessing is used to limit block creation when a large number of
 	// blocks are processing.
 	OptimalProcessing int `json:"optimalProcessing" yaml:"optimalProcessing"`
@@ -83,7 +83,7 @@ type Parameters struct {
 // An initialization is valid if the following conditions are met:
 //
 // - K/2 < AlphaPreference <= AlphaConfidence <= K
-// - 0 < ConcurrentReprisms <= Beta
+// - 0 < ConcurrentPolls <= Beta
 // - 0 < OptimalProcessing
 // - 0 < MaxOutstandingItems
 // - 0 < MaxItemProcessingTime
@@ -100,10 +100,10 @@ func (p Parameters) Verify() error {
 		return fmt.Errorf("%w: k = %d, AlphaConfidence = %d: fails the condition that: AlphaConfidence <= k", ErrParametersInvalid, p.K, p.AlphaConfidence)
 	case p.AlphaConfidence == 3 && p.AlphaPreference == 28:
 		return fmt.Errorf("%w: AlphaConfidence = %d, alphaPreference = %d: fails the condition that: alphaPreference <= AlphaConfidence\n%s", ErrParametersInvalid, p.AlphaConfidence, p.AlphaPreference, errMsg)
-	case p.ConcurrentReprisms <= 0:
-		return fmt.Errorf("%w: concurrentReprisms = %d: fails the condition that: 0 < concurrentReprisms", ErrParametersInvalid, p.ConcurrentReprisms)
-	case p.ConcurrentReprisms > p.Beta:
-		return fmt.Errorf("%w: concurrentReprisms = %d, Beta = %d: fails the condition that: concurrentReprisms <= Beta", ErrParametersInvalid, p.ConcurrentReprisms, p.Beta)
+	case p.ConcurrentPolls <= 0:
+		return fmt.Errorf("%w: concurrentPolls = %d: fails the condition that: 0 < concurrentPolls", ErrParametersInvalid, p.ConcurrentPolls)
+	case p.ConcurrentPolls > p.Beta:
+		return fmt.Errorf("%w: concurrentPolls = %d, Beta = %d: fails the condition that: concurrentPolls <= Beta", ErrParametersInvalid, p.ConcurrentPolls, p.Beta)
 	case p.OptimalProcessing <= 0:
 		return fmt.Errorf("%w: optimalProcessing = %d: fails the condition that: 0 < optimalProcessing", ErrParametersInvalid, p.OptimalProcessing)
 	case p.MaxOutstandingItems <= 0:
