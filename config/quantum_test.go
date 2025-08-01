@@ -34,7 +34,7 @@ func TestQuantumThresholdValidation(t *testing.T) {
 		AlphaPreference:       13,
 		AlphaConfidence:       18,
 		Beta:                  8,
-		ConcurrentReprisms:     8,
+		ConcurrentPolls:     8,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: 9630 * time.Millisecond,

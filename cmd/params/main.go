@@ -21,7 +21,7 @@ func main() {
 		alphaPref    = flag.Int("alpha-pref", 0, "Preference quorum threshold")
 		alphaConf    = flag.Int("alpha-conf", 0, "Confidence quorum threshold")
 		beta         = flag.Int("beta", 0, "Consecutive rounds threshold")
-		concurrent   = flag.Int("concurrent", 0, "Concurrent reprisms")
+		concurrent   = flag.Int("concurrent", 0, "Concurrent polls")
 		optimize     = flag.String("optimize", "", "Optimize for: latency, security, throughput")
 		output       = flag.String("output", "", "Output file for parameters (JSON)")
 		summary      = flag.Bool("summary", false, "Show parameter summary")
@@ -106,7 +106,7 @@ func main() {
 		builder = builder.WithBeta(*beta)
 	}
 	if *concurrent > 0 {
-		builder = builder.WithConcurrentReprisms(*concurrent)
+		builder = builder.WithConcurrentPolls(*concurrent)
 	}
 
 	// Apply target finality

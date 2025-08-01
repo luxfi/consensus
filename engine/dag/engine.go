@@ -1,7 +1,7 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package galaxy
+package dag
 
 import (
 	"context"
@@ -14,9 +14,9 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// Runtime implements the Galaxy runtime for DAG consensus
+// Engine implements the Galaxy engine for DAG consensus
 // This operates at stellar cluster scale, handling multiple parallel chains
-type Runtime struct {
+type Engine struct {
 	// Core engine
 	engine *nebula.Engine
 	
@@ -27,9 +27,9 @@ type Runtime struct {
 	// flareStage  flare.Flare     // Rapid vertex ordering
 	// novaStage   nova.Nova       // DAG finalization
 	
-	// Runtime state
+	// Engine state
 	params    Parameters
-	state     *runtimeState
+	state     *engineState
 	mu        sync.RWMutex
 	
 	// DAG structure
@@ -40,7 +40,7 @@ type Runtime struct {
 	metrics   *Metrics
 }
 
-// Parameters for Galaxy runtime
+// Parameters for Galaxy engine
 type Parameters struct {
 	// Network parameters
 	K               int
@@ -58,8 +58,8 @@ type Parameters struct {
 	VertexTimeout         time.Duration
 }
 
-// New creates a new Galaxy runtime
-func New(ctx *interfaces.Context, params Parameters) (*Runtime, error) {
+// New creates a new Galaxy engine
+func New(ctx *interfaces.Context, params Parameters) (*Engine, error) {
 	// TODO: Create consensus stages when protocols are implemented
 	// photonFactory := photon.PhotonFactory
 	// waveFactory := wave.WaveFactory
@@ -93,7 +93,7 @@ func New(ctx *interfaces.Context, params Parameters) (*Runtime, error) {
 	// Create nebula engine
 	engine := nebula.New(ctx)
 	
-	return &Runtime{
+	return &Engine{
 		engine:      engine,
 		// photonStage: photonStage,
 		// waveStage:   waveStage,
@@ -101,23 +101,28 @@ func New(ctx *interfaces.Context, params Parameters) (*Runtime, error) {
 		// flareStage:  flareStage,
 		// novaStage:   novaStage,
 		params:      params,
-		state:       newRuntimeState(),
+		state:       newEngineState(),
 		vertices:    make(map[ids.ID]*Vertex),
 		frontier:    make(map[ids.ID]bool),
 		metrics:     NewMetrics(),
 	}, nil
 }
 
-// Start begins the Galaxy runtime
-func (r *Runtime) Start(ctx context.Context) error {
+// Start begins the Galaxy engine
+func (r *Engine) Start(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	
 	if r.state.running {
-		return fmt.Errorf("runtime already running")
+		return fmt.Errorf("engine already running")
 	}
 	
 	// Stages are already initialized in the constructor
+	
+	// Initialize engine first
+	if err := r.engine.Initialize(ctx); err != nil {
+		return fmt.Errorf("failed to initialize nebula engine: %w", err)
+	}
 	
 	// Start engine
 	if err := r.engine.Start(ctx); err != nil {
@@ -130,13 +135,13 @@ func (r *Runtime) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop halts the Galaxy runtime
-func (r *Runtime) Stop(ctx context.Context) error {
+// Stop halts the Galaxy engine
+func (r *Engine) Stop(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	
 	if !r.state.running {
-		return fmt.Errorf("runtime not running")
+		return fmt.Errorf("engine not running")
 	}
 	
 	// Stop engine
@@ -149,12 +154,12 @@ func (r *Runtime) Stop(ctx context.Context) error {
 }
 
 // SubmitVertex submits a DAG vertex for consensus
-func (r *Runtime) SubmitVertex(ctx context.Context, vertex Vertex) error {
+func (r *Engine) SubmitVertex(ctx context.Context, vertex Vertex) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	
 	if !r.state.running {
-		return fmt.Errorf("runtime not running")
+		return fmt.Errorf("engine not running")
 	}
 	
 	// Validate vertex
@@ -199,7 +204,7 @@ func (r *Runtime) SubmitVertex(ctx context.Context, vertex Vertex) error {
 }
 
 // validateVertex ensures the vertex is valid
-func (r *Runtime) validateVertex(vertex Vertex) error {
+func (r *Engine) validateVertex(vertex Vertex) error {
 	// Check parent count
 	if len(vertex.Parents()) > r.params.MaxParents {
 		return fmt.Errorf("too many parents: %d > %d", len(vertex.Parents()), r.params.MaxParents)
@@ -217,7 +222,7 @@ func (r *Runtime) validateVertex(vertex Vertex) error {
 }
 
 // processPhoton handles quantum sampling stage
-func (r *Runtime) processPhoton(ctx context.Context, vertex Vertex) error {
+func (r *Engine) processPhoton(ctx context.Context, vertex Vertex) error {
 	// TODO: Implement when photon protocol is available
 	// For monadic, we just record the count of votes
 	// In a real implementation, this would come from network prism sampling
@@ -227,7 +232,7 @@ func (r *Runtime) processPhoton(ctx context.Context, vertex Vertex) error {
 }
 
 // processWave handles propagation stage
-func (r *Runtime) processWave(ctx context.Context, vertex Vertex) error {
+func (r *Engine) processWave(ctx context.Context, vertex Vertex) error {
 	// TODO: Implement when wave protocol is available
 	// For monadic, we just record the count of votes
 	// voteCount := r.params.AlphaPreference // Simulate successful poll
@@ -236,7 +241,7 @@ func (r *Runtime) processWave(ctx context.Context, vertex Vertex) error {
 }
 
 // processFocus handles confidence aggregation
-func (r *Runtime) processFocus(ctx context.Context, vertex Vertex) error {
+func (r *Engine) processFocus(ctx context.Context, vertex Vertex) error {
 	// TODO: Implement when focus protocol is available
 	// For monadic, we just record the count of votes
 	// voteCount := r.params.AlphaPreference // Simulate successful poll
@@ -245,14 +250,14 @@ func (r *Runtime) processFocus(ctx context.Context, vertex Vertex) error {
 }
 
 // processFlare handles rapid ordering
-func (r *Runtime) processFlare(ctx context.Context, vertex Vertex) error {
+func (r *Engine) processFlare(ctx context.Context, vertex Vertex) error {
 	// Flare stage determines vertex ordering within conflict sets
 	// TODO: Implement proper flare integration - vertex needs to implement flare.Tx
 	return nil
 }
 
 // processNova handles DAG finalization
-func (r *Runtime) processNova(ctx context.Context, vertex Vertex) error {
+func (r *Engine) processNova(ctx context.Context, vertex Vertex) error {
 	// TODO: Implement when nova protocol is available
 	// Nova stage finalizes the vertex in the DAG
 	// return r.novaStage.Finalize(ctx, vertex.ID())
@@ -260,7 +265,7 @@ func (r *Runtime) processNova(ctx context.Context, vertex Vertex) error {
 }
 
 // updateFrontier updates the DAG frontier
-func (r *Runtime) updateFrontier(vertex Vertex) {
+func (r *Engine) updateFrontier(vertex Vertex) {
 	// Add vertex to frontier
 	r.frontier[vertex.ID()] = true
 	
@@ -273,7 +278,7 @@ func (r *Runtime) updateFrontier(vertex Vertex) {
 }
 
 // GetFrontier returns the current DAG frontier
-func (r *Runtime) GetFrontier() []ids.ID {
+func (r *Engine) GetFrontier() []ids.ID {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	
@@ -285,7 +290,7 @@ func (r *Runtime) GetFrontier() []ids.ID {
 }
 
 // GetVertex returns a vertex by ID
-func (r *Runtime) GetVertex(id ids.ID) (Vertex, error) {
+func (r *Engine) GetVertex(id ids.ID) (Vertex, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	
@@ -296,12 +301,19 @@ func (r *Runtime) GetVertex(id ids.ID) (Vertex, error) {
 	return *vertex, nil
 }
 
-// Metrics returns runtime metrics
-func (r *Runtime) Metrics() *Metrics {
+// Metrics returns engine metrics
+func (r *Engine) Metrics() *Metrics {
 	return r.metrics
 }
 
-// Vertex interface for Galaxy runtime
+// IsRunning returns whether the engine is running
+func (r *Engine) IsRunning() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.state.running
+}
+
+// Vertex interface for Galaxy engine
 type Vertex interface {
 	ID() ids.ID
 	Parents() []ids.ID
@@ -311,16 +323,16 @@ type Vertex interface {
 	Verify() error
 }
 
-// Runtime state
-type runtimeState struct {
+// Engine state
+type engineState struct {
 	running      bool
 	startTime    time.Time
 	vertexCount  uint64
 	frontierSize int
 }
 
-func newRuntimeState() *runtimeState {
-	return &runtimeState{}
+func newEngineState() *engineState {
+	return &engineState{}
 }
 
 // Metrics tracking

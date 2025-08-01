@@ -8,7 +8,7 @@ type Config struct {
     AlphaPreference       int
     AlphaConfidence       int
     Beta                  int
-    ConcurrentReprisms     int
+    ConcurrentPolls     int
     OptimalProcessing     int
     MaxOutstandingItems   int
     MaxItemProcessingTime time.Duration
@@ -20,7 +20,7 @@ var DefaultConfig = Config{
     AlphaPreference:       2,
     AlphaConfidence:       2,
     Beta:                  1,
-    ConcurrentReprisms:     1,
+    ConcurrentPolls:     1,
     OptimalProcessing:     1,
     MaxOutstandingItems:   16,
     MaxItemProcessingTime: 10 * time.Second,
