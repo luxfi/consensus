@@ -7,6 +7,7 @@ require (
 	github.com/luxfi/database v1.1.3
 	github.com/luxfi/ids v0.1.1
 	github.com/luxfi/log v0.1.0
+	github.com/luxfi/metrics v1.1.1
 	github.com/luxfi/trace v0.1.0
 	github.com/luxfi/zmq4 v1.0.1
 	github.com/onsi/ginkgo/v2 v2.23.4
@@ -38,7 +39,6 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/luxfi/metrics v1.1.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
