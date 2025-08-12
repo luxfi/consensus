@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	zmq "github.com/luxfi/zmq4"
+	zmq "github.com/luxfi/zmq/v4"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/confidence"
 	"github.com/luxfi/consensus/poll"

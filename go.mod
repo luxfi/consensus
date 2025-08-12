@@ -9,7 +9,7 @@ require (
 	github.com/luxfi/log v0.1.0
 	github.com/luxfi/metrics v1.1.1
 	github.com/luxfi/trace v0.1.0
-	github.com/luxfi/zmq4 v1.0.1
+	github.com/luxfi/zmq/v4 v4.2.0
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
 	github.com/spf13/cobra v1.9.1
