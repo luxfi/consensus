@@ -21,7 +21,7 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/ids"
-	zmq4 "github.com/luxfi/zmq4"
+	zmq4 "github.com/luxfi/zmq/v4"
 )
 
 var (
