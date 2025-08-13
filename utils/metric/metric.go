@@ -7,7 +7,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/luxfi/metrics"
+	"github.com/luxfi/metric"
 )
 
 var (
@@ -58,7 +58,7 @@ type Counter interface {
 	Read() int64
 }
 
-// counter wraps a luxfi/metrics Counter
+// counter wraps a luxfi/metric Counter
 type counter struct {
 	ctr metrics.Counter
 }
@@ -93,7 +93,7 @@ type Gauge interface {
 	Read() float64
 }
 
-// gauge wraps a luxfi/metrics Gauge
+// gauge wraps a luxfi/metric Gauge
 type gauge struct {
 	g metrics.Gauge
 }
@@ -131,7 +131,7 @@ type Registry interface {
 	GetAverager(name string) (Averager, error)
 }
 
-// registry wraps a luxfi/metrics instance and tracks averagers
+// registry wraps a luxfi/metric instance and tracks averagers
 type registry struct {
 	metrics   metrics.Metrics
 	averagers sync.Map // map[string]Averager

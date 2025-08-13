@@ -7,7 +7,7 @@ require (
 	github.com/luxfi/database v1.1.3
 	github.com/luxfi/ids v0.1.1
 	github.com/luxfi/log v0.1.0
-	github.com/luxfi/metrics v1.1.1
+	github.com/luxfi/metric v1.1.1
 	github.com/luxfi/trace v0.1.0
 	github.com/luxfi/zmq/v4 v4.2.0
 	github.com/onsi/ginkgo/v2 v2.23.4
