@@ -252,7 +252,10 @@ func TestDAGConcurrent(t *testing.T) {
 			if id > 10 {
 				// Can reference earlier blocks
 				parentID := [32]byte{byte(id / 2)}
-				if _, exists := dag.blocks[parentID]; exists {
+				dag.mu.RLock()
+				_, exists := dag.blocks[parentID]
+				dag.mu.RUnlock()
+				if exists {
 					parents = append(parents, parentID)
 				}
 			}
