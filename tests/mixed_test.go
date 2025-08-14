@@ -11,8 +11,8 @@ import (
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/core/utils"
-	"github.com/luxfi/consensus/protocol/pulse"
-	"github.com/luxfi/consensus/protocol/wave"
+	"github.com/luxfi/consensus/protocols/protocol/pulse"
+	"github.com/luxfi/consensus/protocols/protocol/wave"
 	"github.com/luxfi/consensus/utils/sampler"
 	"github.com/luxfi/ids"
 )
