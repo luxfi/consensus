@@ -1,40 +1,38 @@
-// Copyright (C) 2020-2025, Lux Industries, Inc. All rights reserved.
-// See the file LICENSE for licensing terms.
-
 package interfaces
 
-import (
-	"github.com/luxfi/ids"
-)
-
-// Status represents the current status of a decidable element
+// Status represents consensus status
 type Status int
 
 const (
-	Unknown Status = iota
-	Accepted
-	Rejected
+    Unknown Status = iota
+    Processing
+    Rejected
+    Accepted
 )
 
-func (s Status) String() string {
-	switch s {
-	case Accepted:
-		return "Accepted"
-	case Rejected:
-		return "Rejected"
-	default:
-		return "Unknown"
-	}
+func (s Status) Valid() error {
+    if s < Unknown || s > Accepted {
+        return ErrInvalidStatus
+    }
+    return nil
 }
 
-// Decision represents a consensus decision
-type Decision interface {
-	// ID returns the unique identifier for this decision
-	ID() ids.ID
-	
-	// Bytes returns the binary representation
-	Bytes() []byte
-	
-	// Verify verifies the decision
-	Verify() error
+func (s Status) String() string {
+    switch s {
+    case Unknown:
+        return "Unknown"
+    case Processing:
+        return "Processing"
+    case Rejected:
+        return "Rejected"
+    case Accepted:
+        return "Accepted"
+    default:
+        return "Invalid"
+    }
 }
+
+var ErrInvalidStatus = errStatus{}
+
+type errStatus struct{}
+func (errStatus) Error() string { return "invalid status" }
