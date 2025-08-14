@@ -49,6 +49,7 @@ func (s *StateHolder) Set(state State) {
 // ValidatorState provides validator state operations
 type ValidatorState interface {
     GetCurrentHeight() (uint64, error)
+    GetMinimumHeight(ctx context.Context) (uint64, error)
     GetSubnetID(ctx context.Context, chainID ids.ID) (ids.ID, error)
     GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
 }
@@ -85,7 +86,6 @@ type Context struct {
     NodeID       ids.NodeID
     PublicKey    *bls.PublicKey
     LUXAssetID   ids.ID
-    SharedMemory SharedMemory
     
     Log          log.Logger
     Metrics      MultiGatherer
@@ -104,4 +104,4 @@ type Context struct {
     
     // State represents the current chain state
     State StateHolder
-}    GetMinimumHeight(ctx context.Context) (uint64, error)
+}
