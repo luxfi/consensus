@@ -35,6 +35,15 @@ type Config struct {
 	VoteLimitPerBlock int           // Max votes per block (e.g., 256)
 	VotePrefix        []byte        // Domain separator for proofs
 	Clock             func() time.Time
+	
+	// Feature flags
+	EnableFastPath    bool          // Enable fast path consensus
+	EnableRingtail    bool          // Enable Ringtail PQ signatures
+	EnableBLS         bool          // Enable BLS aggregation
+	
+	// Ringtail parameters
+	AlphaPQ           uint32        // Quorum for PQ (default 2F+1)
+	QRounds           uint32        // Q rounds for Ringtail
 }
 
 // Block represents the minimal block interface we need
