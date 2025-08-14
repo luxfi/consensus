@@ -159,7 +159,7 @@ func TestDAGWithWitness(t *testing.T) {
 
 	// Create block with witness
 	witnessData := make([]byte, 1000)
-	rand.Read(witnessData)
+	_, _ = rand.Read(witnessData)
 
 	block := &DAGBlock{
 		ID:          [32]byte{1},
@@ -236,7 +236,7 @@ func TestDAGConcurrent(t *testing.T) {
 		Height:    0,
 		Timestamp: time.Now(),
 	}
-	dag.AddBlock(genesis)
+	_ = dag.AddBlock(genesis)
 
 	// Concurrent block additions
 	var wg sync.WaitGroup
@@ -267,7 +267,7 @@ func TestDAGConcurrent(t *testing.T) {
 				Timestamp: time.Now(),
 			}
 
-			dag.AddBlock(block)
+			_ = dag.AddBlock(block)
 		}(i)
 	}
 
@@ -320,10 +320,10 @@ func TestDAGMerge(t *testing.T) {
 	}
 
 	// Add branches
-	dag.AddBlock(blockA1)
-	dag.AddBlock(blockA2)
-	dag.AddBlock(blockB1)
-	dag.AddBlock(blockB2)
+	_ = dag.AddBlock(blockA1)
+	_ = dag.AddBlock(blockA2)
+	_ = dag.AddBlock(blockB1)
+	_ = dag.AddBlock(blockB2)
 
 	// Merge block references both branches
 	merge := &DAGBlock{
@@ -357,7 +357,7 @@ func (h mockHeader) WitnessRoot() [32]byte         { return h.witnessRoot }
 func makePayloadWithWitness(txLen int, witness []byte) []byte {
 	// varint(txLen) | tx | witness
 	tx := make([]byte, txLen)
-	rand.Read(tx)
+	_, _ = rand.Read(tx)
 
 	buf := make([]byte, 0, 10+txLen+len(witness))
 	tmp := make([]byte, 10)
@@ -379,7 +379,7 @@ func BenchmarkDAGAddBlock(b *testing.B) {
 		Parents: nil,
 		Height:  0,
 	}
-	dag.AddBlock(genesis)
+	_ = dag.AddBlock(genesis)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -388,7 +388,7 @@ func BenchmarkDAGAddBlock(b *testing.B) {
 			Parents: [][32]byte{genesis.ID},
 			Height:  uint64(i + 1),
 		}
-		dag.AddBlock(block)
+		_ = dag.AddBlock(block)
 	}
 }
 
@@ -402,7 +402,7 @@ func BenchmarkDAGGetTips(b *testing.B) {
 			Parents: nil,
 			Height:  uint64(i),
 		}
-		dag.AddBlock(block)
+		_ = dag.AddBlock(block)
 	}
 
 	b.ResetTimer()
