@@ -11,12 +11,21 @@ import (
 	"github.com/luxfi/ids"
 )
 
+// simpleLogger wraps log functions for Corona
+type simpleLogger struct{}
+
+func (s *simpleLogger) Debug(msg string, args ...interface{}) {}
+func (s *simpleLogger) Info(msg string, args ...interface{})  {}
+func (s *simpleLogger) Warn(msg string, args ...interface{})  {}
+func (s *simpleLogger) Error(msg string, args ...interface{}) {}
+
 // Implementation of WaveFPC - the core FPC engine
 type waveFPC struct {
 	cfg Config
 	cls Classifier
 	dag DAGTap
 	pq  PQEngine
+	corona *CoronaEngine  // Integrated PQ engine
 	
 	mu          sync.RWMutex
 	epochPaused atomic.Bool
@@ -42,11 +51,28 @@ type waveFPC struct {
 
 // New creates a new WaveFPC instance
 func New(cfg Config, cls Classifier, dag DAGTap, pq PQEngine, myNodeID ids.NodeID, validators []ids.NodeID) WaveFPC {
+	// Create integrated Corona PQ engine if enabled
+	var corona *CoronaEngine
+	if cfg.EnableCorona {
+		pqCfg := DefaultCoronaConfig(cfg.N, cfg.F)
+		if cfg.AlphaPQ > 0 {
+			pqCfg.AlphaPQ = int(cfg.AlphaPQ)
+		}
+		if cfg.QRounds > 0 {
+			pqCfg.QRounds = int(cfg.QRounds)
+		}
+		// Use a simple logger
+		pqLog := &simpleLogger{}
+		corona = NewCoronaEngine(pqCfg, pqLog, validators, myNodeID)
+		pq = corona // Use Corona as the PQ engine
+	}
+	
 	return &waveFPC{
 		cfg:             cfg,
 		cls:             cls,
 		dag:             dag,
 		pq:              pq,
+		corona:        corona,
 		myNodeID:        myNodeID,
 		validators:      validators,
 		votes:           NewShardedMap[TxRef, *Bitset](16),
@@ -239,6 +265,18 @@ func (w *waveFPC) Status(tx TxRef) (Status, Proof) {
 	if w.pq != nil && w.pq.HasPQ(tx) {
 		if pqBundle, ok := w.pq.GetPQ(tx); ok {
 			proof.CoronaProof = pqBundle
+		}
+	}
+	
+	// Check if both BLS and Corona are ready for dual finality
+	if w.cfg.EnableBLS && w.cfg.EnableCorona {
+		// In production, BLS would be aggregated from block signatures
+		// For now, simulate BLS availability when we have quorum
+		if proof.VoterCount >= 2*w.cfg.F+1 {
+			proof.BLSProof = &BLSBundle{
+				VoterBitmap: proof.VoterBitmap,
+				Message:     tx[:],
+			}
 		}
 	}
 	

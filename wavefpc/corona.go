@@ -13,14 +13,21 @@ import (
 	"time"
 	
 	"github.com/luxfi/ids"
-	"github.com/luxfi/log"
 )
+
+// Logger interface for Corona
+type Logger interface {
+	Debug(msg string, args ...interface{})
+	Info(msg string, args ...interface{})
+	Warn(msg string, args ...interface{})
+	Error(msg string, args ...interface{})
+}
 
 // CoronaEngine implements post-quantum lattice-based threshold signatures
 // This provides quantum-resistant finality alongside BLS
 type CoronaEngine struct {
 	cfg        CoronaConfig
-	log        log.Logger
+	log        Logger
 	validators []ids.NodeID
 	myNodeID   ids.NodeID
 	myIndex    int
@@ -102,7 +109,7 @@ type LatticeSignature struct {
 }
 
 // NewCoronaEngine creates a new Corona PQ engine
-func NewCoronaEngine(cfg CoronaConfig, log log.Logger, validators []ids.NodeID, myNodeID ids.NodeID) *CoronaEngine {
+func NewCoronaEngine(cfg CoronaConfig, log Logger, validators []ids.NodeID, myNodeID ids.NodeID) *CoronaEngine {
 	myIndex := -1
 	for i, v := range validators {
 		if v == myNodeID {
