@@ -4,6 +4,7 @@
 package wavefpc
 
 import (
+	"sync"
 	"testing"
 	
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,7 @@ type mockClassifier struct {
 	ownedInputs  map[TxRef][]ObjectID
 	sharedInputs map[TxRef][]ObjectID
 	conflicts    map[TxRef]map[TxRef]bool
+	mu           sync.RWMutex
 }
 
 func newMockClassifier() *mockClassifier {
@@ -26,10 +28,14 @@ func newMockClassifier() *mockClassifier {
 }
 
 func (m *mockClassifier) OwnedInputs(tx TxRef) []ObjectID {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.ownedInputs[tx]
 }
 
 func (m *mockClassifier) Conflicts(a, b TxRef) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if conflicts, ok := m.conflicts[a]; ok {
 		return conflicts[b]
 	}
@@ -37,10 +43,14 @@ func (m *mockClassifier) Conflicts(a, b TxRef) bool {
 }
 
 func (m *mockClassifier) addOwnedTx(tx TxRef, objects ...ObjectID) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.ownedInputs[tx] = objects
 }
 
 func (m *mockClassifier) setConflict(a, b TxRef) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.conflicts[a] == nil {
 		m.conflicts[a] = make(map[TxRef]bool)
 	}
