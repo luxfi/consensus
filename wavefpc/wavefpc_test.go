@@ -12,14 +12,16 @@ import (
 
 // mockClassifier for testing
 type mockClassifier struct {
-	ownedInputs map[TxRef][]ObjectID
-	conflicts   map[TxRef]map[TxRef]bool
+	ownedInputs  map[TxRef][]ObjectID
+	sharedInputs map[TxRef][]ObjectID
+	conflicts    map[TxRef]map[TxRef]bool
 }
 
 func newMockClassifier() *mockClassifier {
 	return &mockClassifier{
-		ownedInputs: make(map[TxRef][]ObjectID),
-		conflicts:   make(map[TxRef]map[TxRef]bool),
+		ownedInputs:  make(map[TxRef][]ObjectID),
+		sharedInputs: make(map[TxRef][]ObjectID),
+		conflicts:    make(map[TxRef]map[TxRef]bool),
 	}
 }
 
@@ -49,36 +51,7 @@ func (m *mockClassifier) setConflict(a, b TxRef) {
 	m.conflicts[b][a] = true
 }
 
-// mockDAG for testing
-type mockDAG struct {
-	ancestry map[ids.ID]map[TxRef]bool
-}
-
-func newMockDAG() *mockDAG {
-	return &mockDAG{
-		ancestry: make(map[ids.ID]map[TxRef]bool),
-	}
-}
-
-func (m *mockDAG) InAncestry(blockID ids.ID, needleTx TxRef) bool {
-	if txs, ok := m.ancestry[blockID]; ok {
-		return txs[needleTx]
-	}
-	return false
-}
-
-func (m *mockDAG) GetBlockByAuthorRound(author ids.NodeID, round uint64) (ids.ID, bool) {
-	return ids.Empty, false
-}
-
-func (m *mockDAG) addAncestry(blockID ids.ID, txs ...TxRef) {
-	if m.ancestry[blockID] == nil {
-		m.ancestry[blockID] = make(map[TxRef]bool)
-	}
-	for _, tx := range txs {
-		m.ancestry[blockID][tx] = true
-	}
-}
+// Note: mockDAG is defined in consensus_benchmark_test.go
 
 func TestBasicFPCFlow(t *testing.T) {
 	// Setup
