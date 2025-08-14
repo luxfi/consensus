@@ -13,14 +13,21 @@ import (
 	"time"
 	
 	"github.com/luxfi/ids"
-	"github.com/luxfi/log"
 )
+
+// Logger interface for Ringtail
+type Logger interface {
+	Debug(msg string, args ...interface{})
+	Info(msg string, args ...interface{})
+	Warn(msg string, args ...interface{})
+	Error(msg string, args ...interface{})
+}
 
 // RingtailEngine implements post-quantum lattice-based threshold signatures
 // This provides quantum-resistant finality alongside BLS
 type RingtailEngine struct {
 	cfg        RingtailConfig
-	log        log.Logger
+	log        Logger
 	validators []ids.NodeID
 	myNodeID   ids.NodeID
 	myIndex    int
@@ -102,7 +109,7 @@ type LatticeSignature struct {
 }
 
 // NewRingtailEngine creates a new Ringtail PQ engine
-func NewRingtailEngine(cfg RingtailConfig, log log.Logger, validators []ids.NodeID, myNodeID ids.NodeID) *RingtailEngine {
+func NewRingtailEngine(cfg RingtailConfig, log Logger, validators []ids.NodeID, myNodeID ids.NodeID) *RingtailEngine {
 	myIndex := -1
 	for i, v := range validators {
 		if v == myNodeID {
