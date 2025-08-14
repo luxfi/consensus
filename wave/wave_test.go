@@ -101,6 +101,24 @@ func TestWaveFPC(t *testing.T) {
 	}
 }
 
+func TestWaveIngest(t *testing.T) {
+	peers := []types.NodeID{"n1", "n2", "n3"}
+	sel := prism.NewDefault(peers, prism.Options{})
+	w := New[ItemID](Config{
+		K:       3,
+		Alpha:   0.8,
+		Beta:    3,
+		RoundTO: 100 * time.Millisecond,
+	}, sel, mockTransport{prefer: true})
+
+	// Test Ingest method (currently a no-op but should not panic)
+	ph := photon.Photon[ItemID]{
+		Item:   "test-item",
+		Prefer: true,
+	}
+	w.Ingest(ph) // Should not panic
+}
+
 func TestWaveTimeout(t *testing.T) {
 	peers := []types.NodeID{"n1", "n2", "n3"}
 	sel := prism.NewDefault(peers, prism.Options{})

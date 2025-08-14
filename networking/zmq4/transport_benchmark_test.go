@@ -39,7 +39,7 @@ func BenchmarkZMQTransportThroughput(b *testing.B) {
 	})
 
 	// Connect client to server
-	clientTransport.ConnectPeer("server", 15555)
+	_ = clientTransport.ConnectPeer("server", 15555)
 
 	// Wait for connection
 	time.Sleep(100 * time.Millisecond)
@@ -96,7 +96,7 @@ func BenchmarkZMQTransportLatency(b *testing.B) {
 			Data:      msg.Data,
 			Timestamp: time.Now().Unix(),
 		}
-		serverTransport.Send(msg.From, reply)
+		_ = serverTransport.Send(msg.From, reply)
 	})
 
 	// Response channel for client
@@ -106,8 +106,8 @@ func BenchmarkZMQTransportLatency(b *testing.B) {
 	})
 
 	// Connect bidirectionally
-	clientTransport.ConnectPeer("server", 15557)
-	serverTransport.ConnectPeer("client", 15558)
+	_ = clientTransport.ConnectPeer("server", 15557)
+	_ = serverTransport.ConnectPeer("client", 15558)
 
 	// Wait for connection
 	time.Sleep(100 * time.Millisecond)
@@ -174,7 +174,7 @@ func BenchmarkZMQTransportConcurrent(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		clientTransport.ConnectPeer("server", 15559)
+		_ = clientTransport.ConnectPeer("server", 15559)
 		time.Sleep(50 * time.Millisecond) // Wait for connection
 
 		msg := &Message{
@@ -231,7 +231,7 @@ func BenchmarkZMQTransportLargeMessages(b *testing.B) {
 			})
 
 			// Connect
-			clientTransport.ConnectPeer("server", 15560+size/1024)
+			_ = clientTransport.ConnectPeer("server", 15560+size/1024)
 
 			// Create large message data
 			data := make([]byte, size)
@@ -291,8 +291,8 @@ func BenchmarkZMQTransportBroadcast(b *testing.B) {
 				err := receiver.Start()
 				require.NoError(b, err)
 				
-				receiver.ConnectPeer("publisher", 15600)
-				publisher.ConnectPeer(receiverID, 15700+i)
+				_ = receiver.ConnectPeer("publisher", 15600)
+				_ = publisher.ConnectPeer(receiverID, 15700+i)
 				
 				receivers = append(receivers, receiver)
 				
@@ -351,7 +351,7 @@ func BenchmarkZMQTransportSetup(b *testing.B) {
 		}
 		
 		// Add a peer
-		transport.ConnectPeer("peer", 16000)
+		_ = transport.ConnectPeer("peer", 16000)
 		
 		// Close
 		transport.Stop()
