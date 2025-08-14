@@ -11,7 +11,6 @@ import (
     "github.com/stretchr/testify/require"
     
     "github.com/luxfi/consensus/core/interfaces"
-    "github.com/luxfi/consensus/testutils"
     "github.com/luxfi/ids"
     "github.com/luxfi/log"
 )
