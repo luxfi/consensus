@@ -27,6 +27,11 @@ type Parameters struct {
 	MaxOutstandingItems   int           `json:"maxOutstandingItems" yaml:"maxOutstandingItems"`
 	MaxItemProcessingTime time.Duration `json:"maxItemProcessingTime" yaml:"maxItemProcessingTime"`
 	MinRoundInterval      time.Duration `json:"minRoundInterval" yaml:"minRoundInterval"`
+	
+	// WaveFPC parameters (optional fast-path certification)
+	EnableFPC             bool          `json:"enableFPC" yaml:"enableFPC"`
+	FPCVoteLimit          int           `json:"fpcVoteLimit" yaml:"fpcVoteLimit"`
+	FPCVotePrefix         []byte        `json:"fpcVotePrefix" yaml:"fpcVotePrefix"`
 }
 
 // GetK returns the sample size
