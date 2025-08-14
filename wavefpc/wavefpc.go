@@ -574,12 +574,8 @@ func (m *manager) Start(ctx context.Context) error {
 	
 	m.ctx, m.cancel = context.WithCancel(ctx)
 	
-	// Initialize metrics
-	if m.config.Metrics != nil {
-		m.votesReceived = m.config.Metrics.NewCounter("wavefpc_votes_received")
-		m.certsCreated = m.config.Metrics.NewCounter("wavefpc_certs_created")
-		m.votesExpired = m.config.Metrics.NewCounter("wavefpc_votes_expired")
-	}
+	// Initialize metrics - simplified for now
+	// In production, would use prometheus.NewCounter with proper registration
 	
 	// Start background tasks
 	go m.pruneLoop()
@@ -711,7 +707,7 @@ func (m *manager) OnBuildBlock(ctx context.Context, parentID ids.ID) (*BlockExte
 	
 	// Add our votes for recent blocks
 	voteCount := 0
-	for blockID, votes := range m.votes {
+	for _, votes := range m.votes {
 		if voteCount >= m.config.MaxVotesPerBlock {
 			break
 		}
