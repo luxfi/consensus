@@ -1,7 +1,7 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package quantum
+package pq
 
 import (
 	"context"
@@ -453,10 +453,10 @@ func newEngineState() *engineState {
 
 // Metrics tracking
 type Metrics struct {
-	CrossEngineTx    Counter
-	BridgeOperations  Counter
-	ConsensusLatency  Histogram
-	UniversalTPS      Gauge
+	CrossEngineTx    *Counter
+	BridgeOperations *Counter
+	ConsensusLatency *Histogram
+	UniversalTPS     *Gauge
 }
 
 // Stub types for metrics
@@ -467,6 +467,11 @@ type Histogram struct{}
 type Gauge struct{ value float64 }
 
 func NewMetrics() *Metrics {
-	return &Metrics{}
+	return &Metrics{
+		CrossEngineTx:    &Counter{},
+		BridgeOperations: &Counter{},
+		ConsensusLatency: &Histogram{},
+		UniversalTPS:     &Gauge{},
+	}
 }
 
