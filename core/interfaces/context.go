@@ -86,6 +86,8 @@ type Context struct {
     NodeID       ids.NodeID
     PublicKey    *bls.PublicKey
     LUXAssetID   ids.ID
+    CChainID     ids.ID  // C-Chain ID for cross-chain operations
+    ChainDataDir string  // Directory for chain data storage
     
     Log          log.Logger
     Metrics      MultiGatherer
