@@ -2,14 +2,37 @@ package interfaces
 
 import (
     "context"
+    "sync"
+    "sync/atomic"
     "github.com/luxfi/ids"
     "github.com/luxfi/crypto/bls"
     "github.com/luxfi/log"
-    "github.com/luxfi/metric"
+    metric "github.com/luxfi/metric"
 )
 
+// MultiGatherer is a metrics gatherer
+type MultiGatherer = metric.MultiGatherer
+
 // Registerer is the metrics registerer interface
-type Registerer = metrics.Registerer
+type Registerer = metric.Registerer
+
+// StateHolder manages atomic state updates
+type StateHolder struct {
+    value atomic.Value
+}
+
+// Get returns the current state
+func (s *StateHolder) Get() State {
+    if val := s.value.Load(); val != nil {
+        return val.(State)
+    }
+    return NormalOp
+}
+
+// Set updates the current state
+func (s *StateHolder) Set(state State) {
+    s.value.Store(state)
+}
 
 // ValidatorState provides validator state operations
 type ValidatorState interface {
@@ -20,6 +43,7 @@ type ValidatorState interface {
 // BCLookup provides blockchain lookup operations
 type BCLookup interface {
     PrimaryAlias(chainID ids.ID) (string, error)
+    Lookup(alias string) (ids.ID, error)
 }
 
 // Context provides consensus engine configuration
@@ -31,11 +55,17 @@ type Context struct {
     PublicKey    *bls.PublicKey
     
     Log          log.Logger
-    Metrics      metrics.MultiGatherer
+    Metrics      MultiGatherer
     
     // ValidatorState provides validator information
     ValidatorState ValidatorState
     
     // BCLookup provides blockchain alias lookup
     BCLookup BCLookup
+    
+    // Lock for thread safety
+    Lock sync.RWMutex
+    
+    // State represents the current chain state
+    State StateHolder
 }
