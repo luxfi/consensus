@@ -50,6 +50,7 @@ func (s *StateHolder) Set(state State) {
 type ValidatorState interface {
     GetSubnetID(ctx context.Context, chainID ids.ID) (ids.ID, error)
     GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
+    GetCurrentHeight(ctx context.Context) (uint64, error)
 }
 
 // ValidatorSet provides access to validator information for consensus
@@ -70,6 +71,12 @@ type BCLookup interface {
     Lookup(alias string) (ids.ID, error)
 }
 
+// SharedMemory provides cross-chain atomic operations
+type SharedMemory interface {
+    Get(peerChainID ids.ID, keys [][]byte) ([][]byte, error)
+    Apply(requests map[ids.ID]interface{}, batch ...interface{}) error
+}
+
 // Context provides consensus engine configuration
 type Context struct {
     NetworkID    uint32
@@ -86,6 +93,9 @@ type Context struct {
     
     // BCLookup provides blockchain alias lookup
     BCLookup BCLookup
+    
+    // SharedMemory for cross-chain operations
+    SharedMemory SharedMemory
     
     // Lock for thread safety
     Lock sync.RWMutex
