@@ -208,10 +208,11 @@ func createNodes(total, byzantine int, initialSplit float64) []Node {
 }
 
 func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRounds int, verbose bool) SimulationResult {
-	// Create sampler
+	// Create sampler (uniform random sampling)
 	var sampler prism.Sampler
 	if samplerType == "uniform" {
-		sampler = prism.NewUniformSampler()
+		// Use standard sampler with random source for uniform sampling
+		sampler = prism.NewSampler(nil)
 	} else {
 		logger.Error("Unknown sampler type", "type", samplerType)
 		os.Exit(1)
