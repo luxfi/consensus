@@ -12,8 +12,8 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/protocol/nebula"
-	"github.com/luxfi/consensus/protocol/pulse"
+	"github.com/luxfi/consensus/protocols/protocol/nebula"
+	"github.com/luxfi/consensus/protocols/protocol/pulse"
 )
 
 // Engine implements the Quasar consensus engine - the most powerful cosmic consensus engine

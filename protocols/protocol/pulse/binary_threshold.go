@@ -6,8 +6,8 @@ package pulse
 import (
 	"fmt"
 
-	"github.com/luxfi/consensus/protocol/prism"
-	quorum "github.com/luxfi/consensus/threshold"
+	"github.com/luxfi/consensus/protocols/protocol/prism"
+	"github.com/luxfi/consensus/protocols/protocol/wave"
 )
 
 // binaryThreshold is the implementation of a binary threshold instance
@@ -22,7 +22,7 @@ type binaryThreshold struct {
 	// terminationConditions gives the ascending ordered list of alphaConfidence values
 	// required to increment the corresponding confidence counter.
 	// The corresponding beta values give the threshold required to finalize this instance.
-	terminationConditions []quorum.TerminationCondition
+	terminationConditions []wave.TerminationCondition
 
 	// confidence is the number of consecutive successful prisms for a given
 	// alphaConfidence threshold.
@@ -42,7 +42,7 @@ type binaryThreshold struct {
 	preferenceStrength [2]int
 }
 
-func newBinaryThreshold(alphaPreference int, terminationConditions []quorum.TerminationCondition, choice int) binaryThreshold {
+func newBinaryThreshold(alphaPreference int, terminationConditions []wave.TerminationCondition, choice int) binaryThreshold {
 	return binaryThreshold{
 		BinarySampler:         prism.NewBinarySampler(choice),
 		alphaPreference:       alphaPreference,
