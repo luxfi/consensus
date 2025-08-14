@@ -153,6 +153,13 @@ func (r *Engine) Stop(ctx context.Context) error {
 	return nil
 }
 
+// IsRunning returns true if the engine is running
+func (r *Engine) IsRunning() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.state.running
+}
+
 // SubmitVertex submits a DAG vertex for consensus
 func (r *Engine) SubmitVertex(ctx context.Context, vertex Vertex) error {
 	r.mu.Lock()
@@ -304,13 +311,6 @@ func (r *Engine) GetVertex(id ids.ID) (Vertex, error) {
 // Metrics returns engine metrics
 func (r *Engine) Metrics() *Metrics {
 	return r.metrics
-}
-
-// IsRunning returns whether the engine is running
-func (r *Engine) IsRunning() bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.state.running
 }
 
 // Vertex interface for Galaxy engine
