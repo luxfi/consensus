@@ -48,6 +48,7 @@ func (s *StateHolder) Set(state State) {
 
 // ValidatorState provides validator state operations
 type ValidatorState interface {
+    GetCurrentHeight() (uint64, error)
     GetSubnetID(ctx context.Context, chainID ids.ID) (ids.ID, error)
     GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
 }
