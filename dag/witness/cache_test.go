@@ -234,7 +234,7 @@ func BenchmarkLRU(b *testing.B) {
 	lru := NewLRU[int, []byte](1000, 1<<20, func(b []byte) int { return len(b) })
 	
 	data := make([]byte, 1024)
-	rand.Read(data)
+	_, _ = rand.Read(data)
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
