@@ -7,6 +7,9 @@ import (
     "github.com/luxfi/metric"
 )
 
+// Registerer is the metrics registerer interface
+type Registerer = metrics.Registerer
+
 // Context provides consensus engine configuration
 type Context struct {
     NetworkID    uint32
@@ -16,5 +19,5 @@ type Context struct {
     PublicKey    *bls.PublicKey
     
     Log          log.Logger
-    Metrics      metric.MultiGatherer
+    Metrics      metrics.MultiGatherer
 }
