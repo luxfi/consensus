@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2019-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package bag
@@ -9,6 +9,7 @@ import (
 
 	"golang.org/x/exp/maps"
 
+	"github.com/luxfi/consensus/utils"
 	"github.com/luxfi/consensus/utils/set"
 )
 
@@ -162,8 +163,7 @@ func (b *Bag[T]) Remove(elt T) {
 func (b *Bag[T]) PrefixedString(prefix string) string {
 	sb := strings.Builder{}
 
-	var zero T
-	sb.WriteString(fmt.Sprintf("Bag[%T]: (Size = %d)", zero, b.Len()))
+	sb.WriteString(fmt.Sprintf("Bag[%T]: (Size = %d)", utils.Zero[T](), b.Len()))
 	for elt, count := range b.counts {
 		sb.WriteString(fmt.Sprintf("\n%s    %v: %d", prefix, elt, count))
 	}

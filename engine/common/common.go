@@ -1,3 +1,7 @@
 package common
 
-// Placeholder package for common
+// Common engine utilities
+type Engine interface {
+    Start() error
+    Stop() error
+}
