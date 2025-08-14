@@ -22,22 +22,32 @@ type Integration struct {
 	executionEnabled bool
 }
 
-// NewIntegration creates a new FPC integration
+// NewIntegration creates a new FPC integration with Corona PQ enabled by default
 func NewIntegration(ctx *interfaces.Context, cfg Config, cls Classifier) *Integration {
 	// Get validators from context
 	validators := make([]ids.NodeID, 0)
 	// TODO: Extract from ctx.ValidatorState
 	
-	// Create FPC engine
+	// Enable FPC and Corona by default
+	if cfg.N == 0 {
+		// Set defaults if not provided
+		cfg.N = 100
+		cfg.F = 33
+	}
+	cfg.EnableFastPath = true
+	cfg.EnableCorona = true
+	cfg.EnableBLS = true
+	
+	// Create FPC engine with integrated Corona
 	fpc := New(cfg, cls, nil, nil, ctx.NodeID, validators)
 	
 	return &Integration{
 		fpc:              fpc,
 		log:              ctx.Log,
 		nodeID:           ctx.NodeID,
-		enabled:          false, // Start disabled
-		votingEnabled:    false,
-		executionEnabled: false,
+		enabled:          true,  // Enabled by default
+		votingEnabled:    true,  // Voting enabled by default
+		executionEnabled: true,  // Fast execution enabled by default
 	}
 }
 
@@ -162,7 +172,25 @@ func (i *Integration) GetStatus(txRef TxRef) (Status, Proof) {
 		return Pending, Proof{}
 	}
 	
-	return i.fpc.Status(txRef)
+	status, proof := i.fpc.Status(txRef)
+	
+	// Check for dual finality
+	if proof.BLSProof != nil && proof.CoronaProof != nil {
+		// Both proofs available - transaction has dual finality
+		status = Final
+	}
+	
+	return status, proof
+}
+
+// HasDualFinality checks if a transaction has both BLS and Corona proofs
+func (i *Integration) HasDualFinality(txRef TxRef) bool {
+	if !i.enabled {
+		return false
+	}
+	
+	_, proof := i.fpc.Status(txRef)
+	return proof.BLSProof != nil && proof.CoronaProof != nil
 }
 
 // GetMetrics returns FPC performance metrics
