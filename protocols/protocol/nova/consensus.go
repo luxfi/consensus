@@ -693,7 +693,7 @@ func (ts *Topological) acceptPreferredChild(ctx context.Context, n *beamBlock) e
 		zap.Uint64("height", height),
 		zap.Time("timestamp", timestamp),
 	)
-	if err := child.Accept(ctx); err != nil {
+	if err := child.Accept(); err != nil {
 		return err
 	}
 
@@ -734,7 +734,7 @@ func (ts *Topological) acceptPreferredChild(ctx context.Context, n *beamBlock) e
 			zap.Uint64("height", childBlock.blk.Height()),
 			zap.Stringer("conflictID", pref),
 		)
-		if err := childBlock.blk.Reject(ctx); err != nil {
+		if err := childBlock.blk.Reject(); err != nil {
 			return err
 		}
 		ts.metrics.Rejected(childID, ts.pollNumber, len(childBlock.blk.Bytes()))
@@ -773,7 +773,7 @@ func (ts *Topological) rejectTransitively(ctx context.Context, rejected []ids.ID
 				zap.Uint64("height", childBlock.blk.Height()),
 				zap.Stringer("parentID", rejectedID),
 			)
-			if err := childBlock.blk.Reject(ctx); err != nil {
+			if err := childBlock.blk.Reject(); err != nil {
 				return err
 			}
 			ts.metrics.Rejected(childID, ts.pollNumber, len(childBlock.blk.Bytes()))
