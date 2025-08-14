@@ -74,6 +74,8 @@ type BLSBundle struct {
 type PQBundle struct {
 	Proof       []byte
 	VoterBitmap []byte
+	Signature   []byte // For BLS signature simulation in tests
+	Voters      []ids.NodeID // Optional voter list
 }
 
 // Classifier identifies owned vs shared inputs
