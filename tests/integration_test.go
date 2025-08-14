@@ -75,45 +75,44 @@ func TestIntegrationPrismConsensus(t *testing.T) {
 		validators.AddCount(nodeID, 1)
 	}
 	
-	// Create prism instance
-	p := prism.NewPrism(params, sampler.NewSource(42))
+	// Test prism compatibility interfaces
+	// Test BinarySampler
+	binarySampler := prism.NewBinarySampler(0)
+	binarySampler.RecordSuccessfulPoll(0)
+	binarySampler.RecordSuccessfulPoll(1)
+	binarySampler.RecordSuccessfulPoll(0)
+	require.Equal(0, binarySampler.Preference())
 	
-	// Test basic prism functionality
-	// Create dependency graph
-	deps := prism.NewSimpleDependencyGraph()
-	choiceA := ids.GenerateTestID()
-	choiceB := ids.GenerateTestID()
-	deps.Add(choiceA, nil)
-	deps.Add(choiceB, nil)
+	// Test UnarySampler
+	unarySampler := prism.NewUnarySampler()
+	unarySampler.RecordPoll()
+	require.True(unarySampler.Finalized())
 	
-	// The default StandardRefract function will be used, which simulates
-	// voting based on the dependency graph structure
-	// For leaf nodes (no dependencies), it assigns weight to the decision itself
+	// Test NArySampler
+	narySampler := prism.NewNArySampler(3)
+	narySampler.RecordPoll(0)
+	narySampler.RecordPoll(1)
+	narySampler.RecordPoll(0)
+	require.Equal(0, narySampler.Preference())
 	
-	// Run a single round to verify no errors
-	hasQuorum, err := p.Refract(validators, deps, params)
+	// Test Splitter (used to be Sampler)
+	splitter := prism.NewSplitter(nil)
+	sampled, err := splitter.Sample(validators.List(), 3)
 	require.NoError(err)
+	require.LessOrEqual(len(sampled), 3)
 	
-	// The test passes if we can create and use a prism without errors
-	// Actual consensus would require a proper voting simulation which
-	// is tested in the prism package's own tests
-	t.Logf("Prism executed successfully. HasQuorum: %v, Metrics: %v", hasQuorum, p.GetMetrics())
+	// Test Cut (used to be Quorum)
+	cut := prism.NewCut(params.AlphaPreference, params.AlphaConfidence, params.Beta)
+	require.NotNil(cut)
 	
-	// Test PrismArray functionality
-	pa := prism.NewPrismArray(params, sampler.NewSource(123))
+	// Test Refractor
+	refractCfg := prism.RefractConfig{
+		EarlyTermination: true,
+	}
+	refractor := prism.NewRefractor(refractCfg)
+	require.NotNil(refractor)
 	
-	// Test creating and polling with PrismArray
-	decisionID := ids.GenerateTestID()
-	decisions := []ids.ID{choiceA, choiceB}
-	
-	hasQuorum2, err := pa.Poll(decisionID, validators, decisions)
-	require.NoError(err)
-	t.Logf("PrismArray poll executed. HasQuorum: %v", hasQuorum2)
-	
-	// Verify we can get finalized decisions (even if empty)
-	finalized := pa.GetFinalized()
-	// GetFinalized returns a slice which can be empty but not nil
-	t.Logf("PrismArray finalized decisions: %d", len(finalized))
+	t.Logf("Prism compatibility interfaces tested successfully. Validators: %d", validators.Len())
 }
 
 // TestIntegrationPulseConsensus tests pulse consensus
