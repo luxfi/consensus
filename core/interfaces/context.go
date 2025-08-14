@@ -17,6 +17,11 @@ type ValidatorState interface {
     GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
 }
 
+// BCLookup provides blockchain lookup operations
+type BCLookup interface {
+    PrimaryAlias(chainID ids.ID) (string, error)
+}
+
 // Context provides consensus engine configuration
 type Context struct {
     NetworkID    uint32
@@ -30,4 +35,7 @@ type Context struct {
     
     // ValidatorState provides validator information
     ValidatorState ValidatorState
+    
+    // BCLookup provides blockchain alias lookup
+    BCLookup BCLookup
 }
