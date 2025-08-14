@@ -1,0 +1,409 @@
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+package dag
+
+import (
+	"crypto/rand"
+	"encoding/binary"
+	"errors"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/luxfi/consensus/dag/witness"
+	"github.com/luxfi/consensus/flare"
+	"github.com/stretchr/testify/require"
+)
+
+// DAGBlock represents a block in the DAG
+type DAGBlock struct {
+	ID          [32]byte
+	Parents     [][32]byte
+	Height      uint64
+	Txs         []Transaction
+	WitnessData []byte
+	Timestamp   time.Time
+}
+
+// Transaction in the DAG
+type Transaction struct {
+	ID    [32]byte
+	Nonce uint64
+	Data  []byte
+}
+
+// DAG structure for testing
+type DAG struct {
+	mu         sync.RWMutex
+	blocks     map[[32]byte]*DAGBlock
+	tips       map[[32]byte]bool
+	height     uint64
+	witness    witness.Manager
+	flare      flare.Flare[TxID]
+}
+
+type TxID [32]byte
+type BlockID [32]byte
+
+// NewDAG creates a new DAG for testing
+func NewDAG() *DAG {
+	return &DAG{
+		blocks: make(map[[32]byte]*DAGBlock),
+		tips:   make(map[[32]byte]bool),
+		witness: witness.NewCache(witness.Policy{
+			Mode:     witness.RequireFull,
+			MaxBytes: 1024 * 1024, // 1MB
+		}, 1000, 10*1024*1024),
+		flare: flare.New[TxID](3), // f=3, need 7 votes for fast path
+	}
+}
+
+// AddBlock adds a block to the DAG
+func (d *DAG) AddBlock(block *DAGBlock) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Validate parents exist
+	for _, parent := range block.Parents {
+		if _, exists := d.blocks[parent]; !exists {
+			return errors.New("missing parent")
+		}
+		// Remove parent from tips
+		delete(d.tips, parent)
+	}
+
+	// Add block
+	d.blocks[block.ID] = block
+	d.tips[block.ID] = true
+
+	// Update height
+	if block.Height > d.height {
+		d.height = block.Height
+	}
+
+	// Process transactions for fast path
+	for _, tx := range block.Txs {
+		d.flare.Propose(TxID(tx.ID))
+	}
+
+	return nil
+}
+
+// GetTips returns current DAG tips
+func (d *DAG) GetTips() [][32]byte {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	tips := make([][32]byte, 0, len(d.tips))
+	for tip := range d.tips {
+		tips = append(tips, tip)
+	}
+	return tips
+}
+
+// GetExecutableTxs returns transactions ready for execution
+func (d *DAG) GetExecutableTxs() []TxID {
+	return d.flare.Executable()
+}
+
+// TestDAGBasic tests basic DAG operations
+func TestDAGBasic(t *testing.T) {
+	dag := NewDAG()
+
+	// Create genesis block
+	genesis := &DAGBlock{
+		ID:        [32]byte{0},
+		Parents:   nil,
+		Height:    0,
+		Timestamp: time.Now(),
+	}
+
+	err := dag.AddBlock(genesis)
+	require.NoError(t, err)
+
+	// Verify genesis is a tip
+	tips := dag.GetTips()
+	require.Len(t, tips, 1)
+	require.Equal(t, genesis.ID, tips[0])
+
+	// Add child blocks
+	block1 := &DAGBlock{
+		ID:        [32]byte{1},
+		Parents:   [][32]byte{genesis.ID},
+		Height:    1,
+		Timestamp: time.Now(),
+	}
+
+	block2 := &DAGBlock{
+		ID:        [32]byte{2},
+		Parents:   [][32]byte{genesis.ID},
+		Height:    1,
+		Timestamp: time.Now(),
+	}
+
+	err = dag.AddBlock(block1)
+	require.NoError(t, err)
+
+	err = dag.AddBlock(block2)
+	require.NoError(t, err)
+
+	// Both should be tips now
+	tips = dag.GetTips()
+	require.Len(t, tips, 2)
+}
+
+// TestDAGWithWitness tests DAG with witness validation
+func TestDAGWithWitness(t *testing.T) {
+	dag := NewDAG()
+
+	// Create block with witness
+	witnessData := make([]byte, 1000)
+	rand.Read(witnessData)
+
+	block := &DAGBlock{
+		ID:          [32]byte{1},
+		Parents:     nil,
+		Height:      0,
+		WitnessData: witnessData,
+		Timestamp:   time.Now(),
+	}
+
+	// Create mock header for witness validation
+	h := mockHeader{
+		id:    witness.BlockID(block.ID),
+		round: block.Height,
+	}
+
+	// Create payload with witness
+	payload := makePayloadWithWitness(100, witnessData)
+
+	// Validate witness
+	ok, size, deltaRoot := dag.witness.Validate(h, payload)
+	require.True(t, ok)
+	require.Equal(t, len(witnessData), size)
+	require.NotEqual(t, [32]byte{}, deltaRoot)
+
+	// Add block to DAG
+	err := dag.AddBlock(block)
+	require.NoError(t, err)
+}
+
+// TestDAGFastPath tests fast path execution with DAG
+func TestDAGFastPath(t *testing.T) {
+	dag := NewDAG()
+
+	// Create transactions
+	txs := make([]Transaction, 10)
+	for i := range txs {
+		txs[i] = Transaction{
+			ID:    [32]byte{byte(i)},
+			Nonce: uint64(i),
+			Data:  []byte("test transaction"),
+		}
+	}
+
+	// Create blocks voting for same transactions
+	for i := 0; i < 7; i++ { // Need 7 votes for f=3
+		block := &DAGBlock{
+			ID:        [32]byte{byte(100 + i)},
+			Parents:   nil,
+			Height:    uint64(i),
+			Txs:       txs[:3], // First 3 transactions
+			Timestamp: time.Now(),
+		}
+		err := dag.AddBlock(block)
+		require.NoError(t, err)
+	}
+
+	// Check which transactions are executable
+	executable := dag.GetExecutableTxs()
+	require.Len(t, executable, 3) // First 3 should be executable
+
+	for i := 0; i < 3; i++ {
+		require.Contains(t, executable, TxID([32]byte{byte(i)}))
+	}
+}
+
+// TestDAGConcurrent tests concurrent DAG operations
+func TestDAGConcurrent(t *testing.T) {
+	dag := NewDAG()
+
+	// Add genesis
+	genesis := &DAGBlock{
+		ID:        [32]byte{0},
+		Parents:   nil,
+		Height:    0,
+		Timestamp: time.Now(),
+	}
+	dag.AddBlock(genesis)
+
+	// Concurrent block additions
+	var wg sync.WaitGroup
+	numBlocks := 100
+
+	for i := 1; i <= numBlocks; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			// Random parent selection
+			parents := [][32]byte{genesis.ID}
+			if id > 10 {
+				// Can reference earlier blocks
+				parentID := [32]byte{byte(id / 2)}
+				if _, exists := dag.blocks[parentID]; exists {
+					parents = append(parents, parentID)
+				}
+			}
+
+			block := &DAGBlock{
+				ID:        [32]byte{byte(id)},
+				Parents:   parents,
+				Height:    uint64(id/10 + 1),
+				Timestamp: time.Now(),
+			}
+
+			dag.AddBlock(block)
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify DAG consistency
+	dag.mu.RLock()
+	blockCount := len(dag.blocks)
+	tipCount := len(dag.tips)
+	dag.mu.RUnlock()
+
+	require.GreaterOrEqual(t, blockCount, numBlocks/2) // Some may fail due to missing parents
+	require.Greater(t, tipCount, 0)
+}
+
+// TestDAGMerge tests merging of DAG branches
+func TestDAGMerge(t *testing.T) {
+	dag := NewDAG()
+
+	// Create two branches
+	genesis := &DAGBlock{
+		ID:      [32]byte{0},
+		Parents: nil,
+		Height:  0,
+	}
+	dag.AddBlock(genesis)
+
+	// Branch A
+	blockA1 := &DAGBlock{
+		ID:      [32]byte{1},
+		Parents: [][32]byte{genesis.ID},
+		Height:  1,
+	}
+	blockA2 := &DAGBlock{
+		ID:      [32]byte{2},
+		Parents: [][32]byte{{1}},
+		Height:  2,
+	}
+
+	// Branch B
+	blockB1 := &DAGBlock{
+		ID:      [32]byte{11},
+		Parents: [][32]byte{genesis.ID},
+		Height:  1,
+	}
+	blockB2 := &DAGBlock{
+		ID:      [32]byte{12},
+		Parents: [][32]byte{{11}},
+		Height:  2,
+	}
+
+	// Add branches
+	dag.AddBlock(blockA1)
+	dag.AddBlock(blockA2)
+	dag.AddBlock(blockB1)
+	dag.AddBlock(blockB2)
+
+	// Merge block references both branches
+	merge := &DAGBlock{
+		ID:      [32]byte{100},
+		Parents: [][32]byte{{2}, {12}},
+		Height:  3,
+	}
+	err := dag.AddBlock(merge)
+	require.NoError(t, err)
+
+	// Only merge block should be tip
+	tips := dag.GetTips()
+	require.Len(t, tips, 1)
+	require.Equal(t, merge.ID, tips[0])
+}
+
+// Helper functions
+
+type mockHeader struct {
+	id          witness.BlockID
+	round       uint64
+	parents     []witness.BlockID
+	witnessRoot [32]byte
+}
+
+func (h mockHeader) ID() witness.BlockID           { return h.id }
+func (h mockHeader) Round() uint64                 { return h.round }
+func (h mockHeader) Parents() []witness.BlockID    { return h.parents }
+func (h mockHeader) WitnessRoot() [32]byte         { return h.witnessRoot }
+
+func makePayloadWithWitness(txLen int, witness []byte) []byte {
+	// varint(txLen) | tx | witness
+	tx := make([]byte, txLen)
+	rand.Read(tx)
+
+	buf := make([]byte, 0, 10+txLen+len(witness))
+	tmp := make([]byte, 10)
+	n := binary.PutUvarint(tmp, uint64(txLen))
+	buf = append(buf, tmp[:n]...)
+	buf = append(buf, tx...)
+	buf = append(buf, witness...)
+	return buf
+}
+
+// Benchmarks
+
+func BenchmarkDAGAddBlock(b *testing.B) {
+	dag := NewDAG()
+
+	// Add genesis
+	genesis := &DAGBlock{
+		ID:      [32]byte{0},
+		Parents: nil,
+		Height:  0,
+	}
+	dag.AddBlock(genesis)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		block := &DAGBlock{
+			ID:      [32]byte{byte(i % 256), byte(i / 256)},
+			Parents: [][32]byte{genesis.ID},
+			Height:  uint64(i + 1),
+		}
+		dag.AddBlock(block)
+	}
+}
+
+func BenchmarkDAGGetTips(b *testing.B) {
+	dag := NewDAG()
+
+	// Build a DAG with multiple tips
+	for i := 0; i < 100; i++ {
+		block := &DAGBlock{
+			ID:      [32]byte{byte(i)},
+			Parents: nil,
+			Height:  uint64(i),
+		}
+		dag.AddBlock(block)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = dag.GetTips()
+	}
+}

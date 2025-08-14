@@ -3,9 +3,11 @@ package validators
 import "github.com/luxfi/ids"
 
 // Validator represents a validator node
-type Validator interface {
-    NodeID() ids.NodeID
-    Weight() uint64
+type Validator struct {
+    NodeID    ids.NodeID
+    PublicKey interface{} // *bls.PublicKey
+    TxID      ids.ID
+    Weight    uint64
 }
 
 // State provides validator state information
@@ -17,7 +19,7 @@ type State interface {
 // Manager manages validator sets
 type Manager interface {
     GetValidators(subnetID ids.ID) ([]ids.NodeID, error)
-    GetValidator(subnetID ids.ID, nodeID ids.NodeID) (Validator, bool)
+    GetValidator(subnetID ids.ID, nodeID ids.NodeID) (*Validator, bool)
     GetWeight(subnetID ids.ID, nodeID ids.NodeID) (uint64, error)
     TotalWeight(subnetID ids.ID) (uint64, error)
 }
