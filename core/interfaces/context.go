@@ -16,5 +16,5 @@ type Context struct {
     PublicKey    *bls.PublicKey
     
     Log          log.Logger
-    Metrics      metric.OptionalGatherer
+    Metrics      metric.MultiGatherer
 }
