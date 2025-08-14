@@ -12,7 +12,6 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/protocol/prism"
-	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/ids"
 	"log/slog"
 )
@@ -218,10 +217,10 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 		os.Exit(1)
 	}
 	
-	// Create validator bag
-	validators := bag.Bag[ids.NodeID]{}
+	// Create validator list
+	validators := make([]ids.NodeID, 0, len(nodes))
 	for _, node := range nodes {
-		validators.Add(node.ID)
+		validators = append(validators, node.ID)
 	}
 	
 	// Initialize consensus state
@@ -244,7 +243,7 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 		
 		// Count votes in sample
 		votes := make([]int, 2)
-		for _, nodeID := range sample.List() {
+		for _, nodeID := range sample {
 			// Find node by ID
 			var node *Node
 			for i := range nodes {
