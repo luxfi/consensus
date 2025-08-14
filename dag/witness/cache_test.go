@@ -230,6 +230,48 @@ func BenchmarkValidate(b *testing.B) {
 	}
 }
 
+func TestVarintLen(t *testing.T) {
+	testCases := []struct {
+		value    uint64
+		expected int64
+	}{
+		{0, 1},
+		{127, 1},
+		{128, 2},
+		{16383, 2},
+		{16384, 3},
+		{2097151, 3},
+		{2097152, 4},
+		{268435455, 4},
+		{268435456, 5},
+		{34359738367, 5},
+		{34359738368, 6},
+		{4398046511103, 6},
+		{4398046511104, 7},
+		{562949953421311, 7},
+		{562949953421312, 8},
+		{72057594037927935, 8},
+		{72057594037927936, 9},
+		{1<<63, 9},
+	}
+
+	for _, tc := range testCases {
+		result := varintLen(tc.value)
+		require.Equal(t, tc.expected, result, "varintLen(%d) should be %d", tc.value, tc.expected)
+	}
+}
+
+func TestNewLRUEdgeCases(t *testing.T) {
+	// Test with zero or negative capacity
+	lru1 := NewLRU[int, string](0, 100, func(s string) int { return len(s) })
+	require.NotNil(t, lru1)
+	require.Equal(t, 1, lru1.capEntries) // Should default to 1
+
+	lru2 := NewLRU[int, string](10, -1, func(s string) int { return len(s) })
+	require.NotNil(t, lru2)
+	require.Equal(t, 0, lru2.capBytes) // Should default to 0
+}
+
 func BenchmarkLRU(b *testing.B) {
 	lru := NewLRU[int, []byte](1000, 1<<20, func(b []byte) int { return len(b) })
 	
