@@ -10,10 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/luxfi/consensus/core/interfaces"
-<<<<<<< HEAD
-=======
-	"github.com/luxfi/consensus/protocol/nova"
->>>>>>> a04aa1c (Complete WaveFPC implementation with comprehensive testing)
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/ids"
 )
