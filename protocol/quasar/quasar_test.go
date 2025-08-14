@@ -21,7 +21,7 @@ func TestQuasarEngineCreation(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -80,7 +80,7 @@ func TestQuasarModes(t *testing.T) {
             
             ctx := &interfaces.Context{
                 Log:        log.NewNoOpLogger(),
-                Registerer: testutils.NewNoOpRegisterer(),
+                
             }
             
             params := Parameters{
@@ -115,7 +115,7 @@ func TestQuasarInitializeAndStart(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -152,7 +152,7 @@ func TestQuasarPQSignatureVerification(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -190,7 +190,7 @@ func TestQuasarChainDecisionSubmission(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -228,7 +228,7 @@ func TestQuasarDAGDecisionSubmission(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -265,7 +265,7 @@ func TestQuasarUnifiedDecisionSubmission(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -313,7 +313,7 @@ func TestQuasarNovaHookSlashing(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -356,7 +356,7 @@ func TestQuasarEngineStateTransitions(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -407,7 +407,7 @@ func TestQuasarInvalidDecisionType(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -437,7 +437,7 @@ func TestQuasarEngineNotRunning(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -556,7 +556,7 @@ func TestQuasarCompositionWithNova(t *testing.T) {
     // Test that Quasar can properly integrate with Nova (linear blockchain)
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -600,7 +600,7 @@ func TestQuasarCompositionWithNebula(t *testing.T) {
     // Test that Quasar can properly integrate with Nebula (DAG)
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -653,7 +653,7 @@ func TestQuasarHybridMode(t *testing.T) {
     // Test that Quasar properly handles both chain and DAG in hybrid mode
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -704,7 +704,7 @@ func TestQuasarQuantumMode(t *testing.T) {
     // Test full quantum-resistant mode with maximum security
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -765,7 +765,7 @@ func TestQuasarPQFinalityGuarantees(t *testing.T) {
     // Test that Quasar provides proper post-quantum finality guarantees
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
+        
     }
     
     params := Parameters{
@@ -834,7 +834,7 @@ func TestQuasarSlashingTypes(t *testing.T) {
             
             ctx := &interfaces.Context{
                 Log:        log.NewNoOpLogger(),
-                Registerer: testutils.NewNoOpRegisterer(),
+                
             }
             
             params := Parameters{
