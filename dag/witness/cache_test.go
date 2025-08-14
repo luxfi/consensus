@@ -27,8 +27,8 @@ func makePayload(txLen int, witnessLen int) []byte {
 	// varint(txLen) | tx | witness
 	tx := make([]byte, txLen)
 	witness := make([]byte, witnessLen)
-	rand.Read(tx)
-	rand.Read(witness)
+	_, _ = rand.Read(tx)
+	_, _ = rand.Read(witness)
 	
 	buf := make([]byte, 0, 10+txLen+witnessLen)
 	tmp := make([]byte, 10)
