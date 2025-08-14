@@ -1,27 +1,23 @@
-// Copyright (C) 2020-2025, Lux Indutries, Inc. All rights reserved.
-// See the file LICENSE for licensing terms.
-
 package interfaces
 
 import (
-	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/utils/bag"
+    "context"
+    "github.com/luxfi/ids"
 )
 
-// Consensus represents a consensus instance that can process items
+// Consensus defines the core consensus interface
 type Consensus interface {
-	// Add an item to consensus
-	Add(ids.ID) error
-	
-	// Check if consensus has finalized
-	Finalized() bool
-	
-	// Get the current preference
-	Preference() ids.ID
-	
-	// Record votes from a poll
-	RecordVotes(bag.Bag[ids.ID]) error
-	
-	// Record a poll/prism with the given votes
-	RecordPrism(bag.Bag[ids.ID]) error
+    Parameters() Parameters
+    IsVirtuous(ID ids.ID) bool
+    Add(Decidable) error
+    RecordPoll(votes []ids.ID) error
+    Finalized() bool
+}
+
+// Parameters defines consensus parameters
+type Parameters interface {
+    K() int
+    AlphaPreference() int
+    AlphaConfidence() int
+    Beta() int
 }

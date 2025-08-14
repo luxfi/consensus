@@ -2,7 +2,9 @@ package interfaces
 
 import "github.com/luxfi/ids"
 
-// Acceptor processes accepted items
+// Acceptor defines the interface for accepting decisions
 type Acceptor interface {
-    Accept(id ids.ID) error
+    Accept() error
+    Reject() error
+    ID() ids.ID
 }

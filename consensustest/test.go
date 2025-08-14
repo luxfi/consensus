@@ -1,3 +1,3 @@
-package consensustest
+package snowtest
 
-// Test utilities for consensus
+// Test utilities for snow protocols

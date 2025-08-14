@@ -4,7 +4,7 @@ import (
     "github.com/luxfi/ids"
     "github.com/luxfi/crypto/bls"
     "github.com/luxfi/log"
-    "github.com/luxfi/metric"
+    metric "github.com/luxfi/metric"
 )
 
 // Context provides consensus engine configuration

@@ -1,7 +1,7 @@
 package interfaces
 
-// Status represents consensus status
-type Status int
+// Status represents the status of a decidable item
+type Status uint8
 
 const (
     Unknown Status = iota
@@ -9,13 +9,6 @@ const (
     Rejected
     Accepted
 )
-
-func (s Status) Valid() error {
-    if s < Unknown || s > Accepted {
-        return ErrInvalidStatus
-    }
-    return nil
-}
 
 func (s Status) String() string {
     switch s {
@@ -31,8 +24,3 @@ func (s Status) String() string {
         return "Invalid"
     }
 }
-
-var ErrInvalidStatus = errStatus{}
-
-type errStatus struct{}
-func (errStatus) Error() string { return "invalid status" }
