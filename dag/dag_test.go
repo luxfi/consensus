@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// DAGBlock represents a block in the DAG
-type DAGBlock struct {
+// TestDAGBlock represents a block in the test DAG
+type TestDAGBlock struct {
 	ID          [32]byte
 	Parents     [][32]byte
 	Height      uint64
@@ -33,10 +33,10 @@ type Transaction struct {
 	Data  []byte
 }
 
-// DAG structure for testing
-type DAG struct {
+// TestDAG structure for testing
+type TestDAG struct {
 	mu         sync.RWMutex
-	blocks     map[[32]byte]*DAGBlock
+	blocks     map[[32]byte]*TestDAGBlock
 	tips       map[[32]byte]bool
 	height     uint64
 	witness    witness.Manager
@@ -44,12 +44,11 @@ type DAG struct {
 }
 
 type TxID [32]byte
-type BlockID [32]byte
 
-// NewDAG creates a new DAG for testing
-func NewDAG() *DAG {
-	return &DAG{
-		blocks: make(map[[32]byte]*DAGBlock),
+// NewTestDAG creates a new DAG for testing
+func NewTestDAG() *TestDAG {
+	return &TestDAG{
+		blocks: make(map[[32]byte]*TestDAGBlock),
 		tips:   make(map[[32]byte]bool),
 		witness: witness.NewCache(witness.Policy{
 			Mode:     witness.RequireFull,
@@ -59,8 +58,8 @@ func NewDAG() *DAG {
 	}
 }
 
-// AddBlock adds a block to the DAG
-func (d *DAG) AddBlock(block *DAGBlock) error {
+// AddBlock adds a block to the test DAG
+func (d *TestDAG) AddBlock(block *TestDAGBlock) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -91,7 +90,7 @@ func (d *DAG) AddBlock(block *DAGBlock) error {
 }
 
 // GetTips returns current DAG tips
-func (d *DAG) GetTips() [][32]byte {
+func (d *TestDAG) GetTips() [][32]byte {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
@@ -103,16 +102,16 @@ func (d *DAG) GetTips() [][32]byte {
 }
 
 // GetExecutableTxs returns transactions ready for execution
-func (d *DAG) GetExecutableTxs() []TxID {
+func (d *TestDAG) GetExecutableTxs() []TxID {
 	return d.flare.Executable()
 }
 
 // TestDAGBasic tests basic DAG operations
 func TestDAGBasic(t *testing.T) {
-	dag := NewDAG()
+	dag := NewTestDAG()
 
 	// Create genesis block
-	genesis := &DAGBlock{
+	genesis := &TestDAGBlock{
 		ID:        [32]byte{0},
 		Parents:   nil,
 		Height:    0,
@@ -128,14 +127,14 @@ func TestDAGBasic(t *testing.T) {
 	require.Equal(t, genesis.ID, tips[0])
 
 	// Add child blocks
-	block1 := &DAGBlock{
+	block1 := &TestDAGBlock{
 		ID:        [32]byte{1},
 		Parents:   [][32]byte{genesis.ID},
 		Height:    1,
 		Timestamp: time.Now(),
 	}
 
-	block2 := &DAGBlock{
+	block2 := &TestDAGBlock{
 		ID:        [32]byte{2},
 		Parents:   [][32]byte{genesis.ID},
 		Height:    1,
@@ -155,13 +154,13 @@ func TestDAGBasic(t *testing.T) {
 
 // TestDAGWithWitness tests DAG with witness validation
 func TestDAGWithWitness(t *testing.T) {
-	dag := NewDAG()
+	dag := NewTestDAG()
 
 	// Create block with witness
 	witnessData := make([]byte, 1000)
 	_, _ = rand.Read(witnessData)
 
-	block := &DAGBlock{
+	block := &TestDAGBlock{
 		ID:          [32]byte{1},
 		Parents:     nil,
 		Height:      0,
@@ -191,7 +190,7 @@ func TestDAGWithWitness(t *testing.T) {
 
 // TestDAGFastPath tests fast path execution with DAG
 func TestDAGFastPath(t *testing.T) {
-	dag := NewDAG()
+	dag := NewTestDAG()
 
 	// Create transactions
 	txs := make([]Transaction, 10)
@@ -205,7 +204,7 @@ func TestDAGFastPath(t *testing.T) {
 
 	// Create blocks voting for same transactions
 	for i := 0; i < 7; i++ { // Need 7 votes for f=3
-		block := &DAGBlock{
+		block := &TestDAGBlock{
 			ID:        [32]byte{byte(100 + i)},
 			Parents:   nil,
 			Height:    uint64(i),
@@ -227,10 +226,10 @@ func TestDAGFastPath(t *testing.T) {
 
 // TestDAGConcurrent tests concurrent DAG operations
 func TestDAGConcurrent(t *testing.T) {
-	dag := NewDAG()
+	dag := NewTestDAG()
 
 	// Add genesis
-	genesis := &DAGBlock{
+	genesis := &TestDAGBlock{
 		ID:        [32]byte{0},
 		Parents:   nil,
 		Height:    0,
@@ -260,7 +259,7 @@ func TestDAGConcurrent(t *testing.T) {
 				}
 			}
 
-			block := &DAGBlock{
+			block := &TestDAGBlock{
 				ID:        [32]byte{byte(id)},
 				Parents:   parents,
 				Height:    uint64(id/10 + 1),
@@ -285,10 +284,10 @@ func TestDAGConcurrent(t *testing.T) {
 
 // TestDAGMerge tests merging of DAG branches
 func TestDAGMerge(t *testing.T) {
-	dag := NewDAG()
+	dag := NewTestDAG()
 
 	// Create two branches
-	genesis := &DAGBlock{
+	genesis := &TestDAGBlock{
 		ID:      [32]byte{0},
 		Parents: nil,
 		Height:  0,
@@ -296,24 +295,24 @@ func TestDAGMerge(t *testing.T) {
 	_ = dag.AddBlock(genesis)
 
 	// Branch A
-	blockA1 := &DAGBlock{
+	blockA1 := &TestDAGBlock{
 		ID:      [32]byte{1},
 		Parents: [][32]byte{genesis.ID},
 		Height:  1,
 	}
-	blockA2 := &DAGBlock{
+	blockA2 := &TestDAGBlock{
 		ID:      [32]byte{2},
 		Parents: [][32]byte{{1}},
 		Height:  2,
 	}
 
 	// Branch B
-	blockB1 := &DAGBlock{
+	blockB1 := &TestDAGBlock{
 		ID:      [32]byte{11},
 		Parents: [][32]byte{genesis.ID},
 		Height:  1,
 	}
-	blockB2 := &DAGBlock{
+	blockB2 := &TestDAGBlock{
 		ID:      [32]byte{12},
 		Parents: [][32]byte{{11}},
 		Height:  2,
@@ -326,7 +325,7 @@ func TestDAGMerge(t *testing.T) {
 	_ = dag.AddBlock(blockB2)
 
 	// Merge block references both branches
-	merge := &DAGBlock{
+	merge := &TestDAGBlock{
 		ID:      [32]byte{100},
 		Parents: [][32]byte{{2}, {12}},
 		Height:  3,
@@ -371,10 +370,10 @@ func makePayloadWithWitness(txLen int, witness []byte) []byte {
 // Benchmarks
 
 func BenchmarkDAGAddBlock(b *testing.B) {
-	dag := NewDAG()
+	dag := NewTestDAG()
 
 	// Add genesis
-	genesis := &DAGBlock{
+	genesis := &TestDAGBlock{
 		ID:      [32]byte{0},
 		Parents: nil,
 		Height:  0,
@@ -383,7 +382,7 @@ func BenchmarkDAGAddBlock(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		block := &DAGBlock{
+		block := &TestDAGBlock{
 			ID:      [32]byte{byte(i % 256), byte(i / 256)},
 			Parents: [][32]byte{genesis.ID},
 			Height:  uint64(i + 1),
@@ -393,11 +392,11 @@ func BenchmarkDAGAddBlock(b *testing.B) {
 }
 
 func BenchmarkDAGGetTips(b *testing.B) {
-	dag := NewDAG()
+	dag := NewTestDAG()
 
 	// Build a DAG with multiple tips
 	for i := 0; i < 100; i++ {
-		block := &DAGBlock{
+		block := &TestDAGBlock{
 			ID:      [32]byte{byte(i)},
 			Parents: nil,
 			Height:  uint64(i),
