@@ -10,7 +10,7 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/utils/bag"
-	"github.com/luxfi/consensus/protocol/prism"
+	"github.com/luxfi/consensus/protocols/protocol/prism"
 )
 
 // voteVertex represents a vertex in the vote graph
