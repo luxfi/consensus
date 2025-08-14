@@ -22,4 +22,6 @@ type Manager interface {
     GetValidator(subnetID ids.ID, nodeID ids.NodeID) (*Validator, bool)
     GetWeight(subnetID ids.ID, nodeID ids.NodeID) (uint64, error)
     TotalWeight(subnetID ids.ID) (uint64, error)
+    NumValidators(subnetID ids.ID) int
+    RegisterSetCallbackListener(listener SetCallbackListener)
 }

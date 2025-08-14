@@ -356,7 +356,7 @@ func TestConcurrentRuntimeAccess(t *testing.T) {
 }
 
 func BenchmarkGetRuntime(b *testing.B) {
-	InitializeRuntime("mainnet")
+	_ = InitializeRuntime("mainnet")
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -391,7 +391,7 @@ func BenchmarkLoadRuntimeFromFile(b *testing.B) {
 	}
 	
 	data, _ := json.MarshalIndent(testConfig, "", "  ")
-	os.WriteFile(configPath, data, 0644)
+	_ = os.WriteFile(configPath, data, 0644)
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
