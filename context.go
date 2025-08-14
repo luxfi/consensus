@@ -16,6 +16,7 @@ type (
     State   = interfaces.State
     Status  = interfaces.Status
     StateHolder = interfaces.StateHolder
+    Block = interfaces.Decidable  // Blocks are decidable items
 )
 
 // Export constants
