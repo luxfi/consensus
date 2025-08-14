@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/protocols/protocol/nebula"
+	"github.com/luxfi/consensus/protocol/nebula"
 	"github.com/luxfi/ids"
 )
 
