@@ -11,3 +11,8 @@ import (
 func NewNoOpRegisterer() metrics.Registerer {
 	return metrics.NewNoOpRegistry()
 }
+
+// NewNoOpMultiGatherer returns a new no-op multi gatherer for testing
+func NewNoOpMultiGatherer() metrics.MultiGatherer {
+	return metrics.NewMultiGatherer()
+}
