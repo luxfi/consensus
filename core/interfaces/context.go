@@ -16,6 +16,18 @@ type MultiGatherer = metric.MultiGatherer
 // Registerer is the metrics registerer interface
 type Registerer = metric.Registerer
 
+// State represents chain operational state
+type State uint8
+
+const (
+    // NormalOp is the normal operational state
+    NormalOp State = iota
+    // Bootstrapping indicates the node is syncing
+    Bootstrapping
+    // StateSyncing indicates state sync is active
+    StateSyncing
+)
+
 // StateHolder manages atomic state updates
 type StateHolder struct {
     value atomic.Value
@@ -38,6 +50,18 @@ func (s *StateHolder) Set(state State) {
 type ValidatorState interface {
     GetSubnetID(ctx context.Context, chainID ids.ID) (ids.ID, error)
     GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
+}
+
+// ValidatorSet provides access to validator information for consensus
+type ValidatorSet interface {
+    // Self returns the node's own ID
+    Self() ids.NodeID
+    
+    // GetWeight returns the weight of a validator
+    GetWeight(nodeID ids.NodeID) uint64
+    
+    // TotalWeight returns the total weight of all validators
+    TotalWeight() uint64
 }
 
 // BCLookup provides blockchain lookup operations
