@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/protocols/nova"
+	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/consensus/engine/chain"
 	"github.com/luxfi/consensus/engine/dag"
 	"github.com/luxfi/ids"
