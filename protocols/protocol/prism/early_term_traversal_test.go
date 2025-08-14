@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/protocol/prism"
+	"github.com/luxfi/consensus/protocols/protocol/prism"
 	"github.com/luxfi/consensus/testutils"
 	"github.com/luxfi/consensus/utils/bag"
 )
