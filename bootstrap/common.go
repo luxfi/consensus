@@ -39,7 +39,7 @@ type Bootstrapper interface {
 	Start(ctx context.Context, startReqID uint32) error
 	
 	// Connected is called when a peer connects
-	Connected(ctx context.Context, nodeID ids.NodeID, nodeVersion *version.Application) error
+	Connected(ctx context.Context, nodeID ids.NodeID, nodeVersion *Application) error
 	
 	// Disconnected is called when a peer disconnects
 	Disconnected(ctx context.Context, nodeID ids.NodeID) error

@@ -5,7 +5,6 @@ import (
     "github.com/prometheus/client_golang/prometheus"
     "github.com/luxfi/ids"
     "github.com/luxfi/node/utils/resource"
-    "github.com/luxfi/metric"
 )
 
 // Targeter provides target configuration
@@ -33,7 +32,6 @@ type ResourceTracker interface {
 func NewResourceTracker(
     reg prometheus.Registerer,
     manager resource.Manager,
-    factory metric.Factory,
     halflife time.Duration,
 ) (ResourceTracker, error) {
     return &resourceTracker{

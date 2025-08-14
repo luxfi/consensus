@@ -82,3 +82,21 @@ type VM interface {
 	// Shutdown stops the VM
 	Shutdown(ctx context.Context) error
 }
+
+// Vertex represents a vertex in a DAG consensus
+type Vertex interface {
+	// ID returns the vertex ID
+	ID() ids.ID
+	// Parents returns the parent vertex IDs
+	Parents() []ids.ID
+	// Height returns the vertex height
+	Height() uint64
+	// Bytes returns the vertex bytes
+	Bytes() []byte
+	// Accept accepts the vertex
+	Accept(ctx context.Context) error
+	// Reject rejects the vertex
+	Reject(ctx context.Context) error
+	// Verify verifies the vertex
+	Verify(ctx context.Context) error
+}
