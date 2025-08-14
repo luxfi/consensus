@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/engine/dag"
-	"github.com/luxfi/consensus/protocol/nova"
+	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/ids"
 )
 
