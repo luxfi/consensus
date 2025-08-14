@@ -8,8 +8,8 @@ import (
 // Consensus implements the Nova (Snowman) consensus protocol
 type Consensus struct {
     prism     *prism.Cut
-    splitter  *prism.Splitter
-    refract   *prism.Refract
+    k         int // sample size
+    refract   *prism.Refractor
     
     preference ids.ID
     lastAccepted ids.ID
@@ -24,14 +24,14 @@ func NewConsensus(k int, alphaPreference, alphaConfidence, beta int) *Consensus 
             AlphaConfidence: alphaConfidence,
             Beta:           beta,
         },
-        splitter: &prism.Splitter{K: k},
-        refract:  &prism.Refract{},
+        k:       k,
+        refract: prism.NewRefractor(prism.RefractConfig{}),
     }
 }
 
 // RecordPoll records poll results
 func (c *Consensus) RecordPoll(votes map[ids.ID]int) {
-    threshold := c.prism.PreferenceThreshold(c.splitter.K)
+    threshold := c.prism.PreferenceThreshold(c.k)
     
     for id, count := range votes {
         if count >= threshold {
