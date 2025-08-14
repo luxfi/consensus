@@ -14,7 +14,7 @@ import (
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/protocol/prism"
+	"github.com/luxfi/consensus/protocols/protocol/prism"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/consensus/utils/set"
 	"github.com/luxfi/log"

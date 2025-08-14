@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/protocol/prism"
+	"github.com/luxfi/consensus/protocols/protocol/prism"
 	"github.com/luxfi/consensus/utils/sampler"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/ids"

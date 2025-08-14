@@ -7,6 +7,7 @@ require (
 	github.com/luxfi/database v1.1.11
 	github.com/luxfi/ids v1.0.2
 	github.com/luxfi/log v1.0.6
+	github.com/luxfi/metric v1.3.0
 	github.com/luxfi/metrics v1.1.1
 	github.com/luxfi/trace v0.1.0
 	github.com/luxfi/zmq/v4 v4.2.0
@@ -39,7 +40,6 @@ require (
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/luxfi/czmq/v4 v4.2.0 // indirect
-	github.com/luxfi/metric v1.3.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -65,5 +65,6 @@ require (
 	golang.org/x/tools v0.35.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250721164621-a45f3dfb1074 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
