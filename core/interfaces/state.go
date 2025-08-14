@@ -1,41 +1,20 @@
-// Copyright (C) 2020-2025, Lux Indutries, Inc. All rights reserved.
-// See the file LICENSE for licensing terms.
-
 package interfaces
 
-import (
-	"errors"
-
-	"github.com/luxfi/consensus/proto/pb/p2p"
-)
+// State represents consensus state
+type State int
 
 const (
-	Initializing State = iota
-	StateSyncing
-	Bootstrapping
-	NormalOp
+    Bootstrapping State = iota
+    NormalOp
 )
 
-var ErrUnknownState = errors.New("unknown state")
-
-type State uint8
-
-func (st State) String() string {
-	switch st {
-	case Initializing:
-		return "Initializing state"
-	case StateSyncing:
-		return "State syncing state"
-	case Bootstrapping:
-		return "Bootstrapping state"
-	case NormalOp:
-		return "Normal operations state"
-	default:
-		return "Unknown state"
-	}
-}
-
-type EngineState struct {
-	Type  p2p.EngineType
-	State State
+func (s State) String() string {
+    switch s {
+    case Bootstrapping:
+        return "Bootstrapping"
+    case NormalOp:
+        return "NormalOp"
+    default:
+        return "Unknown"
+    }
 }
