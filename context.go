@@ -13,6 +13,7 @@ type (
     Context = interfaces.Context
     State   = interfaces.State
     Status  = interfaces.Status
+    StateHolder = interfaces.StateHolder
 )
 
 // Export constants
