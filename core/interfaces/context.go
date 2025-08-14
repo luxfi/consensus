@@ -1,6 +1,7 @@
 package interfaces
 
 import (
+    "context"
     "github.com/luxfi/ids"
     "github.com/luxfi/crypto/bls"
     "github.com/luxfi/log"
@@ -9,6 +10,12 @@ import (
 
 // Registerer is the metrics registerer interface
 type Registerer = metrics.Registerer
+
+// ValidatorState provides validator state operations
+type ValidatorState interface {
+    GetSubnetID(ctx context.Context, chainID ids.ID) (ids.ID, error)
+    GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
+}
 
 // Context provides consensus engine configuration
 type Context struct {
@@ -20,4 +27,7 @@ type Context struct {
     
     Log          log.Logger
     Metrics      metrics.MultiGatherer
+    
+    // ValidatorState provides validator information
+    ValidatorState ValidatorState
 }

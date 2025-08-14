@@ -5,7 +5,6 @@ import (
     "time"
     "github.com/luxfi/ids"
     "github.com/luxfi/consensus/chain"
-    "github.com/luxfi/consensus/choices"
 )
 
 // Block extends chain.Block for engine use
