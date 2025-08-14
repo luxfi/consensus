@@ -72,8 +72,8 @@ func (ns *NetworkSimulator) AddValidator(protocol string, params config.Paramete
 	
 	// Create consensus context
 	ctx := &interfaces.Context{
-		Log:        log.NewNoOpLogger(),
-		Registerer: testutils.NewNoOpRegisterer(),
+		Log:     log.NewNoOpLogger(),
+		Metrics: testutils.NewNoOpRegisterer(),
 	}
 	
 	// Create consensus instance based on protocol

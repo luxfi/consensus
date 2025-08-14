@@ -130,10 +130,69 @@ func (bs *BinarySampler) RecordSuccessfulPoll(choice int) {
 }
 
 // ============================================================================
-// UniformSampler for backward compatibility
+// UnarySampler for single-value consensus
 // ============================================================================
 
-// UniformSampler creates a uniform sampler that returns validators from a bag
-func NewUniformSampler() Sampler {
-	return NewSampler(nil)
+// UnarySampler tracks consensus on a single value
+type UnarySampler struct {
+	polled bool
+}
+
+// NewUnarySampler creates a new unary sampler
+func NewUnarySampler() *UnarySampler {
+	return &UnarySampler{}
+}
+
+// RecordPoll records that polling has occurred
+func (u *UnarySampler) RecordPoll() {
+	u.polled = true
+}
+
+// Finalized returns whether consensus has been reached
+func (u *UnarySampler) Finalized() bool {
+	return u.polled
+}
+
+// ============================================================================
+// NArySampler for multi-value consensus
+// ============================================================================
+
+// NArySampler tracks consensus among n choices
+type NArySampler struct {
+	n          int
+	preference int
+	counts     []int
+}
+
+// NewNArySampler creates a new n-ary sampler
+func NewNArySampler(n int) *NArySampler {
+	return &NArySampler{
+		n:      n,
+		counts: make([]int, n),
+	}
+}
+
+// RecordPoll records poll results for a choice
+func (n *NArySampler) RecordPoll(choice int) {
+	if choice >= 0 && choice < n.n {
+		n.counts[choice]++
+		// Update preference to choice with most polls
+		maxCount := n.counts[n.preference]
+		if n.counts[choice] > maxCount {
+			n.preference = choice
+		}
+	}
+}
+
+// Preference returns the current preferred choice
+func (n *NArySampler) Preference() int {
+	return n.preference
+}
+
+// Count returns the poll count for a specific choice
+func (n *NArySampler) Count(choice int) int {
+	if choice >= 0 && choice < n.n {
+		return n.counts[choice]
+	}
+	return 0
 }
