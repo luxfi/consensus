@@ -4,18 +4,10 @@
 package testutils
 
 import (
-	"github.com/luxfi/consensus/core/interfaces"
+	"github.com/luxfi/metric"
 )
 
-// NoOpRegisterer is a no-op implementation of interfaces.Registerer for testing
-type NoOpRegisterer struct{}
-
-// Register is a no-op
-func (n *NoOpRegisterer) Register(interface{}) error {
-	return nil
-}
-
-// NewNoOpRegisterer returns a new no-op registerer
-func NewNoOpRegisterer() interfaces.Registerer {
-	return &NoOpRegisterer{}
+// NewNoOpRegisterer returns a new no-op registerer for testing
+func NewNoOpRegisterer() metrics.Registerer {
+	return metrics.NewNoOpRegistry()
 }
