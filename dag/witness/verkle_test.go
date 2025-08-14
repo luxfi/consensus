@@ -209,7 +209,7 @@ func TestVerkleMultiParent(t *testing.T) {
 
 func makeVerkleWitness(stems, bytesPerStem int) []byte {
 	witness := make([]byte, stems*bytesPerStem)
-	rand.Read(witness)
+	_, _ = rand.Read(witness)
 	return witness
 }
 
@@ -227,7 +227,7 @@ func makeVerkleDelta(stems, bytesPerStem int) []byte {
 
 func makeVerkleNode(size int) []byte {
 	node := make([]byte, size)
-	rand.Read(node)
+	_, _ = rand.Read(node)
 	// Add Verkle node structure
 	node[0] = 0xFE // Verkle marker
 	node[1] = 0x01 // Version
@@ -278,7 +278,7 @@ func BenchmarkVerkleNodeCache(b *testing.B) {
 	// Pre-populate cache
 	stems := make([][32]byte, 1000)
 	for i := range stems {
-		rand.Read(stems[i][:])
+		_, _ = rand.Read(stems[i][:])
 		key := NodeKey{Stem: stems[i], Index: uint16(i % 256)}
 		cache.PutNode(key, makeVerkleNode(256))
 	}
