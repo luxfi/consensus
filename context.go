@@ -2,6 +2,8 @@
 package consensus
 
 import (
+    "context"
+    
     "github.com/luxfi/crypto/bls"
     "github.com/luxfi/database"
     "github.com/luxfi/ids"
@@ -63,3 +65,19 @@ type WarpSigner interface {
 type Message interface{}
 
 type PendingTxs struct{}
+
+// VM defines the virtual machine interface for consensus
+type VM interface {
+	// ParseBlock parses a block from bytes
+	ParseBlock(ctx context.Context, blockBytes []byte) (Block, error)
+	// GetBlock retrieves a block by ID
+	GetBlock(ctx context.Context, blockID ids.ID) (Block, error)
+	// SetPreference sets the preferred block
+	SetPreference(ctx context.Context, blockID ids.ID) error
+	// LastAccepted returns the last accepted block ID
+	LastAccepted(ctx context.Context) (ids.ID, error)
+	// HealthCheck returns the health status
+	HealthCheck(ctx context.Context) (interface{}, error)
+	// Shutdown stops the VM
+	Shutdown(ctx context.Context) error
+}
