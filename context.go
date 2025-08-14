@@ -2,11 +2,9 @@
 package consensus
 
 import (
-    "github.com/luxfi/ids"
     "github.com/luxfi/crypto/bls"
     "github.com/luxfi/database"
-    "github.com/luxfi/log"
-    "github.com/luxfi/metric"
+    "github.com/luxfi/ids"
     "github.com/luxfi/consensus/core/interfaces"
 )
 

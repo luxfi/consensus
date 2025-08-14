@@ -11,4 +11,6 @@ type State interface {
 // Manager manages validator sets
 type Manager interface {
     GetValidators(subnetID ids.ID) ([]ids.NodeID, error)
+    GetWeight(subnetID ids.ID, nodeID ids.NodeID) (uint64, error)
+    TotalWeight(subnetID ids.ID) (uint64, error)
 }
