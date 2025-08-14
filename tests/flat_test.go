@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/protocols/protocol/photon"
-	"github.com/luxfi/consensus/protocols/protocol/pulse"
-	"github.com/luxfi/consensus/protocols/protocol/wave"
+	"github.com/luxfi/consensus/protocol/photon"
+	"github.com/luxfi/consensus/protocol/pulse"
+	"github.com/luxfi/consensus/protocol/wave"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/ids"
 )
