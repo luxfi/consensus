@@ -5,6 +5,7 @@ go 1.24.5
 require (
 	github.com/luxfi/crypto v1.2.9
 	github.com/luxfi/database v1.1.11
+	github.com/luxfi/geth v1.16.3
 	github.com/luxfi/ids v1.0.2
 	github.com/luxfi/log v1.0.6
 	github.com/luxfi/metric v1.3.0
@@ -77,3 +78,5 @@ require (
 )
 
 replace github.com/luxfi/consensus/protocol/snowman => ../consensus/protocol/snowman
+
+replace github.com/luxfi/geth => ../geth
