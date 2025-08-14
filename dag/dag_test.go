@@ -293,7 +293,7 @@ func TestDAGMerge(t *testing.T) {
 		Parents: nil,
 		Height:  0,
 	}
-	dag.AddBlock(genesis)
+	_ = dag.AddBlock(genesis)
 
 	// Branch A
 	blockA1 := &DAGBlock{
