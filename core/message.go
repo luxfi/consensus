@@ -1,5 +1,10 @@
 package core
 
+import (
+	"context"
+	"net/http"
+)
+
 // Message types for engine communication
 type Message int
 
@@ -38,4 +43,5 @@ type Fx struct{}
 type VM interface {
     Initialize() error
     Shutdown() error
+    CreateHandlers(ctx context.Context) (map[string]http.Handler, error)
 }
