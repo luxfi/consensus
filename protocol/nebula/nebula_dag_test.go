@@ -4,13 +4,11 @@
 package nebula
 
 import (
-    "context"
     "testing"
     
     "github.com/stretchr/testify/require"
     
     "github.com/luxfi/consensus/core/interfaces"
-    "github.com/luxfi/consensus/testutils"
     "github.com/luxfi/ids"
     "github.com/luxfi/log"
 )
@@ -23,8 +21,8 @@ type testTx struct {
 
 func (t *testTx) ID() ids.ID             { return t.id }
 func (t *testTx) Status() interfaces.Status { return t.status }
-func (t *testTx) Accept(context.Context) error { t.status = interfaces.Accepted; return nil }
-func (t *testTx) Reject(context.Context) error { t.status = interfaces.Rejected; return nil }
+func (t *testTx) Accept() error { t.status = interfaces.Accepted; return nil }
+func (t *testTx) Reject() error { t.status = interfaces.Rejected; return nil }
 func (t *testTx) Bytes() []byte          { return t.bytes }
 
 type testVertex struct {
@@ -57,7 +55,6 @@ func TestNebulaBasic(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -69,7 +66,6 @@ func TestNebulaLinearDAG(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -108,7 +104,6 @@ func TestNebulaDAGWithTransactions(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -156,7 +151,6 @@ func TestNebulaDAGFork(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -213,7 +207,6 @@ func TestNebulaMultipleParents(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -267,7 +260,6 @@ func TestNebulaOrphanVertex(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -302,7 +294,6 @@ func TestNebulaRecordUnsuccessfulPoll(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
@@ -335,7 +326,6 @@ func TestNebulaString(t *testing.T) {
     
     ctx := &interfaces.Context{
         Log:        log.NewNoOpLogger(),
-        Registerer: testutils.NewNoOpRegisterer(),
     }
     
     n := New(ctx)
