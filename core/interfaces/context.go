@@ -84,6 +84,7 @@ type Context struct {
     ChainID      ids.ID
     NodeID       ids.NodeID
     PublicKey    *bls.PublicKey
+    LUXAssetID   ids.ID
     
     Log          log.Logger
     Metrics      MultiGatherer
