@@ -32,7 +32,7 @@ type ValidatorNode struct {
 	ctx       context.Context
 	params    config.Parameters
 	cancel    context.CancelFunc
-	
+
 	// Metrics
 	messagesReceived uint64
 	messagesSent     uint64
@@ -64,13 +64,13 @@ func NewNetworkSimulator(numValidators int, basePort int) *NetworkSimulator {
 func (ns *NetworkSimulator) AddValidator(protocol string, params config.Parameters) (*ValidatorNode, error) {
 	nodeID := fmt.Sprintf("validator-%d", len(ns.validators))
 	port := ns.basePort + len(ns.validators)*10
-	
+
 	// Create transport
 	transport := zmq4.NewTransport(ns.ctx, nodeID, port)
-	
+
 	// Create consensus context
 	ctx := ns.ctx
-	
+
 	// Create consensus instance based on protocol
 	var consensus interfaces.Consensus
 	switch protocol {
@@ -83,7 +83,7 @@ func (ns *NetworkSimulator) AddValidator(protocol string, params config.Paramete
 	default:
 		return nil, fmt.Errorf("unknown protocol: %s", protocol)
 	}
-	
+
 	validator := &ValidatorNode{
 		nodeID:    nodeID,
 		transport: transport,
@@ -91,7 +91,7 @@ func (ns *NetworkSimulator) AddValidator(protocol string, params config.Paramete
 		ctx:       ctx,
 		params:    params,
 	}
-	
+
 	ns.validators = append(ns.validators, validator)
 	return validator, nil
 }
@@ -104,7 +104,7 @@ func (ns *NetworkSimulator) Start() error {
 			return fmt.Errorf("failed to start transport for %s: %w", v.nodeID, err)
 		}
 	}
-	
+
 	// Connect all validators to each other (full mesh)
 	for i, v1 := range ns.validators {
 		for j, v2 := range ns.validators {
@@ -116,7 +116,7 @@ func (ns *NetworkSimulator) Start() error {
 			}
 		}
 	}
-	
+
 	// Register message handlers and start validators
 	for _, v := range ns.validators {
 		ctx, cancel := context.WithCancel(ns.ctx)
@@ -125,10 +125,10 @@ func (ns *NetworkSimulator) Start() error {
 		ns.wg.Add(1)
 		go v.run(ctx, &ns.wg)
 	}
-	
+
 	// Wait for connections to establish
 	time.Sleep(200 * time.Millisecond)
-	
+
 	return nil
 }
 
@@ -140,11 +140,11 @@ func (ns *NetworkSimulator) Stop() {
 			v.cancel()
 		}
 	}
-	
+
 	// Cancel main context
 	ns.cancel()
 	ns.wg.Wait()
-	
+
 	// Stop transports
 	for _, v := range ns.validators {
 		v.transport.Stop()
@@ -156,42 +156,42 @@ func (v *ValidatorNode) registerHandlers() {
 	// Handle consensus votes
 	v.transport.RegisterHandler("vote", func(msg *zmq4.Message) {
 		atomic.AddUint64(&v.messagesReceived, 1)
-		
+
 		var vote struct {
 			BlockID ids.ID `json:"block_id"`
 			Height  uint64 `json:"height"`
 		}
-		
+
 		if err := json.Unmarshal(msg.Data, &vote); err != nil {
 			return
 		}
-		
+
 		// Process vote in consensus
 		votes := bag.Bag[ids.ID]{}
 		votes.Add(vote.BlockID)
-		
+
 		v.consensus.RecordPrism(votes)
 	})
-	
+
 	// Handle block proposals
 	v.transport.RegisterHandler("propose", func(msg *zmq4.Message) {
 		atomic.AddUint64(&v.messagesReceived, 1)
-		
+
 		var proposal struct {
 			BlockID   ids.ID `json:"block_id"`
 			ParentID  ids.ID `json:"parent_id"`
 			Height    uint64 `json:"height"`
 			Timestamp int64  `json:"timestamp"`
 		}
-		
+
 		if err := json.Unmarshal(msg.Data, &proposal); err != nil {
 			return
 		}
-		
+
 		// Add block to consensus
 		v.consensus.Add(proposal.BlockID)
 	})
-	
+
 	// Handle consensus reached notifications
 	v.transport.RegisterHandler("consensus", func(msg *zmq4.Message) {
 		atomic.AddUint64(&v.messagesReceived, 1)
@@ -202,10 +202,10 @@ func (v *ValidatorNode) registerHandlers() {
 // run is the main loop for a validator
 func (v *ValidatorNode) run(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
-	
+
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -221,7 +221,7 @@ func (v *ValidatorNode) run(ctx context.Context, wg *sync.WaitGroup) {
 					BlockID: pref,
 					Height:  0, // Would be actual height in real implementation
 				}
-				
+
 				data, _ := json.Marshal(vote)
 				msg := &zmq4.Message{
 					Type:      "vote",
@@ -229,7 +229,7 @@ func (v *ValidatorNode) run(ctx context.Context, wg *sync.WaitGroup) {
 					Data:      data,
 					Timestamp: time.Now().Unix(),
 				}
-				
+
 				v.transport.Broadcast(msg)
 				atomic.AddUint64(&v.messagesSent, 1)
 			}
@@ -266,34 +266,34 @@ func benchmarkConsensusWithZMQ(b *testing.B, protocol string, validatorCounts []
 		b.Run(fmt.Sprintf("validators-%d", numValidators), func(b *testing.B) {
 			// Create network simulator
 			ns := NewNetworkSimulator(numValidators, 20000)
-			
+
 			// Add validators
 			params := config.TestParameters
 			for i := 0; i < numValidators; i++ {
 				_, err := ns.AddValidator(protocol, params)
 				require.NoError(b, err)
 			}
-			
+
 			// Start network
 			err := ns.Start()
 			require.NoError(b, err)
 			defer ns.Stop()
-			
+
 			// Add genesis block to all validators
 			genesis := ids.GenerateTestID()
-			
+
 			for _, v := range ns.validators {
 				err := v.consensus.Add(genesis)
 				require.NoError(b, err)
 			}
-			
+
 			b.ResetTimer()
-			
+
 			// Run benchmark
 			for i := 0; i < b.N; i++ {
 				// Create and propose a new block
 				blockID := ids.GenerateTestID()
-				
+
 				// Propose block from first validator
 				proposal := struct {
 					BlockID   ids.ID `json:"block_id"`
@@ -306,7 +306,7 @@ func benchmarkConsensusWithZMQ(b *testing.B, protocol string, validatorCounts []
 					Height:    uint64(i + 1),
 					Timestamp: time.Now().Unix(),
 				}
-				
+
 				data, _ := json.Marshal(proposal)
 				msg := &zmq4.Message{
 					Type:      "propose",
@@ -314,17 +314,17 @@ func benchmarkConsensusWithZMQ(b *testing.B, protocol string, validatorCounts []
 					Data:      data,
 					Timestamp: time.Now().Unix(),
 				}
-				
+
 				// Broadcast proposal
 				err := ns.validators[0].transport.Broadcast(msg)
 				require.NoError(b, err)
-				
+
 				// Wait for consensus
 				time.Sleep(50 * time.Millisecond)
 			}
-			
+
 			b.StopTimer()
-			
+
 			// Collect and report metrics
 			var totalReceived, totalSent, totalAccepted, totalConsensus uint64
 			for _, v := range ns.validators {
@@ -334,10 +334,10 @@ func benchmarkConsensusWithZMQ(b *testing.B, protocol string, validatorCounts []
 				totalAccepted += a
 				totalConsensus += c
 			}
-			
+
 			b.Logf("Network stats - Messages: %d received, %d sent; Blocks: %d accepted; Consensus: %d reached",
 				totalReceived, totalSent, totalAccepted, totalConsensus)
-			
+
 			// Calculate messages per operation
 			if b.N > 0 {
 				b.ReportMetric(float64(totalSent)/float64(b.N), "msgs/op")
@@ -351,7 +351,7 @@ func benchmarkConsensusWithZMQ(b *testing.B, protocol string, validatorCounts []
 func BenchmarkConsensusScalability(b *testing.B) {
 	validatorCounts := []int{3, 5, 10, 20, 50}
 	protocols := []string{"photon", "pulse", "wave"}
-	
+
 	for _, protocol := range protocols {
 		b.Run(protocol, func(b *testing.B) {
 			for _, numValidators := range validatorCounts {
@@ -360,10 +360,10 @@ func BenchmarkConsensusScalability(b *testing.B) {
 					if numValidators > 20 && testing.Short() {
 						b.Skip("Skipping large validator count in short mode")
 					}
-					
+
 					// Create network
 					ns := NewNetworkSimulator(numValidators, 30000)
-					
+
 					// Add validators
 					params := config.TestParameters
 					// Adjust parameters for larger networks
@@ -372,34 +372,34 @@ func BenchmarkConsensusScalability(b *testing.B) {
 						params.AlphaPreference = (numValidators + 1) / 2
 						params.AlphaConfidence = (numValidators * 2) / 3
 					}
-					
+
 					for i := 0; i < numValidators; i++ {
 						_, err := ns.AddValidator(protocol, params)
 						require.NoError(b, err)
 					}
-					
+
 					// Start network
 					err := ns.Start()
 					require.NoError(b, err)
 					defer ns.Stop()
-					
+
 					// Add genesis block
 					genesis := ids.GenerateTestID()
-					
+
 					for _, v := range ns.validators {
 						err := v.consensus.Add(genesis)
 						require.NoError(b, err)
 					}
-					
+
 					// Measure time to consensus
 					start := time.Now()
 					consensusReached := make(chan bool)
-					
+
 					// Monitor for consensus
 					go func() {
 						ticker := time.NewTicker(10 * time.Millisecond)
 						defer ticker.Stop()
-						
+
 						for {
 							select {
 							case <-ticker.C:
@@ -415,7 +415,7 @@ func BenchmarkConsensusScalability(b *testing.B) {
 										break
 									}
 								}
-								
+
 								if allAgreed && !pref.IsZero() {
 									consensusReached <- true
 									return
@@ -423,16 +423,16 @@ func BenchmarkConsensusScalability(b *testing.B) {
 							}
 						}
 					}()
-					
+
 					// Propose a block
 					blockID := ids.GenerateTestID()
-					
+
 					// Add block to all validators
 					for _, v := range ns.validators {
 						err := v.consensus.Add(blockID)
 						require.NoError(b, err)
 					}
-					
+
 					// Wait for consensus or timeout
 					select {
 					case <-consensusReached:
@@ -457,12 +457,12 @@ type testBlock struct {
 	status    interfaces.Status
 }
 
-func (b *testBlock) ID() ids.ID             { return b.id }
-func (b *testBlock) Parent() ids.ID        { return b.parentID }
-func (b *testBlock) Height() uint64        { return b.height }
-func (b *testBlock) Timestamp() time.Time  { return b.timestamp }
-func (b *testBlock) Bytes() []byte         { return nil }
-func (b *testBlock) Verify() error         { return nil }
+func (b *testBlock) ID() ids.ID           { return b.id }
+func (b *testBlock) Parent() ids.ID       { return b.parentID }
+func (b *testBlock) Height() uint64       { return b.height }
+func (b *testBlock) Timestamp() time.Time { return b.timestamp }
+func (b *testBlock) Bytes() []byte        { return nil }
+func (b *testBlock) Verify() error        { return nil }
 func (b *testBlock) Accept(context.Context) error {
 	b.status = interfaces.Accepted
 	return nil

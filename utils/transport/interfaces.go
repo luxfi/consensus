@@ -36,22 +36,22 @@ type Handler func(from ids.NodeID, msg *Message)
 type Transport interface {
 	// NodeID returns the node's ID
 	NodeID() ids.NodeID
-	
+
 	// Connect establishes connection to a peer
 	Connect(peerID ids.NodeID, endpoint string) error
-	
+
 	// Broadcast sends a message to all connected peers
 	Broadcast(msg *Message) error
-	
+
 	// Send sends a message to a specific peer
 	Send(peerID ids.NodeID, msg *Message) error
-	
+
 	// RegisterHandler registers a message handler
 	RegisterHandler(msgType MessageType, handler Handler)
-	
+
 	// Start begins listening for messages
 	Start() error
-	
+
 	// Stop shuts down the transport
 	Stop() error
 }

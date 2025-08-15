@@ -14,7 +14,7 @@ import (
 type Tx interface {
 	// ID returns the unique identifier of this transaction
 	ID() ids.ID
-	
+
 	// Bytes returns the binary representation
 	Bytes() []byte
 }

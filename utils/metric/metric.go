@@ -23,9 +23,9 @@ type Averager interface {
 
 // averager implements an average tracker using internal state
 type averager struct {
-	mu     sync.RWMutex
-	sum    float64
-	count  int64
+	mu    sync.RWMutex
+	sum   float64
+	count int64
 }
 
 // NewAverager returns a new Averager
@@ -54,7 +54,7 @@ func (a *averager) Read() float64 {
 // Counter tracks a count
 type Counter interface {
 	Inc()
-	Add(delta int64) 
+	Add(delta int64)
 	Read() int64
 }
 

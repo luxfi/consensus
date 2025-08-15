@@ -49,22 +49,22 @@ type Transport[ID comparable] interface {
 }
 
 type Wave[ID comparable] interface {
-	Ingest(ph photon.Photon[ID])         // external votes
-	Tick(ctx context.Context, item ID)   // drive one step (snowball or FPC)
+	Ingest(ph photon.Photon[ID])       // external votes
+	Tick(ctx context.Context, item ID) // drive one step (snowball or FPC)
 	State(item ID) (ItemState[ID], bool)
 }
 
 type waveImpl[ID comparable] struct {
-	cfg   Config
+	cfg Config
 	// sel   prism.Sampler[ID] // TODO: import from engines/dag/internal/prism
-	tx    Transport[ID]
+	tx Transport[ID]
 
 	mu    sync.Mutex
 	state map[ID]*ItemState[ID]
 	skips map[ID]int // inconclusive streak
 }
 
-func New[ID comparable](cfg Config, /* sel prism.Sampler[ID], */ tx Transport[ID]) Wave[ID] {
+func New[ID comparable](cfg Config /* sel prism.Sampler[ID], */, tx Transport[ID]) Wave[ID] {
 	if cfg.K == 0 {
 		cfg.K = 20
 	}
@@ -82,7 +82,7 @@ func New[ID comparable](cfg Config, /* sel prism.Sampler[ID], */ tx Transport[ID
 	}
 
 	return &waveImpl[ID]{
-		cfg:   cfg,
+		cfg: cfg,
 		// sel:   sel,
 		tx:    tx,
 		state: make(map[ID]*ItemState[ID]),

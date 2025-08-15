@@ -6,9 +6,9 @@ package gvalidators
 import (
 	"context"
 
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/validator"
 	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/ids"
 
 	pb "github.com/luxfi/consensus/proto/pb/validatorstate"
 )

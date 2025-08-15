@@ -7,16 +7,16 @@ import (
 	"context"
 	"errors"
 
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/validator"
 	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/ids"
 
 	pb "github.com/luxfi/consensus/proto/pb/validatorstate"
 )
 
 var (
 	_                             validator.State = (*Client)(nil)
-	errFailedPublicKeyDeserialize                  = errors.New("couldn't deserialize public key")
+	errFailedPublicKeyDeserialize                 = errors.New("couldn't deserialize public key")
 )
 
 type Client struct {

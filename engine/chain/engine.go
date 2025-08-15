@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/consensus/utils/bag"
+	"github.com/luxfi/ids"
 )
 
 // Engine implements a PQ-secured linear chain consensus engine
@@ -37,7 +37,7 @@ type Parameters struct {
 	AlphaPreference int
 	AlphaConfidence int
 	Beta            int
-	
+
 	// Security parameters
 	SecurityLevel quasar.SecurityLevel
 }
@@ -105,11 +105,11 @@ func (e *Engine) Initialize(ctx context.Context) error {
 func (e *Engine) Start(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	if e.state.running {
 		return fmt.Errorf("engine already running")
 	}
-	
+
 	e.state.running = true
 	return nil
 }
@@ -118,11 +118,11 @@ func (e *Engine) Start(ctx context.Context) error {
 func (e *Engine) Stop(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	if !e.state.running {
 		return fmt.Errorf("engine not running")
 	}
-	
+
 	e.state.running = false
 	return nil
 }
@@ -137,7 +137,7 @@ func (e *Engine) ProcessBlock(ctx context.Context, block Block) error {
 	// Process through consensus stages
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	switch e.state.stage {
 	case PhotonStage:
 		e.processPhoton(block)
@@ -169,7 +169,7 @@ func (e *Engine) processPhoton(block Block) {
 	// TODO: implement when photon protocol is available
 	// Sampling logic
 	// r.photonStage.RecordPrism(1, block.Choice())
-	
+
 	// Check if we should move to wave stage
 	if e.shouldTransitionToWave() {
 		e.state.stage = WaveStage
@@ -181,9 +181,9 @@ func (e *Engine) processWave(block Block) {
 	// TODO: implement when wave protocol is available
 	// count := r.countVotes(block)
 	// r.waveStage.RecordPrism(count, block.Choice())
-	
+
 	// if r.waveStage.Finalized() {
-		e.state.stage = FocusStage
+	e.state.stage = FocusStage
 	// }
 }
 
@@ -192,7 +192,7 @@ func (e *Engine) processFocus(block Block) {
 	// TODO: implement when focus protocol is available
 	// count := r.countVotes(block)
 	// r.focusStage.RecordPrism(count, block.Choice())
-	
+
 	// if r.focusStage.Finalized() {
 	// 	r.state.stage = FinalizationStage
 	// }
@@ -203,7 +203,7 @@ func (e *Engine) processBeam(block Block) {
 	// TODO: Properly convert block to beam.Block
 	// For now, we can't add directly to beam consensus
 	// as it requires a full beam.Block implementation
-	
+
 	// Just update state for now
 	e.state.stage = CompletedStage
 	e.state.finalized = true
