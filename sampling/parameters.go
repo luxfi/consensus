@@ -85,3 +85,14 @@ func DefaultParameters() Parameters {
 		MaxItemProcessingTime: 2 * time.Minute,
 	}
 }
+
+// MinPercentConnectedHealthy returns the minimum percentage of validators
+// that must be connected for the network to be considered healthy
+func (p Parameters) MinPercentConnectedHealthy() float64 {
+	// For k=1 consensus, all validators (100%) must be connected
+	if p.K == 1 {
+		return 1.0
+	}
+	// For normal consensus, use a threshold based on alpha
+	return float64(p.AlphaPreference) / float64(p.K)
+}

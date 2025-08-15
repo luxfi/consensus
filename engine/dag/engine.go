@@ -148,7 +148,9 @@ func (r *Engine) Stop(ctx context.Context) error {
 	}
 	
 	// Reset engine state
-	r.engine.Reset()
+	if r.engine != nil {
+		r.engine.Reset()
+	}
 	
 	r.state.running = false
 	return nil
