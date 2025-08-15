@@ -12,7 +12,7 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/nebula"
+	// "github.com/luxfi/consensus/protocol/nebula" // Commented out - nebula is interface{} for now
 	"github.com/luxfi/consensus/protocol/pulse"
 )
 
@@ -21,7 +21,7 @@ import (
 type Engine struct {
 	// Sub-engines
 	pulsar *pulse.Pulse
-	nebula *nebula.Engine
+	nebula interface{}
 
 	// Consensus stages (TODO: implement)
 	// photonStage types.Polyadic
@@ -156,12 +156,12 @@ func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 	case PulsarMode:
 		e.pulsar = pulse.NewPulse(configParams)
 	case NebulaMode:
-		// TODO: Create orderer for nebula mode
-		// e.nebula = nebula.New(orderer, configParams)
+		// TODO: Fix nebula instantiation with proper type parameter
+		// e.nebula = nebula.New(ctx)
 	case HybridMode, QuantumMode:
 		e.pulsar = pulse.NewPulse(configParams)
-		// TODO: Create orderer for hybrid/quantum mode
-		// e.nebula = nebula.New(orderer, configParams)
+		// TODO: Fix nebula instantiation with proper type parameter
+		// e.nebula = nebula.New(ctx)
 	}
 
 	return e, nil
@@ -204,12 +204,6 @@ func (e *Engine) Start(ctx context.Context) error {
 	// 	}
 	// }
 	if e.nebula != nil {
-		// TODO: Initialize Nebula when methods are available
-		// if err := e.nebula.Initialize(ctx); err != nil {
-		//     return fmt.Errorf("failed to initialize nebula: %w", err)
-		// }
-		// if err := e.nebula.Start(ctx); err != nil {
-		//     return fmt.Errorf("failed to start nebula: %w", err)
 		// }
 	}
 
@@ -228,12 +222,6 @@ func (e *Engine) Stop(ctx context.Context) error {
 	// if e.pulsar != nil {
 	// 	if err := e.pulsar.Stop(ctx); err != nil {
 	// 		return fmt.Errorf("failed to stop pulsar: %w", err)
-	// 	}
-	// }
-	// TODO: Implement Stop method for nebula
-	// if e.nebula != nil {
-	// 	if err := e.nebula.Stop(ctx); err != nil {
-	// 		return fmt.Errorf("failed to stop nebula: %w", err)
 	// 	}
 	// }
 
