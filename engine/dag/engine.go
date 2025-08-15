@@ -96,7 +96,7 @@ func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 		Graph:      nil,
 		Tips:       func() []ids.ID { return nil },
 		Thresholds: nil,
-		Confidence: nil,
+		Confidence: &mockConfidence{},
 		Orderer:    nil,
 	}
 	
@@ -333,6 +333,12 @@ type engineState struct {
 	vertexCount  uint64
 	frontierSize int
 }
+
+// mockConfidence is a simple mock implementation for testing
+type mockConfidence struct{}
+
+func (m *mockConfidence) Record(bool) bool { return false }
+func (m *mockConfidence) Reset() {}
 
 func newEngineState() *engineState {
 	return &engineState{}
