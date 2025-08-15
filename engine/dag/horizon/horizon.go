@@ -1,8 +1,8 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// Package dagkit provides optional Mysticeti-style DAG helpers
-package dagkit
+// Package horizon provides DAG ordering tools and geometry operations
+package horizon
 
 type BlockMeta struct {
 	Author  string
