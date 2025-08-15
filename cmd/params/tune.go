@@ -138,7 +138,7 @@ func tuneFinalityTime(scanner *bufio.Scanner, p *config.Parameters) *config.Para
 	}
 
 	// Optimize pipelining
-	p.Beta = requiredBeta
+	p.Beta = uint32(requiredBeta)
 	p.ConcurrentPolls = requiredBeta
 
 	fmt.Printf("✅ Set Beta=%d with full pipelining\n", p.Beta)
@@ -204,8 +204,8 @@ func tuneValidatorCount(scanner *bufio.Scanner, p *config.Parameters) *config.Pa
 	// Suggest Beta adjustment for network size
 	if totalNodes > 50 && p.Beta < 15 {
 		if promptBool(scanner, "Large network detected. Increase Beta for security?", true) {
-			p.Beta = promptInt(scanner, "New Beta", p.Beta, 50, 15)
-			p.ConcurrentPolls = min(p.Beta, 20)
+			p.Beta = uint32(promptInt(scanner, "New Beta", int(p.Beta), 50, 15))
+			p.ConcurrentPolls = min(int(p.Beta), 20)
 		}
 	}
 
@@ -254,8 +254,8 @@ func tuneByzantineTolerance(scanner *bufio.Scanner, p *config.Parameters) *confi
 	if safetyCutoff < 25 {
 		fmt.Println("⚠️  Low safety cutoff detected!")
 		if promptBool(scanner, "Increase Beta for better security?", true) {
-			p.Beta = promptInt(scanner, "New Beta", p.Beta+1, 50, p.Beta*2)
-			p.ConcurrentPolls = min(p.Beta, 20)
+			p.Beta = uint32(promptInt(scanner, "New Beta", int(p.Beta+1), 50, int(p.Beta*2)))
+			p.ConcurrentPolls = min(int(p.Beta), 20)
 		}
 	}
 

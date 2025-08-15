@@ -6,11 +6,11 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/luxfi/consensus/photon"
 	"github.com/luxfi/consensus/types"
 	"github.com/luxfi/consensus/wave"
 	"github.com/luxfi/consensus/wave/fpc"
@@ -19,6 +19,12 @@ import (
 
 type ItemID string
 type TxID string
+
+// Photon represents a vote result in our local example
+type Photon[T comparable] struct {
+	Item   T
+	Prefer bool
+}
 
 type simpleSelector struct {
 	peers []types.NodeID
@@ -46,22 +52,30 @@ type transport struct {
 	prefer bool
 }
 
-func (t transport) RequestVotes(ctx context.Context, peers []types.NodeID, item ItemID) <-chan photon.Photon[ItemID] {
-	out := make(chan photon.Photon[ItemID], len(peers))
+func (t transport) RequestVotes(ctx context.Context, peers []types.NodeID, item ItemID) <-chan Photon[ItemID] {
+	out := make(chan Photon[ItemID], len(peers))
 	go func() {
 		defer close(out)
 		// Simulate network RPCs to peers
 		time.Sleep(20 * time.Millisecond)
 		// Return votes (in production, these come from actual peers)
 		for i := 0; i < len(peers); i++ {
-			out <- photon.Photon[ItemID]{Item: item, Prefer: t.prefer}
+			out <- Photon[ItemID]{Item: item, Prefer: t.prefer}
 		}
 	}()
 	return out
 }
 
-func (t transport) MakeLocalPhoton(item ItemID, prefer bool) photon.Photon[ItemID] {
-	return photon.Photon[ItemID]{Item: item, Prefer: prefer}
+func (t transport) MakeLocalPhoton(item ItemID, prefer bool) Photon[ItemID] {
+	return Photon[ItemID]{Item: item, Prefer: prefer}
+}
+
+// makeNodeID creates a NodeID from a string
+func makeNodeID(s string) types.NodeID {
+	var id types.NodeID
+	h := sha256.Sum256([]byte(s))
+	copy(id[:], h[:20])
+	return id
 }
 
 func main() {
@@ -69,7 +83,15 @@ func main() {
 	fmt.Println()
 
 	// Setup validators
-	peers := []types.NodeID{"validator1", "validator2", "validator3", "validator4", "validator5", "validator6", "validator7"}
+	peers := []types.NodeID{
+		makeNodeID("validator1"),
+		makeNodeID("validator2"),
+		makeNodeID("validator3"),
+		makeNodeID("validator4"),
+		makeNodeID("validator5"),
+		makeNodeID("validator6"),
+		makeNodeID("validator7"),
+	}
 
 	// Create sampler - using a simple round-robin selector for demo
 	sel := &simpleSelector{peers: peers, idx: 0}

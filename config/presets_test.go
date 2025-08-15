@@ -21,7 +21,7 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(20, DefaultParameters.K)
 	require.Equal(15, DefaultParameters.AlphaPreference)
 	require.Equal(15, DefaultParameters.AlphaConfidence)
-	require.Equal(20, DefaultParameters.Beta)
+	require.Equal(uint32(20), DefaultParameters.Beta)
 	require.Equal(30*time.Second, DefaultParameters.MaxItemProcessingTime)
 }
 
@@ -36,7 +36,7 @@ func TestMainnetParameters(t *testing.T) {
 	require.Equal(21, MainnetParameters.K)
 	require.Equal(13, MainnetParameters.AlphaPreference)
 	require.Equal(18, MainnetParameters.AlphaConfidence)
-	require.Equal(8, MainnetParameters.Beta)
+	require.Equal(uint32(8), MainnetParameters.Beta)
 	require.Equal(9630*time.Millisecond, MainnetParameters.MaxItemProcessingTime)
 	require.Equal(100*time.Millisecond, MainnetParameters.MinRoundInterval)
 }
@@ -52,7 +52,7 @@ func TestTestnetParameters(t *testing.T) {
 	require.Equal(11, TestnetParameters.K)
 	require.Equal(7, TestnetParameters.AlphaPreference)
 	require.Equal(9, TestnetParameters.AlphaConfidence)
-	require.Equal(6, TestnetParameters.Beta)
+	require.Equal(uint32(6), TestnetParameters.Beta)
 	require.Equal(6300*time.Millisecond, TestnetParameters.MaxItemProcessingTime)
 	require.Equal(50*time.Millisecond, TestnetParameters.MinRoundInterval)
 }
@@ -68,7 +68,7 @@ func TestTestParameters(t *testing.T) {
 	require.Equal(2, TestParameters.K)
 	require.Equal(2, TestParameters.AlphaPreference)
 	require.Equal(2, TestParameters.AlphaConfidence)
-	require.Equal(2, TestParameters.Beta)
+	require.Equal(uint32(2), TestParameters.Beta)
 	require.Equal(10*time.Second, TestParameters.MaxItemProcessingTime)
 	require.Equal(10*time.Millisecond, TestParameters.MinRoundInterval)
 }
@@ -84,7 +84,7 @@ func TestLocalParameters(t *testing.T) {
 	require.Equal(5, LocalParameters.K)
 	require.Equal(3, LocalParameters.AlphaPreference)
 	require.Equal(4, LocalParameters.AlphaConfidence)
-	require.Equal(3, LocalParameters.Beta)
+	require.Equal(uint32(3), LocalParameters.Beta)
 	require.Equal(3690*time.Millisecond, LocalParameters.MaxItemProcessingTime)
 	require.Equal(10*time.Millisecond, LocalParameters.MinRoundInterval)
 }
@@ -175,8 +175,8 @@ func TestPresetConsistency(t *testing.T) {
 			require.LessOrEqual(preset.params.AlphaConfidence, preset.params.K)
 
 			// Verify Beta > 0 and <= K
-			require.Greater(preset.params.Beta, 0)
-			require.LessOrEqual(preset.params.Beta, preset.params.K)
+			require.Greater(preset.params.Beta, uint32(0))
+			require.LessOrEqual(int(preset.params.Beta), preset.params.K)
 
 			// Verify ConcurrentPolls > 0
 			require.Greater(preset.params.ConcurrentPolls, 0)

@@ -36,6 +36,8 @@ func InitializeRuntime(network string) error {
 		params = MainnetParameters
 	case "testnet":
 		params = TestnetParameters
+	case "test":
+		params = TestParameters
 	case "local":
 		params = LocalParameters
 	default:
@@ -54,8 +56,8 @@ func GetRuntime() Parameters {
 	defer runtimeMu.RUnlock()
 
 	if !initialized {
-		// Default to testnet if not initialized
-		runtimeParams = TestnetParameters
+		// Default to test parameters if not initialized
+		runtimeParams = TestParameters
 		initialized = true
 	}
 

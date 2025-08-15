@@ -157,7 +157,7 @@ func TestLoadRuntimeFromFile(t *testing.T) {
 	require.Equal(testConfig.K, params.K)
 	require.Equal(testConfig.AlphaPreference, params.AlphaPreference)
 	require.Equal(testConfig.AlphaConfidence, params.AlphaConfidence)
-	require.Equal(testConfig.Beta, params.Beta)
+	require.Equal(uint32(testConfig.Beta), params.Beta)
 	require.Equal(testConfig.ConcurrentPolls, params.ConcurrentPolls)
 	require.Equal(testConfig.OptimalProcessing, params.OptimalProcessing)
 	require.Equal(testConfig.MaxOutstandingItems, params.MaxOutstandingItems)
@@ -352,7 +352,7 @@ func TestConcurrentRuntimeAccess(t *testing.T) {
 	require.Greater(finalParams.K, 0)
 	require.Greater(finalParams.AlphaPreference, 0)
 	require.Greater(finalParams.AlphaConfidence, 0)
-	require.Greater(finalParams.Beta, 0)
+	require.Greater(finalParams.Beta, uint32(0))
 }
 
 func BenchmarkGetRuntime(b *testing.B) {

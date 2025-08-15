@@ -85,40 +85,43 @@ func (p Parameters) GetEnableFPC() bool {
 // Validate returns an error if the parameters are invalid
 func (p Parameters) Validate() error {
 	if p.K <= 0 {
-		return fmt.Errorf("k = %d: must be > 0", p.K)
+		return fmt.Errorf("k = %d: fails the condition that: 0 < k", p.K)
 	}
 	if p.AlphaPreference <= p.K/2 {
-		return fmt.Errorf("k = %d, alphaPreference = %d: alphaPreference must be > k/2", p.K, p.AlphaPreference)
+		return fmt.Errorf("k = %d, alphaPreference = %d: fails the condition that: k/2 < alphaPreference", p.K, p.AlphaPreference)
 	}
 	if p.AlphaPreference > p.K {
-		return fmt.Errorf("k = %d, alphaPreference = %d: alphaPreference must be <= k", p.K, p.AlphaPreference)
+		return fmt.Errorf("k = %d, alphaPreference = %d: fails the condition that: alphaPreference <= k", p.K, p.AlphaPreference)
 	}
 	if p.AlphaConfidence < p.AlphaPreference {
-		return fmt.Errorf("alphaPreference = %d, alphaConfidence = %d: alphaConfidence must be >= alphaPreference", p.AlphaPreference, p.AlphaConfidence)
+		return fmt.Errorf("alphaPreference = %d, alphaConfidence = %d: fails the condition that: alphaPreference <= alphaConfidence", p.AlphaPreference, p.AlphaConfidence)
 	}
 	if p.AlphaConfidence > p.K {
-		return fmt.Errorf("k = %d, alphaConfidence = %d: alphaConfidence must be <= k", p.K, p.AlphaConfidence)
+		return fmt.Errorf("k = %d, alphaConfidence = %d: fails the condition that: alphaConfidence <= k", p.K, p.AlphaConfidence)
 	}
 	if p.Beta <= 0 {
-		return fmt.Errorf("beta = %d: must be > 0", p.Beta)
+		return fmt.Errorf("beta = %d: fails the condition that: 0 < beta", p.Beta)
+	}
+	if int(p.Beta) > p.K {
+		return fmt.Errorf("beta (%d) must be <= k (%d)", p.Beta, p.K)
 	}
 	if p.ConcurrentPolls <= 0 {
-		return fmt.Errorf("concurrentPolls = %d: must be > 0", p.ConcurrentPolls)
+		return fmt.Errorf("concurrentPolls = %d: fails the condition that: 0 < concurrentPolls", p.ConcurrentPolls)
 	}
 	if p.ConcurrentPolls > int(p.Beta) {
-		return fmt.Errorf("concurrentPolls = %d, beta = %d: concurrentPolls must be <= beta", p.ConcurrentPolls, p.Beta)
+		return fmt.Errorf("concurrentPolls = %d, Beta = %d: fails the condition that: concurrentPolls <= Beta", p.ConcurrentPolls, p.Beta)
 	}
 	if p.DeltaMinMS < 0 {
 		return fmt.Errorf("deltaMinMS = %d: must be >= 0", p.DeltaMinMS)
 	}
 	if p.OptimalProcessing <= 0 {
-		return fmt.Errorf("optimalProcessing = %d: must be > 0", p.OptimalProcessing)
+		return fmt.Errorf("optimalProcessing = %d: fails the condition that: 0 < optimalProcessing", p.OptimalProcessing)
 	}
 	if p.MaxOutstandingItems <= 0 {
-		return fmt.Errorf("maxOutstandingItems = %d: must be > 0", p.MaxOutstandingItems)
+		return fmt.Errorf("maxOutstandingItems = %d: fails the condition that: 0 < maxOutstandingItems", p.MaxOutstandingItems)
 	}
 	if p.MaxItemProcessingTime <= 0 {
-		return fmt.Errorf("maxItemProcessingTime = %v: must be > 0", p.MaxItemProcessingTime)
+		return fmt.Errorf("maxItemProcessingTime = %v: fails the condition that: 0 < maxItemProcessingTime", p.MaxItemProcessingTime)
 	}
 	return nil
 }

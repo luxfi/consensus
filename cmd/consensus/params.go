@@ -136,7 +136,7 @@ func runParamsTune(cmd *cobra.Command, args []string) error {
 		K:                     optimalK,
 		AlphaPreference:       alphaPreference,
 		AlphaConfidence:       alphaConfidence,
-		Beta:                  beta,
+		Beta:                  uint32(beta),
 		ConcurrentPolls:       8,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   networkSize / 10,
