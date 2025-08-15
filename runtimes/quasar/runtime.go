@@ -7,24 +7,24 @@ import (
 	"context"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/engines/dag"
-	"github.com/luxfi/consensus/engines/pq"
+	"github.com/luxfi/consensus/quasar"
 )
 
 // Runtime implements the Quasar runtime with PQ overlay
 type Runtime struct {
-	dag *dag.Engine
-	pq  pq.Verifier
+	dag interface{} // TODO: Specify concrete type when dag.Engine is instantiated
+	pq  *quasar.Engine
 }
 
 // New creates a new Quasar runtime
-func New(cfg config.Parameters, dagEng *dag.Engine, pqv pq.Verifier) *Runtime {
-	return &Runtime{dag: dagEng, pq: pqv}
+func New(_ config.Parameters, dagEng interface{}, pqEng *quasar.Engine) *Runtime {
+	return &Runtime{dag: dagEng, pq: pqEng}
 }
 
 // Start starts the runtime
 func (r *Runtime) Start(ctx context.Context) error {
-	go r.dag.Start(ctx)
+	// TODO: Call Start on dag when the interface is known
+	// go r.dag.Start(ctx)
 	<-ctx.Done()
 	return ctx.Err()
 }

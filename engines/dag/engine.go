@@ -98,7 +98,7 @@ func New[V comparable](cfg config.Parameters, hooks Hooks[V]) (*Engine[V], error
 		sel:   selector,
 		conf:  conf,
 		g:     g,
-		ord:   ord,
+		// ord:   ord, // TODO: Add when orderer is created
 		proto: p,
 		fpc:   fpcEngine,
 	}, nil
