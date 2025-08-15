@@ -359,6 +359,8 @@ func BenchmarkZMQTransportSetup(b *testing.B) {
 }
 
 // Helper function to create test message
+//
+//nolint:unused // Used in commented out benchmarks
 func createTestMessage(from, to, msgType string, data interface{}) *Message {
 	jsonData, _ := json.Marshal(data)
 	return &Message{

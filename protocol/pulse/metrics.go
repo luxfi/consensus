@@ -10,11 +10,14 @@ import (
 
 // pulseMetrics is a no-op implementation
 // Real metrics should be handled by the parent system
+//
+//nolint:unused // TODO: Integrate with metrics system
 type pulseMetrics struct {
 	prisms metric.Averager
 	polls  metric.Averager
 }
 
+//nolint:unused // TODO: Integrate with metrics system
 func newPulseMetrics(reg interfaces.Registerer) (*pulseMetrics, error) {
 	return &pulseMetrics{
 		prisms: metric.NewAverager(),
@@ -22,6 +25,7 @@ func newPulseMetrics(reg interfaces.Registerer) (*pulseMetrics, error) {
 	}, nil
 }
 
+//nolint:unused // TODO: Integrate with metrics system
 func (m *pulseMetrics) Observe(prisms, polls int) {
 	m.prisms.Observe(float64(prisms))
 	m.polls.Observe(float64(polls))
