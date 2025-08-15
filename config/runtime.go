@@ -38,6 +38,8 @@ func InitializeRuntime(network string) error {
 		params = Testnet()
 	case "local":
 		params = Local()
+	case "test":
+		params = TestParameters
 	default:
 		return fmt.Errorf("unknown network: %s", network)
 	}
@@ -54,8 +56,8 @@ func GetRuntime() Parameters {
 	defer runtimeMu.RUnlock()
 
 	if !initialized {
-		// Default to testnet if not initialized
-		runtimeParams = Testnet()
+		// Default to lightweight test parameters if not initialized
+		runtimeParams = TestParameters
 		initialized = true
 	}
 

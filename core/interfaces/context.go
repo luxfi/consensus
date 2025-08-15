@@ -3,6 +3,7 @@ package interfaces
 import (
 	"context"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/log"
 	metric "github.com/luxfi/metric"
 	"sync/atomic"
 )
@@ -28,6 +29,13 @@ const (
 // StateHolder manages atomic state updates
 type StateHolder struct {
 	value atomic.Value
+}
+
+// Context bundles commonly used runtime objects for consensus integrations
+type Context struct {
+	NodeID  ids.NodeID
+	Log     log.Logger
+	Metrics metric.MultiGatherer
 }
 
 // Get returns the current state
