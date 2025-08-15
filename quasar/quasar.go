@@ -86,16 +86,17 @@ func (e *Engine) Verify(ctx context.Context, bundle types.CertBundle) bool {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	// TODO: Extract data from context or bundle metadata
-	data := []byte("placeholder-data")
+	// TODO: Need to pass the original message data to verify
+	// For now, using placeholder
+	msg := []byte("placeholder")
 	
 	// Verify BLS aggregate
-	if !e.blsAgg.VerifyAggregate(data, bundle.BLSAgg, e.getValidatorBLSKeys()) {
+	if !e.blsAgg.VerifyAggregate(msg, bundle.BLSAgg, e.getValidatorBLSKeys()) {
 		return false
 	}
 
 	// Verify Ringtail aggregate
-	if !e.rtAgg.VerifyAggregate(data, bundle.RTCert, e.getValidatorRTKeys()) {
+	if !e.rtAgg.VerifyAggregate(msg, bundle.RTCert, e.getValidatorRTKeys()) {
 		return false
 	}
 

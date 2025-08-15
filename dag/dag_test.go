@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/dag/witness"
-	// "github.com/luxfi/consensus/flare" // TODO: Enable when flare is needed
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,6 +32,28 @@ type Transaction struct {
 	Data  []byte
 }
 
+// TestGraph is a simple graph implementation for testing
+type TestGraph struct {
+	edges map[[32]byte][][32]byte
+}
+
+// NewTestGraph creates a new test graph
+func NewTestGraph() *TestGraph {
+	return &TestGraph{
+		edges: make(map[[32]byte][][32]byte),
+	}
+}
+
+// AddEdge adds an edge to the graph
+func (g *TestGraph) AddEdge(from, to [32]byte) {
+	g.edges[from] = append(g.edges[from], to)
+}
+
+// Parents returns the parents of a vertex
+func (g *TestGraph) Parents(v [32]byte) [][32]byte {
+	return g.edges[v]
+}
+
 // TestDAG structure for testing
 type TestDAG struct {
 	mu      sync.RWMutex
@@ -40,7 +61,7 @@ type TestDAG struct {
 	tips    map[[32]byte]bool
 	height  uint64
 	witness witness.Manager
-	// graph   flare.Graph // TODO: Implement graph type
+	graph   *TestGraph
 	fastTxs map[TxID]int // Track transaction votes for fast path
 }
 
@@ -55,7 +76,7 @@ func NewTestDAG() *TestDAG {
 			Mode:     witness.RequireFull,
 			MaxBytes: 1024 * 1024, // 1MB
 		}, 1000, 10*1024*1024),
-		// graph:   flare.NewGraph(), // TODO: Implement graph type
+		graph:   NewTestGraph(),
 		fastTxs: make(map[TxID]int),
 	}
 }
