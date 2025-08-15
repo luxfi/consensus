@@ -7,8 +7,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus"
+	"github.com/luxfi/ids"
 )
 
 var (
@@ -19,7 +19,7 @@ var (
 type Getter interface {
 	// Get a vertex by its ID
 	Get(ctx context.Context, vertexID ids.ID) (consensus.Vertex, error)
-	
+
 	// GetAncestors returns the ancestors of a vertex
 	GetAncestors(ctx context.Context, vertexID ids.ID, maxContainers int) ([]consensus.Vertex, error)
 }
@@ -51,21 +51,21 @@ func (g *getter) GetAncestors(ctx context.Context, vertexID ids.ID, maxContainer
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var ancestors []consensus.Vertex
 	visited := make(map[ids.ID]bool)
-	
+
 	// BFS to find ancestors
 	queue := []consensus.Vertex{vertex}
 	for len(queue) > 0 && len(ancestors) < maxContainers {
 		current := queue[0]
 		queue = queue[1:]
-		
+
 		if visited[current.ID()] {
 			continue
 		}
 		visited[current.ID()] = true
-		
+
 		parents := current.Parents()
 		for _, parentID := range parents {
 			parent, err := g.Get(ctx, parentID)
@@ -78,7 +78,7 @@ func (g *getter) GetAncestors(ctx context.Context, vertexID ids.ID, maxContainer
 			}
 		}
 	}
-	
+
 	return ancestors, nil
 }
 

@@ -20,7 +20,7 @@ type AcceptorGroup interface {
 	// accepted on chain [chainID]. If [dieOnError], chain [chainID] will stop
 	// if Accept returns a non-nil error.
 	RegisterAcceptor(chainID ids.ID, acceptorName string, acceptor Acceptor, dieOnError bool) error
-	
+
 	// DeregisterAcceptor removes an acceptor that was previously registered
 	DeregisterAcceptor(chainID ids.ID, acceptorName string) error
 }

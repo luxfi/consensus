@@ -113,14 +113,14 @@ func TestBagSetThreshold(t *testing.T) {
 	require := require.New(t)
 
 	bag := Bag[int]{}
-	
+
 	bag.Add(1, 1, 1)
 	bag.Add(2, 2)
 	bag.Add(3)
-	
+
 	// Default threshold is 0
 	require.Equal(3, bag.Threshold().Len())
-	
+
 	// Set threshold to 2
 	bag.SetThreshold(2)
 	threshold := bag.Threshold()
@@ -128,7 +128,7 @@ func TestBagSetThreshold(t *testing.T) {
 	require.True(threshold.Contains(1))
 	require.True(threshold.Contains(2))
 	require.False(threshold.Contains(3))
-	
+
 	// Set threshold to 3
 	bag.SetThreshold(3)
 	threshold = bag.Threshold()
@@ -144,17 +144,17 @@ func TestBagRemove(t *testing.T) {
 	bag := Bag[int]{}
 	bag.Add(1, 1, 1)
 	bag.Add(2, 2)
-	
+
 	require.Equal(5, bag.Len())
 	require.Equal(3, bag.Count(1))
 	require.Equal(2, bag.Count(2))
-	
+
 	bag.Remove(1)
-	
+
 	require.Equal(2, bag.Len())
 	require.Zero(bag.Count(1))
 	require.Equal(2, bag.Count(2))
-	
+
 	// Remove non-existent element
 	bag.Remove(3)
 	require.Equal(2, bag.Len())
@@ -165,18 +165,18 @@ func TestBagEquals(t *testing.T) {
 
 	bag1 := Bag[int]{}
 	bag2 := Bag[int]{}
-	
+
 	require.True(bag1.Equals(bag2))
-	
+
 	bag1.Add(1, 2, 3)
 	require.False(bag1.Equals(bag2))
-	
+
 	bag2.Add(3, 2, 1)
 	require.True(bag1.Equals(bag2))
-	
+
 	bag1.Add(1)
 	require.False(bag1.Equals(bag2))
-	
+
 	bag2.Add(1)
 	require.True(bag1.Equals(bag2))
 }
@@ -187,10 +187,10 @@ func TestBagFilter(t *testing.T) {
 	bag := Bag[int]{}
 	bag.Add(1, 2, 3, 4, 5)
 	bag.Add(2, 4) // Add duplicates
-	
+
 	evenFilter := func(x int) bool { return x%2 == 0 }
 	filtered := bag.Filter(evenFilter)
-	
+
 	require.Equal(4, filtered.Len()) // 2 count of 2 + 2 count of 4
 	require.Zero(filtered.Count(1))
 	require.Equal(2, filtered.Count(2))
@@ -205,13 +205,13 @@ func TestBagSplit(t *testing.T) {
 	bag := Bag[int]{}
 	bag.Add(1, 2, 3, 4, 5)
 	bag.Add(2, 4) // Add duplicates
-	
+
 	evenSplit := func(x int) bool { return x%2 == 0 }
 	split := bag.Split(evenSplit)
-	
+
 	oddBag := split[0]
 	evenBag := split[1]
-	
+
 	// Check odd bag
 	require.Equal(3, oddBag.Len()) // 1 + 1 + 1
 	require.Equal(1, oddBag.Count(1))
@@ -219,7 +219,7 @@ func TestBagSplit(t *testing.T) {
 	require.Equal(1, oddBag.Count(3))
 	require.Zero(oddBag.Count(4))
 	require.Equal(1, oddBag.Count(5))
-	
+
 	// Check even bag
 	require.Equal(4, evenBag.Len()) // 2 + 2
 	require.Zero(evenBag.Count(1))
@@ -235,11 +235,11 @@ func TestBagClone(t *testing.T) {
 	bag := Bag[int]{}
 	bag.Add(1, 2, 3)
 	bag.Add(1)
-	
+
 	clone := bag.Clone()
-	
+
 	require.True(bag.Equals(clone))
-	
+
 	// Modify original
 	bag.Add(4)
 	require.False(bag.Equals(clone))
@@ -251,17 +251,17 @@ func TestBagAddCountZeroOrNegative(t *testing.T) {
 	require := require.New(t)
 
 	bag := Bag[int]{}
-	
+
 	// Adding zero count should be no-op
 	bag.AddCount(1, 0)
 	require.Zero(bag.Count(1))
 	require.Zero(bag.Len())
-	
+
 	// Adding negative count should be no-op
 	bag.AddCount(1, -5)
 	require.Zero(bag.Count(1))
 	require.Zero(bag.Len())
-	
+
 	// Add positive count to verify it works
 	bag.AddCount(1, 3)
 	require.Equal(3, bag.Count(1))
@@ -274,7 +274,7 @@ func TestBagString(t *testing.T) {
 	bag := Bag[int]{}
 	bag.Add(1, 2)
 	bag.Add(1)
-	
+
 	str := bag.String()
 	require.Contains(str, "Bag[int]")
 	require.Contains(str, "Size = 3")
@@ -287,7 +287,7 @@ func TestBagPrefixedString(t *testing.T) {
 
 	bag := Bag[int]{}
 	bag.Add(1)
-	
+
 	str := bag.PrefixedString("  ")
 	require.Contains(str, "Bag[int]")
 	require.Contains(str, "Size = 1")

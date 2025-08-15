@@ -10,13 +10,13 @@ import (
 // BlockWithFPC extends a block with FPC voting fields
 type BlockWithFPC interface {
 	types.Block
-	
+
 	// FPCVotes returns the transaction references this block votes for
 	FPCVotes() []TxRef
-	
+
 	// EpochBit returns true if this block signals epoch closing
 	EpochBit() bool
-	
+
 	// Author returns the block author/proposer identity
 	Author() []byte
 }
@@ -25,8 +25,8 @@ type BlockWithFPC interface {
 type BlockPayloadExt struct {
 	// Array of TxRef (32B each), owned-only, no dupes
 	FPCVotes [][]byte `json:"fpcVotes,omitempty"`
-	
-	// True when starting epoch-close; pauses new fast finality  
+
+	// True when starting epoch-close; pauses new fast finality
 	EpochBit bool `json:"epochBit,omitempty"`
 }
 

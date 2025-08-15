@@ -35,12 +35,12 @@ type Transaction struct {
 
 // TestDAG structure for testing
 type TestDAG struct {
-	mu         sync.RWMutex
-	blocks     map[[32]byte]*TestDAGBlock
-	tips       map[[32]byte]bool
-	height     uint64
-	witness    witness.Manager
-	flare      flare.Flare[TxID]
+	mu      sync.RWMutex
+	blocks  map[[32]byte]*TestDAGBlock
+	tips    map[[32]byte]bool
+	height  uint64
+	witness witness.Manager
+	flare   flare.Flare[TxID]
 }
 
 type TxID [32]byte
@@ -348,10 +348,10 @@ type mockHeader struct {
 	witnessRoot [32]byte
 }
 
-func (h mockHeader) ID() witness.BlockID           { return h.id }
-func (h mockHeader) Round() uint64                 { return h.round }
-func (h mockHeader) Parents() []witness.BlockID    { return h.parents }
-func (h mockHeader) WitnessRoot() [32]byte         { return h.witnessRoot }
+func (h mockHeader) ID() witness.BlockID        { return h.id }
+func (h mockHeader) Round() uint64              { return h.round }
+func (h mockHeader) Parents() []witness.BlockID { return h.parents }
+func (h mockHeader) WitnessRoot() [32]byte      { return h.witnessRoot }
 
 func makePayloadWithWitness(txLen int, witness []byte) []byte {
 	// varint(txLen) | tx | witness

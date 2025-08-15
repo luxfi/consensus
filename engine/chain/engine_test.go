@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/ids"
+	"github.com/stretchr/testify/require"
 )
 
 // MockBlock implements the Block interface for testing
@@ -48,7 +48,7 @@ func TestNew(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "empty parameters",
+			name:    "empty parameters",
 			params:  Parameters{},
 			wantErr: false,
 		},
@@ -192,7 +192,7 @@ func TestChainState(t *testing.T) {
 	id2 := ids.GenerateTestID()
 	state.confidence[id1] = 5
 	state.confidence[id2] = 10
-	
+
 	confidence := state.Confidence()
 	require.Equal(5, confidence[id1])
 	require.Equal(10, confidence[id2])

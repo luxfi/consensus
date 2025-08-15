@@ -121,28 +121,28 @@ type AllGetsServer interface {
 type Engine interface {
 	// Start the engine
 	Start(ctx context.Context, startReqID uint32) error
-	
+
 	// IsBootstrapped returns true if the engine is bootstrapped
 	IsBootstrapped() (bool, error)
-	
+
 	// Timeout handles timeouts
 	Timeout(ctx context.Context) error
-	
+
 	// Gossip handles gossip messages
 	Gossip(ctx context.Context) error
-	
+
 	// Halt stops the engine
 	Halt(ctx context.Context)
-	
+
 	// Shutdown the engine
 	Shutdown(ctx context.Context) error
-	
+
 	// HealthCheck returns the health status
 	HealthCheck(ctx context.Context) (interface{}, error)
-	
+
 	// Connected handles peer connections
 	Connected(ctx context.Context, nodeID ids.NodeID, nodeVersion *version) error
-	
+
 	// Disconnected handles peer disconnections
 	Disconnected(ctx context.Context, nodeID ids.NodeID) error
 }

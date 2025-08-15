@@ -99,21 +99,21 @@ func CalculateFaultTolerance(p *config.Parameters) (int, int) {
 func CalculateOptimalParameters(nc NetworkCharacteristics) (*config.Parameters, string) {
 	// Calculate K based on network size
 	k := calculateK(nc.TotalNodes)
-	
+
 	// Calculate alpha values
 	alphaPreference := k/2 + 1
 	alphaConfidence := int(math.Ceil(float64(k) * 0.8))
 	if alphaConfidence <= alphaPreference {
 		alphaConfidence = alphaPreference + 1
 	}
-	
+
 	// Calculate beta based on target finality
 	beta := calculateBeta(nc.TargetFinalityMs, nc.NetworkLatencyMs)
-	
+
 	// Calculate processing parameters
 	concurrentPolls := min(beta, 10)
 	maxItemProcessingTime := time.Duration(nc.TargetFinalityMs) * time.Millisecond
-	
+
 	params := &config.Parameters{
 		K:                     k,
 		AlphaPreference:       alphaPreference,
@@ -124,17 +124,17 @@ func CalculateOptimalParameters(nc NetworkCharacteristics) (*config.Parameters, 
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: maxItemProcessingTime,
 	}
-	
+
 	reasoning := fmt.Sprintf(
 		"Calculated parameters for %d nodes with %.1f%% Byzantine tolerance:\n"+
-		"- K=%d for adequate sampling\n"+
-		"- AlphaPreference=%d (>K/2) for preference changes\n"+
-		"- AlphaConfidence=%d for strong confidence\n"+
-		"- Beta=%d rounds for %dms finality\n"+
-		"- ConcurrentPolls=%d for parallel processing",
+			"- K=%d for adequate sampling\n"+
+			"- AlphaPreference=%d (>K/2) for preference changes\n"+
+			"- AlphaConfidence=%d for strong confidence\n"+
+			"- Beta=%d rounds for %dms finality\n"+
+			"- ConcurrentPolls=%d for parallel processing",
 		nc.TotalNodes, nc.ExpectedFailureRate*100,
 		k, alphaPreference, alphaConfidence, beta, nc.TargetFinalityMs, concurrentPolls)
-	
+
 	return params, reasoning
 }
 
@@ -146,7 +146,7 @@ func AnalyzeSafety(params *config.Parameters, totalNodes int) SafetyReport {
 		Warnings:    []string{},
 		Suggestions: []string{},
 	}
-	
+
 	// Check K vs total nodes
 	if params.K > totalNodes {
 		report.Issues = append(report.Issues, fmt.Sprintf("K (%d) exceeds total nodes (%d)", params.K, totalNodes))
@@ -154,18 +154,18 @@ func AnalyzeSafety(params *config.Parameters, totalNodes int) SafetyReport {
 	} else if float64(params.K)/float64(totalNodes) > 0.5 {
 		report.Warnings = append(report.Warnings, "K is more than 50% of total nodes, may impact performance")
 	}
-	
+
 	// Check alpha parameters
 	if params.AlphaPreference <= params.K/2 {
 		report.Issues = append(report.Issues, "AlphaPreference must be > K/2")
 		report.Level = SafetyCritical
 	}
-	
+
 	if params.AlphaConfidence < params.AlphaPreference {
 		report.Issues = append(report.Issues, "AlphaConfidence must be >= AlphaPreference")
 		report.Level = SafetyCritical
 	}
-	
+
 	// Check beta
 	if params.Beta < 1 {
 		report.Issues = append(report.Issues, "Beta must be >= 1")
@@ -173,12 +173,12 @@ func AnalyzeSafety(params *config.Parameters, totalNodes int) SafetyReport {
 	} else if params.Beta > 100 {
 		report.Warnings = append(report.Warnings, "Very high Beta may lead to slow finality")
 	}
-	
+
 	// Provide explanation
 	if report.Level == SafetyGood || report.Level == SafetyOptimal {
 		report.Explanation = "Parameters are well-configured for safe consensus operation"
 	}
-	
+
 	return report
 }
 
@@ -186,20 +186,20 @@ func AnalyzeSafety(params *config.Parameters, totalNodes int) SafetyReport {
 func AnalyzeProbabilities(params *config.Parameters, byzantineRatio float64) ProbabilityAnalysis {
 	// Simplified probability calculations
 	// In reality, these would use complex statistical models
-	
+
 	// Calculate safety failure probability (very rough approximation)
 	safetyMargin := float64(params.AlphaConfidence-params.K/2) / float64(params.K)
 	safetyFailureProb := math.Pow(byzantineRatio/safetyMargin, float64(params.Beta))
-	
+
 	// Calculate liveness failure probability
 	livenessFailureProb := math.Pow(1-byzantineRatio, float64(params.K-params.AlphaPreference+1))
-	
+
 	// Expected rounds to finality
 	expectedRounds := float64(params.Beta) * (1 + byzantineRatio)
-	
+
 	// Probability of disagreement
 	disagreementProb := byzantineRatio * math.Pow(0.5, float64(params.Beta))
-	
+
 	return ProbabilityAnalysis{
 		SafetyFailureProbability:   safetyFailureProb,
 		LivenessFailureProbability: livenessFailureProb,
@@ -213,15 +213,15 @@ func ValidateForProduction(params *config.Parameters, totalNodes int) error {
 	if params.K < 5 {
 		return fmt.Errorf("K must be at least 5 for production use")
 	}
-	
+
 	if float64(params.K)/float64(totalNodes) > 0.7 {
 		return fmt.Errorf("K should not exceed 70%% of total nodes in production")
 	}
-	
+
 	if params.Beta < 5 {
 		return fmt.Errorf("Beta should be at least 5 for production stability")
 	}
-	
+
 	return nil
 }
 
@@ -230,11 +230,11 @@ func RunChecker(params *config.Parameters, totalNodes int, networkLatencyMs int)
 	// Calculate safety cutoff (simplified)
 	byzantineNodes := params.K - params.AlphaConfidence
 	safetyCutoff := float64(byzantineNodes) / float64(params.K) * 100
-	
+
 	// Calculate throughput (simplified)
 	roundTime := float64(params.Beta) * float64(networkLatencyMs) / 1000.0 // seconds
 	maxTPS := int(1000.0 / roundTime)
-	
+
 	return CheckerReport{
 		SafetyCutoff: safetyCutoff,
 		ThroughputAnalysis: ThroughputAnalysis{
@@ -248,9 +248,9 @@ func RunChecker(params *config.Parameters, totalNodes int, networkLatencyMs int)
 func FormatCheckerReport(report CheckerReport, totalNodes int) string {
 	return fmt.Sprintf(
 		"Parameter Analysis Report\n"+
-		"========================\n"+
-		"Safety Cutoff: %.1f%% adversarial stake\n"+
-		"Max Throughput: %d TPS\n",
+			"========================\n"+
+			"Safety Cutoff: %.1f%% adversarial stake\n"+
+			"Max Throughput: %d TPS\n",
 		report.SafetyCutoff,
 		report.ThroughputAnalysis.MaxTransactionsPerSecond)
 }
@@ -306,7 +306,7 @@ func GetParameterGuides() []ParameterGuide {
 func calculateK(totalNodes int) int {
 	// Use logarithmic scaling
 	k := int(math.Ceil(math.Log(float64(totalNodes)) * 2))
-	
+
 	// Apply bounds
 	if k < 5 {
 		k = 5
@@ -315,7 +315,7 @@ func calculateK(totalNodes int) int {
 	} else if k > 100 {
 		k = 100
 	}
-	
+
 	return k
 }
 
@@ -323,18 +323,16 @@ func calculateBeta(targetFinalityMs, networkLatencyMs int) int {
 	// Estimate rounds needed
 	roundTimeMs := networkLatencyMs * 2 // Request + response
 	rounds := targetFinalityMs / roundTimeMs
-	
+
 	// Apply bounds
 	if rounds < 5 {
 		rounds = 5
 	} else if rounds > 50 {
 		rounds = 50
 	}
-	
+
 	return rounds
 }
-
-
 
 // Builder-related functions for config package integration
 
@@ -345,7 +343,7 @@ func ConfigToParameters(cfg *config.Config) *config.Parameters {
 		AlphaPreference:       cfg.AlphaPreference,
 		AlphaConfidence:       cfg.AlphaConfidence,
 		Beta:                  cfg.Beta,
-		ConcurrentPolls:     cfg.ConcurrentPolls,
+		ConcurrentPolls:       cfg.ConcurrentPolls,
 		OptimalProcessing:     cfg.OptimalProcessing,
 		MaxOutstandingItems:   cfg.MaxOutstandingItems,
 		MaxItemProcessingTime: cfg.MaxItemProcessingTime,
@@ -359,7 +357,7 @@ func ParametersToConfig(params *config.Parameters) *config.Config {
 		AlphaPreference:       params.AlphaPreference,
 		AlphaConfidence:       params.AlphaConfidence,
 		Beta:                  params.Beta,
-		ConcurrentPolls:     params.ConcurrentPolls,
+		ConcurrentPolls:       params.ConcurrentPolls,
 		OptimalProcessing:     params.OptimalProcessing,
 		MaxOutstandingItems:   params.MaxOutstandingItems,
 		MaxItemProcessingTime: params.MaxItemProcessingTime,
@@ -385,12 +383,12 @@ func ToJSON(p *config.Parameters) ([]byte, error) {
 func Summary(p *config.Parameters) string {
 	return fmt.Sprintf(
 		"Consensus Parameters Summary:\n"+
-		"  K (Sample Size): %d\n"+
-		"  Alpha Preference: %d (%.1f%% of K)\n"+
-		"  Alpha Confidence: %d (%.1f%% of K)\n"+
-		"  Beta (Rounds): %d\n"+
-		"  Concurrent Polls: %d\n"+
-		"  Max Processing Time: %v",
+			"  K (Sample Size): %d\n"+
+			"  Alpha Preference: %d (%.1f%% of K)\n"+
+			"  Alpha Confidence: %d (%.1f%% of K)\n"+
+			"  Beta (Rounds): %d\n"+
+			"  Concurrent Polls: %d\n"+
+			"  Max Processing Time: %v",
 		p.K,
 		p.AlphaPreference, float64(p.AlphaPreference)/float64(p.K)*100,
 		p.AlphaConfidence, float64(p.AlphaConfidence)/float64(p.K)*100,

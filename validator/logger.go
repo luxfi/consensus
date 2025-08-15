@@ -8,10 +8,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/luxfi/ids"
-	"github.com/luxfi/crypto/bls"
-	"github.com/luxfi/log"
 	"github.com/luxfi/consensus/set"
+	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/ids"
+	"github.com/luxfi/log"
 )
 
 var _ SetCallbackListener = (*logger)(nil)

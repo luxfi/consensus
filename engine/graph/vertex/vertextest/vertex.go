@@ -17,15 +17,15 @@ var (
 
 // Vertex is a test vertex implementation
 type Vertex struct {
-	IDV         ids.ID
-	ParentsV    []ids.ID
-	HeightV     uint64
-	TxsV        [][]byte
-	BytesV      []byte
-	AcceptV     error
-	RejectV     error
-	VerifyV     error
-	StatusV     choices.Status
+	IDV      ids.ID
+	ParentsV []ids.ID
+	HeightV  uint64
+	TxsV     [][]byte
+	BytesV   []byte
+	AcceptV  error
+	RejectV  error
+	VerifyV  error
+	StatusV  choices.Status
 }
 
 // ID returns the vertex ID
@@ -122,7 +122,7 @@ func (b *Builder) BuildWithID(id ids.ID, parents ...ids.ID) *Vertex {
 // BuildChain builds a chain of vertices
 func (b *Builder) BuildChain(length int) []*Vertex {
 	vertices := make([]*Vertex, length)
-	
+
 	for i := 0; i < length; i++ {
 		if i == 0 {
 			vertices[i] = b.Build()
@@ -130,17 +130,17 @@ func (b *Builder) BuildChain(length int) []*Vertex {
 			vertices[i] = b.Build(vertices[i-1].ID())
 		}
 	}
-	
+
 	return vertices
 }
 
 // BuildDAG builds a DAG of vertices
 func (b *Builder) BuildDAG(width, depth int) [][]*Vertex {
 	dag := make([][]*Vertex, depth)
-	
+
 	for d := 0; d < depth; d++ {
 		dag[d] = make([]*Vertex, width)
-		
+
 		for w := 0; w < width; w++ {
 			if d == 0 {
 				dag[d][w] = b.Build()
@@ -154,7 +154,7 @@ func (b *Builder) BuildDAG(width, depth int) [][]*Vertex {
 			}
 		}
 	}
-	
+
 	return dag
 }
 

@@ -38,10 +38,10 @@ func (u *uniform) Sample(size int) ([]int, bool) {
 	if size > u.count {
 		return nil, false
 	}
-	
+
 	indices := make([]int, size)
 	selected := make(map[int]bool)
-	
+
 	for i := 0; i < size; i++ {
 		for {
 			idx := u.rng.Intn(u.count)
@@ -52,6 +52,6 @@ func (u *uniform) Sample(size int) ([]int, bool) {
 			}
 		}
 	}
-	
+
 	return indices, true
 }

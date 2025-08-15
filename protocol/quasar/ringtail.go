@@ -25,7 +25,7 @@ type SecurityLevel int
 
 const (
 	SecurityLow    SecurityLevel = 0
-	SecurityMedium SecurityLevel = 1 
+	SecurityMedium SecurityLevel = 1
 	SecurityHigh   SecurityLevel = 2
 )
 
@@ -33,13 +33,13 @@ const (
 type RingtailEngine interface {
 	// Initialize the engine with security parameters
 	Initialize(level SecurityLevel) error
-	
+
 	// Sign a message with the secret key
 	Sign(msg []byte, sk SecretKey) (Signature, error)
-	
+
 	// Verify a signature
 	Verify(msg []byte, sig Signature, pk PublicKey) bool
-	
+
 	// Generate a new key pair
 	GenerateKeyPair() (SecretKey, PublicKey, error)
 }

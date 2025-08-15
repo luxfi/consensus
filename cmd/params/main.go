@@ -15,25 +15,25 @@ import (
 
 func main() {
 	var (
-		preset       = flag.String("preset", "", "Use preset configuration: mainnet, testnet, local")
-		nodeCount    = flag.Int("nodes", 0, "Number of nodes in the network")
-		k            = flag.Int("k", 0, "Sample size")
-		alphaPref    = flag.Int("alpha-pref", 0, "Preference quorum threshold")
-		alphaConf    = flag.Int("alpha-conf", 0, "Confidence quorum threshold")
-		beta         = flag.Int("beta", 0, "Consecutive rounds threshold")
-		concurrent   = flag.Int("concurrent", 0, "Concurrent polls")
-		optimize     = flag.String("optimize", "", "Optimize for: latency, security, throughput")
-		output       = flag.String("output", "", "Output file for parameters (JSON)")
-		summary      = flag.Bool("summary", false, "Show parameter summary")
-		validate     = flag.String("validate", "", "Validate parameters from JSON file")
-		targetTime   = flag.Duration("target-finality", 0*time.Second, "Target finality time")
-		networkLat   = flag.Int("network-latency", 50, "Expected network latency in ms")
-		interactive  = flag.Bool("interactive", false, "Run in interactive mode")
-		guide        = flag.Bool("guide", false, "Show parameter guidance")
-		safety       = flag.Bool("safety", false, "Perform safety analysis")
-		totalNodes   = flag.Int("total-nodes", 0, "Total nodes for safety analysis")
-		check        = flag.Bool("check", false, "Run comprehensive parameter checker")
-		tune         = flag.Bool("tune", false, "Tune parameters based on network requirements")
+		preset      = flag.String("preset", "", "Use preset configuration: mainnet, testnet, local")
+		nodeCount   = flag.Int("nodes", 0, "Number of nodes in the network")
+		k           = flag.Int("k", 0, "Sample size")
+		alphaPref   = flag.Int("alpha-pref", 0, "Preference quorum threshold")
+		alphaConf   = flag.Int("alpha-conf", 0, "Confidence quorum threshold")
+		beta        = flag.Int("beta", 0, "Consecutive rounds threshold")
+		concurrent  = flag.Int("concurrent", 0, "Concurrent polls")
+		optimize    = flag.String("optimize", "", "Optimize for: latency, security, throughput")
+		output      = flag.String("output", "", "Output file for parameters (JSON)")
+		summary     = flag.Bool("summary", false, "Show parameter summary")
+		validate    = flag.String("validate", "", "Validate parameters from JSON file")
+		targetTime  = flag.Duration("target-finality", 0*time.Second, "Target finality time")
+		networkLat  = flag.Int("network-latency", 50, "Expected network latency in ms")
+		interactive = flag.Bool("interactive", false, "Run in interactive mode")
+		guide       = flag.Bool("guide", false, "Show parameter guidance")
+		safety      = flag.Bool("safety", false, "Perform safety analysis")
+		totalNodes  = flag.Int("total-nodes", 0, "Total nodes for safety analysis")
+		check       = flag.Bool("check", false, "Run comprehensive parameter checker")
+		tune        = flag.Bool("tune", false, "Tune parameters based on network requirements")
 	)
 
 	flag.Parse()
@@ -130,7 +130,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error building parameters: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	// Convert to Parameters type
 	params := ConfigToParameters(cfg)
 
@@ -167,12 +167,12 @@ func main() {
 			// Estimate from K
 			nodes = params.K
 		}
-		
+
 		fmt.Println("\n🛡️  Safety Analysis:")
 		fmt.Println("===================")
 		report := AnalyzeSafety(params, nodes)
 		displaySafetyReport(report)
-		
+
 		// Check production readiness
 		if err := ValidateForProduction(params, nodes); err != nil {
 			fmt.Printf("\n⚠️  Not recommended for production: %v\n", err)
@@ -200,7 +200,7 @@ func main() {
 				nodes = params.K
 			}
 		}
-		
+
 		report := RunChecker(params, nodes, *networkLat)
 		fmt.Println(FormatCheckerReport(report, nodes))
 	}
@@ -228,7 +228,7 @@ func validateFile(filename string) error {
 func showParameterGuide() {
 	fmt.Println("📚 Lux Consensus Parameter Guide")
 	fmt.Println("================================")
-	
+
 	guides := GetParameterGuides()
 	for _, guide := range guides {
 		fmt.Printf("### %s\n", guide.Parameter)
@@ -239,11 +239,10 @@ func showParameterGuide() {
 		fmt.Printf("Impact:      %s\n", guide.Impact)
 		fmt.Printf("Trade-offs:  %s\n\n", guide.TradeOffs)
 	}
-	
+
 	fmt.Println("💡 Tips for Parameter Selection:")
 	fmt.Println("1. Start with a preset (mainnet, testnet, or local)")
 	fmt.Println("2. Adjust based on your specific network characteristics")
 	fmt.Println("3. Use -safety flag to validate your choices")
 	fmt.Println("4. Use -interactive mode for guided configuration")
 }
-

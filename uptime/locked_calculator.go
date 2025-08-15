@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/utils"
+	"github.com/luxfi/ids"
 )
 
 var (

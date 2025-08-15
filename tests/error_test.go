@@ -22,7 +22,7 @@ func TestErrorAddAfterFinalized(t *testing.T) {
 	require := require.New(t)
 
 	params := config.TestParameters
-	
+
 	// Test each protocol
 	testProtocols := []struct {
 		name    string
@@ -63,26 +63,26 @@ func TestErrorAddAfterFinalized(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range testProtocols {
 		t.Run(tt.name, func(t *testing.T) {
 			consensus := tt.factory()
-			
+
 			// Add initial choice
 			require.NoError(consensus.Add(Red))
-			
+
 			// Finalize
 			votes := bag.Bag[ids.ID]{}
 			for i := 0; i < params.AlphaConfidence; i++ {
 				votes.Add(Red)
 			}
-			
+
 			for i := 0; i < params.Beta; i++ {
 				require.NoError(consensus.RecordVotes(votes))
 			}
-			
+
 			require.True(consensus.Finalized())
-			
+
 			// Should not be able to add after finalized
 			err := consensus.Add(Blue)
 			require.Error(err)
@@ -95,29 +95,29 @@ func TestErrorVoteAfterFinalized(t *testing.T) {
 	require := require.New(t)
 
 	params := config.TestParameters
-	
+
 	p := pulse.NewPulse(params)
 	require.NoError(p.Add(Red))
 	require.NoError(p.Add(Blue))
-	
+
 	// Finalize on Red
 	redVotes := bag.Bag[ids.ID]{}
 	for i := 0; i < params.AlphaConfidence; i++ {
 		redVotes.Add(Red)
 	}
-	
+
 	for i := 0; i < params.Beta; i++ {
 		require.NoError(p.RecordVotes(redVotes))
 	}
-	
+
 	require.True(p.Finalized())
-	
+
 	// Should still accept votes after finalized (no-op)
 	blueVotes := bag.Bag[ids.ID]{}
 	for i := 0; i < params.AlphaConfidence; i++ {
 		blueVotes.Add(Blue)
 	}
-	
+
 	require.NoError(p.RecordVotes(blueVotes))
 	require.True(p.Finalized())
 	require.Equal(Red, p.Preference()) // Should not change
@@ -184,7 +184,7 @@ func TestErrorInvalidParameters(t *testing.T) {
 			valid: true,
 		},
 	}
-	
+
 	for _, tt := range invalidParams {
 		t.Run(tt.name, func(t *testing.T) {
 			// Validate parameters
@@ -220,15 +220,15 @@ func TestErrorEmptyBag(t *testing.T) {
 	require := require.New(t)
 
 	params := config.TestParameters
-	
+
 	w := wave.NewWave(params)
 	require.NoError(w.Add(Red))
 	require.NoError(w.Add(Blue))
 	require.NoError(w.Add(Green))
-	
+
 	// Empty bag should not crash or progress
 	emptyBag := bag.Bag[ids.ID]{}
-	
+
 	initialPref := w.Preference()
 	require.NoError(w.RecordVotes(emptyBag))
 	require.Equal(initialPref, w.Preference())
@@ -240,14 +240,14 @@ func TestErrorNilHandling(t *testing.T) {
 	require := require.New(t)
 
 	params := config.TestParameters
-	
+
 	// Create instances
 	p := photon.NewPhoton(params)
 	require.NotNil(p)
-	
+
 	pu := pulse.NewPulse(params)
 	require.NotNil(pu)
-	
+
 	w := wave.NewWave(params)
 	require.NotNil(w)
 }
@@ -257,21 +257,21 @@ func TestErrorDuplicateVotes(t *testing.T) {
 	require := require.New(t)
 
 	params := config.TestParameters
-	
+
 	p := pulse.NewPulse(params)
 	require.NoError(p.Add(Red))
 	require.NoError(p.Add(Blue))
-	
+
 	// Create bag with many duplicate votes
 	dupVotes := bag.Bag[ids.ID]{}
 	for i := 0; i < params.AlphaConfidence*2; i++ {
 		dupVotes.Add(Blue)
 	}
-	
+
 	// Should handle gracefully
 	require.NoError(p.RecordVotes(dupVotes))
 	require.Equal(Blue, p.Preference())
-	
+
 	// Need Beta rounds to finalize (Beta=2 in TestParameters)
 	require.False(p.Finalized())
 	require.NoError(p.RecordVotes(dupVotes))
@@ -284,19 +284,19 @@ func TestErrorMixedVoteBag(t *testing.T) {
 	require := require.New(t)
 
 	params := config.TestParameters
-	
+
 	w := wave.NewWave(params)
 	require.NoError(w.Add(Red))
 	require.NoError(w.Add(Blue))
 	// Don't add Green
-	
+
 	// Bag with mix of valid and invalid choices
 	mixedVotes := bag.Bag[ids.ID]{}
 	for i := 0; i < params.AlphaPreference; i++ {
 		mixedVotes.Add(Blue)
 		mixedVotes.Add(Green) // Not added to consensus
 	}
-	
+
 	require.NoError(w.RecordVotes(mixedVotes))
 	require.Equal(Blue, w.Preference()) // Should only count Blue votes
 }
@@ -306,22 +306,22 @@ func TestErrorRecordUnsuccessfulPollOnFinalized(t *testing.T) {
 	require := require.New(t)
 
 	params := config.TestParameters
-	
+
 	p := photon.NewPhoton(params)
 	require.NoError(p.Add(Red))
-	
+
 	// Finalize
 	votes := bag.Bag[ids.ID]{}
 	for i := 0; i < params.AlphaConfidence; i++ {
 		votes.Add(Red)
 	}
-	
+
 	for i := 0; i < params.Beta; i++ {
 		require.NoError(p.RecordVotes(votes))
 	}
-	
+
 	require.True(p.Finalized())
-	
+
 	// Record unsuccessful poll after finalized
 	p.RecordUnsuccessfulPoll()
 	require.True(p.Finalized()) // Should still be finalized

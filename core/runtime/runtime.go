@@ -7,9 +7,9 @@ import (
 	"context"
 	"sync/atomic"
 	"time"
-	
-	"github.com/luxfi/ids"
+
 	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
 	metric "github.com/luxfi/metric"
 )
@@ -21,10 +21,10 @@ type Runtime struct {
 	ChainID      ids.ID
 	NodeID       ids.NodeID
 	PublicKey    *bls.PublicKey
-	XAssetID     ids.ID  // Native asset ID on X-Chain (settlement/custody layer)
-	XChainID     ids.ID  // X-Chain ID for asset settlement and custody
-	CChainID     ids.ID  // C-Chain ID for smart contract operations
-	ChainDataDir string  // Directory for chain data storage
+	XAssetID     ids.ID // Native asset ID on X-Chain (settlement/custody layer)
+	XChainID     ids.ID // X-Chain ID for asset settlement and custody
+	CChainID     ids.ID // C-Chain ID for smart contract operations
+	ChainDataDir string // Directory for chain data storage
 }
 
 // Config contains consensus configuration parameters
@@ -35,26 +35,26 @@ type Config struct {
 	AlphaConfidence       int
 	Beta                  int
 	MaxItemProcessingTime time.Duration
-	
+
 	// Network parameters
-	MaxMessageSize        int
-	MaxPendingMessages    int
-	NetworkTimeout        time.Duration
-	
+	MaxMessageSize     int
+	MaxPendingMessages int
+	NetworkTimeout     time.Duration
+
 	// Chain parameters
-	GossipBatchSize       int
-	GossipFrequency       time.Duration
+	GossipBatchSize int
+	GossipFrequency time.Duration
 }
 
 // Deps contains external dependencies for consensus operations
 type Deps struct {
-	Log             log.Logger
-	Metrics         metric.MultiGatherer
-	ValidatorState  ValidatorState
-	BCLookup        BCLookup
-	SharedMemory    SharedMemory
-	Clock           Clock
-	DB              Database
+	Log            log.Logger
+	Metrics        metric.MultiGatherer
+	ValidatorState ValidatorState
+	BCLookup       BCLookup
+	SharedMemory   SharedMemory
+	Clock          Clock
+	DB             Database
 }
 
 // ValidatorState provides validator state operations
@@ -69,10 +69,10 @@ type ValidatorState interface {
 type ValidatorSet interface {
 	// Self returns the node's own ID
 	Self() ids.NodeID
-	
+
 	// GetWeight returns the weight of a validator
 	GetWeight(nodeID ids.NodeID) uint64
-	
+
 	// TotalWeight returns the total weight of all validators
 	TotalWeight() uint64
 }

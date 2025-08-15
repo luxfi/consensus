@@ -61,7 +61,7 @@ func (g *graph) Conflicts(id types.VertexID) []types.VertexID {
 func (g *graph) Ancestors(id types.VertexID) []types.VertexID {
 	visited := make(map[types.VertexID]bool)
 	var ancestors []types.VertexID
-	
+
 	var traverse func(types.VertexID)
 	traverse = func(vid types.VertexID) {
 		if visited[vid] {
@@ -69,16 +69,16 @@ func (g *graph) Ancestors(id types.VertexID) []types.VertexID {
 		}
 		visited[vid] = true
 		ancestors = append(ancestors, vid)
-		
+
 		for _, parent := range g.parents[vid] {
 			traverse(parent)
 		}
 	}
-	
+
 	for _, parent := range g.parents[id] {
 		traverse(parent)
 	}
-	
+
 	return ancestors
 }
 

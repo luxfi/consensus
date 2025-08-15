@@ -4,16 +4,16 @@
 package photon
 
 import (
-    "testing"
-    
-    "github.com/stretchr/testify/require"
-    "github.com/luxfi/consensus/config"
+	"testing"
+
+	"github.com/luxfi/consensus/config"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPhoton(t *testing.T) {
-    require := require.New(t)
-    
-    params := config.DefaultParameters
-    p := NewPhoton(params)
-    require.NotNil(p)
+	require := require.New(t)
+
+	params := config.DefaultParameters
+	p := NewPhoton(params)
+	require.NotNil(p)
 }

@@ -5,7 +5,7 @@ package warp
 
 import (
 	"errors"
-	
+
 	"github.com/luxfi/crypto/bls"
 )
 
@@ -15,9 +15,9 @@ var (
 
 // Message represents a warp message
 type Message struct {
-	SourceChainID       string
-	DestinationChainID  string
-	Payload             []byte
+	SourceChainID      string
+	DestinationChainID string
+	Payload            []byte
 }
 
 // Signature represents a BLS signature on a warp message
@@ -30,7 +30,7 @@ type Signature struct {
 type Signer interface {
 	// Sign signs a warp message
 	Sign(message *Message) (*Signature, error)
-	
+
 	// Verify verifies a signature on a message
 	Verify(message *Message, signature *Signature) error
 }

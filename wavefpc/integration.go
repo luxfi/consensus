@@ -15,10 +15,10 @@ type Integration struct {
 	fpc    WaveFPC
 	log    log.Logger
 	nodeID ids.NodeID
-	
+
 	// Feature flags
-	enabled     bool
-	votingEnabled bool
+	enabled          bool
+	votingEnabled    bool
 	executionEnabled bool
 }
 
@@ -27,7 +27,7 @@ func NewIntegration(ctx *interfaces.Context, cfg Config, cls Classifier) *Integr
 	// Get validators from context
 	validators := make([]ids.NodeID, 0)
 	// TODO: Extract from ctx.ValidatorState
-	
+
 	// Enable FPC and Ringtail by default
 	if cfg.N == 0 {
 		// Set defaults if not provided
@@ -37,17 +37,17 @@ func NewIntegration(ctx *interfaces.Context, cfg Config, cls Classifier) *Integr
 	cfg.EnableFastPath = true
 	cfg.EnableRingtail = true
 	cfg.EnableBLS = true
-	
+
 	// Create FPC engine with integrated Ringtail
 	fpc := New(cfg, cls, nil, nil, ctx.NodeID, validators)
-	
+
 	return &Integration{
 		fpc:              fpc,
 		log:              ctx.Log,
 		nodeID:           ctx.NodeID,
-		enabled:          true,  // Enabled by default
-		votingEnabled:    true,  // Voting enabled by default
-		executionEnabled: true,  // Fast execution enabled by default
+		enabled:          true, // Enabled by default
+		votingEnabled:    true, // Voting enabled by default
+		executionEnabled: true, // Fast execution enabled by default
 	}
 }
 
@@ -77,16 +77,16 @@ func (i *Integration) OnBuildBlock(block interface{}) {
 	if !i.enabled || !i.votingEnabled {
 		return
 	}
-	
+
 	// Get votes to include
 	votes := i.fpc.NextVotes(256) // Configurable limit
-	
+
 	// Convert to byte slices
 	voteBytes := make([][]byte, len(votes))
 	for idx, vote := range votes {
 		voteBytes[idx] = vote[:]
 	}
-	
+
 	// Add to block
 	// You'll cast block to your actual block type and set:
 	// block.Payload.FPCVotes = voteBytes
@@ -99,7 +99,7 @@ func (i *Integration) OnBlockReceived(block interface{}) {
 	if !i.enabled {
 		return
 	}
-	
+
 	// Convert to WaveFPC block format
 	// You'll extract from your actual block type:
 	// b := &Block{
@@ -120,7 +120,7 @@ func (i *Integration) OnBlockAccepted(block interface{}) {
 	if !i.enabled {
 		return
 	}
-	
+
 	// Convert and process
 	// b := convertBlock(block)
 	// i.fpc.OnBlockAccepted(b)
@@ -132,7 +132,7 @@ func (i *Integration) CanExecute(txRef TxRef) bool {
 	if !i.enabled || !i.executionEnabled {
 		return false
 	}
-	
+
 	status, _ := i.fpc.Status(txRef)
 	return status == Executable || status == Final
 }
@@ -143,7 +143,7 @@ func (i *Integration) MustWaitForFinal(txRef TxRef) bool {
 	if !i.enabled {
 		return true // Conservative: wait for normal consensus
 	}
-	
+
 	status, _ := i.fpc.Status(txRef)
 	return status == Mixed || status == Pending
 }
@@ -171,15 +171,15 @@ func (i *Integration) GetStatus(txRef TxRef) (Status, Proof) {
 	if !i.enabled {
 		return Pending, Proof{}
 	}
-	
+
 	status, proof := i.fpc.Status(txRef)
-	
+
 	// Check for dual finality
 	if proof.BLSProof != nil && proof.RingtailProof != nil {
 		// Both proofs available - transaction has dual finality
 		status = Final
 	}
-	
+
 	return status, proof
 }
 
@@ -188,7 +188,7 @@ func (i *Integration) HasDualFinality(txRef TxRef) bool {
 	if !i.enabled {
 		return false
 	}
-	
+
 	_, proof := i.fpc.Status(txRef)
 	return proof.BLSProof != nil && proof.RingtailProof != nil
 }
@@ -198,7 +198,7 @@ func (i *Integration) GetMetrics() Metrics {
 	if !i.enabled {
 		return Metrics{}
 	}
-	
+
 	return i.fpc.GetMetrics()
 }
 
@@ -210,27 +210,27 @@ func (e *Engine) BuildBlock() *Block {
     block := &Block{
         // ... your existing fields ...
     }
-    
+
     // Add FPC votes (one line!)
     e.fpcIntegration.OnBuildBlock(block)
-    
+
     return block
 }
 
 // In your gossip handler:
 func (e *Engine) OnGossipBlock(block *Block) {
     // Your existing validation...
-    
+
     // Process FPC votes (one line!)
     e.fpcIntegration.OnBlockReceived(block)
-    
+
     // Your existing processing...
 }
 
 // In your consensus accept:
 func (e *Engine) AcceptBlock(block *Block) {
     // Your existing accept logic...
-    
+
     // Anchor FPC transactions (one line!)
     e.fpcIntegration.OnBlockAccepted(block)
 }
@@ -238,17 +238,17 @@ func (e *Engine) AcceptBlock(block *Block) {
 // In your VM execution:
 func (vm *VM) ExecuteTransaction(tx *Transaction) error {
     txRef := tx.Ref()
-    
+
     // Check fast-path eligibility (one line!)
     if vm.fpcIntegration.CanExecute(txRef) {
         return vm.executeOwned(tx)
     }
-    
+
     // Check if must wait for final
     if vm.fpcIntegration.MustWaitForFinal(txRef) {
         return ErrWaitingForConsensus
     }
-    
+
     // Normal execution path
     return vm.executeNormal(tx)
 }
