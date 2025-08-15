@@ -75,7 +75,7 @@ func BenchmarkPerformanceShowcase(b *testing.B) {
 					for t := 0; t < scenario.sharedThreads; t++ {
 						for i := 0; i < scenario.txPerThread; i++ {
 							txID := make([]byte, 32)
-							rand.Read(txID)
+							_, _ = rand.Read(txID)
 							tx := TxRef(txID)
 
 							// Mark as shared (no owned inputs)
@@ -114,14 +114,14 @@ func BenchmarkPerformanceShowcase(b *testing.B) {
 							// Each thread has its own object namespace
 							for i := 0; i < scenario.txPerThread; i++ {
 								txID := make([]byte, 32)
-								rand.Read(txID)
+								_, _ = rand.Read(txID)
 								tx := TxRef(txID)
 
 								// Unique object per thread (owned)
 								objID := make([]byte, 32)
 								objID[0] = byte(threadID >> 8)
 								objID[1] = byte(threadID)
-								rand.Read(objID[2:])
+								_, _ = rand.Read(objID[2:])
 
 								cls.addOwnedTx(tx, ObjectID(objID))
 
@@ -368,7 +368,7 @@ func BenchmarkSpeedupComparison(b *testing.B) {
 			// Process 1000 transactions sequentially
 			for i := 0; i < 1000; i++ {
 				txID := make([]byte, 32)
-				rand.Read(txID)
+				_, _ = rand.Read(txID)
 				tx := TxRef(txID)
 
 				cls.addSharedTx(tx, sharedObj)
@@ -415,7 +415,7 @@ func BenchmarkSpeedupComparison(b *testing.B) {
 					for i := 0; i < 20; i++ {
 						txID := make([]byte, 32)
 						txID[0] = byte(threadID)
-						rand.Read(txID[1:])
+						_, _ = rand.Read(txID[1:])
 						tx := TxRef(txID)
 
 						objID := make([]byte, 32)

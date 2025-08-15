@@ -62,7 +62,7 @@ func BenchmarkFPCBenefitAnalysis(b *testing.B) {
 				transactions := make([]TxRef, scenario.concurrentUsers*scenario.txPerUser)
 				for i := 0; i < len(transactions); i++ {
 					txID := make([]byte, 32)
-					rand.Read(txID)
+					_, _ = rand.Read(txID)
 					transactions[i] = TxRef(txID)
 
 					if scenario.txType == "owned" {
@@ -126,7 +126,7 @@ func BenchmarkFPCBenefitAnalysis(b *testing.B) {
 
 				for i := 0; i < len(transactions); i++ {
 					txID := make([]byte, 32)
-					rand.Read(txID)
+					_, _ = rand.Read(txID)
 					transactions[i] = TxRef(txID)
 
 					if scenario.txType == "owned" || (scenario.txType == "mixed" && i%2 == 0) {
@@ -243,11 +243,11 @@ func BenchmarkFPCDefinitiveBenefits(b *testing.B) {
 			fpc := New(cfg, cls, dag, nil, validators[0], validators)
 
 			txID := make([]byte, 32)
-			rand.Read(txID)
+			_, _ = rand.Read(txID)
 			tx := TxRef(txID)
 
 			objID := make([]byte, 32)
-			rand.Read(objID)
+			_, _ = rand.Read(objID)
 			cls.addOwnedTx(tx, ObjectID(objID))
 
 			start := time.Now()
@@ -326,7 +326,7 @@ func BenchmarkFPCDefinitiveBenefits(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			txID := make([]byte, 32)
-			rand.Read(txID)
+			_, _ = rand.Read(txID)
 			tx := TxRef(txID)
 
 			// Shared transaction
