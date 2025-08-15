@@ -5,7 +5,6 @@ import (
     "time"
     "github.com/luxfi/ids"
     "github.com/luxfi/consensus/chain"
-    "github.com/luxfi/consensus/core/interfaces"
     "github.com/luxfi/database"
 )
 
@@ -13,9 +12,6 @@ import (
 type Block interface {
     chain.Block
 }
-
-// ChainContext provides chain-specific context
-type ChainContext = interfaces.Context
 
 // DBManager manages database operations
 type DBManager interface {
@@ -41,7 +37,7 @@ type AppSender interface {
 
 // ChainVM defines the VM interface for blockchains
 type ChainVM interface {
-    Initialize(ctx context.Context, chainCtx *ChainContext, dbManager DBManager, genesisBytes []byte, upgradeBytes []byte, configBytes []byte, toEngine chan<- Message, fxs []*Fx, appSender AppSender) error
+    Initialize(ctx context.Context, dbManager DBManager, genesisBytes []byte, upgradeBytes []byte, configBytes []byte, toEngine chan<- Message, fxs []*Fx, appSender AppSender) error
     BuildBlock(context.Context) (Block, error)
     ParseBlock(context.Context, []byte) (Block, error)
     GetBlock(context.Context, ids.ID) (Block, error)

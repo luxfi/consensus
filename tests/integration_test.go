@@ -5,7 +5,7 @@ package tests
 
 import (
 	"testing"
-
+	"context"
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/consensus/config"
@@ -27,11 +27,7 @@ func TestIntegrationPhotonConsensus(t *testing.T) {
 	// Use TestParameters for integration tests - more suitable for smaller networks
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
-		NetworkID: 1,
-		ChainID:   ids.GenerateTestID(),
-		NodeID:    ids.GenerateTestNodeID(),
-	}
+	ctx := context.Background()
 	factory := utils.NewFactory(ctx)
 	
 	// Create a network with 3 colors

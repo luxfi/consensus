@@ -15,9 +15,6 @@ import (
 
 // Engine is a post-quantum secured DAG engine
 type Engine struct {
-	// Core consensus context
-	ctx *interfaces.Context
-
 	// Current state
 	state State
 
@@ -41,9 +38,8 @@ const (
 )
 
 // New creates a new Nebula engine
-func New(ctx *interfaces.Context) *Engine {
+func New(ctx context.Context) *Engine {
 	return &Engine{
-		ctx:   ctx,
 		state: StateInitializing,
 	}
 }

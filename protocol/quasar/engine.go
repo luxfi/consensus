@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/protocol/nebula"
 	"github.com/luxfi/consensus/protocol/pulse"
 )
@@ -129,7 +128,7 @@ type SlashingEvent struct {
 type SlashingCallback func(event *SlashingEvent)
 
 // New creates a new Quasar engine
-func New(ctx *interfaces.Context, params Parameters) (*Engine, error) {
+func New(ctx context.Context, params Parameters) (*Engine, error) {
 	rt := NewRingtail()
 	if err := rt.Initialize(params.SecurityLevel); err != nil {
 		return nil, fmt.Errorf("failed to initialize ringtail: %w", err)

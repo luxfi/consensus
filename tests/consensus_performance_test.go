@@ -4,6 +4,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -114,11 +115,7 @@ func TestDualAlphaOptimization(t *testing.T) {
 			}
 			
 			// Create network
-			ctx := &interfaces.Context{
-				NetworkID: 1,
-				ChainID:   ids.GenerateTestID(),
-				NodeID:    ids.GenerateTestNodeID(),
-			}
+			ctx := context.Background()
 			factory := utils.NewFactory(ctx)
 			// Use a fixed seed to ensure consistent behavior
 			// Seed 7 gives a better initial distribution for testing

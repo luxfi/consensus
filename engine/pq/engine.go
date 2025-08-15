@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/consensus/engine/chain"
 	"github.com/luxfi/consensus/engine/dag"
@@ -58,7 +57,7 @@ type Parameters struct {
 }
 
 // New creates a new Gravity engine
-func New(ctx *interfaces.Context, params Parameters) (*Engine, error) {
+func New(ctx context.Context, params Parameters) (*Engine, error) {
 	// Create Quasar engine for unified consensus
 	engine, err := quasar.New(ctx, quasar.Parameters{
 		Mode:          params.UnifiedConsensusMode,
@@ -169,8 +168,8 @@ func (r *Engine) CreateChain(name string, params Parameters) error {
 		return fmt.Errorf("chain %s already exists", name)
 	}
 	
-	// Need to pass context to chain.New
-	ctx := &interfaces.Context{} // TODO: Get proper context
+	// Create context for chain.New
+	ctx := context.Background()
 	chainEngine, err := chain.New(ctx, chain.Parameters{})
 	if err != nil {
 		return fmt.Errorf("failed to create chain: %w", err)
@@ -195,8 +194,8 @@ func (r *Engine) CreateDAG(name string, params dag.Parameters) error {
 		return fmt.Errorf("dag %s already exists", name)
 	}
 	
-	// Need to pass context to dag.New
-	ctx := &interfaces.Context{} // TODO: Get proper context
+	// Create context for dag.New
+	ctx := context.Background()
 	dagEngine, err := dag.New(ctx, params)
 	if err != nil {
 		return fmt.Errorf("failed to create dag: %w", err)

@@ -2,11 +2,8 @@ package interfaces
 
 import (
     "context"
-    "sync"
     "sync/atomic"
     "github.com/luxfi/ids"
-    "github.com/luxfi/crypto/bls"
-    "github.com/luxfi/log"
     metric "github.com/luxfi/metric"
 )
 
@@ -76,34 +73,4 @@ type BCLookup interface {
 type SharedMemory interface {
     Get(peerChainID ids.ID, keys [][]byte) ([][]byte, error)
     Apply(requests map[ids.ID]interface{}, batch ...interface{}) error
-}
-
-// Context provides consensus engine configuration
-type Context struct {
-    NetworkID    uint32
-    SubnetID     ids.ID
-    ChainID      ids.ID
-    NodeID       ids.NodeID
-    PublicKey    *bls.PublicKey
-    LUXAssetID   ids.ID
-    CChainID     ids.ID  // C-Chain ID for cross-chain operations
-    ChainDataDir string  // Directory for chain data storage
-    
-    Log          log.Logger
-    Metrics      MultiGatherer
-    
-    // ValidatorState provides validator information
-    ValidatorState ValidatorState
-    
-    // BCLookup provides blockchain alias lookup
-    BCLookup BCLookup
-    
-    // SharedMemory for cross-chain operations
-    SharedMemory SharedMemory
-    
-    // Lock for thread safety
-    Lock sync.RWMutex
-    
-    // State represents the current chain state
-    State StateHolder
 }
