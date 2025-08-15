@@ -284,7 +284,7 @@ func BenchmarkDAGFinalizationLatency(b *testing.B) {
 			tx := TxRef(txID)
 
 			objID := make([]byte, 32)
-			rand.Read(objID)
+			_, _ = rand.Read(objID)
 			cls.addOwnedTx(tx, ObjectID(objID))
 
 			start := time.Now()

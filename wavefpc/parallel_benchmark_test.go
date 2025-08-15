@@ -80,7 +80,7 @@ func BenchmarkParallelOwnedAssetFinalization(b *testing.B) {
 				for user := 0; user < scenario.parallelUsers; user++ {
 					for tx := 0; tx < scenario.txPerUser; tx++ {
 						txID := make([]byte, 32)
-						rand.Read(txID)
+						_, _ = rand.Read(txID)
 
 						// Each user has their own object namespace
 						objID := make([]byte, 32)
@@ -89,7 +89,7 @@ func BenchmarkParallelOwnedAssetFinalization(b *testing.B) {
 						objID[1] = byte(user >> 16)
 						objID[2] = byte(user >> 8)
 						objID[3] = byte(user)
-						rand.Read(objID[8:])
+						_, _ = rand.Read(objID[8:])
 
 						utx := userTx{
 							user:  user,
@@ -317,13 +317,13 @@ func BenchmarkMillionTPS(b *testing.B) {
 				// Generate transactions for this shard
 				for j := 0; j < txPerShard; j++ {
 					txID := make([]byte, 32)
-					rand.Read(txID)
+					_, _ = rand.Read(txID)
 					s.txs[j] = TxRef(txID)
 
 					objID := make([]byte, 32)
 					// Shard prefix for uniqueness
 					objID[0] = byte(idx)
-					rand.Read(objID[1:])
+					_, _ = rand.Read(objID[1:])
 					s.objs[j] = ObjectID(objID)
 
 					cls.addOwnedTx(s.txs[j], s.objs[j])
@@ -503,13 +503,13 @@ func BenchmarkOptimizationComparison(b *testing.B) {
 
 				for i := 0; i < scenario.txCount; i++ {
 					txID := make([]byte, 32)
-					rand.Read(txID)
+					_, _ = rand.Read(txID)
 					transactions[i] = TxRef(txID)
 
 					objID := make([]byte, 32)
 					if scenario.txType == "owned" {
 						// Unique object per transaction
-						rand.Read(objID)
+						_, _ = rand.Read(objID)
 						objects[i] = ObjectID(objID)
 						cls.addOwnedTx(transactions[i], objects[i])
 					} else if scenario.txType == "shared" {
@@ -519,7 +519,7 @@ func BenchmarkOptimizationComparison(b *testing.B) {
 						cls.addSharedTx(transactions[i], objects[i])
 					} else { // mixed
 						if i%2 == 0 {
-							rand.Read(objID)
+							_, _ = rand.Read(objID)
 							cls.addOwnedTx(transactions[i], ObjectID(objID))
 						} else {
 							copy(objID[:], []byte("shared-object"))
