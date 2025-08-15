@@ -18,7 +18,7 @@ func TestConfigToParameters(t *testing.T) {
 		AlphaPreference:       13,
 		AlphaConfidence:       18,
 		Beta:                  8,
-		ConcurrentPolls:    4,
+		ConcurrentPolls:       4,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   100,
 		MaxItemProcessingTime: 5 * time.Second,
@@ -46,7 +46,7 @@ func TestConfigToParametersWithAdvancedFields(t *testing.T) {
 		AlphaPreference:       20,
 		AlphaConfidence:       25,
 		Beta:                  10,
-		ConcurrentPolls:    5,
+		ConcurrentPolls:       5,
 		OptimalProcessing:     15,
 		MaxOutstandingItems:   200,
 		MaxItemProcessingTime: 10 * time.Second,
@@ -93,7 +93,7 @@ func TestConfigToParametersMinimal(t *testing.T) {
 	require.Equal(3, params.AlphaPreference)
 	require.Equal(4, params.AlphaConfidence)
 	require.Equal(2, params.Beta)
-	
+
 	// Default values should be zero
 	require.Equal(0, params.ConcurrentPolls)
 	require.Equal(0, params.OptimalProcessing)
@@ -110,7 +110,7 @@ func TestConfigToParametersWithQuantum(t *testing.T) {
 		AlphaPreference:       13,
 		AlphaConfidence:       18,
 		Beta:                  8,
-		ConcurrentPolls:    4,
+		ConcurrentPolls:       4,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   100,
 		MaxItemProcessingTime: 5 * time.Second,
@@ -131,7 +131,7 @@ func TestConfigToParametersWithQuantum(t *testing.T) {
 	require.Equal(config.MaxOutstandingItems, params.MaxOutstandingItems)
 	require.Equal(config.MaxItemProcessingTime, params.MaxItemProcessingTime)
 	require.Equal(config.MinRoundInterval, params.MinRoundInterval)
-	
+
 	// Quantum parameters are not included in ToParameters() currently
 	// They would need to be added to the Parameters struct
 	require.Equal(0, params.QThreshold)
@@ -144,7 +144,7 @@ func BenchmarkConfigToParameters(b *testing.B) {
 		AlphaPreference:       13,
 		AlphaConfidence:       18,
 		Beta:                  8,
-		ConcurrentPolls:    4,
+		ConcurrentPolls:       4,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   100,
 		MaxItemProcessingTime: 5 * time.Second,

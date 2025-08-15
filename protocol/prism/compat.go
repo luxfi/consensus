@@ -51,7 +51,7 @@ func (s *splitterImpl) Sample(validators []ids.NodeID, k int) ([]ids.NodeID, err
 	// Copy validators to avoid mutating input
 	vals := make([]ids.NodeID, len(validators))
 	copy(vals, validators)
-	
+
 	if len(vals) <= k {
 		// Sort to keep deterministic order for small sets.
 		sort.Slice(vals, func(i, j int) bool {

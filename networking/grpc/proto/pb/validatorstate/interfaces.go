@@ -58,18 +58,18 @@ type GetCurrentValidatorSetRequest struct {
 
 // GetCurrentValidatorSetResponse response
 type GetCurrentValidatorSetResponse struct {
-	Validators        []*Validator
-	CurrentHeight     uint64
+	Validators    []*Validator
+	CurrentHeight uint64
 }
 
 // Additional Validator fields for current validator set
 type Validator struct {
-	NodeId         []byte
-	PublicKey      []byte
-	Weight         uint64
-	StartTime      uint64
-	MinNonce       uint64
-	ValidationId   []byte
-	IsActive       bool
-	IsL1Validator  bool
+	NodeId        []byte
+	PublicKey     []byte
+	Weight        uint64
+	StartTime     uint64
+	MinNonce      uint64
+	ValidationId  []byte
+	IsActive      bool
+	IsL1Validator bool
 }

@@ -10,7 +10,8 @@ type BlockMeta struct {
 	Parents [][]byte
 }
 
-type CertPattern struct{ /* omitted */ }
+type CertPattern struct { /* omitted */
+}
 
 func HasCertificatePattern(b BlockMeta, support map[uint64][]BlockMeta) bool { return false }
 func HasSkipPattern(slot uint64, support map[uint64][]BlockMeta) bool        { return false }
