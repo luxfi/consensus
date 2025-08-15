@@ -10,12 +10,13 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus"
+	"github.com/luxfi/node/version"
 )
 
 // Config contains the common configuration for bootstrappers
 type Config struct {
 	// Context is the consensus context for the chain
-	Context *consensus.Context
+	Context context.Context
 	
 	// StartupTracker tracks chain startup progress
 	StartupTracker Tracker

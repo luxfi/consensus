@@ -114,7 +114,7 @@ func TestDualAlphaOptimization(t *testing.T) {
 			}
 			
 			// Create network
-			ctx := &interfaces.Context{
+			ctx := &interfaces.Runtime{
 				NetworkID: 1,
 				ChainID:   ids.GenerateTestID(),
 				NodeID:    ids.GenerateTestNodeID(),

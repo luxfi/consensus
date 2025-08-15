@@ -55,7 +55,7 @@ type Engine struct {
 	GossipF           func(ctx context.Context) error
 	HaltF             func(ctx context.Context)
 	ShutdownF         func(ctx context.Context) error
-	ContextF          func() *consensus.Context
+	ContextF          func() context.Context
 	NotifyF           func(context.Context, consensus.Message) error
 	GetBlockF         func(ctx context.Context, nodeID ids.NodeID, requestID uint32, blockID ids.ID) error
 	GetFailedF        func(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
@@ -170,7 +170,7 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	return ErrNotImplemented
 }
 
-func (e *Engine) Context() *consensus.Context {
+func (e *Engine) Context() context.Context {
 	if e.ContextF != nil {
 		return e.ContextF()
 	}

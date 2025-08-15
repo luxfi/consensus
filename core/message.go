@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"net/http"
+	"github.com/luxfi/trace"
 )
 
 // Message types for engine communication
@@ -44,4 +45,34 @@ type VM interface {
     Initialize() error
     Shutdown() error
     CreateHandlers(ctx context.Context) (map[string]http.Handler, error)
+}
+
+// Engine is a consensus engine
+type Engine interface {
+    // Start the engine
+    Start(ctx context.Context) error
+    // Stop the engine
+    Stop() error
+}
+
+// TraceEngine wraps an engine with tracing
+func TraceEngine(engine Engine, tracer trace.Tracer) Engine {
+    return engine
+}
+
+// Halter can halt operations
+type Halter interface {
+    Halt(context.Context)
+}
+
+// BootstrapableEngine is an engine that can be bootstrapped
+type BootstrapableEngine interface {
+    Engine
+    // Bootstrap the engine
+    Bootstrap(ctx context.Context) error
+}
+
+// TraceBootstrapableEngine wraps a bootstrappable engine with tracing
+func TraceBootstrapableEngine(engine BootstrapableEngine, tracer trace.Tracer) BootstrapableEngine {
+    return engine
 }
