@@ -1,8 +1,8 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// Package ray implements one reduction step (Snowball/FPC-friendly)
-package ray
+// Package focus implements confidence building with ray reduction (Snowball/FPC-friendly)
+package focus
 
 import "github.com/luxfi/consensus/photon"
 
