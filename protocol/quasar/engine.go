@@ -12,7 +12,8 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/protocol/nebula"
+	"github.com/luxfi/consensus/types"
+	"github.com/luxfi/consensus/nebula"
 	"github.com/luxfi/consensus/protocol/pulse"
 )
 
@@ -156,10 +157,12 @@ func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 	case PulsarMode:
 		e.pulsar = pulse.NewPulse(configParams)
 	case NebulaMode:
-		e.nebula = nebula.New(ctx)
+		// TODO: Create orderer for nebula mode
+		// e.nebula = nebula.New(orderer, configParams)
 	case HybridMode, QuantumMode:
 		e.pulsar = pulse.NewPulse(configParams)
-		e.nebula = nebula.New(ctx)
+		// TODO: Create orderer for hybrid/quantum mode
+		// e.nebula = nebula.New(orderer, configParams)
 	}
 
 	return e, nil

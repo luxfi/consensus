@@ -7,8 +7,8 @@ import (
 	"sync"
 )
 
-// Config configures the Quasar dual-certificate protocol
-type Config[T comparable] struct {
+// QuasarConfig configures the Quasar dual-certificate protocol
+type QuasarConfig[T comparable] struct {
 	CertThreshold   int
 	SkipThreshold   int
 	SignatureScheme string
@@ -31,8 +31,8 @@ type Quasar[T comparable] struct {
 	tracked       map[T]bool
 }
 
-// New creates a new Quasar overlay
-func New[T comparable](cfg Config[T]) (*Quasar[T], error) {
+// NewQuasar creates a new Quasar overlay
+func NewQuasar[T comparable](cfg QuasarConfig[T]) (*Quasar[T], error) {
 	return &Quasar[T]{
 		certThreshold: cfg.CertThreshold,
 		skipThreshold: cfg.SkipThreshold,

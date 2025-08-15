@@ -40,7 +40,7 @@ type TestDAG struct {
 	tips    map[[32]byte]bool
 	height  uint64
 	witness witness.Manager
-	graph   flare.Graph
+	// graph   flare.Graph // TODO: Implement graph type
 	fastTxs map[TxID]int // Track transaction votes for fast path
 }
 
@@ -55,7 +55,7 @@ func NewTestDAG() *TestDAG {
 			Mode:     witness.RequireFull,
 			MaxBytes: 1024 * 1024, // 1MB
 		}, 1000, 10*1024*1024),
-		graph:   flare.NewGraph(),
+		// graph:   flare.NewGraph(), // TODO: Implement graph type
 		fastTxs: make(map[TxID]int),
 	}
 }
