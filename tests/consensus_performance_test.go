@@ -58,7 +58,7 @@ func benchmarkProtocol(b *testing.B, factory func() interfaces.Consensus, params
 		}
 		
 		for _, choice := range choices {
-			consensus.Add(choice)
+			_ = consensus.Add(choice)
 		}
 		
 		// Vote until finalized
@@ -68,7 +68,7 @@ func benchmarkProtocol(b *testing.B, factory func() interfaces.Consensus, params
 		}
 		
 		for !consensus.Finalized() {
-			consensus.RecordVotes(votes)
+			_ = consensus.RecordVotes(votes)
 		}
 	}
 }
@@ -129,7 +129,7 @@ func TestDualAlphaOptimization(t *testing.T) {
 				network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 					node := pulse.NewPulse(p)
 					// Add the initial choice provided by the network
-					node.Add(choice)
+					_ = node.Add(choice)
 					return node
 				})
 			}
@@ -188,7 +188,7 @@ func TestTreeConvergenceOptimization(t *testing.T) {
 				nodes[i] = wave.NewWave(params)
 				// Add same choices to all nodes
 				for _, choice := range choices {
-					nodes[i].Add(choice)
+					_ = nodes[i].Add(choice)
 				}
 			}
 			

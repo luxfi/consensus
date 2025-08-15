@@ -576,11 +576,11 @@ func BenchmarkRealWorldScenario(b *testing.B) {
 		transactions := make([]TxRef, txPerBlock)
 		for j := range transactions {
 			txID := make([]byte, 32)
-			rand.Read(txID)
+			_, _ = rand.Read(txID)
 			transactions[j] = TxRef(txID)
 
 			objID := make([]byte, 32)
-			rand.Read(objID)
+			_, _ = rand.Read(objID)
 			cls.addOwnedTx(transactions[j], ObjectID(objID))
 		}
 
