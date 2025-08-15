@@ -34,17 +34,24 @@ func NewPeers() Peers {
 type Startup interface {
     OnValidatorAdded(nodeID ids.NodeID)
     OnValidatorRemoved(nodeID ids.NodeID)
+    ShouldStart() bool
 }
 
 // NewStartup creates a new startup tracker
 func NewStartup(peers Peers, startupAlpha float64) Startup {
-    return &noOpStartup{}
+    return &noOpStartup{startupAlpha: startupAlpha}
 }
 
-type noOpStartup struct{}
+type noOpStartup struct{
+    startupAlpha float64
+}
 
 func (n *noOpStartup) OnValidatorAdded(nodeID ids.NodeID) {}
 func (n *noOpStartup) OnValidatorRemoved(nodeID ids.NodeID) {}
+func (n *noOpStartup) ShouldStart() bool { 
+    // If startupAlpha is 0, always allow start (skip bootstrap mode)
+    return n.startupAlpha == 0
+}
 
 type noOpPeers struct{}
 
