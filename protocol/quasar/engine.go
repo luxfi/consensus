@@ -314,6 +314,7 @@ func (e *Engine) submitToPulsar(ctx context.Context, decision *ChainDecision) er
 // submitToNebula routes DAG decisions to Nebula engine
 func (e *Engine) submitToNebula(ctx context.Context, decision *DAGDecision) error {
 	if e.nebula == nil {
+		e.metrics.InvalidDecisions.Inc()
 		return fmt.Errorf("nebula engine not initialized")
 	}
 	// Process through photonic stages

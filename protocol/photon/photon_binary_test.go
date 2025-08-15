@@ -36,7 +36,7 @@ func TestPhotonBinary(t *testing.T) {
 		redVotes.Add(Red)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(redPhoton.RecordVotes(redVotes))
 	}
 
@@ -49,7 +49,7 @@ func TestPhotonBinary(t *testing.T) {
 		blueVotes.Add(Blue)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(bluePhoton.RecordVotes(blueVotes))
 	}
 
@@ -106,7 +106,7 @@ func TestPhotonBinaryRecordUnsuccessfulPoll(t *testing.T) {
 	require.False(p.Finalized())
 
 	// Can still finalize with enough successful polls
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(successVotes))
 	}
 
@@ -138,7 +138,7 @@ func TestPhotonBinaryAcceptUnknownChoice(t *testing.T) {
 		redVotes.Add(Red)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(redVotes))
 	}
 
@@ -188,7 +188,7 @@ func TestPhotonConfidenceProgression(t *testing.T) {
 	}
 
 	// Record Beta polls
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(confVotes))
 	}
 
@@ -211,7 +211,7 @@ func TestPhotonRecordUnsuccessfulPoll(t *testing.T) {
 	}
 
 	// Record only Beta-1 rounds so we're not finalized yet
-	for i := 0; i < params.Beta-1; i++ {
+	for i := 0; i < int(params.Beta)-1; i++ {
 		require.NoError(p.RecordVotes(goodVotes))
 	}
 	require.False(p.Finalized())

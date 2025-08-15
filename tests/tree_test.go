@@ -37,7 +37,7 @@ func TestPhotonSingleton(t *testing.T) {
 	}
 
 	// Need Beta successful polls
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(votes))
 	}
 
@@ -74,7 +74,7 @@ func TestPulseRecordUnsuccessfulPoll(t *testing.T) {
 	require.False(p.Finalized())
 
 	// Should need to start over with Beta polls
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(redVotes))
 	}
 
@@ -105,7 +105,7 @@ func TestPulseBinary(t *testing.T) {
 	require.Equal(Blue, p.Preference())
 
 	// Continue voting for Blue to finalize
-	for i := 1; i < params.Beta; i++ {
+	for i := 1; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(blueVotes))
 	}
 
@@ -131,7 +131,7 @@ func TestWaveTrinary(t *testing.T) {
 	}
 
 	// Should switch to Green and finalize
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(greenVotes))
 	}
 
@@ -175,7 +175,7 @@ func TestWaveTransitiveReset(t *testing.T) {
 	require.Equal(Green, w.Preference())
 
 	// Finalize on Green
-	for i := 1; i < params.Beta; i++ {
+	for i := 1; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(greenVotes))
 	}
 
@@ -209,7 +209,7 @@ func TestWave5Choices(t *testing.T) {
 		votes.Add(targetColor)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(votes))
 	}
 
@@ -239,7 +239,7 @@ func TestPulseConsistent(t *testing.T) {
 
 	// All should finalize on Blue
 	for _, instance := range instances {
-		for i := 0; i < params.Beta; i++ {
+		for i := 0; i < int(params.Beta); i++ {
 			require.NoError(instance.RecordVotes(blueVotes))
 		}
 		require.True(instance.Finalized())
@@ -276,7 +276,7 @@ func TestPulseFilterBinaryChildren(t *testing.T) {
 		childVotes.Add(child1)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(childVotes))
 	}
 
@@ -301,7 +301,7 @@ func TestPulseDoubleAdd(t *testing.T) {
 		blueVotes.Add(Blue)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(blueVotes))
 	}
 
@@ -335,7 +335,7 @@ func TestPulseRecordPreferencePollBinary(t *testing.T) {
 		confVotes.Add(Blue)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(confVotes))
 	}
 
@@ -368,7 +368,7 @@ func TestPhotonRecordPreferencePollUnary(t *testing.T) {
 		confVotes.Add(Red)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(confVotes))
 	}
 

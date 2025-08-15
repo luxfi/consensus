@@ -37,7 +37,7 @@ func TestPhotonUnary(t *testing.T) {
 	}
 
 	// Need Beta rounds to finalize
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(redVotes))
 	}
 
@@ -220,7 +220,7 @@ func TestPhotonUnaryConfidenceBuildup(t *testing.T) {
 	}
 
 	// Record Beta rounds
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(confVotes))
 	}
 
@@ -254,7 +254,7 @@ func TestPhotonUnaryReset(t *testing.T) {
 	require.False(p.Finalized())
 
 	// Can still finalize
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(goodVotes))
 	}
 

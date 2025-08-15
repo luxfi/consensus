@@ -40,7 +40,7 @@ func TestWaveMultiChoice(t *testing.T) {
 	}
 
 	// Should converge on target
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(votes))
 	}
 
@@ -98,7 +98,7 @@ func TestWaveMultiChoiceBinary(t *testing.T) {
 		blueVotes.Add(Blue)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(blueVotes))
 	}
 
@@ -121,7 +121,7 @@ func TestWaveMultiChoiceUnary(t *testing.T) {
 		redVotes.Add(Red)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(redVotes))
 	}
 
@@ -157,7 +157,7 @@ func TestWaveMultiChoiceRecordPollPreference(t *testing.T) {
 		// Only last few should build confidence
 		if i >= 4 {
 			// Continue with same color to build confidence
-			for j := 1; j < params.Beta; j++ {
+			for j := 1; j < int(params.Beta); j++ {
 				require.NoError(w.RecordVotes(votes))
 			}
 			require.True(w.Finalized())
@@ -201,7 +201,7 @@ func TestWaveMultiChoiceDynamicChoices(t *testing.T) {
 		votes2.Add(colors[5])
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(votes2))
 	}
 
@@ -299,7 +299,7 @@ func TestWaveMultiChoiceSplitVotes(t *testing.T) {
 		majorityVotes.Add(colors[1])
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(majorityVotes))
 	}
 
