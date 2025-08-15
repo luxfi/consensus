@@ -8,10 +8,10 @@ import "errors"
 var (
 	// ErrNotRunning is returned when an operation is attempted on a stopped component
 	ErrNotRunning = errors.New("not running")
-	
+
 	// ErrNotImplemented is returned when a method is not implemented
 	ErrNotImplemented = errors.New("not implemented")
-	
+
 	// ErrConflict is returned when there's a conflict in consensus
 	ErrConflict = errors.New("conflicting operation")
 )

@@ -40,7 +40,7 @@ var (
 		AlphaPreference:       15,
 		AlphaConfidence:       15,
 		Beta:                  20,
-		ConcurrentPolls:     4,
+		ConcurrentPolls:       4,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: 30 * time.Second,

@@ -7,9 +7,9 @@ import (
 	"errors"
 	"time"
 
+	"github.com/luxfi/consensus/utils/timer/mockable"
 	db "github.com/luxfi/database"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/utils/timer/mockable"
 )
 
 var _ Manager = (*manager)(nil)

@@ -9,11 +9,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/luxfi/consensus/flare"
-	"github.com/luxfi/consensus/internal/types"
 	"github.com/luxfi/consensus/photon"
-	"github.com/luxfi/consensus/prism"
+	"github.com/luxfi/consensus/types"
 	"github.com/luxfi/consensus/wave"
+	"github.com/luxfi/consensus/wave/fpc"
 )
 
 type ItemID string
@@ -47,36 +46,43 @@ func main() {
 
 	// Setup validators
 	peers := []types.NodeID{"validator1", "validator2", "validator3", "validator4", "validator5", "validator6", "validator7"}
-	
+
 	// Create sampler
 	sel := prism.NewDefault(peers, prism.Options{
 		MinPeers: 5,
 		MaxPeers: 10,
 	})
-	
+
 	// Create Wave consensus with FPC enabled (default configuration)
 	w := wave.New[ItemID](wave.Config{
-		K:       5,        // Sample size
-		Alpha:   0.8,      // Success threshold (80%)
-		Beta:    5,        // Confidence target
-		Gamma:   3,        // Max inconclusive before FPC activates
+		K:       5,   // Sample size
+		Alpha:   0.8, // Success threshold (80%)
+		Beta:    5,   // Confidence target
+		Gamma:   3,   // Max inconclusive before FPC activates
 		RoundTO: 250 * time.Millisecond,
 	}, sel, transport{prefer: true})
-	
-	// Create Flare (Fast Path) - ALWAYS ON
-	fl := flare.New[TxID](2) // f=2, need 2f+1=5 votes for fast path
-	
+
+	// Create FPC (Fast Path Consensus) - ALWAYS ON
+	quorum := fpc.Quorum{N: 7, F: 2} // f=2, need 2f+1=5 votes for fast path
+	fpcCfg := fpc.Config{
+		Quorum:            quorum,
+		Epoch:             0,
+		VoteLimitPerBlock: 256,
+		VotePrefix:        []byte("LUX/FPC/V1"),
+	}
+	fl := fpc.New(fpcCfg, fpc.SimpleClassifier{})
+
 	fmt.Println("Configuration:")
 	fmt.Printf("  Validators: %d\n", len(peers))
 	fmt.Printf("  Sample size (K): %d\n", 5)
 	fmt.Printf("  FPC: ENABLED (switches after %d inconclusive rounds)\n", 3)
-	fmt.Printf("  Fast Path (Flare): ENABLED (threshold: %d votes)\n", 5)
+	fmt.Printf("  Fast Path (FPC): ENABLED (threshold: %d votes)\n", 5)
 	fmt.Println()
 
 	// Demonstrate Fast Path for owned transactions
 	fmt.Println("=== Fast Path Demonstration (Owned Transactions) ===")
 	ownedTx := TxID("owned-tx-001")
-	
+
 	// Simulate 5 validators voting for the transaction
 	fmt.Printf("Collecting votes for %s...\n", ownedTx)
 	for i := 0; i < 5; i++ {
@@ -84,34 +90,36 @@ func main() {
 		status := fl.Status(ownedTx)
 		fmt.Printf("  Vote %d: status = %s\n", i+1, statusString(status))
 	}
-	
+
 	// Check if executable
-	if fl.Status(ownedTx) == flare.StatusExecutable {
+	var txRef fpc.TxRef
+	copy(txRef[:], []byte(ownedTx)[:32])
+	if fl.Status(txRef) == fpc.StatusExecutable {
 		fmt.Println("✅ Transaction is EXECUTABLE via Fast Path (before block finalization!)")
 	}
 	fmt.Println()
 
 	// Demonstrate Wave consensus with FPC
 	fmt.Println("=== Wave Consensus with FPC ===")
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	item := ItemID("block#12345")
 	fmt.Printf("Running consensus for %s...\n", item)
-	
+
 	for round := 1; round <= 10; round++ {
 		w.Tick(ctx, item)
 		st, _ := w.State(item)
-		
-		stageStr := "Snowball"
+
+		stageStr := "Wave"
 		if st.Stage == wave.StageFPC {
 			stageStr = "FPC (Fast Path Consensus)"
 		}
-		
-		fmt.Printf("  Round %d: prefer=%v, confidence=%d, stage=%s\n", 
+
+		fmt.Printf("  Round %d: prefer=%v, confidence=%d, stage=%s\n",
 			round, st.Step.Prefer, st.Step.Conf, stageStr)
-		
+
 		if st.Decided {
 			result := "REJECTED"
 			if st.Result == types.DecideAccept {
@@ -120,10 +128,10 @@ func main() {
 			fmt.Printf("✅ Consensus reached: %s (in %d rounds)\n", result, round)
 			break
 		}
-		
+
 		time.Sleep(50 * time.Millisecond)
 	}
-	
+
 	fmt.Println()
 	fmt.Println("=== Summary ===")
 	fmt.Println("• FPC (Fast Path Consensus) is ENABLED by default")
@@ -133,13 +141,13 @@ func main() {
 	fmt.Println("• Production-ready for millions of TPS on X-Chain")
 }
 
-func statusString(s flare.Status) string {
+func statusString(s fpc.Status) string {
 	switch s {
-	case flare.StatusPending:
+	case fpc.StatusPending:
 		return "Pending"
-	case flare.StatusExecutable:
+	case fpc.StatusExecutable:
 		return "Executable"
-	case flare.StatusFinal:
+	case fpc.StatusFinal:
 		return "Final"
 	default:
 		return "Unknown"

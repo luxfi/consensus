@@ -4,12 +4,12 @@
 package tests
 
 import (
-	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/core/utils"
-	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/consensus/utils/sampler"
+	"github.com/luxfi/ids"
 )
 
 type newConsensusFunc func(factory *utils.Factory, params config.Parameters, choice ids.ID) interfaces.Consensus
@@ -92,7 +92,7 @@ func (n *TestNetwork) Agreement() bool {
 	if len(n.nodes) == 0 {
 		return true
 	}
-	
+
 	pref := n.nodes[0].Preference()
 	for _, node := range n.nodes[1:] {
 		if pref != node.Preference() {

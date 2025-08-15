@@ -106,7 +106,7 @@ func Sort[T any](slice []T, less ...func(i, j int) bool) {
 		sort.Slice(slice, less[0])
 		return
 	}
-	
+
 	// Try to use natural ordering for types with Compare method (like ids.ID)
 	sort.Slice(slice, func(i, j int) bool {
 		if v1, ok := any(slice[i]).(interface{ Compare(T) int }); ok {
