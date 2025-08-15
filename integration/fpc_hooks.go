@@ -9,11 +9,10 @@ import (
 
 	"github.com/luxfi/consensus/chain"
 	"github.com/luxfi/consensus/config"
+	"github.com/luxfi/consensus/types"
 	"github.com/luxfi/consensus/wave/fpc"
 	"github.com/luxfi/consensus/witness"
-	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
-	"github.com/luxfi/metrics"
 )
 
 // FPCIntegration manages FPC integration with the consensus engine
@@ -26,15 +25,15 @@ type FPCIntegration struct {
 }
 
 // NewFPCIntegration creates a new FPC integration layer
-func NewFPCIntegration(cfg config.FPCConfig, preset config.Preset) *FPCIntegration {
+func NewFPCIntegration(cfg config.FPCConfig, committeeSize int) *FPCIntegration {
 	if !cfg.Enable {
 		return nil
 	}
 
-	// Create FPC engine with quorum for 21 validators (f=7, need 2f+1=15 for quorum)
+	// Create FPC engine with quorum for validators
 	quorum := fpc.Quorum{
-		N: preset.CommitteeSize,
-		F: (preset.CommitteeSize - 1) / 3, // Byzantine fault tolerance
+		N: committeeSize,
+		F: (committeeSize - 1) / 3, // Byzantine fault tolerance
 	}
 
 	fpcCfg := fpc.Config{
@@ -82,8 +81,8 @@ func (f *FPCIntegration) OnPropose(ctx context.Context) ProposalData {
 		votes[i] = voteCopy
 	}
 
-	// Record metrics
-	metrics.GetOrRegisterCounter(f.metricsPrefix+"votes_embedded_total", nil).Inc(int64(len(votes)))
+	// Record metrics - simplified without metrics registry for now
+	// TODO: Add proper metrics once registry is available
 
 	return ProposalData{
 		FPCVotes: votes,
@@ -97,19 +96,19 @@ func (f *FPCIntegration) OnBlockObserved(ctx context.Context, blk chain.Block) {
 		return
 	}
 
-	blockRef := fpc.BlockRef{
-		ID:       blk.ID(),
+	blockRef := &fpc.BlockRef{
+		ID:       types.BlockID(blk.ID()),
 		Round:    blk.Height(),
-		Author:   "", // Would come from block metadata
+		Author:   types.NodeID(""), // Would come from block metadata
 		Final:    false,
 		EpochBit: blk.EpochBit(),
 		FPCVotes: blk.FPCVotes(),
 	}
 
-	f.fpcEngine.OnBlockObserved(blockRef)
+	f.fpcEngine.OnBlockObserved(ctx, blockRef)
 
-	// Record metrics
-	metrics.GetOrRegisterCounter(f.metricsPrefix+"blocks_observed_total", nil).Inc(1)
+	// Record metrics - simplified without metrics registry for now
+	// TODO: Add proper metrics once registry is available
 }
 
 // OnBlockAccepted is called when a block is consensus-committed
@@ -118,24 +117,24 @@ func (f *FPCIntegration) OnBlockAccepted(ctx context.Context, blk chain.Block) {
 		return
 	}
 
-	blockRef := fpc.BlockRef{
-		ID:       blk.ID(),
+	blockRef := &fpc.BlockRef{
+		ID:       types.BlockID(blk.ID()),
 		Round:    blk.Height(),
-		Author:   "", // Would come from block metadata
+		Author:   types.NodeID(""), // Would come from block metadata
 		Final:    true,
 		EpochBit: blk.EpochBit(),
 		FPCVotes: blk.FPCVotes(),
 	}
 
-	f.fpcEngine.OnBlockAccepted(blockRef)
+	f.fpcEngine.OnBlockAccepted(ctx, blockRef)
 
 	// Store committed root for witness caching
 	if stateRoot := extractStateRoot(blk); stateRoot != nil {
 		f.witnessCache.PutCommittedRoot(blk.ID(), stateRoot)
 	}
 
-	// Record metrics
-	metrics.GetOrRegisterCounter(f.metricsPrefix+"blocks_accepted_total", nil).Inc(1)
+	// Record metrics - simplified without metrics registry for now
+	// TODO: Add proper metrics once registry is available
 }
 
 // ValidateWitness checks if witness size is acceptable
@@ -146,8 +145,9 @@ func (f *FPCIntegration) ValidateWitness(ctx context.Context, header witness.Hea
 
 	ok, wsize, _ := f.witnessCache.Validate(header, witnessBytes)
 
-	// Record witness size metrics
-	metrics.GetOrRegisterHistogram(f.metricsPrefix+"witness_bytes", nil).Update(int64(wsize))
+	// Record witness size metrics - simplified without metrics registry for now
+	// TODO: Add proper metrics once registry is available
+	_ = wsize // Avoid unused variable warning
 
 	return ok
 }
@@ -166,8 +166,8 @@ func (f *FPCIntegration) ExecuteOwned(ctx context.Context, executor TxExecutor) 
 			continue
 		}
 
-		// Record execution metrics
-		metrics.GetOrRegisterCounter(f.metricsPrefix+"owned_executed_total", nil).Inc(1)
+		// Record execution metrics - simplified without metrics registry for now
+		// TODO: Add proper metrics once registry is available
 	}
 
 	return nil
@@ -183,10 +183,10 @@ func (f *FPCIntegration) ShouldExecuteMixed(txID []byte) bool {
 		return false
 	}
 
-	var tx fpc.TxRef
+	var tx types.TxRef
 	copy(tx[:], txID)
 
-	status := f.fpcEngine.Status(tx)
+	status, _ := f.fpcEngine.Status(tx)
 	return status == fpc.StatusFinal
 }
 
@@ -203,9 +203,8 @@ func (f *FPCIntegration) EnqueueTransaction(txID []byte) {
 		return
 	}
 
-	var tx fpc.TxRef
-	copy(tx[:], txID)
-	f.fpcEngine.Enqueue(tx)
+	// Transaction enqueueing would be handled through NextVotes mechanism
+	// This is a placeholder for future implementation
 }
 
 // ProposalData contains data to include in block proposal

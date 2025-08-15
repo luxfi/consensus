@@ -37,15 +37,17 @@ type Parameters struct {
 func Mainnet() Parameters {
 	return Parameters{
 		K:                     21,
-		AlphaPreference:       15,
+		AlphaPreference:       13,
 		AlphaConfidence:       18,
 		Beta:                  8,
-		MinRoundInterval:      50 * time.Millisecond,
-		MaxItemProcessingTime: 10 * time.Second,
+		MinRoundInterval:      100 * time.Millisecond,
+		MaxItemProcessingTime: 9630 * time.Millisecond,
 		EnableFPC:             true,
 		ConcurrentPolls:       4,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   1024,
+		QThreshold:            15,
+		QuasarTimeout:         50 * time.Millisecond,
 	}
 }
 
@@ -57,11 +59,13 @@ func Testnet() Parameters {
 		AlphaConfidence:       9,
 		Beta:                  6,
 		MinRoundInterval:      50 * time.Millisecond,
-		MaxItemProcessingTime: 10 * time.Second,
+		MaxItemProcessingTime: 6300 * time.Millisecond,
 		EnableFPC:             true,
 		ConcurrentPolls:       4,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   1024,
+		QThreshold:            8,
+		QuasarTimeout:         100 * time.Millisecond,
 	}
 }
 
@@ -73,7 +77,7 @@ func Local() Parameters {
 		AlphaConfidence:       4,
 		Beta:                  3,
 		MinRoundInterval:      10 * time.Millisecond,
-		MaxItemProcessingTime: 5 * time.Second,
+		MaxItemProcessingTime: 3690 * time.Millisecond,
 		EnableFPC:             true,
 		ConcurrentPolls:       2,
 		OptimalProcessing:     5,

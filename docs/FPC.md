@@ -64,7 +64,7 @@ BenchmarkVerkleNodeCache: 101.5 ns/op
 
 ```go
 // Wave consensus with FPC enabled by default
-w := wave.New[ItemID](wave.Config{
+w := wave.NewWave[ItemID](wave.Config{
     K:       5,        // Sample size
     Alpha:   0.8,      // Success threshold (80%)
     Beta:    5,        // Confidence target
