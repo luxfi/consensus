@@ -107,10 +107,10 @@ func TestVerkleNodeCache(t *testing.T) {
 // TestVerkleWitnessSize tests witness size enforcement
 func TestVerkleWitnessSize(t *testing.T) {
 	testCases := []struct {
-		name      string
-		policy    Policy
+		name       string
+		policy     Policy
 		witnessLen int
-		expectOK  bool
+		expectOK   bool
 	}{
 		{
 			name: "small_witness_accepted",
@@ -119,7 +119,7 @@ func TestVerkleWitnessSize(t *testing.T) {
 				MaxBytes: 10000,
 			},
 			witnessLen: 5000,
-			expectOK:  true,
+			expectOK:   true,
 		},
 		{
 			name: "large_witness_rejected",
@@ -128,7 +128,7 @@ func TestVerkleWitnessSize(t *testing.T) {
 				MaxBytes: 1000,
 			},
 			witnessLen: 2000,
-			expectOK:  false,
+			expectOK:   false,
 		},
 		{
 			name: "soft_mode_accepts_any",
@@ -136,7 +136,7 @@ func TestVerkleWitnessSize(t *testing.T) {
 				Mode: Soft,
 			},
 			witnessLen: 100000,
-			expectOK:  true,
+			expectOK:   true,
 		},
 		{
 			name: "delta_within_limit",
@@ -145,7 +145,7 @@ func TestVerkleWitnessSize(t *testing.T) {
 				MaxDelta: 2048,
 			},
 			witnessLen: 1024,
-			expectOK:  false, // No parent, so fails
+			expectOK:   false, // No parent, so fails
 		},
 	}
 

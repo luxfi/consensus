@@ -5,8 +5,8 @@ package linked
 
 // Hashmap is a linked hashmap that maintains insertion order
 type Hashmap[K comparable, V any] struct {
-	m     map[K]*hashmapEntry[K, V]
-	list  *List[*hashmapEntry[K, V]]
+	m    map[K]*hashmapEntry[K, V]
+	list *List[*hashmapEntry[K, V]]
 }
 
 type hashmapEntry[K comparable, V any] struct {
@@ -29,7 +29,7 @@ func (h *Hashmap[K, V]) Put(key K, value V) {
 		entry.value = value
 		return
 	}
-	
+
 	entry := &hashmapEntry[K, V]{
 		key:   key,
 		value: value,

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	
+
 	"github.com/luxfi/log"
 )
 
@@ -19,8 +19,8 @@ var (
 	ErrAlphaPreferenceTooHigh      = errors.New("alpha preference is too high")
 	ErrAlphaConfidenceTooSmall     = errors.New("alpha confidence is too small")
 	ErrBetaTooLow                  = errors.New("beta is too low")
-	ErrConcurrentPollsTooLow     = errors.New("concurrent polls is too low")
-	ErrConcurrentPollsTooHigh    = errors.New("concurrent polls is too high")
+	ErrConcurrentPollsTooLow       = errors.New("concurrent polls is too low")
+	ErrConcurrentPollsTooHigh      = errors.New("concurrent polls is too high")
 	ErrOptimalProcessingTooLow     = errors.New("optimal processing is too low")
 	ErrMaxOutstandingItemsTooLow   = errors.New("max outstanding items is too low")
 	ErrMaxItemProcessingTimeTooLow = errors.New("max item processing time is too low")
@@ -38,11 +38,11 @@ const (
 
 // ValidationError contains detailed validation error information
 type ValidationError struct {
-	Field       string
-	Value       interface{}
-	Constraint  string
-	Severity    string // "error" or "warning"
-	Suggestion  string
+	Field      string
+	Value      interface{}
+	Constraint string
+	Severity   string // "error" or "warning"
+	Suggestion string
 }
 
 func (ve ValidationError) Error() string {
@@ -88,26 +88,26 @@ func (v *Validator) Validate(cfg *Config) error {
 // ValidateDetailed returns detailed validation results
 func (v *Validator) ValidateDetailed(cfg *Config) *ValidationResult {
 	result := &ValidationResult{Valid: true}
-	
+
 	// Basic parameter validation
 	v.validateBasicParameters(cfg, result)
-	
+
 	// Quorum validation
 	v.validateQuorums(cfg, result)
-	
+
 	// Performance validation
 	v.validatePerformance(cfg, result)
-	
+
 	// Security validation
 	if v.mode == StrictMode {
 		v.validateSecurity(cfg, result)
 	}
-	
+
 	// Network-specific validation
 	if cfg.TotalNodes > 0 {
 		v.validateNetworkSpecific(cfg, result)
 	}
-	
+
 	return result
 }
 
@@ -118,7 +118,7 @@ func (v *Validator) validateBasicParameters(cfg *Config, result *ValidationResul
 	} else if cfg.K < 5 && v.mode == StrictMode {
 		v.addWarning(result, "K", cfg.K, "very small K reduces security", "Consider K >= 5 for production")
 	}
-	
+
 	// Beta validation
 	if cfg.Beta < 1 {
 		v.addError(result, "Beta", cfg.Beta, "must be at least 1", "Set Beta >= 1")
@@ -127,18 +127,18 @@ func (v *Validator) validateBasicParameters(cfg *Config, result *ValidationResul
 	} else if cfg.Beta > 100 {
 		v.addWarning(result, "Beta", cfg.Beta, "very high Beta increases latency", "Consider Beta <= 50")
 	}
-	
+
 	// ConcurrentPolls validation
 	if cfg.ConcurrentPolls < 1 {
-		v.addError(result, "ConcurrentPolls", cfg.ConcurrentPolls, 
+		v.addError(result, "ConcurrentPolls", cfg.ConcurrentPolls,
 			"must be at least 1", "Set ConcurrentPolls >= 1")
 	}
 	if cfg.ConcurrentPolls > cfg.Beta {
 		v.addError(result, "ConcurrentPolls", cfg.ConcurrentPolls,
-			fmt.Sprintf("cannot exceed Beta (%d)", cfg.Beta), 
+			fmt.Sprintf("cannot exceed Beta (%d)", cfg.Beta),
 			fmt.Sprintf("Set ConcurrentPolls <= %d", cfg.Beta))
 	}
-	
+
 	// Processing parameters
 	if cfg.OptimalProcessing < 1 {
 		v.addError(result, "OptimalProcessing", cfg.OptimalProcessing,
@@ -149,17 +149,17 @@ func (v *Validator) validateBasicParameters(cfg *Config, result *ValidationResul
 			fmt.Sprintf("must be >= OptimalProcessing (%d)", cfg.OptimalProcessing),
 			fmt.Sprintf("Set MaxOutstandingItems >= %d", cfg.OptimalProcessing))
 	}
-	
+
 	// Time validation
 	if cfg.MaxItemProcessingTime < 100*time.Millisecond {
 		v.addError(result, "MaxItemProcessingTime", cfg.MaxItemProcessingTime,
 			"must be at least 100ms", "Set MaxItemProcessingTime >= 100ms")
 	}
-	
+
 	// MinRoundInterval validation
 	if cfg.MinRoundInterval < 1*time.Millisecond || cfg.MinRoundInterval > 500*time.Millisecond {
 		v.addError(result, "MinRoundInterval", cfg.MinRoundInterval,
-			"must be in range [1ms, 500ms]", 
+			"must be in range [1ms, 500ms]",
 			fmt.Sprintf("Set MinRoundInterval between 1ms and 500ms"))
 	} else {
 		// Soft warnings for edge cases
@@ -183,31 +183,31 @@ func (v *Validator) validateBasicParameters(cfg *Config, result *ValidationResul
 func (v *Validator) validateQuorums(cfg *Config, result *ValidationResult) {
 	// Basic quorum constraints
 	minAlpha := cfg.K/2 + 1
-	
+
 	if cfg.AlphaPreference < minAlpha {
 		v.addError(result, "AlphaPreference", cfg.AlphaPreference,
 			fmt.Sprintf("must be > K/2 (min: %d)", minAlpha),
 			fmt.Sprintf("Set AlphaPreference >= %d", minAlpha))
 	}
-	
+
 	if cfg.AlphaPreference > cfg.K {
 		v.addError(result, "AlphaPreference", cfg.AlphaPreference,
 			fmt.Sprintf("cannot exceed K (%d)", cfg.K),
 			fmt.Sprintf("Set AlphaPreference <= %d", cfg.K))
 	}
-	
+
 	if cfg.AlphaConfidence < cfg.AlphaPreference {
 		v.addError(result, "AlphaConfidence", cfg.AlphaConfidence,
 			fmt.Sprintf("must be >= AlphaPreference (%d)", cfg.AlphaPreference),
 			fmt.Sprintf("Set AlphaConfidence >= %d", cfg.AlphaPreference))
 	}
-	
+
 	if cfg.AlphaConfidence > cfg.K {
 		v.addError(result, "AlphaConfidence", cfg.AlphaConfidence,
 			fmt.Sprintf("cannot exceed K (%d)", cfg.K),
 			fmt.Sprintf("Set AlphaConfidence <= %d", cfg.K))
 	}
-	
+
 	// Security recommendations
 	if v.mode == StrictMode {
 		recommendedAlphaConf := (cfg.K * 3 / 4) + 1
@@ -230,7 +230,7 @@ func (v *Validator) validatePerformance(cfg *Config, result *ValidationResult) {
 				"Consider reducing Beta or improving network latency")
 		}
 	}
-	
+
 	// Throughput warnings
 	if cfg.MaxOutstandingItems > 10000 {
 		v.addWarning(result, "MaxOutstandingItems", cfg.MaxOutstandingItems,
@@ -243,13 +243,13 @@ func (v *Validator) validateSecurity(cfg *Config, result *ValidationResult) {
 	// Calculate fault tolerance
 	byzantineTolerance := cfg.K - cfg.AlphaConfidence
 	tolerancePercent := float64(byzantineTolerance) / float64(cfg.K) * 100
-	
+
 	if tolerancePercent < 20 {
 		v.addWarning(result, "AlphaConfidence", cfg.AlphaConfidence,
 			fmt.Sprintf("low Byzantine tolerance (%.1f%%)", tolerancePercent),
 			"Consider lower AlphaConfidence for better fault tolerance")
 	}
-	
+
 	// Beta security check
 	if cfg.Beta < 10 && cfg.K > 20 {
 		v.addWarning(result, "Beta", cfg.Beta,
@@ -266,7 +266,7 @@ func (v *Validator) validateNetworkSpecific(cfg *Config, result *ValidationResul
 				fmt.Sprintf("cannot exceed total nodes (%d)", cfg.TotalNodes),
 				fmt.Sprintf("Set K <= %d", cfg.TotalNodes))
 		}
-		
+
 		// Sampling ratio recommendations
 		samplingRatio := float64(cfg.K) / float64(cfg.TotalNodes)
 		if samplingRatio < 0.1 && cfg.TotalNodes < 100 {
@@ -277,7 +277,7 @@ func (v *Validator) validateNetworkSpecific(cfg *Config, result *ValidationResul
 	}
 }
 
-func (v *Validator) addError(result *ValidationResult, field string, value interface{}, 
+func (v *Validator) addError(result *ValidationResult, field string, value interface{},
 	constraint string, suggestion string) {
 	result.Errors = append(result.Errors, ValidationError{
 		Field:      field,
@@ -304,23 +304,23 @@ func (v *Validator) addWarning(result *ValidationResult, field string, value int
 func ValidateForProduction(cfg *Config, totalNodes int) error {
 	validator := NewValidator().WithMode(StrictMode)
 	cfg.TotalNodes = totalNodes
-	
+
 	result := validator.ValidateDetailed(cfg)
-	
+
 	// Additional production checks
 	if cfg.K < 5 {
 		return fmt.Errorf("K must be at least 5 for production (got %d)", cfg.K)
 	}
-	
+
 	if cfg.Beta < 4 {
 		return fmt.Errorf("Beta must be at least 4 for production (got %d)", cfg.Beta)
 	}
-	
+
 	if totalNodes > 0 && float64(cfg.K)/float64(totalNodes) < 0.2 {
 		return fmt.Errorf("sampling ratio too low for production: %.1f%% (minimum 20%%)",
 			float64(cfg.K)/float64(totalNodes)*100)
 	}
-	
+
 	if !result.Valid {
 		var errStrs []string
 		for _, err := range result.Errors {
@@ -328,6 +328,6 @@ func ValidateForProduction(cfg *Config, totalNodes int) error {
 		}
 		return fmt.Errorf("validation failed:\n%s", strings.Join(errStrs, "\n"))
 	}
-	
+
 	return nil
 }

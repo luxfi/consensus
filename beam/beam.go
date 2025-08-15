@@ -6,8 +6,6 @@ package beam
 
 import (
 	"time"
-
-	"github.com/luxfi/consensus/flare"
 )
 
 type Header struct {
@@ -23,11 +21,17 @@ type Entry struct {
 type ProposedBlock struct {
 	Header  Header
 	Entries []Entry
-	Votes   []flare.VoteRef
+	Votes   []VoteRef // Fast-path votes
 	BLSSig  []byte
 	PQSig   []byte
 	Binding []byte
+	// FPC additions
+	FPCVotes [][]byte // Embedded fast-path vote references
+	EpochBit bool     // Epoch fence bit
 }
+
+// VoteRef represents a vote reference
+type VoteRef []byte
 
 type Builder[T comparable] interface {
 	Propose(parents [][]byte, decided [][]byte, execOwned []T) (*ProposedBlock, error)

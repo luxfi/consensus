@@ -11,7 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	
+
 	"github.com/luxfi/ids"
 )
 
@@ -31,22 +31,22 @@ type RingtailEngine struct {
 	validators []ids.NodeID
 	myNodeID   ids.NodeID
 	myIndex    int
-	
+
 	// Lattice parameters
-	n          int    // Lattice dimension
-	q          uint64 // Modulus
-	threshold  int    // Signature threshold (2f+1)
-	
+	n         int    // Lattice dimension
+	q         uint64 // Modulus
+	threshold int    // Signature threshold (2f+1)
+
 	// Active rounds
-	rounds     map[TxRef]*RingtailRound
-	roundMu    sync.RWMutex
-	
+	rounds  map[TxRef]*RingtailRound
+	roundMu sync.RWMutex
+
 	// Completed proofs
-	proofs     *ShardedMap[TxRef, *PQBundle]
-	
+	proofs *ShardedMap[TxRef, *PQBundle]
+
 	// Metrics
-	roundsStarted  atomic.Uint64
-	roundsComplete atomic.Uint64
+	roundsStarted   atomic.Uint64
+	roundsComplete  atomic.Uint64
 	proofsGenerated atomic.Uint64
 }
 
@@ -78,17 +78,17 @@ func DefaultRingtailConfig(n, f int) RingtailConfig {
 
 // RingtailRound tracks a single PQ signature round
 type RingtailRound struct {
-	tx         TxRef
-	startTime  time.Time
-	phase      int
-	
+	tx        TxRef
+	startTime time.Time
+	phase     int
+
 	// Lattice shares
-	shares     map[ids.NodeID]*LatticeShare
-	aggregate  *LatticeSignature
-	
+	shares    map[ids.NodeID]*LatticeShare
+	aggregate *LatticeSignature
+
 	// Status
-	complete   bool
-	err        error
+	complete bool
+	err      error
 }
 
 // LatticeShare represents a single validator's share
@@ -102,10 +102,10 @@ type LatticeShare struct {
 
 // LatticeSignature is the aggregated PQ signature
 type LatticeSignature struct {
-	Signers    []ids.NodeID
-	Aggregate  []uint64
-	Proof      []byte
-	Timestamp  time.Time
+	Signers   []ids.NodeID
+	Aggregate []uint64
+	Proof     []byte
+	Timestamp time.Time
 }
 
 // NewRingtailEngine creates a new Ringtail PQ engine
@@ -117,7 +117,7 @@ func NewRingtailEngine(cfg RingtailConfig, log Logger, validators []ids.NodeID, 
 			break
 		}
 	}
-	
+
 	return &RingtailEngine{
 		cfg:        cfg,
 		log:        log,
@@ -136,12 +136,12 @@ func NewRingtailEngine(cfg RingtailConfig, log Logger, validators []ids.NodeID, 
 func (r *RingtailEngine) Submit(tx TxRef, voters []ids.NodeID) {
 	r.roundMu.Lock()
 	defer r.roundMu.Unlock()
-	
+
 	// Check if already running
 	if _, exists := r.rounds[tx]; exists {
 		return
 	}
-	
+
 	// Start new round
 	round := &RingtailRound{
 		tx:        tx,
@@ -149,10 +149,10 @@ func (r *RingtailEngine) Submit(tx TxRef, voters []ids.NodeID) {
 		phase:     1,
 		shares:    make(map[ids.NodeID]*LatticeShare),
 	}
-	
+
 	r.rounds[tx] = round
 	r.roundsStarted.Add(1)
-	
+
 	// Start collection goroutine
 	go r.runRound(tx, round, voters)
 }
@@ -175,17 +175,17 @@ func (r *RingtailEngine) runRound(tx TxRef, round *RingtailRound, voters []ids.N
 		delete(r.rounds, tx)
 		r.roundMu.Unlock()
 	}()
-	
+
 	// Phase 1: Collect shares
 	phase1Timeout := time.NewTimer(r.cfg.Timeout / 2)
 	defer phase1Timeout.Stop()
-	
+
 	// Generate our share
 	if r.myIndex >= 0 {
 		share := r.generateShare(tx, 1)
 		r.addShare(round, share)
 	}
-	
+
 	// Wait for threshold shares
 	for {
 		select {
@@ -202,22 +202,22 @@ func (r *RingtailEngine) runRound(tx TxRef, round *RingtailRound, voters []ids.N
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
-	
+
 Phase2:
 	// Phase 2: Aggregate and verify
 	round.phase = 2
 	phase2Timeout := time.NewTimer(r.cfg.Timeout / 2)
 	defer phase2Timeout.Stop()
-	
+
 	// Aggregate phase 1 shares
 	aggregate1 := r.aggregateShares(round.shares)
-	
+
 	// Generate phase 2 share
 	if r.myIndex >= 0 {
 		share := r.generateShare(tx, 2)
 		r.addShare(round, share)
 	}
-	
+
 	// Wait for phase 2 threshold
 	phase2Shares := make(map[ids.NodeID]*LatticeShare)
 	for {
@@ -237,27 +237,27 @@ Phase2:
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
-	
+
 Complete:
 	// Aggregate final signature
 	finalAggregate := r.aggregateShares(phase2Shares)
-	
+
 	// Combine phases
 	signature := r.combinePhases(aggregate1, finalAggregate)
 	round.aggregate = signature
 	round.complete = true
-	
+
 	// Store proof
 	bundle := &PQBundle{
 		Proof:       r.encodeSignature(signature),
 		VoterBitmap: r.encodeBitmap(signature.Signers),
 		Voters:      signature.Signers,
 	}
-	
+
 	r.proofs.Set(tx, bundle)
 	r.roundsComplete.Add(1)
 	r.proofsGenerated.Add(1)
-	
+
 	r.log.Debug("Ringtail PQ proof complete",
 		"tx", tx,
 		"signers", len(signature.Signers),
@@ -273,14 +273,14 @@ func (r *RingtailEngine) generateShare(tx TxRef, phase int) *LatticeShare {
 		rand.Read(b)
 		vector[i] = binary.BigEndian.Uint64(b) % r.q
 	}
-	
+
 	// Create zero-knowledge proof
 	h := sha256.New()
 	h.Write(tx[:])
 	h.Write([]byte{byte(phase)})
 	h.Write(r.myNodeID[:])
 	proof := h.Sum(nil)
-	
+
 	return &LatticeShare{
 		ValidatorID: r.myNodeID,
 		Index:       r.myIndex,
@@ -294,7 +294,7 @@ func (r *RingtailEngine) generateShare(tx TxRef, phase int) *LatticeShare {
 func (r *RingtailEngine) addShare(round *RingtailRound, share *LatticeShare) {
 	r.roundMu.Lock()
 	defer r.roundMu.Unlock()
-	
+
 	round.shares[share.ValidatorID] = share
 }
 
@@ -302,7 +302,7 @@ func (r *RingtailEngine) addShare(round *RingtailRound, share *LatticeShare) {
 func (r *RingtailEngine) getPhase2Shares(round *RingtailRound) map[ids.NodeID]*LatticeShare {
 	r.roundMu.RLock()
 	defer r.roundMu.RUnlock()
-	
+
 	phase2 := make(map[ids.NodeID]*LatticeShare)
 	for id, share := range round.shares {
 		if share.Phase == 2 {
@@ -317,7 +317,7 @@ func (r *RingtailEngine) aggregateShares(shares map[ids.NodeID]*LatticeShare) *L
 	// Initialize aggregate vector
 	aggregate := make([]uint64, r.n)
 	signers := make([]ids.NodeID, 0, len(shares))
-	
+
 	// Add shares (modular arithmetic)
 	for id, share := range shares {
 		signers = append(signers, id)
@@ -325,14 +325,14 @@ func (r *RingtailEngine) aggregateShares(shares map[ids.NodeID]*LatticeShare) *L
 			aggregate[i] = (aggregate[i] + share.Vector[i]) % r.q
 		}
 	}
-	
+
 	// Generate aggregate proof
 	h := sha256.New()
 	for _, signer := range signers {
 		h.Write(signer[:])
 	}
 	proof := h.Sum(nil)
-	
+
 	return &LatticeSignature{
 		Signers:   signers,
 		Aggregate: aggregate,
@@ -348,16 +348,16 @@ func (r *RingtailEngine) combinePhases(phase1, phase2 *LatticeSignature) *Lattic
 	for i := range combined {
 		combined[i] = (phase1.Aggregate[i] + phase2.Aggregate[i]) % r.q
 	}
-	
+
 	// Combine signers
 	allSigners := append(phase1.Signers, phase2.Signers...)
-	
+
 	// Generate combined proof
 	h := sha256.New()
 	h.Write(phase1.Proof)
 	h.Write(phase2.Proof)
 	finalProof := h.Sum(nil)
-	
+
 	return &LatticeSignature{
 		Signers:   allSigners,
 		Aggregate: combined,
@@ -371,27 +371,27 @@ func (r *RingtailEngine) encodeSignature(sig *LatticeSignature) []byte {
 	// Simple encoding: length + vectors + proof
 	size := 8 + len(sig.Aggregate)*8 + len(sig.Proof)
 	buf := make([]byte, size)
-	
+
 	// Encode vector length
 	binary.BigEndian.PutUint64(buf[0:8], uint64(len(sig.Aggregate)))
-	
+
 	// Encode vectors
 	offset := 8
 	for _, v := range sig.Aggregate {
 		binary.BigEndian.PutUint64(buf[offset:offset+8], v)
 		offset += 8
 	}
-	
+
 	// Append proof
 	copy(buf[offset:], sig.Proof)
-	
+
 	return buf
 }
 
 // encodeBitmap creates a bitmap of signers
 func (r *RingtailEngine) encodeBitmap(signers []ids.NodeID) []byte {
 	bitmap := make([]byte, (len(r.validators)+7)/8)
-	
+
 	for _, signer := range signers {
 		for i, v := range r.validators {
 			if v == signer {
@@ -402,7 +402,7 @@ func (r *RingtailEngine) encodeBitmap(signers []ids.NodeID) []byte {
 			}
 		}
 	}
-	
+
 	return bitmap
 }
 
@@ -411,7 +411,7 @@ func VerifyPQSignature(bundle *PQBundle, validators []ids.NodeID, threshold int)
 	if bundle == nil || len(bundle.Proof) == 0 {
 		return false
 	}
-	
+
 	// Count signers from bitmap
 	signerCount := 0
 	for _, b := range bundle.VoterBitmap {
@@ -421,7 +421,7 @@ func VerifyPQSignature(bundle *PQBundle, validators []ids.NodeID, threshold int)
 			}
 		}
 	}
-	
+
 	// Check threshold
 	return signerCount >= threshold
 }

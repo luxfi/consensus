@@ -7,30 +7,30 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/luxfi/consensus/config"
+	"github.com/spf13/cobra"
 )
 
 func runChecker(cmd *cobra.Command, args []string) error {
 	// Get parameters from flags or use defaults
 	params := config.DefaultParameters
-	
+
 	// You can add flags to override default parameters
 	k, _ := cmd.Flags().GetInt("k")
 	if k > 0 {
 		params.K = k
 	}
-	
+
 	alphaPreference, _ := cmd.Flags().GetInt("alpha-preference")
 	if alphaPreference > 0 {
 		params.AlphaPreference = alphaPreference
 	}
-	
+
 	alphaConfidence, _ := cmd.Flags().GetInt("alpha-confidence")
 	if alphaConfidence > 0 {
 		params.AlphaConfidence = alphaConfidence
 	}
-	
+
 	beta, _ := cmd.Flags().GetInt("beta")
 	if beta > 0 {
 		params.Beta = beta
@@ -53,22 +53,22 @@ func runChecker(cmd *cobra.Command, args []string) error {
 
 	// Safety analysis
 	fmt.Println("\n=== Safety Analysis ===")
-	
+
 	// Byzantine fault tolerance
 	byzantineThreshold := (params.K - 1) / 3
-	fmt.Printf("Byzantine Fault Tolerance: %d nodes (%.1f%%)\n", 
+	fmt.Printf("Byzantine Fault Tolerance: %d nodes (%.1f%%)\n",
 		byzantineThreshold, float64(byzantineThreshold)/float64(params.K)*100)
-	
+
 	// Check if alpha thresholds are safe
 	if params.AlphaPreference <= params.K/2 {
-		fmt.Printf("⚠️  WARNING: Alpha Preference (%d) should be > K/2 (%d) for safety\n", 
+		fmt.Printf("⚠️  WARNING: Alpha Preference (%d) should be > K/2 (%d) for safety\n",
 			params.AlphaPreference, params.K/2)
 	} else {
 		fmt.Printf("✓ Alpha Preference is safely above K/2\n")
 	}
-	
+
 	if params.AlphaConfidence <= params.K/2 {
-		fmt.Printf("⚠️  WARNING: Alpha Confidence (%d) should be > K/2 (%d) for safety\n", 
+		fmt.Printf("⚠️  WARNING: Alpha Confidence (%d) should be > K/2 (%d) for safety\n",
 			params.AlphaConfidence, params.K/2)
 	} else {
 		fmt.Printf("✓ Alpha Confidence is safely above K/2\n")
@@ -76,12 +76,12 @@ func runChecker(cmd *cobra.Command, args []string) error {
 
 	// Performance characteristics
 	fmt.Println("\n=== Performance Characteristics ===")
-	
+
 	// Expected rounds to finalization (simplified model)
 	successProb := float64(params.AlphaConfidence) / float64(params.K)
 	expectedRounds := float64(params.Beta) / successProb
 	fmt.Printf("Expected rounds to finalization: %.1f\n", expectedRounds)
-	
+
 	// Time to finalization
 	roundTime := params.MaxItemProcessingTime
 	if params.MinRoundInterval > roundTime {
@@ -92,11 +92,11 @@ func runChecker(cmd *cobra.Command, args []string) error {
 
 	// Network recommendations
 	fmt.Println("\n=== Network Recommendations ===")
-	
+
 	// Minimum network size
 	minNetworkSize := params.K * 3 // Rule of thumb: 3x sample size
 	fmt.Printf("Minimum recommended network size: %d nodes\n", minNetworkSize)
-	
+
 	// Optimal network size
 	optimalNetworkSize := params.K * 10 // Rule of thumb: 10x sample size
 	fmt.Printf("Optimal network size: %d+ nodes\n", optimalNetworkSize)

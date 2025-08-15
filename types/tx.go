@@ -11,10 +11,10 @@ import (
 type Tx interface {
 	// ID returns the unique identifier for this transaction
 	ID() ids.ID
-	
+
 	// Bytes returns the binary representation
 	Bytes() []byte
-	
+
 	// Verify verifies the transaction
 	Verify() error
 }

@@ -15,7 +15,7 @@ type Encoding uint8
 const (
 	// HexC is hex with "0x" prefix
 	HexC Encoding = iota
-	// HexNC is hex without "0x" prefix  
+	// HexNC is hex without "0x" prefix
 	HexNC
 	// CB58 is the CB58 encoding (not implemented here)
 	CB58

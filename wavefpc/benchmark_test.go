@@ -9,14 +9,14 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-	
+
 	"github.com/luxfi/ids"
 )
 
 // BenchmarkThroughput measures vote processing throughput
 func BenchmarkThroughput(b *testing.B) {
 	sizes := []int{10, 100, 1000, 10000}
-	
+
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("Size%d", size), func(b *testing.B) {
 			n := 100
@@ -25,18 +25,18 @@ func BenchmarkThroughput(b *testing.B) {
 			for i := 0; i < n; i++ {
 				validators[i] = ids.GenerateTestNodeID()
 			}
-			
+
 			cfg := Config{
 				N:                 n,
 				F:                 f,
 				Epoch:             1,
 				VoteLimitPerBlock: 256,
 			}
-			
+
 			cls := newMockClassifier()
 			dag := newMockDAG()
 			fpc := New(cfg, cls, dag, nil, validators[0], validators)
-			
+
 			// Create transactions
 			txs := make([]TxRef, size)
 			for i := 0; i < size; i++ {
@@ -47,13 +47,13 @@ func BenchmarkThroughput(b *testing.B) {
 				cls.addOwnedTx(tx, obj)
 				txs[i] = tx
 			}
-			
+
 			b.ResetTimer()
 			b.ReportAllocs()
-			
+
 			start := time.Now()
 			processed := int64(0)
-			
+
 			for i := 0; i < b.N; i++ {
 				tx := txs[i%size]
 				block := &Block{
@@ -67,7 +67,7 @@ func BenchmarkThroughput(b *testing.B) {
 				fpc.OnBlockObserved(block)
 				atomic.AddInt64(&processed, 1)
 			}
-			
+
 			elapsed := time.Since(start)
 			throughput := float64(processed) / elapsed.Seconds()
 			b.ReportMetric(throughput, "votes/sec")
@@ -83,23 +83,23 @@ func BenchmarkLatency(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	latencies := make([]time.Duration, 0, b.N)
-	
+
 	for i := 0; i < b.N; i++ {
 		// Create new transaction
 		txID := ids.GenerateTestID()
@@ -107,9 +107,9 @@ func BenchmarkLatency(b *testing.B) {
 		objID := ids.GenerateTestID()
 		obj := ObjectID(objID[:])
 		cls.addOwnedTx(tx, obj)
-		
+
 		start := time.Now()
-		
+
 		// Vote until quorum (67 votes needed)
 		for v := 0; v < 67; v++ {
 			block := &Block{
@@ -122,7 +122,7 @@ func BenchmarkLatency(b *testing.B) {
 			}
 			fpc.OnBlockObserved(block)
 		}
-		
+
 		// Check status
 		status, _ := fpc.Status(tx)
 		if status == Executable {
@@ -130,7 +130,7 @@ func BenchmarkLatency(b *testing.B) {
 			latencies = append(latencies, latency)
 		}
 	}
-	
+
 	// Calculate average latency
 	if len(latencies) > 0 {
 		var total time.Duration
@@ -150,18 +150,18 @@ func BenchmarkParallelVoting(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create many transactions
 	numTxs := 10000
 	txs := make([]TxRef, numTxs)
@@ -173,24 +173,24 @@ func BenchmarkParallelVoting(b *testing.B) {
 		cls.addOwnedTx(tx, obj)
 		txs[i] = tx
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	// Use goroutines to simulate parallel validators
 	numGoroutines := 10
 	votesPerGoroutine := b.N / numGoroutines
-	
+
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
-	
+
 	start := time.Now()
 	totalVotes := int64(0)
-	
+
 	for g := 0; g < numGoroutines; g++ {
 		go func(validatorIdx int) {
 			defer wg.Done()
-			
+
 			for i := 0; i < votesPerGoroutine; i++ {
 				tx := txs[i%numTxs]
 				block := &Block{
@@ -206,10 +206,10 @@ func BenchmarkParallelVoting(b *testing.B) {
 			}
 		}(g)
 	}
-	
+
 	wg.Wait()
 	elapsed := time.Since(start)
-	
+
 	throughput := float64(totalVotes) / elapsed.Seconds()
 	b.ReportMetric(throughput, "parallel-votes/sec")
 }
@@ -217,7 +217,7 @@ func BenchmarkParallelVoting(b *testing.B) {
 // BenchmarkConflictResolution measures performance under high conflict
 func BenchmarkConflictResolution(b *testing.B) {
 	conflictRatios := []float64{0.1, 0.3, 0.5, 0.7, 0.9}
-	
+
 	for _, ratio := range conflictRatios {
 		b.Run(fmt.Sprintf("Conflict%.0f", ratio*100), func(b *testing.B) {
 			n := 100
@@ -226,55 +226,55 @@ func BenchmarkConflictResolution(b *testing.B) {
 			for i := 0; i < n; i++ {
 				validators[i] = ids.GenerateTestNodeID()
 			}
-			
+
 			cfg := Config{
 				N:                 n,
 				F:                 f,
 				Epoch:             1,
 				VoteLimitPerBlock: 256,
 			}
-			
+
 			cls := newMockClassifier()
 			dag := newMockDAG()
 			fpc := New(cfg, cls, dag, nil, validators[0], validators)
-			
+
 			// Create conflicting transaction sets
 			numSets := 100
 			sharedObjects := make([]ObjectID, numSets)
 			txSets := make([][]TxRef, numSets)
-			
+
 			for s := 0; s < numSets; s++ {
 				objID := ids.GenerateTestID()
 				sharedObjects[s] = ObjectID(objID[:])
-				
+
 				// Create conflicting transactions for this object
 				numConflicting := int(float64(10) * ratio)
 				if numConflicting < 2 {
 					numConflicting = 2
 				}
-				
+
 				txSets[s] = make([]TxRef, numConflicting)
 				for c := 0; c < numConflicting; c++ {
 					txID := ids.GenerateTestID()
 					tx := TxRef(txID[:])
 					cls.addOwnedTx(tx, sharedObjects[s])
 					txSets[s][c] = tx
-					
+
 					// Set conflicts
 					for prev := 0; prev < c; prev++ {
 						cls.setConflict(tx, txSets[s][prev])
 					}
 				}
 			}
-			
+
 			b.ResetTimer()
 			b.ReportAllocs()
-			
+
 			for i := 0; i < b.N; i++ {
 				setIdx := i % numSets
 				txIdx := i % len(txSets[setIdx])
 				tx := txSets[setIdx][txIdx]
-				
+
 				block := &Block{
 					ID:     ids.GenerateTestID(),
 					Author: validators[i%n],
@@ -292,7 +292,7 @@ func BenchmarkConflictResolution(b *testing.B) {
 // BenchmarkMemoryUsage measures memory consumption under load
 func BenchmarkMemoryUsage(b *testing.B) {
 	txCounts := []int{1000, 10000, 100000}
-	
+
 	for _, count := range txCounts {
 		b.Run(fmt.Sprintf("Txs%d", count), func(b *testing.B) {
 			n := 100
@@ -301,18 +301,18 @@ func BenchmarkMemoryUsage(b *testing.B) {
 			for i := 0; i < n; i++ {
 				validators[i] = ids.GenerateTestNodeID()
 			}
-			
+
 			cfg := Config{
 				N:                 n,
 				F:                 f,
 				Epoch:             1,
 				VoteLimitPerBlock: 256,
 			}
-			
+
 			cls := newMockClassifier()
 			dag := newMockDAG()
 			fpc := New(cfg, cls, dag, nil, validators[0], validators)
-			
+
 			// Create transactions
 			txs := make([]TxRef, count)
 			for i := 0; i < count; i++ {
@@ -323,10 +323,10 @@ func BenchmarkMemoryUsage(b *testing.B) {
 				cls.addOwnedTx(tx, obj)
 				txs[i] = tx
 			}
-			
+
 			b.ResetTimer()
 			b.ReportAllocs()
-			
+
 			// Process votes for all transactions
 			for i := 0; i < b.N; i++ {
 				tx := txs[i%count]
@@ -340,7 +340,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 				}
 				fpc.OnBlockObserved(block)
 			}
-			
+
 			// Report allocations per transaction
 			if b.N > 0 {
 				allocsPerTx := float64(b.N) / float64(count)
@@ -362,38 +362,38 @@ func BenchmarkScalability(b *testing.B) {
 		{200, 66},
 		{500, 166},
 	}
-	
+
 	for _, size := range networkSizes {
 		b.Run(fmt.Sprintf("N%d", size.n), func(b *testing.B) {
 			validators := make([]ids.NodeID, size.n)
 			for i := 0; i < size.n; i++ {
 				validators[i] = ids.GenerateTestNodeID()
 			}
-			
+
 			cfg := Config{
 				N:                 size.n,
 				F:                 size.f,
 				Epoch:             1,
 				VoteLimitPerBlock: 256,
 			}
-			
+
 			cls := newMockClassifier()
 			dag := newMockDAG()
 			fpc := New(cfg, cls, dag, nil, validators[0], validators)
-			
+
 			// Create test transaction
 			txID := ids.GenerateTestID()
 			tx := TxRef(txID[:])
 			objID := ids.GenerateTestID()
 			obj := ObjectID(objID[:])
 			cls.addOwnedTx(tx, obj)
-			
+
 			b.ResetTimer()
 			b.ReportAllocs()
-			
+
 			quorum := 2*size.f + 1
 			votesProcessed := 0
-			
+
 			for i := 0; i < b.N; i++ {
 				// Vote from different validators
 				validatorIdx := i % size.n
@@ -407,7 +407,7 @@ func BenchmarkScalability(b *testing.B) {
 				}
 				fpc.OnBlockObserved(block)
 				votesProcessed++
-				
+
 				// Check if quorum reached
 				if votesProcessed == quorum {
 					status, _ := fpc.Status(tx)
@@ -430,18 +430,18 @@ func BenchmarkEpochTransition(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators).(*waveFPC)
-	
+
 	// Create transactions
 	numTxs := 1000
 	txs := make([]TxRef, numTxs)
@@ -453,21 +453,21 @@ func BenchmarkEpochTransition(b *testing.B) {
 		cls.addOwnedTx(tx, obj)
 		txs[i] = tx
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	epochSize := 1000
 	epochCount := 0
-	
+
 	for i := 0; i < b.N; i++ {
 		// Simulate epoch transition
 		if i%epochSize == 0 && i > 0 {
 			epochCount++
-			
+
 			// Start epoch close
 			fpc.OnEpochCloseStart()
-			
+
 			// Simulate epoch bit from validators
 			for v := 0; v < 67; v++ { // 2f+1
 				block := &Block{
@@ -480,12 +480,12 @@ func BenchmarkEpochTransition(b *testing.B) {
 				}
 				fpc.OnBlockAccepted(block)
 			}
-			
+
 			// Complete epoch close
 			fpc.OnEpochClosed()
 			fpc.epochPaused.Store(false) // Resume for test
 		}
-		
+
 		// Normal voting
 		tx := txs[i%numTxs]
 		block := &Block{
@@ -498,7 +498,7 @@ func BenchmarkEpochTransition(b *testing.B) {
 		}
 		fpc.OnBlockObserved(block)
 	}
-	
+
 	if epochCount > 0 {
 		b.ReportMetric(float64(epochCount), "epochs")
 	}
@@ -512,51 +512,51 @@ func BenchmarkWorstCase(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create maximum conflicts - all transactions conflict with each other
 	sharedObjID := ids.GenerateTestID()
 	sharedObj := ObjectID(sharedObjID[:])
-	
+
 	numTxs := 100
 	conflictingTxs := make([]TxRef, numTxs)
-	
+
 	for i := 0; i < numTxs; i++ {
 		txID := ids.GenerateTestID()
 		tx := TxRef(txID[:])
 		cls.addOwnedTx(tx, sharedObj)
 		conflictingTxs[i] = tx
-		
+
 		// Set conflicts with all previous
 		for j := 0; j < i; j++ {
 			cls.setConflict(tx, conflictingTxs[j])
 		}
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	// Process with maximum vote batches
 	maxVotes := 256
 	votes := make([][]byte, maxVotes)
-	
+
 	for i := 0; i < b.N; i++ {
 		// Fill vote batch with conflicting transactions
 		for v := 0; v < maxVotes; v++ {
 			tx := conflictingTxs[(i+v)%numTxs]
 			votes[v] = tx[:]
 		}
-		
+
 		block := &Block{
 			ID:     ids.GenerateTestID(),
 			Author: validators[i%n],
@@ -567,6 +567,6 @@ func BenchmarkWorstCase(b *testing.B) {
 		}
 		fpc.OnBlockObserved(block)
 	}
-	
+
 	b.ReportMetric(float64(maxVotes), "votes/block")
 }

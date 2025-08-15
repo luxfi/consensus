@@ -22,7 +22,7 @@ func (s Semantic) String() string {
 
 // Compare returns:
 // -1 if s < o
-// 0 if s == o  
+// 0 if s == o
 // 1 if s > o
 func (s Semantic) Compare(o Semantic) int {
 	if s.Major != o.Major {

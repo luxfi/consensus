@@ -1,6 +1,7 @@
 // Copyright (C) 2020-2025, Lux Indutries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
+//go:build skip
 // +build skip
 
 package validator_test
@@ -14,13 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/networking/grpc/grpcutils"
 	"github.com/luxfi/consensus/validator"
 	"github.com/luxfi/consensus/validator/gvalidators"
 	"github.com/luxfi/consensus/validator/validatorsmock"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/bls/signer/localsigner"
-	"github.com/luxfi/consensus/networking/grpc/grpcutils"
+	"github.com/luxfi/ids"
 
 	pb "github.com/luxfi/consensus/proto/pb/validatorstate"
 )
@@ -172,7 +173,7 @@ func TestGetValidatorSet(t *testing.T) {
 
 	vdrs, err := state.client.GetValidatorSet(context.Background(), height, subnetID)
 	require.NoError(err)
-	
+
 	// Compare validator sets by content, not pointer
 	require.Len(vdrs, len(expectedVdrs))
 	for nodeID, expectedVdr := range expectedVdrs {
@@ -180,7 +181,7 @@ func TestGetValidatorSet(t *testing.T) {
 		require.True(ok, "missing validator for node %s", nodeID)
 		require.Equal(expectedVdr.NodeID, actualVdr.NodeID)
 		require.Equal(expectedVdr.Weight, actualVdr.Weight)
-		
+
 		// Compare public keys by bytes if both are non-nil
 		if expectedVdr.PublicKey != nil && actualVdr.PublicKey != nil {
 			require.Equal(

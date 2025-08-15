@@ -9,7 +9,7 @@ import (
 
 var (
 	// Network IDs
-	UnitTestID   uint32 = 10
+	UnitTestID uint32 = 10
 
 	// Subnet IDs
 	PrimaryNetworkID = ids.Empty

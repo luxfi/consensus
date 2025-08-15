@@ -14,16 +14,14 @@ var DefaultParameters = Parameters{
 	AlphaPreference:       15,
 	AlphaConfidence:       15,
 	Beta:                  20,
-	QRounds:               2,  // Quantum rounds for dual-cert finality
-	QuasarTimeout:         50 * time.Millisecond,
+	DeltaMinMS:            50,
 	ConcurrentPolls:       4,
 	OptimalProcessing:     10,
 	MaxOutstandingItems:   256,
 	MaxItemProcessingTime: 30 * time.Second,
 	MinRoundInterval:      100 * time.Millisecond,
-	EnableFPC:             true,  // FPC enabled by default for 50x speedup
-	FPCVoteLimit:          100,
-	FPCVotePrefix:         []byte("FPC"),
+	FPC:                   DefaultFPC(), // FPC enabled by default for 50x speedup
+	Quasar:                QuasarConfig{Enable: false, Precompute: 0, Threshold: 0},
 }
 
 // TestParameters returns parameters suitable for testing
@@ -32,16 +30,14 @@ var TestParameters = Parameters{
 	AlphaPreference:       2,
 	AlphaConfidence:       2,
 	Beta:                  2,
-	QRounds:               2,
-	QuasarTimeout:         10 * time.Millisecond,
+	DeltaMinMS:            10,
 	ConcurrentPolls:       1,
 	OptimalProcessing:     1,
 	MaxOutstandingItems:   16,
 	MaxItemProcessingTime: 10 * time.Second,
 	MinRoundInterval:      10 * time.Millisecond,
-	EnableFPC:             true,  // FPC enabled for tests
-	FPCVoteLimit:          10,
-	FPCVotePrefix:         []byte("TEST"),
+	FPC:                   DefaultFPC(), // FPC enabled for tests
+	Quasar:                QuasarConfig{Enable: false, Precompute: 0, Threshold: 0},
 }
 
 // LocalParameters for local development (5 nodes)
@@ -50,16 +46,14 @@ var LocalParameters = Parameters{
 	AlphaPreference:       3,
 	AlphaConfidence:       4,
 	Beta:                  3,
-	QRounds:               2,
-	QuasarTimeout:         30 * time.Millisecond,
+	DeltaMinMS:            30,
 	ConcurrentPolls:       2,
 	OptimalProcessing:     3,
 	MaxOutstandingItems:   50,
 	MaxItemProcessingTime: 3690 * time.Millisecond,
 	MinRoundInterval:      10 * time.Millisecond,
-	EnableFPC:             true,  // FPC enabled for local dev
-	FPCVoteLimit:          50,
-	FPCVotePrefix:         []byte("LOCAL"),
+	FPC:                   DefaultFPC(), // FPC enabled for local dev
+	Quasar:                QuasarConfig{Enable: false, Precompute: 0, Threshold: 0},
 }
 
 // TestnetParameters for testnet (11 nodes)
@@ -68,13 +62,14 @@ var TestnetParameters = Parameters{
 	AlphaPreference:       7,
 	AlphaConfidence:       9,
 	Beta:                  6,
-	QThreshold:            8,
-	QuasarTimeout:         100 * time.Millisecond,
-	ConcurrentPolls:     4,
+	DeltaMinMS:            50,
+	ConcurrentPolls:       4,
 	OptimalProcessing:     5,
 	MaxOutstandingItems:   100,
 	MaxItemProcessingTime: 6300 * time.Millisecond,
 	MinRoundInterval:      50 * time.Millisecond,
+	FPC:                   DefaultFPC(), // FPC enabled by default
+	Quasar:                QuasarConfig{Enable: false, Precompute: 0, Threshold: 0},
 }
 
 // MainnetParameters for mainnet (21 nodes)
@@ -83,13 +78,14 @@ var MainnetParameters = Parameters{
 	AlphaPreference:       13,
 	AlphaConfidence:       18,
 	Beta:                  8,
-	QThreshold:            15,
-	QuasarTimeout:         50 * time.Millisecond,
-	ConcurrentPolls:     8,
+	DeltaMinMS:            50,
+	ConcurrentPolls:       8,
 	OptimalProcessing:     10,
 	MaxOutstandingItems:   369,
 	MaxItemProcessingTime: 9630 * time.Millisecond,
 	MinRoundInterval:      100 * time.Millisecond,
+	FPC:                   DefaultFPC(), // FPC enabled by default
+	Quasar:                QuasarConfig{Enable: true, Precompute: 2, Threshold: 15},
 }
 
 // GetParametersByName returns parameters by preset name
@@ -116,4 +112,22 @@ func GetPresetParameters(preset string) (Parameters, error) {
 // PresetNames returns all available preset names
 func PresetNames() []string {
 	return []string{"mainnet", "testnet", "local", "test"}
+}
+
+// MainnetParams returns mainnet configuration with all features enabled
+func MainnetParams() Parameters {
+	return Parameters{
+		K:                     21,
+		AlphaPreference:       15,
+		AlphaConfidence:       18,
+		Beta:                  6,
+		DeltaMinMS:            50,
+		ConcurrentPolls:       8,
+		OptimalProcessing:     10,
+		MaxOutstandingItems:   369,
+		MaxItemProcessingTime: 9630 * time.Millisecond,
+		MinRoundInterval:      100 * time.Millisecond,
+		FPC:                   DefaultFPC(),
+		Quasar:                QuasarConfig{Enable: true, Precompute: 2, Threshold: 15},
+	}
 }
