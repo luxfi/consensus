@@ -24,6 +24,11 @@ type Manager interface {
 	TotalWeight(subnetID ids.ID) (uint64, error)
 	NumValidators(subnetID ids.ID) int
 	RegisterSetCallbackListener(listener SetCallbackListener)
+	
+	// L1 Validator support
+	AddStaker(subnetID ids.ID, nodeID ids.NodeID, pk interface{}, validationID ids.ID, weight uint64) error
+	AddWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error
+	RemoveWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error
 }
 
 // NewManager creates a new validator manager
@@ -55,4 +60,19 @@ func (m *manager) NumValidators(subnetID ids.ID) int {
 
 func (m *manager) RegisterSetCallbackListener(listener SetCallbackListener) {
 	// No-op for now
+}
+
+func (m *manager) AddStaker(subnetID ids.ID, nodeID ids.NodeID, pk interface{}, validationID ids.ID, weight uint64) error {
+	// TODO: Implement L1 staker management
+	return nil
+}
+
+func (m *manager) AddWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error {
+	// TODO: Implement weight addition
+	return nil
+}
+
+func (m *manager) RemoveWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error {
+	// TODO: Implement weight removal
+	return nil
 }

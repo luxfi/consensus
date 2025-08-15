@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/types"
-	"github.com/luxfi/consensus/wave"
-	"github.com/luxfi/consensus/wave/fpc"
-	"github.com/luxfi/ids"
+	// "github.com/luxfi/consensus/wave"
+	// "github.com/luxfi/consensus/wave/fpc"
+	// "github.com/luxfi/ids"
 )
 
 type ItemID string
@@ -83,18 +83,18 @@ func main() {
 	fmt.Println()
 
 	// Setup validators
-	peers := []types.NodeID{
-		makeNodeID("validator1"),
-		makeNodeID("validator2"),
-		makeNodeID("validator3"),
-		makeNodeID("validator4"),
-		makeNodeID("validator5"),
-		makeNodeID("validator6"),
-		makeNodeID("validator7"),
-	}
+	// peers := []types.NodeID{
+	// 	makeNodeID("validator1"),
+	// 	makeNodeID("validator2"),
+	// 	makeNodeID("validator3"),
+	// 	makeNodeID("validator4"),
+	// 	makeNodeID("validator5"),
+	// 	makeNodeID("validator6"),
+	// 	makeNodeID("validator7"),
+	// }
 
 	// Create sampler - using a simple round-robin selector for demo
-	sel := &simpleSelector{peers: peers, idx: 0}
+	// sel := &simpleSelector{peers: peers, idx: 0}
 
 	// Create Wave consensus with FPC enabled (default configuration)
 	// TODO: Update to use new wave API
@@ -199,15 +199,16 @@ func main() {
 	fmt.Println("• Production-ready for millions of TPS on X-Chain")
 }
 
-func statusString(s fpc.Status) string {
-	switch s {
-	case fpc.StatusPending:
-		return "Pending"
-	case fpc.StatusExecutable:
-		return "Executable"
-	case fpc.StatusFinal:
-		return "Final"
-	default:
-		return "Unknown"
-	}
-}
+// TODO: Update when example is fixed
+// func statusString(s fpc.Status) string {
+// 	switch s {
+// 	case fpc.Pending:
+// 		return "Pending"
+// 	case fpc.Executable:
+// 		return "Executable"
+// 	case fpc.Final:
+// 		return "Final"
+// 	default:
+// 		return "Unknown"
+// 	}
+// }

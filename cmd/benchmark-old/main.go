@@ -93,7 +93,7 @@ func main() {
 		K:               params.K,
 		AlphaPreference: params.AlphaPreference,
 		AlphaConfidence: params.AlphaConfidence,
-		Beta:            params.Beta,
+		Beta:            int(params.Beta),
 		Mode:            quasar.PulsarMode,
 		SecurityLevel:   quasar.SecurityLevel(1), // Medium security level
 	}

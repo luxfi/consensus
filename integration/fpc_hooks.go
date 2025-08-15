@@ -9,16 +9,16 @@ import (
 
 	"github.com/luxfi/consensus/chain"
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/types"
-	"github.com/luxfi/consensus/wave/fpc"
-	"github.com/luxfi/consensus/witness"
+	// "github.com/luxfi/consensus/types" // TODO: Enable when TxRef is needed
+	// "github.com/luxfi/consensus/wave/fpc" // TODO: Enable when FPC is integrated
+	"github.com/luxfi/consensus/dag/witness"
 	"github.com/luxfi/log"
 )
 
 // FPCIntegration manages FPC integration with the consensus engine
 type FPCIntegration struct {
 	cfg           config.FPCConfig
-	fpcEngine     fpc.Engine
+	// fpcEngine     *fpc.Engine // TODO: Uncomment when FPC engine is ready
 	witnessCache  *witness.Cache
 	epochClosing  atomic.Bool
 	metricsPrefix string
@@ -31,34 +31,30 @@ func NewFPCIntegration(cfg config.FPCConfig, committeeSize int) *FPCIntegration 
 	}
 
 	// Create FPC engine with quorum for validators
-	quorum := fpc.Quorum{
-		N: committeeSize,
-		F: (committeeSize - 1) / 3, // Byzantine fault tolerance
-	}
+	// TODO: Create FPC engine when API is complete
+	// fpcCfg := fpc.Config{
+	// 	N:                 committeeSize,
+	// 	F:                 (committeeSize - 1) / 3, // Byzantine fault tolerance
+	// 	Epoch:             0,
+	// 	VoteLimitPerBlock: cfg.VoteLimitPerBlock,
+	// 	VotePrefix:        cfg.VotePrefix,
+	// 	EnableFastPath:    true, // Always enable fast path
+	// }
 
-	fpcCfg := fpc.Config{
-		Quorum:            quorum,
-		Epoch:             0,
-		VoteLimitPerBlock: cfg.VoteLimitPerBlock,
-		VotePrefix:        cfg.VotePrefix,
-	}
-
-	// Create witness cache for Verkle
-	witnessCfg := witness.Policy{
-		Mode:     witness.Soft, // Start in soft mode
-		MaxBytes: 1 << 20,      // 1 MiB full witness cap
-		MaxDelta: 256 << 10,    // 256 KiB delta cap
-	}
-
+	// Create witness cache for Verkle with proper caps
 	witnessCache := witness.NewCache(
-		witnessCfg,
-		8192,    // Node entries cap
-		128<<20, // 128 MiB node budget
+		witness.Policy{
+			Mode:     witness.RequireFull, // TODO: Update when Soft mode is available
+			MaxBytes: 1 << 20,             // 1 MiB full witness cap
+		},
+		1000,    // node entries cap
+		1<<24,   // 16 MiB node budget
 	)
 
 	return &FPCIntegration{
 		cfg:           cfg,
-		fpcEngine:     fpc.New(fpcCfg, fpc.SimpleClassifier{}),
+		// TODO: Update FPC engine creation when API is complete
+		// fpcEngine:     fpc.New(fpcCfg, classifier, dagTap, pqEngine, nodeID, peers),
 		witnessCache:  witnessCache,
 		metricsPrefix: "consensus_fpc_",
 	}
@@ -71,7 +67,9 @@ func (f *FPCIntegration) OnPropose(ctx context.Context) ProposalData {
 	}
 
 	// Get next batch of transactions to vote on
-	picks := f.fpcEngine.NextVotes(f.cfg.VoteLimitPerBlock)
+	// TODO: Enable when FPC engine is integrated
+	// picks := f.fpcEngine.NextVotes(f.cfg.VoteLimitPerBlock)
+	picks := [][32]byte{}
 
 	// Convert to byte slices for embedding
 	votes := make([][]byte, len(picks))
@@ -96,16 +94,17 @@ func (f *FPCIntegration) OnBlockObserved(ctx context.Context, blk chain.Block) {
 		return
 	}
 
-	blockRef := &fpc.BlockRef{
-		ID:       types.BlockID(blk.ID()),
-		Round:    blk.Height(),
-		Author:   types.NodeID(""), // Would come from block metadata
-		Final:    false,
-		EpochBit: blk.EpochBit(),
-		FPCVotes: blk.FPCVotes(),
-	}
-
-	f.fpcEngine.OnBlockObserved(ctx, blockRef)
+	// TODO: Enable when FPC engine and BlockRef are available
+	// blockRef := &fpc.BlockRef{
+	// 	ID:       types.BlockID(blk.ID()),
+	// 	Round:    blk.Height(),
+	// 	Author:   types.NodeID{}, // Would come from block metadata
+	// 	Final:    false,
+	// 	EpochBit: blk.EpochBit(),
+	// 	FPCVotes: blk.FPCVotes(),
+	// }
+	// f.fpcEngine.OnBlockObserved(ctx, blockRef)
+	_ = blk
 
 	// Record metrics - simplified without metrics registry for now
 	// TODO: Add proper metrics once registry is available
@@ -117,20 +116,24 @@ func (f *FPCIntegration) OnBlockAccepted(ctx context.Context, blk chain.Block) {
 		return
 	}
 
-	blockRef := &fpc.BlockRef{
-		ID:       types.BlockID(blk.ID()),
-		Round:    blk.Height(),
-		Author:   types.NodeID(""), // Would come from block metadata
-		Final:    true,
-		EpochBit: blk.EpochBit(),
-		FPCVotes: blk.FPCVotes(),
-	}
-
-	f.fpcEngine.OnBlockAccepted(ctx, blockRef)
+	// TODO: Enable when FPC engine and BlockRef are available
+	// blockRef := &fpc.BlockRef{
+	// 	ID:       types.BlockID(blk.ID()),
+	// 	Round:    blk.Height(),
+	// 	Author:   types.NodeID{}, // Would come from block metadata
+	// 	Final:    true,
+	// 	EpochBit: blk.EpochBit(),
+	// 	FPCVotes: blk.FPCVotes(),
+	// }
+	// f.fpcEngine.OnBlockAccepted(ctx, blockRef)
+	_ = blk
 
 	// Store committed root for witness caching
 	if stateRoot := extractStateRoot(blk); stateRoot != nil {
-		f.witnessCache.PutCommittedRoot(blk.ID(), stateRoot)
+		// Convert stateRoot to [32]byte
+		var root [32]byte
+		copy(root[:], stateRoot)
+		f.witnessCache.PutCommittedRoot(blk.ID(), root)
 	}
 
 	// Record metrics - simplified without metrics registry for now
@@ -138,19 +141,20 @@ func (f *FPCIntegration) OnBlockAccepted(ctx context.Context, blk chain.Block) {
 }
 
 // ValidateWitness checks if witness size is acceptable
-func (f *FPCIntegration) ValidateWitness(ctx context.Context, header witness.Header, witnessBytes []byte) bool {
-	if f == nil || f.witnessCache == nil {
-		return true // No witness validation if not configured
-	}
-
-	ok, wsize, _ := f.witnessCache.Validate(header, witnessBytes)
-
-	// Record witness size metrics - simplified without metrics registry for now
-	// TODO: Add proper metrics once registry is available
-	_ = wsize // Avoid unused variable warning
-
-	return ok
-}
+// TODO: Update when witness.Header is available
+// func (f *FPCIntegration) ValidateWitness(ctx context.Context, header witness.Header, witnessBytes []byte) bool {
+// 	if f == nil || f.witnessCache == nil {
+// 		return true // No witness validation if not configured
+// 	}
+//
+// 	ok, wsize, _ := f.witnessCache.Validate(header, witnessBytes)
+//
+// 	// Record witness size metrics - simplified without metrics registry for now
+// 	// TODO: Add proper metrics once registry is available
+// 	_ = wsize // Avoid unused variable warning
+//
+// 	return ok
+// }
 
 // ExecuteOwned executes owned transactions that reached Executable status
 func (f *FPCIntegration) ExecuteOwned(ctx context.Context, executor TxExecutor) error {
@@ -158,7 +162,9 @@ func (f *FPCIntegration) ExecuteOwned(ctx context.Context, executor TxExecutor) 
 		return nil
 	}
 
-	ownedTxs := f.fpcEngine.ExecutableOwned()
+	// TODO: Enable when FPC engine is integrated
+	// ownedTxs := f.fpcEngine.ExecutableOwned()
+	ownedTxs := [][32]byte{}
 
 	for _, tx := range ownedTxs {
 		if err := executor.Execute(ctx, tx[:]); err != nil {
@@ -183,11 +189,14 @@ func (f *FPCIntegration) ShouldExecuteMixed(txID []byte) bool {
 		return false
 	}
 
-	var tx types.TxRef
+	var tx [32]byte
 	copy(tx[:], txID)
 
-	status, _ := f.fpcEngine.Status(tx)
-	return status == fpc.StatusFinal
+	// TODO: Enable when FPC engine is integrated
+	// status, _ := f.fpcEngine.Status(tx)
+	// return status == fpc.StatusFinal
+	_ = tx
+	return false
 }
 
 // SetEpochClosing marks that epoch is closing (enables epoch fence)
