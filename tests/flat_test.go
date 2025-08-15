@@ -53,7 +53,7 @@ func testFlatConsensus(t *testing.T, consensus interface {
 	}
 
 	// Record votes until finalized
-	for i := 0; i < params.Beta && !consensus.Finalized(); i++ {
+	for i := 0; i < int(params.Beta) && !consensus.Finalized(); i++ {
 		require.NoError(consensus.RecordVotes(votes))
 	}
 
@@ -91,7 +91,7 @@ func TestFlatWithEqualVotes(t *testing.T) {
 		blueVotes.Add(Blue)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(blueVotes))
 	}
 
@@ -123,7 +123,7 @@ func TestFlatNoVotes(t *testing.T) {
 		redVotes.Add(Red)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(redVotes))
 	}
 
@@ -182,7 +182,7 @@ func TestFlatManyChoices(t *testing.T) {
 		votes.Add(target)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(votes))
 	}
 

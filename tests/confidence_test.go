@@ -49,7 +49,7 @@ func TestConfidenceReset(t *testing.T) {
 
 		require.NoError(p.RecordVotes(weakVotes))
 		// Should need full Beta rounds to finalize
-		for i := 0; i < params.Beta; i++ {
+		for i := 0; i < int(params.Beta); i++ {
 			require.NoError(p.RecordVotes(goodVotes))
 		}
 		require.True(p.Finalized())
@@ -81,7 +81,7 @@ func TestConfidenceReset(t *testing.T) {
 		require.Equal(Red, p.Preference())
 
 		// Should need full Beta rounds to finalize on Red
-		for i := 0; i < params.Beta; i++ {
+		for i := 0; i < int(params.Beta); i++ {
 			require.NoError(p.RecordVotes(redVotes))
 		}
 		require.True(p.Finalized())
@@ -110,7 +110,7 @@ func TestConfidenceReset(t *testing.T) {
 		require.NoError(w.RecordVotes(emptyVotes))
 
 		// Should need full Beta rounds to finalize
-		for i := 0; i < params.Beta; i++ {
+		for i := 0; i < int(params.Beta); i++ {
 			require.NoError(w.RecordVotes(greenVotes))
 		}
 		require.True(w.Finalized())
@@ -140,7 +140,7 @@ func TestConfidenceThreshold(t *testing.T) {
 
 	require.NoError(p.RecordVotes(belowVotes))
 	// No confidence gain - shouldn't finalize even with Beta rounds
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(belowVotes))
 	}
 	require.False(p.Finalized())
@@ -162,7 +162,7 @@ func TestConfidenceThreshold(t *testing.T) {
 
 	require.NoError(p.RecordVotes(aboveVotes))
 	// Should finalize after Beta-2 more rounds
-	for i := 0; i < params.Beta-2; i++ {
+	for i := 0; i < int(params.Beta)-2; i++ {
 		require.NoError(p.RecordVotes(aboveVotes))
 	}
 	require.True(p.Finalized())
@@ -190,7 +190,7 @@ func TestConfidenceProgression(t *testing.T) {
 	}
 
 	// Record Beta rounds
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(blueVotes))
 	}
 
@@ -341,7 +341,7 @@ func TestConfidenceAfterFinalized(t *testing.T) {
 		blueVotes.Add(Blue)
 	}
 
-	for i := 0; i < customParams.Beta; i++ {
+	for i := 0; i < int(customParams.Beta); i++ {
 		require.NoError(p.RecordVotes(blueVotes))
 	}
 

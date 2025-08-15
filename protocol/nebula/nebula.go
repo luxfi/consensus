@@ -128,5 +128,7 @@ func (e *Engine[V]) Reset() {
 	e.finalized = make(map[V]bool)
 	e.pending = nil
 	e.frontier = nil
-	e.cfg.Confidence.Reset()
+	if e.cfg.Confidence != nil {
+		e.cfg.Confidence.Reset()
+	}
 }

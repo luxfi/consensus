@@ -38,13 +38,13 @@ func TestVirtuousBehavior(t *testing.T) {
 		}
 		
 		rounds := 0
-		for !p.Finalized() && rounds < params.Beta*2 {
+		for !p.Finalized() && rounds < int(params.Beta)*2 {
 			require.NoError(p.RecordVotes(votes))
 			rounds++
 		}
 		
 		require.True(p.Finalized())
-		require.Equal(params.Beta, rounds) // Should finalize in exactly Beta rounds
+		require.Equal(params.Beta, uint32(rounds)) // Should finalize in exactly Beta rounds
 	})
 	
 	t.Run("Pulse", func(t *testing.T) {
@@ -59,14 +59,14 @@ func TestVirtuousBehavior(t *testing.T) {
 		}
 		
 		rounds := 0
-		for !p.Finalized() && rounds < params.Beta*2 {
+		for !p.Finalized() && rounds < int(params.Beta)*2 {
 			require.NoError(p.RecordVotes(votes))
 			rounds++
 		}
 		
 		require.True(p.Finalized())
 		require.Equal(Blue, p.Preference())
-		require.Equal(params.Beta, rounds)
+		require.Equal(params.Beta, uint32(rounds))
 	})
 	
 	t.Run("Wave", func(t *testing.T) {
@@ -85,14 +85,14 @@ func TestVirtuousBehavior(t *testing.T) {
 		}
 		
 		rounds := 0
-		for !w.Finalized() && rounds < params.Beta*2 {
+		for !w.Finalized() && rounds < int(params.Beta)*2 {
 			require.NoError(w.RecordVotes(votes))
 			rounds++
 		}
 		
 		require.True(w.Finalized())
 		require.Equal(target, w.Preference())
-		require.Equal(params.Beta, rounds)
+		require.Equal(params.Beta, uint32(rounds))
 	})
 }
 
@@ -186,7 +186,7 @@ func TestVirtuousMinorityHonest(t *testing.T) {
 	
 	// Simulate rounds
 	rounds := 0
-	maxRounds := params.Beta * 10
+	maxRounds := int(params.Beta) * 10
 	
 	for rounds < maxRounds {
 		votes := bag.Bag[ids.ID]{}
@@ -260,7 +260,7 @@ func TestVirtuousConvergenceSpeed(t *testing.T) {
 			
 			rounds := 0
 			allFinalized := false
-			for rounds < params.Beta*2 && !allFinalized {
+			for rounds < int(params.Beta)*2 && !allFinalized {
 				rounds++
 				allFinalized = true
 				for _, node := range nodes {
@@ -273,7 +273,7 @@ func TestVirtuousConvergenceSpeed(t *testing.T) {
 			
 			// Virtuous should finalize in Beta+1 rounds when starting with wrong preference
 			// (1 round to switch preference, then Beta rounds to build confidence)
-			require.Equal(t, params.Beta+1, rounds)
+			require.Equal(t, int(params.Beta)+1, rounds)
 			
 			// All should agree
 			for _, node := range nodes {
@@ -316,7 +316,7 @@ func TestVirtuousRecovery(t *testing.T) {
 	
 	// Should recover and finalize
 	rounds := 0
-	for !w.Finalized() && rounds < params.Beta*2 {
+	for !w.Finalized() && rounds < int(params.Beta)*2 {
 		require.NoError(w.RecordVotes(virtuousVotes))
 		rounds++
 	}
@@ -325,7 +325,7 @@ func TestVirtuousRecovery(t *testing.T) {
 	require.Equal(Blue, w.Preference())
 	// After flipping, confidence may already be partially built
 	// so it might take less than Beta rounds to finalize
-	require.LessOrEqual(rounds, params.Beta)
+	require.LessOrEqual(uint32(rounds), params.Beta)
 }
 
 // TestVirtuousStability tests stability under virtuous conditions
@@ -367,14 +367,14 @@ func TestVirtuousStability(t *testing.T) {
 	for _, p := range protocols {
 		t.Run(p.name, func(t *testing.T) {
 			rounds := 0
-			for !p.instance.Finalized() && rounds < params.Beta*2 {
+			for !p.instance.Finalized() && rounds < int(params.Beta)*2 {
 				require.NoError(p.instance.RecordVotes(votes))
 				rounds++
 			}
 			
 			require.True(p.instance.Finalized())
 			require.Equal(Red, p.instance.Preference())
-			require.Equal(params.Beta, rounds)
+			require.Equal(params.Beta, uint32(rounds))
 		})
 	}
 }

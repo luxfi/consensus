@@ -78,7 +78,7 @@ func TestPhotonConsensus(t *testing.T) {
 	}
 
 	// Should finalize after Beta consecutive successful polls
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(photonInstance.RecordVotes(votes))
 		t.Logf("Round %d: finalized=%v, confidence=%v", i+1, photonInstance.Finalized(), photonInstance)
 	}
@@ -111,7 +111,7 @@ func TestPulseConsensus(t *testing.T) {
 	}
 
 	// Record votes until finalized
-	for round := 0; round < params.Beta+1 && !pulseInstance.Finalized(); round++ {
+	for round := 0; round < int(params.Beta)+1 && !pulseInstance.Finalized(); round++ {
 		require.NoError(pulseInstance.RecordVotes(votes))
 	}
 
@@ -143,7 +143,7 @@ func TestWaveConsensus(t *testing.T) {
 	}
 
 	// Wave through rounds
-	for round := 0; round < params.Beta+1 && !waveInstance.Finalized(); round++ {
+	for round := 0; round < int(params.Beta)+1 && !waveInstance.Finalized(); round++ {
 		require.NoError(waveInstance.RecordVotes(votes))
 	}
 
@@ -223,11 +223,11 @@ func TestConsensusComparison(t *testing.T) {
 	}
 
 	// Run consensus rounds
-	maxRounds := params.Beta * 2
+	maxRounds := int(params.Beta) * 2
 	photonFinalized := false
 	protocolsFinalized := 0
 
-	for round := 0; round < maxRounds && (!photonFinalized || protocolsFinalized < len(protocols)); round++ {
+	for round := 0; round < int(maxRounds) && (!photonFinalized || protocolsFinalized < len(protocols)); round++ {
 		// Handle photon separately
 		if !photonFinalized && !photonInstance.Finalized() {
 			require.NoError(photonInstance.RecordVotes(votes))
