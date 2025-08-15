@@ -67,7 +67,7 @@ func TestPhotonConsensus(t *testing.T) {
 	params := config.DefaultParameters
 
 	photonInstance := photon.NewPhoton(params)
-	
+
 	// Photon only accepts one choice - let's test with Blue
 	require.NoError(photonInstance.Add(Blue))
 	require.Equal(Blue, photonInstance.Preference())
@@ -95,7 +95,7 @@ func TestPulseConsensus(t *testing.T) {
 	params := config.DefaultParameters
 
 	pulseInstance := pulse.NewPulse(params)
-	
+
 	// Add choices
 	require.NoError(pulseInstance.Add(Red))
 	require.NoError(pulseInstance.Add(Blue))
@@ -127,7 +127,7 @@ func TestWaveConsensus(t *testing.T) {
 	params := config.DefaultParameters
 
 	waveInstance := wave.NewWave(params)
-	
+
 	// Add decisions
 	require.NoError(waveInstance.Add(Red))
 	require.NoError(waveInstance.Add(Blue))
@@ -174,7 +174,7 @@ func TestByzantineNode(t *testing.T) {
 
 	require.NoError(byzNode.RecordVotes(votes))
 	require.Equal(Red, byzNode.Preference()) // Still Red
-	require.False(byzNode.Finalized()) // Not yet finalized
+	require.False(byzNode.Finalized())       // Not yet finalized
 }
 
 // TestConsensusComparison tests multiple consensus protocols side by side
@@ -195,7 +195,7 @@ func TestConsensusComparison(t *testing.T) {
 
 	// Photon only accepts one choice, so we'll only test Green for it
 	require.NoError(photonInstance.Add(Green))
-	
+
 	// Pulse and wave can handle multiple choices
 	protocols := []interfaces.Consensus{
 		pulseInstance,
@@ -233,7 +233,7 @@ func TestConsensusComparison(t *testing.T) {
 				t.Logf("Photon finalized at round %d with preference %s", round+1, photonInstance.Preference())
 			}
 		}
-		
+
 		// Handle pulse and wave
 		for _, protocol := range protocols {
 			if !protocol.Finalized() {
@@ -265,10 +265,10 @@ func TestConsensusLiveness(t *testing.T) {
 	photonInstance := photon.NewPhoton(params)
 	pulseInstance := pulse.NewPulse(params)
 	waveInstance := wave.NewWave(params)
-	
+
 	// Photon only accepts one choice
 	require.NoError(photonInstance.Add(Red))
-	
+
 	// Pulse and wave accept multiple choices
 	protocols := map[string]interfaces.Consensus{
 		"pulse": pulseInstance,
@@ -284,11 +284,11 @@ func TestConsensusLiveness(t *testing.T) {
 	// Simulate changing votes over time
 	for round := 0; round < 100; round++ {
 		votes := bag.Bag[ids.ID]{}
-		
+
 		// Gradually shift from Red to Blue
 		redVotes := params.K - (round * params.K / 100)
 		blueVotes := params.K - redVotes
-		
+
 		for i := 0; i < redVotes; i++ {
 			votes.Add(Red)
 		}
@@ -303,7 +303,7 @@ func TestConsensusLiveness(t *testing.T) {
 				t.Logf("photon finalized at round %d with preference %s", round+1, photonInstance.Preference())
 			}
 		}
-		
+
 		// Handle pulse and wave
 		for name, protocol := range protocols {
 			if !protocol.Finalized() {

@@ -26,11 +26,11 @@ type GetChainRequest struct {
 	ContainerID []byte
 }
 
-// GetChainResponse represents a chain response  
+// GetChainResponse represents a chain response
 type GetChainResponse struct {
-	ChainID     []byte
-	RequestID   uint32
-	Container   []byte
+	ChainID   []byte
+	RequestID uint32
+	Container []byte
 }
 
 // AppRequest represents an app request
@@ -50,8 +50,8 @@ type AppResponse struct {
 
 // AppError represents an app error
 type AppError struct {
-	ChainID     []byte
-	RequestID   uint32
-	ErrorCode   int32
+	ChainID      []byte
+	RequestID    uint32
+	ErrorCode    int32
 	ErrorMessage string
 }

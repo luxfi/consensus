@@ -16,10 +16,10 @@ type SafetyTag struct {
 
 type Photon[ID comparable] struct {
 	Item    ID
-	Prefer  bool             // binary preference for FPC; or use enum
+	Prefer  bool // binary preference for FPC; or use enum
 	Tag     SafetyTag
 	Author  types.NodeID
-	MsgRoot types.Digest     // commitment of payload
-	BlsAgg  []byte           // optional single-signer or partial agg
-	PQSig   []byte           // ringtail / pq signature
+	MsgRoot types.Digest // commitment of payload
+	BlsAgg  []byte       // optional single-signer or partial agg
+	PQSig   []byte       // ringtail / pq signature
 }

@@ -38,12 +38,12 @@ func (a *Application) Compatible(other *Application) bool {
 
 // Constants for version compatibility
 type Compatibility struct {
-	Version                       string
-	VersionTime                   time.Time
-	MinimumCompatibleVersion      string
-	MinimumUnmaskedVersion        string
-	PrevMinimumCompatibleVersion  string
-	MinimumMaskableVersion        string
+	Version                      string
+	VersionTime                  time.Time
+	MinimumCompatibleVersion     string
+	MinimumUnmaskedVersion       string
+	PrevMinimumCompatibleVersion string
+	MinimumMaskableVersion       string
 }
 
 // DefaultVersion returns the default application version

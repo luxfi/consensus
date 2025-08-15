@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/consensus/engine/chain"
 	"github.com/luxfi/consensus/engine/dag"
+	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/ids"
 )
 
@@ -21,20 +21,20 @@ import (
 type Engine struct {
 	// Core engine - Quasar for quantum-secure unified consensus
 	engine *quasar.Engine
-	
+
 	// Sub-engines
 	chains map[string]*chain.Engine // Linear chain engines
-	dags   map[string]*dag.Engine  // DAG engines
-	
+	dags   map[string]*dag.Engine   // DAG engines
+
 	// Cross-engine coordination
 	bridges     map[BridgeID]*ConsensusBridge
 	coordinator *UniversalCoordinator
-	
+
 	// Engine state
 	params Parameters
 	state  *engineState
 	mu     sync.RWMutex
-	
+
 	// Metrics
 	metrics *Metrics
 }
@@ -45,15 +45,15 @@ type Parameters struct {
 	MaxOrbits   int
 	MaxGalaxies int
 	MaxBridges  int
-	
+
 	// Coordination parameters
-	CrossChainTimeout      time.Duration
-	ConsensusThreshold     float64
-	InterEngineBatchSize  int
-	
+	CrossChainTimeout    time.Duration
+	ConsensusThreshold   float64
+	InterEngineBatchSize int
+
 	// Quasar engine parameters
-	QuantumSecurityLevel   int
-	UnifiedConsensusMode   quasar.EngineMode
+	QuantumSecurityLevel int
+	UnifiedConsensusMode quasar.EngineMode
 }
 
 // New creates a new Gravity engine
@@ -66,17 +66,17 @@ func New(ctx context.Context, params Parameters) (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create quasar engine: %w", err)
 	}
-	
+
 	// Create universal coordinator
 	coordinator := NewUniversalCoordinator(CoordinatorParams{
 		ConsensusThreshold: params.ConsensusThreshold,
-		BatchSize:         params.InterEngineBatchSize,
+		BatchSize:          params.InterEngineBatchSize,
 	})
-	
+
 	return &Engine{
 		engine:      engine,
-		chains:   make(map[string]*chain.Engine),
-		dags:     make(map[string]*dag.Engine),
+		chains:      make(map[string]*chain.Engine),
+		dags:        make(map[string]*dag.Engine),
 		bridges:     make(map[BridgeID]*ConsensusBridge),
 		coordinator: coordinator,
 		params:      params,
@@ -89,28 +89,28 @@ func New(ctx context.Context, params Parameters) (*Engine, error) {
 func (r *Engine) Start(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if r.state.running {
 		return fmt.Errorf("engine already running")
 	}
-	
+
 	// Initialize and start Quasar engine
 	if err := r.engine.Initialize(ctx); err != nil {
 		return fmt.Errorf("failed to initialize quasar engine: %w", err)
 	}
-	
+
 	if err := r.engine.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start quasar engine: %w", err)
 	}
-	
+
 	// Start coordinator
 	if err := r.coordinator.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start coordinator: %w", err)
 	}
-	
+
 	r.state.running = true
 	r.state.startTime = time.Now()
-	
+
 	return nil
 }
 
@@ -118,11 +118,11 @@ func (r *Engine) Start(ctx context.Context) error {
 func (r *Engine) Stop(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if !r.state.running {
 		return fmt.Errorf("engine not running")
 	}
-	
+
 	// Stop all sub-engines
 	for name, chainEngine := range r.chains {
 		if chainEngine.IsRunning() {
@@ -131,7 +131,7 @@ func (r *Engine) Stop(ctx context.Context) error {
 			}
 		}
 	}
-	
+
 	for name, dagEngine := range r.dags {
 		// Only stop if the DAG engine is running
 		if dagEngine.IsRunning() {
@@ -140,17 +140,17 @@ func (r *Engine) Stop(ctx context.Context) error {
 			}
 		}
 	}
-	
+
 	// Stop coordinator
 	if err := r.coordinator.Stop(ctx); err != nil {
 		return fmt.Errorf("failed to stop coordinator: %w", err)
 	}
-	
+
 	// Stop engine
 	if err := r.engine.Stop(ctx); err != nil {
 		return fmt.Errorf("failed to stop quasar engine: %w", err)
 	}
-	
+
 	r.state.running = false
 	return nil
 }
@@ -159,25 +159,25 @@ func (r *Engine) Stop(ctx context.Context) error {
 func (r *Engine) CreateChain(name string, params Parameters) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if len(r.chains) >= r.params.MaxOrbits {
 		return fmt.Errorf("maximum orbits reached: %d", r.params.MaxOrbits)
 	}
-	
+
 	if _, exists := r.chains[name]; exists {
 		return fmt.Errorf("chain %s already exists", name)
 	}
-	
+
 	// Create context for chain.New
 	ctx := context.Background()
 	chainEngine, err := chain.New(ctx, chain.Parameters{})
 	if err != nil {
 		return fmt.Errorf("failed to create chain: %w", err)
 	}
-	
+
 	r.chains[name] = chainEngine
 	r.state.orbitCount = len(r.chains)
-	
+
 	return nil
 }
 
@@ -185,25 +185,25 @@ func (r *Engine) CreateChain(name string, params Parameters) error {
 func (r *Engine) CreateDAG(name string, params dag.Parameters) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if len(r.dags) >= r.params.MaxGalaxies {
 		return fmt.Errorf("maximum galaxies reached: %d", r.params.MaxGalaxies)
 	}
-	
+
 	if _, exists := r.dags[name]; exists {
 		return fmt.Errorf("dag %s already exists", name)
 	}
-	
+
 	// Create context for dag.New
 	ctx := context.Background()
 	dagEngine, err := dag.New(ctx, params)
 	if err != nil {
 		return fmt.Errorf("failed to create dag: %w", err)
 	}
-	
+
 	r.dags[name] = dagEngine
 	r.state.galaxyCount = len(r.dags)
-	
+
 	return nil
 }
 
@@ -211,20 +211,20 @@ func (r *Engine) CreateDAG(name string, params dag.Parameters) error {
 func (r *Engine) CreateBridge(params BridgeParams) (BridgeID, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if len(r.bridges) >= r.params.MaxBridges {
 		return BridgeID{}, fmt.Errorf("maximum bridges reached: %d", r.params.MaxBridges)
 	}
-	
+
 	bridge := NewConsensusBridge(params)
 	bridgeID := bridge.ID()
-	
+
 	r.bridges[bridgeID] = bridge
 	r.state.bridgeCount = len(r.bridges)
-	
+
 	// Register bridge with coordinator
 	r.coordinator.RegisterBridge(bridge)
-	
+
 	return bridgeID, nil
 }
 
@@ -232,16 +232,16 @@ func (r *Engine) CreateBridge(params BridgeParams) (BridgeID, error) {
 func (r *Engine) SubmitCrossEngineTransaction(ctx context.Context, tx CrossEngineTx) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if !r.state.running {
 		return fmt.Errorf("engine not running")
 	}
-	
+
 	// Validate transaction
 	if err := r.validateCrossEngineTx(tx); err != nil {
 		return fmt.Errorf("invalid cross-engine transaction: %w", err)
 	}
-	
+
 	// Submit to coordinator for atomic processing
 	return r.coordinator.ProcessTransaction(ctx, tx)
 }
@@ -261,7 +261,7 @@ func (r *Engine) validateCrossEngineTx(tx CrossEngineTx) error {
 	default:
 		return fmt.Errorf("unknown source engine type: %v", tx.SourceType)
 	}
-	
+
 	// Check destination engine exists
 	switch tx.DestType {
 	case EngineTypeOrbit:
@@ -275,7 +275,7 @@ func (r *Engine) validateCrossEngineTx(tx CrossEngineTx) error {
 	default:
 		return fmt.Errorf("unknown destination engine type: %v", tx.DestType)
 	}
-	
+
 	return tx.Verify()
 }
 
@@ -283,7 +283,7 @@ func (r *Engine) validateCrossEngineTx(tx CrossEngineTx) error {
 func (r *Engine) GetUniversalState() UniversalState {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	return UniversalState{
 		OrbitCount:       r.state.orbitCount,
 		GalaxyCount:      r.state.galaxyCount,
@@ -338,13 +338,13 @@ const (
 
 // CrossEngineTx represents a transaction across engines
 type CrossEngineTx struct {
-	ID            ids.ID
-	SourceType    EngineType
+	ID           ids.ID
+	SourceType   EngineType
 	SourceEngine string
-	DestType      EngineType
+	DestType     EngineType
 	DestEngine   string
-	Payload       []byte
-	Timestamp     time.Time
+	Payload      []byte
+	Timestamp    time.Time
 }
 
 func (tx CrossEngineTx) Verify() error {
@@ -360,8 +360,8 @@ type BridgeID struct {
 
 // BridgeParams configures a consensus bridge
 type BridgeParams struct {
-	SourceEngine string
-	DestEngine   string
+	SourceEngine  string
+	DestEngine    string
 	Bidirectional bool
 	BatchSize     int
 	Timeout       time.Duration
@@ -396,7 +396,7 @@ type UniversalCoordinator struct {
 
 type CoordinatorParams struct {
 	ConsensusThreshold float64
-	BatchSize         int
+	BatchSize          int
 }
 
 func NewUniversalCoordinator(params CoordinatorParams) *UniversalCoordinator {
@@ -460,6 +460,7 @@ type Metrics struct {
 
 // Stub types for metrics
 type Counter struct{ count int64 }
+
 func (c *Counter) Inc() { c.count++ }
 
 type Histogram struct{}
@@ -473,4 +474,3 @@ func NewMetrics() *Metrics {
 		UniversalTPS:     &Gauge{},
 	}
 }
-

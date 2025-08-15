@@ -15,16 +15,16 @@ type Config struct {
 	ApricotPhase3Time time.Time
 	ApricotPhase4Time time.Time
 	ApricotPhase5Time time.Time
-	
+
 	// Banff upgrade
 	BanffTime time.Time
-	
+
 	// Cortina upgrade
 	CortinaTime time.Time
-	
+
 	// Durango upgrade
 	DurangoTime time.Time
-	
+
 	// Etna upgrade
 	EtnaTime time.Time
 }

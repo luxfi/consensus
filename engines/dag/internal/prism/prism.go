@@ -22,7 +22,7 @@ type Options struct {
 	Horizon  time.Duration
 	MinPeers int
 	MaxPeers int
-	Stake    func(types.NodeID) float64      // optional
+	Stake    func(types.NodeID) float64       // optional
 	Latency  func(types.NodeID) time.Duration // optional
 }
 

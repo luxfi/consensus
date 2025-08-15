@@ -38,7 +38,7 @@ func (t *Transport) ConsensusMessage(msgType string, height uint64, round uint32
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal data: %w", err)
 	}
-	
+
 	return &Message{
 		Type:   msgType,
 		From:   t.nodeID,

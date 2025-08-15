@@ -18,7 +18,7 @@ func TestQuantumParameters(t *testing.T) {
 	require.Equal(t, 8, MainnetParameters.Beta)
 	require.Equal(t, 15, MainnetParameters.QThreshold)
 	require.Equal(t, 50*time.Millisecond, MainnetParameters.QuasarTimeout)
-	
+
 	// Test testnet quantum parameters
 	require.Equal(t, 11, TestnetParameters.K)
 	require.Equal(t, 7, TestnetParameters.AlphaPreference)
@@ -34,7 +34,7 @@ func TestQuantumThresholdValidation(t *testing.T) {
 		AlphaPreference:       13,
 		AlphaConfidence:       18,
 		Beta:                  8,
-		ConcurrentPolls:     8,
+		ConcurrentPolls:       8,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: 9630 * time.Millisecond,
@@ -42,14 +42,14 @@ func TestQuantumThresholdValidation(t *testing.T) {
 		QThreshold:            15,
 		QuasarTimeout:         50 * time.Millisecond,
 	}
-	
+
 	// Should be valid
 	require.NoError(t, params.Valid())
-	
+
 	// Test QThreshold bounds - too low
 	params.QThreshold = 0
 	require.Error(t, params.Valid())
-	
+
 	// Test QThreshold bounds - too high
 	params.QThreshold = 22
 	require.Error(t, params.Valid())

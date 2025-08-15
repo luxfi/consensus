@@ -24,7 +24,7 @@ type Config struct {
 	AlphaPreference       int           `json:"alphaPreference"`
 	AlphaConfidence       int           `json:"alphaConfidence"`
 	Beta                  int           `json:"beta"`
-	ConcurrentPolls     int           `json:"concurrentPolls"`
+	ConcurrentPolls       int           `json:"concurrentPolls"`
 	OptimalProcessing     int           `json:"optimalProcessing"`
 	MaxOutstandingItems   int           `json:"maxOutstandingItems"`
 	MaxItemProcessingTime time.Duration `json:"maxItemProcessingTime"`
@@ -33,14 +33,14 @@ type Config struct {
 	// Advanced parameters
 	MixedQueryNumPushVdr int           `json:"mixedQueryNumPushVdr,omitempty"`
 	NetworkLatency       time.Duration `json:"networkLatency,omitempty"`
-	
+
 	// Network characteristics (for reference)
-	TotalNodes           int     `json:"totalNodes,omitempty"`
-	ExpectedFailureRate  float64 `json:"expectedFailureRate,omitempty"`
-	
+	TotalNodes          int     `json:"totalNodes,omitempty"`
+	ExpectedFailureRate float64 `json:"expectedFailureRate,omitempty"`
+
 	// Quantum consensus parameters
-	QThreshold           int           `json:"qThreshold,omitempty"`
-	QuasarTimeout        time.Duration `json:"quasarTimeout,omitempty"`
+	QThreshold    int           `json:"qThreshold,omitempty"`
+	QuasarTimeout time.Duration `json:"quasarTimeout,omitempty"`
 }
 
 // Builder provides a fluent interface for constructing consensus configurations
@@ -58,7 +58,7 @@ func NewBuilder() *Builder {
 			AlphaPreference:       7,
 			AlphaConfidence:       9,
 			Beta:                  10,
-			ConcurrentPolls:     10,
+			ConcurrentPolls:       10,
 			OptimalProcessing:     10,
 			MaxOutstandingItems:   256,
 			MaxItemProcessingTime: 10 * time.Second,
@@ -84,13 +84,13 @@ func (b *Builder) FromPreset(preset NetworkType) *Builder {
 	default:
 		b.err = fmt.Errorf("unknown preset: %s", preset)
 	}
-	
+
 	// Clone to avoid modifying presets
 	if b.config != nil {
 		clone := *b.config
 		b.config = &clone
 	}
-	
+
 	return b
 }
 
@@ -99,14 +99,14 @@ func (b *Builder) WithSampleSize(k int) *Builder {
 	if b.err != nil {
 		return b
 	}
-	
+
 	if k < 1 {
 		b.err = fmt.Errorf("K must be at least 1, got %d", k)
 		return b
 	}
-	
+
 	b.config.K = k
-	
+
 	// Auto-adjust quorums if needed
 	if b.config.AlphaPreference > k {
 		b.config.AlphaPreference = (k * 2 / 3) + 1
@@ -114,7 +114,7 @@ func (b *Builder) WithSampleSize(k int) *Builder {
 	if b.config.AlphaConfidence > k {
 		b.config.AlphaConfidence = (k * 3 / 4) + 1
 	}
-	
+
 	return b
 }
 
@@ -123,7 +123,7 @@ func (b *Builder) WithQuorums(alphaPref, alphaConf int) *Builder {
 	if b.err != nil {
 		return b
 	}
-	
+
 	// Validate quorum constraints
 	minAlpha := b.config.K/2 + 1
 	if alphaPref < minAlpha {
@@ -138,10 +138,10 @@ func (b *Builder) WithQuorums(alphaPref, alphaConf int) *Builder {
 		b.err = fmt.Errorf("AlphaConfidence must be <= K, got %d > %d", alphaConf, b.config.K)
 		return b
 	}
-	
+
 	b.config.AlphaPreference = alphaPref
 	b.config.AlphaConfidence = alphaConf
-	
+
 	return b
 }
 
@@ -150,19 +150,19 @@ func (b *Builder) WithBeta(beta int) *Builder {
 	if b.err != nil {
 		return b
 	}
-	
+
 	if beta < 1 {
 		b.err = fmt.Errorf("Beta must be at least 1, got %d", beta)
 		return b
 	}
-	
+
 	b.config.Beta = beta
-	
+
 	// Auto-set concurrent polls if not explicitly set
 	if b.config.ConcurrentPolls > beta {
 		b.config.ConcurrentPolls = beta
 	}
-	
+
 	return b
 }
 
@@ -171,7 +171,7 @@ func (b *Builder) WithConcurrentPolls(concurrent int) *Builder {
 	if b.err != nil {
 		return b
 	}
-	
+
 	if concurrent < 1 {
 		b.err = fmt.Errorf("ConcurrentPolls must be at least 1, got %d", concurrent)
 		return b
@@ -180,7 +180,7 @@ func (b *Builder) WithConcurrentPolls(concurrent int) *Builder {
 		b.err = fmt.Errorf("ConcurrentPolls cannot exceed Beta, got %d > %d", concurrent, b.config.Beta)
 		return b
 	}
-	
+
 	b.config.ConcurrentPolls = concurrent
 	return b
 }
@@ -190,7 +190,7 @@ func (b *Builder) WithMinRoundInterval(interval time.Duration) *Builder {
 	if b.err != nil {
 		return b
 	}
-	
+
 	b.config.MinRoundInterval = interval
 	return b
 }
@@ -200,19 +200,19 @@ func (b *Builder) WithTargetFinality(target time.Duration, networkLatencyMs int)
 	if b.err != nil {
 		return b
 	}
-	
+
 	// Calculate required Beta
 	roundTime := time.Duration(networkLatencyMs) * time.Millisecond
 	requiredBeta := int(target / roundTime)
-	
+
 	if requiredBeta < 4 {
 		requiredBeta = 4 // Minimum for security
 	}
-	
+
 	b.config.Beta = requiredBeta
 	b.config.ConcurrentPolls = requiredBeta // Full pipelining
 	b.config.NetworkLatency = roundTime
-	
+
 	return b
 }
 
@@ -221,9 +221,9 @@ func (b *Builder) ForNodeCount(totalNodes int) *Builder {
 	if b.err != nil {
 		return b
 	}
-	
+
 	b.config.TotalNodes = totalNodes
-	
+
 	// Adjust K based on network size
 	switch {
 	case totalNodes <= 30:
@@ -235,17 +235,17 @@ func (b *Builder) ForNodeCount(totalNodes int) *Builder {
 	default:
 		b.config.K = 50
 	}
-	
+
 	// Recalculate quorums
 	b.config.AlphaPreference = (b.config.K * 2 / 3) + 1
 	b.config.AlphaConfidence = (b.config.K * 3 / 4) + 1
-	
+
 	// Adjust Beta for larger networks
 	if totalNodes > 100 && b.config.Beta < 15 {
 		b.config.Beta = 15
 		b.config.ConcurrentPolls = 15
 	}
-	
+
 	return b
 }
 
@@ -254,17 +254,17 @@ func (b *Builder) OptimizeForLatency() *Builder {
 	if b.err != nil {
 		return b
 	}
-	
+
 	// Reduce Beta for faster finality
 	if b.config.Beta > 5 {
 		b.config.Beta = 5
 	}
 	b.config.ConcurrentPolls = b.config.Beta
-	
+
 	// Increase processing capacity
 	b.config.OptimalProcessing = 32
 	b.config.MaxOutstandingItems = 1024
-	
+
 	return b
 }
 
@@ -273,18 +273,18 @@ func (b *Builder) OptimizeForSecurity() *Builder {
 	if b.err != nil {
 		return b
 	}
-	
+
 	// Increase Beta for better security
 	if b.config.Beta < 20 {
 		b.config.Beta = 20
 	}
-	
+
 	// Use conservative quorums
 	b.config.AlphaConfidence = (b.config.K * 4 / 5) + 1
 	if b.config.AlphaConfidence > b.config.K {
 		b.config.AlphaConfidence = b.config.K
 	}
-	
+
 	return b
 }
 
@@ -293,11 +293,11 @@ func (b *Builder) OptimizeForThroughput() *Builder {
 	if b.err != nil {
 		return b
 	}
-	
+
 	b.config.OptimalProcessing = 64
 	b.config.MaxOutstandingItems = 4096
 	b.config.ConcurrentPolls = b.config.Beta // Max pipelining
-	
+
 	return b
 }
 
@@ -306,13 +306,13 @@ func (b *Builder) Build() (*Config, error) {
 	if b.err != nil {
 		return nil, b.err
 	}
-	
+
 	// Final validation
 	validator := NewValidator()
 	if err := validator.Validate(b.config); err != nil {
 		return nil, err
 	}
-	
+
 	return b.config, nil
 }
 
@@ -323,7 +323,7 @@ var (
 		AlphaPreference:       13,
 		AlphaConfidence:       18,
 		Beta:                  8,
-		ConcurrentPolls:     8,
+		ConcurrentPolls:       8,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: 9630 * time.Millisecond,
@@ -334,13 +334,13 @@ var (
 		QThreshold:            15,
 		QuasarTimeout:         50 * time.Millisecond,
 	}
-	
+
 	TestnetConfig = Config{
 		K:                     11,
 		AlphaPreference:       7,
 		AlphaConfidence:       9,
 		Beta:                  6,
-		ConcurrentPolls:     6,
+		ConcurrentPolls:       6,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: 6300 * time.Millisecond,
@@ -351,13 +351,13 @@ var (
 		QThreshold:            8,
 		QuasarTimeout:         100 * time.Millisecond,
 	}
-	
+
 	LocalConfig = Config{
 		K:                     5,
 		AlphaPreference:       4,
 		AlphaConfidence:       4,
 		Beta:                  3,
-		ConcurrentPolls:     3,
+		ConcurrentPolls:       3,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   256,
 		MaxItemProcessingTime: 3690 * time.Millisecond,

@@ -68,9 +68,9 @@ func New(cfg Config, dag DAGTap) Engine {
 	return &engine{cfg: cfg, dag: dag}
 }
 
-func (e *engine) NextVotes(budget int) []types.TxRef { return nil }
+func (e *engine) NextVotes(budget int) []types.TxRef            { return nil }
 func (e *engine) OnBlockObserved(ctx context.Context, b *Block) {}
 func (e *engine) OnBlockAccepted(ctx context.Context, b *Block) {}
-func (e *engine) Status(tx types.TxRef) (Status, Proof) { return StatusPending, Proof{} }
-func (e *engine) OnEpochCloseStart() { e.fence.Store(true) }
-func (e *engine) OnEpochClosed() { e.fence.Store(false) }
+func (e *engine) Status(tx types.TxRef) (Status, Proof)         { return StatusPending, Proof{} }
+func (e *engine) OnEpochCloseStart()                            { e.fence.Store(true) }
+func (e *engine) OnEpochClosed()                                { e.fence.Store(false) }

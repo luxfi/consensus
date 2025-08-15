@@ -1,10 +1,10 @@
 package consensus
 
 import (
-    "context"
+	"context"
 )
 
 // ContextInitializable provides initialization with context
 type ContextInitializable interface {
-    InitializeWithContext(ctx context.Context) error
+	InitializeWithContext(ctx context.Context) error
 }
