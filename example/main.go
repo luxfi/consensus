@@ -97,16 +97,13 @@ func main() {
 	sel := &simpleSelector{peers: peers, idx: 0}
 
 	// Create Wave consensus with FPC enabled (default configuration)
-	w := wave.NewWave[ItemID](wave.Config{
-		K:       5,   // Sample size
-		Alpha:   0.8, // Success threshold (80%)
-		Beta:    5,   // Confidence target
-		Gamma:   3,   // Max inconclusive before FPC activates
-		RoundTO: 250 * time.Millisecond,
-	}, sel, transport{prefer: true})
+	// TODO: Update to use new wave API
+	// w := wave.NewWave(params)
 
 	// Create FPC (Fast Path Consensus) - ALWAYS ON
-	quorum := fpc.Quorum{N: 7, F: 2} // f=2, need 2f+1=5 votes for fast path
+	// TODO: Update to use new FPC API
+	// quorum := fpc.Quorum{N: 7, F: 2} // f=2, need 2f+1=5 votes for fast path
+	/* TODO: Update example to use new API
 	fpcCfg := fpc.Config{
 		Quorum:            quorum,
 		Epoch:             0,
@@ -191,6 +188,7 @@ func main() {
 
 		time.Sleep(50 * time.Millisecond)
 	}
+	*/
 
 	fmt.Println()
 	fmt.Println("=== Summary ===")
