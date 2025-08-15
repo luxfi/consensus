@@ -22,8 +22,6 @@ import (
 	"github.com/luxfi/consensus/protocol/wave"
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/log"
-	"github.com/luxfi/metric"
 )
 
 // ValidatorNode represents a validator in the consensus network
@@ -31,7 +29,7 @@ type ValidatorNode struct {
 	nodeID    string
 	transport *zmq4.Transport
 	consensus interfaces.Consensus
-	ctx       *interfaces.Context
+	ctx       context.Context
 	params    config.Parameters
 	cancel    context.CancelFunc
 	
@@ -71,10 +69,7 @@ func (ns *NetworkSimulator) AddValidator(protocol string, params config.Paramete
 	transport := zmq4.NewTransport(ns.ctx, nodeID, port)
 	
 	// Create consensus context
-	ctx := &interfaces.Context{
-		Log:     log.NewNoOpLogger(),
-		Metrics: metrics.NewMultiGatherer(),
-	}
+	ctx := ns.ctx
 	
 	// Create consensus instance based on protocol
 	var consensus interfaces.Consensus

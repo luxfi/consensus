@@ -4,6 +4,7 @@
 package tests
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -23,11 +24,7 @@ func TestMixedNetwork(t *testing.T) {
 
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
-		NetworkID: 1,
-		ChainID:   ids.GenerateTestID(),
-		NodeID:    ids.GenerateTestNodeID(),
-	}
+	ctx := context.Background()
 	factory := utils.NewFactory(ctx)
 
 	// Create network
@@ -76,11 +73,7 @@ func TestPartitionedNetwork(t *testing.T) {
 
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
-		NetworkID: 1,
-		ChainID:   ids.GenerateTestID(),
-		NodeID:    ids.GenerateTestNodeID(),
-	}
+	ctx := context.Background()
 	factory := utils.NewFactory(ctx)
 
 	// Create two separate networks
@@ -133,11 +126,7 @@ func TestByzantineBehavior(t *testing.T) {
 
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
-		NetworkID: 1,
-		ChainID:   ids.GenerateTestID(),
-		NodeID:    ids.GenerateTestNodeID(),
-	}
+	ctx := context.Background()
 	factory := utils.NewFactory(ctx)
 
 	// Use only 2 colors to increase likelihood of consensus
@@ -188,11 +177,7 @@ func TestSlowNodes(t *testing.T) {
 
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
-		NetworkID: 1,
-		ChainID:   ids.GenerateTestID(),
-		NodeID:    ids.GenerateTestNodeID(),
-	}
+	ctx := context.Background()
 	factory := utils.NewFactory(ctx)
 
 	// Create network with different parameters for different nodes
@@ -283,11 +268,7 @@ func TestDynamicNetwork(t *testing.T) {
 
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
-		NetworkID: 1,
-		ChainID:   ids.GenerateTestID(),
-		NodeID:    ids.GenerateTestNodeID(),
-	}
+	ctx := context.Background()
 	factory := utils.NewFactory(ctx)
 
 	network := NewTestNetwork(factory, params, 4, sampler.NewSource(42))

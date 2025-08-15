@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/ids"
 )
 
@@ -34,18 +33,18 @@ func (m *mockDecision) Verify() error {
 func TestNew(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	require.NotNil(engine)
-	require.Equal(ctx, engine.ctx)
+	// Note: ctx is not stored as a field anymore
 	require.Equal(StateInitializing, engine.state)
 }
 
 func TestInitialize(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	err := engine.Initialize(context.Background())
@@ -80,7 +79,7 @@ func TestStart(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require := require.New(t)
 
-			ctx := &interfaces.Context{}
+			ctx := context.Background()
 			engine := New(ctx)
 			engine.state = tt.state
 
@@ -97,7 +96,7 @@ func TestStart(t *testing.T) {
 func TestStop(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	// Initialize and start
@@ -116,7 +115,7 @@ func TestStop(t *testing.T) {
 func TestSubmit(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	decision := &mockDecision{
@@ -130,7 +129,7 @@ func TestSubmit(t *testing.T) {
 func TestGetVertex(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	vtxID := ids.GenerateTestID()
@@ -142,7 +141,7 @@ func TestGetVertex(t *testing.T) {
 func TestPutVertex(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	// PutVertex expects (context.Context, types.Vertex)
@@ -153,7 +152,7 @@ func TestPutVertex(t *testing.T) {
 func TestBuildVertex(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	vtx, err := engine.BuildVertex(context.Background())
@@ -164,7 +163,7 @@ func TestBuildVertex(t *testing.T) {
 func TestLastAccepted(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	last, err := engine.LastAccepted(context.Background())
@@ -175,7 +174,7 @@ func TestLastAccepted(t *testing.T) {
 func TestHealth(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	health, err := engine.Health(context.Background())
@@ -192,7 +191,7 @@ func TestHealth(t *testing.T) {
 func TestTimeout(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	timeout := engine.Timeout()
@@ -356,7 +355,7 @@ func TestParametersValid(t *testing.T) {
 func TestEngineLifecycle(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	// Initialize
@@ -388,7 +387,7 @@ func TestEngineLifecycle(t *testing.T) {
 func TestConcurrentOperations(t *testing.T) {
 	require := require.New(t)
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	// Initialize
@@ -422,7 +421,7 @@ func TestConcurrentOperations(t *testing.T) {
 }
 
 func BenchmarkSubmit(b *testing.B) {
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	decision := &mockDecision{
@@ -436,7 +435,7 @@ func BenchmarkSubmit(b *testing.B) {
 }
 
 func BenchmarkGetVertex(b *testing.B) {
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	vtxID := ids.GenerateTestID()
@@ -448,7 +447,7 @@ func BenchmarkGetVertex(b *testing.B) {
 }
 
 func BenchmarkHealth(b *testing.B) {
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	b.ResetTimer()
@@ -458,7 +457,7 @@ func BenchmarkHealth(b *testing.B) {
 }
 
 func BenchmarkTimeout(b *testing.B) {
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine := New(ctx)
 
 	b.ResetTimer()

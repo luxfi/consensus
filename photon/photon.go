@@ -5,7 +5,7 @@
 package photon
 
 import (
-	"github.com/luxfi/consensus/internal/types"
+	"github.com/luxfi/consensus/types"
 )
 
 type SafetyTag struct {

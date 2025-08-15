@@ -4,7 +4,6 @@ package consensus
 import (
     "context"
     
-    "github.com/luxfi/crypto/bls"
     "github.com/luxfi/database"
     "github.com/luxfi/ids"
     "github.com/luxfi/consensus/core/interfaces"
@@ -12,7 +11,7 @@ import (
 
 // Export core types
 type (
-    Context = interfaces.Context
+    // Context is now defined in ctx.go as alias to context.Context
     State   = interfaces.State
     Status  = interfaces.Status
     StateHolder = interfaces.StateHolder
@@ -30,14 +29,9 @@ const (
     Accepted   = interfaces.Accepted
 )
 
-// ExtendedContext provides full configuration for consensus engines
+// ExtendedContext provides heavy dependencies for consensus engines
+// These are kept separate from context to avoid service locator pattern
 type ExtendedContext struct {
-    interfaces.Context
-    
-    XChainID        ids.ID
-    CChainID        ids.ID
-    LUXAssetID      ids.ID
-    
     ChainDataDir    string
     SharedMemory    database.Database
     BCLookup        AliasLookup
@@ -59,7 +53,7 @@ type ValidatorState interface {
 
 // WarpSigner provides BLS signing for warp messages
 type WarpSigner interface {
-    Sign(msg []byte) (*bls.Signature, error)
+    Sign(msg []byte) ([]byte, error)
 }
 
 // Message types for consensus engine communication

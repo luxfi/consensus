@@ -10,18 +10,13 @@ import (
     
     "github.com/stretchr/testify/require"
     
-    "github.com/luxfi/consensus/core/interfaces"
     "github.com/luxfi/ids"
-    "github.com/luxfi/log"
 )
 
 func TestQuasarEngineCreation(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -77,10 +72,7 @@ func TestQuasarModes(t *testing.T) {
         t.Run(tt.name, func(t *testing.T) {
             require := require.New(t)
             
-            ctx := &interfaces.Context{
-                Log:        log.NewNoOpLogger(),
-                
-            }
+            ctx := context.Background()
             
             params := Parameters{
                 K:               21,
@@ -112,10 +104,7 @@ func TestQuasarModes(t *testing.T) {
 func TestQuasarInitializeAndStart(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -149,10 +138,7 @@ func TestQuasarInitializeAndStart(t *testing.T) {
 func TestQuasarPQSignatureVerification(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -187,10 +173,7 @@ func TestQuasarPQSignatureVerification(t *testing.T) {
 func TestQuasarChainDecisionSubmission(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -225,10 +208,7 @@ func TestQuasarChainDecisionSubmission(t *testing.T) {
 func TestQuasarDAGDecisionSubmission(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -262,10 +242,7 @@ func TestQuasarDAGDecisionSubmission(t *testing.T) {
 func TestQuasarUnifiedDecisionSubmission(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -310,10 +287,7 @@ func TestQuasarUnifiedDecisionSubmission(t *testing.T) {
 func TestQuasarNovaHookSlashing(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -353,10 +327,7 @@ func TestQuasarNovaHookSlashing(t *testing.T) {
 func TestQuasarEngineStateTransitions(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -404,10 +375,7 @@ func (c *customDecision) Verify() error                  { return nil }
 func TestQuasarInvalidDecisionType(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -434,10 +402,7 @@ func TestQuasarInvalidDecisionType(t *testing.T) {
 func TestQuasarEngineNotRunning(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -553,10 +518,7 @@ func TestQuasarCompositionWithNova(t *testing.T) {
     require := require.New(t)
     
     // Test that Quasar can properly integrate with Nova (linear blockchain)
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -597,10 +559,7 @@ func TestQuasarCompositionWithNebula(t *testing.T) {
     require := require.New(t)
     
     // Test that Quasar can properly integrate with Nebula (DAG)
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -650,10 +609,7 @@ func TestQuasarHybridMode(t *testing.T) {
     require := require.New(t)
     
     // Test that Quasar properly handles both chain and DAG in hybrid mode
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -701,10 +657,7 @@ func TestQuasarQuantumMode(t *testing.T) {
     require := require.New(t)
     
     // Test full quantum-resistant mode with maximum security
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:                      21,
@@ -762,10 +715,7 @@ func TestQuasarPQFinalityGuarantees(t *testing.T) {
     require := require.New(t)
     
     // Test that Quasar provides proper post-quantum finality guarantees
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-        
-    }
+    ctx := context.Background()
     
     params := Parameters{
         K:               21,
@@ -831,10 +781,7 @@ func TestQuasarSlashingTypes(t *testing.T) {
         t.Run(tt.name, func(t *testing.T) {
             require := require.New(t)
             
-            ctx := &interfaces.Context{
-                Log:        log.NewNoOpLogger(),
-                
-            }
+            ctx := context.Background()
             
             params := Parameters{
                 K:               21,

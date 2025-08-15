@@ -30,9 +30,16 @@ func InitializeRuntime(network string) error {
 	runtimeMu.Lock()
 	defer runtimeMu.Unlock()
 	
-	params, err := GetParametersByName(network)
-	if err != nil {
-		return err
+	var params Parameters
+	switch network {
+	case "mainnet":
+		params = Mainnet()
+	case "testnet":
+		params = Testnet()
+	case "local":
+		params = Local()
+	default:
+		return fmt.Errorf("unknown network: %s", network)
 	}
 	
 	runtimeParams = params
@@ -48,7 +55,7 @@ func GetRuntime() Parameters {
 	
 	if !initialized {
 		// Default to testnet if not initialized
-		runtimeParams = TestParameters
+		runtimeParams = Testnet()
 		initialized = true
 	}
 	
@@ -99,10 +106,10 @@ func SaveRuntimeToFile(path string) error {
 	
 	// Convert parameters to a map for JSON encoding
 	data := map[string]interface{}{
-		"k":                     params.GetK(),
-		"alphaPreference":       params.GetAlphaPreference(),
-		"alphaConfidence":       params.GetAlphaConfidence(),
-		"beta":                  params.GetBeta(),
+		"k":                     params.K,
+		"alphaPreference":       params.AlphaPreference,
+		"alphaConfidence":       params.AlphaConfidence,
+		"beta":                  params.Beta,
 		"concurrentPolls":       params.ConcurrentPolls,
 		"optimalProcessing":     params.OptimalProcessing,
 		"maxOutstandingItems":   params.MaxOutstandingItems,
