@@ -52,7 +52,7 @@ func runInteractiveParams(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Beta (consecutive successes) [%d]: ", params.Beta)
 	if input := readInput(reader); input != "" {
 		if beta, err := strconv.Atoi(input); err == nil {
-			params.Beta = beta
+			params.Beta = uint32(beta)
 		}
 	}
 
@@ -153,8 +153,8 @@ func runParamsTune(cmd *cobra.Command, args []string) error {
 		if params.AlphaConfidence <= params.K/2 {
 			params.AlphaConfidence = params.K/2 + 2
 		}
-		if params.Beta >= params.K {
-			params.Beta = params.K - 1
+		if int(params.Beta) >= params.K {
+			params.Beta = uint32(params.K - 1)
 		}
 	}
 
