@@ -5,7 +5,7 @@ package wavefpc
 
 import (
 	"context"
-	
+
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/ids"
 )
@@ -13,7 +13,7 @@ import (
 // ExampleEngineIntegration shows how to wire WaveFPC into your consensus engine
 type ExampleEngineIntegration struct {
 	// Your existing engine fields...
-	
+
 	// Add FPC integration
 	fpc *Integration
 }
@@ -27,7 +27,7 @@ func (e *ExampleEngineIntegration) InitializeFPC(
 	if !params.EnableFPC {
 		return
 	}
-	
+
 	// Find my validator index
 	var myIndex ValidatorIndex
 	found := false
@@ -38,21 +38,21 @@ func (e *ExampleEngineIntegration) InitializeFPC(
 			break
 		}
 	}
-	
+
 	if !found {
 		// Not a validator, can't participate in FPC
 		return
 	}
-	
+
 	// Create committee adapter
 	committee := NewValidatorCommitteeAdapter(nodeIDs)
-	
+
 	// Create classifier (you provide actual implementation)
 	classifier := &ExampleClassifier{}
-	
+
 	// Create DAG tap (you provide actual implementation)
 	dagTap := NewSimpleDAGTap(e.getBlock)
-	
+
 	// Create FPC config
 	fpcConfig := &Config{
 		Quorum:            Quorum{N: len(nodeIDs), F: (len(nodeIDs) - 1) / 3},
@@ -60,7 +60,7 @@ func (e *ExampleEngineIntegration) InitializeFPC(
 		VoteLimitPerBlock: params.FPCVoteLimit,
 		VotePrefix:        params.FPCVotePrefix,
 	}
-	
+
 	// Create integration
 	e.fpc = NewIntegration(
 		fpcConfig,
@@ -78,11 +78,11 @@ func (e *ExampleEngineIntegration) OnBuildBlock(ctx context.Context) {
 	if e.fpc == nil || !e.fpc.IsEnabled() {
 		return
 	}
-	
+
 	// Get votes for this block
 	votes := e.fpc.NextVotes(256) // or params.FPCVoteLimit
-	_ = votes // Use votes in your block building
-	
+	_ = votes                     // Use votes in your block building
+
 	// Add to block payload (pseudo-code)
 	// block.Payload.FPCVotes = FromTxRefs(votes)
 	// block.Payload.EpochBit = e.fpc.IsEpochClosing()
@@ -93,10 +93,10 @@ func (e *ExampleEngineIntegration) OnBlockGossiped(blk BlockWithFPC) {
 	if e.fpc == nil {
 		return
 	}
-	
+
 	// Process votes in the block
 	e.fpc.OnBlockObserved(blk)
-	
+
 	// Your existing gossip handling...
 }
 
@@ -105,10 +105,10 @@ func (e *ExampleEngineIntegration) OnBlockAccepted(blk BlockWithFPC) {
 	if e.fpc == nil {
 		return
 	}
-	
+
 	// Update FPC state for accepted block
 	e.fpc.OnBlockAccepted(blk)
-	
+
 	// Your existing accept handling...
 }
 
@@ -118,15 +118,15 @@ func (e *ExampleEngineIntegration) CheckExecutable(tx TxRef, isMixed bool) bool 
 		// Fall back to regular consensus if FPC disabled
 		return e.regularConsensusCheck(tx)
 	}
-	
+
 	status, _ := e.fpc.Status(tx)
-	
+
 	if isMixed {
 		// Mixed transactions need Final status
 		e.fpc.MarkMixed(tx)
 		return status == Final
 	}
-	
+
 	// Owned-only transactions can execute at Executable status
 	return status >= Executable
 }

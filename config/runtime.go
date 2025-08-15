@@ -14,13 +14,13 @@ import (
 var (
 	// runtimeParams holds the current runtime consensus parameters
 	runtimeParams Parameters
-	
+
 	// runtimeMu protects runtimeParams during updates
 	runtimeMu sync.RWMutex
-	
+
 	// runtimeOverrides stores parameter overrides
 	runtimeOverrides map[string]interface{}
-	
+
 	// initialized tracks if runtime params have been set
 	initialized bool
 )
@@ -29,12 +29,19 @@ var (
 func InitializeRuntime(network string) error {
 	runtimeMu.Lock()
 	defer runtimeMu.Unlock()
-	
-	params, err := GetParametersByName(network)
-	if err != nil {
-		return err
+
+	var params Parameters
+	switch network {
+	case "mainnet":
+		params = MainnetParameters
+	case "testnet":
+		params = TestnetParameters
+	case "local":
+		params = LocalParameters
+	default:
+		return fmt.Errorf("unknown network: %s", network)
 	}
-	
+
 	runtimeParams = params
 	runtimeOverrides = make(map[string]interface{})
 	initialized = true
@@ -45,13 +52,13 @@ func InitializeRuntime(network string) error {
 func GetRuntime() Parameters {
 	runtimeMu.RLock()
 	defer runtimeMu.RUnlock()
-	
+
 	if !initialized {
 		// Default to testnet if not initialized
-		runtimeParams = TestParameters
+		runtimeParams = TestnetParameters
 		initialized = true
 	}
-	
+
 	return runtimeParams
 }
 
@@ -59,7 +66,7 @@ func GetRuntime() Parameters {
 func SetRuntime(params Parameters) {
 	runtimeMu.Lock()
 	defer runtimeMu.Unlock()
-	
+
 	runtimeParams = params
 	initialized = true
 }
@@ -68,7 +75,7 @@ func SetRuntime(params Parameters) {
 // This is temporarily disabled as it requires mutable parameters
 func UpdateRuntimeParameter(key string, value interface{}) error {
 	return fmt.Errorf("runtime parameter updates are temporarily disabled during migration")
-	
+
 	// TODO: Implement when we have mutable parameter structs
 	// The original implementation tried to modify interface values
 }
@@ -79,15 +86,15 @@ func LoadRuntimeFromFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read runtime config file: %w", err)
 	}
-	
+
 	var config Config
 	if err := json.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("failed to parse runtime config: %w", err)
 	}
-	
+
 	params := config.ToParameters()
 	SetRuntime(params)
-	
+
 	return nil
 }
 
@@ -96,29 +103,29 @@ func SaveRuntimeToFile(path string) error {
 	runtimeMu.RLock()
 	params := runtimeParams
 	runtimeMu.RUnlock()
-	
+
 	// Convert parameters to a map for JSON encoding
 	data := map[string]interface{}{
-		"k":                     params.GetK(),
-		"alphaPreference":       params.GetAlphaPreference(),
-		"alphaConfidence":       params.GetAlphaConfidence(),
-		"beta":                  params.GetBeta(),
+		"k":                     params.K,
+		"alphaPreference":       params.AlphaPreference,
+		"alphaConfidence":       params.AlphaConfidence,
+		"beta":                  params.Beta,
 		"concurrentPolls":       params.ConcurrentPolls,
 		"optimalProcessing":     params.OptimalProcessing,
 		"maxOutstandingItems":   params.MaxOutstandingItems,
 		"maxItemProcessingTime": params.MaxItemProcessingTime,
 		"minRoundInterval":      params.MinRoundInterval,
 	}
-	
+
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal runtime config: %w", err)
 	}
-	
+
 	if err := os.WriteFile(path, jsonData, 0644); err != nil {
 		return fmt.Errorf("failed to write runtime config file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -126,7 +133,7 @@ func SaveRuntimeToFile(path string) error {
 func GetRuntimeOverrides() map[string]interface{} {
 	runtimeMu.RLock()
 	defer runtimeMu.RUnlock()
-	
+
 	// Return a copy to prevent external modification
 	copy := make(map[string]interface{})
 	for k, v := range runtimeOverrides {

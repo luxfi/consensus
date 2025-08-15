@@ -7,7 +7,7 @@ package wavefpc
 
 import (
 	"time"
-	
+
 	"github.com/luxfi/ids"
 )
 
@@ -29,35 +29,35 @@ const (
 
 // Config holds WaveFPC configuration
 type Config struct {
-	N                 int           // Committee size (3F+1)
-	F                 int           // Byzantine fault tolerance
-	Epoch             uint64        // Current epoch
-	VoteLimitPerBlock int           // Max votes per block (e.g., 256)
-	VotePrefix        []byte        // Domain separator for proofs
+	N                 int    // Committee size (3F+1)
+	F                 int    // Byzantine fault tolerance
+	Epoch             uint64 // Current epoch
+	VoteLimitPerBlock int    // Max votes per block (e.g., 256)
+	VotePrefix        []byte // Domain separator for proofs
 	Clock             func() time.Time
-	
+
 	// Feature flags
-	EnableFastPath    bool          // Enable fast path consensus
-	EnableRingtail    bool          // Enable Ringtail PQ signatures
-	EnableBLS         bool          // Enable BLS aggregation
-	
+	EnableFastPath bool // Enable fast path consensus
+	EnableRingtail bool // Enable Ringtail PQ signatures
+	EnableBLS      bool // Enable BLS aggregation
+
 	// Ringtail parameters
-	AlphaPQ           uint32        // Quorum for PQ (default 2F+1)
-	QRounds           uint32        // Q rounds for Ringtail
+	AlphaPQ uint32 // Quorum for PQ (default 2F+1)
+	QRounds uint32 // Q rounds for Ringtail
 }
 
 // Block represents the minimal block interface we need
 type Block struct {
-	ID       ids.ID
-	Author   ids.NodeID
-	Round    uint64
-	Payload  BlockPayload
+	ID      ids.ID
+	Author  ids.NodeID
+	Round   uint64
+	Payload BlockPayload
 }
 
 // BlockPayload contains FPC-specific fields added to existing blocks
 type BlockPayload struct {
 	// Your existing fields...
-	
+
 	// FPC additions (minimal!)
 	FPCVotes [][]byte // Array of txRefs (32 bytes each), owned-only, no dupes
 	EpochBit bool     // True when starting epoch-close; pauses new fast finality
@@ -65,10 +65,10 @@ type BlockPayload struct {
 
 // Proof contains finality proof information
 type Proof struct {
-	Status       Status
-	VoterCount   int
-	VoterBitmap  []byte     // Bitset of voters
-	BLSProof     *BLSBundle // Optional BLS aggregated signature
+	Status        Status
+	VoterCount    int
+	VoterBitmap   []byte     // Bitset of voters
+	BLSProof      *BLSBundle // Optional BLS aggregated signature
 	RingtailProof *PQBundle  // Optional Ringtail PQ proof
 }
 
@@ -83,7 +83,7 @@ type BLSBundle struct {
 type PQBundle struct {
 	Proof       []byte
 	VoterBitmap []byte
-	Signature   []byte // For BLS signature simulation in tests
+	Signature   []byte       // For BLS signature simulation in tests
 	Voters      []ids.NodeID // Optional voter list
 }
 
@@ -91,7 +91,7 @@ type PQBundle struct {
 type Classifier interface {
 	// OwnedInputs returns owned object IDs; empty if none (shared/mixed)
 	OwnedInputs(tx TxRef) []ObjectID
-	
+
 	// Conflicts returns true if two txs conflict based on owned inputs
 	Conflicts(a, b TxRef) bool
 }
@@ -100,7 +100,7 @@ type Classifier interface {
 type DAGTap interface {
 	// InAncestry checks if needleTx is in ancestry of blockID
 	InAncestry(blockID ids.ID, needleTx TxRef) bool
-	
+
 	// Optional: resolve (author,round) -> blockID if you track rounds
 	GetBlockByAuthorRound(author ids.NodeID, round uint64) (ids.ID, bool)
 }
@@ -109,10 +109,10 @@ type DAGTap interface {
 type PQEngine interface {
 	// Submit starts PQ signature collection once tx has ≥2f+1 votes
 	Submit(tx TxRef, voters []ids.NodeID)
-	
+
 	// HasPQ returns true when PQ proof is ready
 	HasPQ(tx TxRef) bool
-	
+
 	// GetPQ returns the PQ bundle if ready
 	GetPQ(tx TxRef) (*PQBundle, bool)
 }
@@ -120,20 +120,20 @@ type PQEngine interface {
 // WaveFPC is the main FPC interface
 type WaveFPC interface {
 	// Wire-in points for consensus engine
-	OnBlockObserved(b *Block)    // Called for every seen block (pre-accept ok)
-	OnBlockAccepted(b *Block)     // Called when block becomes accepted/committed
-	OnEpochCloseStart()           // Flip EpochBit on next blocks; pause fast finality
-	OnEpochClosed()               // Cleanup transient locks
-	
+	OnBlockObserved(b *Block) // Called for every seen block (pre-accept ok)
+	OnBlockAccepted(b *Block) // Called when block becomes accepted/committed
+	OnEpochCloseStart()       // Flip EpochBit on next blocks; pause fast finality
+	OnEpochClosed()           // Cleanup transient locks
+
 	// Proposer hook when building a block
 	NextVotes(budget int) []TxRef
-	
+
 	// Introspection
 	Status(tx TxRef) (Status, Proof)
-	
+
 	// For mixed txs: gate execution until anchor accepted
 	MarkMixed(tx TxRef)
-	
+
 	// Metrics
 	GetMetrics() Metrics
 }

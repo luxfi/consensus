@@ -10,9 +10,9 @@ import (
 
 // Clock provides an interface for retrieving time
 type Clock struct {
-	mu     sync.RWMutex
-	time   time.Time
-	fake   bool
+	mu   sync.RWMutex
+	time time.Time
+	fake bool
 }
 
 // NewClock creates a new clock set to the current time
@@ -26,7 +26,7 @@ func NewClock() *Clock {
 func (c *Clock) Time() time.Time {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	if c.fake {
 		return c.time
 	}
@@ -47,7 +47,7 @@ func (c *Clock) UnixTime() uint64 {
 func (c *Clock) Set(t time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	c.fake = true
 	c.time = t
 }
@@ -56,7 +56,7 @@ func (c *Clock) Set(t time.Time) {
 func (c *Clock) Advance(d time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	c.fake = true
 	c.time = c.time.Add(d)
 }
@@ -65,6 +65,6 @@ func (c *Clock) Advance(d time.Duration) {
 func (c *Clock) Sync() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	c.fake = false
 }

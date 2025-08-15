@@ -13,22 +13,22 @@ import (
 type Parameters struct {
 	// K is the sample size
 	K int
-	
+
 	// AlphaPreference is the preference threshold
 	AlphaPreference int
-	
+
 	// AlphaConfidence is the confidence threshold
 	AlphaConfidence int
-	
+
 	// Beta is the finalization threshold
 	Beta int
-	
+
 	// Advanced parameters
-	ConcurrentPolls     int
+	ConcurrentPolls       int
 	OptimalProcessing     int
 	MaxOutstandingItems   int
 	MaxItemProcessingTime time.Duration
-	
+
 	// DAG-specific parameters
 	MaxParents      int
 	ConflictSetSize int
@@ -60,7 +60,7 @@ func (p Parameters) Valid() error {
 	case p.MaxItemProcessingTime <= 0:
 		return errors.New("max item processing time must be positive")
 	}
-	
+
 	// DAG-specific validation
 	if p.MaxParents < 0 {
 		return errors.New("max parents cannot be negative")
@@ -68,6 +68,6 @@ func (p Parameters) Valid() error {
 	if p.ConflictSetSize < 0 {
 		return errors.New("conflict set size cannot be negative")
 	}
-	
+
 	return nil
 }
