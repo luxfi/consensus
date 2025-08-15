@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/luxfi/consensus/types"
+	"github.com/luxfi/ids"
 )
 
 // Status represents the status of a transaction in the fast path
@@ -87,9 +88,9 @@ type engine struct {
 	mu     sync.RWMutex
 	cfg    Config
 	clf    Classifier
-	votes  map[TxRef]map[ids.ID]bool // tx -> set of voter block IDs
-	status map[TxRef]Status
-	queue  []TxRef
+	votes  map[types.TxRef]map[ids.ID]bool // tx -> set of voter block IDs
+	status map[types.TxRef]Status
+	queue  []types.TxRef
 	epoch  atomic.Uint64
 }
 
@@ -98,15 +99,15 @@ func New(cfg Config, clf Classifier) Engine {
 	e := &engine{
 		cfg:    cfg,
 		clf:    clf,
-		votes:  make(map[TxRef]map[ids.ID]bool),
-		status: make(map[TxRef]Status),
+		votes:  make(map[types.TxRef]map[ids.ID]bool),
+		status: make(map[types.TxRef]Status),
 	}
 	e.epoch.Store(cfg.Epoch)
 	return e
 }
 
 // NextVotes returns the next batch of transactions to embed as FPC votes
-func (e *engine) NextVotes(limit int) []TxRef {
+func (e *engine) NextVotes(limit int) []types.TxRef {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -119,7 +120,7 @@ func (e *engine) NextVotes(limit int) []TxRef {
 		limit = len(e.queue)
 	}
 
-	out := make([]TxRef, limit)
+	out := make([]types.TxRef, limit)
 	copy(out, e.queue[:limit])
 	e.queue = e.queue[limit:]
 
@@ -127,7 +128,7 @@ func (e *engine) NextVotes(limit int) []TxRef {
 }
 
 // OnBlockObserved processes embedded FPC votes from an observed block
-func (e *engine) OnBlockObserved(b BlockRef) {
+func (e *engine) OnBlockObserved(ctx context.Context, b *BlockRef) {
 	// Epoch fence: do not advance fast-path during epoch transition
 	if b.EpochBit {
 		return
@@ -141,7 +142,7 @@ func (e *engine) OnBlockObserved(b BlockRef) {
 			continue // Invalid vote reference
 		}
 
-		var tx TxRef
+		var tx types.TxRef
 		copy(tx[:], raw)
 
 		// Initialize vote map if needed
@@ -150,7 +151,7 @@ func (e *engine) OnBlockObserved(b BlockRef) {
 		}
 
 		// Record vote from this block
-		e.votes[tx][b.ID] = true
+		e.votes[tx][ids.GenerateNodeIDFromBytes(b.ID[:])] = true
 
 		// Check if we reached quorum (2f+1) for wave certificate
 		if len(e.votes[tx]) >= 2*e.cfg.Quorum.F+1 {
@@ -163,7 +164,7 @@ func (e *engine) OnBlockObserved(b BlockRef) {
 }
 
 // OnBlockAccepted anchors transactions to final status when block commits
-func (e *engine) OnBlockAccepted(b BlockRef) {
+func (e *engine) OnBlockAccepted(ctx context.Context, b *BlockRef) {
 	// Only process if block is consensus-committed
 	if !b.Final {
 		return
@@ -177,7 +178,7 @@ func (e *engine) OnBlockAccepted(b BlockRef) {
 			continue
 		}
 
-		var tx TxRef
+		var tx types.TxRef
 		copy(tx[:], raw)
 
 		// If transaction has votes and is executable, upgrade to final
@@ -189,18 +190,18 @@ func (e *engine) OnBlockAccepted(b BlockRef) {
 }
 
 // Status returns the current fast-path status of a transaction
-func (e *engine) Status(tx TxRef) Status {
+func (e *engine) Status(tx types.TxRef) (Status, Proof) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.status[tx]
+	return e.status[tx], Proof{}
 }
 
 // ExecutableOwned returns all owned transactions that reached Executable status
-func (e *engine) ExecutableOwned() []TxRef {
+func (e *engine) ExecutableOwned() []types.TxRef {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	var out []TxRef
+	var out []types.TxRef
 	for tx, st := range e.status {
 		if st == StatusExecutable && e.clf.IsOwned(tx) {
 			out = append(out, tx)
@@ -210,7 +211,7 @@ func (e *engine) ExecutableOwned() []TxRef {
 }
 
 // Enqueue adds a transaction to the FPC voting queue
-func (e *engine) Enqueue(tx TxRef) {
+func (e *engine) Enqueue(tx types.TxRef) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -233,13 +234,16 @@ func (e *engine) Enqueue(tx TxRef) {
 type SimpleClassifier struct{}
 
 // IsOwned returns true if transaction operates on owned objects
-func (s SimpleClassifier) IsOwned(tx TxRef) bool {
+func (s SimpleClassifier) IsOwned(tx types.TxRef) bool {
 	// Simple heuristic: first byte determines ownership
 	// In production, this would check actual object ownership
 	return tx[0]&0x01 == 0
 }
 
 // IsMixed returns true if transaction operates on mixed/shared objects
-func (s SimpleClassifier) IsMixed(tx TxRef) bool {
+func (s SimpleClassifier) IsMixed(tx types.TxRef) bool {
 	return !s.IsOwned(tx)
 }
+
+func (e *engine) OnEpochCloseStart() { e.epoch.Add(1) }
+func (e *engine) OnEpochClosed()     { e.epoch.Store(e.epoch.Load()) }
