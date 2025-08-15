@@ -12,7 +12,6 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/types"
 	"github.com/luxfi/consensus/nebula"
 	"github.com/luxfi/consensus/protocol/pulse"
 )
@@ -150,7 +149,7 @@ func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 		K:               params.K,
 		AlphaPreference: params.AlphaPreference,
 		AlphaConfidence: params.AlphaConfidence,
-		Beta:            params.Beta,
+		Beta:            uint32(params.Beta),
 	}
 	
 	switch params.Mode {
@@ -205,13 +204,13 @@ func (e *Engine) Start(ctx context.Context) error {
 	// 	}
 	// }
 	if e.nebula != nil {
-		// Initialize Nebula before starting
-		if err := e.nebula.Initialize(ctx); err != nil {
-			return fmt.Errorf("failed to initialize nebula: %w", err)
-		}
-		if err := e.nebula.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start nebula: %w", err)
-		}
+		// TODO: Initialize Nebula when methods are available
+		// if err := e.nebula.Initialize(ctx); err != nil {
+		//     return fmt.Errorf("failed to initialize nebula: %w", err)
+		// }
+		// if err := e.nebula.Start(ctx); err != nil {
+		//     return fmt.Errorf("failed to start nebula: %w", err)
+		// }
 	}
 
 	return nil
