@@ -33,7 +33,7 @@ func runChecker(cmd *cobra.Command, args []string) error {
 
 	beta, _ := cmd.Flags().GetInt("beta")
 	if beta > 0 {
-		params.Beta = beta
+		params.Beta = uint32(beta)
 	}
 
 	// Validate parameters

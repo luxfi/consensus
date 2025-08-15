@@ -5,7 +5,6 @@ import (
 	"context"
 
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/database"
 	"github.com/luxfi/ids"
 )
 
@@ -33,10 +32,16 @@ const (
 // These are kept separate from context to avoid service locator pattern
 type ExtendedContext struct {
 	ChainDataDir   string
-	SharedMemory   database.Database
+	SharedMemory   SharedMemory
 	BCLookup       AliasLookup
 	ValidatorState ValidatorState
 	WarpSigner     WarpSigner
+}
+
+// SharedMemory provides cross-chain atomic operations
+type SharedMemory interface {
+	Get(peerChainID ids.ID, keys [][]byte) ([][]byte, error)
+	Apply(requests map[ids.ID]interface{}, batch ...interface{}) error
 }
 
 // AliasLookup provides chain alias lookups
