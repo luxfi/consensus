@@ -70,7 +70,7 @@ func New[V comparable](cfg config.Parameters, hooks Hooks[V]) (*Engine[V], error
 
 	// Create orderer - using nil for now as we need proper implementations
 	// TODO: Create proper sampler, round, counter implementations
-	ord := flare.New(nil, nil, nil, config.Parameters{})
+	// ord := flare.New(nil, nil, nil, config.Parameters{})
 
 	// Create FPC engine if enabled
 	var fpcEngine *fpc.Engine
