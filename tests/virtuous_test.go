@@ -109,7 +109,7 @@ func TestVirtuousNetwork(t *testing.T) {
 	}
 	
 	// Create context
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NetworkID: 1,
 		ChainID:   ids.GenerateTestID(),
 		NodeID:    ids.GenerateTestNodeID(),

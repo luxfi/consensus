@@ -18,7 +18,7 @@ import (
 func TestQuasarEngineCreation(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -77,7 +77,7 @@ func TestQuasarModes(t *testing.T) {
         t.Run(tt.name, func(t *testing.T) {
             require := require.New(t)
             
-            ctx := &interfaces.Context{
+            ctx := &interfaces.Runtime{
                 Log:        log.NewNoOpLogger(),
                 
             }
@@ -112,7 +112,7 @@ func TestQuasarModes(t *testing.T) {
 func TestQuasarInitializeAndStart(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -149,7 +149,7 @@ func TestQuasarInitializeAndStart(t *testing.T) {
 func TestQuasarPQSignatureVerification(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -187,7 +187,7 @@ func TestQuasarPQSignatureVerification(t *testing.T) {
 func TestQuasarChainDecisionSubmission(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -225,7 +225,7 @@ func TestQuasarChainDecisionSubmission(t *testing.T) {
 func TestQuasarDAGDecisionSubmission(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -262,7 +262,7 @@ func TestQuasarDAGDecisionSubmission(t *testing.T) {
 func TestQuasarUnifiedDecisionSubmission(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -310,7 +310,7 @@ func TestQuasarUnifiedDecisionSubmission(t *testing.T) {
 func TestQuasarNovaHookSlashing(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -353,7 +353,7 @@ func TestQuasarNovaHookSlashing(t *testing.T) {
 func TestQuasarEngineStateTransitions(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -404,7 +404,7 @@ func (c *customDecision) Verify() error                  { return nil }
 func TestQuasarInvalidDecisionType(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -434,7 +434,7 @@ func TestQuasarInvalidDecisionType(t *testing.T) {
 func TestQuasarEngineNotRunning(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -553,7 +553,7 @@ func TestQuasarCompositionWithNova(t *testing.T) {
     require := require.New(t)
     
     // Test that Quasar can properly integrate with Nova (linear blockchain)
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -597,7 +597,7 @@ func TestQuasarCompositionWithNebula(t *testing.T) {
     require := require.New(t)
     
     // Test that Quasar can properly integrate with Nebula (DAG)
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -650,7 +650,7 @@ func TestQuasarHybridMode(t *testing.T) {
     require := require.New(t)
     
     // Test that Quasar properly handles both chain and DAG in hybrid mode
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -701,7 +701,7 @@ func TestQuasarQuantumMode(t *testing.T) {
     require := require.New(t)
     
     // Test full quantum-resistant mode with maximum security
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -762,7 +762,7 @@ func TestQuasarPQFinalityGuarantees(t *testing.T) {
     require := require.New(t)
     
     // Test that Quasar provides proper post-quantum finality guarantees
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
         
     }
@@ -831,7 +831,7 @@ func TestQuasarSlashingTypes(t *testing.T) {
         t.Run(tt.name, func(t *testing.T) {
             require := require.New(t)
             
-            ctx := &interfaces.Context{
+            ctx := &interfaces.Runtime{
                 Log:        log.NewNoOpLogger(),
                 
             }

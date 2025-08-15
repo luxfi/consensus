@@ -12,7 +12,8 @@ import (
 
 // Export core types
 type (
-    Context = interfaces.Context
+    Runtime = interfaces.Runtime  // Runtime configuration for consensus
+    Context = interfaces.Runtime  // Alias for backward compatibility
     State   = interfaces.State
     Status  = interfaces.Status
     StateHolder = interfaces.StateHolder
@@ -22,6 +23,7 @@ type (
 // Export constants
 const (
     Bootstrapping = interfaces.Bootstrapping
+    StateSyncing  = interfaces.StateSyncing
     NormalOp      = interfaces.NormalOp
     
     Unknown    = interfaces.Unknown
@@ -30,9 +32,9 @@ const (
     Accepted   = interfaces.Accepted
 )
 
-// ExtendedContext provides full configuration for consensus engines
-type ExtendedContext struct {
-    interfaces.Context
+// ExtendedRuntime provides full configuration for consensus engines
+type ExtendedRuntime struct {
+    interfaces.Runtime
     
     XChainID        ids.ID
     CChainID        ids.ID

@@ -58,7 +58,7 @@ type Parameters struct {
 }
 
 // New creates a new Gravity engine
-func New(ctx *interfaces.Context, params Parameters) (*Engine, error) {
+func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 	// Create Quasar engine for unified consensus
 	engine, err := quasar.New(ctx, quasar.Parameters{
 		Mode:          params.UnifiedConsensusMode,
@@ -170,7 +170,7 @@ func (r *Engine) CreateChain(name string, params Parameters) error {
 	}
 	
 	// Need to pass context to chain.New
-	ctx := &interfaces.Context{} // TODO: Get proper context
+	ctx := &interfaces.Runtime{} // TODO: Get proper context
 	chainEngine, err := chain.New(ctx, chain.Parameters{})
 	if err != nil {
 		return fmt.Errorf("failed to create chain: %w", err)
@@ -196,7 +196,7 @@ func (r *Engine) CreateDAG(name string, params dag.Parameters) error {
 	}
 	
 	// Need to pass context to dag.New
-	ctx := &interfaces.Context{} // TODO: Get proper context
+	ctx := &interfaces.Runtime{} // TODO: Get proper context
 	dagEngine, err := dag.New(ctx, params)
 	if err != nil {
 		return fmt.Errorf("failed to create dag: %w", err)

@@ -16,7 +16,7 @@ import (
 func TestIntegrationLifecycle(t *testing.T) {
 	// Create mock context
 	nodeID := ids.GenerateTestNodeID()
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NodeID:  nodeID,
 		Log:     log.NewNoOpLogger(),
 		Metrics: nil,
@@ -56,7 +56,7 @@ func TestIntegrationLifecycle(t *testing.T) {
 // TestIntegrationBlockProcessing tests block processing hooks
 func TestIntegrationBlockProcessing(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NodeID:  nodeID,
 		Log:     log.NewNoOpLogger(),
 		Metrics: nil,
@@ -94,7 +94,7 @@ func TestIntegrationExecution(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
 	validators := []ids.NodeID{nodeID}
 	
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NodeID:  nodeID,
 		Log:     log.NewNoOpLogger(),
 		Metrics: nil,
@@ -148,7 +148,7 @@ func TestIntegrationExecution(t *testing.T) {
 // TestIntegrationEpochManagement tests epoch transitions
 func TestIntegrationEpochManagement(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NodeID:  nodeID,
 		Log:     log.NewNoOpLogger(),
 		Metrics: nil,
@@ -181,7 +181,7 @@ func TestIntegrationStatusAndMetrics(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
 	validators := []ids.NodeID{nodeID}
 	
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NodeID:  nodeID,
 		Log:     log.NewNoOpLogger(),
 		Metrics: nil,
@@ -255,7 +255,7 @@ func TestIntegrationMixedTransactions(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
 	validators := []ids.NodeID{nodeID}
 	
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NodeID:  nodeID,
 		Log:     log.NewNoOpLogger(),
 		Metrics: nil,
@@ -291,7 +291,7 @@ func TestIntegrationMixedTransactions(t *testing.T) {
 // TestIntegrationDisabledBehavior tests behavior when disabled
 func TestIntegrationDisabledBehavior(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NodeID:  nodeID,
 		Log:     log.NewNoOpLogger(),
 		Metrics: nil,
@@ -327,7 +327,7 @@ func TestIntegrationDisabledBehavior(t *testing.T) {
 func TestIntegrationDualFinalityDetection(t *testing.T) {
 	nodeID := ids.GenerateTestNodeID()
 	
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NodeID:  nodeID,
 		Log:     log.NewNoOpLogger(),
 		Metrics: nil,

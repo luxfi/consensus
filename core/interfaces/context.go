@@ -78,8 +78,8 @@ type SharedMemory interface {
     Apply(requests map[ids.ID]interface{}, batch ...interface{}) error
 }
 
-// Context provides consensus engine configuration
-type Context struct {
+// Runtime provides consensus engine configuration
+type Runtime struct {
     NetworkID    uint32
     SubnetID     ids.ID
     ChainID      ids.ID

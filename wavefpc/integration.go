@@ -23,7 +23,7 @@ type Integration struct {
 }
 
 // NewIntegration creates a new FPC integration with Ringtail PQ enabled by default
-func NewIntegration(ctx *interfaces.Context, cfg Config, cls Classifier) *Integration {
+func NewIntegration(ctx *interfaces.Runtime, cfg Config, cls Classifier) *Integration {
 	// Get validators from context
 	validators := make([]ids.NodeID, 0)
 	// TODO: Extract from ctx.ValidatorState

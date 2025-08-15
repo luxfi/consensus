@@ -59,7 +59,7 @@ func TestNew(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require := require.New(t)
 
-			ctx := &interfaces.Context{}
+			ctx := &interfaces.Runtime{}
 			engine, err := New(ctx, tt.params)
 			if tt.wantErr {
 				require.Error(err)
@@ -86,7 +86,7 @@ func TestInitialize(t *testing.T) {
 		SecurityLevel:   quasar.SecurityLow,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := &interfaces.Runtime{}
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -106,7 +106,7 @@ func TestProcessBlock(t *testing.T) {
 		SecurityLevel:   quasar.SecurityLow,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := &interfaces.Runtime{}
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -138,7 +138,7 @@ func TestStateTransitions(t *testing.T) {
 		SecurityLevel:   quasar.SecurityLow,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := &interfaces.Runtime{}
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -210,7 +210,7 @@ func TestHelperMethods(t *testing.T) {
 		SecurityLevel:   quasar.SecurityLow,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := &interfaces.Runtime{}
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -241,7 +241,7 @@ func TestMultipleBlockProcessing(t *testing.T) {
 		SecurityLevel:   quasar.SecurityLow,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := &interfaces.Runtime{}
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -304,7 +304,7 @@ func TestEngineWithDifferentParameters(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require := require.New(t)
 
-			ctx := &interfaces.Context{}
+			ctx := &interfaces.Runtime{}
 			engine, err := New(ctx, tt.params)
 			require.NoError(err)
 			require.NotNil(engine)
@@ -338,7 +338,7 @@ func TestConcurrentBlockProcessing(t *testing.T) {
 		SecurityLevel:   quasar.SecurityLow,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := &interfaces.Runtime{}
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -378,7 +378,7 @@ func TestStateGetters(t *testing.T) {
 		SecurityLevel:   quasar.SecurityLow,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := &interfaces.Runtime{}
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -398,7 +398,7 @@ func BenchmarkProcessBlock(b *testing.B) {
 		SecurityLevel:   quasar.SecurityLow,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := &interfaces.Runtime{}
 	engine, err := New(ctx, params)
 	require.NoError(b, err)
 
@@ -430,7 +430,7 @@ func BenchmarkNew(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ctx := &interfaces.Context{}
+		ctx := &interfaces.Runtime{}
 		_, _ = New(ctx, params)
 	}
 }
@@ -446,7 +446,7 @@ func TestBlockVerification(t *testing.T) {
 		SecurityLevel:   quasar.SecurityLow,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := &interfaces.Runtime{}
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -474,7 +474,7 @@ func TestProcessBlockWithContext(t *testing.T) {
 		SecurityLevel:   quasar.SecurityLow,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := &interfaces.Runtime{}
 	engine, err := New(ctx, params)
 	require.NoError(err)
 

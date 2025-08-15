@@ -27,7 +27,7 @@ func TestIntegrationPhotonConsensus(t *testing.T) {
 	// Use TestParameters for integration tests - more suitable for smaller networks
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NetworkID: 1,
 		ChainID:   ids.GenerateTestID(),
 		NodeID:    ids.GenerateTestNodeID(),
