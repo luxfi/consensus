@@ -75,5 +75,8 @@ func (p Parameters) Valid() error {
 	if p.MaxItemProcessingTime <= 0 {
 		return fmt.Errorf("maxItemProcessingTime = %d: fails the condition that: 0 < maxItemProcessingTime", p.MaxItemProcessingTime)
 	}
+	if p.DeltaMinMS < 0 {
+		return fmt.Errorf("deltaMinMS = %d: must be >= 0", p.DeltaMinMS)
+	}
 	return nil
 }
