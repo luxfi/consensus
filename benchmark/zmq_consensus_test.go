@@ -175,7 +175,7 @@ func (v *ValidatorNode) registerHandlers() {
 		votes := bag.Bag[ids.ID]{}
 		votes.Add(vote.BlockID)
 		
-		v.consensus.RecordPrism(votes)
+		_ = v.consensus.RecordPrism(votes)
 	})
 	
 	// Handle block proposals
@@ -194,7 +194,7 @@ func (v *ValidatorNode) registerHandlers() {
 		}
 		
 		// Add block to consensus
-		v.consensus.Add(proposal.BlockID)
+		_ = v.consensus.Add(proposal.BlockID)
 	})
 	
 	// Handle consensus reached notifications
@@ -235,7 +235,7 @@ func (v *ValidatorNode) run(ctx context.Context, wg *sync.WaitGroup) {
 					Timestamp: time.Now().Unix(),
 				}
 				
-				v.transport.Broadcast(msg)
+				_ = v.transport.Broadcast(msg)
 				atomic.AddUint64(&v.messagesSent, 1)
 			}
 		}

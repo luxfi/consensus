@@ -73,7 +73,7 @@ func BenchmarkDAGWithAndWithoutFPC(b *testing.B) {
 
 					for i := 0; i < scenario.txPerLayer; i++ {
 						txID := make([]byte, 32)
-						rand.Read(txID)
+						_, _ = rand.Read(txID)
 						tx := TxRef(txID)
 						dagLayers[layer][i] = tx
 
@@ -81,7 +81,7 @@ func BenchmarkDAGWithAndWithoutFPC(b *testing.B) {
 						objID := make([]byte, 32)
 						objID[0] = byte(layer)
 						objID[1] = byte(i)
-						rand.Read(objID[2:])
+						_, _ = rand.Read(objID[2:])
 						cls.addOwnedTx(tx, ObjectID(objID))
 					}
 				}
@@ -234,7 +234,7 @@ func BenchmarkDAGFinalizationLatency(b *testing.B) {
 
 			// Create a transaction
 			txID := make([]byte, 32)
-			rand.Read(txID)
+			_, _ = rand.Read(txID)
 			tx := TxRef(txID)
 
 			start := time.Now()
@@ -280,7 +280,7 @@ func BenchmarkDAGFinalizationLatency(b *testing.B) {
 
 			// Create a transaction
 			txID := make([]byte, 32)
-			rand.Read(txID)
+			_, _ = rand.Read(txID)
 			tx := TxRef(txID)
 
 			objID := make([]byte, 32)
