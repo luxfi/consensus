@@ -10,7 +10,7 @@ import (
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/flare"
 	"github.com/luxfi/consensus/focus"
-	"github.com/luxfi/consensus/horizon"
+	// "github.com/luxfi/consensus/horizon" // TODO: Use for ordering
 	"github.com/luxfi/consensus/protocol/nebula"
 	"github.com/luxfi/consensus/wave"
 	"github.com/luxfi/consensus/wave/fpc"
@@ -69,11 +69,8 @@ func New[V comparable](cfg config.Parameters, hooks Hooks[V]) (*Engine[V], error
 	g := graph[V]{parents: hooks.Parents}
 
 	// Create orderer
-	ord := flare.New(flare.Config[V]{
-		Graph:   g,
-		Tips:    hooks.Tips,
-		Sampler: hooks.Sampler, // tie-breaks or local sampling; DAG cuts/frontiers handled inside flare
-	})
+	// TODO: Create proper sampler, round, and counter for flare
+	// ord := flare.New(sampler, round, counter, cfg)
 
 	// Create FPC engine if enabled
 	var fpcEngine *fpc.Engine
@@ -87,7 +84,7 @@ func New[V comparable](cfg config.Parameters, hooks Hooks[V]) (*Engine[V], error
 		Tips:       hooks.Tips,
 		Thresholds: selector,
 		Confidence: conf,
-		Orderer:    ord,
+		// Orderer:    ord, // TODO: Add orderer when created
 		Propose:    hooks.Propose,
 		Apply:      hooks.Apply,
 		Send:       hooks.Send,
