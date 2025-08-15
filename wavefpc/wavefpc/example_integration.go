@@ -24,7 +24,7 @@ func (e *ExampleEngineIntegration) InitializeFPC(
 	nodeIDs []ids.NodeID,
 	myNodeID ids.NodeID,
 ) {
-	if !params.EnableFPC {
+	if !params.GetEnableFPC() {
 		return
 	}
 

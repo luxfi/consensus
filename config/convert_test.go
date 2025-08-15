@@ -102,7 +102,7 @@ func TestConfigToParametersMinimal(t *testing.T) {
 	require.Equal(time.Duration(0), params.MinRoundInterval)
 }
 
-func TestConfigToParametersWithQuantum(t *testing.T) {
+func TestConfigToParametersWithDeltaMinMS(t *testing.T) {
 	require := require.New(t)
 
 	config := Config{
@@ -115,13 +115,11 @@ func TestConfigToParametersWithQuantum(t *testing.T) {
 		MaxOutstandingItems:   100,
 		MaxItemProcessingTime: 5 * time.Second,
 		MinRoundInterval:      100 * time.Millisecond,
-		QThreshold:            15,
-		QuasarTimeout:         30 * time.Second,
 	}
 
 	params := config.ToParameters()
 
-	// All parameters including quantum should be converted
+	// All parameters should be converted
 	require.Equal(config.K, params.K)
 	require.Equal(config.AlphaPreference, params.AlphaPreference)
 	require.Equal(config.AlphaConfidence, params.AlphaConfidence)
@@ -132,7 +130,7 @@ func TestConfigToParametersWithQuantum(t *testing.T) {
 	require.Equal(config.MaxItemProcessingTime, params.MaxItemProcessingTime)
 	require.Equal(config.MinRoundInterval, params.MinRoundInterval)
 
-	// FPC and Quasar parameters should be default
+	// FPC and Quasar parameters should be default (disabled)
 	require.False(params.FPC.Enable)
 	require.False(params.Quasar.Enable)
 }

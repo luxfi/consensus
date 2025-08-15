@@ -43,7 +43,7 @@ func NewPhoton(params config.Parameters) *Photon {
 	return &Photon{
 		alphaPreference: params.AlphaPreference,
 		alphaConfidence: params.AlphaConfidence,
-		beta:            params.Beta,
+		beta:            int(params.Beta),
 	}
 }
 

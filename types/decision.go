@@ -39,6 +39,6 @@ func (s simpleDecision) Bytes() []byte { return []byte{byte(s)} }
 func (s simpleDecision) Verify() error { return nil }
 
 var (
-	DecideReject Decision = simpleDecision(0)
-	DecideAccept Decision = simpleDecision(1)
+	RejectDecision Decision = simpleDecision(0)
+	AcceptDecision Decision = simpleDecision(1)
 )

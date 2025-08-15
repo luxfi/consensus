@@ -38,7 +38,7 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 			K:                     k,
 			AlphaPreference:       (k / 2) + 1,
 			AlphaConfidence:       (k / 2) + 2,
-			Beta:                  k / 4,
+			Beta:                  uint32(k / 4),
 			ConcurrentPolls:       1,
 			OptimalProcessing:     10,
 			MaxOutstandingItems:   256,

@@ -8,10 +8,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/types"
-	// "github.com/luxfi/crypto/bls"
-	// "github.com/luxfi/crypto/ringtail"
 )
 
 // Verifier handles dual certificate creation and verification
@@ -31,15 +28,15 @@ type QuasarConfig struct {
 type Engine struct {
 	mu         sync.RWMutex
 	cfg        QuasarConfig
-	blsAgg     *bls.Aggregator
-	rtAgg      *ringtail.Aggregator
+	blsAgg     *Aggregator
+	rtAgg      *Aggregator
 	validators map[types.NodeID]*ValidatorKeys
 }
 
 // ValidatorKeys holds both BLS and Ringtail keys for a validator
 type ValidatorKeys struct {
-	BLSPublicKey *bls.PublicKey
-	RTPublicKey  *ringtail.PublicKey
+	BLSPublicKey *PublicKey
+	RTPublicKey  *PublicKey
 }
 
 // New creates a new Quasar engine
@@ -109,7 +106,7 @@ func (e *Engine) Verify(ctx context.Context, bundle types.CertBundle) bool {
 }
 
 // AddValidator adds a validator with their keys
-func (e *Engine) AddValidator(id types.NodeID, blsKey *bls.PublicKey, rtKey *ringtail.PublicKey) {
+func (e *Engine) AddValidator(id types.NodeID, blsKey *PublicKey, rtKey *PublicKey) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	
@@ -151,8 +148,8 @@ func (e *Engine) attachBundle(b any, bundle types.CertBundle) error {
 }
 
 // getValidatorBLSKeys returns all validator BLS public keys
-func (e *Engine) getValidatorBLSKeys() []*bls.PublicKey {
-	keys := make([]*bls.PublicKey, 0, len(e.validators))
+func (e *Engine) getValidatorBLSKeys() []*PublicKey {
+	keys := make([]*PublicKey, 0, len(e.validators))
 	for _, v := range e.validators {
 		if v.BLSPublicKey != nil {
 			keys = append(keys, v.BLSPublicKey)
@@ -162,8 +159,8 @@ func (e *Engine) getValidatorBLSKeys() []*bls.PublicKey {
 }
 
 // getValidatorRTKeys returns all validator Ringtail public keys
-func (e *Engine) getValidatorRTKeys() []*ringtail.PublicKey {
-	keys := make([]*ringtail.PublicKey, 0, len(e.validators))
+func (e *Engine) getValidatorRTKeys() []*PublicKey {
+	keys := make([]*PublicKey, 0, len(e.validators))
 	for _, v := range e.validators {
 		if v.RTPublicKey != nil {
 			keys = append(keys, v.RTPublicKey)
