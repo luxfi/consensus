@@ -56,7 +56,7 @@ func TestPulseGovernance(t *testing.T) {
 	require.Equal(proposalB, gov.Preference())
 	
 	// Continue to finalize
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(gov.RecordVotes(votesB))
 	}
 	
@@ -119,7 +119,7 @@ func TestConsensusReversibilityWindow(t *testing.T) {
 		strongVotesC.Add(choiceC)
 	}
 	
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(w.RecordVotes(strongVotesC))
 	}
 	
@@ -176,7 +176,7 @@ func TestPartialVoteReversibility(t *testing.T) {
 	}
 	
 	// Finalize on Blue
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(round3))
 	}
 	
@@ -317,7 +317,7 @@ func TestConsensusStability(t *testing.T) {
 		greenVotes.Add(Green)
 	}
 	
-	for round := 0; round < params.Beta*2; round++ {
+	for round := 0; round < int(params.Beta)*2; round++ {
 		allFinalized := true
 		for _, instance := range instances {
 			if !instance.Finalized() {

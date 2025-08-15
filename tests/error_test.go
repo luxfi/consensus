@@ -77,7 +77,7 @@ func TestErrorAddAfterFinalized(t *testing.T) {
 				votes.Add(Red)
 			}
 
-			for i := 0; i < params.Beta; i++ {
+			for i := 0; i < int(params.Beta); i++ {
 				require.NoError(consensus.RecordVotes(votes))
 			}
 
@@ -106,7 +106,7 @@ func TestErrorVoteAfterFinalized(t *testing.T) {
 		redVotes.Add(Red)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(redVotes))
 	}
 
@@ -316,7 +316,7 @@ func TestErrorRecordUnsuccessfulPollOnFinalized(t *testing.T) {
 		votes.Add(Red)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(votes))
 	}
 

@@ -102,7 +102,7 @@ func TestIntegrationPrismConsensus(t *testing.T) {
 	require.LessOrEqual(len(sampled), 3)
 	
 	// Test Cut (used to be Quorum)
-	cut := prism.NewCut(params.AlphaPreference, params.AlphaConfidence, params.Beta)
+	cut := prism.NewCut(params.AlphaPreference, params.AlphaConfidence, int(params.Beta))
 	require.NotNil(cut)
 	
 	// Test Refractor
@@ -142,7 +142,7 @@ func TestIntegrationPulseConsensus(t *testing.T) {
 	
 	// Simulate consensus rounds
 	maxRounds := 100
-	for round := 0; round < maxRounds; round++ {
+	for round := 0; round < int(maxRounds); round++ {
 		allFinalized := true
 		for _, node := range nodes {
 			if !node.Finalized() {

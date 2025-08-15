@@ -291,7 +291,7 @@ func TestWaveRecordUnsuccessfulPoll(t *testing.T) {
 	}
 
 	// Record only Beta-1 rounds so we're not finalized yet
-	for i := 0; i < params.Beta-1; i++ {
+	for i := 0; i < int(params.Beta)-1; i++ {
 		require.NoError(w.RecordVotes(goodVotes))
 	}
 	require.Equal(1, w.confidence)

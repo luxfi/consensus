@@ -52,7 +52,7 @@ func TestPulseBinaryChoice(t *testing.T) {
 	require.Equal(Blue, p.Preference())
 
 	// Continue voting to finalize
-	for i := 1; i < params.Beta; i++ {
+	for i := 1; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(votes))
 	}
 
@@ -128,9 +128,9 @@ func TestPulseConfidenceBuildup(t *testing.T) {
 	}
 
 	// Track confidence buildup
-	for round := 0; round < params.Beta; round++ {
+	for round := 0; round < int(params.Beta); round++ {
 		require.NoError(p.RecordVotes(votes))
-		if round < params.Beta-1 {
+		if round < int(params.Beta)-1 {
 			require.False(p.Finalized(), "Should not finalize before Beta rounds")
 		}
 	}
@@ -163,7 +163,7 @@ func TestPulseRecordUnsuccessfulPoll(t *testing.T) {
 	require.False(p.Finalized())
 
 	// Can still build confidence and finalize
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(votes))
 	}
 	require.True(p.Finalized())
@@ -207,7 +207,7 @@ func TestPulseVoteAfterFinalized(t *testing.T) {
 		votes.Add(Blue)
 	}
 
-	for i := 0; i < params.Beta; i++ {
+	for i := 0; i < int(params.Beta); i++ {
 		require.NoError(p.RecordVotes(votes))
 	}
 
