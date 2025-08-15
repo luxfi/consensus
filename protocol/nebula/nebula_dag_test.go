@@ -11,7 +11,6 @@ import (
     
     "github.com/luxfi/consensus/core/interfaces"
     "github.com/luxfi/ids"
-    "github.com/luxfi/log"
 )
 
 type testTx struct {
@@ -22,8 +21,8 @@ type testTx struct {
 
 func (t *testTx) ID() ids.ID             { return t.id }
 func (t *testTx) Status() interfaces.Status { return t.status }
-func (t *testTx) Accept() error { t.status = interfaces.Accepted; return nil }
-func (t *testTx) Reject() error { t.status = interfaces.Rejected; return nil }
+func (t *testTx) Accept(context.Context) error { t.status = interfaces.Accepted; return nil }
+func (t *testTx) Reject(context.Context) error { t.status = interfaces.Rejected; return nil }
 func (t *testTx) Bytes() []byte          { return t.bytes }
 
 type testVertex struct {
@@ -54,9 +53,7 @@ func (v *testVertex) Verify() error          { return nil }
 func TestNebulaBasic(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-    }
+    ctx := context.Background()
     
     n := New(ctx)
     require.NotNil(n)
@@ -65,9 +62,7 @@ func TestNebulaBasic(t *testing.T) {
 func TestNebulaLinearDAG(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-    }
+    ctx := context.Background()
     
     n := New(ctx)
     require.NotNil(n)
@@ -103,9 +98,7 @@ func TestNebulaLinearDAG(t *testing.T) {
 func TestNebulaDAGWithTransactions(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-    }
+    ctx := context.Background()
     
     n := New(ctx)
     
@@ -150,9 +143,7 @@ func TestNebulaDAGWithTransactions(t *testing.T) {
 func TestNebulaDAGFork(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-    }
+    ctx := context.Background()
     
     n := New(ctx)
     
@@ -206,9 +197,7 @@ func TestNebulaDAGFork(t *testing.T) {
 func TestNebulaMultipleParents(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-    }
+    ctx := context.Background()
     
     n := New(ctx)
     
@@ -259,9 +248,7 @@ func TestNebulaMultipleParents(t *testing.T) {
 func TestNebulaOrphanVertex(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-    }
+    ctx := context.Background()
     
     n := New(ctx)
     
@@ -293,9 +280,7 @@ func TestNebulaOrphanVertex(t *testing.T) {
 func TestNebulaRecordUnsuccessfulPoll(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-    }
+    ctx := context.Background()
     
     n := New(ctx)
     
@@ -325,9 +310,7 @@ func TestNebulaRecordUnsuccessfulPoll(t *testing.T) {
 func TestNebulaString(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
-        Log:        log.NewNoOpLogger(),
-    }
+    ctx := context.Background()
     
     n := New(ctx)
     require.NotNil(n)

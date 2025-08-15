@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/consensus/utils/bag"
 )
@@ -55,7 +54,7 @@ const (
 )
 
 // New creates a new PQ-secured chain engine
-func New(ctx *interfaces.Context, params Parameters) (*Engine, error) {
+func New(ctx context.Context, params Parameters) (*Engine, error) {
 	rt := quasar.NewRingtail()
 	if err := rt.Initialize(params.SecurityLevel); err != nil {
 		return nil, fmt.Errorf("failed to initialize ringtail: %w", err)
