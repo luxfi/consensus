@@ -68,6 +68,7 @@ func (r *round) Poll(ctx context.Context) (Result, error) {
 	
 	r.phase++
 	
+	_ = alphaPref // Will be used for preference logic
 	if votes >= alphaConf {
 		return Result{Success: true, Choice: []byte("consensus")}, nil
 	}

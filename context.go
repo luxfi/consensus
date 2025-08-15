@@ -47,6 +47,7 @@ type AliasLookup interface {
 // ValidatorState provides validator information
 type ValidatorState interface {
 	GetCurrentHeight() (uint64, error)
+	GetMinimumHeight(ctx context.Context) (uint64, error)
 	GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
 	GetSubnetID(chainID ids.ID) (ids.ID, error)
 }
