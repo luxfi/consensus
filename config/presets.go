@@ -14,13 +14,16 @@ var DefaultParameters = Parameters{
 	AlphaPreference:       15,
 	AlphaConfidence:       15,
 	Beta:                  20,
-	QThreshold:            15,
+	QRounds:               2,  // Quantum rounds for dual-cert finality
 	QuasarTimeout:         50 * time.Millisecond,
-	ConcurrentPolls:     4,
+	ConcurrentPolls:       4,
 	OptimalProcessing:     10,
 	MaxOutstandingItems:   256,
 	MaxItemProcessingTime: 30 * time.Second,
 	MinRoundInterval:      100 * time.Millisecond,
+	EnableFPC:             true,  // FPC enabled by default for 50x speedup
+	FPCVoteLimit:          100,
+	FPCVotePrefix:         []byte("FPC"),
 }
 
 // TestParameters returns parameters suitable for testing
@@ -29,13 +32,16 @@ var TestParameters = Parameters{
 	AlphaPreference:       2,
 	AlphaConfidence:       2,
 	Beta:                  2,
-	QThreshold:            2,
+	QRounds:               2,
 	QuasarTimeout:         10 * time.Millisecond,
-	ConcurrentPolls:     1,
+	ConcurrentPolls:       1,
 	OptimalProcessing:     1,
 	MaxOutstandingItems:   16,
 	MaxItemProcessingTime: 10 * time.Second,
 	MinRoundInterval:      10 * time.Millisecond,
+	EnableFPC:             true,  // FPC enabled for tests
+	FPCVoteLimit:          10,
+	FPCVotePrefix:         []byte("TEST"),
 }
 
 // LocalParameters for local development (5 nodes)
@@ -44,13 +50,16 @@ var LocalParameters = Parameters{
 	AlphaPreference:       3,
 	AlphaConfidence:       4,
 	Beta:                  3,
-	QThreshold:            4,
+	QRounds:               2,
 	QuasarTimeout:         30 * time.Millisecond,
-	ConcurrentPolls:     2,
+	ConcurrentPolls:       2,
 	OptimalProcessing:     3,
 	MaxOutstandingItems:   50,
 	MaxItemProcessingTime: 3690 * time.Millisecond,
 	MinRoundInterval:      10 * time.Millisecond,
+	EnableFPC:             true,  // FPC enabled for local dev
+	FPCVoteLimit:          50,
+	FPCVotePrefix:         []byte("LOCAL"),
 }
 
 // TestnetParameters for testnet (11 nodes)
