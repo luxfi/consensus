@@ -6,8 +6,14 @@ import (
     "github.com/luxfi/consensus/engine/graph"
 )
 
+// LinearizableVM represents a linearizable vertex VM
+type LinearizableVM interface {
+    Linearize(ctx context.Context, stopVertexID ids.ID) error
+}
+
 // LinearizableVMWithEngine represents a linearizable vertex VM with engine
 type LinearizableVMWithEngine interface {
+    LinearizableVM
     Initialize(ctx context.Context, chainCtx interface{}, dbManager interface{}, genesisBytes []byte, upgradeBytes []byte, configBytes []byte, toEngine chan<- interface{}, fxs []interface{}, appSender interface{}) error
     BuildVertex(ctx context.Context) (graph.Vertex, error)
     ParseVertex(ctx context.Context, vtxBytes []byte) (graph.Vertex, error)
