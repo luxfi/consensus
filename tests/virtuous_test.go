@@ -44,7 +44,7 @@ func TestVirtuousBehavior(t *testing.T) {
 		}
 		
 		require.True(p.Finalized())
-		require.Equal(params.Beta, uint32(rounds)) // Should finalize in exactly Beta rounds
+		require.Equal(int(params.Beta), rounds) // Should finalize in exactly Beta rounds
 	})
 	
 	t.Run("Pulse", func(t *testing.T) {
@@ -66,7 +66,7 @@ func TestVirtuousBehavior(t *testing.T) {
 		
 		require.True(p.Finalized())
 		require.Equal(Blue, p.Preference())
-		require.Equal(params.Beta, uint32(rounds))
+		require.Equal(int(params.Beta), rounds)
 	})
 	
 	t.Run("Wave", func(t *testing.T) {
@@ -92,7 +92,7 @@ func TestVirtuousBehavior(t *testing.T) {
 		
 		require.True(w.Finalized())
 		require.Equal(target, w.Preference())
-		require.Equal(params.Beta, uint32(rounds))
+		require.Equal(int(params.Beta), rounds)
 	})
 }
 
@@ -188,7 +188,7 @@ func TestVirtuousMinorityHonest(t *testing.T) {
 	rounds := 0
 	maxRounds := int(params.Beta) * 10
 	
-	for rounds < maxRounds {
+	for rounds < int(maxRounds) {
 		votes := bag.Bag[ids.ID]{}
 		
 		// Honest nodes vote virtuously
@@ -325,7 +325,7 @@ func TestVirtuousRecovery(t *testing.T) {
 	require.Equal(Blue, w.Preference())
 	// After flipping, confidence may already be partially built
 	// so it might take less than Beta rounds to finalize
-	require.LessOrEqual(uint32(rounds), params.Beta)
+	require.LessOrEqual(rounds, int(params.Beta))
 }
 
 // TestVirtuousStability tests stability under virtuous conditions
@@ -374,7 +374,7 @@ func TestVirtuousStability(t *testing.T) {
 			
 			require.True(p.instance.Finalized())
 			require.Equal(Red, p.instance.Preference())
-			require.Equal(params.Beta, uint32(rounds))
+			require.Equal(int(params.Beta), rounds)
 		})
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/flare"
 	"github.com/luxfi/consensus/focus"
-	// "github.com/luxfi/consensus/horizon" // TODO: Use for ordering
+	// "github.com/luxfi/consensus/horizon" // Not used currently
 	"github.com/luxfi/consensus/protocol/nebula"
 	"github.com/luxfi/consensus/wave"
 	"github.com/luxfi/consensus/wave/fpc"
@@ -68,9 +68,9 @@ func New[V comparable](cfg config.Parameters, hooks Hooks[V]) (*Engine[V], error
 	// Create graph adapter
 	g := graph[V]{parents: hooks.Parents}
 
-	// Create orderer
-	// TODO: Create proper sampler, round, and counter for flare
-	// ord := flare.New(sampler, round, counter, cfg)
+	// Create orderer - using nil for now as we need proper implementations
+	// TODO: Create proper sampler, round, counter implementations
+	ord := flare.New(nil, nil, nil, config.Parameters{})
 
 	// Create FPC engine if enabled
 	var fpcEngine *fpc.Engine
@@ -84,7 +84,7 @@ func New[V comparable](cfg config.Parameters, hooks Hooks[V]) (*Engine[V], error
 		Tips:       hooks.Tips,
 		Thresholds: selector,
 		Confidence: conf,
-		// Orderer:    ord, // TODO: Add orderer when created
+		Orderer:    nil, // TODO: Fix orderer type mismatch
 		Propose:    hooks.Propose,
 		Apply:      hooks.Apply,
 		Send:       hooks.Send,
