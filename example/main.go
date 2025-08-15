@@ -9,11 +9,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/luxfi/consensus/flare"
-	"github.com/luxfi/consensus/internal/types"
 	"github.com/luxfi/consensus/photon"
-	"github.com/luxfi/consensus/prism"
+	"github.com/luxfi/consensus/types"
 	"github.com/luxfi/consensus/wave"
+	"github.com/luxfi/consensus/wave/fpc"
 )
 
 type ItemID string
@@ -63,14 +62,21 @@ func main() {
 		RoundTO: 250 * time.Millisecond,
 	}, sel, transport{prefer: true})
 	
-	// Create Flare (Fast Path) - ALWAYS ON
-	fl := flare.New[TxID](2) // f=2, need 2f+1=5 votes for fast path
+	// Create FPC (Fast Path Consensus) - ALWAYS ON
+	quorum := fpc.Quorum{N: 7, F: 2} // f=2, need 2f+1=5 votes for fast path
+	fpcCfg := fpc.Config{
+		Quorum:            quorum,
+		Epoch:             0,
+		VoteLimitPerBlock: 256,
+		VotePrefix:        []byte("LUX/FPC/V1"),
+	}
+	fl := fpc.New(fpcCfg, fpc.SimpleClassifier{})
 	
 	fmt.Println("Configuration:")
 	fmt.Printf("  Validators: %d\n", len(peers))
 	fmt.Printf("  Sample size (K): %d\n", 5)
 	fmt.Printf("  FPC: ENABLED (switches after %d inconclusive rounds)\n", 3)
-	fmt.Printf("  Fast Path (Flare): ENABLED (threshold: %d votes)\n", 5)
+	fmt.Printf("  Fast Path (FPC): ENABLED (threshold: %d votes)\n", 5)
 	fmt.Println()
 
 	// Demonstrate Fast Path for owned transactions
@@ -86,7 +92,9 @@ func main() {
 	}
 	
 	// Check if executable
-	if fl.Status(ownedTx) == flare.StatusExecutable {
+	var txRef fpc.TxRef
+	copy(txRef[:], []byte(ownedTx)[:32])
+	if fl.Status(txRef) == fpc.StatusExecutable {
 		fmt.Println("✅ Transaction is EXECUTABLE via Fast Path (before block finalization!)")
 	}
 	fmt.Println()
@@ -133,13 +141,13 @@ func main() {
 	fmt.Println("• Production-ready for millions of TPS on X-Chain")
 }
 
-func statusString(s flare.Status) string {
+func statusString(s fpc.Status) string {
 	switch s {
-	case flare.StatusPending:
+	case fpc.StatusPending:
 		return "Pending"
-	case flare.StatusExecutable:
+	case fpc.StatusExecutable:
 		return "Executable"
-	case flare.StatusFinal:
+	case fpc.StatusFinal:
 		return "Final"
 	default:
 		return "Unknown"

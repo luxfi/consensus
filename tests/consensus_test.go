@@ -4,6 +4,7 @@
 package tests
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -157,11 +158,7 @@ func TestByzantineNode(t *testing.T) {
 
 	params := config.DefaultParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
-		NetworkID: 1,
-		ChainID:   ids.GenerateTestID(),
-		NodeID:    ids.GenerateTestNodeID(),
-	}
+	ctx := context.Background()
 	factory := utils.NewFactory(ctx)
 
 	// Byzantine nodes don't change preference

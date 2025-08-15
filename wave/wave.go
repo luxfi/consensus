@@ -9,14 +9,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luxfi/consensus/internal/types"
 	"github.com/luxfi/consensus/photon"
-	"github.com/luxfi/consensus/prism"
-	"github.com/luxfi/consensus/ray"
+	"github.com/luxfi/consensus/types"
 )
 
+type Step[ID comparable] struct {
+	Prefer bool
+	Conf   uint32
+}
+
 type ItemState[ID comparable] struct {
-	Step    ray.Step[ID]
+	Step    Step[ID]
 	Decided bool
 	Result  types.Decision
 	Stage   Stage
@@ -53,7 +56,7 @@ type Wave[ID comparable] interface {
 
 type waveImpl[ID comparable] struct {
 	cfg   Config
-	sel   prism.Sampler[ID]
+	// sel   prism.Sampler[ID] // TODO: import from engines/dag/internal/prism
 	tx    Transport[ID]
 
 	mu    sync.Mutex
@@ -61,7 +64,7 @@ type waveImpl[ID comparable] struct {
 	skips map[ID]int // inconclusive streak
 }
 
-func New[ID comparable](cfg Config, sel prism.Sampler[ID], tx Transport[ID]) Wave[ID] {
+func New[ID comparable](cfg Config, /* sel prism.Sampler[ID], */ tx Transport[ID]) Wave[ID] {
 	if cfg.K == 0 {
 		cfg.K = 20
 	}
@@ -80,7 +83,7 @@ func New[ID comparable](cfg Config, sel prism.Sampler[ID], tx Transport[ID]) Wav
 
 	return &waveImpl[ID]{
 		cfg:   cfg,
-		sel:   sel,
+		// sel:   sel,
 		tx:    tx,
 		state: make(map[ID]*ItemState[ID]),
 		skips: make(map[ID]int),

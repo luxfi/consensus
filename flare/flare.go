@@ -1,79 +1,88 @@
 // Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// Package flare implements fast path consensus (embedded; ON by default)
 package flare
 
-import (
-	"sync"
-)
+import "github.com/luxfi/consensus/types"
 
-type Status uint8
-
-const (
-	StatusPending    Status = iota
-	StatusExecutable        // 2f+1 votes observed
-	StatusFinal             // anchored by a committed block OR 2f+1 certs in history
-)
-
-type VoteRef struct {
-	BlockID []byte // or hash
-	Index   uint32 // position in block
+// Vertex represents a DAG vertex
+type Vertex interface {
+	ID() types.VertexID
+	Parents() []types.VertexID
+	Height() uint64
+	Bytes() []byte
 }
 
-type Flare[T comparable] interface {
-	Propose(tx T) VoteRef              // implicit vote in next block
-	ObserveVote(v VoteRef)                 // from peers
-	Status(tx T) Status
-	Executable() []T                   // drain currently executable
-	PendingVotes(parents [][]byte) []VoteRef // to embed in next block
+// Graph manages DAG ordering and conflict detection
+type Graph interface {
+	Add(v Vertex) error
+	Parents(id types.VertexID) []types.VertexID
+	Conflicts(id types.VertexID) []types.VertexID
+	Ancestors(id types.VertexID) []types.VertexID
+	Size() int
 }
 
-type impl[T comparable] struct {
-	mu     sync.Mutex
-	votes  map[T]int
-	status map[T]Status
-	f      int // byzantine fault tolerance
+// graph implements DAG ordering
+type graph struct {
+	vertices  map[types.VertexID]Vertex
+	parents   map[types.VertexID][]types.VertexID
+	conflicts map[types.VertexID][]types.VertexID
 }
 
-func New[T comparable](f int) Flare[T] {
-	return &impl[T]{
-		votes:  make(map[T]int),
-		status: make(map[T]Status),
-		f:      f,
+// NewGraph creates a new DAG graph
+func NewGraph() Graph {
+	return &graph{
+		vertices:  make(map[types.VertexID]Vertex),
+		parents:   make(map[types.VertexID][]types.VertexID),
+		conflicts: make(map[types.VertexID][]types.VertexID),
 	}
 }
 
-func (fl *impl[T]) Propose(tx T) VoteRef {
-	fl.mu.Lock()
-	defer fl.mu.Unlock()
-	fl.votes[tx]++
-	if fl.votes[tx] >= 2*fl.f+1 {
-		if fl.status[tx] < StatusExecutable {
-			fl.status[tx] = StatusExecutable
+// Add adds a vertex to the graph
+func (g *graph) Add(v Vertex) error {
+	id := v.ID()
+	g.vertices[id] = v
+	g.parents[id] = v.Parents()
+	// Conflict detection would be implemented here
+	return nil
+}
+
+// Parents returns the parents of a vertex
+func (g *graph) Parents(id types.VertexID) []types.VertexID {
+	return g.parents[id]
+}
+
+// Conflicts returns conflicting vertices
+func (g *graph) Conflicts(id types.VertexID) []types.VertexID {
+	return g.conflicts[id]
+}
+
+// Ancestors returns all ancestors of a vertex
+func (g *graph) Ancestors(id types.VertexID) []types.VertexID {
+	visited := make(map[types.VertexID]bool)
+	var ancestors []types.VertexID
+	
+	var traverse func(types.VertexID)
+	traverse = func(vid types.VertexID) {
+		if visited[vid] {
+			return
+		}
+		visited[vid] = true
+		ancestors = append(ancestors, vid)
+		
+		for _, parent := range g.parents[vid] {
+			traverse(parent)
 		}
 	}
-	return VoteRef{}
-}
-
-func (fl *impl[T]) ObserveVote(v VoteRef) { /* wire later */ }
-
-func (fl *impl[T]) Status(tx T) Status {
-	fl.mu.Lock()
-	defer fl.mu.Unlock()
-	return fl.status[tx]
-}
-
-func (fl *impl[T]) Executable() []T {
-	fl.mu.Lock()
-	defer fl.mu.Unlock()
-	var out []T
-	for t, st := range fl.status {
-		if st == StatusExecutable {
-			out = append(out, t)
-		}
+	
+	for _, parent := range g.parents[id] {
+		traverse(parent)
 	}
-	return out
+	
+	return ancestors
 }
 
-func (fl *impl[T]) PendingVotes(parents [][]byte) []VoteRef { return nil }
+// Size returns the number of vertices in the graph
+func (g *graph) Size() int {
+	return len(g.vertices)
+}
