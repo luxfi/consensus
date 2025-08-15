@@ -63,7 +63,7 @@ func (e *Engine[T]) Step(ctx context.Context) error {
 	
 	// Query sample
 	votes := make(map[T]int)
-	for _, node := range sample {
+	for range sample {
 		// In real implementation, query node for their preference
 		// For now, simulate with proposal
 		if prop, err := e.cfg.Propose(ctx); err == nil {

@@ -63,7 +63,7 @@ func (b *TestBlock) Timestamp() time.Time {
 }
 
 // Verify does nothing
-func (b *TestBlock) Verify() error {
+func (b *TestBlock) Verify(ctx context.Context) error {
 	return nil
 }
 
@@ -73,13 +73,13 @@ func (b *TestBlock) Bytes() []byte {
 }
 
 // Accept marks the block as accepted
-func (b *TestBlock) Accept() error {
+func (b *TestBlock) Accept(ctx context.Context) error {
 	b.StatusV = choices.Accepted
 	return nil
 }
 
 // Reject marks the block as rejected
-func (b *TestBlock) Reject() error {
+func (b *TestBlock) Reject(ctx context.Context) error {
 	b.StatusV = choices.Rejected
 	return nil
 }

@@ -61,7 +61,7 @@ func New[T comparable](cfg config.Parameters, hooks Hooks[T]) (*Engine[T], error
 	// Create FPC engine if enabled
 	var fpcEngine *fpc.Engine
 	if cfg.FPC.Enable {
-		fpcEngine = fpc.New(cfg.FPC)
+		fpcEngine = fpc.NewEngine(cfg.FPC)
 	}
 	
 	// Create Nova protocol
