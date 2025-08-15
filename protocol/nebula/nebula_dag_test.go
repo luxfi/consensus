@@ -54,7 +54,7 @@ func (v *testVertex) Verify() error          { return nil }
 func TestNebulaBasic(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
     }
     
@@ -65,7 +65,7 @@ func TestNebulaBasic(t *testing.T) {
 func TestNebulaLinearDAG(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
     }
     
@@ -103,7 +103,7 @@ func TestNebulaLinearDAG(t *testing.T) {
 func TestNebulaDAGWithTransactions(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
     }
     
@@ -150,7 +150,7 @@ func TestNebulaDAGWithTransactions(t *testing.T) {
 func TestNebulaDAGFork(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
     }
     
@@ -206,7 +206,7 @@ func TestNebulaDAGFork(t *testing.T) {
 func TestNebulaMultipleParents(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
     }
     
@@ -259,7 +259,7 @@ func TestNebulaMultipleParents(t *testing.T) {
 func TestNebulaOrphanVertex(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
     }
     
@@ -293,7 +293,7 @@ func TestNebulaOrphanVertex(t *testing.T) {
 func TestNebulaRecordUnsuccessfulPoll(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
     }
     
@@ -325,7 +325,7 @@ func TestNebulaRecordUnsuccessfulPoll(t *testing.T) {
 func TestNebulaString(t *testing.T) {
     require := require.New(t)
     
-    ctx := &interfaces.Context{
+    ctx := &interfaces.Runtime{
         Log:        log.NewNoOpLogger(),
     }
     

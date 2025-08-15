@@ -157,7 +157,7 @@ func TestByzantineNode(t *testing.T) {
 
 	params := config.DefaultParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NetworkID: 1,
 		ChainID:   ids.GenerateTestID(),
 		NodeID:    ids.GenerateTestNodeID(),

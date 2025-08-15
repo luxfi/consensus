@@ -17,7 +17,7 @@ type Handler interface {
 
 // New creates a new handler
 func New(
-    ctx *interfaces.Context,
+    ctx *interfaces.Runtime,
     cn interface{}, // changeNotifier
     subscription interface{},
     vdrs validators.Manager,

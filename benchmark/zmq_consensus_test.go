@@ -31,7 +31,7 @@ type ValidatorNode struct {
 	nodeID    string
 	transport *zmq4.Transport
 	consensus interfaces.Consensus
-	ctx       *interfaces.Context
+	ctx       *interfaces.Runtime
 	params    config.Parameters
 	cancel    context.CancelFunc
 	
@@ -71,7 +71,7 @@ func (ns *NetworkSimulator) AddValidator(protocol string, params config.Paramete
 	transport := zmq4.NewTransport(ns.ctx, nodeID, port)
 	
 	// Create consensus context
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		Log:     log.NewNoOpLogger(),
 		Metrics: metrics.NewMultiGatherer(),
 	}

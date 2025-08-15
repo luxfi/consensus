@@ -84,7 +84,7 @@ func main() {
 	// params.MinRoundInterval = *minRound // MinRoundInterval not a field in config.Parameters
 	
 	// Create core context
-	coreCtx := &interfaces.Context{
+	coreCtx := &interfaces.Runtime{
 		NodeID: nodeID,
 	}
 	

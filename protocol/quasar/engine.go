@@ -129,7 +129,7 @@ type SlashingEvent struct {
 type SlashingCallback func(event *SlashingEvent)
 
 // New creates a new Quasar engine
-func New(ctx *interfaces.Context, params Parameters) (*Engine, error) {
+func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 	rt := NewRingtail()
 	if err := rt.Initialize(params.SecurityLevel); err != nil {
 		return nil, fmt.Errorf("failed to initialize ringtail: %w", err)
