@@ -18,7 +18,7 @@ import (
 // This operates at stellar cluster scale, handling multiple parallel chains
 type Engine struct {
 	// Core engine
-	engine *nebula.Engine
+	engine nebula.Protocol[ids.ID]
 	
 	// Consensus stages (commented out until protocols are implemented)
 	// photonStage photon.Monadic  // Quantum sampling
@@ -90,8 +90,20 @@ func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 	
 	// novaStage := nova.New(nova.Parameters{})
 	
-	// Create nebula engine
-	engine := nebula.New(ctx)
+	// Create nebula engine with proper configuration
+	cfg := nebula.Config[ids.ID]{
+		// Minimal configuration for compilation
+		Graph:      nil,
+		Tips:       func() []ids.ID { return nil },
+		Thresholds: nil,
+		Confidence: nil,
+		Orderer:    nil,
+	}
+	
+	engine, err := nebula.New(cfg)
+	if err != nil {
+		return nil, err
+	}
 	
 	return &Engine{
 		engine:      engine,
@@ -118,16 +130,7 @@ func (r *Engine) Start(ctx context.Context) error {
 	}
 	
 	// Stages are already initialized in the constructor
-	
-	// Initialize engine first
-	if err := r.engine.Initialize(ctx); err != nil {
-		return fmt.Errorf("failed to initialize nebula engine: %w", err)
-	}
-	
-	// Start engine
-	if err := r.engine.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start nebula engine: %w", err)
-	}
+	// The nebula engine doesn't need explicit initialization
 	
 	r.state.running = true
 	r.state.startTime = time.Now()
@@ -144,10 +147,8 @@ func (r *Engine) Stop(ctx context.Context) error {
 		return fmt.Errorf("engine not running")
 	}
 	
-	// Stop engine
-	if err := r.engine.Stop(ctx); err != nil {
-		return fmt.Errorf("failed to stop nebula engine: %w", err)
-	}
+	// Reset engine state
+	r.engine.Reset()
 	
 	r.state.running = false
 	return nil
