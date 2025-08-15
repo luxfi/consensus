@@ -30,7 +30,7 @@ func TestConfigToParameters(t *testing.T) {
 	require.Equal(config.K, params.K)
 	require.Equal(config.AlphaPreference, params.AlphaPreference)
 	require.Equal(config.AlphaConfidence, params.AlphaConfidence)
-	require.Equal(config.Beta, params.Beta)
+	require.Equal(uint32(config.Beta), params.Beta)
 	require.Equal(config.ConcurrentPolls, params.ConcurrentPolls)
 	require.Equal(config.OptimalProcessing, params.OptimalProcessing)
 	require.Equal(config.MaxOutstandingItems, params.MaxOutstandingItems)
@@ -64,16 +64,16 @@ func TestConfigToParametersWithAdvancedFields(t *testing.T) {
 	require.Equal(config.K, params.K)
 	require.Equal(config.AlphaPreference, params.AlphaPreference)
 	require.Equal(config.AlphaConfidence, params.AlphaConfidence)
-	require.Equal(config.Beta, params.Beta)
+	require.Equal(uint32(config.Beta), params.Beta)
 	require.Equal(config.ConcurrentPolls, params.ConcurrentPolls)
 	require.Equal(config.OptimalProcessing, params.OptimalProcessing)
 	require.Equal(config.MaxOutstandingItems, params.MaxOutstandingItems)
 	require.Equal(config.MaxItemProcessingTime, params.MaxItemProcessingTime)
 	require.Equal(config.MinRoundInterval, params.MinRoundInterval)
 
-	// Quantum parameters should be zero (not set in this config)
-	require.Equal(0, params.QThreshold)
-	require.Equal(time.Duration(0), params.QuasarTimeout)
+	// FPC and Quasar parameters should be default
+	require.False(params.FPC.Enable)
+	require.False(params.Quasar.Enable)
 }
 
 func TestConfigToParametersMinimal(t *testing.T) {
@@ -125,17 +125,16 @@ func TestConfigToParametersWithQuantum(t *testing.T) {
 	require.Equal(config.K, params.K)
 	require.Equal(config.AlphaPreference, params.AlphaPreference)
 	require.Equal(config.AlphaConfidence, params.AlphaConfidence)
-	require.Equal(config.Beta, params.Beta)
+	require.Equal(uint32(config.Beta), params.Beta)
 	require.Equal(config.ConcurrentPolls, params.ConcurrentPolls)
 	require.Equal(config.OptimalProcessing, params.OptimalProcessing)
 	require.Equal(config.MaxOutstandingItems, params.MaxOutstandingItems)
 	require.Equal(config.MaxItemProcessingTime, params.MaxItemProcessingTime)
 	require.Equal(config.MinRoundInterval, params.MinRoundInterval)
 
-	// Quantum parameters are not included in ToParameters() currently
-	// They would need to be added to the Parameters struct
-	require.Equal(0, params.QThreshold)
-	require.Equal(time.Duration(0), params.QuasarTimeout)
+	// FPC and Quasar parameters should be default
+	require.False(params.FPC.Enable)
+	require.False(params.Quasar.Enable)
 }
 
 func BenchmarkConfigToParameters(b *testing.B) {

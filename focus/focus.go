@@ -22,10 +22,10 @@ type FocusCounter struct {
 }
 
 // New creates a new focus counter with given beta
-func New(beta int) Confidence {
+func New(beta uint32) Confidence {
 	return &ConfidenceTracker{
-		counter: &FocusCounter{beta: uint32(beta)},
-		beta:    uint32(beta),
+		counter: &FocusCounter{beta: beta},
+		beta:    beta,
 	}
 }
 

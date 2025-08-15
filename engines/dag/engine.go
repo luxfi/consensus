@@ -78,7 +78,7 @@ func New[V comparable](cfg config.Parameters, hooks Hooks[V]) (*Engine[V], error
 	// Create FPC engine if enabled
 	var fpcEngine *fpc.Engine
 	if cfg.FPC.Enable {
-		fpcEngine = fpc.New(cfg.FPC)
+		fpcEngine = fpc.NewEngine(cfg.FPC)
 	}
 
 	// Create Nebula protocol

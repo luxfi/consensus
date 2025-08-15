@@ -67,17 +67,6 @@ type Bootstrapper interface {
 	Shutdown(ctx context.Context) error
 }
 
-// version is a stub for the version type
-type version struct {
-	Application *Application
-}
-
-// Application version info
-type Application struct {
-	Major int
-	Minor int
-	Patch int
-}
 
 // Poll represents a poll for bootstrapping
 type Poll struct {

@@ -233,8 +233,8 @@ func TestParametersValid(t *testing.T) {
 				OptimalProcessing:     10,
 				MaxOutstandingItems:   100,
 				MaxItemProcessingTime: 5 * time.Second,
-				QThreshold:            15,
-				QuasarTimeout:         30 * time.Second,
+				DeltaMinMS:            50,
+				MinRoundInterval:      100 * time.Millisecond,
 			},
 			wantErr: false,
 		},
@@ -249,14 +249,14 @@ func TestParametersValid(t *testing.T) {
 				OptimalProcessing:     10,
 				MaxOutstandingItems:   100,
 				MaxItemProcessingTime: 5 * time.Second,
-				QThreshold:            0, // Should be positive when QuasarTimeout is set
-				QuasarTimeout:         30 * time.Second,
+				DeltaMinMS:            0, // Should be positive
+				MinRoundInterval:      100 * time.Millisecond,
 			},
 			wantErr: true,
 			errMsg:  "qThreshold must be positive when set",
 		},
 		{
-			name: "quantum threshold too high",
+			name: "beta too high",
 			params: Parameters{
 				K:                     21,
 				AlphaPreference:       13,
@@ -266,8 +266,8 @@ func TestParametersValid(t *testing.T) {
 				OptimalProcessing:     10,
 				MaxOutstandingItems:   100,
 				MaxItemProcessingTime: 5 * time.Second,
-				QThreshold:            22, // Greater than K
-				QuasarTimeout:         30 * time.Second,
+				DeltaMinMS:            50,
+				MinRoundInterval:      100 * time.Millisecond,
 			},
 			wantErr: true,
 			errMsg:  "qThreshold (22) must be <= k (21)",
@@ -283,8 +283,8 @@ func TestParametersValid(t *testing.T) {
 				OptimalProcessing:     10,
 				MaxOutstandingItems:   100,
 				MaxItemProcessingTime: 5 * time.Second,
-				QThreshold:            15,
-				QuasarTimeout:         0, // Should be positive when QThreshold is set
+				DeltaMinMS:            50,
+				MinRoundInterval:      0, // Should be positive
 			},
 			wantErr: true,
 			errMsg:  "quasarTimeout must be positive when set",
@@ -294,7 +294,7 @@ func TestParametersValid(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require := require.New(t)
-			err := tt.params.Valid()
+			err := tt.params.Validate()
 			if tt.wantErr {
 				require.Error(err)
 				if tt.errMsg != "" {
@@ -321,15 +321,15 @@ func TestParametersValidEdgeCases(t *testing.T) {
 		MaxOutstandingItems:   10,
 		MaxItemProcessingTime: 1 * time.Second,
 	}
-	require.NoError(params.Valid())
+	require.NoError(params.Validate())
 
 	// Test AlphaConfidence = AlphaPreference (should be valid)
 	params.AlphaConfidence = params.AlphaPreference
-	require.NoError(params.Valid())
+	require.NoError(params.Validate())
 
 	// Test Beta = K (should be valid)
-	params.Beta = params.K
-	require.NoError(params.Valid())
+	params.Beta = uint32(params.K)
+	require.NoError(params.Validate())
 
 	// Test minimal valid configuration
 	minParams := Parameters{
@@ -342,7 +342,7 @@ func TestParametersValidEdgeCases(t *testing.T) {
 		MaxOutstandingItems:   1,
 		MaxItemProcessingTime: 1 * time.Nanosecond,
 	}
-	require.NoError(minParams.Valid())
+	require.NoError(minParams.Validate())
 }
 
 func TestParametersValidQuantumOnlyOne(t *testing.T) {
@@ -360,33 +360,28 @@ func TestParametersValidQuantumOnlyOne(t *testing.T) {
 		MaxItemProcessingTime: 5 * time.Second,
 	}
 
-	// Only QThreshold set (QuasarTimeout is 0) - should be invalid
+	// Test with FPC disabled
 	params := baseParams
-	params.QThreshold = 15
-	params.QuasarTimeout = 0
-	err := params.Valid()
-	require.Error(err)
-	require.Contains(err.Error(), "quasarTimeout must be positive when set")
+	params.FPC.Enable = false
+	err := params.Validate()
+	require.NoError(err)
 
-	// Only QuasarTimeout set (QThreshold is 0) - should be invalid
+	// Test with FPC enabled
 	params = baseParams
-	params.QThreshold = 0
-	params.QuasarTimeout = 30 * time.Second
-	err = params.Valid()
-	require.Error(err)
-	require.Contains(err.Error(), "qThreshold must be positive when set")
+	params.FPC = DefaultFPC()
+	err = params.Validate()
+	require.NoError(err)
 
-	// Both set to valid values - should be valid
+	// Test with Quasar enabled
 	params = baseParams
-	params.QThreshold = 15
-	params.QuasarTimeout = 30 * time.Second
-	require.NoError(params.Valid())
+	params.Quasar = QuasarConfig{Enable: true, Precompute: 2, Threshold: 15}
+	require.NoError(params.Validate())
 
-	// Neither set (both are 0) - should be valid
+	// Test with both FPC and Quasar enabled
 	params = baseParams
-	params.QThreshold = 0
-	params.QuasarTimeout = 0
-	require.NoError(params.Valid())
+	params.FPC = DefaultFPC()
+	params.Quasar = QuasarConfig{Enable: true, Precompute: 2, Threshold: 15}
+	require.NoError(params.Validate())
 }
 
 func BenchmarkParametersValid(b *testing.B) {
@@ -399,13 +394,13 @@ func BenchmarkParametersValid(b *testing.B) {
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   100,
 		MaxItemProcessingTime: 5 * time.Second,
-		QThreshold:            15,
-		QuasarTimeout:         30 * time.Second,
+		DeltaMinMS:            50,
+		MinRoundInterval:      100 * time.Millisecond,
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = params.Valid()
+		_ = params.Validate()
 	}
 }
 

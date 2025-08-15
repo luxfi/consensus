@@ -108,6 +108,18 @@ func (p Parameters) Validate() error {
 	if p.ConcurrentPolls > int(p.Beta) {
 		return fmt.Errorf("concurrentPolls = %d, beta = %d: concurrentPolls must be <= beta", p.ConcurrentPolls, p.Beta)
 	}
+	if p.DeltaMinMS < 0 {
+		return fmt.Errorf("deltaMinMS = %d: must be >= 0", p.DeltaMinMS)
+	}
+	if p.OptimalProcessing <= 0 {
+		return fmt.Errorf("optimalProcessing = %d: must be > 0", p.OptimalProcessing)
+	}
+	if p.MaxOutstandingItems <= 0 {
+		return fmt.Errorf("maxOutstandingItems = %d: must be > 0", p.MaxOutstandingItems)
+	}
+	if p.MaxItemProcessingTime <= 0 {
+		return fmt.Errorf("maxItemProcessingTime = %v: must be > 0", p.MaxItemProcessingTime)
+	}
 	return nil
 }
 
