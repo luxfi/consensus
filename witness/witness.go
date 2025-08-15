@@ -80,7 +80,7 @@ func (l *simpleLRU) Put(key ids.ID, value []byte) {
 		elem.Value.(*lruEntry).value = value
 		return
 	}
-	
+
 	if l.list.Len() >= l.capacity {
 		back := l.list.Back()
 		if back != nil {
@@ -88,7 +88,7 @@ func (l *simpleLRU) Put(key ids.ID, value []byte) {
 			delete(l.items, back.Value.(*lruEntry).key)
 		}
 	}
-	
+
 	entry := &lruEntry{key: key, value: value}
 	elem := l.list.PushFront(entry)
 	l.items[key] = elem
@@ -129,14 +129,14 @@ func NewCache(policy Policy, nodeLimit int, nodeBudget uint64) *Cache {
 func (c *Cache) Validate(header Header, witnessBytes []byte) (bool, uint64, []byte) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	witnessSize := uint64(len(witnessBytes))
-	
+
 	// Try to compute delta from parent if available
 	parentRoot, hasParent := c.rootCache.Get(header.GetParent())
 	var deltaSize uint64
 	var delta []byte
-	
+
 	if hasParent {
 		// Compute delta witness (simplified - in production would use actual Verkle diff)
 		delta = computeDelta(parentRoot, header.GetStateRoot(), witnessBytes)
@@ -146,23 +146,23 @@ func (c *Cache) Validate(header Header, witnessBytes []byte) (bool, uint64, []by
 		deltaSize = witnessSize
 		delta = witnessBytes
 	}
-	
+
 	// Apply policy
 	switch c.policy.Mode {
 	case RequireFull:
 		return witnessSize <= c.policy.MaxBytes, witnessSize, delta
-		
+
 	case DeltaOnly:
 		if !hasParent {
 			// Need parent for delta mode
 			return false, witnessSize, delta
 		}
 		return deltaSize <= c.policy.MaxDelta, witnessSize, delta
-		
+
 	case Soft:
 		// Always allow in soft mode, execution will catch up
 		return true, witnessSize, delta
-		
+
 	default:
 		return false, witnessSize, delta
 	}
@@ -172,7 +172,7 @@ func (c *Cache) Validate(header Header, witnessBytes []byte) (bool, uint64, []by
 func (c *Cache) PutCommittedRoot(blockID ids.ID, stateRoot []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	rootCopy := make([]byte, len(stateRoot))
 	copy(rootCopy, stateRoot)
 	c.rootCache.Put(blockID, rootCopy)
@@ -182,9 +182,9 @@ func (c *Cache) PutCommittedRoot(blockID ids.ID, stateRoot []byte) {
 func (c *Cache) PutNode(nodeID ids.ID, nodeData []byte) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	nodeSize := uint64(len(nodeData))
-	
+
 	// Check budget
 	if c.currentUsage+nodeSize > c.nodeBudget {
 		// Try to evict old nodes
@@ -192,13 +192,13 @@ func (c *Cache) PutNode(nodeID ids.ID, nodeData []byte) bool {
 			return false // Can't fit within budget
 		}
 	}
-	
+
 	nodeCopy := make([]byte, len(nodeData))
 	copy(nodeCopy, nodeData)
-	
+
 	c.nodeCache.Put(nodeID, nodeCopy)
 	c.currentUsage += nodeSize
-	
+
 	return true
 }
 
@@ -212,7 +212,7 @@ func (c *Cache) GetNode(nodeID ids.ID) ([]byte, bool) {
 // evictNodes tries to free up space by evicting LRU nodes
 func (c *Cache) evictNodes(needed uint64) bool {
 	freed := uint64(0)
-	
+
 	for freed < needed {
 		// Get LRU item (simplified - actual LRU would track this)
 		// For now, just clear if over budget
@@ -223,7 +223,7 @@ func (c *Cache) evictNodes(needed uint64) bool {
 		}
 		break
 	}
-	
+
 	return freed >= needed
 }
 
@@ -271,7 +271,7 @@ func NewManager(initialPolicy Policy, nodeLimit int, nodeBudget uint64, softDura
 // CheckPolicy upgrades from Soft to stricter modes after warm-up
 func (m *Manager) CheckPolicy() {
 	elapsed := time.Since(m.startTime)
-	
+
 	if elapsed > m.softUntil {
 		// Graduate from Soft mode after warm-up period
 		currentPolicy := m.cache.policy

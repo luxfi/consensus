@@ -53,9 +53,9 @@ func TestWaveBasic(t *testing.T) {
 		w.Tick(ctx, item)
 		st, ok := w.State(item)
 		require.True(t, ok)
-		
+
 		t.Logf("Round %d: prefer=%v, conf=%d, decided=%v, stage=%v", i+1, st.Step.Prefer, st.Step.Conf, st.Decided, st.Stage)
-		
+
 		if st.Decided {
 			require.Equal(t, types.DecideAccept, st.Result)
 			require.True(t, st.Step.Prefer)
@@ -63,14 +63,14 @@ func TestWaveBasic(t *testing.T) {
 			return
 		}
 	}
-	
+
 	t.Fatal("Should have decided after 5 rounds")
 }
 
 func TestWaveFPC(t *testing.T) {
 	peers := []types.NodeID{"n1", "n2", "n3", "n4", "n5", "n6", "n7"}
 	sel := prism.NewDefault(peers, prism.Options{})
-	
+
 	// Create wave with FPC enabled (default)
 	w := New[ItemID](Config{
 		K:       5,
@@ -87,12 +87,12 @@ func TestWaveFPC(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		w.Tick(ctx, item)
 		st, _ := w.State(item)
-		
+
 		if st.Stage == StageFPC {
 			// FPC activated
 			require.GreaterOrEqual(t, i, 2)
 		}
-		
+
 		if st.Decided {
 			require.Equal(t, types.DecideReject, st.Result)
 			return
@@ -121,7 +121,7 @@ func TestWaveIngest(t *testing.T) {
 func TestWaveTimeout(t *testing.T) {
 	peers := []types.NodeID{"n1", "n2", "n3"}
 	sel := prism.NewDefault(peers, prism.Options{})
-	
+
 	// Transport that never responds
 	slowTransport := mockTransport{prefer: true}
 	w := New[ItemID](Config{
@@ -133,14 +133,14 @@ func TestWaveTimeout(t *testing.T) {
 
 	ctx := context.Background()
 	item := ItemID("slow#789")
-	
+
 	start := time.Now()
 	w.Tick(ctx, item)
 	elapsed := time.Since(start)
-	
+
 	// Should timeout quickly
 	require.Less(t, elapsed, 50*time.Millisecond)
-	
+
 	st, ok := w.State(item)
 	require.True(t, ok)
 	require.False(t, st.Decided) // Shouldn't decide on timeout alone

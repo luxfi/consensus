@@ -2,58 +2,58 @@
 package consensus
 
 import (
-    "context"
-    
-    "github.com/luxfi/database"
-    "github.com/luxfi/ids"
-    "github.com/luxfi/consensus/core/interfaces"
+	"context"
+
+	"github.com/luxfi/consensus/core/interfaces"
+	"github.com/luxfi/database"
+	"github.com/luxfi/ids"
 )
 
 // Export core types
 type (
-    // Context is now defined in ctx.go as alias to context.Context
-    State   = interfaces.State
-    Status  = interfaces.Status
-    StateHolder = interfaces.StateHolder
-    Block = interfaces.Decidable  // Blocks are decidable items
+	// Context is now defined in ctx.go as alias to context.Context
+	State       = interfaces.State
+	Status      = interfaces.Status
+	StateHolder = interfaces.StateHolder
+	Block       = interfaces.Decidable // Blocks are decidable items
 )
 
 // Export constants
 const (
-    Bootstrapping = interfaces.Bootstrapping
-    NormalOp      = interfaces.NormalOp
-    
-    Unknown    = interfaces.Unknown
-    Processing = interfaces.Processing
-    Rejected   = interfaces.Rejected
-    Accepted   = interfaces.Accepted
+	Bootstrapping = interfaces.Bootstrapping
+	NormalOp      = interfaces.NormalOp
+
+	Unknown    = interfaces.Unknown
+	Processing = interfaces.Processing
+	Rejected   = interfaces.Rejected
+	Accepted   = interfaces.Accepted
 )
 
 // ExtendedContext provides heavy dependencies for consensus engines
 // These are kept separate from context to avoid service locator pattern
 type ExtendedContext struct {
-    ChainDataDir    string
-    SharedMemory    database.Database
-    BCLookup        AliasLookup
-    ValidatorState  ValidatorState
-    WarpSigner      WarpSigner
+	ChainDataDir   string
+	SharedMemory   database.Database
+	BCLookup       AliasLookup
+	ValidatorState ValidatorState
+	WarpSigner     WarpSigner
 }
 
 // AliasLookup provides chain alias lookups
 type AliasLookup interface {
-    PrimaryAlias(id ids.ID) (string, error)
+	PrimaryAlias(id ids.ID) (string, error)
 }
 
 // ValidatorState provides validator information
 type ValidatorState interface {
-    GetCurrentHeight() (uint64, error)
-    GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
-    GetSubnetID(chainID ids.ID) (ids.ID, error)
+	GetCurrentHeight() (uint64, error)
+	GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
+	GetSubnetID(chainID ids.ID) (ids.ID, error)
 }
 
 // WarpSigner provides BLS signing for warp messages
 type WarpSigner interface {
-    Sign(msg []byte) ([]byte, error)
+	Sign(msg []byte) ([]byte, error)
 }
 
 // Message types for consensus engine communication

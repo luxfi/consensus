@@ -18,25 +18,25 @@ import (
 type Engine struct {
 	// Core engine
 	engine *nebula.Engine
-	
+
 	// Consensus stages (commented out until protocols are implemented)
 	// photonStage photon.Monadic  // Quantum sampling
 	// waveStage   wave.Monadic    // Propagation
 	// focusStage  focus.Monadic   // Confidence aggregation
 	// flareStage  flare.Flare     // Rapid vertex ordering
 	// novaStage   nova.Nova       // DAG finalization
-	
+
 	// Engine state
-	params    Parameters
-	state     *engineState
-	mu        sync.RWMutex
-	
+	params Parameters
+	state  *engineState
+	mu     sync.RWMutex
+
 	// DAG structure
-	vertices  map[ids.ID]*Vertex
-	frontier  map[ids.ID]bool
-	
+	vertices map[ids.ID]*Vertex
+	frontier map[ids.ID]bool
+
 	// Metrics
-	metrics   *Metrics
+	metrics *Metrics
 }
 
 // Parameters for Galaxy engine
@@ -46,12 +46,12 @@ type Parameters struct {
 	AlphaPreference int
 	AlphaConfidence int
 	Beta            int
-	
+
 	// DAG parameters
-	MaxParents         int
+	MaxParents          int
 	MaxVerticesPerRound int
-	ConflictSetSize    int
-	
+	ConflictSetSize     int
+
 	// Performance tuning
 	MaxConcurrentVertices int
 	VertexTimeout         time.Duration
@@ -63,7 +63,7 @@ func New(ctx context.Context, params Parameters) (*Engine, error) {
 	// photonFactory := photon.PhotonFactory
 	// waveFactory := wave.WaveFactory
 	// focusFactory := focus.FocusFactory
-	
+
 	// // Create photon parameters
 	// photonParams := photon.Parameters{
 	// 	K:               params.K,
@@ -71,10 +71,10 @@ func New(ctx context.Context, params Parameters) (*Engine, error) {
 	// 	AlphaConfidence: params.AlphaConfidence,
 	// 	Beta:            params.Beta,
 	// }
-	
+
 	// photonStage := photonFactory.NewMonadic(photonParams)
 	// waveStage := waveFactory.NewMonadic(wave.Parameters(photonParams))
-	
+
 	// // Create focus parameters from photon parameters
 	// focusParams := focus.Parameters{
 	// 	K:               photonParams.K,
@@ -83,27 +83,27 @@ func New(ctx context.Context, params Parameters) (*Engine, error) {
 	// 	Beta:            photonParams.Beta,
 	// }
 	// focusStage := focusFactory.NewMonadic(focusParams)
-	
+
 	// // Create DAG-specific stages
 	// flareStage := flare.New(flare.Parameters{})
-	
+
 	// novaStage := nova.New(nova.Parameters{})
-	
+
 	// Create nebula engine
 	engine := nebula.New(ctx)
-	
+
 	return &Engine{
-		engine:      engine,
+		engine: engine,
 		// photonStage: photonStage,
 		// waveStage:   waveStage,
 		// focusStage:  focusStage,
 		// flareStage:  flareStage,
 		// novaStage:   novaStage,
-		params:      params,
-		state:       newEngineState(),
-		vertices:    make(map[ids.ID]*Vertex),
-		frontier:    make(map[ids.ID]bool),
-		metrics:     NewMetrics(),
+		params:   params,
+		state:    newEngineState(),
+		vertices: make(map[ids.ID]*Vertex),
+		frontier: make(map[ids.ID]bool),
+		metrics:  NewMetrics(),
 	}, nil
 }
 
@@ -111,26 +111,26 @@ func New(ctx context.Context, params Parameters) (*Engine, error) {
 func (r *Engine) Start(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if r.state.running {
 		return fmt.Errorf("engine already running")
 	}
-	
+
 	// Stages are already initialized in the constructor
-	
+
 	// Initialize engine first
 	if err := r.engine.Initialize(ctx); err != nil {
 		return fmt.Errorf("failed to initialize nebula engine: %w", err)
 	}
-	
+
 	// Start engine
 	if err := r.engine.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start nebula engine: %w", err)
 	}
-	
+
 	r.state.running = true
 	r.state.startTime = time.Now()
-	
+
 	return nil
 }
 
@@ -138,16 +138,16 @@ func (r *Engine) Start(ctx context.Context) error {
 func (r *Engine) Stop(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if !r.state.running {
 		return fmt.Errorf("engine not running")
 	}
-	
+
 	// Stop engine
 	if err := r.engine.Stop(ctx); err != nil {
 		return fmt.Errorf("failed to stop nebula engine: %w", err)
 	}
-	
+
 	r.state.running = false
 	return nil
 }
@@ -163,48 +163,48 @@ func (r *Engine) IsRunning() bool {
 func (r *Engine) SubmitVertex(ctx context.Context, vertex Vertex) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if !r.state.running {
 		return fmt.Errorf("engine not running")
 	}
-	
+
 	// Validate vertex
 	if err := r.validateVertex(vertex); err != nil {
 		return fmt.Errorf("invalid vertex: %w", err)
 	}
-	
+
 	// Store vertex
 	r.vertices[vertex.ID()] = &vertex
-	
+
 	// Process through consensus stages
 	// 1. Photon stage - quantum sampling
 	if err := r.processPhoton(ctx, vertex); err != nil {
 		return fmt.Errorf("photon stage failed: %w", err)
 	}
-	
+
 	// 2. Wave stage - propagation
 	if err := r.processWave(ctx, vertex); err != nil {
 		return fmt.Errorf("wave stage failed: %w", err)
 	}
-	
+
 	// 3. Focus stage - confidence aggregation
 	if err := r.processFocus(ctx, vertex); err != nil {
 		return fmt.Errorf("focus stage failed: %w", err)
 	}
-	
+
 	// 4. Flare stage - rapid ordering
 	if err := r.processFlare(ctx, vertex); err != nil {
 		return fmt.Errorf("flare stage failed: %w", err)
 	}
-	
+
 	// 5. Nova stage - DAG finalization
 	if err := r.processNova(ctx, vertex); err != nil {
 		return fmt.Errorf("nova stage failed: %w", err)
 	}
-	
+
 	// Update frontier
 	r.updateFrontier(vertex)
-	
+
 	r.metrics.ProcessedVertices.Inc()
 	return nil
 }
@@ -215,14 +215,14 @@ func (r *Engine) validateVertex(vertex Vertex) error {
 	if len(vertex.Parents()) > r.params.MaxParents {
 		return fmt.Errorf("too many parents: %d > %d", len(vertex.Parents()), r.params.MaxParents)
 	}
-	
+
 	// Verify parents exist
 	for _, parentID := range vertex.Parents() {
 		if _, exists := r.vertices[parentID]; !exists {
 			return fmt.Errorf("parent %s does not exist", parentID)
 		}
 	}
-	
+
 	// Verify vertex signature
 	return vertex.Verify()
 }
@@ -274,12 +274,12 @@ func (r *Engine) processNova(ctx context.Context, vertex Vertex) error {
 func (r *Engine) updateFrontier(vertex Vertex) {
 	// Add vertex to frontier
 	r.frontier[vertex.ID()] = true
-	
+
 	// Remove parents from frontier
 	for _, parentID := range vertex.Parents() {
 		delete(r.frontier, parentID)
 	}
-	
+
 	r.state.frontierSize = len(r.frontier)
 }
 
@@ -287,7 +287,7 @@ func (r *Engine) updateFrontier(vertex Vertex) {
 func (r *Engine) GetFrontier() []ids.ID {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	frontier := make([]ids.ID, 0, len(r.frontier))
 	for id := range r.frontier {
 		frontier = append(frontier, id)
@@ -299,7 +299,7 @@ func (r *Engine) GetFrontier() []ids.ID {
 func (r *Engine) GetVertex(id ids.ID) (Vertex, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	vertex, exists := r.vertices[id]
 	if !exists {
 		return nil, fmt.Errorf("vertex %s not found", id)
@@ -336,15 +336,16 @@ func newEngineState() *engineState {
 
 // Metrics tracking
 type Metrics struct {
-	ProcessedVertices  Counter
-	FinalizedVertices  Counter
-	ConsensusLatency   Histogram
-	VerticesPerSecond  Gauge
-	FrontierSize       Gauge
+	ProcessedVertices Counter
+	FinalizedVertices Counter
+	ConsensusLatency  Histogram
+	VerticesPerSecond Gauge
+	FrontierSize      Gauge
 }
 
 // Stub types for metrics
 type Counter struct{ count int64 }
+
 func (c *Counter) Inc() { c.count++ }
 
 type Histogram struct{}

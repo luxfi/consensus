@@ -137,7 +137,7 @@ func TestGetParametersByName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require := require.New(t)
-			
+
 			params, err := GetParametersByName(tt.network)
 			if tt.wantErr {
 				require.Error(err)
@@ -228,7 +228,7 @@ func TestPresetScaling(t *testing.T) {
 
 func BenchmarkGetParametersByName(b *testing.B) {
 	networks := []string{"mainnet", "testnet", "test", "local"}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = GetParametersByName(networks[i%len(networks)])

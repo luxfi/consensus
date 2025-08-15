@@ -10,7 +10,7 @@ import (
 
 // ShardedMap provides a sharded map for concurrent access with reduced lock contention
 type ShardedMap[K comparable, V any] struct {
-	shards   []*shard[K, V]
+	shards    []*shard[K, V]
 	numShards int
 }
 
@@ -24,18 +24,18 @@ func NewShardedMap[K comparable, V any](numShards int) *ShardedMap[K, V] {
 	if numShards <= 0 {
 		numShards = 16
 	}
-	
+
 	sm := &ShardedMap[K, V]{
 		shards:    make([]*shard[K, V], numShards),
 		numShards: numShards,
 	}
-	
+
 	for i := 0; i < numShards; i++ {
 		sm.shards[i] = &shard[K, V]{
 			items: make(map[K]V),
 		}
 	}
-	
+
 	return sm
 }
 
@@ -43,7 +43,7 @@ func NewShardedMap[K comparable, V any](numShards int) *ShardedMap[K, V] {
 func (sm *ShardedMap[K, V]) getShard(key K) *shard[K, V] {
 	// Use FNV hash for better distribution
 	h := fnv.New32a()
-	
+
 	// Hash the key based on its type
 	switch k := any(key).(type) {
 	case TxRef:
@@ -59,7 +59,7 @@ func (sm *ShardedMap[K, V]) getShard(key K) *shard[K, V] {
 		// This isn't ideal but works for basic types
 		return sm.shards[0]
 	}
-	
+
 	return sm.shards[h.Sum32()%uint32(sm.numShards)]
 }
 
@@ -68,7 +68,7 @@ func (sm *ShardedMap[K, V]) Get(key K) (V, bool) {
 	shard := sm.getShard(key)
 	shard.mu.RLock()
 	defer shard.mu.RUnlock()
-	
+
 	val, ok := shard.items[key]
 	return val, ok
 }
@@ -78,33 +78,33 @@ func (sm *ShardedMap[K, V]) Set(key K, value V) {
 	shard := sm.getShard(key)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
-	
+
 	shard.items[key] = value
 }
 
 // GetOrCreate gets an existing value or creates a new one atomically
 func (sm *ShardedMap[K, V]) GetOrCreate(key K, creator func() V) (V, bool) {
 	shard := sm.getShard(key)
-	
+
 	// Try with read lock first
 	shard.mu.RLock()
 	val, ok := shard.items[key]
 	shard.mu.RUnlock()
-	
+
 	if ok {
 		return val, false // Existing value
 	}
-	
+
 	// Need to create - upgrade to write lock
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
-	
+
 	// Double-check after acquiring write lock
 	val, ok = shard.items[key]
 	if ok {
 		return val, false
 	}
-	
+
 	// Create new value
 	val = creator()
 	shard.items[key] = val
@@ -116,7 +116,7 @@ func (sm *ShardedMap[K, V]) Delete(key K) {
 	shard := sm.getShard(key)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
-	
+
 	delete(shard.items, key)
 }
 

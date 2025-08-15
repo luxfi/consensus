@@ -62,7 +62,7 @@ func main() {
 	// Validate configuration
 	validator := config.NewValidator()
 	result := validator.ValidateDetailed(cfg)
-	
+
 	fmt.Printf("\n=== Consensus Parameter Check for %s ===\n", *network)
 	fmt.Printf("\nConfiguration:\n")
 	fmt.Printf("  K (sample size):        %d\n", cfg.K)
@@ -72,7 +72,7 @@ func main() {
 	fmt.Printf("  Concurrent Polls:       %d\n", cfg.ConcurrentPolls)
 	fmt.Printf("  Max Processing Time:    %s\n", cfg.MaxItemProcessingTime)
 	fmt.Printf("  Min Round Interval:     %s\n", cfg.MinRoundInterval)
-	
+
 	if cfg.TotalNodes > 0 {
 		fmt.Printf("  Total Nodes:            %d\n", cfg.TotalNodes)
 		fmt.Printf("  Sampling Ratio:         %.1f%%\n", float64(cfg.K)/float64(cfg.TotalNodes)*100)
@@ -98,33 +98,33 @@ func main() {
 	// Security analysis
 	if *showAnalysis {
 		fmt.Printf("\n=== Security Analysis ===\n")
-		
+
 		// Calculate failure probability
 		epsilon := calculateFailureProbability(cfg.K, cfg.AlphaConfidence, *byzantineNodes)
 		fmt.Printf("\nFailure Probability (ε):\n")
 		fmt.Printf("  With %d Byzantine nodes: %.2e\n", *byzantineNodes, epsilon)
-		
+
 		// Safety cutoff
 		safetyCutoff := calculateSafetyCutoff(cfg.Beta, epsilon)
 		fmt.Printf("\nSafety Cutoff:\n")
 		fmt.Printf("  Probability of incorrect finalization: %.2e\n", safetyCutoff)
 		fmt.Printf("  Expected false positives per billion decisions: %.2f\n", safetyCutoff*1e9)
-		
+
 		// Byzantine tolerance
 		maxByzantine := cfg.K - cfg.AlphaConfidence
 		byzantinePercent := float64(maxByzantine) / float64(cfg.K) * 100
 		fmt.Printf("\nByzantine Tolerance:\n")
 		fmt.Printf("  Maximum Byzantine nodes in sample: %d (%.1f%%)\n", maxByzantine, byzantinePercent)
-		
+
 		if cfg.TotalNodes > 0 {
 			networkByzantine := int(float64(cfg.TotalNodes) * float64(maxByzantine) / float64(cfg.K))
-			fmt.Printf("  Maximum Byzantine nodes in network: %d (%.1f%%)\n", 
+			fmt.Printf("  Maximum Byzantine nodes in network: %d (%.1f%%)\n",
 				networkByzantine, float64(networkByzantine)/float64(cfg.TotalNodes)*100)
 		}
-		
+
 		// Performance metrics
 		fmt.Printf("\n=== Performance Analysis ===\n")
-		
+
 		// Finality time
 		if cfg.NetworkLatency > 0 {
 			expectedFinality := time.Duration(cfg.Beta) * cfg.NetworkLatency
@@ -140,12 +140,12 @@ func main() {
 			fmt.Printf("\nEstimated Finality Time:\n")
 			fmt.Printf("  Based on processing time: %s\n", expectedFinality)
 		}
-		
+
 		// Throughput analysis
 		fmt.Printf("\nThroughput Capacity:\n")
 		fmt.Printf("  Optimal Processing:     %d items\n", cfg.OptimalProcessing)
 		fmt.Printf("  Max Outstanding Items:  %d items\n", cfg.MaxOutstandingItems)
-		
+
 		if cfg.ConcurrentPolls < cfg.Beta {
 			fmt.Printf("  Pipelining Efficiency:  %.1f%% (%d/%d rounds)\n",
 				float64(cfg.ConcurrentPolls)/float64(cfg.Beta)*100,
@@ -170,16 +170,16 @@ func calculateFailureProbability(k, alphaConfidence, byzantineNodes int) float64
 	if byzantineNodes == 0 {
 		return 0
 	}
-	
+
 	// Simplified calculation - in reality this involves hypergeometric distribution
 	// This is the probability that Byzantine nodes control >= alphaConfidence votes
 	byzantineRatio := float64(byzantineNodes) / float64(k)
 	threshold := float64(alphaConfidence) / float64(k)
-	
+
 	if byzantineRatio >= threshold {
 		return 1.0 // Byzantine nodes already control the threshold
 	}
-	
+
 	// Approximate using binomial distribution
 	// P(X >= alphaConfidence) where X ~ Binomial(k, byzantineRatio)
 	return binomialTailProbability(k, byzantineRatio, alphaConfidence)
@@ -196,7 +196,7 @@ func binomialTailProbability(n int, p float64, k int) float64 {
 	if k > n {
 		return 0
 	}
-	
+
 	// Use normal approximation for large n
 	if n > 100 {
 		mean := float64(n) * p
@@ -204,7 +204,7 @@ func binomialTailProbability(n int, p float64, k int) float64 {
 		z := (float64(k) - 0.5 - mean) / stdDev
 		return 0.5 * (1 - erf(z/math.Sqrt(2)))
 	}
-	
+
 	// Direct calculation for small n
 	sum := 0.0
 	for i := k; i <= n; i++ {
@@ -239,15 +239,15 @@ func erf(x float64) float64 {
 	a4 := -1.453152027
 	a5 := 1.061405429
 	p := 0.3275911
-	
+
 	sign := 1.0
 	if x < 0 {
 		sign = -1.0
 		x = -x
 	}
-	
+
 	t := 1.0 / (1.0 + p*x)
 	y := 1.0 - (((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*math.Exp(-x*x)
-	
+
 	return sign * y
 }

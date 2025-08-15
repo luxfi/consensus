@@ -20,11 +20,11 @@ func TestPrismBasicSampling(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	
+
 	// Sample 3 peers
 	selected := sampler.Sample(ctx, 3, types.Topic("test"))
 	require.Len(t, selected, 3)
-	
+
 	// Should be from our peer set
 	for _, peer := range selected {
 		require.Contains(t, peers, peer)
@@ -55,7 +55,7 @@ func TestPrismSampleSize(t *testing.T) {
 
 func TestPrismWithStake(t *testing.T) {
 	peers := []types.NodeID{"high-stake", "medium-stake", "low-stake"}
-	
+
 	stakeFunc := func(id types.NodeID) float64 {
 		switch id {
 		case "high-stake":
@@ -92,7 +92,7 @@ func TestPrismWithStake(t *testing.T) {
 
 func TestPrismWithLatency(t *testing.T) {
 	peers := []types.NodeID{"fast", "medium", "slow"}
-	
+
 	latencyFunc := func(id types.NodeID) time.Duration {
 		switch id {
 		case "fast":
@@ -174,7 +174,7 @@ func TestPrismEmptyPeers(t *testing.T) {
 
 	ctx := context.Background()
 	selected := sampler.Sample(ctx, 5, types.Topic("test"))
-	
+
 	// Should return empty when no peers
 	require.Empty(t, selected)
 }

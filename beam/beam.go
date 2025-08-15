@@ -19,12 +19,12 @@ type Entry struct {
 }
 
 type ProposedBlock struct {
-	Header   Header
-	Entries  []Entry
-	Votes    []VoteRef // Fast-path votes
-	BLSSig   []byte
-	PQSig    []byte
-	Binding  []byte
+	Header  Header
+	Entries []Entry
+	Votes   []VoteRef // Fast-path votes
+	BLSSig  []byte
+	PQSig   []byte
+	Binding []byte
 	// FPC additions
 	FPCVotes [][]byte // Embedded fast-path vote references
 	EpochBit bool     // Epoch fence bit

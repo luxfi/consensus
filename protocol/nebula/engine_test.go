@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/luxfi/ids"
+	"github.com/stretchr/testify/require"
 )
 
 // Mock types for testing
@@ -180,7 +180,7 @@ func TestHealth(t *testing.T) {
 	health, err := engine.Health(context.Background())
 	require.NoError(err)
 	require.NotNil(health)
-	
+
 	// Check health map contains expected fields
 	healthMap, ok := health.(map[string]interface{})
 	require.True(ok)
@@ -213,7 +213,7 @@ func TestParametersValid(t *testing.T) {
 				AlphaPreference:       13,
 				AlphaConfidence:       18,
 				Beta:                  8,
-				ConcurrentPolls:     4,
+				ConcurrentPolls:       4,
 				OptimalProcessing:     10,
 				MaxOutstandingItems:   256,
 				MaxItemProcessingTime: 30 * time.Second,
@@ -282,10 +282,10 @@ func TestParametersValid(t *testing.T) {
 		{
 			name: "invalid concurrent polls",
 			params: Parameters{
-				K:                 10,
-				AlphaPreference:   7,
-				AlphaConfidence:   8,
-				Beta:              5,
+				K:               10,
+				AlphaPreference: 7,
+				AlphaConfidence: 8,
+				Beta:            5,
 				ConcurrentPolls: 0,
 			},
 			wantError: true,
@@ -298,7 +298,7 @@ func TestParametersValid(t *testing.T) {
 				AlphaPreference:   7,
 				AlphaConfidence:   8,
 				Beta:              5,
-				ConcurrentPolls: 2,
+				ConcurrentPolls:   2,
 				OptimalProcessing: 0,
 			},
 			wantError: true,
@@ -311,7 +311,7 @@ func TestParametersValid(t *testing.T) {
 				AlphaPreference:     7,
 				AlphaConfidence:     8,
 				Beta:                5,
-				ConcurrentPolls:   2,
+				ConcurrentPolls:     2,
 				OptimalProcessing:   5,
 				MaxOutstandingItems: 0,
 			},
@@ -325,7 +325,7 @@ func TestParametersValid(t *testing.T) {
 				AlphaPreference:       7,
 				AlphaConfidence:       8,
 				Beta:                  5,
-				ConcurrentPolls:     2,
+				ConcurrentPolls:       2,
 				OptimalProcessing:     5,
 				MaxOutstandingItems:   10,
 				MaxItemProcessingTime: 0,

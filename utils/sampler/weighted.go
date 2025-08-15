@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	ErrOutOfRange      = errors.New("out of range")
+	ErrOutOfRange         = errors.New("out of range")
 	ErrInsufficientWeight = errors.New("insufficient weight")
 )
 
@@ -34,9 +34,9 @@ func (u *uniformSource) Uint64() uint64 {
 
 // weightedWithoutReplacement implements WeightedWithoutReplacement
 type weightedWithoutReplacement struct {
-	weights []uint64
+	weights     []uint64
 	totalWeight uint64
-	source  Source
+	source      Source
 }
 
 // NewWeightedWithoutReplacement creates a new weighted sampler without replacement
@@ -56,15 +56,15 @@ func NewWeightedWithoutReplacement(source ...Source) WeightedWithoutReplacement 
 func (w *weightedWithoutReplacement) Initialize(weights []uint64) error {
 	w.weights = make([]uint64, len(weights))
 	copy(w.weights, weights)
-	
+
 	w.totalWeight = 0
 	for _, weight := range weights {
-		if weight > math.MaxUint64 - w.totalWeight {
+		if weight > math.MaxUint64-w.totalWeight {
 			return ErrOutOfRange
 		}
 		w.totalWeight += weight
 	}
-	
+
 	return nil
 }
 
@@ -77,10 +77,10 @@ func (w *weightedWithoutReplacement) Sample(size int) ([]int, bool) {
 	if w.totalWeight == 0 || uint64(size) > w.totalWeight {
 		return nil, false
 	}
-	
+
 	indices := make([]int, size)
 	usedWeights := make(map[uint64]bool)
-	
+
 	for i := 0; i < size; i++ {
 		var weight uint64
 		// Keep sampling until we get an unused weight
@@ -91,7 +91,7 @@ func (w *weightedWithoutReplacement) Sample(size int) ([]int, bool) {
 				break
 			}
 		}
-		
+
 		// Find which index this weight corresponds to
 		cumWeight := uint64(0)
 		for j := 0; j < len(w.weights); j++ {
@@ -102,6 +102,6 @@ func (w *weightedWithoutReplacement) Sample(size int) ([]int, bool) {
 			}
 		}
 	}
-	
+
 	return indices, true
 }

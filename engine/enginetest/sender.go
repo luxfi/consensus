@@ -2,9 +2,9 @@ package enginetest
 
 import (
 	"context"
-	
-	"github.com/luxfi/ids"
+
 	"github.com/luxfi/consensus/engine/core"
+	"github.com/luxfi/ids"
 	"github.com/luxfi/node/utils/set"
 )
 

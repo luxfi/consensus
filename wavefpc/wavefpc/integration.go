@@ -6,14 +6,14 @@ package wavefpc
 import (
 	"context"
 	"sync/atomic"
-	
+
 	"github.com/luxfi/ids"
 )
 
 // Integration provides hooks to wire WaveFPC into your consensus engine
 type Integration struct {
-	fpc         WaveFPC
-	enabled     atomic.Bool
+	fpc          WaveFPC
+	enabled      atomic.Bool
 	epochClosing atomic.Bool
 }
 
@@ -22,7 +22,7 @@ func NewIntegration(cfg *Config, committee Committee, myIndex ValidatorIndex, cl
 	if cfg == nil || !cfg.IsEnabled() {
 		return &Integration{}
 	}
-	
+
 	fpc := New(*cfg, committee, myIndex, cls, dag, pq, src)
 	i := &Integration{fpc: fpc}
 	i.enabled.Store(true)
@@ -39,7 +39,7 @@ func (i *Integration) OnBlockObserved(blk BlockWithFPC) {
 	if !i.IsEnabled() || blk == nil {
 		return
 	}
-	
+
 	blkID := blk.ID()
 	i.fpc.OnBlockObserved(&ObservedBlock{
 		ID:       blkID[:],
@@ -54,7 +54,7 @@ func (i *Integration) OnBlockAccepted(blk BlockWithFPC) {
 	if !i.IsEnabled() || blk == nil {
 		return
 	}
-	
+
 	blkID := blk.ID()
 	i.fpc.OnBlockAccepted(&ObservedBlock{
 		ID:       blkID[:],
@@ -125,12 +125,12 @@ func NewValidatorCommitteeAdapter(nodeIDs []ids.NodeID) *ValidatorCommitteeAdapt
 		size:      len(nodeIDs),
 		nodeToIdx: make(map[ids.NodeID]ValidatorIndex),
 	}
-	
+
 	// Build index mapping
 	for i, nodeID := range nodeIDs {
 		adapter.nodeToIdx[nodeID] = ValidatorIndex(i)
 	}
-	
+
 	return adapter
 }
 
@@ -165,13 +165,13 @@ func (d *SimpleDAGTap) InAncestry(blockID []byte, needleTx TxRef) bool {
 	if d.getBlock == nil {
 		return false
 	}
-	
+
 	var blkID ids.ID
 	copy(blkID[:], blockID)
-	
+
 	ctx := context.Background()
 	visited := make(map[ids.ID]bool)
-	
+
 	// Simple DFS up to 100 ancestors
 	var check func(ids.ID, int) bool
 	check = func(id ids.ID, depth int) bool {
@@ -179,23 +179,23 @@ func (d *SimpleDAGTap) InAncestry(blockID []byte, needleTx TxRef) bool {
 			return false
 		}
 		visited[id] = true
-		
+
 		blk, err := d.getBlock(ctx, id)
 		if err != nil || blk == nil {
 			return false
 		}
-		
+
 		// Check if this block votes for the tx
 		for _, vote := range blk.FPCVotes() {
 			if vote == needleTx {
 				return true
 			}
 		}
-		
+
 		// Check parent
 		return check(blk.Parent(), depth+1)
 	}
-	
+
 	return check(blkID, 0)
 }
 
@@ -225,7 +225,7 @@ func (m *MockClassifier) OwnedInputs(tx TxRef) []ObjectID {
 func (m *MockClassifier) Conflicts(a, b TxRef) bool {
 	aObjs := m.owned[a]
 	bObjs := m.owned[b]
-	
+
 	objSet := make(map[ObjectID]bool)
 	for _, o := range aObjs {
 		objSet[o] = true

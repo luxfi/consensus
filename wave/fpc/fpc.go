@@ -109,20 +109,20 @@ func New(cfg Config, clf Classifier) Engine {
 func (e *engine) NextVotes(limit int) []TxRef {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	if limit <= 0 || limit > e.cfg.VoteLimitPerBlock {
 		limit = e.cfg.VoteLimitPerBlock
 	}
-	
+
 	// Take from queue head (FIFO for fairness)
 	if len(e.queue) < limit {
 		limit = len(e.queue)
 	}
-	
+
 	out := make([]TxRef, limit)
 	copy(out, e.queue[:limit])
 	e.queue = e.queue[limit:]
-	
+
 	return out
 }
 
@@ -132,26 +132,26 @@ func (e *engine) OnBlockObserved(b BlockRef) {
 	if b.EpochBit {
 		return
 	}
-	
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	for _, raw := range b.FPCVotes {
 		if len(raw) != 32 {
 			continue // Invalid vote reference
 		}
-		
+
 		var tx TxRef
 		copy(tx[:], raw)
-		
+
 		// Initialize vote map if needed
 		if e.votes[tx] == nil {
 			e.votes[tx] = make(map[ids.ID]bool)
 		}
-		
+
 		// Record vote from this block
 		e.votes[tx][b.ID] = true
-		
+
 		// Check if we reached quorum (2f+1) for wave certificate
 		if len(e.votes[tx]) >= 2*e.cfg.Quorum.F+1 {
 			// Upgrade status if this is an owned object
@@ -168,18 +168,18 @@ func (e *engine) OnBlockAccepted(b BlockRef) {
 	if !b.Final {
 		return
 	}
-	
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	for _, raw := range b.FPCVotes {
 		if len(raw) != 32 {
 			continue
 		}
-		
+
 		var tx TxRef
 		copy(tx[:], raw)
-		
+
 		// If transaction has votes and is executable, upgrade to final
 		// This anchors the fast-path decision in the committed chain
 		if e.status[tx] >= StatusExecutable {
@@ -199,7 +199,7 @@ func (e *engine) Status(tx TxRef) Status {
 func (e *engine) ExecutableOwned() []TxRef {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	var out []TxRef
 	for tx, st := range e.status {
 		if st == StatusExecutable && e.clf.IsOwned(tx) {
@@ -213,14 +213,14 @@ func (e *engine) ExecutableOwned() []TxRef {
 func (e *engine) Enqueue(tx TxRef) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	// Check if already in queue
 	for _, existing := range e.queue {
 		if existing == tx {
 			return
 		}
 	}
-	
+
 	// Add to queue and initialize status
 	e.queue = append(e.queue, tx)
 	if _, exists := e.status[tx]; !exists {
