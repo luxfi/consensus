@@ -40,7 +40,8 @@ type TestDAG struct {
 	tips    map[[32]byte]bool
 	height  uint64
 	witness witness.Manager
-	flare   flare.Flare[TxID]
+	graph   flare.Graph
+	fastTxs map[TxID]int // Track transaction votes for fast path
 }
 
 type TxID [32]byte
@@ -54,7 +55,8 @@ func NewTestDAG() *TestDAG {
 			Mode:     witness.RequireFull,
 			MaxBytes: 1024 * 1024, // 1MB
 		}, 1000, 10*1024*1024),
-		flare: flare.New[TxID](3), // f=3, need 7 votes for fast path
+		graph:   flare.NewGraph(),
+		fastTxs: make(map[TxID]int),
 	}
 }
 
@@ -81,9 +83,10 @@ func (d *TestDAG) AddBlock(block *TestDAGBlock) error {
 		d.height = block.Height
 	}
 
-	// Process transactions for fast path
+	// Process transactions for fast path (simulating voting)
 	for _, tx := range block.Txs {
-		d.flare.Propose(TxID(tx.ID))
+		txID := TxID(tx.ID)
+		d.fastTxs[txID]++
 	}
 
 	return nil
@@ -103,7 +106,18 @@ func (d *TestDAG) GetTips() [][32]byte {
 
 // GetExecutableTxs returns transactions ready for execution
 func (d *TestDAG) GetExecutableTxs() []TxID {
-	return d.flare.Executable()
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	
+	var executable []TxID
+	// With f=3, need 7 votes for fast path
+	const threshold = 7
+	for txID, votes := range d.fastTxs {
+		if votes >= threshold {
+			executable = append(executable, txID)
+		}
+	}
+	return executable
 }
 
 // TestDAGBasic tests basic DAG operations
