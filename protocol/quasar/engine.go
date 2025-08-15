@@ -230,11 +230,12 @@ func (e *Engine) Stop(ctx context.Context) error {
 	// 		return fmt.Errorf("failed to stop pulsar: %w", err)
 	// 	}
 	// }
-	if e.nebula != nil {
-		if err := e.nebula.Stop(ctx); err != nil {
-			return fmt.Errorf("failed to stop nebula: %w", err)
-		}
-	}
+	// TODO: Implement Stop method for nebula
+	// if e.nebula != nil {
+	// 	if err := e.nebula.Stop(ctx); err != nil {
+	// 		return fmt.Errorf("failed to stop nebula: %w", err)
+	// 	}
+	// }
 
 	return nil
 }

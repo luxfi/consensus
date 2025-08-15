@@ -32,7 +32,7 @@ func (v Verifier) SameSubnet(ctx context.Context, peer ids.ID) error {
 		return ErrSameChainID
 	}
 	
-	peerSubnet, err := v.VS.GetSubnetID(ctx, peer)
+	peerSubnet, err := v.VS.GetSubnetID(peer)
 	if err != nil {
 		return err
 	}

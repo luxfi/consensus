@@ -7,7 +7,7 @@ import (
     "github.com/luxfi/consensus/validators"
     "github.com/luxfi/consensus/engine/core/tracker"
     "github.com/luxfi/node/subnets"
-    "github.com/luxfi/metric"
+    metrics "github.com/luxfi/metric"
 )
 
 // Handler handles consensus messages
@@ -27,7 +27,7 @@ func New(
     sb subnets.Subnet,
     connectedValidators tracker.Peers,
     peerTracker interface{},
-    registerer metric.Registry,
+    registerer metrics.Registry,
 ) (Handler, error) {
     return &noOpHandler{}, nil
 }

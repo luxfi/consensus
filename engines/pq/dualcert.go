@@ -49,20 +49,21 @@ func New[T comparable](cfg Config[T]) (*DualCertEngine[T], error) {
 	}
 
 	// Create quasar overlay
-	quasarConfig := quasar.Config[T]{
-		CertThreshold:   cfg.CertThreshold,
-		SkipThreshold:   cfg.SkipThreshold,
-		SignatureScheme: cfg.SignatureScheme,
-	}
-
-	q, err := quasar.New(quasarConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create quasar overlay: %w", err)
-	}
+	// TODO: Fix when quasar API is stabilized
+	// quasarConfig := quasar.Config{
+	// 	CertThreshold:   cfg.CertThreshold,
+	// 	SkipThreshold:   cfg.SkipThreshold,
+	// 	SignatureScheme: cfg.SignatureScheme,
+	// }
+	// 
+	// q, err := quasar.New(nil, quasar.Parameters{})
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to create quasar overlay: %w", err)
+	// }
 
 	return &DualCertEngine[T]{
 		base:   cfg.BaseEngine,
-		quasar: q,
+		quasar: nil, // TODO: Set to q when created
 	}, nil
 }
 

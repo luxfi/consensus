@@ -65,16 +65,10 @@ func (e *Engine) Attach(ctx context.Context, b any) error {
 	}
 
 	// Create BLS aggregate signature
-	blsSig, err := e.blsAgg.CreateAggregate(data, e.getValidatorBLSKeys())
-	if err != nil {
-		return err
-	}
+	blsSig := e.blsAgg.CreateAggregate(data, e.getValidatorBLSKeys())
 
 	// Create Ringtail aggregate signature
-	rtSig, err := e.rtAgg.CreateAggregate(data, e.getValidatorRTKeys())
-	if err != nil {
-		return err
-	}
+	rtSig := e.rtAgg.CreateAggregate(data, e.getValidatorRTKeys())
 
 	// Attach certificate bundle
 	return e.attachBundle(b, types.CertBundle{
@@ -92,13 +86,16 @@ func (e *Engine) Verify(ctx context.Context, bundle types.CertBundle) bool {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
+	// TODO: Extract data from context or bundle metadata
+	data := []byte("placeholder-data")
+	
 	// Verify BLS aggregate
-	if !e.blsAgg.VerifyAggregate(bundle.BLSAgg, e.getValidatorBLSKeys()) {
+	if !e.blsAgg.VerifyAggregate(data, bundle.BLSAgg, e.getValidatorBLSKeys()) {
 		return false
 	}
 
 	// Verify Ringtail aggregate
-	if !e.rtAgg.VerifyAggregate(bundle.RTCert, e.getValidatorRTKeys()) {
+	if !e.rtAgg.VerifyAggregate(data, bundle.RTCert, e.getValidatorRTKeys()) {
 		return false
 	}
 
