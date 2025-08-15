@@ -115,12 +115,12 @@ func customizeParameters(scanner *bufio.Scanner, p *config.Parameters) *config.P
 		fmt.Sprintf("AlphaConfidence [current: %d, min: %d]", p.AlphaConfidence, p.AlphaPreference),
 		p.AlphaPreference, p.K, p.AlphaConfidence)
 
-	p.Beta = promptIntDefault(scanner,
-		fmt.Sprintf("Beta (rounds) [current: %d]", p.Beta), 1, 100, p.Beta)
+	p.Beta = uint32(promptIntDefault(scanner,
+		fmt.Sprintf("Beta (rounds) [current: %d]", p.Beta), 1, 100, int(p.Beta)))
 
 	p.ConcurrentPolls = promptIntDefault(scanner,
 		fmt.Sprintf("ConcurrentPolls [current: %d, max: %d]", p.ConcurrentPolls, p.Beta),
-		1, p.Beta, p.ConcurrentPolls)
+		1, int(p.Beta), p.ConcurrentPolls)
 
 	return p
 }
