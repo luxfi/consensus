@@ -329,7 +329,7 @@ func TestConcurrentRuntimeAccess(t *testing.T) {
 						K:                     20 + idx,
 						AlphaPreference:       10 + idx,
 						AlphaConfidence:       15 + idx,
-						Beta:                  5 + idx,
+						Beta:                  uint32(5 + idx),
 						ConcurrentPolls:       3,
 						OptimalProcessing:     10,
 						MaxOutstandingItems:   100,
