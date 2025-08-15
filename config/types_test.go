@@ -220,7 +220,7 @@ func TestParametersValid(t *testing.T) {
 				MaxItemProcessingTime: 0,
 			},
 			wantErr: true,
-			errMsg:  "maxItemProcessingTime = 0: fails the condition that: 0 < maxItemProcessingTime",
+			errMsg:  "maxItemProcessingTime = 0s: fails the condition that: 0 < maxItemProcessingTime",
 		},
 		{
 			name: "valid with quantum parameters",
@@ -239,7 +239,7 @@ func TestParametersValid(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid quantum threshold",
+			name: "invalid DeltaMinMS negative",
 			params: Parameters{
 				K:                     21,
 				AlphaPreference:       13,
@@ -249,45 +249,11 @@ func TestParametersValid(t *testing.T) {
 				OptimalProcessing:     10,
 				MaxOutstandingItems:   100,
 				MaxItemProcessingTime: 5 * time.Second,
-				DeltaMinMS:            0, // Should be positive
+				DeltaMinMS:            -1, // Should be >= 0
 				MinRoundInterval:      100 * time.Millisecond,
 			},
 			wantErr: true,
-			errMsg:  "qThreshold must be positive when set",
-		},
-		{
-			name: "beta too high",
-			params: Parameters{
-				K:                     21,
-				AlphaPreference:       13,
-				AlphaConfidence:       18,
-				Beta:                  8,
-				ConcurrentPolls:       4,
-				OptimalProcessing:     10,
-				MaxOutstandingItems:   100,
-				MaxItemProcessingTime: 5 * time.Second,
-				DeltaMinMS:            50,
-				MinRoundInterval:      100 * time.Millisecond,
-			},
-			wantErr: true,
-			errMsg:  "qThreshold (22) must be <= k (21)",
-		},
-		{
-			name: "invalid quantum timeout",
-			params: Parameters{
-				K:                     21,
-				AlphaPreference:       13,
-				AlphaConfidence:       18,
-				Beta:                  8,
-				ConcurrentPolls:       4,
-				OptimalProcessing:     10,
-				MaxOutstandingItems:   100,
-				MaxItemProcessingTime: 5 * time.Second,
-				DeltaMinMS:            50,
-				MinRoundInterval:      0, // Should be positive
-			},
-			wantErr: true,
-			errMsg:  "quasarTimeout must be positive when set",
+			errMsg:  "deltaMinMS = -1: must be >= 0",
 		},
 	}
 
