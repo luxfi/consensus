@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/protocol/nebula"
 	"github.com/luxfi/ids"
 )
@@ -59,7 +58,7 @@ type Parameters struct {
 }
 
 // New creates a new Galaxy engine
-func New(ctx *interfaces.Context, params Parameters) (*Engine, error) {
+func New(ctx context.Context, params Parameters) (*Engine, error) {
 	// TODO: Create consensus stages when protocols are implemented
 	// photonFactory := photon.PhotonFactory
 	// waveFactory := wave.WaveFactory

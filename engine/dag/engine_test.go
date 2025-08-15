@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/luxfi/consensus/core/interfaces"
+	
 	"github.com/luxfi/ids"
 )
 
@@ -67,7 +67,7 @@ func TestNew(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require := require.New(t)
 
-			ctx := &interfaces.Context{}
+			ctx := context.Background()
 			engine, err := New(ctx, tt.params)
 			if tt.wantErr {
 				require.Error(err)
@@ -96,7 +96,7 @@ func TestStartStop(t *testing.T) {
 		MaxParents:      5,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -133,7 +133,7 @@ func TestSubmitVertex(t *testing.T) {
 		MaxParents:      5,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -193,7 +193,7 @@ func TestSubmitVertexValidation(t *testing.T) {
 		MaxParents:      2, // Small limit for testing
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -245,7 +245,7 @@ func TestGetVertex(t *testing.T) {
 		MaxParents:      5,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -287,7 +287,7 @@ func TestFrontierManagement(t *testing.T) {
 		MaxParents:      5,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -352,7 +352,7 @@ func TestMetrics(t *testing.T) {
 		MaxParents:      5,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -389,7 +389,7 @@ func TestConcurrentVertexSubmission(t *testing.T) {
 		MaxConcurrentVertices: 50,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -442,7 +442,7 @@ func TestComplexDAGStructure(t *testing.T) {
 		MaxParents:      3,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(err)
 
@@ -517,7 +517,7 @@ func BenchmarkSubmitVertex(b *testing.B) {
 		MaxParents:      5,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(b, err)
 
@@ -555,7 +555,7 @@ func BenchmarkGetVertex(b *testing.B) {
 		MaxParents:      5,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(b, err)
 
@@ -588,7 +588,7 @@ func TestProcessingStages(t *testing.T) {
 		MaxParents:      5,
 	}
 
-	ctx := &interfaces.Context{}
+	ctx := context.Background()
 	engine, err := New(ctx, params)
 	require.NoError(err)
 

@@ -4,20 +4,20 @@
 package utils
 
 import (
-	"github.com/luxfi/consensus/core/interfaces"
+	"context"
 )
 
 // Factory provides consensus creation capabilities
 type Factory struct {
-	ctx *interfaces.Context
+	ctx context.Context
 }
 
 // NewFactory creates a new factory
-func NewFactory(ctx *interfaces.Context) *Factory {
+func NewFactory(ctx context.Context) *Factory {
 	return &Factory{ctx: ctx}
 }
 
 // Context returns the factory's context
-func (f *Factory) Context() *interfaces.Context {
+func (f *Factory) Context() context.Context {
 	return f.ctx
 }

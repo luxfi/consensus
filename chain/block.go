@@ -1,6 +1,7 @@
 package chain
 
 import (
+    "context"
     "time"
     "github.com/luxfi/ids"
     "github.com/luxfi/consensus/core/interfaces"
@@ -14,7 +15,11 @@ type Block interface {
     Timestamp() time.Time
     Bytes() []byte
     Status() interfaces.Status
-    Accept() error
-    Reject() error
-    Verify() error
+    Accept(ctx context.Context) error
+    Reject(ctx context.Context) error
+    Verify(ctx context.Context) error
+    
+    // FPC (Fast Path Consensus) methods
+    FPCVotes() [][]byte  // Embedded fast-path vote references
+    EpochBit() bool      // Epoch fence bit for FPC
 }

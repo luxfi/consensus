@@ -106,6 +106,16 @@ func (p *Photon) Finalized() bool {
     return p.finalized
 }
 
+// Confidence returns the current confidence level
+func (p *Photon) Confidence() int {
+    return p.confidence
+}
+
+// PreferenceStrength returns the current preference strength
+func (p *Photon) PreferenceStrength() int {
+    return p.preferenceStrength
+}
+
 // String returns a string representation
 func (p *Photon) String() string {
     return fmt.Sprintf("Photon{choice=%s, pref_strength=%d, conf=%d, finalized=%v}", 

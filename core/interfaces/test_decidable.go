@@ -1,6 +1,9 @@
 package interfaces
 
-import "github.com/luxfi/ids"
+import (
+	"context"
+	"github.com/luxfi/ids"
+)
 
 // TestDecidable is a test implementation of Decidable
 type TestDecidable struct {
@@ -21,7 +24,7 @@ func (d *TestDecidable) Status() Status {
 }
 
 // Accept accepts this decidable
-func (d *TestDecidable) Accept() error {
+func (d *TestDecidable) Accept(ctx context.Context) error {
 	if d.AcceptErr != nil {
 		return d.AcceptErr
 	}
@@ -30,7 +33,7 @@ func (d *TestDecidable) Accept() error {
 }
 
 // Reject rejects this decidable
-func (d *TestDecidable) Reject() error {
+func (d *TestDecidable) Reject(ctx context.Context) error {
 	if d.RejectErr != nil {
 		return d.RejectErr
 	}

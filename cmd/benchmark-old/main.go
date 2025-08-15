@@ -16,7 +16,6 @@ import (
 
 	"github.com/luxfi/consensus/choices"
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/ids"
 )
@@ -84,9 +83,7 @@ func main() {
 	// params.MinRoundInterval = *minRound // MinRoundInterval not a field in config.Parameters
 	
 	// Create core context
-	coreCtx := &interfaces.Context{
-		NodeID: nodeID,
-	}
+	coreCtx := context.Background()
 	
 	// Create quasar parameters
 	quasarParams := quasar.Parameters{

@@ -6,7 +6,7 @@ package tests
 import (
 	"fmt"
 	"testing"
-
+	"context"
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/consensus/config"
@@ -109,11 +109,7 @@ func TestVirtuousNetwork(t *testing.T) {
 	}
 	
 	// Create context
-	ctx := &interfaces.Context{
-		NetworkID: 1,
-		ChainID:   ids.GenerateTestID(),
-		NodeID:    ids.GenerateTestNodeID(),
-	}
+	ctx := context.Background()
 	factory := utils.NewFactory(ctx)
 	
 	// Create network with 2 choices to improve convergence chances
