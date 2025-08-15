@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"github.com/luxfi/trace"
 )
@@ -25,6 +26,11 @@ func (m Message) String() string {
         return "Unknown"
     }
 }
+
+// Common errors
+var (
+    ErrTimeout = errors.New("timeout")
+)
 
 // AppError represents an application error
 type AppError struct {

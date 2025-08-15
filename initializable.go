@@ -6,10 +6,10 @@ import (
 
 // ContextInitializable provides initialization with context
 type ContextInitializable interface {
-    InitializeWithContext(ctx context.Context, rt *Runtime) error
+    InitializeWithContext(ctx context.Context) error
 }
 
-// Contextualizable is an interface for types that can have their runtime set
+// Contextualizable is an interface for types that can have their context set
 type Contextualizable interface {
-    InitRuntime(rt *Runtime)
+    InitCtx(ctx context.Context)
 }

@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	ErrParametersInvalid         = errors.New("invalid parameters")
 	ErrInvalidK                  = errors.New("invalid K value")
 	ErrInvalidAlpha              = errors.New("invalid alpha values")
 	ErrInvalidBeta               = errors.New("invalid beta value")
