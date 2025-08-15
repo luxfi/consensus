@@ -135,7 +135,7 @@ func (p *Pulse) recordPoll(count int, choice ids.ID) error {
 	if count >= p.params.AlphaPreference && choice == p.pulsePreference {
 		if count >= p.params.AlphaConfidence {
 			p.confidence++
-			if p.confidence >= p.params.Beta {
+			if p.confidence >= int(p.params.Beta) {
 				p.finalized = true
 			}
 		} else {
@@ -145,7 +145,7 @@ func (p *Pulse) recordPoll(count int, choice ids.ID) error {
 		// Switch preference and reset confidence
 		p.pulsePreference = choice
 		p.confidence = 1
-		if p.confidence >= p.params.Beta {
+		if p.confidence >= int(p.params.Beta) {
 			p.finalized = true
 		}
 	} else {

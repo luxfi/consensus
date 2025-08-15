@@ -154,7 +154,7 @@ func (w *Wave) recordPoll(count int, choice ids.ID) error {
 	if count >= w.params.AlphaPreference && choice == w.wavePreference {
 		if count >= w.params.AlphaConfidence {
 			w.confidence++
-			if w.confidence >= w.params.Beta {
+			if w.confidence >= int(w.params.Beta) {
 				w.finalized = true
 			}
 		} else {

@@ -300,7 +300,7 @@ func tuneSafetyCutoff(scanner *bufio.Scanner, p *config.Parameters) *config.Para
 		}
 
 		// Update pipelining
-		p.ConcurrentPolls = min(p.Beta, 20)
+		p.ConcurrentPolls = min(int(p.Beta), 20)
 	}
 
 	newCutoff := RunChecker(p, p.K, 50).SafetyCutoff
@@ -342,13 +342,13 @@ func tuneDirectParameter(scanner *bufio.Scanner, p *config.Parameters) *config.P
 		p.AlphaConfidence = promptInt(scanner, "AlphaConfidence", minAlpha, p.K, p.AlphaConfidence)
 
 	case 4:
-		p.Beta = promptInt(scanner, "Beta", 1, 100, p.Beta)
+		p.Beta = uint32(promptInt(scanner, "Beta", 1, 100, int(p.Beta)))
 		if promptBool(scanner, "Update pipelining to match?", true) {
-			p.ConcurrentPolls = min(p.Beta, 20)
+			p.ConcurrentPolls = min(int(p.Beta), 20)
 		}
 
 	case 5:
-		p.ConcurrentPolls = promptInt(scanner, "ConcurrentPolls", 1, p.Beta, p.ConcurrentPolls)
+		p.ConcurrentPolls = promptInt(scanner, "ConcurrentPolls", 1, int(p.Beta), p.ConcurrentPolls)
 	}
 
 	return p
@@ -391,8 +391,8 @@ func tuneThroughput(scanner *bufio.Scanner, p *config.Parameters) *config.Parame
 		case 3:
 			// Reduce Beta if possible
 			if p.Beta > 4 {
-				newBeta := promptInt(scanner, "Reduce Beta to", 4, p.Beta-1, p.Beta/2)
-				p.Beta = newBeta
+				newBeta := promptInt(scanner, "Reduce Beta to", 4, int(p.Beta-1), int(p.Beta/2))
+				p.Beta = uint32(newBeta)
 				p.ConcurrentPolls = newBeta
 			}
 		}
