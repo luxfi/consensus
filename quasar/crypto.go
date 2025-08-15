@@ -7,12 +7,12 @@ package quasar
 type (
 	// PublicKey represents a BLS public key
 	PublicKey struct {
-		key []byte
+		key []byte //nolint:unused // Will be used when BLS is implemented
 	}
 	
 	// Aggregator represents a BLS signature aggregator
 	Aggregator struct {
-		sigs [][]byte
+		sigs [][]byte //nolint:unused // Will be used when aggregation is implemented
 	}
 )
 

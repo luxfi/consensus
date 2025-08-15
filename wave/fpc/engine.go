@@ -11,13 +11,14 @@ import (
 	"github.com/luxfi/ids"
 )
 
+// TODO: Remove or implement when logging is needed
 // simpleLogger wraps log functions for Ringtail
-type simpleLogger struct{}
-
-func (s *simpleLogger) Debug(msg string, args ...interface{}) {}
-func (s *simpleLogger) Info(msg string, args ...interface{})  {}
-func (s *simpleLogger) Warn(msg string, args ...interface{})  {}
-func (s *simpleLogger) Error(msg string, args ...interface{}) {}
+// type simpleLogger struct{}
+// 
+// func (s *simpleLogger) Debug(msg string, args ...interface{}) {}
+// func (s *simpleLogger) Info(msg string, args ...interface{})  {}
+// func (s *simpleLogger) Warn(msg string, args ...interface{})  {}
+// func (s *simpleLogger) Error(msg string, args ...interface{}) {}
 
 // Implementation of WaveFPC - the core FPC engine
 type waveFPC struct {
@@ -27,7 +28,6 @@ type waveFPC struct {
 	pq       PQEngine
 	// ringtail would go here if needed
 
-	mu          sync.RWMutex
 	epochPaused atomic.Bool
 
 	// Core state (sharded for performance)
