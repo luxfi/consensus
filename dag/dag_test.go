@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/dag/witness"
-	"github.com/luxfi/consensus/flare"
+	// "github.com/luxfi/consensus/flare" // TODO: Enable when flare is needed
 	"github.com/stretchr/testify/require"
 )
 
