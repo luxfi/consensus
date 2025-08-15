@@ -23,7 +23,7 @@ func TestMixedNetwork(t *testing.T) {
 
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NetworkID: 1,
 		ChainID:   ids.GenerateTestID(),
 		NodeID:    ids.GenerateTestNodeID(),
@@ -76,7 +76,7 @@ func TestPartitionedNetwork(t *testing.T) {
 
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NetworkID: 1,
 		ChainID:   ids.GenerateTestID(),
 		NodeID:    ids.GenerateTestNodeID(),
@@ -133,7 +133,7 @@ func TestByzantineBehavior(t *testing.T) {
 
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NetworkID: 1,
 		ChainID:   ids.GenerateTestID(),
 		NodeID:    ids.GenerateTestNodeID(),
@@ -188,7 +188,7 @@ func TestSlowNodes(t *testing.T) {
 
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NetworkID: 1,
 		ChainID:   ids.GenerateTestID(),
 		NodeID:    ids.GenerateTestNodeID(),
@@ -283,7 +283,7 @@ func TestDynamicNetwork(t *testing.T) {
 
 	params := config.TestParameters
 	// Create a minimal context for testing
-	ctx := &interfaces.Context{
+	ctx := &interfaces.Runtime{
 		NetworkID: 1,
 		ChainID:   ids.GenerateTestID(),
 		NodeID:    ids.GenerateTestNodeID(),

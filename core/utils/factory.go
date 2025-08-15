@@ -9,15 +9,15 @@ import (
 
 // Factory provides consensus creation capabilities
 type Factory struct {
-	ctx *interfaces.Context
+	ctx *interfaces.Runtime
 }
 
 // NewFactory creates a new factory
-func NewFactory(ctx *interfaces.Context) *Factory {
+func NewFactory(ctx *interfaces.Runtime) *Factory {
 	return &Factory{ctx: ctx}
 }
 
 // Context returns the factory's context
-func (f *Factory) Context() *interfaces.Context {
+func (f *Factory) Context() *interfaces.Runtime {
 	return f.ctx
 }

@@ -15,7 +15,7 @@ type Block interface {
 }
 
 // ChainContext provides chain-specific context
-type ChainContext = interfaces.Context
+type ChainContext = interfaces.Runtime
 
 // DBManager manages database operations
 type DBManager interface {

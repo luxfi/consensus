@@ -59,7 +59,7 @@ type Parameters struct {
 }
 
 // New creates a new Galaxy engine
-func New(ctx *interfaces.Context, params Parameters) (*Engine, error) {
+func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 	// TODO: Create consensus stages when protocols are implemented
 	// photonFactory := photon.PhotonFactory
 	// waveFactory := wave.WaveFactory

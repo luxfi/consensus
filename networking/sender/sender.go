@@ -25,7 +25,7 @@ type ExternalSender interface {
 
 // New creates a new sender
 func New(
-    ctx *interfaces.Context,
+    ctx *interfaces.Runtime,
     msgCreator message.OutboundMsgBuilder,
     timeouts interface{},
     engineType interface{},
