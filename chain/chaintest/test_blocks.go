@@ -89,4 +89,14 @@ func (b *TestBlock) Status() choices.Status {
 	return b.StatusV
 }
 
+// FPCVotes returns embedded fast-path vote references
+func (b *TestBlock) FPCVotes() [][]byte {
+	return nil // Test blocks don't have FPC votes
+}
+
+// EpochBit returns the epoch fence bit
+func (b *TestBlock) EpochBit() bool {
+	return false // Test blocks don't have epoch bits
+}
+
 var _ chain.Block = (*TestBlock)(nil)
