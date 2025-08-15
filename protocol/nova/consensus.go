@@ -12,7 +12,7 @@ type Consensus struct {
 	refract *prism.Refractor
 
 	preference           ids.ID
-	lastAccepted         ids.ID
+	// lastAccepted         ids.ID // TODO: Use for tracking accepted blocks
 	consecutiveSuccesses int
 }
 

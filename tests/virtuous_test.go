@@ -248,8 +248,8 @@ func TestVirtuousConvergenceSpeed(t *testing.T) {
 			nodes := make([]*pulse.Pulse, size)
 			for i := range nodes {
 				nodes[i] = pulse.NewPulse(params)
-				nodes[i].Add(Red)
-				nodes[i].Add(Blue)
+				_ = nodes[i].Add(Red)
+				_ = nodes[i].Add(Blue)
 			}
 			
 			// All vote Blue (virtuous)
@@ -265,7 +265,7 @@ func TestVirtuousConvergenceSpeed(t *testing.T) {
 				allFinalized = true
 				for _, node := range nodes {
 					if !node.Finalized() {
-						node.RecordVotes(votes)
+						_ = node.RecordVotes(votes)
 						allFinalized = false
 					}
 				}

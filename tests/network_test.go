@@ -38,12 +38,12 @@ func NewTestNetwork(factory *utils.Factory, params config.Parameters, numColors 
 func (n *TestNetwork) AddNode(newConsensusFunc newConsensusFunc) interfaces.Consensus {
 	seed := n.rngSource.Uint64()
 	s := sampler.NewDeterministicUniform(int64(seed))
-	s.Initialize(len(n.colors))
+	_ = s.Initialize(len(n.colors))
 	indices, _ := s.Sample(len(n.colors))
 
 	consensus := newConsensusFunc(n.factory, n.params, n.colors[int(indices[0])])
 	for _, index := range indices[1:] {
-		consensus.Add(n.colors[int(index)])
+		_ = consensus.Add(n.colors[int(index)])
 	}
 
 	n.nodes = append(n.nodes, consensus)
