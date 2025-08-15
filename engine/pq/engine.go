@@ -126,9 +126,7 @@ func (r *Engine) Stop(ctx context.Context) error {
 	
 	// Stop all sub-engines
 	for name, chainEngine := range r.chains {
-		// Chain engine is an interface, not a pointer to interface
-		// TODO: Add IsRunning() method to chain.Engine interface if needed
-		// For now, just call Stop unconditionally
+		// Chain engines don't have IsRunning, just try to stop
 		if err := chainEngine.Stop(); err != nil {
 			return fmt.Errorf("failed to stop chain %s: %w", name, err)
 		}
