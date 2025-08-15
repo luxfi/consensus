@@ -210,18 +210,19 @@ func getConsensusParams(profile string) config.Parameters {
 	return params
 }
 
-func generateVotes(k int, preference ids.ID) map[ids.NodeID]ids.ID {
-	votes := make(map[ids.NodeID]ids.ID)
-	
-	// Generate k votes, majority for the preference
-	for i := 0; i < k; i++ {
-		nodeID := ids.GenerateTestNodeID()
-		if i < (k*2/3) {
-			votes[nodeID] = preference
-		} else {
-			votes[nodeID] = ids.GenerateTestID()
-		}
-	}
-	
-	return votes
-}
+// TODO: Remove if not needed for benchmarks
+// func generateVotes(k int, preference ids.ID) map[ids.NodeID]ids.ID {
+// 	votes := make(map[ids.NodeID]ids.ID)
+// 	
+// 	// Generate k votes, majority for the preference
+// 	for i := 0; i < k; i++ {
+// 		nodeID := ids.GenerateTestNodeID()
+// 		if i < (k*2/3) {
+// 			votes[nodeID] = preference
+// 		} else {
+// 			votes[nodeID] = ids.GenerateTestID()
+// 		}
+// 	}
+// 	
+// 	return votes
+// }
