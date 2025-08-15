@@ -30,3 +30,15 @@ type Decision interface {
 	// Verify verifies the decision
 	Verify() error
 }
+
+// Simple decisions for tests and internal use
+type simpleDecision byte
+
+func (s simpleDecision) ID() ids.ID    { return ids.Empty }
+func (s simpleDecision) Bytes() []byte { return []byte{byte(s)} }
+func (s simpleDecision) Verify() error { return nil }
+
+var (
+	DecideReject Decision = simpleDecision(0)
+	DecideAccept Decision = simpleDecision(1)
+)
