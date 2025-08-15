@@ -234,8 +234,9 @@ func TestWaveProtocolConsensusConcurrent(t *testing.T) {
 		require.NoError(w.Add(choices[i]))
 	}
 
-	// Simulate concurrent voting
+	// Simulate concurrent voting with proper synchronization
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	numVoters := 10
 	votesPerVoter := 5
 
@@ -254,7 +255,9 @@ func TestWaveProtocolConsensusConcurrent(t *testing.T) {
 					votes = bag.Of(choices[1], choices[1], choices[1])
 				}
 
+				mu.Lock()
 				_ = w.RecordVotes(votes)
+				mu.Unlock()
 			}
 		}(i)
 	}

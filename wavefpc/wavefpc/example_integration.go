@@ -54,11 +54,12 @@ func (e *ExampleEngineIntegration) InitializeFPC(
 	dagTap := NewSimpleDAGTap(e.getBlock)
 
 	// Create FPC config
+	def := config.DefaultFPC()
 	fpcConfig := &Config{
 		Quorum:            Quorum{N: len(nodeIDs), F: (len(nodeIDs) - 1) / 3},
 		Epoch:             0, // Set current epoch
-		VoteLimitPerBlock: params.FPCVoteLimit,
-		VotePrefix:        params.FPCVotePrefix,
+		VoteLimitPerBlock: def.VoteLimitPerBlock,
+		VotePrefix:        def.VotePrefix,
 	}
 
 	// Create integration

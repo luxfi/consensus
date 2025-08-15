@@ -92,7 +92,7 @@ func TestConfigToParametersMinimal(t *testing.T) {
 	require.Equal(5, params.K)
 	require.Equal(3, params.AlphaPreference)
 	require.Equal(4, params.AlphaConfidence)
-	require.Equal(2, params.Beta)
+	require.Equal(uint32(2), params.Beta)
 
 	// Default values should be zero
 	require.Equal(0, params.ConcurrentPolls)

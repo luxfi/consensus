@@ -7,16 +7,40 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/luxfi/consensus/photon"
 	"github.com/luxfi/consensus/types"
 	"github.com/luxfi/consensus/wave"
 	"github.com/luxfi/consensus/wave/fpc"
+	"github.com/luxfi/ids"
 )
 
 type ItemID string
 type TxID string
+
+type simpleSelector struct {
+	peers []types.NodeID
+	idx   int
+	mu    sync.Mutex
+}
+
+func (s *simpleSelector) Sample(ctx context.Context, k int, topic types.Topic) []types.NodeID {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	if k > len(s.peers) {
+		k = len(s.peers)
+	}
+	
+	selected := make([]types.NodeID, k)
+	for i := 0; i < k; i++ {
+		selected[i] = s.peers[(s.idx+i)%len(s.peers)]
+	}
+	s.idx = (s.idx + k) % len(s.peers)
+	return selected
+}
 
 type transport struct {
 	prefer bool
@@ -47,14 +71,11 @@ func main() {
 	// Setup validators
 	peers := []types.NodeID{"validator1", "validator2", "validator3", "validator4", "validator5", "validator6", "validator7"}
 
-	// Create sampler
-	sel := prism.NewDefault(peers, prism.Options{
-		MinPeers: 5,
-		MaxPeers: 10,
-	})
+	// Create sampler - using a simple round-robin selector for demo
+	sel := &simpleSelector{peers: peers, idx: 0}
 
 	// Create Wave consensus with FPC enabled (default configuration)
-	w := wave.New[ItemID](wave.Config{
+	w := wave.NewWave[ItemID](wave.Config{
 		K:       5,   // Sample size
 		Alpha:   0.8, // Success threshold (80%)
 		Beta:    5,   // Confidence target
@@ -85,16 +106,33 @@ func main() {
 
 	// Simulate 5 validators voting for the transaction
 	fmt.Printf("Collecting votes for %s...\n", ownedTx)
+	
+	// In a real system, these would come from different validators
+	// For demo, we simulate 5 votes for the same transaction
+	var txID [32]byte
+	testID := ids.GenerateTestID()
+	copy(txID[:], testID[:])
+	
+	// Process blocks with FPC votes
 	for i := 0; i < 5; i++ {
-		fl.Propose(ownedTx)
-		status := fl.Status(ownedTx)
+		block := fpc.BlockRef{
+			ID:       types.BlockID(ids.GenerateTestID()),
+			Round:    uint64(i),
+			Author:   peers[i],
+			Final:    false,
+			EpochBit: false,
+			FPCVotes: [][]byte{txID[:]}, // Vote for our transaction
+		}
+		fl.OnBlockObserved(context.Background(), &block)
+		
+		txRef := types.TxRef(txID)
+		status, _ := fl.Status(txRef)
 		fmt.Printf("  Vote %d: status = %s\n", i+1, statusString(status))
 	}
 
 	// Check if executable
-	var txRef fpc.TxRef
-	copy(txRef[:], []byte(ownedTx)[:32])
-	if fl.Status(txRef) == fpc.StatusExecutable {
+	txRef := types.TxRef(txID)
+	if status, _ := fl.Status(txRef); status == fpc.StatusExecutable {
 		fmt.Println("✅ Transaction is EXECUTABLE via Fast Path (before block finalization!)")
 	}
 	fmt.Println()
