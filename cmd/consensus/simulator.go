@@ -107,7 +107,7 @@ func runSimulator(cmd *cobra.Command, args []string) error {
 		finalizedA := 0
 		finalizedB := 0
 		for _, node := range nodeStates {
-			if node.confidence >= params.Beta {
+			if node.confidence >= int(params.Beta) {
 				if node.preference == choiceA {
 					finalizedA++
 				} else if node.preference == choiceB {
