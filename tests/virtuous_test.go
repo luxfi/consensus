@@ -124,11 +124,11 @@ func TestVirtuousNetwork(t *testing.T) {
 		network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(p)
 			// First add the initial choice
-			node.Add(choice)
+			_ = node.Add(choice)
 			// Then add the other choices so nodes can switch preferences
 			for _, c := range network.colors {
 				if c != choice {
-					node.Add(c)
+					_ = node.Add(c)
 				}
 			}
 			return node

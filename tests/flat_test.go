@@ -43,7 +43,7 @@ func testFlatConsensus(t *testing.T, consensus interface {
 
 	// Add all choices (photon will only accept first)
 	for _, choice := range choices {
-		consensus.Add(choice)
+		_ = consensus.Add(choice)
 	}
 
 	// Vote for first choice

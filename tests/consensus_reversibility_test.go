@@ -206,13 +206,13 @@ func TestNetworkPartitionReversibility(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		partition1.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 		
 		partition2.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 	}
@@ -259,9 +259,9 @@ func TestConsensusStability(t *testing.T) {
 	instances := make([]*wave.Wave, 20)
 	for i := range instances {
 		instances[i] = wave.NewWave(params)
-		instances[i].Add(Red)
-		instances[i].Add(Blue)
-		instances[i].Add(Green)
+		_ = instances[i].Add(Red)
+		_ = instances[i].Add(Blue)
+		_ = instances[i].Add(Green)
 	}
 	
 	// Simulate changing vote patterns
@@ -306,7 +306,7 @@ func TestConsensusStability(t *testing.T) {
 		votes := pattern.votes()
 		for _, instance := range instances {
 			if !instance.Finalized() {
-				instance.RecordVotes(votes)
+				_ = instance.RecordVotes(votes)
 			}
 		}
 	}
@@ -321,7 +321,7 @@ func TestConsensusStability(t *testing.T) {
 		allFinalized := true
 		for _, instance := range instances {
 			if !instance.Finalized() {
-				instance.RecordVotes(greenVotes)
+				_ = instance.RecordVotes(greenVotes)
 				allFinalized = false
 			}
 		}

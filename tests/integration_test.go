@@ -43,10 +43,10 @@ func TestIntegrationPhotonConsensus(t *testing.T) {
 	for i := 0; i < 15; i++ {
 		network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			// Add all colors from the network to each node
 			for _, color := range network.colors {
-				node.Add(color)
+				_ = node.Add(color)
 			}
 			return node
 		})
