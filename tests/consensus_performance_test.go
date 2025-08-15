@@ -205,7 +205,7 @@ func TestTreeConvergenceOptimization(t *testing.T) {
 				allFinalized = true
 				for _, node := range nodes {
 					if !node.Finalized() {
-						node.RecordVotes(votes)
+						_ = node.RecordVotes(votes)
 						allFinalized = false
 					}
 				}
@@ -236,8 +236,8 @@ func BenchmarkLargeNetwork(b *testing.B) {
 				nodes := make([]*pulse.Pulse, size)
 				for j := range nodes {
 					nodes[j] = pulse.NewPulse(params)
-					nodes[j].Add(Red)
-					nodes[j].Add(Blue)
+					_ = nodes[j].Add(Red)
+					_ = nodes[j].Add(Blue)
 				}
 				
 				// Vote until all finalized
@@ -251,7 +251,7 @@ func BenchmarkLargeNetwork(b *testing.B) {
 					finalized = true
 					for _, node := range nodes {
 						if !node.Finalized() {
-							node.RecordVotes(votes)
+							_ = node.RecordVotes(votes)
 							finalized = false
 						}
 					}
@@ -272,8 +272,8 @@ func TestParallelConsensus(t *testing.T) {
 	nodes := make([]*pulse.Pulse, numNodes)
 	for i := range nodes {
 		nodes[i] = pulse.NewPulse(params)
-		nodes[i].Add(Red)
-		nodes[i].Add(Blue)
+		_ = nodes[i].Add(Red)
+		_ = nodes[i].Add(Blue)
 	}
 	
 	// Run consensus in parallel
@@ -289,7 +289,7 @@ func TestParallelConsensus(t *testing.T) {
 	for i := range nodes {
 		go func(node *pulse.Pulse) {
 			for !node.Finalized() {
-				node.RecordVotes(votes)
+				_ = node.RecordVotes(votes)
 			}
 			done <- true
 		}(nodes[i])

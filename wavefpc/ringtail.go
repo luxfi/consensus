@@ -270,7 +270,7 @@ func (r *RingtailEngine) generateShare(tx TxRef, phase int) *LatticeShare {
 	vector := make([]uint64, r.n)
 	for i := range vector {
 		b := make([]byte, 8)
-		rand.Read(b)
+		_, _ = rand.Read(b)
 		vector[i] = binary.BigEndian.Uint64(b) % r.q
 	}
 

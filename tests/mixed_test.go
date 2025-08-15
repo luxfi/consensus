@@ -39,7 +39,7 @@ func TestMixedNetwork(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 	}
@@ -48,7 +48,7 @@ func TestMixedNetwork(t *testing.T) {
 		network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			// Skip quasar for now as it has different constructor
 			node := wave.NewWave(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 	}
@@ -56,7 +56,7 @@ func TestMixedNetwork(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := wave.NewWave(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 	}
@@ -94,7 +94,7 @@ func TestPartitionedNetwork(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		nodes1[i] = network1.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 	}
@@ -102,7 +102,7 @@ func TestPartitionedNetwork(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		nodes2[i] = network2.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 	}
@@ -147,7 +147,7 @@ func TestByzantineBehavior(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 	}
@@ -217,7 +217,7 @@ func TestSlowNodes(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		node := network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(fastParams)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 		if node.Finalized() {
@@ -230,7 +230,7 @@ func TestSlowNodes(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		node := network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(slowParams)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 		if node.Finalized() {
@@ -296,7 +296,7 @@ func TestDynamicNetwork(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 	}
@@ -310,7 +310,7 @@ func TestDynamicNetwork(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := pulse.NewPulse(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 	}
@@ -324,7 +324,7 @@ func TestDynamicNetwork(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		network.AddNode(func(f *utils.Factory, p config.Parameters, choice ids.ID) interfaces.Consensus {
 			node := wave.NewWave(p)
-			node.Add(choice)
+			_ = node.Add(choice)
 			return node
 		})
 	}
