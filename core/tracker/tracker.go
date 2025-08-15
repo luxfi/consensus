@@ -3,7 +3,7 @@ package tracker
 import (
     "github.com/luxfi/ids"
     "github.com/luxfi/consensus/validators"
-    "github.com/luxfi/metric"
+    metric "github.com/luxfi/metric"
 )
 
 // Tracker tracks consensus progress
@@ -21,7 +21,7 @@ type Peers interface {
 }
 
 // NewMeteredPeers creates a new metered peers tracker
-func NewMeteredPeers(metrics metric.Registry) (Peers, error) {
+func NewMeteredPeers(registry metric.Registry) (Peers, error) {
     return &noOpPeers{}, nil
 }
 

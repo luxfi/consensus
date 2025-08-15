@@ -13,25 +13,25 @@ import (
 type Parameters struct {
 	// Core parameters
 	K                     int           `json:"k" yaml:"k"`
-	AlphaPreference       int           `json:"alphaPreference" yaml:"alphaPreference"`
-	AlphaConfidence       int           `json:"alphaConfidence" yaml:"alphaConfidence"`
+	AlphaPreference       int           `json:"alpha_preference" yaml:"alpha_preference"`
+	AlphaConfidence       int           `json:"alpha_confidence" yaml:"alpha_confidence"`
 	Beta                  int           `json:"beta" yaml:"beta"`
 	
 	// Quantum parameters
-	QThreshold            int           `json:"qThreshold" yaml:"qThreshold"`
-	QuasarTimeout         time.Duration `json:"quasarTimeout" yaml:"quasarTimeout"`
+	QRounds               int           `json:"q_rounds" yaml:"q_rounds"`
+	QuasarTimeout         time.Duration `json:"quasar_timeout" yaml:"quasar_timeout"`
 	
 	// Advanced parameters
-	ConcurrentPolls       int           `json:"concurrentPolls" yaml:"concurrentPolls"`
-	OptimalProcessing     int           `json:"optimalProcessing" yaml:"optimalProcessing"`
-	MaxOutstandingItems   int           `json:"maxOutstandingItems" yaml:"maxOutstandingItems"`
-	MaxItemProcessingTime time.Duration `json:"maxItemProcessingTime" yaml:"maxItemProcessingTime"`
-	MinRoundInterval      time.Duration `json:"minRoundInterval" yaml:"minRoundInterval"`
+	ConcurrentPolls       int           `json:"concurrent_polls" yaml:"concurrent_polls"`
+	OptimalProcessing     int           `json:"optimal_processing" yaml:"optimal_processing"`
+	MaxOutstandingItems   int           `json:"max_outstanding_items" yaml:"max_outstanding_items"`
+	MaxItemProcessingTime time.Duration `json:"max_item_processing_time" yaml:"max_item_processing_time"`
+	MinRoundInterval      time.Duration `json:"min_round_interval" yaml:"min_round_interval"`
 	
 	// WaveFPC parameters (optional fast-path certification)
-	EnableFPC             bool          `json:"enableFPC" yaml:"enableFPC"`
-	FPCVoteLimit          int           `json:"fpcVoteLimit" yaml:"fpcVoteLimit"`
-	FPCVotePrefix         []byte        `json:"fpcVotePrefix" yaml:"fpcVotePrefix"`
+	EnableFPC             bool          `json:"enable_fpc" yaml:"enable_fpc"`
+	FPCVoteLimit          int           `json:"fpc_vote_limit" yaml:"fpc_vote_limit"`
+	FPCVotePrefix         []byte        `json:"fpc_vote_prefix" yaml:"fpc_vote_prefix"`
 }
 
 // GetK returns the sample size
@@ -96,14 +96,14 @@ func (p Parameters) Valid() error {
 	}
 	
 	// Quantum parameter validation - only if they are being used (non-zero)
-	if p.QThreshold != 0 || p.QuasarTimeout != 0 {
+	if p.QRounds != 0 || p.QuasarTimeout != 0 {
 		switch {
-		case p.QThreshold <= 0:
-			return errors.New("qThreshold must be positive when set")
-		case p.QThreshold > p.K:
-			return fmt.Errorf("qThreshold (%d) must be <= k (%d)", p.QThreshold, p.K)
+		case p.QRounds <= 0:
+			return errors.New("q_rounds must be positive when set")
+		case p.QRounds > 3:
+			return fmt.Errorf("q_rounds (%d) should be <= 3 for efficiency", p.QRounds)
 		case p.QuasarTimeout <= 0:
-			return errors.New("quasarTimeout must be positive when set")
+			return errors.New("quasar_timeout must be positive when set")
 		}
 	}
 	
