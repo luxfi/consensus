@@ -47,16 +47,16 @@ type SimpleTransport struct {
 // NewSimpleTransport creates a new transport
 func NewSimpleTransport(identity string, port int) (*SimpleTransport, error) {
 	ctx := context.Background()
-	
+
 	// Create publisher socket
 	pub := zmq4.NewPub(ctx, zmq4.WithID(zmq4.SocketIdentity(identity)))
 	if err := pub.Listen(fmt.Sprintf("tcp://127.0.0.1:%d", port)); err != nil {
 		return nil, fmt.Errorf("failed to bind publisher: %w", err)
 	}
-	
+
 	// Create subscriber socket
 	sub := zmq4.NewSub(ctx)
-	
+
 	return &SimpleTransport{
 		identity: identity,
 		ctx:      ctx,
@@ -70,16 +70,16 @@ func NewSimpleTransport(identity string, port int) (*SimpleTransport, error) {
 func (t *SimpleTransport) Connect(addr string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	if err := t.sub.Dial(addr); err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", addr, err)
 	}
-	
+
 	// Subscribe to all messages
 	if err := t.sub.SetOption(zmq4.OptionSubscribe, ""); err != nil {
 		return fmt.Errorf("failed to subscribe: %w", err)
 	}
-	
+
 	t.peers = append(t.peers, addr)
 	return nil
 }
@@ -113,97 +113,97 @@ type Node struct {
 	index     int
 	transport *SimpleTransport
 	params    config.Parameters
-	
+
 	// Current state
 	preference ids.ID
 	confidence map[ids.ID]int
 	finalized  bool
-	
+
 	// Metrics
 	roundsCompleted atomic.Int64
 	messagesRecv    atomic.Int64
 	messagesSent    atomic.Int64
-	
+
 	mu sync.RWMutex
 }
 
 // NetworkBenchmark manages multiple consensus nodes
 type NetworkBenchmark struct {
-	nodes      []*Node
-	params     config.Parameters
-	startTime  time.Time
-	
+	nodes     []*Node
+	params    config.Parameters
+	startTime time.Time
+
 	// Global metrics
-	totalRounds     atomic.Int64
-	totalMessages   atomic.Int64
-	totalFinalized  atomic.Int64
+	totalRounds      atomic.Int64
+	totalMessages    atomic.Int64
+	totalFinalized   atomic.Int64
 	consensusLatency []time.Duration
-	
+
 	mu sync.Mutex
 }
 
 func main() {
 	flag.Parse()
-	
+
 	if !*quiet {
 		log.Printf("🚀 Starting ZMQ consensus benchmark with %d nodes", *nodes)
 	}
-	
+
 	// Get consensus parameters
 	params := getConsensusParams(*profile)
-	
+
 	// Create benchmark
 	bench := &NetworkBenchmark{
 		params:           params,
 		startTime:        time.Now(),
 		consensusLatency: make([]time.Duration, 0),
 	}
-	
+
 	// Create nodes
 	if err := bench.CreateNodes(*nodes, *port); err != nil {
 		log.Fatalf("Failed to create nodes: %v", err)
 	}
-	
+
 	// Handle shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	
+
 	go func() {
 		<-sigCh
 		log.Println("📤 Shutting down...")
 		cancel()
 	}()
-	
+
 	// Start nodes
 	if err := bench.Start(ctx); err != nil {
 		log.Fatalf("Failed to start benchmark: %v", err)
 	}
-	
+
 	// Run benchmark
 	bench.Run(ctx, *rounds, *interval)
-	
+
 	// Stop nodes
 	bench.Stop()
-	
+
 	// Print results
 	bench.PrintStats()
 }
 
 func (b *NetworkBenchmark) CreateNodes(count int, basePort int) error {
 	b.nodes = make([]*Node, count)
-	
+
 	for i := 0; i < count; i++ {
 		nodeID := ids.GenerateTestNodeID()
-		
+
 		// Create transport
 		transport, err := NewSimpleTransport(nodeID.String(), basePort+i)
 		if err != nil {
 			return fmt.Errorf("failed to create transport for node %d: %w", i, err)
 		}
-		
+
 		node := &Node{
 			id:         nodeID,
 			index:      i,
@@ -211,13 +211,13 @@ func (b *NetworkBenchmark) CreateNodes(count int, basePort int) error {
 			params:     b.params,
 			confidence: make(map[ids.ID]int),
 		}
-		
+
 		b.nodes[i] = node
 		if !*quiet {
 			log.Printf("Created node %d: %s on port %d", i, nodeID, basePort+i)
 		}
 	}
-	
+
 	// Connect nodes in a mesh topology
 	for i, node := range b.nodes {
 		for j := range b.nodes {
@@ -229,13 +229,13 @@ func (b *NetworkBenchmark) CreateNodes(count int, basePort int) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
 func (b *NetworkBenchmark) Start(ctx context.Context) error {
 	var wg sync.WaitGroup
-	
+
 	for _, node := range b.nodes {
 		wg.Add(1)
 		go func(n *Node) {
@@ -243,17 +243,17 @@ func (b *NetworkBenchmark) Start(ctx context.Context) error {
 			n.Run(ctx, b)
 		}(node)
 	}
-	
+
 	// Give nodes time to start
 	time.Sleep(100 * time.Millisecond)
-	
+
 	return nil
 }
 
 func (b *NetworkBenchmark) Run(ctx context.Context, rounds int, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	
+
 	for round := 0; round < rounds; round++ {
 		select {
 		case <-ctx.Done():
@@ -267,7 +267,7 @@ func (b *NetworkBenchmark) Run(ctx context.Context, rounds int, interval time.Du
 func (b *NetworkBenchmark) runRound(ctx context.Context, round int) {
 	// Leader election (simple: node 0 is always leader)
 	leader := b.nodes[0]
-	
+
 	// Create proposal
 	proposalID := ids.GenerateTestID()
 	proposal := &ConsensusMessage{
@@ -278,13 +278,13 @@ func (b *NetworkBenchmark) runRound(ctx context.Context, round int) {
 		Height:    uint64(round),
 		Timestamp: time.Now().UnixNano(),
 	}
-	
+
 	// Broadcast proposal
 	if err := leader.Broadcast(proposal); err != nil {
 		log.Printf("Failed to broadcast proposal: %v", err)
 		return
 	}
-	
+
 	b.totalRounds.Add(1)
 }
 
@@ -296,10 +296,10 @@ func (b *NetworkBenchmark) Stop() {
 
 func (b *NetworkBenchmark) PrintStats() {
 	elapsed := time.Since(b.startTime)
-	
+
 	var totalMsgRecv, totalMsgSent int64
 	var finalized int
-	
+
 	for _, node := range b.nodes {
 		totalMsgRecv += node.messagesRecv.Load()
 		totalMsgSent += node.messagesSent.Load()
@@ -307,7 +307,7 @@ func (b *NetworkBenchmark) PrintStats() {
 			finalized++
 		}
 	}
-	
+
 	avgLatency := time.Duration(0)
 	if len(b.consensusLatency) > 0 {
 		var total time.Duration
@@ -316,7 +316,7 @@ func (b *NetworkBenchmark) PrintStats() {
 		}
 		avgLatency = total / time.Duration(len(b.consensusLatency))
 	}
-	
+
 	fmt.Printf("\n📊 ZMQ Consensus Benchmark Results:\n")
 	fmt.Printf("   Nodes: %d\n", len(b.nodes))
 	fmt.Printf("   Duration: %v\n", elapsed)
@@ -345,10 +345,10 @@ func (n *Node) Run(ctx context.Context, bench *NetworkBenchmark) {
 				}
 				continue
 			}
-			
+
 			n.messagesRecv.Add(1)
 			bench.totalMessages.Add(1)
-			
+
 			// Process message
 			n.ProcessMessage(msg, bench)
 		}
@@ -361,12 +361,12 @@ func (n *Node) ProcessMessage(msgBytes []byte, bench *NetworkBenchmark) {
 		log.Printf("Node %d decode error: %v", n.index, err)
 		return
 	}
-	
+
 	switch msg.Type {
 	case "proposal":
 		// Process proposal and vote
 		n.ProcessProposal(msg, bench)
-		
+
 	case "vote":
 		// Process vote
 		n.ProcessVote(msg, bench)
@@ -376,11 +376,11 @@ func (n *Node) ProcessMessage(msgBytes []byte, bench *NetworkBenchmark) {
 func (n *Node) ProcessProposal(msg *ConsensusMessage, bench *NetworkBenchmark) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	
+
 	// Update preference
 	n.preference = msg.ItemID
 	n.confidence[msg.ItemID] = 1
-	
+
 	// Send vote
 	vote := &ConsensusMessage{
 		Type:      "vote",
@@ -390,7 +390,7 @@ func (n *Node) ProcessProposal(msg *ConsensusMessage, bench *NetworkBenchmark) {
 		VoteFor:   msg.ItemID,
 		Timestamp: time.Now().UnixNano(),
 	}
-	
+
 	if err := n.Broadcast(vote); err != nil {
 		log.Printf("Node %d failed to broadcast vote: %v", n.index, err)
 	}
@@ -399,21 +399,21 @@ func (n *Node) ProcessProposal(msg *ConsensusMessage, bench *NetworkBenchmark) {
 func (n *Node) ProcessVote(msg *ConsensusMessage, bench *NetworkBenchmark) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	
+
 	// Update confidence
 	n.confidence[msg.VoteFor]++
-	
+
 	// Check if we reached consensus
 	if n.confidence[msg.VoteFor] >= n.params.AlphaConfidence && !n.finalized {
 		n.finalized = true
 		bench.totalFinalized.Add(1)
-		
+
 		// Record latency
 		latency := time.Duration(time.Now().UnixNano() - msg.Timestamp)
 		bench.mu.Lock()
 		bench.consensusLatency = append(bench.consensusLatency, latency)
 		bench.mu.Unlock()
-		
+
 		if !*quiet {
 			log.Printf("Node %d finalized round %d (latency: %v)", n.index, msg.Round, latency)
 		}
@@ -425,11 +425,11 @@ func (n *Node) Broadcast(msg *ConsensusMessage) error {
 	if err != nil {
 		return err
 	}
-	
+
 	if err := n.transport.Send(data); err != nil {
 		return err
 	}
-	
+
 	n.messagesSent.Add(1)
 	return nil
 }
@@ -440,13 +440,13 @@ func (n *Node) Stop() {
 
 // Message types
 type ConsensusMessage struct {
-	Type      string      `json:"type"`
-	Round     uint64      `json:"round"`
-	NodeID    ids.NodeID  `json:"node_id"`
-	ItemID    ids.ID      `json:"item_id"`
-	VoteFor   ids.ID      `json:"vote_for,omitempty"`
-	Height    uint64      `json:"height"`
-	Timestamp int64       `json:"timestamp"`
+	Type      string     `json:"type"`
+	Round     uint64     `json:"round"`
+	NodeID    ids.NodeID `json:"node_id"`
+	ItemID    ids.ID     `json:"item_id"`
+	VoteFor   ids.ID     `json:"vote_for,omitempty"`
+	Height    uint64     `json:"height"`
+	Timestamp int64      `json:"timestamp"`
 }
 
 func (m *ConsensusMessage) Encode() ([]byte, error) {

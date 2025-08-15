@@ -6,9 +6,9 @@ package wavefpc
 import (
 	"sync"
 	"testing"
-	
-	"github.com/stretchr/testify/require"
+
 	"github.com/luxfi/ids"
+	"github.com/stretchr/testify/require"
 )
 
 // mockClassifier for testing
@@ -68,33 +68,33 @@ func TestBasicFPCFlow(t *testing.T) {
 	n := 4
 	f := 1
 	quorum := 2*f + 1 // Need 3 votes
-	
+
 	validators := make([]ids.NodeID, n)
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
-	
+
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create a transaction with owned inputs
 	tx1 := TxRef{1}
 	obj1 := ObjectID{1}
 	cls.addOwnedTx(tx1, obj1)
-	
+
 	// Test: Initial status should be Pending
 	status, _ := fpc.Status(tx1)
 	require.Equal(t, Pending, status)
-	
+
 	// Simulate votes from validators
 	// Vote 1 from validator 0
 	block1 := &Block{
@@ -106,11 +106,11 @@ func TestBasicFPCFlow(t *testing.T) {
 		},
 	}
 	fpc.OnBlockObserved(block1)
-	
+
 	status, proof := fpc.Status(tx1)
 	require.Equal(t, Pending, status)
 	require.Equal(t, 1, proof.VoterCount)
-	
+
 	// Vote 2 from validator 1
 	block2 := &Block{
 		ID:     ids.GenerateTestID(),
@@ -121,11 +121,11 @@ func TestBasicFPCFlow(t *testing.T) {
 		},
 	}
 	fpc.OnBlockObserved(block2)
-	
+
 	status, proof = fpc.Status(tx1)
 	require.Equal(t, Pending, status)
 	require.Equal(t, 2, proof.VoterCount)
-	
+
 	// Vote 3 from validator 2 - should reach quorum
 	block3 := &Block{
 		ID:     ids.GenerateTestID(),
@@ -136,15 +136,15 @@ func TestBasicFPCFlow(t *testing.T) {
 		},
 	}
 	fpc.OnBlockObserved(block3)
-	
+
 	status, proof = fpc.Status(tx1)
 	require.Equal(t, Executable, status, "Should be executable after %d votes", quorum)
 	require.Equal(t, 3, proof.VoterCount)
-	
+
 	// Test anchoring: Accept a block that includes tx1 in ancestry
 	dag.addAncestry(block3.ID, tx1)
 	fpc.OnBlockAccepted(block3)
-	
+
 	status, _ = fpc.Status(tx1)
 	require.Equal(t, Final, status, "Should be final after anchoring")
 }
@@ -153,33 +153,33 @@ func TestConflictingTransactions(t *testing.T) {
 	// Setup
 	n := 4
 	f := 1
-	
+
 	validators := make([]ids.NodeID, n)
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
-	
+
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create two conflicting transactions (same object)
 	tx1 := TxRef{1}
 	tx2 := TxRef{2}
 	obj1 := ObjectID{1}
-	
+
 	cls.addOwnedTx(tx1, obj1)
 	cls.addOwnedTx(tx2, obj1)
 	cls.setConflict(tx1, tx2)
-	
+
 	// Vote for tx1 from validators 0, 1, 2
 	for i := 0; i < 3; i++ {
 		block := &Block{
@@ -192,11 +192,11 @@ func TestConflictingTransactions(t *testing.T) {
 		}
 		fpc.OnBlockObserved(block)
 	}
-	
+
 	// tx1 should be executable
 	status1, _ := fpc.Status(tx1)
 	require.Equal(t, Executable, status1)
-	
+
 	// Now try to vote for conflicting tx2 from same validators
 	// These votes should be ignored (equivocation)
 	for i := 0; i < 3; i++ {
@@ -210,7 +210,7 @@ func TestConflictingTransactions(t *testing.T) {
 		}
 		fpc.OnBlockObserved(block)
 	}
-	
+
 	// tx2 should still be pending (votes were ignored)
 	status2, proof2 := fpc.Status(tx2)
 	require.Equal(t, Pending, status2)
@@ -221,37 +221,37 @@ func TestEpochFence(t *testing.T) {
 	// Setup
 	n := 4
 	f := 1
-	
+
 	validators := make([]ids.NodeID, n)
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
-	
+
 	myNode := validators[0]
 	fpc := New(cfg, cls, dag, nil, myNode, validators).(*waveFPC)
-	
+
 	// Create a transaction
 	tx1 := TxRef{1}
 	obj1 := ObjectID{1}
 	cls.addOwnedTx(tx1, obj1)
-	
+
 	// Start epoch close
 	fpc.OnEpochCloseStart()
-	
+
 	// NextVotes should return empty during epoch pause
 	votes := fpc.NextVotes(10)
 	require.Empty(t, votes, "Should not vote during epoch pause")
-	
+
 	// Existing votes still count
 	block := &Block{
 		ID:     ids.GenerateTestID(),
@@ -262,11 +262,11 @@ func TestEpochFence(t *testing.T) {
 		},
 	}
 	fpc.OnBlockObserved(block)
-	
+
 	status, proof := fpc.Status(tx1)
 	require.Equal(t, Pending, status)
 	require.Equal(t, 1, proof.VoterCount, "Votes still counted during epoch pause")
-	
+
 	// Simulate epoch close with EpochBit from 2f+1 validators
 	for i := 0; i < 3; i++ {
 		block := &Block{
@@ -279,13 +279,13 @@ func TestEpochFence(t *testing.T) {
 		}
 		fpc.OnBlockAccepted(block)
 	}
-	
+
 	// Complete epoch close
 	fpc.OnEpochClosed()
-	
+
 	// Should be able to vote again
 	fpc.epochPaused.Store(false) // Reset for test
-	
+
 	// Manually add tx1 as candidate (normally from mempool)
 	// In real implementation, NextVotes would get from mempool
 }
@@ -294,29 +294,29 @@ func TestMetrics(t *testing.T) {
 	// Setup
 	n := 4
 	f := 1
-	
+
 	validators := make([]ids.NodeID, n)
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
-	
+
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create and vote for a transaction
 	tx1 := TxRef{1}
 	obj1 := ObjectID{1}
 	cls.addOwnedTx(tx1, obj1)
-	
+
 	// Get 3 votes (quorum)
 	for i := 0; i < 3; i++ {
 		block := &Block{
@@ -329,13 +329,13 @@ func TestMetrics(t *testing.T) {
 		}
 		fpc.OnBlockObserved(block)
 	}
-	
+
 	// Check metrics
 	metrics := fpc.GetMetrics()
 	require.Equal(t, uint64(3), metrics.TotalVotes)
 	require.Equal(t, uint64(1), metrics.ExecutableTxs)
 	require.Equal(t, uint64(0), metrics.FinalTxs)
-	
+
 	// Anchor the transaction
 	anchorBlock := &Block{
 		ID:     ids.GenerateTestID(),
@@ -347,7 +347,7 @@ func TestMetrics(t *testing.T) {
 	}
 	dag.addAncestry(anchorBlock.ID, tx1)
 	fpc.OnBlockAccepted(anchorBlock)
-	
+
 	metrics = fpc.GetMetrics()
 	require.Equal(t, uint64(1), metrics.FinalTxs)
 }
@@ -364,26 +364,26 @@ func BenchmarkSingleOwnedTransaction(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create owned transaction
 	tx := TxRef{1}
 	obj := ObjectID{1}
 	cls.addOwnedTx(tx, obj)
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		block := &Block{
 			ID:     ids.GenerateTestID(),
@@ -405,18 +405,18 @@ func BenchmarkConcurrentTransactions(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create many non-conflicting transactions
 	numTxs := 1000
 	txs := make([]TxRef, numTxs)
@@ -428,7 +428,7 @@ func BenchmarkConcurrentTransactions(b *testing.B) {
 		cls.addOwnedTx(tx, obj)
 		txs[i] = tx
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
@@ -457,38 +457,38 @@ func BenchmarkConflictDetection(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create conflicting transactions
 	sharedObj := ObjectID{1}
 	numConflicts := 100
 	conflictingTxs := make([]TxRef, numConflicts)
-	
+
 	for i := 0; i < numConflicts; i++ {
 		txID := ids.GenerateTestID()
 		tx := TxRef(txID[:])
 		cls.addOwnedTx(tx, sharedObj)
 		conflictingTxs[i] = tx
-		
+
 		// Set conflicts with all previous
 		for j := 0; j < i; j++ {
 			cls.setConflict(tx, conflictingTxs[j])
 		}
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		tx := conflictingTxs[i%numConflicts]
 		block := &Block{
@@ -511,26 +511,26 @@ func BenchmarkVoteAggregation(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Single transaction getting many votes
 	tx := TxRef{1}
 	obj := ObjectID{1}
 	cls.addOwnedTx(tx, obj)
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	// Benchmark vote aggregation for reaching quorum
 	for i := 0; i < b.N; i++ {
 		block := &Block{
@@ -553,18 +553,18 @@ func BenchmarkBlockProcessing(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create many transactions
 	numTxs := 100
 	txs := make([][]byte, numTxs)
@@ -576,10 +576,10 @@ func BenchmarkBlockProcessing(b *testing.B) {
 		cls.addOwnedTx(tx, obj)
 		txs[i] = tx[:]
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	// Benchmark processing blocks with many votes
 	for i := 0; i < b.N; i++ {
 		// Create block with multiple votes
@@ -604,18 +604,18 @@ func BenchmarkStatusQuery(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Populate with many transactions
 	numTxs := 1000
 	txs := make([]TxRef, numTxs)
@@ -626,7 +626,7 @@ func BenchmarkStatusQuery(b *testing.B) {
 		obj := ObjectID(objID[:])
 		cls.addOwnedTx(tx, obj)
 		txs[i] = tx
-		
+
 		// Vote for each transaction
 		for v := 0; v < 67; v++ { // Get to quorum
 			block := &Block{
@@ -640,10 +640,10 @@ func BenchmarkStatusQuery(b *testing.B) {
 			fpc.OnBlockObserved(block)
 		}
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	// Benchmark status queries
 	for i := 0; i < b.N; i++ {
 		tx := txs[i%numTxs]
@@ -659,18 +659,18 @@ func BenchmarkMetricsCollection(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Populate with activity
 	for i := 0; i < 100; i++ {
 		txID := ids.GenerateTestID()
@@ -678,7 +678,7 @@ func BenchmarkMetricsCollection(b *testing.B) {
 		objID := ids.GenerateTestID()
 		obj := ObjectID(objID[:])
 		cls.addOwnedTx(tx, obj)
-		
+
 		block := &Block{
 			ID:     ids.GenerateTestID(),
 			Author: validators[i%n],
@@ -689,10 +689,10 @@ func BenchmarkMetricsCollection(b *testing.B) {
 		}
 		fpc.OnBlockObserved(block)
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		_ = fpc.GetMetrics()
 	}
@@ -706,30 +706,30 @@ func BenchmarkWorstCaseEquivocation(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create conflicting transactions
 	tx1 := TxRef{1}
 	tx2 := TxRef{2}
 	sharedObj := ObjectID{1}
-	
+
 	cls.addOwnedTx(tx1, sharedObj)
 	cls.addOwnedTx(tx2, sharedObj)
 	cls.setConflict(tx1, tx2)
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	// Benchmark detecting and handling equivocation
 	for i := 0; i < b.N; i++ {
 		var tx TxRef
@@ -738,7 +738,7 @@ func BenchmarkWorstCaseEquivocation(b *testing.B) {
 		} else {
 			tx = tx2
 		}
-		
+
 		block := &Block{
 			ID:     ids.GenerateTestID(),
 			Author: validators[i%n],
@@ -759,18 +759,18 @@ func BenchmarkLargeBlockVotes(b *testing.B) {
 	for i := 0; i < n; i++ {
 		validators[i] = ids.GenerateTestNodeID()
 	}
-	
+
 	cfg := Config{
 		N:                 n,
 		F:                 f,
 		Epoch:             1,
 		VoteLimitPerBlock: 256,
 	}
-	
+
 	cls := newMockClassifier()
 	dag := newMockDAG()
 	fpc := New(cfg, cls, dag, nil, validators[0], validators)
-	
+
 	// Create many transactions
 	maxVotes := 256
 	votes := make([][]byte, maxVotes)
@@ -782,10 +782,10 @@ func BenchmarkLargeBlockVotes(b *testing.B) {
 		cls.addOwnedTx(tx, obj)
 		votes[i] = tx[:]
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	// Benchmark processing blocks with maximum votes
 	for i := 0; i < b.N; i++ {
 		block := &Block{

@@ -11,10 +11,10 @@ import (
 
 	"golang.org/x/exp/maps"
 
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/utils"
-	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/consensus/utils/set"
+	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/ids"
 )
 
 var (
