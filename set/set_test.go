@@ -65,7 +65,7 @@ func TestRemove(t *testing.T) {
 	require := require.New(t)
 
 	s := Of(1, 2, 3, 4, 5)
-	
+
 	// Remove single element
 	s.Remove(3)
 	require.Equal(4, s.Len())
@@ -103,7 +103,7 @@ func TestList(t *testing.T) {
 	s := Of(1, 2, 3)
 	list := s.List()
 	require.Len(list, 3)
-	
+
 	// Convert to set to check elements (order is non-deterministic)
 	listSet := Of(list...)
 	require.True(listSet.Equals(s))
@@ -131,7 +131,7 @@ func TestUnion(t *testing.T) {
 
 	s1 := Of(1, 2, 3)
 	s2 := Of(3, 4, 5)
-	
+
 	union := s1.Union(s2)
 	require.Equal(5, union.Len())
 	for i := 1; i <= 5; i++ {
@@ -153,7 +153,7 @@ func TestIntersection(t *testing.T) {
 
 	s1 := Of(1, 2, 3, 4)
 	s2 := Of(3, 4, 5, 6)
-	
+
 	intersection := s1.Intersection(s2)
 	require.Equal(2, intersection.Len())
 	require.True(intersection.Contains(3))
@@ -186,7 +186,7 @@ func TestDifference(t *testing.T) {
 
 	s1 := Of(1, 2, 3, 4)
 	s2 := Of(3, 4, 5, 6)
-	
+
 	diff := s1.Difference(s2)
 	require.Equal(2, diff.Len())
 	require.True(diff.Contains(1))

@@ -27,11 +27,11 @@ type Node struct {
 
 // SimulationResult contains the results of a consensus simulation
 type SimulationResult struct {
-	Rounds          int
-	Finalized       bool
-	FinalChoice     int
-	AgreementRatio  float64
-	NetworkQueries  int
+	Rounds         int
+	Finalized      bool
+	FinalChoice    int
+	AgreementRatio float64
+	NetworkQueries int
 }
 
 func main() {
@@ -96,17 +96,17 @@ func main() {
 	totalRounds := 0
 	choice0Wins := 0
 	choice1Wins := 0
-	
+
 	startTime := time.Now()
-	
+
 	for i := 0; i < *simulations; i++ {
 		if !*verbose && i%10 == 0 {
 			fmt.Printf("\rRunning simulation %d/%d...", i+1, *simulations)
 		}
-		
+
 		result := runSimulation(nodes, cfg, *samplerType, *rounds, *verbose)
 		results[i] = result
-		
+
 		if result.Finalized {
 			finalizedCount++
 			totalRounds += result.Rounds
@@ -117,30 +117,30 @@ func main() {
 			}
 		}
 	}
-	
+
 	duration := time.Since(startTime)
-	
+
 	// Analyze results
 	fmt.Printf("\n\n=== Simulation Results ===\n")
-	fmt.Printf("\nFinalization Rate:    %.1f%% (%d/%d)\n", 
+	fmt.Printf("\nFinalization Rate:    %.1f%% (%d/%d)\n",
 		float64(finalizedCount)/float64(*simulations)*100, finalizedCount, *simulations)
-	
+
 	if finalizedCount > 0 {
 		avgRounds := float64(totalRounds) / float64(finalizedCount)
 		fmt.Printf("Average Rounds:       %.1f\n", avgRounds)
-		fmt.Printf("Choice 0 Wins:        %.1f%% (%d/%d)\n", 
+		fmt.Printf("Choice 0 Wins:        %.1f%% (%d/%d)\n",
 			float64(choice0Wins)/float64(finalizedCount)*100, choice0Wins, finalizedCount)
-		fmt.Printf("Choice 1 Wins:        %.1f%% (%d/%d)\n", 
+		fmt.Printf("Choice 1 Wins:        %.1f%% (%d/%d)\n",
 			float64(choice1Wins)/float64(finalizedCount)*100, choice1Wins, finalizedCount)
-		
+
 		// Calculate expected finality time
 		if cfg.NetworkLatency > 0 {
 			expectedFinality := time.Duration(avgRounds) * cfg.NetworkLatency
-			fmt.Printf("Expected Finality:    %s (with %s network latency)\n", 
+			fmt.Printf("Expected Finality:    %s (with %s network latency)\n",
 				expectedFinality, cfg.NetworkLatency)
 		}
 	}
-	
+
 	// Network efficiency
 	totalQueries := 0
 	for _, result := range results {
@@ -149,20 +149,20 @@ func main() {
 	avgQueries := float64(totalQueries) / float64(*simulations)
 	theoreticalQueries := float64(cfg.K * cfg.Beta * *simulations)
 	efficiency := (avgQueries / theoreticalQueries) * 100
-	
+
 	fmt.Printf("\n=== Network Efficiency ===\n")
 	fmt.Printf("Total Network Queries:    %d\n", totalQueries)
 	fmt.Printf("Average Queries/Sim:      %.1f\n", avgQueries)
 	fmt.Printf("Theoretical Maximum:      %.0f\n", theoreticalQueries)
 	fmt.Printf("Query Efficiency:         %.1f%%\n", efficiency)
-	
+
 	fmt.Printf("\nSimulation Time:          %s\n", duration)
 	fmt.Printf("Simulations/Second:       %.1f\n", float64(*simulations)/duration.Seconds())
-	
+
 	// Metastability analysis
 	if *byzantineNodes == 0 && finalizedCount < *simulations {
 		fmt.Printf("\n⚠️  Metastability Detected!\n")
-		fmt.Printf("   %d simulations failed to finalize within %d rounds\n", 
+		fmt.Printf("   %d simulations failed to finalize within %d rounds\n",
 			*simulations-finalizedCount, *rounds)
 		fmt.Printf("   This suggests the parameters may need adjustment for the given network conditions.\n")
 	}
@@ -170,7 +170,7 @@ func main() {
 
 func createNodes(total, byzantine int, initialSplit float64) []Node {
 	nodes := make([]Node, total)
-	
+
 	// Assign Byzantine nodes
 	byzantineIndices := make(map[int]bool)
 	for i := 0; i < byzantine; i++ {
@@ -182,7 +182,7 @@ func createNodes(total, byzantine int, initialSplit float64) []Node {
 			}
 		}
 	}
-	
+
 	// Create nodes with initial preferences
 	choice0Count := int(float64(total) * initialSplit)
 	for i := 0; i < total; i++ {
@@ -191,19 +191,19 @@ func createNodes(total, byzantine int, initialSplit float64) []Node {
 			ID:        nodeID,
 			Byzantine: byzantineIndices[i],
 		}
-		
+
 		if i < choice0Count {
 			nodes[i].Choice = 0
 		} else {
 			nodes[i].Choice = 1
 		}
 	}
-	
+
 	// Shuffle to randomize distribution
 	rand.Shuffle(len(nodes), func(i, j int) {
 		nodes[i], nodes[j] = nodes[j], nodes[i]
 	})
-	
+
 	return nodes
 }
 
@@ -217,22 +217,22 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 		logger.Error("Unknown sampler type", "type", samplerType)
 		os.Exit(1)
 	}
-	
+
 	// Create validator list
 	validators := make([]ids.NodeID, 0, len(nodes))
 	for _, node := range nodes {
 		validators = append(validators, node.ID)
 	}
-	
+
 	// Initialize consensus state
 	preference := 0 // Start with choice 0
 	betaConsecutive := 0
 	networkQueries := 0
-	
+
 	if verbose {
 		fmt.Printf("\n--- Starting Simulation ---\n")
 	}
-	
+
 	for round := 1; round <= maxRounds; round++ {
 		// Sample K nodes
 		sample, err := sampler.Sample(validators, cfg.K)
@@ -241,7 +241,7 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 			continue
 		}
 		networkQueries += cfg.K
-		
+
 		// Count votes in sample
 		votes := make([]int, 2)
 		for _, nodeID := range sample {
@@ -253,7 +253,7 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 					break
 				}
 			}
-			
+
 			if node.Byzantine {
 				// Byzantine nodes always vote for minority to disrupt
 				votes[1-preference]++
@@ -261,11 +261,11 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 				votes[node.Choice]++
 			}
 		}
-		
+
 		// Determine if we met alpha preference threshold
 		metAlphaPref := false
 		newPreference := preference
-		
+
 		if votes[0] >= cfg.AlphaPreference {
 			metAlphaPref = true
 			newPreference = 0
@@ -273,7 +273,7 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 			metAlphaPref = true
 			newPreference = 1
 		}
-		
+
 		// Update honest nodes based on prism result
 		if metAlphaPref && newPreference != preference {
 			// Preference changed - update all honest nodes
@@ -285,19 +285,19 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 			preference = newPreference
 			betaConsecutive = 0
 		}
-		
+
 		// Check alpha confidence threshold
 		if votes[preference] >= cfg.AlphaConfidence {
 			betaConsecutive++
 		} else {
 			betaConsecutive = 0
 		}
-		
+
 		if verbose {
 			fmt.Printf("Round %3d: Sample votes [%d, %d], Preference=%d, Beta=%d/%d\n",
 				round, votes[0], votes[1], preference, betaConsecutive, cfg.Beta)
 		}
-		
+
 		// Check finalization
 		if betaConsecutive >= cfg.Beta {
 			// Calculate final agreement
@@ -308,12 +308,12 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 				}
 			}
 			agreement := float64(finalCount) / float64(len(nodes)-countByzantine(nodes))
-			
+
 			if verbose {
 				fmt.Printf("\n✅ Finalized on choice %d after %d rounds (%.1f%% agreement)\n",
 					preference, round, agreement*100)
 			}
-			
+
 			return SimulationResult{
 				Rounds:         round,
 				Finalized:      true,
@@ -323,12 +323,12 @@ func runSimulation(nodes []Node, cfg *config.Config, samplerType string, maxRoun
 			}
 		}
 	}
-	
+
 	// Failed to finalize
 	if verbose {
 		fmt.Printf("\n❌ Failed to finalize after %d rounds\n", maxRounds)
 	}
-	
+
 	return SimulationResult{
 		Rounds:         maxRounds,
 		Finalized:      false,

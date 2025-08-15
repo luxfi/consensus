@@ -1,106 +1,132 @@
-// Copyright (C) 2020-2025, Lux Industries, Inc. All rights reserved.
+// Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
+// Package nebula implements the DAG finality protocol
 package nebula
 
 import (
 	"context"
-	"time"
-
-	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/core/utils"
-	"github.com/luxfi/consensus/types"
-	"github.com/luxfi/ids"
+	"sync"
 )
 
-// Engine is a post-quantum secured DAG engine
-type Engine struct {
-	// Core consensus context
-	ctx *interfaces.Runtime
-
-	// Current state
-	state State
-
-	// Health reporting
-	health interfaces.HealthChecker
+// Config configures the Nebula DAG finality protocol
+type Config[V comparable] struct {
+	Graph      interface{ Parents(V) []V }
+	Tips       func() []V
+	Thresholds interface{ Alpha(k int, phase uint64) (int, int) }
+	Confidence interface{ Record(bool) bool; Reset() }
+	Orderer    interface{ Schedule(context.Context, []V) ([]V, error) }
+	// App/VM hooks
+	Propose func(context.Context) (V, error)
+	Apply   func(context.Context, []V) error
+	Send    func(context.Context, V, []V) error
 }
 
-// Submit submits a decision to the engine
-func (e *Engine) Submit(ctx context.Context, decision types.Decision) error {
-	// Stub implementation
-	return nil
+// Protocol defines the Nebula DAG finality interface
+type Protocol[V comparable] interface {
+	Step(ctx context.Context) error
+	Finalized() []V
+	Reset()
 }
 
-// State represents the engine state
-type State int
-
-const (
-	StateInitializing State = iota
-	StateRunning
-	StateStopped
-)
-
-// New creates a new Nebula engine
-func New(ctx *interfaces.Runtime) *Engine {
-	return &Engine{
-		ctx:   ctx,
-		state: StateInitializing,
-	}
+// Engine implements the Nebula DAG finality protocol
+type Engine[V comparable] struct {
+	mu        sync.RWMutex
+	cfg       Config[V]
+	phase     uint64
+	finalized map[V]bool
+	pending   []V
+	frontier  []V
 }
 
-// Initialize initializes the engine
-func (e *Engine) Initialize(ctx context.Context) error {
-	e.state = StateRunning
-	return nil
-}
-
-// Start starts the engine
-func (e *Engine) Start(ctx context.Context) error {
-	if e.state != StateRunning {
-		return utils.ErrNotRunning
-	}
-	return nil
-}
-
-// Stop stops the engine
-func (e *Engine) Stop(ctx context.Context) error {
-	e.state = StateStopped
-	return nil
-}
-
-// GetVertex retrieves a vertex by ID
-func (e *Engine) GetVertex(ctx context.Context, id ids.ID) (types.Vertex, error) {
-	// Placeholder implementation
-	return nil, utils.ErrNotImplemented
-}
-
-// PutVertex stores a vertex
-func (e *Engine) PutVertex(ctx context.Context, vtx types.Vertex) error {
-	// Placeholder implementation
-	return utils.ErrNotImplemented
-}
-
-// BuildVertex builds a new vertex
-func (e *Engine) BuildVertex(ctx context.Context) (types.Vertex, error) {
-	// Placeholder implementation
-	return nil, utils.ErrNotImplemented
-}
-
-// LastAccepted returns the last accepted vertices
-func (e *Engine) LastAccepted(ctx context.Context) ([]ids.ID, error) {
-	// Placeholder implementation
-	return nil, utils.ErrNotImplemented
-}
-
-// Health returns the health status
-func (e *Engine) Health(ctx context.Context) (interface{}, error) {
-	return map[string]interface{}{
-		"state":  e.state,
-		"engine": "nebula",
+// New creates a new Nebula protocol engine
+func New[V comparable](c Config[V]) (Protocol[V], error) {
+	return &Engine[V]{
+		cfg:       c,
+		finalized: make(map[V]bool),
 	}, nil
 }
 
-// Timeout returns the timeout duration
-func (e *Engine) Timeout() time.Duration {
-	return 30 * time.Second
+// Step executes one DAG consensus round
+func (e *Engine[V]) Step(ctx context.Context) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	// Get current tips/frontier
+	tips := e.cfg.Tips()
+	if len(tips) == 0 {
+		return nil
+	}
+
+	// Schedule vertices for ordering
+	scheduled, err := e.cfg.Orderer.Schedule(ctx, tips)
+	if err != nil {
+		return err
+	}
+
+	// Process scheduled vertices
+	for _, v := range scheduled {
+		if e.finalized[v] {
+			continue
+		}
+
+		// Check if all parents are finalized
+		parents := e.cfg.Graph.Parents(v)
+		allParentsFinalized := true
+		for _, p := range parents {
+			if !e.finalized[p] {
+				allParentsFinalized = false
+				break
+			}
+		}
+
+		if !allParentsFinalized {
+			e.pending = append(e.pending, v)
+			continue
+		}
+
+		// Run consensus on this vertex
+		// In real implementation, this would involve sampling and voting
+		// For now, simulate success
+		if e.cfg.Confidence.Record(true) {
+			e.finalized[v] = true
+			
+			// Apply finalized vertices
+			if e.cfg.Apply != nil {
+				if err := e.cfg.Apply(ctx, []V{v}); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	// Update frontier
+	e.frontier = tips
+	e.phase++
+	
+	return nil
+}
+
+// Finalized returns all finalized vertices
+func (e *Engine[V]) Finalized() []V {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	
+	result := make([]V, 0, len(e.finalized))
+	for v := range e.finalized {
+		result = append(result, v)
+	}
+	return result
+}
+
+// Reset resets the protocol state
+func (e *Engine[V]) Reset() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	
+	e.phase = 0
+	e.finalized = make(map[V]bool)
+	e.pending = nil
+	e.frontier = nil
+	e.cfg.Confidence.Reset()
 }

@@ -72,19 +72,19 @@ func (l *List[T]) Remove(node *ListNode[T]) {
 	if node == nil {
 		return
 	}
-	
+
 	if node.Prev != nil {
 		node.Prev.Next = node.Next
 	} else {
 		l.head = node.Next
 	}
-	
+
 	if node.Next != nil {
 		node.Next.Prev = node.Prev
 	} else {
 		l.tail = node.Prev
 	}
-	
+
 	node.Next = nil
 	node.Prev = nil
 	l.length--

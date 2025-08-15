@@ -37,16 +37,16 @@ func New() *DAG {
 func (d *DAG) AddBlock(block *Block) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	
+
 	// Add block
 	d.blocks[block.ID] = block
-	
+
 	// Update tips
 	d.tips[block.ID] = struct{}{}
 	for _, parent := range block.Parents {
 		delete(d.tips, parent)
 	}
-	
+
 	return nil
 }
 
@@ -54,7 +54,7 @@ func (d *DAG) AddBlock(block *Block) error {
 func (d *DAG) GetBlock(id BlockID) (*Block, bool) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	
+
 	block, exists := d.blocks[id]
 	return block, exists
 }
@@ -63,7 +63,7 @@ func (d *DAG) GetBlock(id BlockID) (*Block, bool) {
 func (d *DAG) GetTips() []BlockID {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	
+
 	tips := make([]BlockID, 0, len(d.tips))
 	for tip := range d.tips {
 		tips = append(tips, tip)

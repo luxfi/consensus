@@ -50,18 +50,18 @@ func TestInitializeRuntime(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require := require.New(t)
-			
+
 			// Reset initialized state
 			runtimeMu.Lock()
 			initialized = false
 			runtimeMu.Unlock()
-			
+
 			err := InitializeRuntime(tt.network)
 			if tt.wantErr {
 				require.Error(err)
 			} else {
 				require.NoError(err)
-				
+
 				// Verify initialization
 				params := GetRuntime()
 				require.NotNil(params)
@@ -100,7 +100,7 @@ func TestSetRuntime(t *testing.T) {
 		AlphaPreference:       20,
 		AlphaConfidence:       25,
 		Beta:                  10,
-		ConcurrentPolls:    5,
+		ConcurrentPolls:       5,
 		OptimalProcessing:     15,
 		MaxOutstandingItems:   200,
 		MaxItemProcessingTime: 10 * time.Second,
@@ -135,7 +135,7 @@ func TestLoadRuntimeFromFile(t *testing.T) {
 		AlphaPreference:       15,
 		AlphaConfidence:       20,
 		Beta:                  8,
-		ConcurrentPolls:    4,
+		ConcurrentPolls:       4,
 		OptimalProcessing:     12,
 		MaxOutstandingItems:   150,
 		MaxItemProcessingTime: 7 * time.Second,
@@ -193,7 +193,7 @@ func TestSaveRuntimeToFile(t *testing.T) {
 		AlphaPreference:       25,
 		AlphaConfidence:       30,
 		Beta:                  12,
-		ConcurrentPolls:    6,
+		ConcurrentPolls:       6,
 		OptimalProcessing:     20,
 		MaxOutstandingItems:   300,
 		MaxItemProcessingTime: 15 * time.Second,
@@ -204,7 +204,7 @@ func TestSaveRuntimeToFile(t *testing.T) {
 	// Save to file
 	tempDir := t.TempDir()
 	savePath := filepath.Join(tempDir, "saved-config.json")
-	
+
 	err := SaveRuntimeToFile(savePath)
 	require.NoError(err)
 
@@ -330,7 +330,7 @@ func TestConcurrentRuntimeAccess(t *testing.T) {
 						AlphaPreference:       10 + idx,
 						AlphaConfidence:       15 + idx,
 						Beta:                  5 + idx,
-						ConcurrentPolls:    3,
+						ConcurrentPolls:       3,
 						OptimalProcessing:     10,
 						MaxOutstandingItems:   100,
 						MaxItemProcessingTime: 5 * time.Second,
@@ -357,7 +357,7 @@ func TestConcurrentRuntimeAccess(t *testing.T) {
 
 func BenchmarkGetRuntime(b *testing.B) {
 	_ = InitializeRuntime("mainnet")
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = GetRuntime()
@@ -366,7 +366,7 @@ func BenchmarkGetRuntime(b *testing.B) {
 
 func BenchmarkSetRuntime(b *testing.B) {
 	params := MainnetParameters
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		SetRuntime(params)
@@ -377,22 +377,22 @@ func BenchmarkLoadRuntimeFromFile(b *testing.B) {
 	// Create test config file
 	tempDir := b.TempDir()
 	configPath := filepath.Join(tempDir, "bench-config.json")
-	
+
 	testConfig := Config{
 		K:                     21,
 		AlphaPreference:       13,
 		AlphaConfidence:       18,
 		Beta:                  8,
-		ConcurrentPolls:    4,
+		ConcurrentPolls:       4,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   100,
 		MaxItemProcessingTime: 5 * time.Second,
 		MinRoundInterval:      100 * time.Millisecond,
 	}
-	
+
 	data, _ := json.MarshalIndent(testConfig, "", "  ")
 	_ = os.WriteFile(configPath, data, 0644)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = LoadRuntimeFromFile(configPath)

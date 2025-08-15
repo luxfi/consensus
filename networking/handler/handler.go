@@ -12,7 +12,7 @@ import (
 
 // Handler handles consensus messages
 type Handler interface {
-    HandleMessage(msg core.Message) error
+	HandleMessage(msg core.Message) error
 }
 
 // New creates a new handler

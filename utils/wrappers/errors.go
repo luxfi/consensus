@@ -21,7 +21,7 @@ func (e *Errs) Add(err error) {
 	if err == nil {
 		return
 	}
-	
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.errs = append(e.errs, err)
@@ -38,7 +38,7 @@ func (e *Errs) Errored() bool {
 func (e *Errs) Err() error {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	switch len(e.errs) {
 	case 0:
 		return nil
@@ -53,23 +53,23 @@ func (e *Errs) Err() error {
 func (e *Errs) String() string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	if len(e.errs) == 0 {
 		return ""
 	}
-	
+
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%d error", len(e.errs)))
 	if len(e.errs) != 1 {
 		sb.WriteString("s")
 	}
 	sb.WriteString(" occurred:")
-	
+
 	for _, err := range e.errs {
 		sb.WriteString("\n\t* ")
 		sb.WriteString(err.Error())
 	}
-	
+
 	return sb.String()
 }
 
@@ -122,7 +122,7 @@ func (p *Packer) PackLong(l uint64) {
 	if p.Err != nil {
 		return
 	}
-	p.Bytes = append(p.Bytes, 
+	p.Bytes = append(p.Bytes,
 		byte(l>>56), byte(l>>48), byte(l>>40), byte(l>>32),
 		byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
 }

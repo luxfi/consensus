@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"sync"
 	"sync/atomic"
-	
+
 	"github.com/luxfi/ids"
 )
 
@@ -21,32 +21,32 @@ func (s *simpleLogger) Error(msg string, args ...interface{}) {}
 
 // Implementation of WaveFPC - the core FPC engine
 type waveFPC struct {
-	cfg Config
-	cls Classifier
-	dag DAGTap
-	pq  PQEngine
-	ringtail *RingtailEngine  // Integrated PQ engine
-	
+	cfg      Config
+	cls      Classifier
+	dag      DAGTap
+	pq       PQEngine
+	ringtail *RingtailEngine // Integrated PQ engine
+
 	mu          sync.RWMutex
 	epochPaused atomic.Bool
-	
+
 	// Core state (sharded for performance)
-	votes       *ShardedMap[TxRef, *Bitset]      // Voters for tx
-	votedOn     *ShardedMap[[64]byte, TxRef]     // key = hash(validator||object)
-	state       *ShardedMap[TxRef, Status]        // Transaction state
-	mixedTxs    *ShardedMap[TxRef, bool]          // Tracks mixed txs
-	conflicts   *ShardedMap[ObjectID, []TxRef]    // Object -> conflicting txs
-	
+	votes     *ShardedMap[TxRef, *Bitset]    // Voters for tx
+	votedOn   *ShardedMap[[64]byte, TxRef]   // key = hash(validator||object)
+	state     *ShardedMap[TxRef, Status]     // Transaction state
+	mixedTxs  *ShardedMap[TxRef, bool]       // Tracks mixed txs
+	conflicts *ShardedMap[ObjectID, []TxRef] // Object -> conflicting txs
+
 	// Epoch tracking
 	epochBitAuthors map[ids.NodeID]bool
 	epochMu         sync.Mutex
-	
+
 	// Metrics
 	metrics Metrics
-	
+
 	// My node identity
-	myNodeID    ids.NodeID
-	validators  []ids.NodeID
+	myNodeID   ids.NodeID
+	validators []ids.NodeID
 }
 
 // New creates a new WaveFPC instance
@@ -66,7 +66,7 @@ func New(cfg Config, cls Classifier, dag DAGTap, pq PQEngine, myNodeID ids.NodeI
 		ringtail = NewRingtailEngine(pqCfg, pqLog, validators, myNodeID)
 		pq = ringtail // Use Ringtail as the PQ engine
 	}
-	
+
 	return &waveFPC{
 		cfg:             cfg,
 		cls:             cls,
@@ -89,25 +89,25 @@ func (w *waveFPC) NextVotes(budget int) []TxRef {
 	if w.epochPaused.Load() {
 		return nil // No new votes during epoch close
 	}
-	
+
 	picks := make([]TxRef, 0, budget)
 	processed := 0
-	
+
 	// TODO: Get candidates from mempool/DAG frontier
 	// For now, return empty
 	candidates := w.getCandidates()
-	
+
 	for _, tx := range candidates {
 		if processed >= budget {
 			break
 		}
-		
+
 		// Check if it's owned-only
 		owned := w.cls.OwnedInputs(tx)
 		if len(owned) == 0 {
 			continue // Skip shared/mixed txs
 		}
-		
+
 		// Check if we've already voted on any of these objects
 		canVote := true
 		for _, obj := range owned {
@@ -119,21 +119,21 @@ func (w *waveFPC) NextVotes(budget int) []TxRef {
 				}
 			}
 		}
-		
+
 		if !canVote {
 			continue
 		}
-		
+
 		// Reserve our vote locally
 		for _, obj := range owned {
 			key := w.makeVoteKey(w.myNodeID, obj)
 			w.votedOn.Set(key, tx)
 		}
-		
+
 		picks = append(picks, tx)
 		processed++
 	}
-	
+
 	return picks
 }
 
@@ -142,22 +142,22 @@ func (w *waveFPC) OnBlockObserved(b *Block) {
 	if len(b.Payload.FPCVotes) == 0 {
 		return
 	}
-	
+
 	voterIdx := ValidatorIndex(b.Author, w.validators)
 	if voterIdx < 0 {
 		return // Not in validator set
 	}
-	
+
 	for _, raw := range b.Payload.FPCVotes {
 		var tx TxRef
 		copy(tx[:], raw)
-		
+
 		// Get owned inputs
 		owned := w.cls.OwnedInputs(tx)
 		if len(owned) == 0 {
 			continue // Not an owned tx
 		}
-		
+
 		// Check for equivocation on each object
 		validVote := true
 		for _, obj := range owned {
@@ -167,32 +167,32 @@ func (w *waveFPC) OnBlockObserved(b *Block) {
 				break
 			}
 		}
-		
+
 		if !validVote {
 			continue
 		}
-		
+
 		// Record the vote for each object
 		for _, obj := range owned {
 			key := w.makeVoteKey(b.Author, obj)
 			w.votedOn.Set(key, tx)
-			
+
 			// Track conflicts
 			w.addConflict(obj, tx)
 		}
-		
+
 		// Update vote bitset
 		bs := w.getOrCreateBitset(tx)
 		bs.mu.Lock()
 		newVote := bs.Set(voterIdx)
 		count := bs.Count()
 		bs.mu.Unlock()
-		
+
 		if newVote && count >= 2*w.cfg.F+1 {
 			// Transaction is now executable!
 			w.state.Set(tx, Executable)
 			atomic.AddUint64(&w.metrics.ExecutableTxs, 1)
-			
+
 			// Submit to PQ engine if available
 			if w.pq != nil {
 				bs.mu.Lock()
@@ -201,7 +201,7 @@ func (w *waveFPC) OnBlockObserved(b *Block) {
 				w.pq.Submit(tx, voters)
 			}
 		}
-		
+
 		atomic.AddUint64(&w.metrics.TotalVotes, 1)
 	}
 }
@@ -212,7 +212,7 @@ func (w *waveFPC) OnBlockAccepted(b *Block) {
 	for _, raw := range b.Payload.FPCVotes {
 		var tx TxRef
 		copy(tx[:], raw)
-		
+
 		if st, _ := w.state.Get(tx); st == Executable {
 			if w.anchorCovers(tx, b) {
 				w.state.Set(tx, Final)
@@ -220,7 +220,7 @@ func (w *waveFPC) OnBlockAccepted(b *Block) {
 			}
 		}
 	}
-	
+
 	// Track epoch bit authors
 	if b.Payload.EpochBit {
 		w.registerEpochBitAuthor(b.Author)
@@ -236,23 +236,23 @@ func (w *waveFPC) OnEpochCloseStart() {
 // OnEpochClosed completes epoch transition
 func (w *waveFPC) OnEpochClosed() {
 	w.epochPaused.Store(false)
-	
+
 	// Clear epoch bit authors
 	w.epochMu.Lock()
 	w.epochBitAuthors = make(map[ids.NodeID]bool)
 	w.epochMu.Unlock()
-	
+
 	// TODO: Clear old vote state
 }
 
 // Status returns the current status and proof for a transaction
 func (w *waveFPC) Status(tx TxRef) (Status, Proof) {
 	st, _ := w.state.Get(tx)
-	
+
 	proof := Proof{
 		Status: st,
 	}
-	
+
 	// Get vote count
 	if bs := w.getBitset(tx); bs != nil {
 		bs.mu.Lock()
@@ -260,14 +260,14 @@ func (w *waveFPC) Status(tx TxRef) (Status, Proof) {
 		proof.VoterBitmap = bs.Bytes()
 		bs.mu.Unlock()
 	}
-	
+
 	// Get PQ proof if available
 	if w.pq != nil && w.pq.HasPQ(tx) {
 		if pqBundle, ok := w.pq.GetPQ(tx); ok {
 			proof.RingtailProof = pqBundle
 		}
 	}
-	
+
 	// Check if both BLS and Ringtail are ready for dual finality
 	if w.cfg.EnableBLS && w.cfg.EnableRingtail {
 		// In production, BLS would be aggregated from block signatures
@@ -279,7 +279,7 @@ func (w *waveFPC) Status(tx TxRef) (Status, Proof) {
 			}
 		}
 	}
-	
+
 	return st, proof
 }
 
@@ -323,16 +323,16 @@ func (w *waveFPC) anchorCovers(tx TxRef, anchor *Block) bool {
 	if bs == nil {
 		return false
 	}
-	
+
 	bs.mu.Lock()
 	voteCount := bs.Count()
 	bs.mu.Unlock()
-	
+
 	// Need ≥2f+1 votes and anchor must contain them in ancestry
 	if voteCount < 2*w.cfg.F+1 {
 		return false
 	}
-	
+
 	// For simplicity, assume anchor covers if it or its ancestry contains tx
 	// In production, check actual vote inclusion in ancestor blocks
 	return w.dag.InAncestry(anchor.ID, tx)
@@ -341,9 +341,9 @@ func (w *waveFPC) anchorCovers(tx TxRef, anchor *Block) bool {
 func (w *waveFPC) registerEpochBitAuthor(author ids.NodeID) {
 	w.epochMu.Lock()
 	defer w.epochMu.Unlock()
-	
+
 	w.epochBitAuthors[author] = true
-	
+
 	// Check if we have enough authors for epoch close
 	if len(w.epochBitAuthors) >= 2*w.cfg.F+1 {
 		// Epoch can close
@@ -353,18 +353,18 @@ func (w *waveFPC) registerEpochBitAuthor(author ids.NodeID) {
 
 func (w *waveFPC) addConflict(obj ObjectID, tx TxRef) {
 	existing, _ := w.conflicts.Get(obj)
-	
+
 	// Check if already tracked
 	for _, e := range existing {
 		if e == tx {
 			return
 		}
 	}
-	
+
 	// Add to conflicts
 	existing = append(existing, tx)
 	w.conflicts.Set(obj, existing)
-	
+
 	if len(existing) > 1 {
 		atomic.AddUint64(&w.metrics.ConflictCount, 1)
 	}
@@ -395,14 +395,14 @@ func (b *Bitset) Set(idx int) bool {
 	if idx < 0 || idx >= b.size {
 		return false
 	}
-	
+
 	word := idx / 64
 	bit := uint64(1) << (idx % 64)
-	
+
 	if b.bits[word]&bit != 0 {
 		return false // Already set
 	}
-	
+
 	b.bits[word] |= bit
 	return true
 }

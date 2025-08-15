@@ -74,7 +74,7 @@ func (s Set[T]) Union(other Set[T]) Set[T] {
 // Intersection returns a new set containing only elements present in both sets.
 func (s Set[T]) Intersection(other Set[T]) Set[T] {
 	result := make(Set[T])
-	
+
 	// Iterate over the smaller set for efficiency
 	if s.Len() < other.Len() {
 		for elt := range s {
@@ -89,7 +89,7 @@ func (s Set[T]) Intersection(other Set[T]) Set[T] {
 			}
 		}
 	}
-	
+
 	return result
 }
 

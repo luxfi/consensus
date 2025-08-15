@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/uptime/uptimemock"
 	"github.com/luxfi/consensus/utils"
+	"github.com/luxfi/ids"
 )
 
 var errTest = errors.New("test error")

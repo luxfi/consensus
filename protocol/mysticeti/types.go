@@ -20,14 +20,14 @@ type Vote struct {
 
 // Block represents a MYSTICETI DAG block (single message, no separate certificates)
 type Block struct {
-	ID        ids.ID      // Block hash
-	Author    ids.NodeID  // Validator ID
-	Round     uint64      // Threshold clock round
-	Parents   []ids.ID    // ≥2f+1 from r-1, first is self-chain
-	Votes     []Vote      // Fast-path votes embedded
-	EpochBit  bool        // Pauses fast-path near epoch end
-	Signature []byte      // Author's signature (BLS or Ed25519)
-	
+	ID        ids.ID     // Block hash
+	Author    ids.NodeID // Validator ID
+	Round     uint64     // Threshold clock round
+	Parents   []ids.ID   // ≥2f+1 from r-1, first is self-chain
+	Votes     []Vote     // Fast-path votes embedded
+	EpochBit  bool       // Pauses fast-path near epoch end
+	Signature []byte     // Author's signature (BLS or Ed25519)
+
 	// Optional fields for compatibility
 	Transactions []Transaction // Actual transactions (optional)
 	Timestamp    int64         // Unix timestamp
@@ -37,10 +37,10 @@ type Block struct {
 // Transaction represents a transaction in the system
 type Transaction struct {
 	ID        ids.ID
-	Ref       [32]byte      // Transaction reference for voting
-	Type      TxType        // Owned, Shared, or Mixed
+	Ref       [32]byte // Transaction reference for voting
+	Type      TxType   // Owned, Shared, or Mixed
 	Payload   []byte
-	InputKeys [][]byte      // Object IDs for ownership verification
+	InputKeys [][]byte // Object IDs for ownership verification
 	Nonce     uint64
 }
 
@@ -49,8 +49,8 @@ type TxType uint8
 
 const (
 	TxTypeOwned  TxType = iota // Owned-object transaction (fast-path eligible)
-	TxTypeShared                // Shared-object transaction (consensus path only)
-	TxTypeMixed                 // Mixed owned+shared (consensus path only)
+	TxTypeShared               // Shared-object transaction (consensus path only)
+	TxTypeMixed                // Mixed owned+shared (consensus path only)
 )
 
 // FPVote represents a fast-path vote for an owned-object transaction (legacy)
@@ -63,7 +63,7 @@ type FPVote struct {
 // Slot uniquely identifies a proposer slot
 type Slot struct {
 	Round     uint64
-	SlotIndex uint16      // 0=primary, 1=backup, etc.
+	SlotIndex uint16 // 0=primary, 1=backup, etc.
 	Proposer  ids.NodeID
 }
 
@@ -87,39 +87,39 @@ const (
 
 // Parameters holds consensus configuration
 type Parameters struct {
-	WaveLength         uint32        // Decision horizon (default 3)
-	NumProposers       uint16        // Proposer slots per round (start with 2)
-	TimeoutDelta       uint32        // Liveness timeout in ms (200-400ms)
-	MaxParents         uint32        // Cap number of parents beyond 2f+1
-	MinParents         uint32        // Minimum parent requirement (2f+1)
-	GossipBatchBytes   uint32        // Maximum gossip batch size
-	SigScheme          string        // Signature scheme (ed25519, bls)
-	EnableFastPath     bool          // Enable fast-path for owned objects
-	
+	WaveLength       uint32 // Decision horizon (default 3)
+	NumProposers     uint16 // Proposer slots per round (start with 2)
+	TimeoutDelta     uint32 // Liveness timeout in ms (200-400ms)
+	MaxParents       uint32 // Cap number of parents beyond 2f+1
+	MinParents       uint32 // Minimum parent requirement (2f+1)
+	GossipBatchBytes uint32 // Maximum gossip batch size
+	SigScheme        string // Signature scheme (ed25519, bls)
+	EnableFastPath   bool   // Enable fast-path for owned objects
+
 	// Dual finality parameters
-	EnableBLS          bool          // Enable BLS aggregation
-	EnableRingtail     bool          // Enable Ringtail PQ finality
-	AlphaClassical     uint32        // Classical threshold (2f+1)
-	AlphaPQ            uint32        // PQ threshold (2f+1)
-	QRounds            uint32        // PQ rounds (default 2)
+	EnableBLS      bool   // Enable BLS aggregation
+	EnableRingtail bool   // Enable Ringtail PQ finality
+	AlphaClassical uint32 // Classical threshold (2f+1)
+	AlphaPQ        uint32 // PQ threshold (2f+1)
+	QRounds        uint32 // PQ rounds (default 2)
 }
 
 // DefaultParameters returns default MYSTICETI parameters
 func DefaultParameters() Parameters {
 	return Parameters{
-		WaveLength:       3,        // 3-round decision horizon
-		NumProposers:     2,        // Primary + backup
-		TimeoutDelta:     300,      // 300ms timeout
-		MaxParents:       64,       // Maximum 64 parents
-		MinParents:       0,        // Will be set to 2f+1
-		GossipBatchBytes: 1000000,  // 1MB gossip batches
-		SigScheme:        "bls",    // BLS for aggregation
+		WaveLength:       3,       // 3-round decision horizon
+		NumProposers:     2,       // Primary + backup
+		TimeoutDelta:     300,     // 300ms timeout
+		MaxParents:       64,      // Maximum 64 parents
+		MinParents:       0,       // Will be set to 2f+1
+		GossipBatchBytes: 1000000, // 1MB gossip batches
+		SigScheme:        "bls",   // BLS for aggregation
 		EnableFastPath:   true,
 		EnableBLS:        true,
 		EnableRingtail:   true,
-		AlphaClassical:   0,        // Will be set to 2f+1
-		AlphaPQ:          0,        // Will be set to 2f+1
-		QRounds:          2,        // 2-phase PQ
+		AlphaClassical:   0, // Will be set to 2f+1
+		AlphaPQ:          0, // Will be set to 2f+1
+		QRounds:          2, // 2-phase PQ
 	}
 }
 

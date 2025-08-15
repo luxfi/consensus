@@ -13,7 +13,7 @@ import (
 // binaryThreshold is the implementation of a binary threshold instance
 // that can be embedded by confidence
 type binaryThreshold struct {
-	// wrap the binary sampler logic  
+	// wrap the binary sampler logic
 	prism.BinarySampler
 
 	// alphaPreference is the threshold required to update the preference
@@ -60,12 +60,12 @@ func (bt *binaryThreshold) Preference() int {
 	if bt.Finalized() {
 		return bt.BinarySampler.Preference()
 	}
-	
+
 	// If alphaPreference is 1, use flake behavior (immediate switching)
 	if bt.alphaPreference == 1 {
 		return bt.BinarySampler.Preference()
 	}
-	
+
 	return bt.preference
 }
 
@@ -81,7 +81,7 @@ func (bt *binaryThreshold) RecordPrism(count, choice int) {
 
 	// Track preference strength for ball behavior
 	bt.preferenceStrength[choice]++
-	
+
 	// Update preference based on strength
 	if bt.preferenceStrength[choice] > bt.preferenceStrength[1-choice] {
 		bt.preference = choice

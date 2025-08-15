@@ -4,10 +4,10 @@
 package poll
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
 	"github.com/luxfi/node/utils/bag"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Set manages a collection of polls
@@ -60,7 +60,7 @@ func (s *set) Vote(requestID uint32, nodeID ids.NodeID, vote ids.ID, votes []ids
 	if !exists {
 		return nil
 	}
-	
+
 	result := poll.Vote(nodeID, vote, votes)
 	if poll.Finished() {
 		delete(s.polls, requestID)
@@ -121,16 +121,16 @@ func (p *earlyTermPoll) Vote(nodeID ids.NodeID, vote ids.ID, votes []ids.ID) []b
 	if p.finished {
 		return p.result
 	}
-	
+
 	// Record the vote
 	p.votes[nodeID] = vote
-	
+
 	// Check if we have enough votes for early termination
 	voteCount := make(map[ids.ID]int)
 	for _, v := range p.votes {
 		voteCount[v]++
 	}
-	
+
 	// Check for early termination conditions
 	for vote, count := range voteCount {
 		if count >= p.alphaConfidence {
@@ -141,7 +141,7 @@ func (p *earlyTermPoll) Vote(nodeID ids.NodeID, vote ids.ID, votes []ids.ID) []b
 			return p.result
 		}
 	}
-	
+
 	// Check if all validators have voted
 	if len(p.votes) >= len(p.validators) {
 		p.finished = true
@@ -152,7 +152,7 @@ func (p *earlyTermPoll) Vote(nodeID ids.NodeID, vote ids.ID, votes []ids.ID) []b
 		p.result = []bag.Bag[ids.ID]{b}
 		return p.result
 	}
-	
+
 	return nil
 }
 
