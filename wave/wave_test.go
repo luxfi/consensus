@@ -19,6 +19,20 @@ type mockTransport struct {
 	prefer bool
 }
 
+type testSampler struct {
+	peers []types.NodeID
+}
+
+func (s *testSampler) Sample(ctx context.Context, k int, topic types.Topic) []types.NodeID {
+	if k <= 0 || len(s.peers) == 0 {
+		return nil
+	}
+	if k >= len(s.peers) {
+		return append([]types.NodeID(nil), s.peers...)
+	}
+	return append([]types.NodeID(nil), s.peers[:k]...)
+}
+
 func (t mockTransport) RequestVotes(ctx context.Context, peers []types.NodeID, item ItemID) <-chan photon.Photon[ItemID] {
 	out := make(chan photon.Photon[ItemID], len(peers))
 	go func() {
@@ -37,8 +51,9 @@ func (t mockTransport) MakeLocalPhoton(item ItemID, prefer bool) photon.Photon[I
 
 func TestWaveBasic(t *testing.T) {
 	peers := []types.NodeID{"n1", "n2", "n3", "n4", "n5"}
-	sel := prism.NewDefault(peers, prism.Options{})
-	w := New[ItemID](Config{
+	// simple sampler for tests
+	sel := &testSampler{peers: peers}
+	w := NewWave[ItemID](Config{
 		K:       3,
 		Alpha:   0.8,
 		Beta:    3,
@@ -69,10 +84,10 @@ func TestWaveBasic(t *testing.T) {
 
 func TestWaveFPC(t *testing.T) {
 	peers := []types.NodeID{"n1", "n2", "n3", "n4", "n5", "n6", "n7"}
-	sel := prism.NewDefault(peers, prism.Options{})
+	sel := &testSampler{peers: peers}
 
 	// Create wave with FPC enabled (default)
-	w := New[ItemID](Config{
+	w := NewWave[ItemID](Config{
 		K:       5,
 		Alpha:   0.8,
 		Beta:    5,
@@ -102,8 +117,8 @@ func TestWaveFPC(t *testing.T) {
 
 func TestWaveIngest(t *testing.T) {
 	peers := []types.NodeID{"n1", "n2", "n3"}
-	sel := prism.NewDefault(peers, prism.Options{})
-	w := New[ItemID](Config{
+	sel := &testSampler{peers: peers}
+	w := NewWave[ItemID](Config{
 		K:       3,
 		Alpha:   0.8,
 		Beta:    3,
@@ -120,11 +135,11 @@ func TestWaveIngest(t *testing.T) {
 
 func TestWaveTimeout(t *testing.T) {
 	peers := []types.NodeID{"n1", "n2", "n3"}
-	sel := prism.NewDefault(peers, prism.Options{})
+	sel := &testSampler{peers: peers}
 
 	// Transport that never responds
 	slowTransport := mockTransport{prefer: true}
-	w := New[ItemID](Config{
+	w := NewWave[ItemID](Config{
 		K:       3,
 		Alpha:   0.8,
 		Beta:    3,

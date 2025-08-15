@@ -228,8 +228,9 @@ func TestWaveConsensusConcurrent(t *testing.T) {
 	choice := makeTestID(1)
 	require.NoError(photon.Add(choice))
 
-	// Simulate concurrent voting
+	// Simulate concurrent voting with proper synchronization
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	numVoters := 10
 	votesPerVoter := 5
 
@@ -247,7 +248,9 @@ func TestWaveConsensusConcurrent(t *testing.T) {
 					votes = bag.Of(choice, choice, choice)
 				}
 
+				mu.Lock()
 				_ = photon.RecordVotes(votes)
+				mu.Unlock()
 			}
 		}(i)
 	}

@@ -48,6 +48,10 @@ type Transport[ID comparable] interface {
 	MakeLocalPhoton(item ID, prefer bool) photon.Photon[ID]
 }
 
+type Sampler interface {
+	Sample(ctx context.Context, k int, topic types.Topic) []types.NodeID
+}
+
 type Wave[ID comparable] interface {
 	Ingest(ph photon.Photon[ID])       // external votes
 	Tick(ctx context.Context, item ID) // drive one step (snowball or FPC)
@@ -56,15 +60,15 @@ type Wave[ID comparable] interface {
 
 type waveImpl[ID comparable] struct {
 	cfg Config
-	// sel   prism.Sampler[ID] // TODO: import from engines/dag/internal/prism
-	tx Transport[ID]
+	sel Sampler
+	tx  Transport[ID]
 
 	mu    sync.Mutex
 	state map[ID]*ItemState[ID]
 	skips map[ID]int // inconclusive streak
 }
 
-func New[ID comparable](cfg Config /* sel prism.Sampler[ID], */, tx Transport[ID]) Wave[ID] {
+func NewWave[ID comparable](cfg Config, sel Sampler, tx Transport[ID]) Wave[ID] {
 	if cfg.K == 0 {
 		cfg.K = 20
 	}
@@ -82,12 +86,33 @@ func New[ID comparable](cfg Config /* sel prism.Sampler[ID], */, tx Transport[ID
 	}
 
 	return &waveImpl[ID]{
-		cfg: cfg,
-		// sel:   sel,
+		cfg:   cfg,
+		sel:   sel,
 		tx:    tx,
 		state: make(map[ID]*ItemState[ID]),
 		skips: make(map[ID]int),
 	}
+}
+
+// Backwards-compatible Tally implementation
+type simpleTally struct {
+	alphaPref int
+	alphaConf int
+	s         State
+}
+
+func (t *simpleTally) Record(pref Preference) {
+	t.s.AlphaPref += int(pref)
+	if t.s.AlphaPref > t.alphaPref {
+		t.s.AlphaPref = t.alphaPref
+	}
+}
+func (t *simpleTally) State() State { return t.s }
+func (t *simpleTally) Reset()       { t.s = State{} }
+
+// New creates a legacy Tally used by older engines
+func New(alphaPreference, alphaConfidence int) Tally {
+	return &simpleTally{alphaPref: alphaPreference, alphaConf: alphaConfidence}
 }
 
 func (w *waveImpl[ID]) ensure(item ID) *ItemState[ID] {
@@ -125,7 +150,10 @@ func (w *waveImpl[ID]) Tick(ctx context.Context, item ID) {
 	prev := st.Step
 	w.mu.Unlock()
 
-	peers := w.sel.Sample(ctx, w.cfg.K, types.Topic("votes"))
+	peers := []types.NodeID{}
+	if w.sel != nil {
+		peers = w.sel.Sample(ctx, w.cfg.K, types.Topic("votes"))
+	}
 	ch := w.tx.RequestVotes(ctx, peers, item)
 
 	// include our local photon immediately (start with prefer=true for initial round)
@@ -158,7 +186,7 @@ collect:
 		}
 	}
 
-	next := ray.Apply[ID](samples, prev, ray.Params{Alpha: w.cfg.Alpha})
+	next := applySamples(samples, prev, w.cfg.Alpha)
 	// Debug: log samples count
 	_ = len(samples) // samples count available for debugging
 
@@ -195,3 +223,34 @@ collect:
 }
 
 func samePolarity(a, b bool) bool { return a == b }
+
+// applySamples computes the next Step from collected samples.
+func applySamples[ID comparable](samples []photon.Photon[ID], prev Step[ID], alpha float64) Step[ID] {
+	var s Step[ID]
+	if len(samples) == 0 {
+		// no samples: keep previous preference
+		s.Prefer = prev.Prefer
+		s.Conf = prev.Conf
+		return s
+	}
+	// count prefers
+	prefers := 0
+	for _, ph := range samples {
+		if ph.Prefer {
+			prefers++
+		}
+	}
+	// threshold
+	thr := int(alpha*float64(len(samples)) + 0.5)
+	if prefers >= thr {
+		s.Prefer = true
+	} else {
+		s.Prefer = false
+	}
+	if s.Prefer == prev.Prefer {
+		s.Conf = prev.Conf + 1
+	} else {
+		s.Conf = 1
+	}
+	return s
+}
