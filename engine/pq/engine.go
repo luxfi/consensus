@@ -24,7 +24,7 @@ type Engine struct {
 	engine *quasar.Engine
 	
 	// Sub-engines
-	chains map[string]*chain.Engine // Linear chain engines
+	chains map[string]chain.Engine // Linear chain engines
 	dags   map[string]*dag.Engine  // DAG engines
 	
 	// Cross-engine coordination
@@ -76,7 +76,7 @@ func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 	
 	return &Engine{
 		engine:      engine,
-		chains:   make(map[string]*chain.Engine),
+		chains:   make(map[string]chain.Engine),
 		dags:     make(map[string]*dag.Engine),
 		bridges:     make(map[BridgeID]*ConsensusBridge),
 		coordinator: coordinator,
@@ -126,10 +126,11 @@ func (r *Engine) Stop(ctx context.Context) error {
 	
 	// Stop all sub-engines
 	for name, chainEngine := range r.chains {
-		if chainEngine.IsRunning() {
-			if err := chainEngine.Stop(ctx); err != nil {
-				return fmt.Errorf("failed to stop chain %s: %w", name, err)
-			}
+		// Chain engine is an interface, not a pointer to interface
+		// TODO: Add IsRunning() method to chain.Engine interface if needed
+		// For now, just call Stop unconditionally
+		if err := chainEngine.Stop(); err != nil {
+			return fmt.Errorf("failed to stop chain %s: %w", name, err)
 		}
 	}
 	
