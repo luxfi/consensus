@@ -23,9 +23,7 @@ func TestConsensus(t *testing.T) {
 }
 
 var _ = Describe("Pure Consensus Protocol", func() {
-	var (
-		cancel context.CancelFunc
-	)
+	var cancel context.CancelFunc
 
 	BeforeEach(func() {
 		_, cancel = context.WithCancel(context.Background())

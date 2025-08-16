@@ -82,7 +82,7 @@ func runInteractive() error {
 	if promptBool(scanner, "\nSave parameters to file?", true) {
 		filename := promptString(scanner, "Output filename", "params.json")
 		data, _ := ToJSON(params)
-		if err := os.WriteFile(filename, data, 0644); err != nil {
+		if err := os.WriteFile(filename, data, 0o644); err != nil {
 			return fmt.Errorf("failed to write file: %w", err)
 		}
 		fmt.Printf("✅ Parameters saved to %s\n", filename)
@@ -166,8 +166,8 @@ func displaySafetyReport(report SafetyReport) {
 }
 
 func saveDetailedReport(filename string, nc NetworkCharacteristics,
-	p *config.Parameters, report SafetyReport, probs ProbabilityAnalysis) error {
-
+	p *config.Parameters, report SafetyReport, probs ProbabilityAnalysis,
+) error {
 	var content strings.Builder
 
 	content.WriteString("Lux Consensus Parameters - Detailed Report\n")
@@ -211,7 +211,7 @@ func saveDetailedReport(filename string, nc NetworkCharacteristics,
 		}
 	}
 
-	return os.WriteFile(filename, []byte(content.String()), 0644)
+	return os.WriteFile(filename, []byte(content.String()), 0o644)
 }
 
 // Helper functions for prompting

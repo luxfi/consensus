@@ -472,10 +472,12 @@ func (b *testBlock) Accept(context.Context) error {
 	b.status = interfaces.Accepted
 	return nil
 }
+
 func (b *testBlock) Reject(context.Context) error {
 	b.status = interfaces.Rejected
 	return nil
 }
+
 func (b *testBlock) Status() (interfaces.Status, error) {
 	return b.status, nil
 }

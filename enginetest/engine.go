@@ -12,9 +12,7 @@ import (
 	"github.com/luxfi/ids"
 )
 
-var (
-	ErrNotImplemented = errors.New("not implemented")
-)
+var ErrNotImplemented = errors.New("not implemented")
 
 // Engine is a test implementation of consensus.Engine
 type Engine struct {

@@ -463,8 +463,10 @@ type Counter struct{ count int64 }
 
 func (c *Counter) Inc() { c.count++ }
 
-type Histogram struct{}
-type Gauge struct{ value float64 } //nolint:unused
+type (
+	Histogram struct{}
+	Gauge     struct{ value float64 } //nolint:unused
+)
 
 func NewMetrics() *Metrics {
 	return &Metrics{

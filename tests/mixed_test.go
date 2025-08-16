@@ -239,8 +239,8 @@ func TestSlowNodes(t *testing.T) {
 	}
 
 	// Track finalization over time
-	var fastFinalized = fastNodes
-	var slowFinalized = slowNodes
+	fastFinalized := fastNodes
+	slowFinalized := slowNodes
 	round := 0
 
 	for round < 100 && !network.Finalized() {
