@@ -1,78 +1,116 @@
+// Copyright (C) 2020-2025, Lux Indutries, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package validators
 
-import "github.com/luxfi/ids"
+import (
+	"context"
+	"sync"
 
-// Validator represents a validator node
-type Validator struct {
-	NodeID    ids.NodeID
-	PublicKey interface{} // *bls.PublicKey
-	TxID      ids.ID
-	Weight    uint64
-}
+	"github.com/luxfi/ids"
+)
 
-// State provides validator state information
+var _ State = (*lockedState)(nil)
+
+// State allows the lookup of validator sets on specified subnets at the
+// requested P-chain height.
 type State interface {
-	GetCurrentHeight() (uint64, error)
-	GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
+	// GetMinimumHeight returns the minimum height of the block still in the
+	// proposal window.
+	GetMinimumHeight(context.Context) (uint64, error)
+	// GetCurrentHeight returns the current height of the P-chain.
+	GetCurrentHeight(context.Context) (uint64, error)
+
+	// GetSubnetID returns the subnetID of the provided chain.
+	GetSubnetID(ctx context.Context, chainID ids.ID) (ids.ID, error)
+
+	// GetValidatorSet returns the validators of the provided subnet at the
+	// requested P-chain height.
+	// The returned map should not be modified.
+	GetValidatorSet(
+		ctx context.Context,
+		height uint64,
+		subnetID ids.ID,
+	) (map[ids.NodeID]*GetValidatorOutput, error)
+
+	// GetCurrentValidatorSet returns the current validators of the provided subnet
+	// and the current P-Chain height.
+	// Map is keyed by ValidationID.
+	GetCurrentValidatorSet(
+		ctx context.Context,
+		subnetID ids.ID,
+	) (map[ids.ID]*GetCurrentValidatorOutput, uint64, error)
 }
 
-// Manager manages validator sets
-type Manager interface {
-	GetValidators(subnetID ids.ID) ([]ids.NodeID, error)
-	GetValidator(subnetID ids.ID, nodeID ids.NodeID) (*Validator, bool)
-	GetWeight(subnetID ids.ID, nodeID ids.NodeID) (uint64, error)
-	TotalWeight(subnetID ids.ID) (uint64, error)
-	NumValidators(subnetID ids.ID) int
-	RegisterSetCallbackListener(listener SetCallbackListener)
-
-	// L1 Validator support
-	AddStaker(subnetID ids.ID, nodeID ids.NodeID, pk interface{}, validationID ids.ID, weight uint64) error
-	AddWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error
-	RemoveWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error
+type lockedState struct {
+	lock sync.Locker
+	s    State
 }
 
-// NewManager creates a new validator manager
-func NewManager() Manager {
-	return &manager{}
+func NewLockedState(lock sync.Locker, s State) State {
+	return &lockedState{
+		lock: lock,
+		s:    s,
+	}
 }
 
-type manager struct{}
+func (s *lockedState) GetMinimumHeight(ctx context.Context) (uint64, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
-func (m *manager) GetValidators(subnetID ids.ID) ([]ids.NodeID, error) {
+	return s.s.GetMinimumHeight(ctx)
+}
+
+func (s *lockedState) GetCurrentHeight(ctx context.Context) (uint64, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	return s.s.GetCurrentHeight(ctx)
+}
+
+func (s *lockedState) GetSubnetID(ctx context.Context, chainID ids.ID) (ids.ID, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	return s.s.GetSubnetID(ctx, chainID)
+}
+
+func (s *lockedState) GetValidatorSet(
+	ctx context.Context,
+	height uint64,
+	subnetID ids.ID,
+) (map[ids.NodeID]*GetValidatorOutput, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	return s.s.GetValidatorSet(ctx, height, subnetID)
+}
+
+func (s *lockedState) GetCurrentValidatorSet(
+	ctx context.Context,
+	subnetID ids.ID,
+) (map[ids.ID]*GetCurrentValidatorOutput, uint64, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	return s.s.GetCurrentValidatorSet(ctx, subnetID)
+}
+
+type noValidators struct {
+	State
+}
+
+func NewNoValidatorsState(state State) State {
+	return &noValidators{
+		State: state,
+	}
+}
+
+func (*noValidators) GetValidatorSet(context.Context, uint64, ids.ID) (map[ids.NodeID]*GetValidatorOutput, error) {
 	return nil, nil
 }
 
-func (m *manager) GetValidator(subnetID ids.ID, nodeID ids.NodeID) (*Validator, bool) {
-	return nil, false
-}
-
-func (m *manager) GetWeight(subnetID ids.ID, nodeID ids.NodeID) (uint64, error) {
-	return 0, nil
-}
-
-func (m *manager) TotalWeight(subnetID ids.ID) (uint64, error) {
-	return 0, nil
-}
-
-func (m *manager) NumValidators(subnetID ids.ID) int {
-	return 0
-}
-
-func (m *manager) RegisterSetCallbackListener(listener SetCallbackListener) {
-	// No-op for now
-}
-
-func (m *manager) AddStaker(subnetID ids.ID, nodeID ids.NodeID, pk interface{}, validationID ids.ID, weight uint64) error {
-	// TODO: Implement L1 staker management
-	return nil
-}
-
-func (m *manager) AddWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error {
-	// TODO: Implement weight addition
-	return nil
-}
-
-func (m *manager) RemoveWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error {
-	// TODO: Implement weight removal
-	return nil
+func (n *noValidators) GetCurrentValidatorSet(ctx context.Context, _ ids.ID) (map[ids.ID]*GetCurrentValidatorOutput, uint64, error) {
+	height, err := n.GetCurrentHeight(ctx)
+	return nil, height, err
 }
