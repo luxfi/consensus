@@ -7,7 +7,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/luxfi/metrics"
+	"github.com/luxfi/metric"
 )
 
 // ErrMetricNotFound is returned when a metric is not found
