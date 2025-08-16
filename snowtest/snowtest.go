@@ -8,7 +8,7 @@ import (
 	"errors"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/consensus/utils/choices"
+	"github.com/luxfi/choices"
 )
 
 // MockConsensus is a mock implementation of consensus operations
