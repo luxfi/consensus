@@ -16,6 +16,7 @@ import (
 // ChainVM is a mock implementation of block.ChainVM
 type ChainVM struct {
 	T                    *testing.T
+	CantInitialize       bool
 	CantSetState         bool
 	CantShutdown         bool
 	CantBuildBlock       bool
@@ -26,6 +27,7 @@ type ChainVM struct {
 	CantVerifyHeightIndex bool
 	CantGetBlockIDAtHeight bool
 
+	InitializeF func(context.Context, interface{}, interface{}, []byte, []byte, []byte, chan<- block.Message, []*block.Fx, block.AppSender) error
 	SetStateF func(context.Context, uint8) error
 	ShutdownF func(context.Context) error
 	BuildBlockF func(context.Context) (block.Block, error)
@@ -35,6 +37,22 @@ type ChainVM struct {
 	LastAcceptedF func(context.Context) (ids.ID, error)
 	VerifyHeightIndexF func(context.Context) error
 	GetBlockIDAtHeightF func(context.Context, uint64) (ids.ID, error)
+}
+
+// NewChainVM creates a new ChainVM mock
+// Note: ctrl parameter is for gomock compatibility but not used
+func NewChainVM(ctrl interface{}) *ChainVM {
+	return &ChainVM{}
+}
+
+func (vm *ChainVM) Initialize(ctx context.Context, chainCtx interface{}, dbManager interface{}, genesisBytes []byte, upgradeBytes []byte, configBytes []byte, toEngine chan<- block.Message, fxs []*block.Fx, appSender block.AppSender) error {
+	if vm.InitializeF != nil {
+		return vm.InitializeF(ctx, chainCtx, dbManager, genesisBytes, upgradeBytes, configBytes, toEngine, fxs, appSender)
+	}
+	if vm.CantInitialize && vm.T != nil {
+		vm.T.Fatal("unexpected Initialize")
+	}
+	return nil
 }
 
 func (vm *ChainVM) SetState(ctx context.Context, state uint8) error {
