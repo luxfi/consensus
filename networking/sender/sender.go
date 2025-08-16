@@ -2,7 +2,7 @@ package sender
 
 import (
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/engine/core"
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/message"
 	"github.com/luxfi/node/subnets"

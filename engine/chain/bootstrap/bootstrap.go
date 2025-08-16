@@ -6,7 +6,7 @@ import (
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/consensus/engine/chain/getter"
-	"github.com/luxfi/consensus/engine/core/tracker"
+	"github.com/luxfi/consensus/core/tracker"
 	"github.com/luxfi/consensus/networking/sender"
 	"github.com/luxfi/trace"
 )
