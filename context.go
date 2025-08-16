@@ -49,13 +49,6 @@ type AliasLookup interface {
 	PrimaryAlias(id ids.ID) (string, error)
 }
 
-// ValidatorState provides validator information
-type ValidatorState interface {
-	GetCurrentHeight() (uint64, error)
-	GetMinimumHeight(ctx context.Context) (uint64, error)
-	GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
-	GetSubnetID(chainID ids.ID) (ids.ID, error)
-}
 
 // WarpSigner provides BLS signing for warp messages
 type WarpSigner interface {
