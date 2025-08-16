@@ -5,8 +5,9 @@ package consensus
 
 import (
 	"context"
-	"github.com/luxfi/ids"
+
 	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/ids"
 )
 
 // Context is a type alias for standard context - use this for cleaner call sites

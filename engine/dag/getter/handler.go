@@ -2,19 +2,20 @@ package getter
 
 import (
 	"time"
-	"github.com/luxfi/log"
-	"github.com/luxfi/consensus/networking/sender"
+
 	"github.com/luxfi/consensus/engine/dag/state"
+	"github.com/luxfi/consensus/networking/sender"
+	"github.com/luxfi/log"
 )
 
 // Handler handles get requests
 type Handler interface {
 	// GetAncestors retrieves ancestors
 	GetAncestors() error
-	
+
 	// Start starts the handler
 	Start() error
-	
+
 	// Stop stops the handler
 	Stop() error
 }

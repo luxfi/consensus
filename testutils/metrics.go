@@ -4,7 +4,7 @@
 package testutils
 
 import (
-	"github.com/luxfi/metric"
+	metrics "github.com/luxfi/metric"
 )
 
 // NewNoOpRegisterer returns a new no-op registerer for testing

@@ -12,12 +12,17 @@ import (
 // Config configures the Nova linear consensus protocol
 type Config[T comparable] struct {
 	Sampler    interface{ Sample(k int) []T }
-	Thresholds interface{ Alpha(k int, phase uint64) (int, int) }
-	Confidence interface{ Record(bool) bool; Reset() }
+	Thresholds interface {
+		Alpha(k int, phase uint64) (int, int)
+	}
+	Confidence interface {
+		Record(bool) bool
+		Reset()
+	}
 	// App/VM hooks
-	Propose    func(context.Context) (T, error)
-	Apply      func(context.Context, T) error
-	Send       func(context.Context, T, []T) error
+	Propose func(context.Context) (T, error)
+	Apply   func(context.Context, T) error
+	Send    func(context.Context, T, []T) error
 }
 
 // Protocol defines the Nova linear consensus interface
@@ -57,10 +62,10 @@ func (e *Engine[T]) Step(ctx context.Context) error {
 	// Get sample
 	k := 21 // Default K value
 	sample := e.cfg.Sampler.Sample(k)
-	
+
 	// Get thresholds for this phase
 	alphaPref, alphaConf := e.cfg.Thresholds.Alpha(k, e.phase)
-	
+
 	// Query sample
 	votes := make(map[T]int)
 	for range sample {
@@ -84,7 +89,7 @@ func (e *Engine[T]) Step(ctx context.Context) error {
 	// Check preference threshold
 	if maxVotes >= alphaPref {
 		e.preference = bestChoice
-		
+
 		// Check confidence threshold
 		if maxVotes >= alphaConf {
 			// Record success
@@ -120,7 +125,7 @@ func (e *Engine[T]) Finalized() bool {
 func (e *Engine[T]) Reset() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	e.phase = 0
 	e.finalized = false
 	e.lastVotes = make(map[T]int)

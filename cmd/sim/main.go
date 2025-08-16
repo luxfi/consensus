@@ -10,10 +10,11 @@ import (
 	"os"
 	"time"
 
+	"log/slog"
+
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/ids"
-	"log/slog"
 )
 
 var logger = slog.Default().With("module", "sim")

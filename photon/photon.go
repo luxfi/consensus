@@ -67,7 +67,7 @@ func SampleFromSet[T comparable](set []T, k int, s Sampler[T]) []T {
 	if k >= len(set) {
 		return set
 	}
-	
+
 	// Simple sampling
 	result := make([]T, k)
 	for i := 0; i < k; i++ {

@@ -15,7 +15,7 @@ import (
 
 	"github.com/luxfi/consensus/utils/transport"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/zmq/v4"
+	zmq4 "github.com/luxfi/zmq/v4"
 )
 
 // Transport implements high-performance ZeroMQ transport for consensus

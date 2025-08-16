@@ -29,9 +29,9 @@ type CertBundle struct {
 
 // BlockPayload contains linear block consensus fields
 type BlockPayload struct {
-	FPCVotes [][]byte    // TxID refs; no dupes; owned-only
-	EpochBit bool        // epoch fence
-	Cert     CertBundle  // if quasar enabled
+	FPCVotes [][]byte   // TxID refs; no dupes; owned-only
+	EpochBit bool       // epoch fence
+	Cert     CertBundle // if quasar enabled
 }
 
 // VertexPayload contains DAG vertex consensus fields
@@ -47,7 +47,7 @@ type Topic string
 type Probe int
 
 const (
-	ProbeGood    Probe = iota
+	ProbeGood Probe = iota
 	ProbeTimeout
 	ProbeBadSig
 )

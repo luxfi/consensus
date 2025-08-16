@@ -1,8 +1,9 @@
 package tracker
 
 import (
-	"github.com/luxfi/ids"
 	"time"
+
+	"github.com/luxfi/ids"
 )
 
 // Tracker tracks network metrics

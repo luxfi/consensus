@@ -1,8 +1,9 @@
 package benchlist
 
 import (
-	"github.com/luxfi/ids"
 	"time"
+
+	"github.com/luxfi/ids"
 )
 
 // Benchlist tracks misbehaving nodes

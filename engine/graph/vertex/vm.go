@@ -2,6 +2,7 @@ package vertex
 
 import (
 	"context"
+
 	"github.com/luxfi/consensus/engine/graph"
 	"github.com/luxfi/ids"
 )

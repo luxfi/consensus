@@ -52,7 +52,7 @@ func (e *Engine) OnDecided(ctx context.Context, v types.VertexID) {
 func (e *Engine) Final(ctx context.Context, v types.VertexID) bool {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	return e.finalized[v]
 }
 

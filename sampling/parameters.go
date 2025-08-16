@@ -10,12 +10,12 @@ import (
 )
 
 var (
-	ErrParametersInvalid         = errors.New("invalid parameters")
-	ErrInvalidK                  = errors.New("invalid K value")
-	ErrInvalidAlpha              = errors.New("invalid alpha values")
-	ErrInvalidBeta               = errors.New("invalid beta value")
-	ErrInvalidConcurrentRepolls  = errors.New("invalid concurrent repolls")
-	ErrInvalidOptimalProcessing  = errors.New("invalid optimal processing")
+	ErrParametersInvalid          = errors.New("invalid parameters")
+	ErrInvalidK                   = errors.New("invalid K value")
+	ErrInvalidAlpha               = errors.New("invalid alpha values")
+	ErrInvalidBeta                = errors.New("invalid beta value")
+	ErrInvalidConcurrentRepolls   = errors.New("invalid concurrent repolls")
+	ErrInvalidOptimalProcessing   = errors.New("invalid optimal processing")
 	ErrInvalidMaxOutstandingItems = errors.New("invalid max outstanding items")
 )
 

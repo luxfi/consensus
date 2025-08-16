@@ -24,7 +24,7 @@ type Manager interface {
 	TotalWeight(subnetID ids.ID) (uint64, error)
 	NumValidators(subnetID ids.ID) int
 	RegisterSetCallbackListener(listener SetCallbackListener)
-	
+
 	// L1 Validator support
 	AddStaker(subnetID ids.ID, nodeID ids.NodeID, pk interface{}, validationID ids.ID, weight uint64) error
 	AddWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error
