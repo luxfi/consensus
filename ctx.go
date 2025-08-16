@@ -35,6 +35,11 @@ type ValidatorState interface {
 	GetSubnetID(chainID ids.ID) (ids.ID, error)
 }
 
+// WarpSigner is an interface for signing warp messages
+type WarpSigner interface {
+	Sign(msg interface{}) ([]byte, error)
+}
+
 // Logger interface for consensus logging
 type Logger interface {
 	Debug(msg string, args ...interface{})
@@ -220,4 +225,49 @@ func GetLogger(ctx context.Context) Logger {
 // WithLogger adds a logger to the context
 func WithLogger(ctx context.Context, logger Logger) context.Context {
 	return context.WithValue(ctx, loggerKey, logger)
+}
+
+// GetSharedMemory retrieves shared memory from context
+func GetSharedMemory(ctx context.Context) interface{} {
+	return ctx.Value(sharedMemoryKey)
+}
+
+// WithSharedMemory adds shared memory to context
+func WithSharedMemory(ctx context.Context, sharedMemory interface{}) context.Context {
+	return context.WithValue(ctx, sharedMemoryKey, sharedMemory)
+}
+
+// GetBCLookup retrieves the blockchain lookup from context
+func GetBCLookup(ctx context.Context) interface{} {
+	return ctx.Value(bcLookupKey)
+}
+
+// WithBCLookup adds blockchain lookup to context
+func WithBCLookup(ctx context.Context, bcLookup interface{}) context.Context {
+	return context.WithValue(ctx, bcLookupKey, bcLookup)
+}
+
+// GetWarpSigner retrieves the warp signer from context  
+func GetWarpSigner(ctx context.Context) interface{} {
+	return ctx.Value(warpSignerKey)
+}
+
+// WithWarpSigner adds warp signer to context
+func WithWarpSigner(ctx context.Context, warpSigner interface{}) context.Context {
+	return context.WithValue(ctx, warpSignerKey, warpSigner)
+}
+
+// GetChainDataDir retrieves the chain data directory from context
+func GetChainDataDir(ctx context.Context) string {
+	if v := ctx.Value(chainDataDirKey); v != nil {
+		if dir, ok := v.(string); ok {
+			return dir
+		}
+	}
+	return ""
+}
+
+// WithChainDataDir adds chain data directory to context
+func WithChainDataDir(ctx context.Context, dir string) context.Context {
+	return context.WithValue(ctx, chainDataDirKey, dir)
 }
