@@ -8,25 +8,23 @@ import (
 	"github.com/luxfi/consensus/utils/metric"
 )
 
-// pulseMetrics is a no-op implementation
+// PulseMetrics is a no-op implementation
 // Real metrics should be handled by the parent system
-//
-//nolint:unused // TODO: Integrate with metrics system
-type pulseMetrics struct {
+type PulseMetrics struct {
 	prisms metric.Averager
 	polls  metric.Averager
 }
 
-//nolint:unused // TODO: Integrate with metrics system
-func newPulseMetrics(reg interfaces.Registerer) (*pulseMetrics, error) {
-	return &pulseMetrics{
+// NewPulseMetrics creates a new pulse metrics instance
+func NewPulseMetrics(reg interfaces.Registerer) (*PulseMetrics, error) {
+	return &PulseMetrics{
 		prisms: metric.NewAverager(),
 		polls:  metric.NewAverager(),
 	}, nil
 }
 
-//nolint:unused // TODO: Integrate with metrics system
-func (m *pulseMetrics) Observe(prisms, polls int) {
+// Observe records metrics observations
+func (m *PulseMetrics) Observe(prisms, polls int) {
 	m.prisms.Observe(float64(prisms))
 	m.polls.Observe(float64(polls))
 }

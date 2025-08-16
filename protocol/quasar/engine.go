@@ -205,9 +205,15 @@ func (e *Engine) Start(ctx context.Context) error {
 	// 		return fmt.Errorf("failed to start pulsar: %w", err)
 	// 	}
 	// }
-	if e.nebula != nil {
-		// }
-	}
+	// TODO: Initialize Nebula when methods are available
+	// if e.nebula != nil {
+	// 	if err := e.nebula.Initialize(ctx); err != nil {
+	// 		return fmt.Errorf("failed to initialize nebula: %w", err)
+	// 	}
+	// 	if err := e.nebula.Start(ctx); err != nil {
+	// 		return fmt.Errorf("failed to start nebula: %w", err)
+	// 	}
+	// }
 
 	return nil
 }
