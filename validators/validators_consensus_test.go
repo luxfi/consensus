@@ -38,18 +38,18 @@ var _ = Describe("Pure Consensus Protocol", func() {
 			It("should synchronize validator sets across nodes", func() {
 				// Create validator managers for each node
 				subnetID := ids.GenerateTestID()
-				managers := make([]validator.Manager, 3)
+				managers := make([]validators.Manager, 3)
 				for i := range managers {
-					managers[i] = validator.NewManager()
+					managers[i] = validators.NewManager()
 				}
 
 				// Create test validators
-				validatorList := make([]validator.GetValidatorOutput, 3)
+				validatorList := make([]validators.GetValidatorOutput, 3)
 				for i := 0; i < 3; i++ {
 					sk, err := localsigner.New()
 					Expect(err).NotTo(HaveOccurred())
 
-					validatorList[i] = validator.GetValidatorOutput{
+					validatorList[i] = validators.GetValidatorOutput{
 						NodeID:    ids.GenerateTestNodeID(),
 						PublicKey: sk.PublicKey(),
 						Weight:    uint64((i + 1) * 100),
@@ -93,7 +93,7 @@ var _ = Describe("Pure Consensus Protocol", func() {
 
 			It("should handle concurrent proposals correctly", func() {
 				subnetID := ids.GenerateTestID()
-				manager := validator.NewManager()
+				manager := validators.NewManager()
 
 				// Create multiple validators concurrently
 				var wg sync.WaitGroup
@@ -104,7 +104,7 @@ var _ = Describe("Pure Consensus Protocol", func() {
 						defer wg.Done()
 
 						sk, _ := localsigner.New()
-						validator := validator.GetValidatorOutput{
+						validator := validators.GetValidatorOutput{
 							NodeID:    ids.GenerateTestNodeID(),
 							PublicKey: sk.PublicKey(),
 							Weight:    uint64(1000 + index),
@@ -153,7 +153,7 @@ var _ = Describe("Pure Consensus Protocol", func() {
 		Context("delegation support", func() {
 			It("should support delegation to validators", func() {
 				subnetID := ids.GenerateTestID()
-				manager := validator.NewManager()
+				manager := validators.NewManager()
 
 				// Create main validator
 				sk, err := localsigner.New()
@@ -262,7 +262,7 @@ type DelegationManager struct {
 }
 
 type Delegation struct {
-	ValidatorID ids.NodeID
+	validatorID ids.NodeID
 	DelegatorID ids.NodeID
 	Amount      uint64
 	Rewards     uint64
@@ -284,7 +284,7 @@ func (dm *DelegationManager) AddDelegation(validatorID, delegatorID ids.NodeID, 
 	}
 
 	dm.delegations[validatorID][delegatorID] = &Delegation{
-		ValidatorID: validatorID,
+		validatorID: validatorID,
 		DelegatorID: delegatorID,
 		Amount:      amount,
 		StartTime:   time.Now(),
