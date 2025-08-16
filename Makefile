@@ -4,7 +4,7 @@
 .PHONY: all test build clean lint format check tools help benchmark benchmark-node benchmark-zmq test-parallel test-cluster
 
 # Default target
-all: build test
+all: build test bench
 
 # Build all tools and commands
 build: ## Build all tools and commands

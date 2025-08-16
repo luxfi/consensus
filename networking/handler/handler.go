@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/engine/core"
-	"github.com/luxfi/consensus/engine/core/tracker"
+	"github.com/luxfi/consensus/core"
+	"github.com/luxfi/consensus/core/tracker"
 	"github.com/luxfi/consensus/validators"
 	metrics "github.com/luxfi/metric"
 	"github.com/luxfi/node/subnets"
