@@ -8,7 +8,6 @@ import (
 	"context"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/flare"
 	"github.com/luxfi/consensus/focus"
 	// "github.com/luxfi/consensus/horizon" // Not used currently
 	"github.com/luxfi/consensus/protocol/nebula"
@@ -44,7 +43,7 @@ type Engine[V comparable] struct {
 	sel   wave.Selector
 	conf  focus.Confidence
 	g     graph[V]        // horizon.Graph wrapper
-	ord   flare.Orderer   // scheduler/ordering driver
+	// ord   flare.Orderer   // scheduler/ordering driver // TODO: Use when flare is integrated
 	proto nebula.Protocol[V]
 	fpc   *fpc.Engine
 }
