@@ -49,12 +49,6 @@ type AliasLookup interface {
 	PrimaryAlias(id ids.ID) (string, error)
 }
 
-
-// WarpSigner provides BLS signing for warp messages
-type WarpSigner interface {
-	Sign(msg []byte) ([]byte, error)
-}
-
 // Message types for consensus engine communication
 type Message interface{}
 
