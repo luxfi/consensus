@@ -8,21 +8,23 @@ import (
 	"github.com/luxfi/consensus/utils/metric"
 )
 
-// waveMetrics is a no-op implementation
+// WaveMetrics tracks wave protocol metrics
 // Real metrics should be handled by the parent system
-type waveMetrics struct {
+type WaveMetrics struct {
 	prisms metric.Averager
 	polls  metric.Averager
 }
 
-func newWaveMetrics(reg interfaces.Registerer) (*waveMetrics, error) {
-	return &waveMetrics{
+// NewWaveMetrics creates a new wave metrics instance
+func NewWaveMetrics(reg interfaces.Registerer) (*WaveMetrics, error) {
+	return &WaveMetrics{
 		prisms: metric.NewAverager(),
 		polls:  metric.NewAverager(),
 	}, nil
 }
 
-func (m *waveMetrics) Observe(prisms, polls int) {
+// Observe records metric observations
+func (m *WaveMetrics) Observe(prisms, polls int) {
 	m.prisms.Observe(float64(prisms))
 	m.polls.Observe(float64(polls))
 }

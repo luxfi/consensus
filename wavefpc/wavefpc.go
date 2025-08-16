@@ -27,7 +27,6 @@ type waveFPC struct {
 	pq       PQEngine
 	ringtail *RingtailEngine // Integrated PQ engine
 
-	mu          sync.RWMutex
 	epochPaused atomic.Bool
 
 	// Core state (sharded for performance)
@@ -348,6 +347,8 @@ func (w *waveFPC) registerEpochBitAuthor(author ids.NodeID) {
 	if len(w.epochBitAuthors) >= 2*w.cfg.F+1 {
 		// Epoch can close
 		// TODO: Trigger epoch close completion
+		// For now, just clear the authors to prepare for next epoch
+		w.epochBitAuthors = make(map[ids.NodeID]bool)
 	}
 }
 

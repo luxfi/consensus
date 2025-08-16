@@ -289,7 +289,6 @@ func BenchmarkMillionTPS(b *testing.B) {
 			fpc    *waveFPC
 			txs    []TxRef
 			objs   []ObjectID
-			mu     sync.Mutex
 			votes  int64
 			finals int64
 		}
