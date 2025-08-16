@@ -5,6 +5,7 @@ package blockmock
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -143,6 +144,11 @@ func (vm *ChainVM) GetBlockIDAtHeight(ctx context.Context, height uint64) (ids.I
 		vm.T.Fatal("unexpected GetBlockIDAtHeight")
 	}
 	return ids.Empty, nil
+}
+
+func (vm *ChainVM) CreateHandlers(ctx context.Context) (map[string]http.Handler, error) {
+	// Return empty handlers map for mock
+	return make(map[string]http.Handler), nil
 }
 
 // StateSyncableVM is a mock implementation of block.StateSyncableVM
