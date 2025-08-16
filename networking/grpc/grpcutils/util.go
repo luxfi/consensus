@@ -45,10 +45,11 @@ func Serve(listener net.Listener, server *grpc.Server) error {
 
 // Dial creates a new gRPC client connection
 func Dial(addr string) (*grpc.ClientConn, error) {
-	return grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	return grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 }
 
 // DialContext creates a new gRPC client connection with context
 func DialContext(ctx context.Context, addr string) (*grpc.ClientConn, error) {
-	return grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// NewClient already accepts a context internally
+	return grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 }
