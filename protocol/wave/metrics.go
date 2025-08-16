@@ -10,12 +10,16 @@ import (
 
 // WaveMetrics tracks wave protocol metrics
 // Real metrics should be handled by the parent system
+//
+//nolint:unused // TODO: Integrate with metrics system
 type WaveMetrics struct {
 	prisms metric.Averager
 	polls  metric.Averager
 }
 
 // NewWaveMetrics creates a new wave metrics instance
+//
+//nolint:unused // TODO: Integrate with metrics system
 func NewWaveMetrics(reg interfaces.Registerer) (*WaveMetrics, error) {
 	return &WaveMetrics{
 		prisms: metric.NewAverager(),
@@ -24,6 +28,8 @@ func NewWaveMetrics(reg interfaces.Registerer) (*WaveMetrics, error) {
 }
 
 // Observe records metric observations
+//
+//nolint:unused // TODO: Integrate with metrics system
 func (m *WaveMetrics) Observe(prisms, polls int) {
 	m.prisms.Observe(float64(prisms))
 	m.polls.Observe(float64(polls))
