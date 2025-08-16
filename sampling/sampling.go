@@ -1,3 +1,0 @@
-package sampling
-
-// Sampling utilities
