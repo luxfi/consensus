@@ -327,7 +327,7 @@ func (s *vdrSet) RegisterCallbackListener(callbackListener SetCallbackListener) 
 
 	s.setCallbackListeners = append(s.setCallbackListeners, callbackListener)
 	for _, vdr := range s.vdrSlice {
-		callbackListener.OnValidatorAdded(vdr.NodeID, vdr.PublicKey, vdr.TxID, vdr.Weight)
+		callbackListener.OnValidatorAdded(vdr.NodeID, vdr.Weight)
 	}
 }
 
@@ -347,7 +347,7 @@ func (s *vdrSet) callValidatorAddedCallbacks(node ids.NodeID, pk *bls.PublicKey,
 		callbackListener.OnValidatorAdded(s.subnetID, node, pk, txID, weight)
 	}
 	for _, callbackListener := range s.setCallbackListeners {
-		callbackListener.OnValidatorAdded(node, pk, txID, weight)
+		callbackListener.OnValidatorAdded(node, weight)
 	}
 }
 
