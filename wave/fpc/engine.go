@@ -331,6 +331,8 @@ func (w *waveFPC) registerEpochBitAuthor(author ids.NodeID) {
 	if len(w.epochBitAuthors) >= 2*w.cfg.F+1 {
 		// Epoch can close
 		// TODO: Trigger epoch close completion
+		// For now, just clear the authors to prepare for next epoch
+		w.epochBitAuthors = make(map[ids.NodeID]bool)
 	}
 }
 

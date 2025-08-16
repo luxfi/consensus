@@ -454,6 +454,9 @@ func BenchmarkConsensusScalability(b *testing.B) {
 }
 
 // testBlock implements interfaces.Block for testing
+// TODO: Use this in benchmarks or remove if not needed
+//
+//nolint:unused // Will be used in upcoming benchmark improvements
 type testBlock struct {
 	id        ids.ID
 	parentID  ids.ID
@@ -462,22 +465,37 @@ type testBlock struct {
 	status    interfaces.Status
 }
 
+//nolint:unused // Part of testBlock implementation
 func (b *testBlock) ID() ids.ID           { return b.id }
+
+//nolint:unused // Part of testBlock implementation
 func (b *testBlock) Parent() ids.ID       { return b.parentID }
+
+//nolint:unused // Part of testBlock implementation
 func (b *testBlock) Height() uint64       { return b.height }
+
+//nolint:unused // Part of testBlock implementation
 func (b *testBlock) Timestamp() time.Time { return b.timestamp }
+
+//nolint:unused // Part of testBlock implementation
 func (b *testBlock) Bytes() []byte        { return nil }
+
+//nolint:unused // Part of testBlock implementation
 func (b *testBlock) Verify() error        { return nil }
+
+//nolint:unused // Part of testBlock implementation
 func (b *testBlock) Accept(context.Context) error {
 	b.status = interfaces.Accepted
 	return nil
 }
 
+//nolint:unused // Part of testBlock implementation
 func (b *testBlock) Reject(context.Context) error {
 	b.status = interfaces.Rejected
 	return nil
 }
 
+//nolint:unused // Part of testBlock implementation
 func (b *testBlock) Status() (interfaces.Status, error) {
 	return b.status, nil
 }
