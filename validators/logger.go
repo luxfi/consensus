@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/luxfi/consensus/set"
-	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
 )
@@ -46,20 +45,12 @@ func NewLogger(
 
 func (l *logger) OnValidatorAdded(
 	nodeID ids.NodeID,
-	pk *bls.PublicKey,
-	txID ids.ID,
 	weight uint64,
 ) {
 	if l.nodeIDs.Contains(nodeID) {
-		var pkBytes []byte
-		if pk != nil {
-			pkBytes = bls.PublicKeyToCompressedBytes(pk)
-		}
 		l.log.Info("node added to validator set",
 			zap.Stringer("subnetID", l.subnetID),
 			zap.Stringer("nodeID", nodeID),
-			zap.Reflect("publicKey", JSONByteSlice(pkBytes)),
-			zap.Stringer("txID", txID),
 			zap.Uint64("weight", weight),
 		)
 	}

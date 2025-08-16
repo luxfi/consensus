@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/consensus/utils/set"
-	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/bls/signer/localsigner"
 	"github.com/luxfi/ids"
 
@@ -21,14 +20,14 @@ var _ SetCallbackListener = (*setCallbackListener)(nil)
 
 type setCallbackListener struct {
 	t         *testing.T
-	onAdd     func(ids.NodeID, *bls.PublicKey, ids.ID, uint64)
+	onAdd     func(ids.NodeID, uint64)
 	onWeight  func(ids.NodeID, uint64, uint64)
 	onRemoved func(ids.NodeID, uint64)
 }
 
-func (c *setCallbackListener) OnValidatorAdded(nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
+func (c *setCallbackListener) OnValidatorAdded(nodeID ids.NodeID, weight uint64) {
 	if c.onAdd != nil {
-		c.onAdd(nodeID, pk, txID, weight)
+		c.onAdd(nodeID, weight)
 	} else {
 		c.t.Fail()
 	}
@@ -397,10 +396,8 @@ func TestSetAddCallback(t *testing.T) {
 	require.False(s.HasCallbackRegistered())
 	s.RegisterCallbackListener(&setCallbackListener{
 		t: t,
-		onAdd: func(nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
+		onAdd: func(nodeID ids.NodeID, weight uint64) {
 			require.Equal(nodeID0, nodeID)
-			require.Equal(pk0, pk)
-			require.Equal(txID0, txID)
 			require.Equal(weight0, weight)
 			callCount++
 		},
@@ -425,10 +422,8 @@ func TestSetAddWeightCallback(t *testing.T) {
 	require.False(s.HasCallbackRegistered())
 	s.RegisterCallbackListener(&setCallbackListener{
 		t: t,
-		onAdd: func(nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
+		onAdd: func(nodeID ids.NodeID, weight uint64) {
 			require.Equal(nodeID0, nodeID)
-			require.Nil(pk)
-			require.Equal(txID0, txID)
 			require.Equal(weight0, weight)
 			callCount++
 		},
@@ -459,10 +454,8 @@ func TestSetRemoveWeightCallback(t *testing.T) {
 	require.False(s.HasCallbackRegistered())
 	s.RegisterCallbackListener(&setCallbackListener{
 		t: t,
-		onAdd: func(nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
+		onAdd: func(nodeID ids.NodeID, weight uint64) {
 			require.Equal(nodeID0, nodeID)
-			require.Nil(pk)
-			require.Equal(txID0, txID)
 			require.Equal(weight0, weight)
 			callCount++
 		},
@@ -492,10 +485,8 @@ func TestSetValidatorRemovedCallback(t *testing.T) {
 	require.False(s.HasCallbackRegistered())
 	s.RegisterCallbackListener(&setCallbackListener{
 		t: t,
-		onAdd: func(nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
+		onAdd: func(nodeID ids.NodeID, weight uint64) {
 			require.Equal(nodeID0, nodeID)
-			require.Nil(pk)
-			require.Equal(txID0, txID)
 			require.Equal(weight0, weight)
 			callCount++
 		},
