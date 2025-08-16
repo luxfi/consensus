@@ -360,7 +360,7 @@ func (c *Counter) Inc() { c.count++ }
 
 type (
 	Histogram struct{}
-	Gauge     struct{ value float64 }
+	Gauge     struct{}
 )
 
 func NewMetrics() *Metrics {
