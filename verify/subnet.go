@@ -4,7 +4,6 @@
 package verify
 
 import (
-	"context"
 	"errors"
 
 	"github.com/luxfi/consensus"
