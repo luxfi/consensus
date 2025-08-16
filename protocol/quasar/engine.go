@@ -4,14 +4,16 @@
 package quasar
 
 import (
-    "github.com/luxfi/consensus/config"
 	"context"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/config"
+
 	"github.com/luxfi/consensus/core/interfaces"
+	"github.com/luxfi/ids"
+
 	// "github.com/luxfi/consensus/protocol/nebula" // Commented out - nebula is interface{} for now
 	"github.com/luxfi/consensus/protocol/pulse"
 )
@@ -66,7 +68,7 @@ func (n *NovaHook) TriggerSlashing(event *SlashingEvent) {
 	n.mu.RLock()
 	callback := n.slashingCallback
 	n.mu.RUnlock()
-	
+
 	if callback != nil {
 		callback(event)
 	}
@@ -151,7 +153,7 @@ func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 		AlphaConfidence: params.AlphaConfidence,
 		Beta:            uint32(params.Beta),
 	}
-	
+
 	switch params.Mode {
 	case PulsarMode:
 		e.pulsar = pulse.NewPulse(configParams)
@@ -274,14 +276,14 @@ func (e *Engine) verifyPQ(decision Decision) error {
 	if err != nil {
 		return fmt.Errorf("failed to get signature: %w", err)
 	}
-	
+
 	// TODO: Get public key from decision or context
 	pk := make([]byte, 32) // Stub public key
-	
+
 	if !e.ringtail.Verify(decision.Bytes(), sig, pk) {
 		return fmt.Errorf("signature verification failed")
 	}
-	
+
 	return nil
 }
 
@@ -325,19 +327,19 @@ func (e *Engine) submitUnified(ctx context.Context, decision *UnifiedDecision) e
 	if e.params.Mode == HybridMode || e.params.Mode == QuantumMode {
 		// Submit to both engines in parallel
 		errCh := make(chan error, 2)
-		
+
 		go func() {
 			// TODO: implement Submit method for pulse
 			// errCh <- e.pulsar.Submit(ctx, decision.ChainPart())
 			errCh <- nil
 		}()
-		
+
 		go func() {
 			// TODO: implement Submit method for nebula
 			// errCh <- e.nebula.Submit(ctx, decision.DAGPart())
 			errCh <- nil
 		}()
-		
+
 		// Wait for both to complete
 		for i := 0; i < 2; i++ {
 			if err := <-errCh; err != nil {
@@ -353,7 +355,7 @@ func (e *Engine) submitUnified(ctx context.Context, decision *UnifiedDecision) e
 func (e *Engine) processPhotonic(ctx context.Context, decision Decision) error {
 	// Implementation of photonic processing pipeline
 	// This is simplified - real implementation would track votes, thresholds, etc.
-	
+
 	e.metrics.ProcessedDecisions.Inc()
 	return nil
 }
@@ -377,9 +379,9 @@ type ChainDecision struct {
 
 // DAGDecision for Nebula engine
 type DAGDecision struct {
-	VertexID ids.ID
-	Parents  []ids.ID
-	Payload  []byte
+	VertexID  ids.ID
+	Parents   []ids.ID
+	Payload   []byte
 	signature Signature
 }
 
@@ -428,22 +430,22 @@ type Metrics struct {
 }
 
 // Implement Decision methods...
-func (d *ChainDecision) ID() ids.ID                              { return d.BlockID }
-func (d *ChainDecision) Bytes() []byte                           { return d.Payload }
-func (d *ChainDecision) Signature() (Signature, error)  { return d.signature, nil }
-func (d *ChainDecision) Verify() error                           { return nil }
+func (d *ChainDecision) ID() ids.ID                    { return d.BlockID }
+func (d *ChainDecision) Bytes() []byte                 { return d.Payload }
+func (d *ChainDecision) Signature() (Signature, error) { return d.signature, nil }
+func (d *ChainDecision) Verify() error                 { return nil }
 
-func (d *DAGDecision) ID() ids.ID                                { return d.VertexID }
-func (d *DAGDecision) Bytes() []byte                             { return d.Payload }
-func (d *DAGDecision) Signature() (Signature, error)    { return d.signature, nil }
-func (d *DAGDecision) Verify() error                             { return nil }
+func (d *DAGDecision) ID() ids.ID                    { return d.VertexID }
+func (d *DAGDecision) Bytes() []byte                 { return d.Payload }
+func (d *DAGDecision) Signature() (Signature, error) { return d.signature, nil }
+func (d *DAGDecision) Verify() error                 { return nil }
 
-func (d *UnifiedDecision) ID() ids.ID                            { return d.id }
-func (d *UnifiedDecision) Bytes() []byte                         { return append(d.Chain.Bytes(), d.DAG.Bytes()...) }
+func (d *UnifiedDecision) ID() ids.ID                    { return d.id }
+func (d *UnifiedDecision) Bytes() []byte                 { return append(d.Chain.Bytes(), d.DAG.Bytes()...) }
 func (d *UnifiedDecision) Signature() (Signature, error) { return d.signature, nil }
-func (d *UnifiedDecision) Verify() error                         { return nil }
-func (d *UnifiedDecision) ChainPart() *ChainDecision             { return d.Chain }
-func (d *UnifiedDecision) DAGPart() *DAGDecision                 { return d.DAG }
+func (d *UnifiedDecision) Verify() error                 { return nil }
+func (d *UnifiedDecision) ChainPart() *ChainDecision     { return d.Chain }
+func (d *UnifiedDecision) DAGPart() *DAGDecision         { return d.DAG }
 
 // Helper methods
 func newEngineState() *engineState {
@@ -471,6 +473,7 @@ func (s *engineState) Confidence() map[ids.ID]int { return s.confidence }
 
 // Stub types for metrics
 type Counter struct{ count int64 }
+
 func (c *Counter) Inc() { c.count++ }
 
 type Histogram struct{}

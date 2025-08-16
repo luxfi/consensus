@@ -11,7 +11,7 @@ type Consensus struct {
 	k       int // sample size
 	refract *prism.Refractor
 
-	preference           ids.ID
+	preference ids.ID
 	// lastAccepted         ids.ID // TODO: Use for tracking accepted blocks
 	consecutiveSuccesses int
 }

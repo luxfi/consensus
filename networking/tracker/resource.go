@@ -1,10 +1,11 @@
 package tracker
 
 import (
+	"time"
+
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/utils/resource"
 	"github.com/prometheus/client_golang/prometheus"
-	"time"
 )
 
 // Targeter provides target configuration

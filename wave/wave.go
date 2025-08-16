@@ -62,12 +62,12 @@ func (r *round) Poll(ctx context.Context) (Result, error) {
 	// This is a simplified implementation
 	// In production, this would query validators and collect votes
 	alphaPref, alphaConf := r.selector.Alpha(r.k, r.phase)
-	
+
 	// Simulate vote collection (in real implementation, would query network)
-	votes := r.k / 2 + 1 // Simple majority for now
-	
+	votes := r.k/2 + 1 // Simple majority for now
+
 	r.phase++
-	
+
 	_ = alphaPref // Will be used for preference logic
 	if votes >= alphaConf {
 		return Result{Success: true, Choice: []byte("consensus")}, nil
@@ -78,10 +78,10 @@ func (r *round) Poll(ctx context.Context) (Result, error) {
 // Record records votes for this round.
 func (r *round) Record(votes int) (preferOK, confOK bool) {
 	alphaPref, alphaConf := r.selector.Alpha(r.k, r.phase)
-	
+
 	preferOK = votes >= alphaPref
 	confOK = votes >= alphaConf
-	
+
 	r.phase++
 	return preferOK, confOK
 }
@@ -103,10 +103,10 @@ func (d *DefaultSelector) Alpha(k int, phase uint64) (alphaPref, alphaConf int) 
 
 // State represents the wave consensus state for an item.
 type State struct {
-	Stage    Stage
-	Step     Step
-	Decided  bool
-	Result   int
+	Stage   Stage
+	Step    Step
+	Decided bool
+	Result  int
 }
 
 // Step represents a single consensus step.

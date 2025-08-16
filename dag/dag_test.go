@@ -129,7 +129,7 @@ func (d *TestDAG) GetTips() [][32]byte {
 func (d *TestDAG) GetExecutableTxs() []TxID {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	
+
 	var executable []TxID
 	// With f=3, need 7 votes for fast path
 	const threshold = 7

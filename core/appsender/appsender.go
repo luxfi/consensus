@@ -1,8 +1,9 @@
 package appsender
 
 import (
-	"github.com/luxfi/ids"
 	"time"
+
+	"github.com/luxfi/ids"
 )
 
 // AppSender sends application messages

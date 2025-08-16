@@ -1,8 +1,8 @@
 package validators
 
 import (
-	"github.com/luxfi/ids"
 	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/ids"
 )
 
 // GetValidatorOutput contains validator information

@@ -8,8 +8,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus"
+	"github.com/luxfi/ids"
 )
 
 var (
@@ -49,27 +49,27 @@ type Engine struct {
 	CantGetValidatorSet,
 	CantGetLastAccepted bool
 
-	StartF            func(ctx context.Context, startReqID uint32) error
-	IsBootstrappedF   func() (bool, error)
-	TimeoutF          func(ctx context.Context) error
-	GossipF           func(ctx context.Context) error
-	HaltF             func(ctx context.Context)
-	ShutdownF         func(ctx context.Context) error
-	ContextF          func() context.Context
-	NotifyF           func(context.Context, consensus.Message) error
-	GetBlockF         func(ctx context.Context, nodeID ids.NodeID, requestID uint32, blockID ids.ID) error
-	GetFailedF        func(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
-	PutBlockF         func(ctx context.Context, nodeID ids.NodeID, requestID uint32, block []byte) error
-	PushQueryF        func(ctx context.Context, nodeID ids.NodeID, requestID uint32, block []byte, requestedHeight uint64) error
-	PullQueryF        func(ctx context.Context, nodeID ids.NodeID, requestID uint32, blockID ids.ID, requestedHeight uint64) error
-	QueryFailedF      func(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
-	ChitsF            func(ctx context.Context, nodeID ids.NodeID, requestID uint32, preferredID ids.ID, preferredIDAtHeight ids.ID, acceptedID ids.ID) error
-	ConnectedF        func(ctx context.Context, nodeID ids.NodeID, nodeVersion *version) error
-	DisconnectedF     func(ctx context.Context, nodeID ids.NodeID) error
-	HealthCheckF      func(ctx context.Context) (interface{}, error)
-	GetVMF            func() consensus.VM
-	GetValidatorSetF  func() func() (map[ids.NodeID]uint64, error)
-	LastAcceptedF     func(ctx context.Context) (ids.ID, error)
+	StartF           func(ctx context.Context, startReqID uint32) error
+	IsBootstrappedF  func() (bool, error)
+	TimeoutF         func(ctx context.Context) error
+	GossipF          func(ctx context.Context) error
+	HaltF            func(ctx context.Context)
+	ShutdownF        func(ctx context.Context) error
+	ContextF         func() context.Context
+	NotifyF          func(context.Context, consensus.Message) error
+	GetBlockF        func(ctx context.Context, nodeID ids.NodeID, requestID uint32, blockID ids.ID) error
+	GetFailedF       func(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
+	PutBlockF        func(ctx context.Context, nodeID ids.NodeID, requestID uint32, block []byte) error
+	PushQueryF       func(ctx context.Context, nodeID ids.NodeID, requestID uint32, block []byte, requestedHeight uint64) error
+	PullQueryF       func(ctx context.Context, nodeID ids.NodeID, requestID uint32, blockID ids.ID, requestedHeight uint64) error
+	QueryFailedF     func(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
+	ChitsF           func(ctx context.Context, nodeID ids.NodeID, requestID uint32, preferredID ids.ID, preferredIDAtHeight ids.ID, acceptedID ids.ID) error
+	ConnectedF       func(ctx context.Context, nodeID ids.NodeID, nodeVersion *version) error
+	DisconnectedF    func(ctx context.Context, nodeID ids.NodeID) error
+	HealthCheckF     func(ctx context.Context) (interface{}, error)
+	GetVMF           func() consensus.VM
+	GetValidatorSetF func() func() (map[ids.NodeID]uint64, error)
+	LastAcceptedF    func(ctx context.Context) (ids.ID, error)
 }
 
 // version struct for testing
@@ -363,26 +363,26 @@ type Sender struct {
 	CantSendCrossChainAppRequest,
 	CantSendCrossChainAppResponse bool
 
-	SendGetAncestorsF               func(ctx context.Context, nodeID ids.NodeID, requestID uint32, containerID ids.ID) error
-	SendGetF                        func(ctx context.Context, nodeID ids.NodeID, requestID uint32, containerID ids.ID) error
-	SendPutF                        func(ctx context.Context, nodeID ids.NodeID, requestID uint32, container []byte) error
-	SendPushQueryF                  func(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, container []byte, requestedHeight uint64) error
-	SendPullQueryF                  func(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, containerID ids.ID, requestedHeight uint64) error
-	SendChitsF                      func(ctx context.Context, nodeID ids.NodeID, requestID uint32, preferredID ids.ID, preferredIDAtHeight ids.ID, acceptedID ids.ID) error
-	SendGossipF                     func(ctx context.Context, container []byte) error
-	SendGetAcceptedFrontierF        func(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
-	SendAcceptedFrontierF           func(ctx context.Context, nodeID ids.NodeID, requestID uint32, containerID ids.ID) error
-	SendGetAcceptedF                func(ctx context.Context, nodeID ids.NodeID, requestID uint32, containerIDs []ids.ID) error
-	SendAcceptedF                   func(ctx context.Context, nodeID ids.NodeID, requestID uint32, containerIDs []ids.ID) error
-	SendGetAcceptedStateSummaryF    func(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, heights []uint64) error
-	SendAcceptedStateSummaryF       func(ctx context.Context, nodeID ids.NodeID, requestID uint32, summaryIDs []ids.ID) error
-	SendGetStateSummaryFrontierF    func(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
-	SendStateSummaryFrontierF       func(ctx context.Context, nodeID ids.NodeID, requestID uint32, summary []byte) error
-	SendAppRequestF                 func(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, appRequestBytes []byte) error
-	SendAppResponseF                func(ctx context.Context, nodeID ids.NodeID, requestID uint32, appResponseBytes []byte) error
-	SendAppGossipF                  func(ctx context.Context, nodeIDs []ids.NodeID, appGossipBytes []byte) error
-	SendCrossChainAppRequestF       func(ctx context.Context, chainID ids.ID, requestID uint32, appRequestBytes []byte) error
-	SendCrossChainAppResponseF      func(ctx context.Context, chainID ids.ID, requestID uint32, appResponseBytes []byte) error
+	SendGetAncestorsF            func(ctx context.Context, nodeID ids.NodeID, requestID uint32, containerID ids.ID) error
+	SendGetF                     func(ctx context.Context, nodeID ids.NodeID, requestID uint32, containerID ids.ID) error
+	SendPutF                     func(ctx context.Context, nodeID ids.NodeID, requestID uint32, container []byte) error
+	SendPushQueryF               func(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, container []byte, requestedHeight uint64) error
+	SendPullQueryF               func(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, containerID ids.ID, requestedHeight uint64) error
+	SendChitsF                   func(ctx context.Context, nodeID ids.NodeID, requestID uint32, preferredID ids.ID, preferredIDAtHeight ids.ID, acceptedID ids.ID) error
+	SendGossipF                  func(ctx context.Context, container []byte) error
+	SendGetAcceptedFrontierF     func(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
+	SendAcceptedFrontierF        func(ctx context.Context, nodeID ids.NodeID, requestID uint32, containerID ids.ID) error
+	SendGetAcceptedF             func(ctx context.Context, nodeID ids.NodeID, requestID uint32, containerIDs []ids.ID) error
+	SendAcceptedF                func(ctx context.Context, nodeID ids.NodeID, requestID uint32, containerIDs []ids.ID) error
+	SendGetAcceptedStateSummaryF func(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, heights []uint64) error
+	SendAcceptedStateSummaryF    func(ctx context.Context, nodeID ids.NodeID, requestID uint32, summaryIDs []ids.ID) error
+	SendGetStateSummaryFrontierF func(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
+	SendStateSummaryFrontierF    func(ctx context.Context, nodeID ids.NodeID, requestID uint32, summary []byte) error
+	SendAppRequestF              func(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, appRequestBytes []byte) error
+	SendAppResponseF             func(ctx context.Context, nodeID ids.NodeID, requestID uint32, appResponseBytes []byte) error
+	SendAppGossipF               func(ctx context.Context, nodeIDs []ids.NodeID, appGossipBytes []byte) error
+	SendCrossChainAppRequestF    func(ctx context.Context, chainID ids.ID, requestID uint32, appRequestBytes []byte) error
+	SendCrossChainAppResponseF   func(ctx context.Context, chainID ids.ID, requestID uint32, appResponseBytes []byte) error
 
 	sentLock sync.Mutex
 	sent     [][]byte

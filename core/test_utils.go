@@ -81,14 +81,14 @@ type SenderTest struct {
 	CantSendAppRequest, CantSendAppResponse, CantSendAppError,
 	CantSendCrossChainAppRequest, CantSendCrossChainAppResponse, CantSendCrossChainAppError bool
 
-	SendAppGossipF            func(context.Context, []byte) error
-	SendAppGossipSpecificF    func(context.Context, set.Set[ids.NodeID], []byte) error
-	SendAppRequestF           func(context.Context, ids.NodeID, uint32, []byte) error
-	SendAppResponseF          func(context.Context, ids.NodeID, uint32, []byte) error
-	SendAppErrorF             func(context.Context, ids.NodeID, uint32, int32, string) error
-	SendCrossChainAppRequestF func(context.Context, ids.ID, uint32, []byte) error
+	SendAppGossipF             func(context.Context, []byte) error
+	SendAppGossipSpecificF     func(context.Context, set.Set[ids.NodeID], []byte) error
+	SendAppRequestF            func(context.Context, ids.NodeID, uint32, []byte) error
+	SendAppResponseF           func(context.Context, ids.NodeID, uint32, []byte) error
+	SendAppErrorF              func(context.Context, ids.NodeID, uint32, int32, string) error
+	SendCrossChainAppRequestF  func(context.Context, ids.ID, uint32, []byte) error
 	SendCrossChainAppResponseF func(context.Context, ids.ID, uint32, []byte) error
-	SendCrossChainAppErrorF   func(context.Context, ids.ID, uint32, int32, string) error
+	SendCrossChainAppErrorF    func(context.Context, ids.ID, uint32, int32, string) error
 }
 
 func (s *SenderTest) Default(cant bool) {

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus"
+	"github.com/luxfi/ids"
 	"github.com/luxfi/node/version"
 )
 
@@ -17,19 +17,19 @@ import (
 type Config struct {
 	// Context is the consensus context for the chain
 	Context context.Context
-	
+
 	// StartupTracker tracks chain startup progress
 	StartupTracker Tracker
-	
+
 	// Sender is used to send bootstrap messages
 	Sender Sender
-	
+
 	// AncestorsMaxContainersRequested is the maximum number of containers to request ancestors for
 	AncestorsMaxContainersRequested int
-	
+
 	// Blocked tracks blocks that are blocked on their parent
 	Blocked Blocked
-	
+
 	// VM provides the VM interface
 	VM VM
 }
@@ -38,35 +38,34 @@ type Config struct {
 type Bootstrapper interface {
 	// Start begins the bootstrapping process
 	Start(ctx context.Context, startReqID uint32) error
-	
+
 	// Connected is called when a peer connects
 	Connected(ctx context.Context, nodeID ids.NodeID, nodeVersion *version.Application) error
-	
+
 	// Disconnected is called when a peer disconnects
 	Disconnected(ctx context.Context, nodeID ids.NodeID) error
-	
+
 	// Timeout is called when a request times out
 	Timeout(ctx context.Context) error
-	
+
 	// Ancestors handles ancestor responses
 	Ancestors(ctx context.Context, nodeID ids.NodeID, requestID uint32, containers [][]byte) error
-	
+
 	// Put handles put responses
 	Put(ctx context.Context, nodeID ids.NodeID, requestID uint32, container []byte) error
-	
+
 	// GetAncestorsFailed handles failed ancestor requests
 	GetAncestorsFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
-	
+
 	// GetFailed handles failed get requests
 	GetFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32) error
-	
+
 	// HealthCheck returns the health status
 	HealthCheck(ctx context.Context) (interface{}, error)
-	
+
 	// Shutdown stops the bootstrapper
 	Shutdown(ctx context.Context) error
 }
-
 
 // Poll represents a poll for bootstrapping
 type Poll struct {
@@ -98,12 +97,12 @@ func (p *Poll) Result() (ids.ID, bool) {
 	if !p.Finished() {
 		return ids.Empty, false
 	}
-	
+
 	counts := make(map[ids.ID]int)
 	for _, id := range p.results {
 		counts[id]++
 	}
-	
+
 	var maxID ids.ID
 	maxCount := 0
 	for id, count := range counts {
@@ -112,7 +111,7 @@ func (p *Poll) Result() (ids.ID, bool) {
 			maxCount = count
 		}
 	}
-	
+
 	return maxID, maxCount >= p.alpha
 }
 
@@ -170,16 +169,16 @@ func (t *IntervalTree) Clear() {
 type Fetcher interface {
 	// Clear removes all pending requests
 	Clear() error
-	
+
 	// Add adds a container ID to fetch
 	Add(containerID ids.ID) error
-	
+
 	// Remove removes a container ID from pending
 	Remove(containerID ids.ID) error
-	
+
 	// NumFetching returns the number of containers being fetched
 	NumFetching() int
-	
+
 	// Outstanding returns the outstanding request IDs
 	Outstanding(containerID ids.ID) ([]uint32, bool)
 }
@@ -188,7 +187,7 @@ type Fetcher interface {
 type Executor interface {
 	// Execute processes a container
 	Execute(ctx context.Context, container []byte) error
-	
+
 	// Clear removes all pending containers
 	Clear() error
 }
@@ -202,7 +201,7 @@ type Stats struct {
 
 // String returns a string representation of stats
 func (s *Stats) String() string {
-	return fmt.Sprintf("Fetched: %d, Accepted: %d, Rejected: %d", 
+	return fmt.Sprintf("Fetched: %d, Accepted: %d, Rejected: %d",
 		s.NumFetched, s.NumAccepted, s.NumRejected)
 }
 
@@ -333,7 +332,7 @@ func GetMissingContainers(have []ids.ID, want []ids.ID) []ids.ID {
 	for _, id := range have {
 		haveSet[id] = true
 	}
-	
+
 	var missing []ids.ID
 	for _, id := range want {
 		if !haveSet[id] {

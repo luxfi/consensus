@@ -46,7 +46,7 @@ func NewQuasar[T comparable](cfg QuasarConfig[T]) (*Quasar[T], error) {
 func (q *Quasar[T]) Initialize(genesis T) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	
+
 	q.tracked[genesis] = true
 	// Genesis automatically has certificate
 	q.certificates[genesis] = &Certificate[T]{
@@ -60,7 +60,7 @@ func (q *Quasar[T]) Initialize(genesis T) error {
 func (q *Quasar[T]) Track(item T) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	
+
 	q.tracked[item] = true
 	return nil
 }
@@ -69,7 +69,7 @@ func (q *Quasar[T]) Track(item T) error {
 func (q *Quasar[T]) HasCertificate(item T) bool {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
-	
+
 	_, exists := q.certificates[item]
 	return exists
 }
@@ -78,7 +78,7 @@ func (q *Quasar[T]) HasCertificate(item T) bool {
 func (q *Quasar[T]) HasSkipCertificate(item T) bool {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
-	
+
 	_, exists := q.skipCerts[item]
 	return exists
 }
@@ -87,7 +87,7 @@ func (q *Quasar[T]) HasSkipCertificate(item T) bool {
 func (q *Quasar[T]) GetCertificate(item T) (*Certificate[T], bool) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
-	
+
 	cert, exists := q.certificates[item]
 	return cert, exists
 }
@@ -96,17 +96,17 @@ func (q *Quasar[T]) GetCertificate(item T) (*Certificate[T], bool) {
 func (q *Quasar[T]) GenerateCertificate(item T) (*Certificate[T], bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	
+
 	if !q.tracked[item] {
 		return nil, false
 	}
-	
+
 	// Simplified certificate generation
 	cert := &Certificate[T]{
 		Item:      item,
 		Threshold: q.certThreshold,
 	}
-	
+
 	q.certificates[item] = cert
 	return cert, true
 }

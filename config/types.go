@@ -12,22 +12,22 @@ import (
 // Parameters represents consensus parameters
 type Parameters struct {
 	// Core sampling parameters
-	K               int `json:"k" yaml:"k"`                               // sample size per poll
-	AlphaPreference int `json:"alpha_preference" yaml:"alpha_preference"` // threshold for preference
-	AlphaConfidence int `json:"alpha_confidence" yaml:"alpha_confidence"` // threshold for confidence
-	Beta            uint32 `json:"beta" yaml:"beta"`                      // consecutive successes for finalize
-	DeltaMinMS      int    `json:"delta_min_ms" yaml:"delta_min_ms"`      // nominal poll round interval (ms)
-	
+	K               int    `json:"k" yaml:"k"`                               // sample size per poll
+	AlphaPreference int    `json:"alpha_preference" yaml:"alpha_preference"` // threshold for preference
+	AlphaConfidence int    `json:"alpha_confidence" yaml:"alpha_confidence"` // threshold for confidence
+	Beta            uint32 `json:"beta" yaml:"beta"`                         // consecutive successes for finalize
+	DeltaMinMS      int    `json:"delta_min_ms" yaml:"delta_min_ms"`         // nominal poll round interval (ms)
+
 	// Advanced parameters
 	ConcurrentPolls       int           `json:"concurrent_polls" yaml:"concurrent_polls"`
 	OptimalProcessing     int           `json:"optimal_processing" yaml:"optimal_processing"`
 	MaxOutstandingItems   int           `json:"max_outstanding_items" yaml:"max_outstanding_items"`
 	MaxItemProcessingTime time.Duration `json:"max_item_processing_time" yaml:"max_item_processing_time"`
 	MinRoundInterval      time.Duration `json:"min_round_interval" yaml:"min_round_interval"`
-	
+
 	// Fast-path voting configuration
 	FPC FPCConfig `json:"fpc" yaml:"fpc"`
-	
+
 	// PQ overlay configuration
 	Quasar QuasarConfig `json:"quasar" yaml:"quasar"`
 }

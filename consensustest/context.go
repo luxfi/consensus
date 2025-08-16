@@ -15,7 +15,7 @@ import (
 var (
 	// PChainID is a test P-Chain ID
 	PChainID = ids.GenerateTestID()
-	
+
 	// LUXAssetID is a test LUX asset ID
 	LUXAssetID = ids.GenerateTestID()
 )

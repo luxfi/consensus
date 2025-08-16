@@ -2,9 +2,10 @@ package chain
 
 import (
 	"context"
+	"time"
+
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/ids"
-	"time"
 )
 
 // Block represents a blockchain block

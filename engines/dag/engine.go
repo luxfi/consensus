@@ -9,6 +9,7 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/focus"
+
 	// "github.com/luxfi/consensus/horizon" // Not used currently
 	"github.com/luxfi/consensus/protocol/nebula"
 	"github.com/luxfi/consensus/wave"
@@ -30,7 +31,7 @@ type Hooks[V comparable] struct {
 	Parents Parents[V]           // graph access
 	Sampler Sampler[V]           // K-sampling source
 	Rand    func(uint64) float64 // PRF for FPC
-	
+
 	// Add app/VM/network callbacks as needed.
 	Propose func(context.Context) (V, error)
 	Apply   func(context.Context, []V) error
@@ -39,10 +40,10 @@ type Hooks[V comparable] struct {
 
 // Engine composes DAG geometry (horizon+flare) with photonic rounds and nebula finality.
 type Engine[V comparable] struct {
-	cfg   config.Parameters
-	sel   wave.Selector
-	conf  focus.Confidence
-	g     graph[V]        // horizon.Graph wrapper
+	cfg  config.Parameters
+	sel  wave.Selector
+	conf focus.Confidence
+	g    graph[V] // horizon.Graph wrapper
 	// ord   flare.Orderer   // scheduler/ordering driver // TODO: Use when flare is integrated
 	proto nebula.Protocol[V]
 	fpc   *fpc.Engine
@@ -53,14 +54,14 @@ func New[V comparable](cfg config.Parameters, hooks Hooks[V]) (*Engine[V], error
 	if hooks.Rand == nil {
 		hooks.Rand = func(uint64) float64 { return 0.5 }
 	}
-	
+
 	// Create FPC selector
 	selector := &fpc.Selector{
 		ThetaMin: cfg.FPC.ThetaMin,
 		ThetaMax: cfg.FPC.ThetaMax,
 		Rand:     hooks.Rand,
 	}
-	
+
 	// Create confidence counter
 	conf := focus.New(cfg.Beta)
 
@@ -91,12 +92,12 @@ func New[V comparable](cfg config.Parameters, hooks Hooks[V]) (*Engine[V], error
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &Engine[V]{
-		cfg:   cfg,
-		sel:   selector,
-		conf:  conf,
-		g:     g,
+		cfg:  cfg,
+		sel:  selector,
+		conf: conf,
+		g:    g,
 		// ord:   ord, // TODO: Add when orderer is created
 		proto: p,
 		fpc:   fpcEngine,
@@ -112,7 +113,7 @@ func (e *Engine[V]) Step(ctx context.Context) error {
 			_ = err
 		}
 	}
-	
+
 	return e.proto.Step(ctx)
 }
 
@@ -152,7 +153,7 @@ func (e *Engine[V]) GetFPCVotes(ctx context.Context, budget int) ([][]byte, erro
 	if e.fpc == nil {
 		return nil, nil
 	}
-	
+
 	votes := e.fpc.NextVotes(ctx, budget)
 	result := make([][]byte, len(votes))
 	for i, v := range votes {

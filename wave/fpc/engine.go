@@ -14,7 +14,7 @@ import (
 // TODO: Remove or implement when logging is needed
 // simpleLogger wraps log functions for Ringtail
 // type simpleLogger struct{}
-// 
+//
 // func (s *simpleLogger) Debug(msg string, args ...interface{}) {}
 // func (s *simpleLogger) Info(msg string, args ...interface{})  {}
 // func (s *simpleLogger) Warn(msg string, args ...interface{})  {}
@@ -22,10 +22,10 @@ import (
 
 // Implementation of WaveFPC - the core FPC engine
 type waveFPC struct {
-	cfg      Config
-	cls      Classifier
-	dag      DAGTap
-	pq       PQEngine
+	cfg Config
+	cls Classifier
+	dag DAGTap
+	pq  PQEngine
 	// ringtail would go here if needed
 
 	epochPaused atomic.Bool
