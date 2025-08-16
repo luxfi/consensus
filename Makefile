@@ -49,17 +49,14 @@ test-coverage: ## Run tests with coverage report
 # Run benchmarks
 bench: ## Run performance benchmarks
 	@echo "Running benchmarks..."
-	@go test -bench=. -benchmem ./benchmark ./validator ./config ./protocol/... ./engine/... ./wavefpc
+	@go test -bench=. -benchmem ./benchmark ./validator ./config ./protocol/... ./engine/...
 
 # Run pure consensus benchmarks
 benchmark: ## Run pure algorithm benchmarks without networking
 	@echo "🚀 Running pure consensus benchmarks..."
-	@go test -bench=. -benchmem ./benchmark ./validator ./config ./protocol/... ./engine/... ./wavefpc
+	@go test -bench=. -benchmem ./benchmark ./validator ./config ./protocol/... ./engine/...
 
-# Run wavefpc benchmarks specifically
-benchmark-wavefpc: ## Run wavefpc (fast path certification) benchmarks
-	@echo "⚡ Running WaveFPC benchmarks..."
-	@go test -bench=. -benchmem -benchtime=10s ./wavefpc
+# Wave FPC benchmarks are now in protocol/wave
 
 # Build zmq-bench tool
 zmq-bench: ## Build the ZMQ benchmark tool

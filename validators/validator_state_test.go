@@ -16,7 +16,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/luxfi/consensus/networking/grpc/grpcutils"
-	"github.com/luxfi/consensus/validator"
+	"github.com/luxfi/consensus/validators"
 	"github.com/luxfi/consensus/validator/gvalidators"
 	"github.com/luxfi/consensus/validator/validatorsmock"
 	"github.com/luxfi/crypto/bls"

@@ -1,7 +1,7 @@
 // Copyright (C) 2020-2025, Lux Indutries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package validator
+package validators
 
 import (
 	"encoding/hex"
