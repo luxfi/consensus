@@ -54,16 +54,16 @@ type VM interface {
 	CreateHandlers(ctx context.Context) (map[string]http.Handler, error)
 }
 
-// Engine is a consensus engine
-type Engine interface {
+// SimpleEngine is a basic consensus engine (use Engine from common.go for full interface)
+type SimpleEngine interface {
 	// Start the engine
 	Start(ctx context.Context) error
 	// Stop the engine
 	Stop() error
 }
 
-// TraceEngine wraps an engine with tracing
-func TraceEngine(engine Engine, tracer trace.Tracer) Engine {
+// TraceSimpleEngine wraps a simple engine with tracing
+func TraceSimpleEngine(engine SimpleEngine, tracer trace.Tracer) SimpleEngine {
 	return engine
 }
 
@@ -74,7 +74,7 @@ type Halter interface {
 
 // BootstrapableEngine is an engine that can be bootstrapped
 type BootstrapableEngine interface {
-	Engine
+	SimpleEngine
 	// Bootstrap the engine
 	Bootstrap(ctx context.Context) error
 }
