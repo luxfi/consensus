@@ -13,19 +13,37 @@ import (
 // Context is a type alias for standard context - use this for cleaner call sites
 type Context = context.Context
 
+// Logger interface for consensus logging
+type Logger interface {
+	Debug(msg string, args ...interface{})
+	Info(msg string, args ...interface{})
+	Warn(msg string, args ...interface{})
+	Error(msg string, args ...interface{})
+}
+
+// NoOpLogger is a logger that discards all messages
+type NoOpLogger struct{}
+
+func (NoOpLogger) Debug(string, ...interface{}) {}
+func (NoOpLogger) Info(string, ...interface{})  {}
+func (NoOpLogger) Warn(string, ...interface{})  {}
+func (NoOpLogger) Error(string, ...interface{}) {}
+
 // IDs contains small immutable identity info carried in context
 type IDs struct {
-	NetworkID uint32
-	SubnetID  ids.ID
-	ChainID   ids.ID
-	NodeID    ids.NodeID
-	PublicKey *bls.PublicKey
+	NetworkID   uint32
+	SubnetID    ids.ID
+	ChainID     ids.ID
+	NodeID      ids.NodeID
+	PublicKey   *bls.PublicKey
+	LUXAssetID  ids.ID // The asset ID of the native LUX token
 }
 
 // Private typed keys to avoid collisions
 type (
 	idsKey  struct{}
 	peerKey struct{}
+	logKey  struct{}
 )
 
 // WithIDs sets the chain IDs in the context
@@ -95,10 +113,26 @@ func GetSubnetID(ctx context.Context) ids.ID {
 	return ids.Empty
 }
 
-// LuxAssetID returns the native LUX token asset ID
-func LuxAssetID(ctx context.Context) ids.ID {
-	// TODO: Add to IDs struct or get from config
+// GetLUXAssetID returns the native LUX token asset ID
+func GetLUXAssetID(ctx context.Context) ids.ID {
+	if ids, ok := ctx.Value(idsKey{}).(IDs); ok {
+		return ids.LUXAssetID
+	}
 	return ids.Empty
+}
+
+// LuxAssetID is an alias for GetLUXAssetID for backward compatibility
+func LuxAssetID(ctx context.Context) ids.ID {
+	return GetLUXAssetID(ctx)
+}
+
+// GetLogger extracts the logger from context
+func GetLogger(ctx context.Context) Logger {
+	if logger, ok := ctx.Value(logKey{}).(Logger); ok {
+		return logger
+	}
+	// Return a no-op logger if not found
+	return NoOpLogger{}
 }
 
 // validatorStateKey is the key for ValidatorState in context
