@@ -485,18 +485,14 @@ func TestAddCallback(t *testing.T) {
 		onAdd: func(subnetID ids.ID, nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
 			require.Contains([]ids.ID{expectedSubnetID0, expectedSubnetID1}, subnetID)
 			require.Equal(expectedNodeID, nodeID)
-			require.Equal(expectedPK, pk)
-			require.Equal(expectedTxID, txID)
 			require.Equal(expectedWeight, weight)
 			managerCallCount++
 		},
 	})
 	m.RegisterSetCallbackListener(expectedSubnetID0, &setCallbackListener{
 		t: t,
-		onAdd: func(nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
+		onAdd: func(nodeID ids.NodeID, weight uint64) {
 			require.Equal(expectedNodeID, nodeID)
-			require.Equal(expectedPK, pk)
-			require.Equal(expectedTxID, txID)
 			require.Equal(expectedWeight, weight)
 			setCallCount++
 		},
@@ -540,8 +536,6 @@ func TestAddWeightCallback(t *testing.T) {
 		onAdd: func(subnetID ids.ID, nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
 			require.Contains([]ids.ID{expectedSubnetID0, expectedSubnetID1}, subnetID)
 			require.Equal(expectedNodeID, nodeID)
-			require.Equal(expectedPK, pk)
-			require.Equal(expectedTxID, txID)
 			require.Equal(expectedOldWeight, weight)
 			managerAddCallCount++
 		},
@@ -555,10 +549,8 @@ func TestAddWeightCallback(t *testing.T) {
 	})
 	m.RegisterSetCallbackListener(expectedSubnetID0, &setCallbackListener{
 		t: t,
-		onAdd: func(nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
+		onAdd: func(nodeID ids.NodeID, weight uint64) {
 			require.Equal(expectedNodeID, nodeID)
-			require.Equal(expectedPK, pk)
-			require.Equal(expectedTxID, txID)
 			require.Equal(expectedOldWeight, weight)
 			setAddCallCount++
 		},
@@ -623,8 +615,6 @@ func TestRemoveWeightCallback(t *testing.T) {
 		onAdd: func(subnetID ids.ID, nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
 			require.Contains([]ids.ID{expectedSubnetID0, expectedSubnetID1}, subnetID)
 			require.Equal(expectedNodeID, nodeID)
-			require.Equal(expectedPK, pk)
-			require.Equal(expectedTxID, txID)
 			require.Equal(expectedOldWeight, weight)
 			managerAddCallCount++
 		},
@@ -638,10 +628,8 @@ func TestRemoveWeightCallback(t *testing.T) {
 	})
 	m.RegisterSetCallbackListener(expectedSubnetID0, &setCallbackListener{
 		t: t,
-		onAdd: func(nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
+		onAdd: func(nodeID ids.NodeID, weight uint64) {
 			require.Equal(expectedNodeID, nodeID)
-			require.Equal(expectedPK, pk)
-			require.Equal(expectedTxID, txID)
 			require.Equal(expectedOldWeight, weight)
 			setAddCallCount++
 		},
@@ -704,8 +692,6 @@ func TestRemoveCallback(t *testing.T) {
 		onAdd: func(subnetID ids.ID, nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
 			require.Contains([]ids.ID{expectedSubnetID0, expectedSubnetID1}, subnetID)
 			require.Equal(expectedNodeID, nodeID)
-			require.Equal(expectedPK, pk)
-			require.Equal(expectedTxID, txID)
 			require.Equal(expectedWeight, weight)
 			managerAddCallCount++
 		},
@@ -718,10 +704,8 @@ func TestRemoveCallback(t *testing.T) {
 	})
 	m.RegisterSetCallbackListener(expectedSubnetID0, &setCallbackListener{
 		t: t,
-		onAdd: func(nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) {
+		onAdd: func(nodeID ids.NodeID, weight uint64) {
 			require.Equal(expectedNodeID, nodeID)
-			require.Equal(expectedPK, pk)
-			require.Equal(expectedTxID, txID)
 			require.Equal(expectedWeight, weight)
 			setAddCallCount++
 		},
