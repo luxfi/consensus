@@ -405,26 +405,23 @@ func BenchmarkConsensusScalability(b *testing.B) {
 						ticker := time.NewTicker(10 * time.Millisecond)
 						defer ticker.Stop()
 
-						for {
-							select {
-							case <-ticker.C:
-								// Check if all validators reached consensus
-								allAgreed := true
-								var pref ids.ID
-								for i, v := range ns.validators {
-									p := v.consensus.Preference()
-									if i == 0 {
-										pref = p
-									} else if p != pref {
-										allAgreed = false
-										break
-									}
+						for range ticker.C {
+							// Check if all validators reached consensus
+							allAgreed := true
+							var pref ids.ID
+							for i, v := range ns.validators {
+								p := v.consensus.Preference()
+								if i == 0 {
+									pref = p
+								} else if p != pref {
+									allAgreed = false
+									break
 								}
+							}
 
-								if allAgreed && !pref.IsZero() {
-									consensusReached <- true
-									return
-								}
+							if allAgreed && !pref.IsZero() {
+								consensusReached <- true
+								return
 							}
 						}
 					}()
