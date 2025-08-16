@@ -51,7 +51,9 @@ func main() {
 	if *seed == 0 {
 		*seed = time.Now().UnixNano()
 	}
-	rand.Seed(*seed)
+	// Use a local random generator instead of global rand.Seed (deprecated in Go 1.20)
+	rng := rand.New(rand.NewSource(*seed))
+	_ = rng // Will be used for random operations
 	logger.Info("Starting consensus simulator", "seed", *seed)
 
 	// Load configuration
