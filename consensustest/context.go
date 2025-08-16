@@ -4,7 +4,6 @@
 package consensustest
 
 import (
-	"context"
 	"testing"
 
 	"github.com/luxfi/consensus"
@@ -21,13 +20,15 @@ var (
 )
 
 // Context creates a test context with chain IDs
-func Context(t testing.TB, chainID ids.ID) context.Context {
-	ctx := context.Background()
-	return consensus.WithIDs(ctx, consensus.IDs{
-		NetworkID: 10001,
-		SubnetID:  ids.GenerateTestID(),
-		ChainID:   chainID,
-		NodeID:    ids.GenerateTestNodeID(),
-		PublicKey: &bls.PublicKey{},
-	})
+func Context(t testing.TB, chainID ids.ID) *consensus.Context {
+	return &consensus.Context{
+		NetworkID:  10001,
+		SubnetID:   ids.GenerateTestID(),
+		ChainID:    chainID,
+		NodeID:     ids.GenerateTestNodeID(),
+		PublicKey:  &bls.PublicKey{},
+		XAssetID:   LUXAssetID,
+		LUXAssetID: LUXAssetID,
+		Log:        consensus.NoOpLogger{},
+	}
 }
