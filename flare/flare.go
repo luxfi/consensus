@@ -13,7 +13,7 @@ import (
 	"github.com/luxfi/consensus/horizon"
 	"github.com/luxfi/consensus/prism"
 	"github.com/luxfi/consensus/types"
-	"github.com/luxfi/consensus/wave"
+	"github.com/luxfi/consensus/protocol/wave"
 )
 
 // Orderer returns vertices to deliver next in a stable topological slice
