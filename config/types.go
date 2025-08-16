@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	
+	"github.com/luxfi/consensus/sampling"
 )
 
 // Parameters represents consensus parameters
@@ -124,6 +126,20 @@ func (p Parameters) Validate() error {
 		return fmt.Errorf("maxItemProcessingTime = %v: fails the condition that: 0 < maxItemProcessingTime", p.MaxItemProcessingTime)
 	}
 	return nil
+}
+
+// ToSamplingParameters converts config.Parameters to sampling.Parameters
+func (p Parameters) ToSamplingParameters() sampling.Parameters {
+	return sampling.Parameters{
+		K:                     p.K,
+		AlphaPreference:       p.AlphaPreference,
+		AlphaConfidence:       p.AlphaConfidence,
+		Beta:                  int(p.Beta),
+		ConcurrentRepolls:     p.ConcurrentPolls,
+		OptimalProcessing:     p.OptimalProcessing,
+		MaxOutstandingItems:   p.MaxOutstandingItems,
+		MaxItemProcessingTime: p.MaxItemProcessingTime,
+	}
 }
 
 // ErrParametersInvalid is returned when parameters are invalid
