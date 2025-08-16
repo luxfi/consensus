@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/engine/core/tracker"
+	"github.com/luxfi/consensus/core/tracker"
 	"github.com/luxfi/consensus/engine/dag/getter"
 	"github.com/luxfi/consensus/engine/dag/vertex"
 	"github.com/luxfi/consensus/networking/sender"

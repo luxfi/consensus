@@ -8,16 +8,16 @@ import (
 	"github.com/luxfi/trace"
 )
 
-// Message types for engine communication
-type Message int
+// MessageType represents types for engine communication
+type MessageType int
 
 const (
-	PendingTxs Message = iota
+	PendingTxs MessageType = iota
 	StateSyncDone
 )
 
 // String implements fmt.Stringer
-func (m Message) String() string {
+func (m MessageType) String() string {
 	switch m {
 	case PendingTxs:
 		return "PendingTxs"

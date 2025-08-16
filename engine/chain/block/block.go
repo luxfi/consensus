@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/luxfi/consensus/chain"
+	"github.com/luxfi/consensus/protocol/chain"
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/database"
 	"github.com/luxfi/ids"
