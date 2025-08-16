@@ -10,35 +10,6 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// Context provides all the context needed for consensus operations
-type Context struct {
-	// Network configuration
-	NetworkID       uint32
-	SubnetID        ids.ID
-	ChainID         ids.ID
-	NodeID          ids.NodeID
-	PublicKey       *bls.PublicKey
-	
-	// Chain-specific IDs
-	XChainID        ids.ID
-	CChainID        ids.ID
-	DChainID        ids.ID
-	XAssetID        ids.ID
-	LUXAssetID      ids.ID
-	
-	// Logging
-	Log             Logger
-	
-	// Blockchain configuration
-	ChainDataDir    string
-	
-	// Services
-	SharedMemory    interface{}
-	BCLookup        interface{}
-	ValidatorState  ValidatorState
-	WarpSigner      interface{}
-}
-
 // contextKey is the type for consensus context keys
 type contextKey int
 
@@ -49,7 +20,36 @@ const (
 	validatorStateKey
 	nodeIDKey
 	idsKey
+	loggerKey
+	sharedMemoryKey
+	bcLookupKey
+	warpSignerKey
+	chainDataDirKey
 )
+
+// ValidatorState provides validator information
+type ValidatorState interface {
+	GetCurrentHeight() (uint64, error)
+	GetMinimumHeight(ctx context.Context) (uint64, error)
+	GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error)
+	GetSubnetID(chainID ids.ID) (ids.ID, error)
+}
+
+// Logger interface for consensus logging
+type Logger interface {
+	Debug(msg string, args ...interface{})
+	Info(msg string, args ...interface{})
+	Warn(msg string, args ...interface{})
+	Error(msg string, args ...interface{})
+}
+
+// NoOpLogger is a logger that discards all messages
+type NoOpLogger struct{}
+
+func (NoOpLogger) Debug(string, ...interface{}) {}
+func (NoOpLogger) Info(string, ...interface{})  {}
+func (NoOpLogger) Warn(string, ...interface{})  {}
+func (NoOpLogger) Error(string, ...interface{}) {}
 
 // GetChainID retrieves the chain ID from context
 func GetChainID(ctx context.Context) ids.ID {
@@ -145,22 +145,6 @@ func WithIDs(ctx context.Context, ids IDs) context.Context {
 	return context.WithValue(ctx, idsKey, ids)
 }
 
-// Logger interface for consensus logging
-type Logger interface {
-	Debug(msg string, args ...interface{})
-	Info(msg string, args ...interface{})
-	Warn(msg string, args ...interface{})
-	Error(msg string, args ...interface{})
-}
-
-// NoOpLogger is a logger that discards all messages
-type NoOpLogger struct{}
-
-func (NoOpLogger) Debug(string, ...interface{}) {}
-func (NoOpLogger) Info(string, ...interface{})  {}
-func (NoOpLogger) Warn(string, ...interface{})  {}
-func (NoOpLogger) Error(string, ...interface{}) {}
-
 // LuxAssetID retrieves the LUX asset ID from context
 func LuxAssetID(ctx context.Context) ids.ID {
 	if v := ctx.Value(idsKey); v != nil {
@@ -206,20 +190,34 @@ func MustIDs(ctx context.Context) IDs {
 	panic("consensus: IDs not found in context")
 }
 
-// GetLUXAssetID retrieves the LUX asset ID from context  
+// GetXAssetID retrieves the X-chain asset ID from context
+func GetXAssetID(ctx context.Context) ids.ID {
+	if v := ctx.Value(idsKey); v != nil {
+		if ctxIDs, ok := v.(IDs); ok {
+			return ctxIDs.XAssetID
+		}
+	}
+	return ids.Empty
+}
+
+// GetLUXAssetID retrieves the LUX asset ID from context (for backward compatibility)
 func GetLUXAssetID(ctx context.Context) ids.ID {
-	return LuxAssetID(ctx)
+	// For backward compatibility, return XAssetID since most code expects the X-chain asset ID
+	return GetXAssetID(ctx)
 }
 
 // GetLogger retrieves the logger from context
 func GetLogger(ctx context.Context) Logger {
-	if v := ctx.Value(idsKey); v != nil {
-		if ctxIDs, ok := v.(Context); ok {
-			if ctxIDs.Log != nil {
-				return ctxIDs.Log
-			}
+	if v := ctx.Value(loggerKey); v != nil {
+		if logger, ok := v.(Logger); ok {
+			return logger
 		}
 	}
 	// Return a no-op logger if not found
 	return NoOpLogger{}
+}
+
+// WithLogger adds a logger to the context
+func WithLogger(ctx context.Context, logger Logger) context.Context {
+	return context.WithValue(ctx, loggerKey, logger)
 }

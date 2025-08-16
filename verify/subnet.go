@@ -4,6 +4,7 @@
 package verify
 
 import (
+	"context"
 	"errors"
 
 	"github.com/luxfi/consensus"
@@ -21,9 +22,9 @@ type Verifier struct {
 }
 
 // SameSubnet verifies that a peer chain is in the same subnet
-func (v Verifier) SameSubnet(ctx *consensus.Context, peer ids.ID) error {
-	localChain := ctx.ChainID
-	localSubnet := ctx.SubnetID
+func (v Verifier) SameSubnet(ctx context.Context, peer ids.ID) error {
+	localChain := consensus.GetChainID(ctx)
+	localSubnet := consensus.GetSubnetID(ctx)
 
 	if peer == localChain {
 		return ErrSameChainID
