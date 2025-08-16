@@ -50,7 +50,7 @@ var LocalParameters = Parameters{
 	ConcurrentPolls:       2,
 	OptimalProcessing:     3,
 	MaxOutstandingItems:   50,
-	MaxItemProcessingTime: 3690 * time.Millisecond,
+	MaxItemProcessingTime: 369 * time.Millisecond, // 0.369s for local consensus
 	MinRoundInterval:      10 * time.Millisecond,
 	FPC:                   DefaultFPC(), // FPC enabled for local dev
 	Quasar:                QuasarConfig{Enable: false, Precompute: 0, Threshold: 0},
@@ -66,7 +66,7 @@ var TestnetParameters = Parameters{
 	ConcurrentPolls:       4,
 	OptimalProcessing:     5,
 	MaxOutstandingItems:   100,
-	MaxItemProcessingTime: 6300 * time.Millisecond,
+	MaxItemProcessingTime: 630 * time.Millisecond, // 0.63s for testnet consensus
 	MinRoundInterval:      50 * time.Millisecond,
 	FPC:                   DefaultFPC(), // FPC enabled by default
 	Quasar:                QuasarConfig{Enable: false, Precompute: 0, Threshold: 0},
@@ -82,7 +82,7 @@ var MainnetParameters = Parameters{
 	ConcurrentPolls:       8,
 	OptimalProcessing:     10,
 	MaxOutstandingItems:   369,
-	MaxItemProcessingTime: 9630 * time.Millisecond,
+	MaxItemProcessingTime: 963 * time.Millisecond, // 0.963s for mainnet consensus
 	MinRoundInterval:      100 * time.Millisecond,
 	FPC:                   DefaultFPC(), // FPC enabled by default
 	Quasar:                QuasarConfig{Enable: true, Precompute: 2, Threshold: 15},
@@ -125,7 +125,7 @@ func MainnetParams() Parameters {
 		ConcurrentPolls:       8,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   369,
-		MaxItemProcessingTime: 9630 * time.Millisecond,
+		MaxItemProcessingTime: 963 * time.Millisecond, // 0.963s for mainnet consensus
 		MinRoundInterval:      100 * time.Millisecond,
 		FPC:                   DefaultFPC(),
 		Quasar:                QuasarConfig{Enable: true, Precompute: 2, Threshold: 15},

@@ -17,6 +17,19 @@ var (
 	ErrInvalidConcurrentRepolls   = errors.New("invalid concurrent repolls")
 	ErrInvalidOptimalProcessing   = errors.New("invalid optimal processing")
 	ErrInvalidMaxOutstandingItems = errors.New("invalid max outstanding items")
+	
+	// DefaultParameters provides default consensus parameters
+	// DEPRECATED: Use config.MainnetParameters, config.TestnetParameters, or config.LocalParameters instead
+	DefaultParameters = Parameters{
+		K:                     21,  // Updated to match mainnet
+		AlphaPreference:       13,  // Updated to match mainnet
+		AlphaConfidence:       18,  // Updated to match mainnet
+		Beta:                  8,   // Updated to match mainnet
+		ConcurrentRepolls:     8,   // Updated to match mainnet
+		OptimalProcessing:     10,  // Updated to match mainnet
+		MaxOutstandingItems:   369, // Updated to match mainnet
+		MaxItemProcessingTime: 963 * time.Millisecond, // 0.963s for mainnet consensus
+	}
 )
 
 // Parameters defines the consensus parameters for sampling
@@ -72,18 +85,10 @@ func (p Parameters) Verify() error {
 	return nil
 }
 
-// DefaultParameters returns default consensus parameters
-func DefaultParameters() Parameters {
-	return Parameters{
-		K:                     20,
-		AlphaPreference:       15,
-		AlphaConfidence:       15,
-		Beta:                  20,
-		ConcurrentRepolls:     4,
-		OptimalProcessing:     10,
-		MaxOutstandingItems:   1024,
-		MaxItemProcessingTime: 2 * time.Minute,
-	}
+// DefaultParametersFunc returns default consensus parameters
+// DEPRECATED: Use DefaultParameters variable or config.MainnetParameters instead
+func DefaultParametersFunc() Parameters {
+	return DefaultParameters
 }
 
 // MinPercentConnectedHealthy returns the minimum percentage of validators
