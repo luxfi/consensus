@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 	
-	"github.com/luxfi/consensus/sampling"
+	"github.com/luxfi/consensus/prism"
 )
 
 // Parameters represents consensus parameters
@@ -128,9 +128,9 @@ func (p Parameters) Validate() error {
 	return nil
 }
 
-// ToSamplingParameters converts config.Parameters to sampling.Parameters
-func (p Parameters) ToSamplingParameters() sampling.Parameters {
-	return sampling.Parameters{
+// ToPrismParameters converts config.Parameters to prism.Parameters
+func (p Parameters) ToPrismParameters() prism.Parameters {
+	return prism.Parameters{
 		K:                     p.K,
 		AlphaPreference:       p.AlphaPreference,
 		AlphaConfidence:       p.AlphaConfidence,
