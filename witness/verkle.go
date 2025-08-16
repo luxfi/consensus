@@ -126,8 +126,7 @@ func (c *LRUCache) Get(id []byte) ([]byte, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	key := string(id)
-	item, exists := c.items[key]
+	item, exists := c.items[string(id)]
 	if !exists {
 		return nil, false
 	}
