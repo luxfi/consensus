@@ -36,7 +36,8 @@ type IDs struct {
 	ChainID     ids.ID
 	NodeID      ids.NodeID
 	PublicKey   *bls.PublicKey
-	LUXAssetID  ids.ID // The asset ID of the native LUX token
+	XAssetID    ids.ID // The asset ID of LUX on the X-chain
+	LUXAssetID  ids.ID // The native LUX token asset ID
 }
 
 // Private typed keys to avoid collisions
@@ -113,9 +114,22 @@ func GetSubnetID(ctx context.Context) ids.ID {
 	return ids.Empty
 }
 
-// GetLUXAssetID returns the native LUX token asset ID
+// GetXAssetID returns the LUX asset ID on the X-chain
+func GetXAssetID(ctx context.Context) ids.ID {
+	if ids, ok := ctx.Value(idsKey{}).(IDs); ok {
+		return ids.XAssetID
+	}
+	return ids.Empty
+}
+
+// GetLUXAssetID returns the LUX asset ID (for backward compatibility, returns X-chain asset ID)
 func GetLUXAssetID(ctx context.Context) ids.ID {
 	if ids, ok := ctx.Value(idsKey{}).(IDs); ok {
+		// For backward compatibility, return XAssetID when LUXAssetID is requested
+		// since most code expects the X-chain asset ID
+		if ids.XAssetID != (ids.ID{}) {
+			return ids.XAssetID
+		}
 		return ids.LUXAssetID
 	}
 	return ids.Empty
