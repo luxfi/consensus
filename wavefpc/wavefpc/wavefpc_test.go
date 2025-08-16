@@ -7,7 +7,6 @@ import (
 
 type mockCommittee struct {
 	n      int
-	me     ValidatorIndex
 	id2idx map[string]ValidatorIndex
 }
 
