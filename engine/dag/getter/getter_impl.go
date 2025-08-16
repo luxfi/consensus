@@ -11,9 +11,7 @@ import (
 	"github.com/luxfi/ids"
 )
 
-var (
-	ErrNotFound = errors.New("not found")
-)
+var ErrNotFound = errors.New("not found")
 
 // Getter fetches vertices for avalanche consensus
 type Getter interface {

@@ -10,10 +10,8 @@ import (
 	"github.com/luxfi/metrics"
 )
 
-var (
-	// ErrMetricNotFound is returned when a metric is not found
-	ErrMetricNotFound = errors.New("metric not found")
-)
+// ErrMetricNotFound is returned when a metric is not found
+var ErrMetricNotFound = errors.New("metric not found")
 
 // Averager tracks a running average
 type Averager interface {

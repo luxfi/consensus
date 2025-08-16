@@ -140,7 +140,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
 			os.Exit(1)
 		}
-		if err := os.WriteFile(*output, data, 0644); err != nil {
+		if err := os.WriteFile(*output, data, 0o644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
 			os.Exit(1)
 		}

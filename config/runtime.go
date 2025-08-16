@@ -124,7 +124,7 @@ func SaveRuntimeToFile(path string) error {
 		return fmt.Errorf("failed to marshal runtime config: %w", err)
 	}
 
-	if err := os.WriteFile(path, jsonData, 0644); err != nil {
+	if err := os.WriteFile(path, jsonData, 0o644); err != nil {
 		return fmt.Errorf("failed to write runtime config file: %w", err)
 	}
 

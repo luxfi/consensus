@@ -420,7 +420,7 @@ func finalizeTuning(scanner *bufio.Scanner, p *config.Parameters) error {
 	if promptBool(scanner, "\nSave these parameters?", true) {
 		filename := promptString(scanner, "Output filename", "tuned-config.json")
 		data, _ := ToJSON(p)
-		if err := os.WriteFile(filename, data, 0644); err != nil {
+		if err := os.WriteFile(filename, data, 0o644); err != nil {
 			return fmt.Errorf("failed to write file: %w", err)
 		}
 		fmt.Printf("✅ Parameters saved to %s\n", filename)
@@ -429,7 +429,7 @@ func finalizeTuning(scanner *bufio.Scanner, p *config.Parameters) error {
 		reportFile := strings.TrimSuffix(filename, ".json") + "-report.txt"
 		report := RunChecker(p, p.K, 50)
 		reportContent := FormatCheckerReport(report, p.K)
-		if err := os.WriteFile(reportFile, []byte(reportContent), 0644); err != nil {
+		if err := os.WriteFile(reportFile, []byte(reportContent), 0o644); err != nil {
 			fmt.Printf("⚠️  Failed to save report: %v\n", err)
 		} else {
 			fmt.Printf("📄 Detailed report saved to %s\n", reportFile)

@@ -23,8 +23,10 @@ type IDs struct {
 }
 
 // Private typed keys to avoid collisions
-type idsKey struct{}
-type peerKey struct{}
+type (
+	idsKey  struct{}
+	peerKey struct{}
+)
 
 // WithIDs sets the chain IDs in the context
 func WithIDs(ctx context.Context, v IDs) context.Context {
