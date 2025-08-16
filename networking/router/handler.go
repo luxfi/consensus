@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/luxfi/consensus/engine/core"
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/version"
 )
