@@ -8,12 +8,14 @@ import (
 	"context"
 	"sync"
 
+	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/focus"
 	"github.com/luxfi/consensus/horizon"
 	"github.com/luxfi/consensus/prism"
 	"github.com/luxfi/consensus/types"
 	"github.com/luxfi/consensus/protocol/wave"
+	"github.com/luxfi/consensus/utils/bag"
 )
 
 // Orderer returns vertices to deliver next in a stable topological slice
@@ -84,12 +86,17 @@ func (e *Engine) Schedule(ctx context.Context, frontier []types.VertexID) ([]typ
 		}
 
 		// Run consensus on this vertex
-		result, err := e.round.Poll(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		if result.Success {
+		voteBag := bag.Of[ids.ID]()
+		// Simulate a poll - in real implementation this would query validators
+		voteBag.Add(ids.ID(v))
+		
+		// Add the choice if not already added
+		e.wave.Add(ids.ID(v))
+		
+		// Record the votes
+		e.wave.RecordVotes(voteBag)
+		
+		if e.wave.Finalized() {
 			// Update confidence counter
 			e.counter.Tick(true)
 
