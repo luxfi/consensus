@@ -328,11 +328,9 @@ func (w *waveFPC) registerEpochBitAuthor(author ids.NodeID) {
 	w.epochBitAuthors[author] = true
 
 	// Check if we have enough authors for epoch close
-	if len(w.epochBitAuthors) >= 2*w.cfg.F+1 {
-		// Epoch can close
-		// TODO: Trigger epoch close completion
-		// Note: Don't clear authors here; that should happen in OnEpochClosed
-	}
+	// When len(w.epochBitAuthors) >= 2*w.cfg.F+1, epoch can close
+	// TODO: Trigger epoch close completion when quorum is reached
+	// Note: Don't clear authors here; that should happen in OnEpochClosed
 }
 
 func (w *waveFPC) addConflict(obj ObjectID, tx TxRef) {
