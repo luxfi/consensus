@@ -267,39 +267,39 @@ func NewManager(config *Config) *Manager {
 }
 
 // Start begins the bootstrap process
-func (m *Manager) Start(ctx context.Context) error {
+func (m *Manager) Start(_ context.Context) error {
 	m.state = StateFetching
 	return nil
 }
 
 // Connected handles a peer connection
-func (m *Manager) Connected(ctx context.Context, nodeID ids.NodeID) error {
+func (m *Manager) Connected(_ context.Context, nodeID ids.NodeID) error {
 	return nil
 }
 
 // Disconnected handles a peer disconnection
-func (m *Manager) Disconnected(ctx context.Context, nodeID ids.NodeID) error {
+func (m *Manager) Disconnected(_ context.Context, nodeID ids.NodeID) error {
 	return nil
 }
 
 // Timeout handles request timeouts
-func (m *Manager) Timeout(ctx context.Context) error {
+func (m *Manager) Timeout(_ context.Context) error {
 	return nil
 }
 
 // Put handles put responses
-func (m *Manager) Put(ctx context.Context, nodeID ids.NodeID, requestID uint32, container []byte) error {
+func (m *Manager) Put(ctx context.Context, _ ids.NodeID, requestID uint32, container []byte) error {
 	m.stats.NumFetched++
 	return m.executor.Execute(ctx, container)
 }
 
 // GetFailed handles failed get requests
-func (m *Manager) GetFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32) error {
+func (m *Manager) GetFailed(_ context.Context, nodeID ids.NodeID, requestID uint32) error {
 	return nil
 }
 
 // HealthCheck returns the health status
-func (m *Manager) HealthCheck(ctx context.Context) (interface{}, error) {
+func (m *Manager) HealthCheck(_ context.Context) (interface{}, error) {
 	return m.stats.String(), nil
 }
 

@@ -6,11 +6,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 	"time"
-
-	"log/slog"
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/protocol/prism"

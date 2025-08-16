@@ -51,7 +51,6 @@ type waveFPC struct {
 
 // New creates a new WaveFPC instance
 func New(cfg Config, cls Classifier, dag DAGTap, pq PQEngine, myNodeID ids.NodeID, validators []ids.NodeID) WaveFPC {
-
 	return &waveFPC{
 		cfg:             cfg,
 		cls:             cls,

@@ -121,7 +121,7 @@ func New(ctx *interfaces.Runtime, params Parameters) (*Engine, error) {
 }
 
 // Start begins the Galaxy engine
-func (r *Engine) Start(ctx context.Context) error {
+func (r *Engine) Start(_ context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -139,7 +139,7 @@ func (r *Engine) Start(ctx context.Context) error {
 }
 
 // Stop halts the Galaxy engine
-func (r *Engine) Stop(ctx context.Context) error {
+func (r *Engine) Stop(_ context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -232,7 +232,7 @@ func (r *Engine) validateVertex(vertex Vertex) error {
 }
 
 // processPhoton handles quantum sampling stage
-func (r *Engine) processPhoton(ctx context.Context, vertex Vertex) error {
+func (r *Engine) processPhoton(_ context.Context, vertex Vertex) error {
 	// TODO: Implement when photon protocol is available
 	// For monadic, we just record the count of votes
 	// In a real implementation, this would come from network prism sampling
@@ -242,7 +242,7 @@ func (r *Engine) processPhoton(ctx context.Context, vertex Vertex) error {
 }
 
 // processWave handles propagation stage
-func (r *Engine) processWave(ctx context.Context, vertex Vertex) error {
+func (r *Engine) processWave(_ context.Context, vertex Vertex) error {
 	// TODO: Implement when wave protocol is available
 	// For monadic, we just record the count of votes
 	// voteCount := r.params.AlphaPreference // Simulate successful poll
@@ -251,7 +251,7 @@ func (r *Engine) processWave(ctx context.Context, vertex Vertex) error {
 }
 
 // processFocus handles confidence aggregation
-func (r *Engine) processFocus(ctx context.Context, vertex Vertex) error {
+func (r *Engine) processFocus(_ context.Context, vertex Vertex) error {
 	// TODO: Implement when focus protocol is available
 	// For monadic, we just record the count of votes
 	// voteCount := r.params.AlphaPreference // Simulate successful poll
@@ -260,14 +260,14 @@ func (r *Engine) processFocus(ctx context.Context, vertex Vertex) error {
 }
 
 // processFlare handles rapid ordering
-func (r *Engine) processFlare(ctx context.Context, vertex Vertex) error {
+func (r *Engine) processFlare(_ context.Context, vertex Vertex) error {
 	// Flare stage determines vertex ordering within conflict sets
 	// TODO: Implement proper flare integration - vertex needs to implement flare.Tx
 	return nil
 }
 
 // processNova handles DAG finalization
-func (r *Engine) processNova(ctx context.Context, vertex Vertex) error {
+func (r *Engine) processNova(_ context.Context, vertex Vertex) error {
 	// TODO: Implement when nova protocol is available
 	// Nova stage finalizes the vertex in the DAG
 	// return r.novaStage.Finalize(ctx, vertex.ID())
@@ -358,8 +358,10 @@ type Counter struct{ count int64 }
 
 func (c *Counter) Inc() { c.count++ }
 
-type Histogram struct{}
-type Gauge struct{}
+type (
+	Histogram struct{}
+	Gauge     struct{ value float64 }
+)
 
 func NewMetrics() *Metrics {
 	return &Metrics{}

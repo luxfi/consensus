@@ -33,6 +33,7 @@ func (b *MockBlock) Verify() error {
 	}
 	return nil
 }
+
 func (b *MockBlock) Accept() error {
 	if b.AcceptF != nil {
 		return b.AcceptF()
@@ -40,6 +41,7 @@ func (b *MockBlock) Accept() error {
 	b.Status_ = choices.Accepted
 	return nil
 }
+
 func (b *MockBlock) Reject() error {
 	if b.RejectF != nil {
 		return b.RejectF()
