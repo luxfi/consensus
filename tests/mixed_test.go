@@ -166,7 +166,7 @@ func TestByzantineBehavior(t *testing.T) {
 
 	// Network should still reach consensus despite byzantine nodes
 	require.True(network.Finalized(), "Network failed to finalize after 100 rounds with %d running nodes", len(network.running))
-	
+
 	// Count preferences
 	redCount := 0
 	for _, node := range network.nodes {

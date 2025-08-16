@@ -33,10 +33,10 @@ func TestIntegrationPhotonConsensus(t *testing.T) {
 		NodeID:    ids.GenerateTestNodeID(),
 	}
 	factory := utils.NewFactory(ctx)
-	
+
 	// Create a network with 3 colors
 	network := NewTestNetwork(factory, params, 3, sampler.NewSource(42))
-	
+
 	// Add 15 nodes to the network
 	// For photon, each node tracks consensus on a single choice
 	// So we'll use pulse instead for multi-choice network testing
@@ -51,13 +51,13 @@ func TestIntegrationPhotonConsensus(t *testing.T) {
 			return node
 		})
 	}
-	
+
 	// Run consensus rounds
 	for round := 0; round < 50 && !network.Finalized(); round++ {
 		network.Round()
 		t.Logf("Round %d: %d running nodes", round+1, len(network.running))
 	}
-	
+
 	require.True(network.Finalized(), "Network failed to finalize after 50 rounds")
 	require.True(network.Agreement(), "Network failed to reach agreement")
 }
@@ -67,14 +67,14 @@ func TestIntegrationPrismConsensus(t *testing.T) {
 	require := require.New(t)
 
 	params := config.TestParameters
-	
+
 	// Create validators
 	validators := bag.Bag[ids.NodeID]{}
 	for i := 0; i < 5; i++ {
 		nodeID := ids.GenerateTestNodeID()
 		validators.AddCount(nodeID, 1)
 	}
-	
+
 	// Test prism compatibility interfaces
 	// Test BinarySampler
 	binarySampler := prism.NewBinarySampler(0)
@@ -82,36 +82,36 @@ func TestIntegrationPrismConsensus(t *testing.T) {
 	binarySampler.RecordSuccessfulPoll(1)
 	binarySampler.RecordSuccessfulPoll(0)
 	require.Equal(0, binarySampler.Preference())
-	
+
 	// Test UnarySampler
 	unarySampler := prism.NewUnarySampler()
 	unarySampler.RecordPoll()
 	require.True(unarySampler.Finalized())
-	
+
 	// Test NArySampler
 	narySampler := prism.NewNArySampler(3)
 	narySampler.RecordPoll(0)
 	narySampler.RecordPoll(1)
 	narySampler.RecordPoll(0)
 	require.Equal(0, narySampler.Preference())
-	
+
 	// Test Splitter (used to be Sampler)
 	splitter := prism.NewSplitter(nil)
 	sampled, err := splitter.Sample(validators.List(), 3)
 	require.NoError(err)
 	require.LessOrEqual(len(sampled), 3)
-	
+
 	// Test Cut (used to be Quorum)
 	cut := prism.NewCut(params.AlphaPreference, params.AlphaConfidence, int(params.Beta))
 	require.NotNil(cut)
-	
+
 	// Test Refractor
 	refractCfg := prism.RefractConfig{
 		EarlyTermination: true,
 	}
 	refractor := prism.NewRefractor(refractCfg)
 	require.NotNil(refractor)
-	
+
 	t.Logf("Prism compatibility interfaces tested successfully. Validators: %d", validators.Len())
 }
 
@@ -120,26 +120,26 @@ func TestIntegrationPulseConsensus(t *testing.T) {
 	require := require.New(t)
 
 	params := config.TestParameters
-	
+
 	// Create nodes
 	nodes := make([]*pulse.Pulse, 20)
 	for i := range nodes {
 		nodes[i] = pulse.NewPulse(params)
 	}
-	
+
 	// Add choices to each node
 	choices := []ids.ID{
 		ids.GenerateTestID(),
 		ids.GenerateTestID(),
 		ids.GenerateTestID(),
 	}
-	
+
 	for _, node := range nodes {
 		for _, choice := range choices {
 			require.NoError(node.Add(choice))
 		}
 	}
-	
+
 	// Simulate consensus rounds
 	maxRounds := 100
 	for round := 0; round < int(maxRounds); round++ {
@@ -158,12 +158,12 @@ func TestIntegrationPulseConsensus(t *testing.T) {
 				require.NoError(node.RecordVotes(votes))
 			}
 		}
-		
+
 		if allFinalized {
 			break
 		}
 	}
-	
+
 	// Verify all nodes finalized on the same choice
 	var finalChoice ids.ID
 	for i, node := range nodes {
@@ -176,31 +176,30 @@ func TestIntegrationPulseConsensus(t *testing.T) {
 	}
 }
 
-
 // TestIntegrationWaveConsensus tests wave consensus
 func TestIntegrationWaveConsensus(t *testing.T) {
 	require := require.New(t)
 
 	params := config.TestParameters
-	
+
 	// Create nodes
 	nodes := make([]*wave.Wave, 10)
 	for i := range nodes {
 		nodes[i] = wave.NewWave(params)
 	}
-	
+
 	// Add decisions
 	decisions := []ids.ID{
 		ids.GenerateTestID(),
 		ids.GenerateTestID(),
 	}
-	
+
 	for _, node := range nodes {
 		for _, decision := range decisions {
 			require.NoError(node.Add(decision))
 		}
 	}
-	
+
 	// Run wave consensus
 	for round := 0; round < 20; round++ {
 		allFinalized := true
@@ -216,12 +215,12 @@ func TestIntegrationWaveConsensus(t *testing.T) {
 				require.NoError(node.RecordVotes(votes))
 			}
 		}
-		
+
 		if allFinalized {
 			break
 		}
 	}
-	
+
 	// Verify wave convergence
 	for _, node := range nodes {
 		require.True(node.Finalized())
@@ -238,29 +237,29 @@ func TestIntegrationMixedProtocols(t *testing.T) {
 	photonNode := photon.NewPhoton(params)
 	pulseNode := pulse.NewPulse(params)
 	waveNode := wave.NewWave(params)
-	
+
 	// Common choices
 	choices := []ids.ID{
 		ids.GenerateTestID(),
 		ids.GenerateTestID(),
 	}
-	
+
 	// Photon only accepts one choice
 	require.NoError(photonNode.Add(choices[0]))
-	
+
 	// Pulse and wave accept multiple choices
 	for _, choice := range choices {
 		require.NoError(pulseNode.Add(choice))
 		require.NoError(waveNode.Add(choice))
 	}
-	
+
 	// Simulate voting with strong preference for choices[0]
 	votes := bag.Bag[ids.ID]{}
 	for i := 0; i < 3; i++ {
 		votes.Add(choices[0])
 	}
 	votes.Add(choices[1])
-	
+
 	// Run consensus rounds
 	for round := 0; round < 30; round++ {
 		if !photonNode.Finalized() {
@@ -272,17 +271,17 @@ func TestIntegrationMixedProtocols(t *testing.T) {
 		if !waveNode.Finalized() {
 			require.NoError(waveNode.RecordVotes(votes))
 		}
-		
+
 		if photonNode.Finalized() && pulseNode.Finalized() && waveNode.Finalized() {
 			break
 		}
 	}
-	
+
 	// All should agree on choices[0]
 	require.True(photonNode.Finalized())
 	require.True(pulseNode.Finalized())
 	require.True(waveNode.Finalized())
-	
+
 	require.Equal(choices[0], photonNode.Preference())
 	require.Equal(choices[0], pulseNode.Preference())
 	require.Equal(choices[0], waveNode.Preference())

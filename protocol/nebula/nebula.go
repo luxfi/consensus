@@ -13,9 +13,16 @@ import (
 type Config[V comparable] struct {
 	Graph      interface{ Parents(V) []V }
 	Tips       func() []V
-	Thresholds interface{ Alpha(k int, phase uint64) (int, int) }
-	Confidence interface{ Record(bool) bool; Reset() }
-	Orderer    interface{ Schedule(context.Context, []V) ([]V, error) }
+	Thresholds interface {
+		Alpha(k int, phase uint64) (int, int)
+	}
+	Confidence interface {
+		Record(bool) bool
+		Reset()
+	}
+	Orderer interface {
+		Schedule(context.Context, []V) ([]V, error)
+	}
 	// App/VM hooks
 	Propose func(context.Context) (V, error)
 	Apply   func(context.Context, []V) error
@@ -90,7 +97,7 @@ func (e *Engine[V]) Step(ctx context.Context) error {
 		// For now, simulate success
 		if e.cfg.Confidence.Record(true) {
 			e.finalized[v] = true
-			
+
 			// Apply finalized vertices
 			if e.cfg.Apply != nil {
 				if err := e.cfg.Apply(ctx, []V{v}); err != nil {
@@ -103,7 +110,7 @@ func (e *Engine[V]) Step(ctx context.Context) error {
 	// Update frontier
 	e.frontier = tips
 	e.phase++
-	
+
 	return nil
 }
 
@@ -111,7 +118,7 @@ func (e *Engine[V]) Step(ctx context.Context) error {
 func (e *Engine[V]) Finalized() []V {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	result := make([]V, 0, len(e.finalized))
 	for v := range e.finalized {
 		result = append(result, v)
@@ -123,7 +130,7 @@ func (e *Engine[V]) Finalized() []V {
 func (e *Engine[V]) Reset() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	e.phase = 0
 	e.finalized = make(map[V]bool)
 	e.pending = nil

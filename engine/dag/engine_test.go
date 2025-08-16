@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/ids"
+	"github.com/stretchr/testify/require"
 )
 
 // MockVertex implements the Vertex interface for testing
@@ -23,11 +23,11 @@ type MockVertex struct {
 	verified  bool
 }
 
-func (v *MockVertex) ID() ids.ID          { return v.id }
-func (v *MockVertex) Parents() []ids.ID   { return v.parents }
-func (v *MockVertex) Height() uint64      { return v.height }
+func (v *MockVertex) ID() ids.ID           { return v.id }
+func (v *MockVertex) Parents() []ids.ID    { return v.parents }
+func (v *MockVertex) Height() uint64       { return v.height }
 func (v *MockVertex) Timestamp() time.Time { return v.timestamp }
-func (v *MockVertex) Bytes() []byte       { return v.bytes }
+func (v *MockVertex) Bytes() []byte        { return v.bytes }
 func (v *MockVertex) Verify() error {
 	if !v.verified {
 		return nil
@@ -57,7 +57,7 @@ func TestNew(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "empty parameters",
+			name:    "empty parameters",
 			params:  Parameters{},
 			wantErr: false,
 		},

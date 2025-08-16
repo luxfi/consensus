@@ -9,7 +9,7 @@ type (
 	PublicKey struct {
 		key []byte //nolint:unused // Will be used when BLS is implemented
 	}
-	
+
 	// Aggregator represents a BLS signature aggregator
 	Aggregator struct {
 		sigs [][]byte //nolint:unused // Will be used when aggregation is implemented
@@ -18,12 +18,12 @@ type (
 
 // bls namespace for BLS operations
 var bls = struct {
-	PublicKey  func() *PublicKey
-	Aggregator func() *Aggregator
+	PublicKey     func() *PublicKey
+	Aggregator    func() *Aggregator
 	NewAggregator func() *Aggregator
 }{
-	PublicKey: func() *PublicKey { return &PublicKey{} },
-	Aggregator: func() *Aggregator { return &Aggregator{} },
+	PublicKey:     func() *PublicKey { return &PublicKey{} },
+	Aggregator:    func() *Aggregator { return &Aggregator{} },
 	NewAggregator: func() *Aggregator { return &Aggregator{} },
 }
 
@@ -59,12 +59,12 @@ func (a *Aggregator) VerifyAggregate(msg []byte, sig []byte, keys []*PublicKey) 
 
 // ringtail namespace for Ringtail operations
 var ringtail = struct {
-	PublicKey  func() *PublicKey
-	Aggregator func() *Aggregator
+	PublicKey     func() *PublicKey
+	Aggregator    func() *Aggregator
 	NewAggregator func() *Aggregator
 }{
-	PublicKey: func() *PublicKey { return &PublicKey{} },
-	Aggregator: func() *Aggregator { return &Aggregator{} },
+	PublicKey:     func() *PublicKey { return &PublicKey{} },
+	Aggregator:    func() *Aggregator { return &Aggregator{} },
 	NewAggregator: func() *Aggregator { return &Aggregator{} },
 }
 

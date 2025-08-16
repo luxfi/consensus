@@ -2,31 +2,32 @@ package bootstrap
 
 import (
 	"context"
+
 	"github.com/luxfi/consensus/core/interfaces"
-	"github.com/luxfi/consensus/engine/dag/vertex"
-	"github.com/luxfi/consensus/engine/dag/getter"
-	"github.com/luxfi/consensus/networking/sender"
 	"github.com/luxfi/consensus/engine/core/tracker"
+	"github.com/luxfi/consensus/engine/dag/getter"
+	"github.com/luxfi/consensus/engine/dag/vertex"
+	"github.com/luxfi/consensus/networking/sender"
 	"github.com/luxfi/trace"
 )
 
 // Config configures the bootstrapper
 type Config struct {
-	AllGetsServer       getter.Handler
-	Ctx                 *interfaces.Runtime
-	Beacons             interface{}
-	SampleK             int
-	StartupTracker      tracker.Startup
-	Sender              sender.Sender
-	PeerTracker         interface{}
-	BootstrapTracker    interface{}
-	Timer               interface{}
+	AllGetsServer                  getter.Handler
+	Ctx                            *interfaces.Runtime
+	Beacons                        interface{}
+	SampleK                        int
+	StartupTracker                 tracker.Startup
+	Sender                         sender.Sender
+	PeerTracker                    interface{}
+	BootstrapTracker               interface{}
+	Timer                          interface{}
 	AncestorsMaxContainersReceived int
-	VtxBlocked          interface{}
-	TxBlocked           interface{}
-	Manager             interface{}
-	VM                  vertex.LinearizableVMWithEngine
-	Haltable            interface{}
+	VtxBlocked                     interface{}
+	TxBlocked                      interface{}
+	Manager                        interface{}
+	VM                             vertex.LinearizableVMWithEngine
+	Haltable                       interface{}
 }
 
 // Bootstrapper performs bootstrap operations

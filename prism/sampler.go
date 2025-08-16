@@ -9,13 +9,13 @@ import "math/rand"
 type Sampler interface {
 	// Sample returns k random elements
 	Sample(k int) []interface{}
-	
+
 	// Add adds an element to the sampling pool
 	Add(element interface{})
-	
+
 	// Remove removes an element from the sampling pool
 	Remove(element interface{})
-	
+
 	// Size returns the current pool size
 	Size() int
 }
@@ -39,7 +39,7 @@ func (s *UniformSampler) Sample(k int) []interface{} {
 	if k > len(s.pool) {
 		k = len(s.pool)
 	}
-	
+
 	// Fisher-Yates shuffle for sampling
 	result := make([]interface{}, k)
 	perm := s.rng.Perm(len(s.pool))

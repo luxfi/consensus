@@ -22,18 +22,18 @@ type Cache interface {
 
 // DefaultPolicy implements a simple rate-limited admission policy
 type DefaultPolicy struct {
-	mu           sync.RWMutex
+	mu                sync.RWMutex
 	maxBytesPerHeight uint64
-	bytesUsed    map[uint64]uint64
-	windowSize   uint64
+	bytesUsed         map[uint64]uint64
+	windowSize        uint64
 }
 
 // NewDefaultPolicy creates a new default admission policy
 func NewDefaultPolicy(maxBytesPerHeight uint64, windowSize uint64) *DefaultPolicy {
 	return &DefaultPolicy{
 		maxBytesPerHeight: maxBytesPerHeight,
-		bytesUsed:        make(map[uint64]uint64),
-		windowSize:       windowSize,
+		bytesUsed:         make(map[uint64]uint64),
+		windowSize:        windowSize,
 	}
 }
 
@@ -73,10 +73,10 @@ type LRUCache struct {
 }
 
 type cacheItem struct {
-	key   string
-	value []byte
-	prev  *cacheItem
-	next  *cacheItem
+	key       string
+	value     []byte
+	prev      *cacheItem
+	next      *cacheItem
 	timestamp time.Time
 }
 
@@ -94,7 +94,7 @@ func (c *LRUCache) Put(id []byte, blob []byte) {
 	defer c.mu.Unlock()
 
 	key := string(id)
-	
+
 	// Check if item exists
 	if item, exists := c.items[key]; exists {
 		// Update value and move to front
@@ -186,7 +186,7 @@ func (c *LRUCache) evictOldest() {
 	}
 
 	delete(c.items, c.tail.key)
-	
+
 	if c.tail.prev != nil {
 		c.tail.prev.next = nil
 		c.tail = c.tail.prev

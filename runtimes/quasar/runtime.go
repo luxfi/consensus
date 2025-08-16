@@ -30,12 +30,12 @@ func New(ctx *interfaces.Runtime, params config.Parameters) (*Runtime, error) {
 		Mode:            quasar.HybridMode,
 		SecurityLevel:   quasar.SecurityMedium,
 	}
-	
+
 	engine, err := quasar.New(ctx, qParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create quasar engine: %w", err)
 	}
-	
+
 	return &Runtime{
 		engine: engine,
 		ctx:    ctx,
@@ -49,12 +49,12 @@ func (r *Runtime) Start(ctx context.Context) error {
 	if err := r.engine.Initialize(ctx); err != nil {
 		return fmt.Errorf("failed to initialize engine: %w", err)
 	}
-	
+
 	// Start engine
 	if err := r.engine.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start engine: %w", err)
 	}
-	
+
 	// Wait for context cancellation
 	<-ctx.Done()
 	return ctx.Err()

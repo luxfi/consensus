@@ -28,7 +28,7 @@ type Engine struct {
 	round   wave.Round
 	counter focus.Counter
 	cfg     config.Parameters
-	
+
 	// DAG state
 	vertices map[types.VertexID]*Vertex
 	ordered  []types.VertexID
@@ -92,7 +92,7 @@ func (e *Engine) Schedule(ctx context.Context, frontier []types.VertexID) ([]typ
 		if result.Success {
 			// Update confidence counter
 			e.counter.Tick(true)
-			
+
 			// Check if finalized
 			if e.counter.Finalized(e.cfg.Beta) {
 				scheduled = append(scheduled, v)
@@ -111,7 +111,7 @@ func (e *Engine) Schedule(ctx context.Context, frontier []types.VertexID) ([]typ
 func (e *Engine) AddVertex(v *Vertex) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	e.vertices[v.ID] = v
 	e.pending[v.ID] = struct{}{}
 }
@@ -120,7 +120,7 @@ func (e *Engine) AddVertex(v *Vertex) {
 func (e *Engine) GetOrdered() []types.VertexID {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	result := make([]types.VertexID, len(e.ordered))
 	copy(result, e.ordered)
 	return result
@@ -142,7 +142,7 @@ func (e *Engine) parentsOrdered(v types.VertexID) bool {
 	if !ok {
 		return false
 	}
-	
+
 	for _, parent := range vertex.Parents {
 		if !e.isOrdered(parent) {
 			return false

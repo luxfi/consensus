@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-
 // Local returns local development parameters
 func Local() Parameters {
 	return Parameters{
@@ -23,7 +22,6 @@ func Local() Parameters {
 		MaxOutstandingItems:   256,
 	}
 }
-
 
 // MinPercentConnectedHealthy computes the minimal percent of peers that must be
 // connected for the node to be considered healthy.

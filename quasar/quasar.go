@@ -89,7 +89,7 @@ func (e *Engine) Verify(ctx context.Context, bundle types.CertBundle) bool {
 	// TODO: Need to pass the original message data to verify
 	// For now, using placeholder
 	msg := []byte("placeholder")
-	
+
 	// Verify BLS aggregate
 	if !e.blsAgg.VerifyAggregate(msg, bundle.BLSAgg, e.getValidatorBLSKeys()) {
 		return false
@@ -107,7 +107,7 @@ func (e *Engine) Verify(ctx context.Context, bundle types.CertBundle) bool {
 func (e *Engine) AddValidator(id types.NodeID, blsKey *PublicKey, rtKey *PublicKey) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	e.validators[id] = &ValidatorKeys{
 		BLSPublicKey: blsKey,
 		RTPublicKey:  rtKey,
@@ -118,7 +118,7 @@ func (e *Engine) AddValidator(id types.NodeID, blsKey *PublicKey, rtKey *PublicK
 func (e *Engine) RemoveValidator(id types.NodeID) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	delete(e.validators, id)
 }
 
@@ -171,7 +171,7 @@ func (e *Engine) getValidatorRTKeys() []*PublicKey {
 func (e *Engine) GetThreshold() int {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	if e.cfg.Threshold > 0 {
 		return e.cfg.Threshold
 	}

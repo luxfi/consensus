@@ -7,8 +7,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/luxfi/consensus/choices"
 	"github.com/luxfi/consensus/chain"
+	"github.com/luxfi/consensus/choices"
 	"github.com/luxfi/ids"
 )
 

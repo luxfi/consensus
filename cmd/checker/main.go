@@ -10,8 +10,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/luxfi/consensus/config"
 	"log/slog"
+
+	"github.com/luxfi/consensus/config"
 )
 
 var logger = slog.Default().With("module", "checker")
