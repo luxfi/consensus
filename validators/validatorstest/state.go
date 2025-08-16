@@ -18,12 +18,14 @@ type State struct {
 	CantGetMinimumHeight,
 	CantGetCurrentHeight,
 	CantGetSubnetID,
-	CantGetValidatorSet bool
+	CantGetValidatorSet,
+	CantGetCurrentValidatorSet bool
 
 	GetMinimumHeightF func(context.Context) (uint64, error)
 	GetCurrentHeightF func(context.Context) (uint64, error)
 	GetSubnetIDF      func(context.Context, ids.ID) (ids.ID, error)
 	GetValidatorSetF  func(context.Context, uint64, ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error)
+	GetCurrentValidatorSetF func(context.Context, ids.ID) (map[ids.ID]*validators.GetCurrentValidatorOutput, uint64, error)
 }
 
 func (s *State) GetMinimumHeight(ctx context.Context) (uint64, error) {
@@ -64,4 +66,14 @@ func (s *State) GetValidatorSet(ctx context.Context, height uint64, subnetID ids
 		s.T.Fatal("unexpected GetValidatorSet")
 	}
 	return nil, nil
+}
+
+func (s *State) GetCurrentValidatorSet(ctx context.Context, subnetID ids.ID) (map[ids.ID]*validators.GetCurrentValidatorOutput, uint64, error) {
+	if s.GetCurrentValidatorSetF != nil {
+		return s.GetCurrentValidatorSetF(ctx, subnetID)
+	}
+	if s.CantGetCurrentValidatorSet && s.T != nil {
+		s.T.Fatal("unexpected GetCurrentValidatorSet")
+	}
+	return nil, 0, nil
 }
