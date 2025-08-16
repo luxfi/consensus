@@ -40,7 +40,7 @@ func NewDualCertEngine(ctx *interfaces.Runtime, cfg DualCertConfig) (*DualCertEn
 
 	// Create quasar engine with parameters
 	params := quasar.Parameters{
-		K:               21,  // Default values
+		K:               21, // Default values
 		AlphaPreference: 15,
 		AlphaConfidence: 15,
 		Beta:            20,

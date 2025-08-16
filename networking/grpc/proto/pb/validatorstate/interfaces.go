@@ -5,6 +5,7 @@ package validatorstate
 
 import (
 	"context"
+
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 

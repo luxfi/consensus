@@ -25,7 +25,7 @@ type Sampler[T comparable] interface {
 type Hooks[T comparable] struct {
 	Sampler Sampler[T]                 // source of K samples per poll (peers / candidates)
 	Rand    func(phase uint64) float64 // PRF for FPC threshold draws; must be deterministic per phase
-	
+
 	// Add optional app callbacks here (build proposal, apply block, gossip, etc.)
 	Propose func(context.Context) (T, error)
 	Apply   func(context.Context, T) error
@@ -47,28 +47,28 @@ func New[T comparable](cfg config.Parameters, hooks Hooks[T]) (*Engine[T], error
 	if hooks.Rand == nil {
 		hooks.Rand = func(uint64) float64 { return 0.5 } // safe default; replace in prod
 	}
-	
+
 	// Create FPC selector with thresholds
 	selector := &fpc.Selector{
 		ThetaMin: cfg.FPC.ThetaMin,
 		ThetaMax: cfg.FPC.ThetaMax,
 		Rand:     hooks.Rand,
 	}
-	
+
 	// Create confidence counter
 	conf := focus.New(cfg.Beta)
-	
+
 	// Create FPC engine if enabled
 	var fpcEngine *fpc.Engine
 	if cfg.FPC.Enable {
 		fpcEngine = fpc.NewEngine(cfg.FPC)
 	}
-	
+
 	// Create Nova protocol
 	p, err := nova.New(nova.Config[T]{
-		Sampler:    hooks.Sampler,  // K-sampling
-		Thresholds: selector,        // α_pref/α_conf per round
-		Confidence: conf,            // β consecutive
+		Sampler:    hooks.Sampler, // K-sampling
+		Thresholds: selector,      // α_pref/α_conf per round
+		Confidence: conf,          // β consecutive
 		Propose:    hooks.Propose,
 		Apply:      hooks.Apply,
 		Send:       hooks.Send,
@@ -76,7 +76,7 @@ func New[T comparable](cfg config.Parameters, hooks Hooks[T]) (*Engine[T], error
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &Engine[T]{
 		cfg:   cfg,
 		sel:   selector,
@@ -96,7 +96,7 @@ func (e *Engine[T]) Step(ctx context.Context) error {
 			_ = err
 		}
 	}
-	
+
 	// Execute main consensus step
 	return e.proto.Step(ctx)
 }
@@ -136,7 +136,7 @@ func (e *Engine[T]) GetFPCVotes(ctx context.Context, budget int) ([][]byte, erro
 	if e.fpc == nil {
 		return nil, nil
 	}
-	
+
 	votes := e.fpc.NextVotes(ctx, budget)
 	result := make([][]byte, len(votes))
 	for i, v := range votes {
@@ -150,10 +150,10 @@ func ValidateEngine[T comparable](cfg config.Parameters) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	
+
 	if cfg.FPC.Enable && cfg.FPC.VoteLimitPerBlock <= 0 {
 		return errors.New("FPC enabled but VoteLimitPerBlock not set")
 	}
-	
+
 	return nil
 }

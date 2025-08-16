@@ -18,8 +18,8 @@ type FPCConfig struct {
 // DefaultFPC returns default FPC configuration with FPC enabled by default
 func DefaultFPC() FPCConfig {
 	return FPCConfig{
-		Enable:              true,  // default ON for 50x speedup
-		ThetaMin:            0.55,  // typical band
+		Enable:              true, // default ON for 50x speedup
+		ThetaMin:            0.55, // typical band
 		ThetaMax:            0.65,
 		VoteLimitPerBlock:   256,
 		ExecuteOwned:        true,

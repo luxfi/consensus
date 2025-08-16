@@ -34,7 +34,7 @@ func (s Status) String() string {
 
 // Decided returns true if the status is either Accepted or Rejected
 func (s Status) Decided() bool {
-    return s == Accepted || s == Rejected
+	return s == Accepted || s == Rejected
 }
 
 var ErrInvalidStatus = errStatus{}

@@ -8,16 +8,16 @@ import (
 type Jobs interface {
 	// Push adds a job to the queue
 	Push([]byte) error
-	
+
 	// Pop removes a job from the queue
 	Pop() ([]byte, error)
-	
+
 	// Has checks if a job exists
 	Has([]byte) (bool, error)
-	
+
 	// Clear removes all jobs
 	Clear() error
-	
+
 	// Size returns the number of jobs
 	Size() (int, error)
 }
