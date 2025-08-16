@@ -4,7 +4,7 @@
 //go:build skip
 // +build skip
 
-package validator_test
+package validators_test
 
 import (
 	"context"
