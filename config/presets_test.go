@@ -37,7 +37,7 @@ func TestMainnetParameters(t *testing.T) {
 	require.Equal(13, MainnetParameters.AlphaPreference)
 	require.Equal(18, MainnetParameters.AlphaConfidence)
 	require.Equal(uint32(8), MainnetParameters.Beta)
-	require.Equal(9630*time.Millisecond, MainnetParameters.MaxItemProcessingTime)
+	require.Equal(963*time.Millisecond, MainnetParameters.MaxItemProcessingTime) // 0.963s for mainnet
 	require.Equal(100*time.Millisecond, MainnetParameters.MinRoundInterval)
 }
 
@@ -53,7 +53,7 @@ func TestTestnetParameters(t *testing.T) {
 	require.Equal(7, TestnetParameters.AlphaPreference)
 	require.Equal(9, TestnetParameters.AlphaConfidence)
 	require.Equal(uint32(6), TestnetParameters.Beta)
-	require.Equal(6300*time.Millisecond, TestnetParameters.MaxItemProcessingTime)
+	require.Equal(630*time.Millisecond, TestnetParameters.MaxItemProcessingTime) // 0.63s for testnet
 	require.Equal(50*time.Millisecond, TestnetParameters.MinRoundInterval)
 }
 
@@ -85,7 +85,7 @@ func TestLocalParameters(t *testing.T) {
 	require.Equal(3, LocalParameters.AlphaPreference)
 	require.Equal(4, LocalParameters.AlphaConfidence)
 	require.Equal(uint32(3), LocalParameters.Beta)
-	require.Equal(3690*time.Millisecond, LocalParameters.MaxItemProcessingTime)
+	require.Equal(369*time.Millisecond, LocalParameters.MaxItemProcessingTime) // 0.369s for local
 	require.Equal(10*time.Millisecond, LocalParameters.MinRoundInterval)
 }
 
