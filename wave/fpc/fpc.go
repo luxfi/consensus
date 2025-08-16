@@ -23,17 +23,17 @@ func (s *Selector) Alpha(k int, phase uint64) (alphaPref, alphaConf int) {
 	// Generate random theta between ThetaMin and ThetaMax
 	r := s.Rand(phase)
 	theta := s.ThetaMin + r*(s.ThetaMax-s.ThetaMin)
-	
+
 	// Compute thresholds
 	alphaPref = int(math.Ceil(theta * float64(k)))
 	alphaConf = k // Always require all for confidence in FPC
-	
+
 	// Ensure alphaPref is at least majority
 	minPref := (k + 1) / 2
 	if alphaPref < minPref {
 		alphaPref = minPref
 	}
-	
+
 	return alphaPref, alphaConf
 }
 

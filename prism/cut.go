@@ -9,14 +9,14 @@ import "github.com/luxfi/consensus/types"
 func Frontier[V comparable](parents func(V) []V, tips []V) []V {
 	visited := make(map[V]bool)
 	frontier := []V{}
-	
+
 	for _, tip := range tips {
 		if !visited[tip] {
 			frontier = append(frontier, tip)
 			visited[tip] = true
 		}
 	}
-	
+
 	return frontier
 }
 

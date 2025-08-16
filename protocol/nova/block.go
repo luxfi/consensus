@@ -1,9 +1,10 @@
 package nova
 
 import (
+	"time"
+
 	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/ids"
-	"time"
 )
 
 // Block represents a Nova block

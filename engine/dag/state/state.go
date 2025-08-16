@@ -8,7 +8,7 @@ import (
 type Serializer interface {
 	// ParseVertex parses a vertex from bytes
 	ParseVertex([]byte) (dag.Vertex, error)
-	
+
 	// ParseTx parses a transaction from bytes
 	ParseTx([]byte) (dag.Tx, error)
 }

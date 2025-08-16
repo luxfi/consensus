@@ -14,19 +14,19 @@ import (
 
 // MockBlock is a mock implementation for testing
 type MockBlock struct {
-	ID_      ids.ID
-	Parent_  ids.ID
-	Height_  uint64
-	Status_  choices.Status
-	VerifyF  func() error
-	AcceptF  func() error
-	RejectF  func() error
+	ID_     ids.ID
+	Parent_ ids.ID
+	Height_ uint64
+	Status_ choices.Status
+	VerifyF func() error
+	AcceptF func() error
+	RejectF func() error
 }
 
-func (b *MockBlock) ID() ids.ID              { return b.ID_ }
-func (b *MockBlock) Parent() ids.ID          { return b.Parent_ }
-func (b *MockBlock) Height() uint64          { return b.Height_ }
-func (b *MockBlock) Status() choices.Status  { return b.Status_ }
+func (b *MockBlock) ID() ids.ID             { return b.ID_ }
+func (b *MockBlock) Parent() ids.ID         { return b.Parent_ }
+func (b *MockBlock) Height() uint64         { return b.Height_ }
+func (b *MockBlock) Status() choices.Status { return b.Status_ }
 func (b *MockBlock) Verify() error {
 	if b.VerifyF != nil {
 		return b.VerifyF()
