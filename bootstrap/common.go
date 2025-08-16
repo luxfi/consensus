@@ -69,9 +69,8 @@ type Bootstrapper interface {
 
 // Poll represents a poll for bootstrapping
 type Poll struct {
-	alpha      int
-	validators []ids.NodeID
-	results    map[ids.NodeID]ids.ID
+	alpha   int
+	results map[ids.NodeID]ids.ID
 }
 
 // NewPoll creates a new poll
@@ -256,7 +255,6 @@ type Manager struct {
 	config   *Config
 	state    State
 	stats    Stats
-	fetcher  Fetcher
 	executor Executor
 }
 

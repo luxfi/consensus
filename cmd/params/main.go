@@ -6,7 +6,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -141,7 +140,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
 			os.Exit(1)
 		}
-		if err := ioutil.WriteFile(*output, data, 0644); err != nil {
+		if err := os.WriteFile(*output, data, 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
 			os.Exit(1)
 		}
@@ -207,7 +206,7 @@ func main() {
 }
 
 func validateFile(filename string) error {
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return fmt.Errorf("reading file: %w", err)
 	}
