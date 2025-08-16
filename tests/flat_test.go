@@ -31,7 +31,8 @@ func testFlatConsensus(t *testing.T, consensus interface {
 	RecordVotes(bag.Bag[ids.ID]) error
 	Finalized() bool
 	Preference() ids.ID
-}, params config.Parameters) {
+}, params config.Parameters,
+) {
 	require := require.New(t)
 
 	// Add choices

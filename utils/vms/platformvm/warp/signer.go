@@ -9,9 +9,7 @@ import (
 	"github.com/luxfi/crypto/bls"
 )
 
-var (
-	ErrNotImplemented = errors.New("warp signing not implemented")
-)
+var ErrNotImplemented = errors.New("warp signing not implemented")
 
 // Message represents a warp message
 type Message struct {

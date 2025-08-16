@@ -278,7 +278,8 @@ func (v *Validator) validateNetworkSpecific(cfg *Config, result *ValidationResul
 }
 
 func (v *Validator) addError(result *ValidationResult, field string, value interface{},
-	constraint string, suggestion string) {
+	constraint string, suggestion string,
+) {
 	result.Errors = append(result.Errors, ValidationError{
 		Field:      field,
 		Value:      value,
@@ -290,7 +291,8 @@ func (v *Validator) addError(result *ValidationResult, field string, value inter
 }
 
 func (v *Validator) addWarning(result *ValidationResult, field string, value interface{},
-	constraint string, suggestion string) {
+	constraint string, suggestion string,
+) {
 	result.Warnings = append(result.Warnings, ValidationError{
 		Field:      field,
 		Value:      value,

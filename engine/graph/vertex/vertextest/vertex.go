@@ -11,9 +11,7 @@ import (
 	"github.com/luxfi/ids"
 )
 
-var (
-	ErrNotImplemented = errors.New("not implemented")
-)
+var ErrNotImplemented = errors.New("not implemented")
 
 // Vertex is a test vertex implementation
 type Vertex struct {
