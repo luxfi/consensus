@@ -20,35 +20,35 @@ type FakeSender struct {
 	SentAppError             chan *AppError
 }
 
-func (f *FakeSender) SendAppGossip(ctx context.Context, appGossipBytes []byte) error {
+func (f *FakeSender) SendAppGossip(_ context.Context, appGossipBytes []byte) error {
 	if f.SentAppGossip != nil {
 		f.SentAppGossip <- appGossipBytes
 	}
 	return nil
 }
 
-func (f *FakeSender) SendAppGossipSpecific(ctx context.Context, nodeIDs set.Set[ids.NodeID], appGossipBytes []byte) error {
+func (f *FakeSender) SendAppGossipSpecific(_ context.Context, nodeIDs set.Set[ids.NodeID], appGossipBytes []byte) error {
 	if f.SentAppGossip != nil {
 		f.SentAppGossip <- appGossipBytes
 	}
 	return nil
 }
 
-func (f *FakeSender) SendAppRequest(ctx context.Context, nodeID ids.NodeID, requestID uint32, appRequestBytes []byte) error {
+func (f *FakeSender) SendAppRequest(_ context.Context, nodeID ids.NodeID, requestID uint32, appRequestBytes []byte) error {
 	if f.SentAppRequest != nil {
 		f.SentAppRequest <- appRequestBytes
 	}
 	return nil
 }
 
-func (f *FakeSender) SendAppResponse(ctx context.Context, nodeID ids.NodeID, requestID uint32, appResponseBytes []byte) error {
+func (f *FakeSender) SendAppResponse(_ context.Context, nodeID ids.NodeID, requestID uint32, appResponseBytes []byte) error {
 	if f.SentAppResponse != nil {
 		f.SentAppResponse <- appResponseBytes
 	}
 	return nil
 }
 
-func (f *FakeSender) SendAppError(ctx context.Context, nodeID ids.NodeID, requestID uint32, errorCode int32, errorMessage string) error {
+func (f *FakeSender) SendAppError(_ context.Context, nodeID ids.NodeID, requestID uint32, errorCode int32, errorMessage string) error {
 	if f.SentAppError != nil {
 		f.SentAppError <- &AppError{
 			Code:    errorCode,
@@ -58,18 +58,18 @@ func (f *FakeSender) SendAppError(ctx context.Context, nodeID ids.NodeID, reques
 	return nil
 }
 
-func (f *FakeSender) SendCrossChainAppRequest(ctx context.Context, chainID ids.ID, requestID uint32, appRequestBytes []byte) error {
+func (f *FakeSender) SendCrossChainAppRequest(_ context.Context, chainID ids.ID, requestID uint32, appRequestBytes []byte) error {
 	if f.SentCrossChainAppRequest != nil {
 		f.SentCrossChainAppRequest <- appRequestBytes
 	}
 	return nil
 }
 
-func (f *FakeSender) SendCrossChainAppResponse(ctx context.Context, chainID ids.ID, requestID uint32, appResponseBytes []byte) error {
+func (f *FakeSender) SendCrossChainAppResponse(_ context.Context, chainID ids.ID, requestID uint32, appResponseBytes []byte) error {
 	return nil
 }
 
-func (f *FakeSender) SendCrossChainAppError(ctx context.Context, chainID ids.ID, requestID uint32, errorCode int32, errorMessage string) error {
+func (f *FakeSender) SendCrossChainAppError(_ context.Context, chainID ids.ID, requestID uint32, errorCode int32, errorMessage string) error {
 	return nil
 }
 

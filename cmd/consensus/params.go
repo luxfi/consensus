@@ -259,7 +259,7 @@ func saveParams(p config.Parameters, filename string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filename, data, 0644)
+	return os.WriteFile(filename, data, 0o644)
 }
 
 func init() {

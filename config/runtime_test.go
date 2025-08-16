@@ -145,7 +145,7 @@ func TestLoadRuntimeFromFile(t *testing.T) {
 	// Write config to file
 	data, err := json.MarshalIndent(testConfig, "", "  ")
 	require.NoError(err)
-	err = os.WriteFile(configPath, data, 0644)
+	err = os.WriteFile(configPath, data, 0o644)
 	require.NoError(err)
 
 	// Load from file
@@ -176,7 +176,7 @@ func TestLoadRuntimeFromFileErrors(t *testing.T) {
 	// Test invalid JSON
 	tempDir := t.TempDir()
 	invalidPath := filepath.Join(tempDir, "invalid.json")
-	err = os.WriteFile(invalidPath, []byte("invalid json"), 0644)
+	err = os.WriteFile(invalidPath, []byte("invalid json"), 0o644)
 	require.NoError(err)
 
 	err = LoadRuntimeFromFile(invalidPath)
@@ -391,7 +391,7 @@ func BenchmarkLoadRuntimeFromFile(b *testing.B) {
 	}
 
 	data, _ := json.MarshalIndent(testConfig, "", "  ")
-	_ = os.WriteFile(configPath, data, 0644)
+	_ = os.WriteFile(configPath, data, 0o644)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
