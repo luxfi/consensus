@@ -17,8 +17,8 @@ import (
 
 	"github.com/luxfi/consensus/networking/grpc/grpcutils"
 	"github.com/luxfi/consensus/validators"
-	"github.com/luxfi/consensus/validator/gvalidators"
-	"github.com/luxfi/consensus/validator/validatorsmock"
+	"github.com/luxfi/consensus/validators/gvalidators"
+	"github.com/luxfi/consensus/validators/validatorsmock"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/bls/signer/localsigner"
 	"github.com/luxfi/ids"
