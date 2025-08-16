@@ -25,7 +25,7 @@ type Orderer interface {
 type Engine struct {
 	mu      sync.RWMutex
 	sampler prism.Sampler
-	round   wave.Round
+	wave    *wave.Wave
 	counter focus.Counter
 	cfg     config.Parameters
 
@@ -44,10 +44,10 @@ type Vertex struct {
 }
 
 // New creates a new DAG ordering engine
-func New(sampler prism.Sampler, round wave.Round, counter focus.Counter, cfg config.Parameters) *Engine {
+func New(sampler prism.Sampler, waveInstance *wave.Wave, counter focus.Counter, cfg config.Parameters) *Engine {
 	return &Engine{
 		sampler:  sampler,
-		round:    round,
+		wave:     waveInstance,
 		counter:  counter,
 		cfg:      cfg,
 		vertices: make(map[types.VertexID]*Vertex),

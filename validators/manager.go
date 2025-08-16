@@ -30,11 +30,7 @@ type ManagerCallbackListener interface {
 	OnValidatorWeightChanged(subnetID ids.ID, nodeID ids.NodeID, oldWeight, newWeight uint64)
 }
 
-type SetCallbackListener interface {
-	OnValidatorAdded(nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64)
-	OnValidatorRemoved(nodeID ids.NodeID, weight uint64)
-	OnValidatorWeightChanged(nodeID ids.NodeID, oldWeight, newWeight uint64)
-}
+// SetCallbackListener is defined in listener.go
 
 // Manager holds the validator set of each subnet
 type Manager interface {
