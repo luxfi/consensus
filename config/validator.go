@@ -160,7 +160,7 @@ func (v *Validator) validateBasicParameters(cfg *Config, result *ValidationResul
 	if cfg.MinRoundInterval < 1*time.Millisecond || cfg.MinRoundInterval > 500*time.Millisecond {
 		v.addError(result, "MinRoundInterval", cfg.MinRoundInterval,
 			"must be in range [1ms, 500ms]",
-			fmt.Sprintf("Set MinRoundInterval between 1ms and 500ms"))
+			"Set MinRoundInterval between 1ms and 500ms")
 	} else {
 		// Soft warnings for edge cases
 		if cfg.MinRoundInterval < 10*time.Millisecond {
