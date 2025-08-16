@@ -12,6 +12,12 @@ import (
 	"github.com/luxfi/ids"
 )
 
+// NewBlock creates a new Block mock
+// Note: ctrl parameter is for gomock compatibility but not used
+func NewBlock(ctrl interface{}) *Block {
+	return &Block{}
+}
+
 // Block is a mock implementation of chain.Block
 type Block struct {
 	T                   *testing.T
