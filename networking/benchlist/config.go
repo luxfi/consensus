@@ -14,6 +14,8 @@ type Config struct {
 	// MinimumFailingDuration is the minimum amount of time a peer must be
 	// failing before we will consider benchlisting them
 	MinimumFailingDuration time.Duration `json:"minimumFailingDuration"`
+	// MaxPortion is the maximum portion of validators that can be benchlisted
+	MaxPortion float64 `json:"maxPortion"`
 	// Validators is the validator manager
 	Validators interface{} `json:"-"`
 	// Benchable is the object that can be benched

@@ -14,6 +14,9 @@ import (
 	"github.com/luxfi/ids"
 )
 
+// Ensure ChainVM implements block.ChainVM
+var _ block.ChainVM = (*ChainVM)(nil)
+
 // ChainVM is a mock implementation of block.ChainVM
 type ChainVM struct {
 	T                    *testing.T
@@ -28,7 +31,7 @@ type ChainVM struct {
 	CantVerifyHeightIndex bool
 	CantGetBlockIDAtHeight bool
 
-	InitializeF func(context.Context, interface{}, interface{}, []byte, []byte, []byte, chan<- block.Message, []*block.Fx, block.AppSender) error
+	InitializeF func(context.Context, *block.ChainContext, block.DBManager, []byte, []byte, []byte, chan<- block.Message, []*block.Fx, block.AppSender) error
 	SetStateF func(context.Context, uint8) error
 	ShutdownF func(context.Context) error
 	BuildBlockF func(context.Context) (block.Block, error)
@@ -46,20 +49,8 @@ func NewChainVM(ctrl interface{}) *ChainVM {
 	return &ChainVM{}
 }
 
-// Initialize with no parameters for core.VM interface
-func (vm *ChainVM) Initialize() error {
-	if vm.InitializeF != nil {
-		// Call with nil parameters for compatibility
-		return vm.InitializeF(nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	}
-	if vm.CantInitialize && vm.T != nil {
-		vm.T.Fatal("unexpected Initialize")
-	}
-	return nil
-}
-
-// InitializeChain with full parameters for block.ChainVM interface
-func (vm *ChainVM) InitializeChain(ctx context.Context, chainCtx interface{}, dbManager interface{}, genesisBytes []byte, upgradeBytes []byte, configBytes []byte, toEngine chan<- block.Message, fxs []*block.Fx, appSender block.AppSender) error {
+// Initialize with correct signature for block.ChainVM interface
+func (vm *ChainVM) Initialize(ctx context.Context, chainCtx *block.ChainContext, dbManager block.DBManager, genesisBytes []byte, upgradeBytes []byte, configBytes []byte, toEngine chan<- block.Message, fxs []*block.Fx, appSender block.AppSender) error {
 	if vm.InitializeF != nil {
 		return vm.InitializeF(ctx, chainCtx, dbManager, genesisBytes, upgradeBytes, configBytes, toEngine, fxs, appSender)
 	}
