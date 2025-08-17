@@ -9,7 +9,6 @@ import (
 
 	"golang.org/x/exp/maps"
 
-	"github.com/luxfi/consensus/utils"
 	"github.com/luxfi/consensus/utils/set"
 )
 
@@ -163,7 +162,8 @@ func (b *Bag[T]) Remove(elt T) {
 func (b *Bag[T]) PrefixedString(prefix string) string {
 	sb := strings.Builder{}
 
-	sb.WriteString(fmt.Sprintf("Bag[%T]: (Size = %d)", utils.Zero[T](), b.Len()))
+	var zero T
+	sb.WriteString(fmt.Sprintf("Bag[%T]: (Size = %d)", zero, b.Len()))
 	for elt, count := range b.counts {
 		sb.WriteString(fmt.Sprintf("\n%s    %v: %d", prefix, elt, count))
 	}

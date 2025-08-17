@@ -14,6 +14,8 @@ import (
 	"github.com/luxfi/consensus/prism"
 	"github.com/luxfi/consensus/types"
 	"github.com/luxfi/consensus/protocol/wave"
+	"github.com/luxfi/consensus/utils/bag"
+	"github.com/luxfi/ids"
 )
 
 // Orderer returns vertices to deliver next in a stable topological slice
@@ -83,13 +85,17 @@ func (e *Engine) Schedule(ctx context.Context, frontier []types.VertexID) ([]typ
 			continue
 		}
 
-		// Run consensus on this vertex
-		result, err := e.round.Poll(ctx)
+		// Run consensus on this vertex using wave
+		// Note: Wave doesn't have a Poll method, using RecordVotes instead
+		// Create votes bag with single vote for this vertex
+		votes := bag.Of(ids.ID(v))
+		
+		err := e.wave.RecordVotes(votes)
 		if err != nil {
 			return nil, err
 		}
 
-		if result.Success {
+		if e.wave.Finalized() {
 			// Update confidence counter
 			e.counter.Tick(true)
 
