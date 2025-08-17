@@ -7,10 +7,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
 	"github.com/luxfi/node/version"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // ChainRouter routes messages between blockchain chains
@@ -22,7 +22,7 @@ type ChainRouter struct {
 // Initialize initializes the ChainRouter
 func (cr *ChainRouter) Initialize(
 	nodeID ids.NodeID,
-	log log.Logger,
+	logInterface interface{},
 	timeoutManager interface{},
 	closeTimeout time.Duration,
 	criticalChains interface{},
@@ -30,9 +30,11 @@ func (cr *ChainRouter) Initialize(
 	trackedSubnets interface{},
 	onFatal func(int),
 	healthConfig HealthConfig,
-	metricsRegisterer prometheus.Registerer,
+	metricsRegisterer interface{},
 ) error {
-	cr.log = log
+	if logger, ok := logInterface.(log.Logger); ok {
+		cr.log = logger
+	}
 	return nil
 }
 
@@ -52,7 +54,7 @@ func (cr *ChainRouter) RemoveChain(chainID ids.ID) {
 }
 
 // HandleInbound handles an inbound message
-func (cr *ChainRouter) HandleInbound(ctx context.Context, msg InboundMessage) {
+func (cr *ChainRouter) HandleInbound(ctx context.Context, msg interface{}) {
 	// Implementation would go here
 }
 
@@ -113,6 +115,7 @@ func (cr *ChainRouter) AppRequestFailed(
 	ctx context.Context,
 	nodeID ids.NodeID,
 	requestID uint32,
+	appErr *core.AppError,
 ) error {
 	return nil
 }
