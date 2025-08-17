@@ -5,9 +5,12 @@ package chain
 
 import (
 	"context"
+	"errors"
 
 	"github.com/luxfi/ids"
 )
+
+var ErrNotOracle = errors.New("block isn't an oracle")
 
 // Consensus defines the chain consensus interface
 type Consensus interface {
