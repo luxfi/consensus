@@ -28,9 +28,10 @@ func Context(t testing.TB, chainID ids.ID) context.Context {
 	ctx := context.Background()
 	
 	// Create IDs struct
+	// Use PrimaryNetworkID (empty ID) for subnet so chains get indexed
 	ids := consensus.IDs{
 		NetworkID:  10001,
-		SubnetID:   ids.GenerateTestID(),
+		SubnetID:   ids.Empty, // PrimaryNetworkID
 		ChainID:    chainID,
 		NodeID:     ids.GenerateTestNodeID(),
 		PublicKey:  &bls.PublicKey{},
