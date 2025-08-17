@@ -19,4 +19,8 @@ type HealthConfig struct {
 	// MaxRunTimeHealthy is the maximum time the router can run before needing
 	// a health check
 	MaxRunTimeHealthy time.Duration `json:"maxRunTimeHealthy"`
+	// MaxRunTimeRequests is the maximum runtime for requests
+	MaxRunTimeRequests time.Duration `json:"maxRunTimeRequests"`
+	// MaxDropRateHalflife is the halflife for the drop rate calculation
+	MaxDropRateHalflife time.Duration `json:"maxDropRateHalflife"`
 }
