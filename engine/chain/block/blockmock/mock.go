@@ -46,12 +46,25 @@ func NewChainVM(ctrl interface{}) *ChainVM {
 	return &ChainVM{}
 }
 
-func (vm *ChainVM) Initialize(ctx context.Context, chainCtx interface{}, dbManager interface{}, genesisBytes []byte, upgradeBytes []byte, configBytes []byte, toEngine chan<- block.Message, fxs []*block.Fx, appSender block.AppSender) error {
+// Initialize with no parameters for core.VM interface
+func (vm *ChainVM) Initialize() error {
+	if vm.InitializeF != nil {
+		// Call with nil parameters for compatibility
+		return vm.InitializeF(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	}
+	if vm.CantInitialize && vm.T != nil {
+		vm.T.Fatal("unexpected Initialize")
+	}
+	return nil
+}
+
+// InitializeChain with full parameters for block.ChainVM interface
+func (vm *ChainVM) InitializeChain(ctx context.Context, chainCtx interface{}, dbManager interface{}, genesisBytes []byte, upgradeBytes []byte, configBytes []byte, toEngine chan<- block.Message, fxs []*block.Fx, appSender block.AppSender) error {
 	if vm.InitializeF != nil {
 		return vm.InitializeF(ctx, chainCtx, dbManager, genesisBytes, upgradeBytes, configBytes, toEngine, fxs, appSender)
 	}
 	if vm.CantInitialize && vm.T != nil {
-		vm.T.Fatal("unexpected Initialize")
+		vm.T.Fatal("unexpected InitializeChain")
 	}
 	return nil
 }
@@ -66,12 +79,24 @@ func (vm *ChainVM) SetState(ctx context.Context, state uint8) error {
 	return nil
 }
 
-func (vm *ChainVM) Shutdown(ctx context.Context) error {
+// Shutdown with no parameters for core.VM interface
+func (vm *ChainVM) Shutdown() error {
+	if vm.ShutdownF != nil {
+		return vm.ShutdownF(nil)
+	}
+	if vm.CantShutdown && vm.T != nil {
+		vm.T.Fatal("unexpected Shutdown")
+	}
+	return nil
+}
+
+// ShutdownContext with context parameter for block.ChainVM interface
+func (vm *ChainVM) ShutdownContext(ctx context.Context) error {
 	if vm.ShutdownF != nil {
 		return vm.ShutdownF(ctx)
 	}
 	if vm.CantShutdown && vm.T != nil {
-		vm.T.Fatal("unexpected Shutdown")
+		vm.T.Fatal("unexpected ShutdownContext")
 	}
 	return nil
 }
