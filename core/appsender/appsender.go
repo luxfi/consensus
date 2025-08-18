@@ -19,4 +19,12 @@ type AppSender interface {
 	SendAppGossip(ctx context.Context, nodeIDs set.Set[ids.NodeID], appGossipBytes []byte) error
 	// SendAppGossipSpecific sends a gossip message to a list of nodeIDs
 	SendAppGossipSpecific(ctx context.Context, nodeIDs set.Set[ids.NodeID], appGossipBytes []byte) error
+	
+	// Cross-chain communication
+	// Send a cross-chain app request to another chain
+	SendCrossChainAppRequest(ctx context.Context, chainID ids.ID, requestID uint32, appRequestBytes []byte) error
+	// Send a cross-chain app response to a request from another chain
+	SendCrossChainAppResponse(ctx context.Context, chainID ids.ID, requestID uint32, appResponseBytes []byte) error
+	// Send a cross-chain app error in response to a request from another chain
+	SendCrossChainAppError(ctx context.Context, chainID ids.ID, requestID uint32, errorCode int32, errorMessage string) error
 }
