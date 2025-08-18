@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	// PChainID is a test P-Chain ID
-	PChainID = ids.GenerateTestID()
+	// PChainID is the actual P-Chain ID (empty ID)
+	PChainID = ids.Empty
 	
 	// CChainID is a test C-Chain ID
 	CChainID = ids.GenerateTestID()

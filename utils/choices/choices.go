@@ -1,5 +1,7 @@
 package choices
 
+import "github.com/luxfi/ids"
+
 // Status represents the status of a consensus item
 type Status uint32
 
