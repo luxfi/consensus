@@ -7,8 +7,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/luxfi/consensus/utils/set"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/node/utils/set"
 )
 
 // FakeSender is a test utility for mocking network sends
