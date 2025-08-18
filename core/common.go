@@ -8,7 +8,11 @@ import (
 	"errors"
 
 	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/core/appsender"
 )
+
+// Type aliases for convenience
+type AppSender = appsender.AppSender
 
 // Common errors
 var (

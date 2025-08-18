@@ -31,6 +31,32 @@ func (a *Application) Before(other *Application) bool {
 	return a.Patch < other.Patch
 }
 
+// Compare returns:
+// -1 if a < other
+// 0 if a == other  
+// 1 if a > other
+func (a *Application) Compare(other *Application) int {
+	if a.Major != other.Major {
+		if a.Major < other.Major {
+			return -1
+		}
+		return 1
+	}
+	if a.Minor != other.Minor {
+		if a.Minor < other.Minor {
+			return -1
+		}
+		return 1
+	}
+	if a.Patch != other.Patch {
+		if a.Patch < other.Patch {
+			return -1
+		}
+		return 1
+	}
+	return 0
+}
+
 // Compatible returns true if the versions are compatible
 func (a *Application) Compatible(other *Application) bool {
 	return a.Major == other.Major
