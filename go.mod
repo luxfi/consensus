@@ -80,6 +80,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/luxfi/consensus/protocol/snowman => ../consensus/protocol/snowman
 
-replace github.com/luxfi/geth => ../geth
