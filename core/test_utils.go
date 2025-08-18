@@ -102,8 +102,9 @@ func (s *SenderTest) Default(cant bool) {
 	s.CantSendCrossChainAppError = cant
 }
 
-func (s *SenderTest) SendAppGossip(ctx context.Context, appGossipBytes []byte) error {
+func (s *SenderTest) SendAppGossip(ctx context.Context, nodeIDs set.Set[ids.NodeID], appGossipBytes []byte) error {
 	if s.SendAppGossipF != nil {
+		// For backwards compatibility, call the old function signature
 		return s.SendAppGossipF(ctx, appGossipBytes)
 	}
 	if s.CantSendAppGossip && s.T != nil {
@@ -122,9 +123,13 @@ func (s *SenderTest) SendAppGossipSpecific(ctx context.Context, nodeIDs set.Set[
 	return nil
 }
 
-func (s *SenderTest) SendAppRequest(ctx context.Context, nodeID ids.NodeID, requestID uint32, appRequestBytes []byte) error {
+func (s *SenderTest) SendAppRequest(ctx context.Context, nodeIDs set.Set[ids.NodeID], requestID uint32, appRequestBytes []byte) error {
 	if s.SendAppRequestF != nil {
-		return s.SendAppRequestF(ctx, nodeID, requestID, appRequestBytes)
+		// For backwards compatibility, if there's exactly one nodeID, use it
+		for nodeID := range nodeIDs {
+			return s.SendAppRequestF(ctx, nodeID, requestID, appRequestBytes)
+		}
+		return nil
 	}
 	if s.CantSendAppRequest && s.T != nil {
 		s.T.Fatal("unexpected SendAppRequest")
