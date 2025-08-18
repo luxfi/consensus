@@ -5,6 +5,7 @@ package chain
 
 import (
 	"context"
+	"time"
 
 	"github.com/luxfi/ids"
 )
@@ -34,6 +35,9 @@ type Block interface {
 
 	// Height returns the block height
 	Height() uint64
+
+	// Timestamp returns the block timestamp
+	Timestamp() time.Time
 
 	// Bytes returns the block bytes
 	Bytes() []byte
