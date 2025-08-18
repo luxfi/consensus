@@ -144,6 +144,7 @@ type IDs struct {
 
 // WithIDs adds chain IDs to context
 func WithIDs(ctx context.Context, ids IDs) context.Context {
+	ctx = WithNetworkID(ctx, ids.NetworkID)
 	ctx = WithChainID(ctx, ids.ChainID)
 	ctx = WithSubnetID(ctx, ids.SubnetID)
 	ctx = WithNodeID(ctx, ids.NodeID)
