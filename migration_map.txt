@@ -1,0 +1,25 @@
+# Import Migration Map for Lux Consensus Refactoring
+# Old Path → New Path
+
+# Core consensus stages
+github.com/luxfi/consensus/protocol/photon → github.com/luxfi/consensus/core/prism
+github.com/luxfi/consensus/protocol/wave → github.com/luxfi/consensus/core/fpc
+github.com/luxfi/consensus/focus → github.com/luxfi/consensus/core/focus
+github.com/luxfi/consensus/beam → github.com/luxfi/consensus/core/beam
+
+# DAG components
+github.com/luxfi/consensus/flare → github.com/luxfi/consensus/core/dag/flare
+github.com/luxfi/consensus/horizon → github.com/luxfi/consensus/core/dag/horizon
+github.com/luxfi/consensus/graph → github.com/luxfi/consensus/core/dag
+
+# Protocol modules remain mostly the same
+github.com/luxfi/consensus/protocol/nova → github.com/luxfi/consensus/protocol/nova
+github.com/luxfi/consensus/protocol/nebula → github.com/luxfi/consensus/protocol/nebula
+github.com/luxfi/consensus/protocol/quasar → github.com/luxfi/consensus/protocol/quasar
+
+# Renamed modules
+github.com/luxfi/consensus/protocol/prism → github.com/luxfi/consensus/protocol/compat
+
+# New modules
+# → github.com/luxfi/consensus/witness (for Verkle proofs)
+# → github.com/luxfi/consensus/engine/runner (unified engine)
