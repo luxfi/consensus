@@ -16,6 +16,7 @@ type Decision int
 const (
     DecideAccept Decision = iota
     DecideReject
+    DecideUndecided
 )
 
 type Digest [32]byte
