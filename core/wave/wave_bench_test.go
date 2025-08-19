@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/core/prism"
+	"github.com/luxfi/consensus/photon"
 	"github.com/luxfi/consensus/types"
 )
 
@@ -20,7 +20,7 @@ func BenchmarkWaveConsensus(b *testing.B) {
 		peers[i] = types.NodeID(string(rune('a' + i)))
 	}
 
-	sel := prism.New(peers, prism.DefaultOptions())
+	sel := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
 	
 	// Create votes (80% accept)
 	votes := make([]VoteMsg[string], 21)
@@ -53,7 +53,7 @@ func BenchmarkWaveLargeNetwork(b *testing.B) {
 		peers[i] = types.NodeID(string(rune(i)))
 	}
 
-	sel := prism.New(peers, prism.DefaultOptions())
+	sel := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
 	
 	votes := make([]VoteMsg[string], 100)
 	for i := 0; i < 80; i++ {

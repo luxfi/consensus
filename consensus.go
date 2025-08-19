@@ -7,9 +7,9 @@ import (
 	"context"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/core/prism"
 	"github.com/luxfi/consensus/core/wave"
 	"github.com/luxfi/consensus/engines/chain"
+	"github.com/luxfi/consensus/photon"
 	"github.com/luxfi/consensus/protocol/nova"
 	"github.com/luxfi/consensus/types"
 )
@@ -29,8 +29,9 @@ func NewChainEngine[ID comparable](
 	peers []types.NodeID,
 	transport chain.Transport[ID],
 ) Engine[ID] {
-	sampler := prism.New(peers, prism.DefaultOptions())
-	return chain.New[ID](cfg, sampler, transport)
+	// Use photon emitter for K-of-N committee selection
+	emitter := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
+	return chain.New[ID](cfg, emitter, transport)
 }
 
 // Config returns default consensus parameters for different network sizes
@@ -97,17 +98,29 @@ type Transport[ID comparable] interface {
 	chain.Transport[ID]
 }
 
-// Sampler provides peer sampling for consensus
+// Emitter provides K-of-N committee selection for consensus
+type Emitter[ID comparable] interface {
+	photon.Emitter[types.NodeID]
+}
+
+// NewEmitter creates a new committee emitter
+func NewEmitter(peers []NodeID, opts photon.EmitterOptions) Emitter[NodeID] {
+	return photon.NewUniformEmitter(peers, opts)
+}
+
+// DefaultEmitterOptions returns default emitter configuration
+func DefaultEmitterOptions() photon.EmitterOptions {
+	return photon.DefaultEmitterOptions()
+}
+
+// Deprecated: Use Emitter instead
 type Sampler[ID comparable] interface {
-	prism.Sampler[ID]
+	Sample(ctx context.Context, k int, topic types.Topic) []types.NodeID
+	Report(node types.NodeID, probe types.Probe)
+	Allow(topic types.Topic) bool
 }
 
-// NewSampler creates a new peer sampler
-func NewSampler[ID comparable](peers []NodeID, opts prism.Options) Sampler[ID] {
-	return prism.New(peers, opts)
-}
-
-// DefaultSamplerOptions returns default sampler configuration
-func DefaultSamplerOptions() prism.Options {
-	return prism.DefaultOptions()
+// Deprecated: Use NewEmitter instead
+func NewSampler(peers []NodeID, opts photon.EmitterOptions) Sampler[NodeID] {
+	return photon.NewSampler(peers, opts)
 }

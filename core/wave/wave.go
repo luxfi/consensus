@@ -5,7 +5,7 @@ import (
     "time"
 
     "github.com/luxfi/consensus/config"
-    "github.com/luxfi/consensus/core/prism"
+    "github.com/luxfi/consensus/photon"
     "github.com/luxfi/consensus/types"
 )
 
@@ -32,14 +32,14 @@ type State[ID comparable] struct {
 }
 
 type Impl[ID comparable] struct {
-    cfg   config.Parameters
-    sel   prism.Sampler[ID]
-    tx    Transport[ID]
-    state map[ID]State[ID]
+    cfg     config.Parameters
+    emitter photon.Emitter[types.NodeID]
+    tx      Transport[ID]
+    state   map[ID]State[ID]
 }
 
-func New[ID comparable](cfg config.Parameters, sel prism.Sampler[ID], tx Transport[ID]) *Impl[ID] {
-    return &Impl[ID]{cfg: cfg, sel: sel, tx: tx, state: make(map[ID]State[ID])}
+func New[ID comparable](cfg config.Parameters, emitter photon.Emitter[types.NodeID], tx Transport[ID]) *Impl[ID] {
+    return &Impl[ID]{cfg: cfg, emitter: emitter, tx: tx, state: make(map[ID]State[ID])}
 }
 
 func (w *Impl[ID]) ensure(id ID) State[ID] {
@@ -51,7 +51,8 @@ func (w *Impl[ID]) ensure(id ID) State[ID] {
 
 func (w *Impl[ID]) Tick(ctx context.Context, id ID) {
     st := w.ensure(id)
-    peers := w.sel.Sample(ctx, w.cfg.K, types.Topic("votes"))
+    // Emit K photons to select committee
+    peers, _ := w.emitter.Emit(ctx, w.cfg.K, uint64(time.Now().UnixNano()))
     ch, _ := w.tx.RequestVotes(ctx, peers, id)
 
     yes, n := 0, 0

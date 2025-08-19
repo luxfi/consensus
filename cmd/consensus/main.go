@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/core/prism"
 	"github.com/luxfi/consensus/core/wave"
+	"github.com/luxfi/consensus/photon"
 	"github.com/luxfi/consensus/types"
 )
 
@@ -63,8 +63,8 @@ func main() {
 		peers[i] = types.NodeID(fmt.Sprintf("node-%d", i))
 	}
 
-	// Create sampler and consensus
-	sel := prism.New(peers, prism.DefaultOptions())
+	// Create emitter for K-of-N committee selection
+	emitter := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
 	
 	// Simulate different voting scenarios
 	scenarios := []struct {
@@ -93,7 +93,7 @@ func main() {
 		fmt.Printf("Scenario: %s\n", scenario.name)
 		
 		tx := &mockTransport{votes: scenario.votes}
-		w := wave.New[string](cfg, sel, tx)
+		w := wave.New[string](cfg, emitter, tx)
 		ctx := context.Background()
 
 		// Run consensus rounds
