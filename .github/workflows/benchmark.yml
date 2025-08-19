@@ -48,12 +48,7 @@ jobs:
           echo "- **Commit**: ${{ github.sha }}" | tee -a zmq-benchmark.md
           echo "- **Go Version**: $(go version)" | tee -a zmq-benchmark.md
           echo "" | tee -a zmq-benchmark.md
-          echo "### Results" | tee -a zmq-benchmark.md
-          echo '```' | tee -a zmq-benchmark.md
-          cd networking/zmq4
-          go test -bench=. -benchmem -benchtime=30s -run=^$ -v 2>&1 | tee -a ../../zmq-benchmark.md
-          cd ../..
-          echo '```' | tee -a zmq-benchmark.md
+          echo "Skipping ZMQ benchmarks - networking layer moved to node repository" | tee -a zmq-benchmark.md
 
       - name: Run consensus benchmarks
         run: |
@@ -66,53 +61,32 @@ jobs:
           echo "" | tee -a consensus-benchmark.md
           echo "### Results" | tee -a consensus-benchmark.md
           echo '```' | tee -a consensus-benchmark.md
-          go test -bench=. -benchmem -benchtime=30s -run=^$ ./benchmark/... 2>&1 | tee -a consensus-benchmark.md
+          go test -bench=. -benchmem -benchtime=10s -run=^$ ./core/... 2>&1 | tee -a consensus-benchmark.md
           echo '```' | tee -a consensus-benchmark.md
 
       - name: Run ZMQ consensus integration benchmarks
         run: |
           echo "" | tee -a zmq-consensus-benchmark.md
-          echo "## ZMQ Consensus Integration Benchmarks" | tee -a zmq-consensus-benchmark.md
+          echo "## Wave Consensus Benchmarks" | tee -a zmq-consensus-benchmark.md
           echo "" | tee -a zmq-consensus-benchmark.md
-          echo "### Multi-Validator Network Tests" | tee -a zmq-consensus-benchmark.md
-          echo '```' | tee -a zmq-consensus-benchmark.md
-          go test -bench=BenchmarkPhotonConsensusWithZMQ -benchmem -benchtime=10s -run=^$ ./benchmark/... 2>&1 | tee -a zmq-consensus-benchmark.md
-          go test -bench=BenchmarkPulseConsensusWithZMQ -benchmem -benchtime=10s -run=^$ ./benchmark/... 2>&1 | tee -a zmq-consensus-benchmark.md
-          go test -bench=BenchmarkWaveConsensusWithZMQ -benchmem -benchtime=10s -run=^$ ./benchmark/... 2>&1 | tee -a zmq-consensus-benchmark.md
-          echo '```' | tee -a zmq-consensus-benchmark.md
-          echo "" | tee -a zmq-consensus-benchmark.md
-          echo "### Consensus Scalability Tests" | tee -a zmq-consensus-benchmark.md
-          echo '```' | tee -a zmq-consensus-benchmark.md
-          go test -bench=BenchmarkConsensusScalability -benchmem -benchtime=5s -run=^$ -short ./benchmark/... 2>&1 | tee -a zmq-consensus-benchmark.md
-          echo '```' | tee -a zmq-consensus-benchmark.md
+          echo "Skipping ZMQ integration benchmarks - networking layer moved to node repository" | tee -a zmq-consensus-benchmark.md
 
-      - name: Run standalone ZMQ benchmark tool
+      - name: Run standalone consensus demo
         run: |
           echo "" | tee -a zmq-bench-tool.md
-          echo "## Standalone ZMQ Benchmark Tool Results" | tee -a zmq-bench-tool.md
+          echo "## Consensus Demo Results" | tee -a zmq-bench-tool.md
           echo "" | tee -a zmq-bench-tool.md
           
-          # Get CPU count for optimal node placement
-          CPU_COUNT=$(nproc || sysctl -n hw.ncpu || echo 4)
-          echo "System has $CPU_COUNT CPU cores" | tee -a zmq-bench-tool.md
-          echo "" | tee -a zmq-bench-tool.md
-          
-          # Test with different node counts and optimized parameters
-          for NODES in 10 100 1000; do
-            echo "### Multi-Validator Consensus ($NODES nodes)" | tee -a zmq-bench-tool.md
-            echo "Parameters: batch=4096, interval=5ms, rounds=100" | tee -a zmq-bench-tool.md
-            echo '```' | tee -a zmq-bench-tool.md
-            ./bin/zmq-bench -nodes $NODES -batch 4096 -interval 5ms -rounds 100 2>&1 | grep -E "^📊|Nodes:|Duration:|TPS:|Throughput:|Message rate:|latency:" | tee -a zmq-bench-tool.md || true
-            echo '```' | tee -a zmq-bench-tool.md
-            echo "" | tee -a zmq-bench-tool.md
-          done
-          
-          # High-performance test with nodes per core
-          MAX_NODES=$((CPU_COUNT * 2))
-          echo "### High-Performance Test ($MAX_NODES nodes, 2 per core)" | tee -a zmq-bench-tool.md
-          echo "Parameters: batch=8192, interval=1ms, rounds=50" | tee -a zmq-bench-tool.md
+          # Run consensus demo with different node counts
+          echo "### 5-node consensus" | tee -a zmq-bench-tool.md
           echo '```' | tee -a zmq-bench-tool.md
-          ./bin/zmq-bench -nodes $MAX_NODES -batch 8192 -interval 1ms -rounds 50 2>&1 | grep -E "^📊|Nodes:|Duration:|TPS:|Throughput:|Message rate:|latency:" | tee -a zmq-bench-tool.md || true
+          ./bin/consensus -nodes 5 -rounds 10 2>&1 | tee -a zmq-bench-tool.md || true
+          echo '```' | tee -a zmq-bench-tool.md
+          echo "" | tee -a zmq-bench-tool.md
+          
+          echo "### 21-node consensus" | tee -a zmq-bench-tool.md
+          echo '```' | tee -a zmq-bench-tool.md
+          ./bin/consensus -nodes 21 -rounds 10 2>&1 | tee -a zmq-bench-tool.md || true
           echo '```' | tee -a zmq-bench-tool.md
 
       - name: Combine results
