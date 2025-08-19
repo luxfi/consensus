@@ -86,7 +86,11 @@ const (
 type NodeID = types.NodeID
 
 // VoteMsg represents a vote message in consensus
-type VoteMsg[ID comparable] = wave.VoteMsg[ID]
+type VoteMsg[ID comparable] struct {
+	Item   ID
+	Prefer bool
+	From   NodeID
+}
 
 // Transport defines the network transport interface
 type Transport[ID comparable] interface {
