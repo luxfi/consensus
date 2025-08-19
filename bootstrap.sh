@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p config core/prism core/wave core/dag protocol/nova protocol/nebula protocol/quasar engines/chain engines/dag types witness examples/fastchain core/focus
+mkdir -p config core/prism core/wave core/dag protocol/nova protocol/nebula protocol/quasar engine/chain engine/dag types witness examples/fastchain core/focus
 
 cat > go.mod <<'EOF'
 module consensus
@@ -409,7 +409,7 @@ type Client interface {
 }
 EOF
 
-cat > engines/chain/engine.go <<'EOF'
+cat > engine/chain/engine.go <<'EOF'
 package chain
 
 import (
@@ -453,7 +453,7 @@ func (voteTx[ID]) RequestVotes(ctx context.Context, peers []types.NodeID, item I
 }
 EOF
 
-cat > engines/dag/engine.go <<'EOF'
+cat > engine/dag/engine.go <<'EOF'
 package dag
 
 import (
@@ -483,7 +483,7 @@ import (
     "time"
 
     "consensus/config"
-    "consensus/engines/chain"
+    "consensus/engine/chain"
     "consensus/prism"
     "consensus/types"
     "consensus/core/wave"
