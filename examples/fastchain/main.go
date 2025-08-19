@@ -7,7 +7,7 @@ import (
 
     "github.com/luxfi/consensus/config"
     "github.com/luxfi/consensus/engines/chain"
-    "github.com/luxfi/consensus/core/prism"
+    "github.com/luxfi/consensus/photon"
     "github.com/luxfi/consensus/types"
     "github.com/luxfi/consensus/core/wave"
 )
@@ -28,9 +28,9 @@ func (txStub) RequestVotes(ctx context.Context, peers []types.NodeID, item ItemI
 func main() {
     cfg := config.DefaultParams()
     peers := []types.NodeID{"n1","n2","n3","n4","n5"}
-    sel := prism.New(peers, prism.DefaultOptions())
+    emitter := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
     tx := txStub{}
-    e := chain.New[ItemID](cfg, sel, tx)
+    e := chain.New[ItemID](cfg, emitter, tx)
 
     ctx, cancel := context.WithTimeout(context.Background(), time.Second)
     defer cancel()
