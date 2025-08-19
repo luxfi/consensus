@@ -7,7 +7,6 @@ import (
     "github.com/luxfi/consensus/core/wave"
     "github.com/luxfi/consensus/core/prism"
     "github.com/luxfi/consensus/protocol/nova"
-    "github.com/luxfi/consensus/types"
 )
 
 type Transport[ID comparable] interface{ wave.Transport[ID] }
@@ -30,12 +29,4 @@ func (e *Engine[ID]) Tick(ctx context.Context, id ID) {
 
 func (e *Engine[ID]) State(id ID) (wave.State[ID], bool) {
     return e.w.State(id)
-}
-
-type voteTx[ID comparable] struct{}
-func (voteTx[ID]) RequestVotes(ctx context.Context, peers []types.NodeID, item ID) (<-chan wave.VoteMsg[ID], error) {
-    _ = ctx; _ = peers
-    out := make(chan wave.VoteMsg[ID], 1)
-    out <- wave.VoteMsg[ID]{Item: item, Prefer: true}; close(out)
-    return out, nil
 }
