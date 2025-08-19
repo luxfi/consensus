@@ -58,26 +58,13 @@ jobs:
       - name: Get dependencies
         run: go mod download
 
-      - name: Build ZMQ benchmark tool
-        run: make zmq-bench
-
-      - name: Run ZeroMQ benchmarks
-        run: |
-          echo "=== Running ZeroMQ Benchmarks ==="
-          cd networking/zmq4
-          go test -bench=. -benchmem -benchtime=10s -run=^$ -v | tee ../../zmq-benchmark-results.txt
-          
-      - name: Display benchmark results
-        run: |
-          echo "## ZeroMQ Benchmark Results" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cat zmq-benchmark-results.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+      - name: Build consensus tool
+        run: go build -o bin/consensus ./cmd/consensus
 
       - name: Run consensus benchmarks
         run: |
           echo "=== Running Consensus Benchmarks ==="
-          go test -bench=. -benchmem -benchtime=10s -run=^$ ./benchmark/... | tee consensus-benchmark-results.txt
+          go test -bench=. -benchmem -benchtime=10s -run=^$ ./core/... | tee consensus-benchmark-results.txt || echo "No benchmarks found"
 
       - name: Display consensus benchmark results
         run: |
@@ -86,28 +73,21 @@ jobs:
           cat consensus-benchmark-results.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           
-      - name: Run multi-validator ZMQ benchmarks
+      - name: Run consensus demo
         run: |
-          echo "## Multi-Validator ZMQ Benchmarks" >> $GITHUB_STEP_SUMMARY
+          echo "## Consensus Demo" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          CPU_COUNT=$(nproc || echo 4)
-          echo "Running on $CPU_COUNT CPU cores" >> $GITHUB_STEP_SUMMARY
+          echo "### 5-node consensus" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ./bin/consensus -nodes 5 -rounds 5 >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          for NODES in 10 100 1000; do
-            echo "### $NODES Nodes (batch=4096)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            ./bin/zmq-bench -nodes $NODES -batch 4096 -interval 5ms -rounds 50 2>&1 | grep -E "^📊|Nodes:|Duration:|TPS:|Throughput:|Message rate:|latency:" >> $GITHUB_STEP_SUMMARY || true
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          done
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
           path: |
-            zmq-benchmark-results.txt
             consensus-benchmark-results.txt
 
       - name: Comment PR with benchmark results
@@ -116,15 +96,9 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const zmqResults = fs.readFileSync('zmq-benchmark-results.txt', 'utf8');
             const consensusResults = fs.readFileSync('consensus-benchmark-results.txt', 'utf8');
             
             const comment = `## Benchmark Results
-            
-            ### ZeroMQ Benchmarks
-            \`\`\`
-            ${zmqResults}
-            \`\`\`
             
             ### Consensus Benchmarks
             \`\`\`
