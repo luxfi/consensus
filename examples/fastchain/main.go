@@ -6,7 +6,7 @@ import (
     "time"
 
     "github.com/luxfi/consensus/config"
-    "github.com/luxfi/consensus/engines/chain"
+    "github.com/luxfi/consensus/engine/chain"
     "github.com/luxfi/consensus/photon"
     "github.com/luxfi/consensus/types"
     "github.com/luxfi/consensus/core/wave"
