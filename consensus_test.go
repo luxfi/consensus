@@ -97,20 +97,23 @@ func TestNewFinalizer(t *testing.T) {
 	}
 }
 
-func TestNewSampler(t *testing.T) {
+func TestNewEmitter(t *testing.T) {
 	peers := []NodeID{"n1", "n2", "n3", "n4", "n5"}
-	sampler := NewSampler[string](peers, DefaultSamplerOptions())
+	emitter := NewEmitter(peers, DefaultEmitterOptions())
 
 	ctx := context.Background()
-	sample := sampler.Sample(ctx, 3, types.Topic("test"))
-
-	if len(sample) != 3 {
-		t.Errorf("expected 3 peers, got %d", len(sample))
+	emitted, err := emitter.Emit(ctx, 3, 12345)
+	
+	if err != nil {
+		t.Fatalf("emission failed: %v", err)
+	}
+	if len(emitted) != 3 {
+		t.Errorf("expected 3 peers, got %d", len(emitted))
 	}
 
 	// Check uniqueness
 	seen := make(map[NodeID]bool)
-	for _, p := range sample {
+	for _, p := range emitted {
 		if seen[p] {
 			t.Error("duplicate peer in sample")
 		}

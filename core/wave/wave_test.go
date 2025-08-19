@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/core/prism"
+	"github.com/luxfi/consensus/photon"
 	"github.com/luxfi/consensus/types"
 )
 
@@ -43,7 +43,7 @@ func TestWaveBasic(t *testing.T) {
 	cfg.Beta = 2
 
 	peers := []types.NodeID{"n1", "n2", "n3"}
-	sel := prism.New(peers, prism.DefaultOptions())
+	sel := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
 
 	// Test accept case
 	tx := &mockTransport{
@@ -91,7 +91,7 @@ func TestWaveReject(t *testing.T) {
 	cfg.Beta = 1
 
 	peers := []types.NodeID{"n1", "n2", "n3"}
-	sel := prism.New(peers, prism.DefaultOptions())
+	sel := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
 
 	tx := &mockTransport{
 		votes: []VoteMsg[string]{
@@ -125,7 +125,7 @@ func TestWaveTimeout(t *testing.T) {
 	cfg.RoundTO = 50 * time.Millisecond
 
 	peers := []types.NodeID{"n1", "n2", "n3"}
-	sel := prism.New(peers, prism.DefaultOptions())
+	sel := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
 
 	// Transport with delay longer than timeout
 	tx := &mockTransport{
