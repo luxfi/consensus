@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/core/prism"
+	"github.com/luxfi/consensus/photon"
 	"github.com/luxfi/consensus/core/wave"
 	"github.com/luxfi/consensus/types"
 )
@@ -31,7 +31,7 @@ func TestChainEngine(t *testing.T) {
 	cfg.Beta = 2
 
 	peers := []types.NodeID{"n1", "n2", "n3", "n4", "n5"}
-	sel := prism.New(peers, prism.DefaultOptions())
+	sel := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
 
 	tx := &mockTransport{
 		votes: []wave.VoteMsg[string]{
@@ -80,7 +80,7 @@ func TestChainEngineReject(t *testing.T) {
 	cfg.Beta = 1
 
 	peers := []types.NodeID{"n1", "n2", "n3"}
-	sel := prism.New(peers, prism.DefaultOptions())
+	sel := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
 
 	tx := &mockTransport{
 		votes: []wave.VoteMsg[string]{
@@ -117,7 +117,7 @@ func TestChainEngineMultipleBlocks(t *testing.T) {
 	cfg.RoundTO = 10 * time.Millisecond
 
 	peers := []types.NodeID{"n1", "n2", "n3"}
-	sel := prism.New(peers, prism.DefaultOptions())
+	sel := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
 
 	// Different votes for different blocks
 	votes := map[string][]wave.VoteMsg[string]{
@@ -167,7 +167,7 @@ func TestChainEngineConcurrency(t *testing.T) {
 	cfg.Beta = 3
 
 	peers := []types.NodeID{"n1", "n2", "n3", "n4", "n5"}
-	sel := prism.New(peers, prism.DefaultOptions())
+	sel := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
 
 	tx := &mockTransport{
 		votes: []wave.VoteMsg[string]{

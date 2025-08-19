@@ -5,8 +5,9 @@ import (
 
     "github.com/luxfi/consensus/config"
     "github.com/luxfi/consensus/core/wave"
-    "github.com/luxfi/consensus/core/prism"
+    "github.com/luxfi/consensus/photon"
     "github.com/luxfi/consensus/protocol/nova"
+    "github.com/luxfi/consensus/types"
 )
 
 type Transport[ID comparable] interface{ wave.Transport[ID] }
@@ -16,8 +17,8 @@ type Engine[ID comparable] struct {
     nv *nova.Finalizer[ID]
 }
 
-func New[ID comparable](cfg config.Parameters, sel prism.Sampler[ID], tx Transport[ID]) *Engine[ID] {
-    return &Engine[ID]{ w: wave.New[ID](cfg, sel, tx), nv: nova.New[ID]() }
+func New[ID comparable](cfg config.Parameters, emitter photon.Emitter[types.NodeID], tx Transport[ID]) *Engine[ID] {
+    return &Engine[ID]{ w: wave.New[ID](cfg, emitter, tx), nv: nova.New[ID]() }
 }
 
 func (e *Engine[ID]) Tick(ctx context.Context, id ID) {
