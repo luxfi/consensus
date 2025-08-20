@@ -23,7 +23,7 @@ type Bundle struct {
 }
 
 // Verify checks both BLS and PQ certificates
-func (c *CertBundle) Verify(quorum []string) bool {
+func (c *CertBundle) Verify(_ []string) bool {
 	// Placeholder verification
 	// In production: verify BLS signature and PQ certificate
 	return c.BLSAgg != nil && c.PQCert != nil && len(c.BLSAgg) > 0 && len(c.PQCert) > 0
@@ -69,7 +69,7 @@ func New(cfg config.Parameters) *Quasar {
 }
 
 // Initialize sets up keys for Quasar
-func (q *Quasar) Initialize(ctx context.Context, blsKey, pqKey []byte) error {
+func (q *Quasar) Initialize(_ context.Context, blsKey, pqKey []byte) error {
 	q.blsKey = blsKey
 	q.pqKey = pqKey
 	return nil
