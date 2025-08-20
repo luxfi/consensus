@@ -42,6 +42,14 @@ type RingtailEngine interface {
 
 	// Generate a new key pair
 	GenerateKeyPair() (SecretKey, PublicKey, error)
+	
+	// KEM operations for post-quantum key exchange
+	Encapsulate(pk PublicKey) ([]byte, []byte, error)
+	Decapsulate(ct []byte, sk SecretKey) ([]byte, error)
+	
+	// Shared secret operations
+	CombineSharedSecrets(ss1, ss2 []byte) []byte
+	DeriveKey(secret []byte, length int) []byte
 }
 
 // Error variables
@@ -85,6 +93,38 @@ func (e *stubEngine) GenerateKeyPair() (SecretKey, PublicKey, error) {
 	sk := make([]byte, 32)
 	pk := make([]byte, 32)
 	return sk, pk, nil
+}
+
+// Encapsulate generates a ciphertext and shared secret (stub implementation)
+func (e *stubEngine) Encapsulate(pk PublicKey) ([]byte, []byte, error) {
+	ct := make([]byte, 64)
+	ss := make([]byte, 32)
+	rand.Read(ct)
+	rand.Read(ss)
+	return ct, ss, nil
+}
+
+// Decapsulate recovers shared secret from ciphertext (stub implementation)  
+func (e *stubEngine) Decapsulate(ct []byte, sk SecretKey) ([]byte, error) {
+	ss := make([]byte, 32)
+	rand.Read(ss)
+	return ss, nil
+}
+
+// CombineSharedSecrets combines two shared secrets (stub implementation)
+func (e *stubEngine) CombineSharedSecrets(ss1, ss2 []byte) []byte {
+	combined := make([]byte, 32)
+	for i := 0; i < 32 && i < len(ss1) && i < len(ss2); i++ {
+		combined[i] = ss1[i] ^ ss2[i]
+	}
+	return combined
+}
+
+// DeriveKey derives a key from shared secret (stub implementation)
+func (e *stubEngine) DeriveKey(secret []byte, length int) []byte {
+	key := make([]byte, length)
+	copy(key, secret)
+	return key
 }
 
 // KeyGen generates a key pair from seed

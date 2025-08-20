@@ -373,8 +373,8 @@ func TestNovaFinality(t *testing.T) {
     }
     
     // Test non-finalized blocks
-    finalized, _ = n.Finalized("unknown-block")
-    if finalized {
+    unknownFinalized, _ := n.Finalized("unknown-block")
+    if unknownFinalized {
         t.Error("unknown block reported as finalized")
     }
 }
