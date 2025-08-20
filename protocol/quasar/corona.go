@@ -77,14 +77,25 @@ func (e *stubEngine) Initialize(level SecurityLevel) error {
 
 // Sign signs a message (stub implementation)
 func (e *stubEngine) Sign(msg []byte, sk SecretKey) (Signature, error) {
-	// Stub implementation
-	return make([]byte, 32), nil
+	// Stub implementation - return non-zero signature
+	sig := make([]byte, 32)
+	// Put some non-zero bytes to make it a "valid" signature
+	for i := range sig {
+		sig[i] = byte(i + 1)
+	}
+	return sig, nil
 }
 
 // Verify verifies a signature (stub implementation)
 func (e *stubEngine) Verify(msg []byte, sig Signature, pk PublicKey) bool {
-	// Stub implementation - always return true for now
-	return true
+	// Stub implementation - check if signature is non-zero
+	// A real implementation would verify the cryptographic signature
+	for _, b := range sig {
+		if b != 0 {
+			return true // Non-zero signature considered valid for stub
+		}
+	}
+	return false // All-zero signature is invalid
 }
 
 // GenerateKeyPair generates a new key pair (stub implementation)
