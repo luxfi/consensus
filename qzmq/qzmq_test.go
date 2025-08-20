@@ -426,7 +426,7 @@ func BenchmarkHandshake(b *testing.B) {
             transport := struct {
                 io.Reader
                 io.Writer
-            }{serverFromClient, serverToClient}
+            }{serverToClient, serverFromClient}
             done <- session.serverHandshake(transport)
         }()
         
@@ -435,7 +435,7 @@ func BenchmarkHandshake(b *testing.B) {
             transport := struct {
                 io.Reader
                 io.Writer
-            }{clientFromServer, clientToServer}
+            }{clientToServer, clientFromServer}
             done <- session.clientHandshake(transport)
         }()
         
