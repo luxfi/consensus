@@ -3,8 +3,9 @@
 // Consensus algorithms work with abstract IDs, not specific block structures.
 //
 // Migration:
-//   OLD: import "github.com/luxfi/consensus/engine/chain/block"
-//   NEW: import "github.com/luxfi/node/chain/block"
+//
+//	OLD: import "github.com/luxfi/consensus/engine/chain/block"
+//	NEW: import "github.com/luxfi/node/chain/block"
 package block
 
 import "errors"
