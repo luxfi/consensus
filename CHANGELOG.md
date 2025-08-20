@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.0] - 2024-12-20
+## [1.2.0] - 2024-12-20
 
-### Changed - BREAKING
+### Changed
 - **Major Refactoring**: Complete replacement of `Sampler/Sample` pattern with `Emitter/Emit`
   - All packages now use the photon-based light emission metaphor
   - Renamed `prism.Sampler` to `photon.Emitter` throughout codebase

@@ -1,6 +1,6 @@
 # Migration Guide: Sampler to Emitter
 
-This guide helps developers migrate from the old `Sampler/Sample` pattern to the new `Emitter/Emit` pattern introduced in v2.0.0.
+This guide helps developers migrate from the old `Sampler/Sample` pattern to the new `Emitter/Emit` pattern introduced in v1.2.0.
 
 ## Overview
 
@@ -199,4 +199,4 @@ For questions or issues with migration:
 
 ---
 
-*Migration guide for Lux Consensus v2.0.0 - Photon/Emitter Refactoring*
+*Migration guide for Lux Consensus v1.2.0 - Photon/Emitter Refactoring*
