@@ -3,6 +3,7 @@
 [![CI Status](https://github.com/luxfi/consensus/actions/workflows/ci.yml/badge.svg)](https://github.com/luxfi/consensus/actions)
 [![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)](https://github.com/luxfi/consensus)
 [![Go Version](https://img.shields.io/badge/go-1.24.5-blue)](https://go.dev)
+[![Release](https://img.shields.io/badge/release-v1.2.0-green)](https://github.com/luxfi/consensus/releases/tag/v1.2.0)
 
 ## Lux Quasar: Post Quantum Consensus Engine with Photonic Selection
 
