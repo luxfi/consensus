@@ -6,46 +6,46 @@ import (
     "time"
 )
 
-func TestNebula(t *testing.T) {
-    // Test nebula protocol initialization
-    ctx := context.Background()
+func TestNebulaService(t *testing.T) {
+    // Test nebula service initialization
+    service := New()
     
-    // Nebula is a placeholder for future implementation
-    result := Nebula(ctx)
-    if result == nil {
-        // Expected for placeholder
+    if service == nil {
+        t.Fatal("New() should not return nil")
     }
 }
 
-func TestNebulaTimeout(t *testing.T) {
+func TestNebulaServiceContext(t *testing.T) {
     ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
     defer cancel()
     
-    // Test with timeout context
-    result := Nebula(ctx)
-    if result != nil {
-        t.Error("Nebula should return nil for placeholder")
+    // Test service creation
+    service := New()
+    _ = ctx // Service doesn't use context yet
+    
+    if service == nil {
+        t.Error("Service should be created")
     }
 }
 
-func TestNebulaCancellation(t *testing.T) {
+func TestNebulaServiceCancellation(t *testing.T) {
     ctx, cancel := context.WithCancel(context.Background())
     
     // Cancel immediately
     cancel()
     
-    // Test with cancelled context
-    result := Nebula(ctx)
-    if result != nil {
-        t.Error("Nebula should handle cancellation")
+    // Test service with cancelled context
+    service := New()
+    _ = ctx // Service doesn't use context yet
+    
+    if service == nil {
+        t.Error("Service should still be created")
     }
 }
 
-func BenchmarkNebula(b *testing.B) {
-    ctx := context.Background()
-    
+func BenchmarkNebulaService(b *testing.B) {
     b.ResetTimer()
     for i := 0; i < b.N; i++ {
-        _ = Nebula(ctx)
+        _ = New()
     }
 }
