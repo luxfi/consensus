@@ -76,7 +76,7 @@ func (e *stubEngine) Initialize(level SecurityLevel) error {
 }
 
 // Sign signs a message (stub implementation)
-func (e *stubEngine) Sign(msg []byte, sk SecretKey) (Signature, error) {
+func (e *stubEngine) Sign(_ []byte, sk SecretKey) (Signature, error) {
 	// Stub implementation - return non-zero signature
 	sig := make([]byte, 32)
 	// Put some non-zero bytes to make it a "valid" signature
