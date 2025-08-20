@@ -122,7 +122,7 @@ func TestCalc(t *testing.T) {
 	}
 
 	// Test with previous confidence
-	ratio, conf = Calc(9, 10, 5)
+	_, conf = Calc(9, 10, 5)
 	if conf < 8 || conf > 11 {
 		t.Errorf("expected conf around 10 with prev=5, got conf=%d", conf)
 	}
