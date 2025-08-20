@@ -397,10 +397,7 @@ func TestNovaFinality(t *testing.T) {
 }
 
 // mockTransport implements a test transport
-type mockTransport[ID comparable] struct {
-    mu       sync.Mutex
-    messages []any
-}
+type mockTransport[ID comparable] struct {}
 
 func (t *mockTransport[ID]) RequestVotes(ctx context.Context, peers []types.NodeID, item ID) (<-chan wave.VoteMsg[ID], error) {
     ch := make(chan wave.VoteMsg[ID], len(peers))
@@ -451,7 +448,7 @@ func BenchmarkDAGConsensus(b *testing.B) {
 func BenchmarkQuantumFinality(b *testing.B) {
     cfg := config.XChainParams()
     q := quasar.New(cfg)
-    q.Initialize(context.Background(), []byte("bls"), []byte("pq"))
+    _ = q.Initialize(context.Background(), []byte("bls"), []byte("pq"))
     
     cert := &quasar.CertBundle{
         BLSAgg: make([]byte, 96),

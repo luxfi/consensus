@@ -3,8 +3,9 @@
 // Validator management is an application concern, not a consensus algorithm concern.
 //
 // Migration:
-//   OLD: import "github.com/luxfi/consensus/validators"
-//   NEW: import "github.com/luxfi/node/validators"
+//
+//	OLD: import "github.com/luxfi/consensus/validators"
+//	NEW: import "github.com/luxfi/node/validators"
 //
 // This stub exists only for backward compatibility during migration.
 package validators
