@@ -8,12 +8,12 @@ import (
 
 // Message types
 const (
-    TypeClientHello = 0x01
-    TypeServerHello = 0x02
-    TypeClientKey   = 0x03
-    TypeFinished    = 0x04
-    TypeData        = 0x05
-    TypeKeyUpdate   = 0x06
+    TypeClientHello uint8 = 0x01
+    TypeServerHello uint8 = 0x02
+    TypeClientKey   uint8 = 0x03
+    TypeFinished    uint8 = 0x04
+    TypeData        uint8 = 0x05
+    TypeKeyUpdate   uint8 = 0x06
 )
 
 // ClientHello initiates the handshake
