@@ -2,8 +2,9 @@
 // Uptime tracking is a node monitoring concern, not a consensus algorithm concern.
 //
 // Migration:
-//   OLD: import "github.com/luxfi/consensus/uptime"
-//   NEW: import "github.com/luxfi/node/uptime"
+//
+//	OLD: import "github.com/luxfi/consensus/uptime"
+//	NEW: import "github.com/luxfi/node/uptime"
 package uptime
 
 import "errors"
