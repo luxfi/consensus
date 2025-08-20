@@ -21,7 +21,7 @@ import (
 
 const (
     // Protocol version
-    Version = 1
+    Version byte = 1
     
     // Cipher suites
     SuiteAES256GCM        = 0x01
@@ -272,7 +272,11 @@ func (s *Session) deriveKeys(clientRandom, serverRandom []byte) error {
         io.ReadFull(kdf, s.recvKey)
     }
     
-    // Initialize ciphers
+    return s.initCiphers()
+}
+
+// initCiphers initializes the ciphers from existing keys
+func (s *Session) initCiphers() error {
     var err error
     switch s.suite {
     case SuiteAES256GCM:
@@ -373,29 +377,9 @@ func (s *Session) RotateKeys() error {
     kdf2 := hkdf.New(sha256.New, s.recvKey, nil, []byte("ratchet"))
     io.ReadFull(kdf2, s.recvKey)
     
-    // Reinitialize ciphers
-    var err error
-    switch s.suite {
-    case SuiteAES256GCM:
-        block, _ := aes.NewCipher(s.sendKey)
-        s.sendCipher, err = cipher.NewGCM(block)
-        if err != nil {
-            return err
-        }
-        block, _ = aes.NewCipher(s.recvKey)
-        s.recvCipher, err = cipher.NewGCM(block)
-        if err != nil {
-            return err
-        }
-    case SuiteChaCha20Poly1305:
-        s.sendCipher, err = chacha20poly1305.New(s.sendKey)
-        if err != nil {
-            return err
-        }
-        s.recvCipher, err = chacha20poly1305.New(s.recvKey)
-        if err != nil {
-            return err
-        }
+    // Reinitialize ciphers using the helper method
+    if err := s.initCiphers(); err != nil {
+        return err
     }
     
     // Reset counters

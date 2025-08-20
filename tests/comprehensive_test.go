@@ -56,7 +56,13 @@ func TestSnowballConsensus(t *testing.T) {
             }
             
             // Create wave consensus (snowball equivalent)
-            w := wave.New[string](cfg, nil, nil)
+            peers := make([]types.NodeID, tt.nodes)
+            for i := 0; i < tt.nodes; i++ {
+                peers[i] = types.NodeID(fmt.Sprintf("node-%d", i))
+            }
+            emitter := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
+            transport := &mockTransport[string]{}
+            w := wave.New[string](cfg, emitter, transport)
             
             // Run consensus rounds
             ctx := context.Background()

@@ -68,23 +68,31 @@ func TestSession_EncryptDecrypt(t *testing.T) {
         t.Fatalf("Create client session: %v", err)
     }
     
-    // Simulate key exchange (simplified for testing)
-    serverSession.sendKey = make([]byte, 32)
-    serverSession.recvKey = make([]byte, 32)
-    clientSession.sendKey = make([]byte, 32)
-    clientSession.recvKey = make([]byte, 32)
+    // Generate shared keys for testing
+    sharedKey1 := make([]byte, 32)
+    sharedKey2 := make([]byte, 32)
+    rand.Read(sharedKey1)
+    rand.Read(sharedKey2)
     
-    rand.Read(serverSession.sendKey)
-    copy(clientSession.recvKey, serverSession.sendKey)
-    rand.Read(clientSession.sendKey)
-    copy(serverSession.recvKey, clientSession.sendKey)
+    // Set up matching keys for both sessions
+    // Server's send key = Client's recv key
+    serverSession.sendKey = sharedKey1
+    clientSession.recvKey = sharedKey1
     
-    // Initialize ciphers
-    if err := serverSession.deriveKeys(nil, nil); err != nil {
-        t.Fatalf("Server derive keys: %v", err)
+    // Client's send key = Server's recv key  
+    clientSession.sendKey = sharedKey2
+    serverSession.recvKey = sharedKey2
+    
+    // Initialize ciphers with the keys
+    serverSession.suite = SuiteChaCha20Poly1305
+    clientSession.suite = SuiteChaCha20Poly1305
+    
+    // Initialize ciphers from the existing keys
+    if err := serverSession.initCiphers(); err != nil {
+        t.Fatalf("Server initCiphers: %v", err)
     }
-    if err := clientSession.deriveKeys(nil, nil); err != nil {
-        t.Fatalf("Client derive keys: %v", err)
+    if err := clientSession.initCiphers(); err != nil {
+        t.Fatalf("Client initCiphers: %v", err)
     }
     
     // Test encryption/decryption
@@ -145,7 +153,8 @@ func TestSession_KeyRotation(t *testing.T) {
     session.recvKey = make([]byte, 32)
     rand.Read(session.sendKey)
     rand.Read(session.recvKey)
-    session.deriveKeys(nil, nil)
+    session.suite = SuiteChaCha20Poly1305
+    session.initCiphers()
     
     // Save original keys
     origSendKey := make([]byte, 32)
@@ -350,7 +359,10 @@ func BenchmarkEncrypt(b *testing.B) {
     session, _ := NewSession(keys, true)
     session.sendKey = make([]byte, 32)
     rand.Read(session.sendKey)
-    session.deriveKeys(nil, nil)
+    session.recvKey = make([]byte, 32)
+    rand.Read(session.recvKey)
+    session.suite = SuiteChaCha20Poly1305
+    session.initCiphers()
     
     data := make([]byte, 1024)
     rand.Read(data)
@@ -371,7 +383,8 @@ func BenchmarkDecrypt(b *testing.B) {
     session.recvKey = make([]byte, 32)
     rand.Read(session.sendKey)
     rand.Read(session.recvKey)
-    session.deriveKeys(nil, nil)
+    session.suite = SuiteChaCha20Poly1305
+    session.initCiphers()
     
     data := make([]byte, 1024)
     rand.Read(data)
@@ -397,7 +410,8 @@ func BenchmarkKeyRotation(b *testing.B) {
     session.recvKey = make([]byte, 32)
     rand.Read(session.sendKey)
     rand.Read(session.recvKey)
-    session.deriveKeys(nil, nil)
+    session.suite = SuiteChaCha20Poly1305
+    session.initCiphers()
     
     b.ResetTimer()
     for i := 0; i < b.N; i++ {
