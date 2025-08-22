@@ -1,150 +1,182 @@
+// Package main provides the main consensus CLI tool
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"os"
 	"time"
 
+	"github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/core/wave"
-	"github.com/luxfi/consensus/photon"
-	"github.com/luxfi/consensus/types"
 )
-
-// mockTransport simulates network communication
-type mockTransport struct {
-	votes []wave.VoteMsg[string]
-}
-
-func (m *mockTransport) RequestVotes(ctx context.Context, peers []types.NodeID, item string) (<-chan wave.VoteMsg[string], error) {
-	ch := make(chan wave.VoteMsg[string], len(m.votes))
-	for _, v := range m.votes {
-		ch <- v
-	}
-	close(ch)
-	return ch, nil
-}
 
 func main() {
 	var (
-		nodes   = flag.Int("nodes", 21, "number of nodes in consensus")
-		rounds  = flag.Int("rounds", 10, "number of consensus rounds")
-		verbose = flag.Bool("v", false, "verbose output")
+		engine  = flag.String("engine", "chain", "Consensus engine (chain, dag, pq)")
+		network = flag.String("network", "mainnet", "Network configuration")
+		action  = flag.String("action", "info", "Action to perform (info, test, health)")
+		help    = flag.Bool("help", false, "Show help message")
 	)
 	flag.Parse()
 
-	fmt.Printf("Lux Consensus - Wave-first Architecture\n")
-	fmt.Printf("Nodes: %d, Rounds: %d\n\n", *nodes, *rounds)
-
-	// Create configuration based on node count
-	cfg := config.DefaultParams()
-	cfg.K = *nodes
-	
-	// Adjust parameters based on network size
-	if *nodes <= 5 {
-		cfg.Alpha = 0.6
-		cfg.Beta = 3
-		cfg.RoundTO = 100 * time.Millisecond
-	} else if *nodes <= 11 {
-		cfg.Alpha = 0.7
-		cfg.Beta = 6
-		cfg.RoundTO = 200 * time.Millisecond
-	} else {
-		cfg.Alpha = 0.8
-		cfg.Beta = 15
-		cfg.RoundTO = 250 * time.Millisecond
+	if *help {
+		printHelp()
+		os.Exit(0)
 	}
 
-	// Create peer list
-	peers := make([]types.NodeID, *nodes)
-	for i := 0; i < *nodes; i++ {
-		peers[i] = types.NodeID(fmt.Sprintf("node-%d", i))
-	}
-
-	// Create emitter for K-of-N committee selection
-	emitter := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
-	
-	// Simulate different voting scenarios
-	scenarios := []struct {
-		name   string
-		votes  []wave.VoteMsg[string]
-		expect string
-	}{
-		{
-			name:   "Strong Accept",
-			votes:  generateVotes("item1", peers, 0.8, true),
-			expect: "accept",
-		},
-		{
-			name:   "Strong Reject", 
-			votes:  generateVotes("item2", peers, 0.2, true),
-			expect: "reject",
-		},
-		{
-			name:   "Conflicting",
-			votes:  generateVotes("item3", peers, 0.5, true),
-			expect: "undecided",
-		},
-	}
-
-	for _, scenario := range scenarios {
-		fmt.Printf("Scenario: %s\n", scenario.name)
-		
-		tx := &mockTransport{votes: scenario.votes}
-		w := wave.New[string](cfg, emitter, tx)
-		ctx := context.Background()
-
-		// Run consensus rounds
-		item := scenario.votes[0].Item
-		for round := 0; round < *rounds; round++ {
-			w.Tick(ctx, item)
-			
-			if st, ok := w.State(item); ok {
-				if *verbose {
-					fmt.Printf("  Round %d: prefer=%v conf=%d decided=%v",
-						round+1, st.Step.Prefer, st.Step.Conf, st.Decided)
-					if st.Decided {
-						fmt.Printf(" result=%v", st.Result)
-					}
-					fmt.Println()
-				}
-				
-				if st.Decided {
-					result := "unknown"
-					if st.Result == types.DecideAccept {
-						result = "accept"
-					} else if st.Result == types.DecideReject {
-						result = "reject"
-					}
-					fmt.Printf("  Decision: %s (rounds=%d)\n", result, round+1)
-					break
-				}
-			}
-			
-			// Small delay between rounds
-			time.Sleep(10 * time.Millisecond)
-		}
-		fmt.Println()
-	}
-
-	if *verbose {
-		log.Printf("Consensus simulation complete")
+	switch *action {
+	case "info":
+		showInfo(*engine, *network)
+	case "test":
+		testEngine(*engine, *network)
+	case "health":
+		checkHealth(*engine)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown action: %s\n", *action)
+		os.Exit(1)
 	}
 }
 
-func generateVotes(item string, peers []types.NodeID, yesRatio float64, randomize bool) []wave.VoteMsg[string] {
-	votes := make([]wave.VoteMsg[string], len(peers))
-	yesCount := int(float64(len(peers)) * yesRatio)
+func printHelp() {
+	fmt.Println("Lux Consensus CLI")
+	fmt.Println("\nUsage: consensus [options]")
+	fmt.Println("\nOptions:")
+	fmt.Println("  -engine string   Consensus engine (default: chain)")
+	fmt.Println("                   Options: chain, dag, pq")
+	fmt.Println("  -network string  Network configuration (default: mainnet)")
+	fmt.Println("                   Options: mainnet, testnet, local")
+	fmt.Println("  -action string   Action to perform (default: info)")
+	fmt.Println("                   Options: info, test, health")
+	fmt.Println("  -help            Show this help message")
+	fmt.Println("\nExamples:")
+	fmt.Println("  consensus                          # Show chain engine info")
+	fmt.Println("  consensus -engine dag -action test # Test DAG engine")
+	fmt.Println("  consensus -action health           # Check engine health")
+}
+
+func showInfo(engineType, network string) {
+	fmt.Printf("=== Consensus Engine Info ===\n")
+	fmt.Printf("Engine:  %s\n", engineType)
+	fmt.Printf("Network: %s\n", network)
 	
-	for i := range peers {
-		votes[i] = wave.VoteMsg[string]{
-			Item:   item,
-			Prefer: i < yesCount,
-			From:   peers[i],
-		}
+	params := getNetworkParams(network)
+	fmt.Printf("\nParameters:\n")
+	fmt.Printf("  K (sample size):        %d\n", params.K)
+	fmt.Printf("  Alpha (quorum):         %.2f\n", params.Alpha)
+	fmt.Printf("  Beta (decision rounds): %d\n", params.Beta)
+	fmt.Printf("  Block Time:             %s\n", params.BlockTime)
+	fmt.Printf("  Round Timeout:          %s\n", params.RoundTO)
+	
+	switch engineType {
+	case "chain":
+		fmt.Println("\nChain Engine:")
+		fmt.Println("  - Linear blockchain consensus")
+		fmt.Println("  - Sequential block processing")
+		fmt.Println("  - Optimized for ordered transactions")
+	case "dag":
+		fmt.Println("\nDAG Engine:")
+		fmt.Println("  - Directed Acyclic Graph consensus")
+		fmt.Println("  - Parallel transaction processing")
+		fmt.Println("  - High throughput optimization")
+	case "pq":
+		fmt.Println("\nPost-Quantum Engine:")
+		fmt.Println("  - Quantum-resistant cryptography")
+		fmt.Println("  - ML-DSA-65 algorithm")
+		fmt.Println("  - Future-proof security")
+	}
+}
+
+func testEngine(engineType, network string) {
+	fmt.Printf("Testing %s engine with %s configuration...\n", engineType, network)
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	var engine consensus.Engine
+	switch engineType {
+	case "chain":
+		engine = consensus.NewChainEngine()
+	case "dag":
+		engine = consensus.NewDAGEngine()
+	case "pq":
+		engine = consensus.NewPQEngine()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown engine: %s\n", engineType)
+		os.Exit(1)
 	}
 	
-	return votes
+	// Start engine
+	if err := engine.Start(ctx, 1); err != nil {
+		fmt.Printf("✗ Failed to start: %v\n", err)
+		os.Exit(1)
+	}
+	defer engine.Stop(ctx)
+	
+	// Check bootstrapped
+	if !engine.IsBootstrapped() {
+		fmt.Println("✗ Not bootstrapped")
+		os.Exit(1)
+	}
+	
+	// Health check
+	health, err := engine.HealthCheck(ctx)
+	if err != nil {
+		fmt.Printf("✗ Health check failed: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Println("✓ Engine test passed")
+	fmt.Printf("  Health: %+v\n", health)
+}
+
+func checkHealth(engineType string) {
+	fmt.Printf("Checking %s engine health...\n", engineType)
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	
+	var engine consensus.Engine
+	switch engineType {
+	case "chain":
+		engine = consensus.NewChainEngine()
+	case "dag":
+		engine = consensus.NewDAGEngine()
+	case "pq":
+		engine = consensus.NewPQEngine()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown engine: %s\n", engineType)
+		os.Exit(1)
+	}
+	
+	// Start engine
+	if err := engine.Start(ctx, 1); err != nil {
+		fmt.Printf("✗ Failed to start: %v\n", err)
+		os.Exit(1)
+	}
+	defer engine.Stop(ctx)
+	
+	// Health check
+	health, err := engine.HealthCheck(ctx)
+	if err != nil {
+		fmt.Printf("✗ Health check failed: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Println("✓ Healthy")
+	fmt.Printf("  Status: %+v\n", health)
+}
+
+func getNetworkParams(network string) config.Parameters {
+	switch network {
+	case "mainnet":
+		return config.MainnetParams()
+	case "testnet":
+		return config.TestnetParams()
+	case "local":
+		return config.LocalParams()
+	default:
+		return config.MainnetParams()
+	}
 }
