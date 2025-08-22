@@ -237,5 +237,6 @@ func benchmarkPQ(ctx context.Context, params config.Parameters, blocks int, para
 }
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
+	// As of Go 1.20, rand.Seed is deprecated - random seeding is automatic
+	// No manual seeding required for better randomness
 }
