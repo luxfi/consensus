@@ -11,7 +11,6 @@ require (
 require (
 	github.com/gorilla/rpc v1.2.1 // indirect
 	github.com/luxfi/crypto v1.3.2 // indirect
-	github.com/luxfi/mock v0.1.0 // indirect
 	github.com/luxfi/node v1.16.15 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
@@ -19,4 +18,3 @@ require (
 	golang.org/x/exp v0.0.0-20250813145105-42675adae3e6 // indirect
 	gonum.org/v1/gonum v0.16.0 // indirect
 )
-
