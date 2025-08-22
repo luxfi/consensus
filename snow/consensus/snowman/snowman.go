@@ -2,8 +2,12 @@ package snowman
 
 import (
     "context"
+    "github.com/luxfi/consensus/utils/bag"
     "github.com/luxfi/ids"
 )
+
+// Bag is an alias for bag.Bag
+type Bag = bag.Bag
 
 // Consensus implements Snowman consensus
 type Consensus interface {
@@ -14,7 +18,7 @@ type Consensus interface {
     Add(context.Context, Block) error
     
     // RecordPoll records poll results
-    RecordPoll(context.Context, ids.Bag) error
+    RecordPoll(context.Context, *Bag) error
     
     // Finalized checks if finalized
     Finalized() bool
@@ -87,7 +91,7 @@ func (t *Topological) Add(ctx context.Context, block Block) error {
 }
 
 // RecordPoll records poll results
-func (t *Topological) RecordPoll(ctx context.Context, votes ids.Bag) error {
+func (t *Topological) RecordPoll(ctx context.Context, votes *Bag) error {
     return nil
 }
 
