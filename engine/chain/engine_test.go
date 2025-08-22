@@ -36,7 +36,7 @@ func TestStop(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 	
-	engine.Start(ctx, 1)
+	_ = engine.Start(ctx, 1)
 	
 	err := engine.Stop(ctx)
 	if err != nil {
