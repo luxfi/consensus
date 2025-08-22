@@ -3,6 +3,7 @@ module github.com/luxfi/consensus
 go 1.24.6
 
 require (
+	github.com/luxfi/database v1.1.13
 	github.com/luxfi/ids v1.0.2
 	github.com/luxfi/math v0.1.0
 )
@@ -19,7 +20,4 @@ require (
 	gonum.org/v1/gonum v0.16.0 // indirect
 )
 
-replace (
-	github.com/luxfi/ids => ../ids
-	github.com/luxfi/node => ../node
-)
+replace github.com/luxfi/node => ../node
