@@ -107,7 +107,7 @@ func TestFinalityChannel(t *testing.T) {
 	// Process block in background
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		engine.ProcessBlock(ctx, blockID, votes)
+		_ = engine.ProcessBlock(ctx, blockID, votes)
 	}()
 
 	// Wait for finality event
@@ -196,7 +196,7 @@ func TestMultipleBlocks(t *testing.T) {
 func BenchmarkProcessBlock(b *testing.B) {
 	engine := NewConsensus(config.XChainParams())
 	ctx := context.Background()
-	engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	_ = engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
 	
 	votes := map[string]int{
 		"block": 4,
@@ -206,14 +206,14 @@ func BenchmarkProcessBlock(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		blockID := ids.GenerateTestID()
-		engine.ProcessBlock(ctx, blockID, votes)
+		_ = engine.ProcessBlock(ctx, blockID, votes)
 	}
 }
 
 func BenchmarkIsFinalized(b *testing.B) {
 	engine := NewConsensus(config.DefaultParams())
 	ctx := context.Background()
-	engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	_ = engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
 	
 	// Add some finalized blocks
 	for i := 0; i < 100; i++ {
