@@ -96,7 +96,7 @@ func checkEngine(ctx context.Context, name string, engine consensus.Engine, verb
 		fmt.Printf("✗ Failed to start: %v\n", err)
 		return false
 	}
-	defer engine.Stop(ctx)
+	defer func() { _ = engine.Stop(ctx) }()
 	
 	// Check bootstrapped
 	if !engine.IsBootstrapped() {
