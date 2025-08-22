@@ -23,11 +23,11 @@ build: ## Build all tools and commands
 	@ls -1 bin/ 2>/dev/null | grep -v '^$$' || echo "No tools built"
 
 # Build tools that depend on node package (currently broken due to unused imports)
-build-full: build ## Build all tools including those with node dependencies
-	@echo "Building benchmark (requires fixing node package imports)..."
-	@go build -tags zmq -o bin/benchmark ./cmd/benchmark 2>&1 || echo "WARNING: Skipping - fix needed in node/network/peer/test_peer.go"
-	@echo "Building benchmark tool..."
-	@go build -o bin/benchmark ./cmd/benchmark 2>&1 || echo "WARNING: Skipping - fix needed in node package"
+# build-full: build ## Build all tools including those with node dependencies
+# 	@echo "Building benchmark (requires fixing node package imports)..."
+# 	@go build -tags zmq -o bin/benchmark ./cmd/benchmark 2>&1 || echo "WARNING: Skipping - fix needed in node/network/peer/test_peer.go"
+# 	@echo "Building benchmark tool..."
+# 	@go build -o bin/benchmark ./cmd/benchmark 2>&1 || echo "WARNING: Skipping - fix needed in node package"
 
 # Run all tests
 test: ## Run all tests
@@ -49,12 +49,12 @@ test-coverage: ## Run tests with coverage report
 # Run benchmarks
 bench: ## Run performance benchmarks
 	@echo "Running benchmarks..."
-	@go test -bench=. -benchmem ./benchmark ./validator ./config ./protocol/... ./engine/...
+	@go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
 
 # Run pure consensus benchmarks
 benchmark: ## Run pure algorithm benchmarks without networking
 	@echo "🚀 Running pure consensus benchmarks..."
-	@go test -bench=. -benchmem ./benchmark ./validator ./config ./protocol/... ./engine/...
+	@go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
 
 # Wave FPC benchmarks are now in protocol/wave
 
@@ -82,7 +82,7 @@ ROUNDS ?= 100
 # Run massively parallel ZMQ benchmarks with Ginkgo
 benchmark-zmq: check-ginkgo ## Run ZeroMQ transport benchmarks
 	@echo "🌐 Running transport benchmarks..."
-	go test -tags zmq -v ./benchmark -ginkgo.v
+	go test -tags zmq -v ./qzmq -ginkgo.v
 
 # Run Ginkgo tests in parallel
 test-parallel: check-ginkgo ## Run tests in parallel with Ginkgo
