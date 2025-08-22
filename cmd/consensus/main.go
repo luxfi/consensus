@@ -112,7 +112,7 @@ func testEngine(engineType, network string) {
 		fmt.Printf("✗ Failed to start: %v\n", err)
 		os.Exit(1)
 	}
-	defer engine.Stop(ctx)
+	defer func() { _ = engine.Stop(ctx) }()
 	
 	// Check bootstrapped
 	if !engine.IsBootstrapped() {
@@ -155,7 +155,7 @@ func checkHealth(engineType string) {
 		fmt.Printf("✗ Failed to start: %v\n", err)
 		os.Exit(1)
 	}
-	defer engine.Stop(ctx)
+	defer func() { _ = engine.Stop(ctx) }()
 	
 	// Health check
 	health, err := engine.HealthCheck(ctx)
