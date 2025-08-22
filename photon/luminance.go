@@ -10,15 +10,15 @@ type Luminance struct {
 	lux map[types.NodeID]float64 // Brightness level per node (in lux units)
 }
 
-// newLuminance creates a new brightness tracker
-func newLuminance() *Luminance {
+// NewLuminance creates a new brightness tracker
+func NewLuminance() *Luminance {
 	return &Luminance{
 		lux: make(map[types.NodeID]float64),
 	}
 }
 
-// illuminate increases or decreases node brightness based on performance
-func (l *Luminance) illuminate(id types.NodeID, success bool) {
+// Illuminate increases or decreases node brightness based on performance
+func (l *Luminance) Illuminate(id types.NodeID, success bool) {
 	if _, exists := l.lux[id]; !exists {
 		l.lux[id] = 100.0 // Base illumination: 100 lux (office lighting)
 	}
@@ -38,8 +38,8 @@ func (l *Luminance) illuminate(id types.NodeID, success bool) {
 	}
 }
 
-// brightness returns emission weight based on lux level (0.1 to 10.0)
-func (l *Luminance) brightness(id types.NodeID) float64 {
+// Brightness returns emission weight based on lux level (0.1 to 10.0)
+func (l *Luminance) Brightness(id types.NodeID) float64 {
 	if lux, exists := l.lux[id]; exists {
 		return lux / 100.0 // Normalize to base level
 	}

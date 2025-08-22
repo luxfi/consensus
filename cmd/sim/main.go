@@ -207,5 +207,6 @@ func calculateFinalityProbability(alpha float64, beta uint32, avgConfidence floa
 }
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
+	// As of Go 1.20, rand.Seed is deprecated - random seeding is automatic
+	// No manual seeding required for better randomness
 }
