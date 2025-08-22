@@ -136,7 +136,7 @@ func benchmarkChain(ctx context.Context, params config.Parameters, blocks int, p
 	fmt.Printf("  Time:      %s\n", elapsed)
 	fmt.Printf("  TPS:       %.2f blocks/sec\n", tps)
 	
-	engine.Stop(ctx)
+	_ = engine.Stop(ctx)
 }
 
 func benchmarkDAG(ctx context.Context, params config.Parameters, blocks int, parallel int, verbose bool) {
@@ -178,7 +178,7 @@ func benchmarkDAG(ctx context.Context, params config.Parameters, blocks int, par
 	fmt.Printf("  Time:      %s\n", elapsed)
 	fmt.Printf("  TPS:       %.2f vertices/sec\n", tps)
 	
-	engine.Stop(ctx)
+	_ = engine.Stop(ctx)
 }
 
 func benchmarkPQ(ctx context.Context, params config.Parameters, blocks int, parallel int, verbose bool) {
@@ -233,7 +233,7 @@ func benchmarkPQ(ctx context.Context, params config.Parameters, blocks int, para
 	fmt.Printf("  TPS:       %.2f proofs/sec\n", tps)
 	fmt.Printf("  Avg Proof: %d bytes\n", avgProofSize)
 	
-	engine.Stop(ctx)
+	_ = engine.Stop(ctx)
 }
 
 func init() {
