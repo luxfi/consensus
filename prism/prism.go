@@ -20,8 +20,8 @@ type Prism interface {
     GetProposal(context.Context, ids.ID) (Proposal, error)
 }
 
-// Config defines prism configuration
-type Config struct {
+// NodeConfig defines prism node configuration
+type NodeConfig struct {
     ProposerNodes  int
     VoterNodes     int
     TransactionNodes int
