@@ -1,27 +1,21 @@
 package types
 
-import "time"
+import "github.com/luxfi/ids"
 
-type NodeID string
-type Topic string
+// NodeID represents a node identifier
+type NodeID = ids.NodeID
 
-type Probe int
-const (
-    ProbeGood Probe = iota
-    ProbeTimeout
-    ProbeBadSig
-)
+// ID represents a generic identifier
+type ID = ids.ID
 
-type Decision int
-const (
-    DecideAccept Decision = iota
-    DecideReject
-    DecideUndecided
-)
+// Hash represents a hash value
+type Hash = ids.ID
 
-type Digest [32]byte
+// Signature represents a signature
+type Signature []byte
 
-type Round struct {
-    Height uint64
-    Time   time.Time
-}
+// PublicKey represents a public key
+type PublicKey []byte
+
+// PrivateKey represents a private key
+type PrivateKey []byte

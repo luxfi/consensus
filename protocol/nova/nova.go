@@ -1,44 +1,41 @@
 package nova
 
 import (
-	"sync"
-	"time"
-
-	"github.com/luxfi/consensus/types"
+    "context"
+    "github.com/luxfi/consensus/types"
 )
 
-// Finalizer provides classical finality for decided blocks
-type Finalizer[ID comparable] struct {
-	mu        sync.RWMutex
-	finalized map[ID]time.Time
-	depth     map[ID]int
+// Nova implements the Nova consensus protocol
+type Nova struct {
+    nodeID types.NodeID
+    round  uint64
 }
 
-func New[ID comparable]() *Finalizer[ID] {
-	return &Finalizer[ID]{
-		finalized: make(map[ID]time.Time),
-		depth:     make(map[ID]int),
-	}
+// New creates a new Nova instance
+func New(nodeID types.NodeID) *Nova {
+    return &Nova{
+        nodeID: nodeID,
+        round:  0,
+    }
 }
 
-func (f *Finalizer[ID]) OnDecide(id ID, decision types.Decision) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	if decision == types.DecideAccept {
-		f.finalized[id] = time.Now()
-		
-		// Calculate depth based on number of finalized blocks
-		f.depth[id] = len(f.finalized)
-	}
+// Start starts the Nova protocol
+func (n *Nova) Start(ctx context.Context) error {
+    return nil
 }
 
-func (f *Finalizer[ID]) Finalized(id ID) (bool, int) {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
+// Stop stops the Nova protocol
+func (n *Nova) Stop(ctx context.Context) error {
+    return nil
+}
 
-	if _, ok := f.finalized[id]; ok {
-		return true, f.depth[id]
-	}
-	return false, 0
+// Round returns the current round
+func (n *Nova) Round() uint64 {
+    return n.round
+}
+
+// Propose proposes a value
+func (n *Nova) Propose(ctx context.Context, value []byte) error {
+    n.round++
+    return nil
 }

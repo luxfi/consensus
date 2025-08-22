@@ -1,0 +1,94 @@
+package block
+
+import (
+    "context"
+    "time"
+    "github.com/luxfi/ids"
+)
+
+// Block is a block in the chain
+type Block interface {
+    ID() ids.ID
+    ParentID() ids.ID
+    Height() uint64
+    Timestamp() time.Time
+    Verify(context.Context) error
+    Accept(context.Context) error
+    Reject(context.Context) error
+    Bytes() []byte
+}
+
+// ChainVM defines the interface for a blockchain VM
+type ChainVM interface {
+    // BuildBlock builds a new block
+    BuildBlock(context.Context) (Block, error)
+    
+    // ParseBlock parses a block from bytes
+    ParseBlock(context.Context, []byte) (Block, error)
+    
+    // GetBlock gets a block by ID
+    GetBlock(context.Context, ids.ID) (Block, error)
+    
+    // SetPreference sets the preferred block
+    SetPreference(context.Context, ids.ID) error
+    
+    // LastAccepted returns the last accepted block
+    LastAccepted(context.Context) (ids.ID, error)
+}
+
+// StateSyncMode defines state sync modes
+type StateSyncMode uint8
+
+const (
+    StateSyncSkipped StateSyncMode = iota
+    StateSyncStatic
+    StateSyncDynamic
+)
+
+// StateSyncableVM defines a VM that supports state sync
+type StateSyncableVM interface {
+    ChainVM
+    
+    // StateSyncEnabled returns whether state sync is enabled
+    StateSyncEnabled(context.Context) (bool, error)
+    
+    // GetOngoingSyncStateSummary returns the ongoing sync state summary
+    GetOngoingSyncStateSummary(context.Context) (StateSummary, error)
+    
+    // GetLastStateSummary returns the last state summary
+    GetLastStateSummary(context.Context) (StateSummary, error)
+    
+    // ParseStateSummary parses a state summary
+    ParseStateSummary(context.Context, []byte) (StateSummary, error)
+    
+    // GetStateSummary gets a state summary by height
+    GetStateSummary(context.Context, uint64) (StateSummary, error)
+}
+
+// StateSummary represents a state summary
+type StateSummary interface {
+    ID() ids.ID
+    Height() uint64
+    Bytes() []byte
+    Accept(context.Context) (StateSyncMode, error)
+}
+
+// BuildBlockWithContextVM extends ChainVM with context support
+type BuildBlockWithContextVM interface {
+    ChainVM
+    BuildBlockWithContext(context.Context, *Context) (Block, error)
+}
+
+// Context provides context for building blocks
+type Context struct {
+    PChainHeight uint64
+}
+
+// WithVerifyContext provides verify context support
+type WithVerifyContext interface {
+    // VerifyWithContext verifies with context
+    VerifyWithContext(context.Context, *Context) error
+    
+    // ShouldVerifyWithContext returns whether to verify with context
+    ShouldVerifyWithContext(context.Context) (bool, error)
+}

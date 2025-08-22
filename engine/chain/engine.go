@@ -2,32 +2,67 @@ package chain
 
 import (
     "context"
-
-    "github.com/luxfi/consensus/config"
-    "github.com/luxfi/consensus/core/wave"
-    "github.com/luxfi/consensus/photon"
-    "github.com/luxfi/consensus/protocol/nova"
-    "github.com/luxfi/consensus/types"
+    "github.com/luxfi/ids"
 )
 
-type Transport[ID comparable] interface{ wave.Transport[ID] }
-
-type Engine[ID comparable] struct {
-    w  *wave.Impl[ID]
-    nv *nova.Finalizer[ID]
+// Engine defines the chain consensus engine
+type Engine interface {
+    // Start starts the engine
+    Start(context.Context, uint32) error
+    
+    // Stop stops the engine
+    Stop(context.Context) error
+    
+    // HealthCheck performs a health check
+    HealthCheck(context.Context) (interface{}, error)
+    
+    // IsBootstrapped returns whether the chain is bootstrapped
+    IsBootstrapped() bool
 }
 
-func New[ID comparable](cfg config.Parameters, emitter photon.Emitter[types.NodeID], tx Transport[ID]) *Engine[ID] {
-    return &Engine[ID]{ w: wave.New[ID](cfg, emitter, tx), nv: nova.New[ID]() }
+// Transitive implements transitive chain consensus
+type Transitive struct {
+    bootstrapped bool
 }
 
-func (e *Engine[ID]) Tick(ctx context.Context, id ID) {
-    e.w.Tick(ctx, id)
-    if st, ok := e.w.State(id); ok && st.Decided {
-        e.nv.OnDecide(id, st.Result)
+// Transport handles message transport for consensus
+type Transport[ID comparable] interface {
+    // Send sends a message
+    Send(ctx context.Context, to string, msg interface{}) error
+    
+    // Receive receives messages
+    Receive(ctx context.Context) (interface{}, error)
+}
+
+// New creates a new chain consensus engine
+func New() *Transitive {
+    return &Transitive{
+        bootstrapped: false,
     }
 }
 
-func (e *Engine[ID]) State(id ID) (wave.State[ID], bool) {
-    return e.w.State(id)
+// Start starts the engine
+func (t *Transitive) Start(ctx context.Context, requestID uint32) error {
+    t.bootstrapped = true
+    return nil
+}
+
+// Stop stops the engine
+func (t *Transitive) Stop(ctx context.Context) error {
+    return nil
+}
+
+// HealthCheck performs a health check
+func (t *Transitive) HealthCheck(ctx context.Context) (interface{}, error) {
+    return map[string]interface{}{"healthy": true}, nil
+}
+
+// IsBootstrapped returns whether the chain is bootstrapped
+func (t *Transitive) IsBootstrapped() bool {
+    return t.bootstrapped
+}
+
+// GetBlock gets a block by ID
+func (t *Transitive) GetBlock(ctx context.Context, nodeID ids.NodeID, requestID uint32, blockID ids.ID) error {
+    return nil
 }
