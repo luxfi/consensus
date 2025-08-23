@@ -89,13 +89,13 @@ var (
 // Export functions from context
 var (
 	GetTimestamp       = consensuscontext.GetTimestamp
-	GetChainID        = consensuscontext.GetChainID
-	GetSubnetID       = consensuscontext.GetSubnetID
-	GetValidatorState = consensuscontext.GetValidatorState
-	WithContext       = consensuscontext.WithContext
-	FromContext       = consensuscontext.FromContext
-	GetNodeID         = consensuscontext.GetNodeID
-	WithIDs           = consensuscontext.WithIDs
+	GetChainID         = consensuscontext.GetChainID
+	GetSubnetID        = consensuscontext.GetSubnetID // Deprecated: use GetChainID
+	GetValidatorState  = consensuscontext.GetValidatorState
+	WithContext        = consensuscontext.WithContext
+	FromContext        = consensuscontext.FromContext
+	GetNodeID          = consensuscontext.GetNodeID
+	WithIDs            = consensuscontext.WithIDs
 	WithValidatorState = consensuscontext.WithValidatorState
 )
 
