@@ -64,6 +64,12 @@ type (
 	// Context is the consensus context
 	Context = consensuscontext.Context
 	
+	// ValidatorState provides validator information
+	ValidatorState = consensuscontext.ValidatorState
+	
+	// IDs holds consensus IDs
+	IDs = consensuscontext.IDs
+	
 	// CodecVersion is the codec version
 	CodecVersion = codec.CodecVersion
 )
@@ -88,6 +94,9 @@ var (
 	GetValidatorState = consensuscontext.GetValidatorState
 	WithContext       = consensuscontext.WithContext
 	FromContext       = consensuscontext.FromContext
+	GetNodeID         = consensuscontext.GetNodeID
+	WithIDs           = consensuscontext.WithIDs
+	WithValidatorState = consensuscontext.WithValidatorState
 )
 
 // AppError represents an application error

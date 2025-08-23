@@ -31,8 +31,10 @@ type Context struct {
 
 // ValidatorState provides validator information
 type ValidatorState interface {
-	GetSubnetID(context.Context, ids.ID) (ids.ID, error)
-	GetValidatorSet(context.Context, uint64, ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
+	GetSubnetID(ids.ID) (ids.ID, error)
+	GetValidatorSet(uint64, ids.ID) (map[ids.NodeID]uint64, error)
+	GetCurrentHeight() (uint64, error)
+	GetMinimumHeight(context.Context) (uint64, error)
 }
 
 // GetValidatorOutput contains validator information
@@ -98,6 +100,47 @@ func FromContext(ctx context.Context) *Context {
 		return c
 	}
 	return nil
+}
+
+// GetNodeID gets the node ID from context
+func GetNodeID(ctx context.Context) ids.NodeID {
+	if c, ok := ctx.Value(contextKey).(*Context); ok {
+		return c.NodeID
+	}
+	return ids.EmptyNodeID
+}
+
+// IDs holds the IDs for consensus context
+type IDs struct {
+	NetworkID uint32
+	SubnetID  ids.ID
+	ChainID   ids.ID
+	NodeID    ids.NodeID
+	PublicKey []byte
+}
+
+// WithIDs adds IDs to the context
+func WithIDs(ctx context.Context, ids IDs) context.Context {
+	c := FromContext(ctx)
+	if c == nil {
+		c = &Context{}
+	}
+	c.NetworkID = ids.NetworkID
+	c.SubnetID = ids.SubnetID
+	c.ChainID = ids.ChainID
+	c.NodeID = ids.NodeID
+	c.PublicKey = ids.PublicKey
+	return WithContext(ctx, c)
+}
+
+// WithValidatorState adds validator state to the context
+func WithValidatorState(ctx context.Context, vs ValidatorState) context.Context {
+	c := FromContext(ctx)
+	if c == nil {
+		c = &Context{}
+	}
+	c.ValidatorState = vs
+	return WithContext(ctx, c)
 }
 
 type contextKeyType struct{}

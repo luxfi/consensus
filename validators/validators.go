@@ -1,6 +1,8 @@
 package validators
 
 import (
+    "context"
+    
     "github.com/luxfi/ids"
 )
 
@@ -29,6 +31,20 @@ type Validator struct {
     Weight    uint64
 }
 
+// GetValidatorOutput represents validator output
+type GetValidatorOutput struct {
+    NodeID    ids.NodeID
+    PublicKey []byte
+    Weight    uint64
+}
+
+// GetCurrentValidatorOutput represents current validator output
+type GetCurrentValidatorOutput struct {
+    NodeID    ids.NodeID
+    PublicKey []byte
+    Weight    uint64
+}
+
 // Set is a set of validators
 type Set interface {
     // Add adds a validator
@@ -52,9 +68,38 @@ type Set interface {
 
 // State manages validator state
 type State interface {
+    // GetCurrentHeight returns the current P-chain height
+    GetCurrentHeight() (uint64, error)
+    
+    // GetMinimumHeight returns the minimum height available
+    GetMinimumHeight(ctx context.Context) (uint64, error)
+    
     // GetCurrentValidators returns current validators
     GetCurrentValidators(subnetID ids.ID) (map[ids.NodeID]*Validator, error)
     
-    // GetValidatorSet returns a validator set
-    GetValidatorSet(subnetID ids.ID) (Set, error)
+    // GetValidatorSet returns a validator set at a given height
+    GetValidatorSet(ctx context.Context, height uint64, subnetID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
+    
+    // GetSubnetID returns the subnet ID of a chain
+    GetSubnetID(chainID ids.ID) (ids.ID, error)
+}
+
+// SetCallbackListener listens for validator set changes
+type SetCallbackListener interface {
+    // OnValidatorAdded is called when a validator is added
+    OnValidatorAdded(nodeID ids.NodeID, pk []byte, weight uint64)
+    
+    // OnValidatorRemoved is called when a validator is removed
+    OnValidatorRemoved(nodeID ids.NodeID, weight uint64)
+    
+    // OnValidatorWeightChanged is called when a validator's weight changes
+    OnValidatorWeightChanged(nodeID ids.NodeID, oldWeight, newWeight uint64)
+}
+
+// ManagerCallbackListener listens for manager events
+type ManagerCallbackListener interface {
+    SetCallbackListener
+    
+    // OnValidatorManagerInitialized is called when the manager is initialized
+    OnValidatorManagerInitialized()
 }
