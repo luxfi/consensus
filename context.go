@@ -21,3 +21,17 @@ func LuxAssetID(ctx context.Context) interface{} {
 	// In production, this would get the actual LUX asset ID from context
 	return nil
 }
+
+// QuantumNetworkID returns the quantum network ID from context
+func QuantumNetworkID(ctx context.Context) uint32 {
+	if qids := GetQuantumIDs(ctx); qids != nil {
+		return qids.QuantumID
+	}
+	return 0
+}
+
+// GetQuantumIDs retrieves QuantumIDs from context
+func GetQuantumIDs(ctx context.Context) *QuantumIDs {
+	// Placeholder - would retrieve from context
+	return nil
+}
