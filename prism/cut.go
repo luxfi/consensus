@@ -6,13 +6,13 @@ import "github.com/luxfi/consensus/types"
 type Cut[T comparable] interface {
 	// Sample returns k random peers for voting (cuts k rays from the population)
 	Sample(k int) []types.NodeID
-	
+
 	// Luminance returns light intensity metrics for the cut
 	Luminance() Luminance
 }
 
 // Luminance measures the intensity of light across the peer network
-// Following SI units: lux (lx) = lumens per square meter 
+// Following SI units: lux (lx) = lumens per square meter
 type Luminance struct {
 	ActivePeers int
 	TotalPeers  int
@@ -34,7 +34,7 @@ func (c *UniformCut) Sample(k int) []types.NodeID {
 	if k >= len(c.peers) {
 		return c.peers
 	}
-	
+
 	// Simple random cutting (in production, use proper randomization)
 	// TODO: Implement proper cryptographically secure random cutting
 	result := make([]types.NodeID, 0, k)
@@ -52,9 +52,9 @@ func (c *UniformCut) Luminance() Luminance {
 	if activePeers >= 100 {
 		lx = 500.0 // Office lighting level for healthy large networks
 	} else if activePeers >= 20 {
-		lx = 300.0 // Classroom level for medium networks  
+		lx = 300.0 // Classroom level for medium networks
 	}
-	
+
 	return Luminance{
 		ActivePeers: activePeers,
 		TotalPeers:  activePeers,

@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/prism"
-	"github.com/luxfi/consensus/wave"
 	"github.com/luxfi/consensus/types"
+	"github.com/luxfi/consensus/wave"
 )
 
 // ID is your item identifier (block hash, tx id, etc.).
@@ -29,36 +29,46 @@ type Transport[T ID] interface {
 }
 
 type Config struct {
-	PollSize   int
-	Alpha      float64
-	Beta       uint32
-	RoundTO    time.Duration
-	MaxBatch   int
+	PollSize int
+	Alpha    float64
+	Beta     uint32
+	RoundTO  time.Duration
+	MaxBatch int
 }
 
 type Driver[T ID] struct {
-	wv         wave.Wave[T]
-	cut        prism.Cut[T]
-	tx         Transport[T]
-	src        Source[T]
-	out        Sink[T]
-	cfg        Config
-	height     uint64
-	preference T
+	wv            wave.Wave[T]
+	cut           prism.Cut[T]
+	tx            Transport[T]
+	src           Source[T]
+	out           Sink[T]
+	cfg           Config
+	height        uint64
+	preference    T
 	hasPreference bool
 }
 
 func NewDriver[T ID](cfg Config, cut prism.Cut[T], tx Transport[T], src Source[T], out Sink[T]) *Driver[T] {
-	if cfg.PollSize == 0 { cfg.PollSize = 20 }
-	if cfg.Alpha == 0 { cfg.Alpha = 0.8 }
-	if cfg.Beta == 0 { cfg.Beta = 15 }
-	if cfg.RoundTO == 0 { cfg.RoundTO = 250 * time.Millisecond }
-	if cfg.MaxBatch == 0 { cfg.MaxBatch = 64 }
+	if cfg.PollSize == 0 {
+		cfg.PollSize = 20
+	}
+	if cfg.Alpha == 0 {
+		cfg.Alpha = 0.8
+	}
+	if cfg.Beta == 0 {
+		cfg.Beta = 15
+	}
+	if cfg.RoundTO == 0 {
+		cfg.RoundTO = 250 * time.Millisecond
+	}
+	if cfg.MaxBatch == 0 {
+		cfg.MaxBatch = 64
+	}
 
 	return &Driver[T]{
 		wv:  wave.New[T](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx),
 		cut: cut, tx: tx, src: src, out: out, cfg: cfg,
-		height: 0,
+		height:        0,
 		hasPreference: false,
 	}
 }
@@ -67,7 +77,9 @@ func NewDriver[T ID](cfg Config, cut prism.Cut[T], tx Transport[T], src Source[T
 // Any that reach β are emitted to Sink in input order with their decision.
 func (d *Driver[T]) Tick(ctx context.Context) error {
 	items := d.src.NextPending(ctx, d.cfg.MaxBatch)
-	if len(items) == 0 { return nil }
+	if len(items) == 0 {
+		return nil
+	}
 
 	var decided []T
 	for _, it := range items {
