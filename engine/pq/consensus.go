@@ -51,10 +51,10 @@ type memoryVertex struct {
 	children []quasar.VertexID
 }
 
-func (v *memoryVertex) ID() quasar.VertexID     { return v.id }
+func (v *memoryVertex) ID() quasar.VertexID        { return v.id }
 func (v *memoryVertex) Parents() []quasar.VertexID { return v.parents }
-func (v *memoryVertex) Author() string         { return v.author }
-func (v *memoryVertex) Round() uint64          { return v.round }
+func (v *memoryVertex) Author() string             { return v.author }
+func (v *memoryVertex) Round() uint64              { return v.round }
 
 func (s *memoryStore) Head() []quasar.VertexID {
 	if s.vertices == nil {
@@ -96,7 +96,7 @@ func NewConsensus(params config.Parameters) *ConsensusEngine {
 	// Create a simple in-memory store for P-Chain vertices
 	// TODO: Use proper persistent storage in production
 	store := &memoryStore{}
-	
+
 	return &ConsensusEngine{
 		params:    params,
 		quasar:    quasar.New(params, store),
@@ -125,7 +125,7 @@ func (e *ConsensusEngine) ProcessBlock(ctx context.Context, blockID ids.ID, vote
 	totalVotes := 0
 	maxVotes := 0
 	bestBlock := ""
-	
+
 	for block, count := range votes {
 		totalVotes += count
 		if count > maxVotes {
@@ -133,18 +133,20 @@ func (e *ConsensusEngine) ProcessBlock(ctx context.Context, blockID ids.ID, vote
 			bestBlock = block
 		}
 	}
-	
+
 	// Check if we have enough votes for the best block
 	if totalVotes == 0 || float64(maxVotes)/float64(totalVotes) < e.params.Alpha {
 		return fmt.Errorf("insufficient votes for finality: %d/%d for block %s", maxVotes, totalVotes, bestBlock)
 	}
-	
+
 	// Create mock certificate
 	cert := &quasar.CertBundle{
 		BLSAgg: []byte("mock-bls-aggregate"),
 		PQCert: []byte("mock-pq-certificate"),
 	}
-	if cert == nil {
+
+	// Validate certificate (placeholder logic)
+	if len(cert.BLSAgg) == 0 && len(cert.PQCert) == 0 {
 		return fmt.Errorf("insufficient votes for finality")
 	}
 
@@ -207,14 +209,14 @@ func (e *ConsensusEngine) SetFinalizedCallback(cb func(FinalityEvent)) {
 func (e *ConsensusEngine) Metrics() map[string]interface{} {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	return map[string]interface{}{
-		"height":         e.height,
-		"round":          e.round,
-		"finalized":      len(e.finalized),
-		"k":              e.params.K,
-		"alpha":          e.params.Alpha,
-		"beta":           e.params.Beta,
-		"block_time":     e.params.BlockTime.String(),
+		"height":     e.height,
+		"round":      e.round,
+		"finalized":  len(e.finalized),
+		"k":          e.params.K,
+		"alpha":      e.params.Alpha,
+		"beta":       e.params.Beta,
+		"block_time": e.params.BlockTime.String(),
 	}
 }

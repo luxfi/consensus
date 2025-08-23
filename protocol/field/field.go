@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/prism"
-	"github.com/luxfi/consensus/wave"
 	"github.com/luxfi/consensus/types"
+	"github.com/luxfi/consensus/wave"
 )
 
 type VID interface{ comparable } // vertex id
@@ -53,10 +53,18 @@ type Driver[V VID] struct {
 }
 
 func NewDriver[V VID](cfg Config, cut prism.Cut[V], tx wave.Transport[V], store Store[V], prop Proposer[V], com Committer[V]) *Driver[V] {
-	if cfg.PollSize == 0 { cfg.PollSize = 20 }
-	if cfg.Alpha == 0 { cfg.Alpha = 0.8 }
-	if cfg.Beta == 0 { cfg.Beta = 15 }
-	if cfg.RoundTO == 0 { cfg.RoundTO = 250 * time.Millisecond }
+	if cfg.PollSize == 0 {
+		cfg.PollSize = 20
+	}
+	if cfg.Alpha == 0 {
+		cfg.Alpha = 0.8
+	}
+	if cfg.Beta == 0 {
+		cfg.Beta = 15
+	}
+	if cfg.RoundTO == 0 {
+		cfg.RoundTO = 250 * time.Millisecond
+	}
 
 	return &Driver[V]{
 		cfg: cfg,
@@ -69,13 +77,16 @@ func NewDriver[V VID](cfg Config, cut prism.Cut[V], tx wave.Transport[V], store 
 // You can also plug DAG fast-path voting (flare) here if you embed it in vertex payloads.
 func (d *Driver[V]) OnObserve(ctx context.Context, v V) {
 	// optional: run local checks, update sampler health, etc.
-	_ = ctx; _ = v
+	_ = ctx
+	_ = v
 }
 
 // Tick runs one poll round over DAG heads, looks for cert/skip and commits the safe prefix.
 func (d *Driver[V]) Tick(ctx context.Context) error {
 	frontier := d.str.Head()
-	if len(frontier) == 0 { return nil }
+	if len(frontier) == 0 {
+		return nil
+	}
 
 	// Drive thresholding on frontier candidates
 	for _, v := range frontier {
@@ -86,7 +97,9 @@ func (d *Driver[V]) Tick(ctx context.Context) error {
 	// TODO: Implement proper type conversion or interface alignment
 	ordered := []V{} // dag.ComputeSafePrefix(d.str, frontier) // implement using horizon+flare
 	if len(ordered) > 0 {
-		if err := d.com.Commit(ctx, ordered); err != nil { return err }
+		if err := d.com.Commit(ctx, ordered); err != nil {
+			return err
+		}
 	}
 
 	// Optionally propose a new vertex extending the frontier

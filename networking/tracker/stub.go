@@ -2,8 +2,9 @@
 // Resource tracking belongs in the node's network layer.
 //
 // Migration:
-//   OLD: import "github.com/luxfi/consensus/networking/tracker"
-//   NEW: import "github.com/luxfi/node/network/tracker"
+//
+//	OLD: import "github.com/luxfi/consensus/networking/tracker"
+//	NEW: import "github.com/luxfi/node/network/tracker"
 package tracker
 
 import "errors"

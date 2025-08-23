@@ -2,8 +2,9 @@
 // Peer benchmarking belongs in the node's network layer.
 //
 // Migration:
-//   OLD: import "github.com/luxfi/consensus/networking/benchlist"
-//   NEW: import "github.com/luxfi/node/network/benchlist"
+//
+//	OLD: import "github.com/luxfi/consensus/networking/benchlist"
+//	NEW: import "github.com/luxfi/node/network/benchlist"
 package benchlist
 
 import "errors"
