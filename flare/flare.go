@@ -1,4 +1,6 @@
-package dag
+package flare
+
+import "github.com/luxfi/consensus/core/dag"
 
 type Decision int
 const (
@@ -8,7 +10,7 @@ const (
 )
 
 // Cert: >=2f+1 in r+1 support proposer(author,round). Skip: >=2f+1 in r+1 not supporting.
-func HasCertificate(v View, proposer Meta, p Params) bool {
+func HasCertificate(v dag.View, proposer dag.Meta, p dag.Params) bool {
     r1 := proposer.Round() + 1
     next := v.ByRound(r1)
     support := 0
@@ -21,7 +23,7 @@ func HasCertificate(v View, proposer Meta, p Params) bool {
     return false
 }
 
-func HasSkip(v View, proposer Meta, p Params) bool {
+func HasSkip(v dag.View, proposer dag.Meta, p dag.Params) bool {
     r1 := proposer.Round() + 1
     next := v.ByRound(r1)
     nos := 0
@@ -34,10 +36,10 @@ func HasSkip(v View, proposer Meta, p Params) bool {
     return false
 }
 
-type Flare struct{ p Params }
-func NewFlare(p Params) *Flare { return &Flare{p: p} }
+type Flare struct{ p dag.Params }
+func NewFlare(p dag.Params) *Flare { return &Flare{p: p} }
 
-func (f *Flare) Classify(v View, proposer Meta) Decision {
+func (f *Flare) Classify(v dag.View, proposer dag.Meta) Decision {
     switch {
     case HasCertificate(v, proposer, f.p):
         return DecideCommit

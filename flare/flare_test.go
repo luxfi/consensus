@@ -1,48 +1,49 @@
-package dag
+package flare
 
 import (
 	"testing"
+	"github.com/luxfi/consensus/core/dag"
 )
 
 type testVertex struct {
-	id      VertexID
+	id      dag.VertexID
 	author  string
 	round   uint64
-	parents []VertexID
+	parents []dag.VertexID
 }
 
-func (v *testVertex) ID() VertexID         { return v.id }
+func (v *testVertex) ID() dag.VertexID         { return v.id }
 func (v *testVertex) Author() string       { return v.author }
 func (v *testVertex) Round() uint64        { return v.round }
-func (v *testVertex) Parents() []VertexID { return v.parents }
+func (v *testVertex) Parents() []dag.VertexID { return v.parents }
 
 type testView struct {
-	vertices map[VertexID]Meta
-	byRound  map[uint64][]Meta
+	vertices map[dag.VertexID]dag.Meta
+	byRound  map[uint64][]dag.Meta
 }
 
 func newTestView() *testView {
 	return &testView{
-		vertices: make(map[VertexID]Meta),
-		byRound:  make(map[uint64][]Meta),
+		vertices: make(map[dag.VertexID]dag.Meta),
+		byRound:  make(map[uint64][]dag.Meta),
 	}
 }
 
-func (v *testView) add(m Meta) {
+func (v *testView) add(m dag.Meta) {
 	v.vertices[m.ID()] = m
 	v.byRound[m.Round()] = append(v.byRound[m.Round()], m)
 }
 
-func (v *testView) Get(id VertexID) (Meta, bool) {
+func (v *testView) Get(id dag.VertexID) (dag.Meta, bool) {
 	m, ok := v.vertices[id]
 	return m, ok
 }
 
-func (v *testView) ByRound(round uint64) []Meta {
+func (v *testView) ByRound(round uint64) []dag.Meta {
 	return v.byRound[round]
 }
 
-func (v *testView) Supports(from VertexID, author string, round uint64) bool {
+func (v *testView) Supports(from dag.VertexID, author string, round uint64) bool {
 	fromV, ok := v.Get(from)
 	if !ok {
 		return false
@@ -65,7 +66,7 @@ func TestHasCertificate(t *testing.T) {
 
 	// Create proposer at round 0
 	proposer := &testVertex{
-		id:     VertexID{1},
+		id:     dag.VertexID{1},
 		author: "A",
 		round:  0,
 	}
@@ -74,10 +75,10 @@ func TestHasCertificate(t *testing.T) {
 	// Create 3 vertices at round 1 supporting proposer
 	for i := 0; i < 3; i++ {
 		v.add(&testVertex{
-			id:      VertexID{byte(i + 2)},
+			id:      dag.VertexID{byte(i + 2)},
 			author:  string(rune('B' + i)),
 			round:   1,
-			parents: []VertexID{proposer.ID()},
+			parents: []dag.VertexID{proposer.ID()},
 		})
 	}
 
@@ -91,10 +92,10 @@ func TestHasCertificate(t *testing.T) {
 	v2.add(proposer)
 	for i := 0; i < 2; i++ {
 		v2.add(&testVertex{
-			id:      VertexID{byte(i + 2)},
+			id:      dag.VertexID{byte(i + 2)},
 			author:  string(rune('B' + i)),
 			round:   1,
-			parents: []VertexID{proposer.ID()},
+			parents: []dag.VertexID{proposer.ID()},
 		})
 	}
 
@@ -108,7 +109,7 @@ func TestHasSkip(t *testing.T) {
 	p := Params{N: 4, F: 1} // Need 2f+1 = 3 for skip
 
 	proposer := &testVertex{
-		id:     VertexID{1},
+		id:     dag.VertexID{1},
 		author: "A",
 		round:  0,
 	}
@@ -117,10 +118,10 @@ func TestHasSkip(t *testing.T) {
 	// Create 3 vertices at round 1 NOT supporting proposer
 	for i := 0; i < 3; i++ {
 		v.add(&testVertex{
-			id:      VertexID{byte(i + 2)},
+			id:      dag.VertexID{byte(i + 2)},
 			author:  string(rune('B' + i)),
 			round:   1,
-			parents: []VertexID{}, // No parents = not supporting
+			parents: []dag.VertexID{}, // No parents = not supporting
 		})
 	}
 
@@ -135,7 +136,7 @@ func TestFlareClassify(t *testing.T) {
 	v := newTestView()
 
 	proposer := &testVertex{
-		id:     VertexID{1},
+		id:     dag.VertexID{1},
 		author: "A",
 		round:  0,
 	}
@@ -149,10 +150,10 @@ func TestFlareClassify(t *testing.T) {
 	// Add supporters for certificate
 	for i := 0; i < 3; i++ {
 		v.add(&testVertex{
-			id:      VertexID{byte(i + 2)},
+			id:      dag.VertexID{byte(i + 2)},
 			author:  string(rune('B' + i)),
 			round:   1,
-			parents: []VertexID{proposer.ID()},
+			parents: []dag.VertexID{proposer.ID()},
 		})
 	}
 

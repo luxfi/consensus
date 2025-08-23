@@ -19,3 +19,12 @@ type PublicKey []byte
 
 // PrivateKey represents a private key
 type PrivateKey []byte
+
+// Decision represents a consensus decision outcome
+type Decision int
+
+const (
+	DecideUndecided Decision = iota
+	DecideAccept
+	DecideReject
+)

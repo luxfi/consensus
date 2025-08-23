@@ -10,9 +10,14 @@
       "Bash(git push:*)",
       "Bash(find:*)",
       "Bash(grep:*)",
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(make:*)",
+      "Bash(go mod:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "/Users/z/work/lux/node"
+    ]
   }
 }
