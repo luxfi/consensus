@@ -10,7 +10,11 @@ import (
 
 // Context provides consensus context for VMs
 type Context struct {
-	NetworkID   uint32     `json:"networkID"`
+	// QuantumID is the root quantum network identifier
+	QuantumID   uint32     `json:"quantumID"`
+	// NetID identifies the specific network/subnet within the quantum network
+	NetID       ids.ID     `json:"netID"`
+	// ChainID identifies the specific chain within the network
 	ChainID     ids.ID     `json:"chainID"`
 	NodeID      ids.NodeID `json:"nodeID"`
 	PublicKey   []byte     `json:"publicKey"`
@@ -31,7 +35,7 @@ type Context struct {
 // ValidatorState provides validator information
 type ValidatorState interface {
 	GetChainID(ids.ID) (ids.ID, error)
-	GetSubnetID(ids.ID) (ids.ID, error)
+	GetNetID(ids.ID) (ids.ID, error)
 	GetValidatorSet(uint64, ids.ID) (map[ids.NodeID]uint64, error)
 	GetCurrentHeight() (uint64, error)
 	GetMinimumHeight(context.Context) (uint64, error)
@@ -73,9 +77,17 @@ func GetChainID(ctx context.Context) ids.ID {
 	return ids.Empty
 }
 
-// Deprecated: GetSubnetID is deprecated, use GetChainID instead
+// GetNetID gets the network ID from context
+func GetNetID(ctx context.Context) ids.ID {
+	if c, ok := ctx.Value(contextKey).(*Context); ok {
+		return c.NetID
+	}
+	return ids.Empty
+}
+
+// Deprecated: GetSubnetID is deprecated, use GetNetID instead  
 func GetSubnetID(ctx context.Context) ids.ID {
-	return GetChainID(ctx)
+	return GetNetID(ctx)
 }
 
 // GetValidatorState gets the validator state from context
@@ -109,7 +121,11 @@ func GetNodeID(ctx context.Context) ids.NodeID {
 
 // IDs holds the IDs for consensus context
 type IDs struct {
-	NetworkID uint32
+	// QuantumID is the root quantum network identifier
+	QuantumID uint32
+	// NetID identifies the network within the quantum network
+	NetID     ids.ID
+	// ChainID identifies the chain within the network
 	ChainID   ids.ID
 	NodeID    ids.NodeID
 	PublicKey []byte
@@ -121,7 +137,8 @@ func WithIDs(ctx context.Context, ids IDs) context.Context {
 	if c == nil {
 		c = &Context{}
 	}
-	c.NetworkID = ids.NetworkID
+	c.QuantumID = ids.QuantumID
+	c.NetID = ids.NetID
 	c.ChainID = ids.ChainID
 	c.NodeID = ids.NodeID
 	c.PublicKey = ids.PublicKey

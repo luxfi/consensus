@@ -97,7 +97,11 @@ type ChainVM interface {
 
 // ChainContext provides context for chain operations
 type ChainContext struct {
-	NetworkID uint32
+	// QuantumID is the root quantum network identifier  
+	QuantumID uint32
+	// NetID identifies the network within the quantum network
+	NetID     ids.ID
+	// ChainID identifies the chain within the network
 	ChainID   ids.ID
 	NodeID    ids.NodeID
 
