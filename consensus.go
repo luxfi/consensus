@@ -97,9 +97,6 @@ var (
 	GetNodeID          = consensuscontext.GetNodeID
 	WithIDs            = consensuscontext.WithIDs
 	WithValidatorState = consensuscontext.WithValidatorState
-	
-	// Deprecated functions
-	GetSubnetID        = consensuscontext.GetSubnetID // Deprecated: use GetNetID
 )
 
 
