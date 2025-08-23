@@ -62,7 +62,7 @@ func (v *testView) Supports(from dag.VertexID, author string, round uint64) bool
 
 func TestHasCertificate(t *testing.T) {
 	v := newTestView()
-	p := Params{N: 4, F: 1} // Need 2f+1 = 3 for certificate
+	p := dag.Params{N: 4, F: 1} // Need 2f+1 = 3 for certificate
 
 	// Create proposer at round 0
 	proposer := &testVertex{
@@ -106,7 +106,7 @@ func TestHasCertificate(t *testing.T) {
 
 func TestHasSkip(t *testing.T) {
 	v := newTestView()
-	p := Params{N: 4, F: 1} // Need 2f+1 = 3 for skip
+	p := dag.Params{N: 4, F: 1} // Need 2f+1 = 3 for skip
 
 	proposer := &testVertex{
 		id:     dag.VertexID{1},
@@ -132,7 +132,7 @@ func TestHasSkip(t *testing.T) {
 }
 
 func TestFlareClassify(t *testing.T) {
-	f := NewFlare(Params{N: 4, F: 1})
+	f := NewFlare(dag.Params{N: 4, F: 1})
 	v := newTestView()
 
 	proposer := &testVertex{
