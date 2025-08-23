@@ -2,8 +2,8 @@
 package uptimemock
 
 import (
-	"time"
 	"github.com/luxfi/consensus/types"
+	"time"
 )
 
 // MockUptimeTracker provides a mock implementation for uptime tracking

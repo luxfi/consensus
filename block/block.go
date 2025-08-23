@@ -54,43 +54,43 @@ type ChainVM interface {
 		fxs []*Fx,
 		appSender AppSender,
 	) error
-	
+
 	// BuildBlock builds a new block
 	BuildBlock(context.Context) (Block, error)
-	
+
 	// ParseBlock parses a block from bytes
 	ParseBlock(context.Context, []byte) (Block, error)
-	
+
 	// GetBlock gets a block by ID
 	GetBlock(context.Context, ids.ID) (Block, error)
-	
+
 	// SetPreference sets the preferred block
 	SetPreference(context.Context, ids.ID) error
-	
+
 	// LastAccepted returns the last accepted block
 	LastAccepted(context.Context) (ids.ID, error)
-	
+
 	// GetBlockIDAtHeight returns block ID at height
 	GetBlockIDAtHeight(context.Context, uint64) (ids.ID, error)
-	
+
 	// Shutdown shuts down the VM
 	Shutdown(context.Context) error
-	
+
 	// CreateHandlers creates HTTP handlers
 	CreateHandlers(context.Context) (map[string]http.Handler, error)
-	
+
 	// CreateStaticHandlers creates static HTTP handlers
 	CreateStaticHandlers(context.Context) (map[string]http.Handler, error)
-	
+
 	// HealthCheck performs a health check
 	HealthCheck(context.Context) (interface{}, error)
-	
+
 	// Version returns the version
 	Version(context.Context) (string, error)
-	
+
 	// Connected is called when a node connects
 	Connected(context.Context, ids.NodeID, *version.Application) error
-	
+
 	// Disconnected is called when a node disconnects
 	Disconnected(context.Context, ids.NodeID) error
 }
@@ -100,12 +100,12 @@ type ChainContext struct {
 	NetworkID uint32
 	ChainID   ids.ID
 	NodeID    ids.NodeID
-	
+
 	// Additional fields
 	XChainID    ids.ID
 	CChainID    ids.ID
 	AVAXAssetID ids.ID
-	
+
 	// Consensus context
 	Ctx *consensuscontext.Context
 }
@@ -126,10 +126,10 @@ type Fx struct {
 type AppSender interface {
 	// SendAppRequest sends an app request
 	SendAppRequest(context.Context, ids.NodeID, uint32, []byte) error
-	
+
 	// SendAppResponse sends an app response
 	SendAppResponse(context.Context, ids.NodeID, uint32, []byte) error
-	
+
 	// SendAppGossip sends app gossip
 	SendAppGossip(context.Context, []byte) error
 }

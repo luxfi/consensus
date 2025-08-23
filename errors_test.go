@@ -42,11 +42,11 @@ func TestErrorTypes(t *testing.T) {
 func TestErrorWrapping(t *testing.T) {
 	base := ErrTimeout
 	wrapped := WrapError(base, "block 123")
-	
+
 	if !errors.Is(wrapped, base) {
 		t.Error("wrapped error should match base error")
 	}
-	
+
 	expected := "block 123: consensus timeout"
 	if wrapped.Error() != expected {
 		t.Errorf("expected %q, got %q", expected, wrapped.Error())
@@ -57,11 +57,11 @@ func TestErrorChaining(t *testing.T) {
 	err1 := ErrNoQuorum
 	err2 := WrapError(err1, "round 1")
 	err3 := WrapError(err2, "validator set A")
-	
+
 	if !errors.Is(err3, ErrNoQuorum) {
 		t.Error("chained error should match original")
 	}
-	
+
 	expected := "validator set A: round 1: no quorum"
 	if err3.Error() != expected {
 		t.Errorf("expected %q, got %q", expected, err3.Error())
@@ -74,20 +74,20 @@ func TestIsRetryable(t *testing.T) {
 		ErrNoQuorum,
 		ErrNetworkPartition,
 	}
-	
+
 	notRetryable := []error{
 		ErrInvalidVote,
 		ErrConflict,
 		ErrAlreadyDecided,
 		ErrInvalidState,
 	}
-	
+
 	for _, err := range retryable {
 		if !IsRetryable(err) {
 			t.Errorf("%v should be retryable", err)
 		}
 	}
-	
+
 	for _, err := range notRetryable {
 		if IsRetryable(err) {
 			t.Errorf("%v should not be retryable", err)

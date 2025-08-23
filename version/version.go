@@ -8,7 +8,7 @@ type Application struct {
 	Major int
 	Minor int
 	Patch int
-	
+
 	// Additional metadata
 	Name string
 }
