@@ -1,4 +1,4 @@
-package nova
+package ray
 
 import (
     "context"
