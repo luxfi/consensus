@@ -6,11 +6,50 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
+	"github.com/luxfi/consensus/core/dag"
 )
+
+// mockStore is a simple mock implementation for testing
+type mockStore struct {
+	vertices map[VertexID]*mockVertex
+	heads    []VertexID
+}
+
+type mockVertex struct {
+	id      VertexID
+	parents []VertexID
+	author  string
+	round   uint64
+}
+
+func (v *mockVertex) ID() VertexID         { return v.id }
+func (v *mockVertex) Parents() []VertexID  { return v.parents }
+func (v *mockVertex) Author() string       { return v.author }
+func (v *mockVertex) Round() uint64        { return v.round }
+
+func newMockStore() *mockStore {
+	return &mockStore{
+		vertices: make(map[VertexID]*mockVertex),
+		heads:    make([]VertexID, 0),
+	}
+}
+
+func (s *mockStore) Head() []VertexID {
+	return s.heads
+}
+
+func (s *mockStore) Get(id VertexID) (dag.BlockView[VertexID], bool) {
+	vertex, exists := s.vertices[id]
+	return vertex, exists
+}
+
+func (s *mockStore) Children(id VertexID) []VertexID {
+	return []VertexID{}
+}
 
 func TestNew(t *testing.T) {
 	cfg := config.DefaultParams()
-	q := New(cfg)
+	q := New(cfg, newMockStore())
 
 	if q == nil {
 		t.Fatal("New() returned nil")
@@ -29,7 +68,7 @@ func TestNew(t *testing.T) {
 
 func TestInitialize(t *testing.T) {
 	cfg := config.DefaultParams()
-	q := New(cfg)
+	q := New(cfg, newMockStore())
 
 	ctx := context.Background()
 	blsKey := []byte("test-bls-key")
@@ -51,7 +90,7 @@ func TestInitialize(t *testing.T) {
 
 func TestPhaseI_Propose(t *testing.T) {
 	cfg := config.DefaultParams()
-	q := New(cfg)
+	q := New(cfg, newMockStore())
 
 	ctx := context.Background()
 	if err := q.Initialize(ctx, []byte("bls"), []byte("pq")); err != nil {
@@ -83,7 +122,7 @@ func TestPhaseI_Propose(t *testing.T) {
 
 func TestPhaseII_Commit(t *testing.T) {
 	cfg := config.DefaultParams()
-	q := New(cfg)
+	q := New(cfg, newMockStore())
 
 	ctx := context.Background()
 	if err := q.Initialize(ctx, []byte("bls"), []byte("pq")); err != nil {
@@ -203,7 +242,7 @@ func TestQBlock(t *testing.T) {
 
 func TestSetFinalizedCallback(t *testing.T) {
 	cfg := config.DefaultParams()
-	q := New(cfg)
+	q := New(cfg, newMockStore())
 
 	called := false
 	q.SetFinalizedCallback(func(block QBlock) {
@@ -225,7 +264,7 @@ func TestSetFinalizedCallback(t *testing.T) {
 
 func TestQuantumFinality_Integration(t *testing.T) {
 	cfg := config.XChainParams() // Ultra-fast 1ms blocks
-	q := New(cfg)
+	q := New(cfg, newMockStore())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -291,7 +330,7 @@ func TestQuantumFinality_Integration(t *testing.T) {
 
 func BenchmarkPhaseI(b *testing.B) {
 	cfg := config.XChainParams()
-	q := New(cfg)
+	q := New(cfg, newMockStore())
 	if err := q.Initialize(context.Background(), []byte("bls"), []byte("pq")); err != nil {
 		b.Fatalf("Initialize failed: %v", err)
 	}
@@ -306,7 +345,7 @@ func BenchmarkPhaseI(b *testing.B) {
 
 func BenchmarkPhaseII(b *testing.B) {
 	cfg := config.XChainParams()
-	q := New(cfg)
+	q := New(cfg, newMockStore())
 	if err := q.Initialize(context.Background(), []byte("bls"), []byte("pq")); err != nil {
 		b.Fatalf("Initialize failed: %v", err)
 	}
