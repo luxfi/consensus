@@ -90,16 +90,18 @@ var (
 var (
 	GetTimestamp       = consensuscontext.GetTimestamp
 	GetChainID         = consensuscontext.GetChainID
+	GetNetID           = consensuscontext.GetNetID
 	GetValidatorState  = consensuscontext.GetValidatorState
 	WithContext        = consensuscontext.WithContext
 	FromContext        = consensuscontext.FromContext
 	GetNodeID          = consensuscontext.GetNodeID
 	WithIDs            = consensuscontext.WithIDs
 	WithValidatorState = consensuscontext.WithValidatorState
+	
+	// Deprecated functions
+	GetSubnetID        = consensuscontext.GetSubnetID // Deprecated: use GetNetID
 )
 
-// Deprecated: GetSubnetID is deprecated, use GetChainID instead
-var GetSubnetID = consensuscontext.GetSubnetID
 
 // AppError represents an application error
 type AppError struct {
