@@ -46,6 +46,6 @@ func (m *TestManager) Disconnected(nodeID ids.NodeID) {
 
 // Calculator calculates uptime
 type Calculator interface {
-    CalculateUptime(nodeID ids.NodeID, subnetID ids.ID) (time.Duration, time.Time, error)
-    CalculateUptimePercent(nodeID ids.NodeID, subnetID ids.ID) (float64, error)
+    CalculateUptime(nodeID ids.NodeID, chainID ids.ID) (time.Duration, time.Time, error)
+    CalculateUptimePercent(nodeID ids.NodeID, chainID ids.ID) (float64, error)
 }
