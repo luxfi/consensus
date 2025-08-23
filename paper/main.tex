@@ -1,0 +1,52 @@
+\documentclass[11pt,twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{cite}
+\usepackage{url}
+\usepackage{geometry}
+\usepackage{natbib}
+
+% Page layout
+\geometry{margin=1in}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    captionpos=b,
+    commentstyle=\color{gray},
+    keywordstyle=\color{blue},
+    stringstyle=\color{red},
+}
+
+% Title and authors
+\title{Lux Consensus: Physics-Inspired Metastable Blockchain Consensus}
+\author{
+    The Lux Team\\
+    \texttt{consensus@luxfi.io}
+}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/background}
+\input{sections/protocol-design}
+\input{sections/analysis}
+\input{sections/implementation}
+\input{sections/conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

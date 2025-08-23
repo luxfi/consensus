@@ -1,0 +1,35 @@
+\section{Introduction}
+
+Achieving reliable consensus in a distributed network of nodes—especially in permissionless or decentralized settings—remains a central challenge in blockchain and cryptography research~\cite{bitcoin,pbft}. Classical Byzantine Fault Tolerant (BFT) consensus protocols (e.g. PBFT) provide safety under certain fault thresholds but often at the cost of poor scalability due to heavy communication (typically quadratic in number of nodes) and the requirement of known participants~\cite{pbft,hotstuff}. On the other hand, Nakamoto's longest-chain consensus (as pioneered by Bitcoin) achieves probabilistic agreement in open networks with dynamic membership, but it suffers from high latency and resource consumption (e.g. Proof-of-Work energy) and only provides eventual consistency with probabilistic finality~\cite{bitcoin,nakamoto}.
+
+In recent years, a third approach has emerged: metastable consensus, exemplified by protocols like Avalanche's Snow family~\cite{avalanche}. These protocols use random gossip and repeated subsampling to steer the network toward a common decision quickly, providing strong probabilistic safety (the chance of divergence can be made negligibly small) while remaining highly scalable and quiescent (no work when idle).
+
+Lux consensus builds upon this metastable paradigm, introducing a new family of leaderless BFT protocols that are both probabilistic and metastable, yet firmly rooted in physical metaphors for educational clarity. The name "Lux" (Latin for "light") reflects the protocol's design inspiration from the behavior of photons and cosmic phenomena. In Lux, consensus emerges through many small interactions analogous to photons being exchanged among nodes. Agreement is not reached by a single coordinated round or a leader-based decision, but rather by waves of network interaction that reinforce one outcome and dampen others—much like how constructive interference amplifies a dominant wave while other signals evanesce (fade out) when out of phase.
+
+This process yields a metastable agreement: once the network's preference tilts past a tipping point, it rapidly becomes locked-in with overwhelming probability, akin to a physical system falling into a stable state.
+
+To clearly delineate the mechanics, Lux is structured as a sequence of composable modules with clean interfaces and an acyclic dependency graph. Each module corresponds to a stage in an imagined cosmological process:
+
+\begin{itemize}
+\item \textbf{Photon}: the simplest unit of consensus—analogous to a single voting interaction or message. Photons in Lux are like consensus "particles" that carry votes between nodes. Inspired by Saleh's theory of light~\cite{saleh}, all photons (votes) have equal mass or weight in the protocol, and they propagate at a constant rate through the network.
+
+\item \textbf{Prism}: a mechanism for dispersing and organizing these photons (votes) into independent spectra of decision problems. In practice, this refers to how Lux handles conflicting transactions or proposals.
+
+\item \textbf{Wave}: the core metastable voting process, wherein waves of photons propagate through the network. A Wave in Lux corresponds to a round of randomized sampling and threshold voting.
+
+\item \textbf{Focus}: a module that accumulates confidence over multiple waves until a decision becomes effectively irreversible. In physics terms, as successive waves reinforce the same outcome, the system's state focuses into a single coherent beam (like a laser focusing light).
+\end{itemize}
+
+Using these four core modules—Photon, Prism, Wave, Focus—Lux first establishes a probabilistic agreement on individual decisions. Building on this foundation, Lux introduces higher-level protocols:
+
+\begin{itemize}
+\item \textbf{Ray}: a linear consensus protocol that produces a totally ordered chain of blocks (or transactions). Ray represents a single beam of light that traces a linear path, where individual consensus decisions occur one at a time in sequence.
+
+\item \textbf{Field}: a DAG-based consensus protocol allowing concurrent, partially ordered processing of transactions. Field represents a superposition of multiple rays (transaction paths), creating an electromagnetic field of parallel transaction processing within a causally ordered DAG structure.
+
+\item \textbf{Quasar}: a post-quantum secure consensus overlay and unified finality system. The term Quasar evokes the brightest cosmic beacons powered by supermassive black holes, hinting at the strong, unwavering finality and security this layer provides.
+\end{itemize>
+
+By combining these components, Lux offers a unified consensus family that can cater to different needs. A small permissioned chain might run Lux Ray for simplicity. A high-throughput DeFi application could use Lux Field for parallel transaction processing. A government or long-lived public ledger might enable Lux Quasar to secure against future quantum threats.
+
+In the remainder of this paper, we delve into each aspect of Lux in detail. We formalize our system model and review prior consensus approaches, describe the core protocol design with algorithms and mathematical notation, present formal arguments for safety and liveness, evaluate performance characteristics, and discuss implementation guidance including how Lux can power sovereign blockchain subnets with seamless upgrade paths.

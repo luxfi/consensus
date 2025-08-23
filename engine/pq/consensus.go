@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
+	"github.com/luxfi/consensus/core/dag"
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/ids"
 )
@@ -35,11 +36,70 @@ type FinalityEvent struct {
 	BLSProof  []byte // Classical BLS proof
 }
 
+// memoryStore is a simple in-memory implementation of dag.Store for P-Chain vertices
+type memoryStore struct {
+	vertices map[quasar.VertexID]*memoryVertex
+	heads    []quasar.VertexID
+	mu       sync.RWMutex
+}
+
+type memoryVertex struct {
+	id       quasar.VertexID
+	parents  []quasar.VertexID
+	author   string
+	round    uint64
+	children []quasar.VertexID
+}
+
+func (v *memoryVertex) ID() quasar.VertexID     { return v.id }
+func (v *memoryVertex) Parents() []quasar.VertexID { return v.parents }
+func (v *memoryVertex) Author() string         { return v.author }
+func (v *memoryVertex) Round() uint64          { return v.round }
+
+func (s *memoryStore) Head() []quasar.VertexID {
+	if s.vertices == nil {
+		s.vertices = make(map[quasar.VertexID]*memoryVertex)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]quasar.VertexID, len(s.heads))
+	copy(result, s.heads)
+	return result
+}
+
+func (s *memoryStore) Get(id quasar.VertexID) (dag.BlockView[quasar.VertexID], bool) {
+	if s.vertices == nil {
+		s.vertices = make(map[quasar.VertexID]*memoryVertex)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	vertex, exists := s.vertices[id]
+	return vertex, exists
+}
+
+func (s *memoryStore) Children(id quasar.VertexID) []quasar.VertexID {
+	if s.vertices == nil {
+		s.vertices = make(map[quasar.VertexID]*memoryVertex)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if vertex, exists := s.vertices[id]; exists {
+		result := make([]quasar.VertexID, len(vertex.children))
+		copy(result, vertex.children)
+		return result
+	}
+	return []quasar.VertexID{}
+}
+
 // NewConsensus creates a new post-quantum consensus engine
 func NewConsensus(params config.Parameters) *ConsensusEngine {
+	// Create a simple in-memory store for P-Chain vertices
+	// TODO: Use proper persistent storage in production
+	store := &memoryStore{}
+	
 	return &ConsensusEngine{
 		params:    params,
-		quasar:    quasar.New(params),
+		quasar:    quasar.New(params, store),
 		finality:  make(chan FinalityEvent, 100),
 		finalized: make(map[ids.ID]bool),
 	}
