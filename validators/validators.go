@@ -8,8 +8,8 @@ import (
 
 // State provides validator state management
 type State interface {
-	GetValidatorSet(ctx context.Context, height uint64, chainID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
-	GetCurrentValidators(subnetID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
+	GetValidatorSet(ctx context.Context, height uint64, netID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
+	GetCurrentValidators(netID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
 }
 
 // GetValidatorOutput provides validator information
@@ -52,11 +52,11 @@ func (v *ValidatorImpl) Light() uint64 {
 
 // Manager manages validator sets
 type Manager interface {
-	GetValidators(chainID ids.ID) (Set, error)
-	GetLight(chainID ids.ID, nodeID ids.NodeID) uint64
-	GetWeight(chainID ids.ID, nodeID ids.NodeID) uint64 // Deprecated: use GetLight
-	TotalLight(chainID ids.ID) (uint64, error)
-	TotalWeight(chainID ids.ID) (uint64, error) // Deprecated: use TotalLight
+	GetValidators(netID ids.ID) (Set, error)
+	GetLight(netID ids.ID, nodeID ids.NodeID) uint64
+	GetWeight(netID ids.ID, nodeID ids.NodeID) uint64 // Deprecated: use GetLight
+	TotalLight(netID ids.ID) (uint64, error)
+	TotalWeight(netID ids.ID) (uint64, error) // Deprecated: use TotalLight
 }
 
 // SetCallbackListener listens to validator set changes
@@ -68,9 +68,9 @@ type SetCallbackListener interface {
 
 // ManagerCallbackListener listens to manager changes
 type ManagerCallbackListener interface {
-	OnValidatorAdded(chainID ids.ID, nodeID ids.NodeID, light uint64)
-	OnValidatorRemoved(chainID ids.ID, nodeID ids.NodeID, light uint64)
-	OnValidatorLightChanged(chainID ids.ID, nodeID ids.NodeID, oldLight, newLight uint64)
+	OnValidatorAdded(netID ids.ID, nodeID ids.NodeID, light uint64)
+	OnValidatorRemoved(netID ids.ID, nodeID ids.NodeID, light uint64)
+	OnValidatorLightChanged(netID ids.ID, nodeID ids.NodeID, oldLight, newLight uint64)
 }
 
 // Connector handles validator connections
