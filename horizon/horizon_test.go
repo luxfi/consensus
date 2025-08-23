@@ -2,6 +2,8 @@ package horizon
 
 import (
 	"testing"
+	
+	"github.com/luxfi/consensus/core/dag"
 )
 
 // TestGraph implements Graph interface for testing
@@ -23,7 +25,7 @@ func (g *TestGraph) Parents(v string) []string {
 	return g.edges[v]
 }
 
-func TestIsAncestor(t *testing.T) {
+func TestIsReachable(t *testing.T) {
 	g := NewTestGraph()
 	
 	// Create a simple DAG: A -> B -> C -> D
@@ -32,22 +34,22 @@ func TestIsAncestor(t *testing.T) {
 	g.AddEdge("C", "D")
 	
 	// Test direct ancestry
-	if !IsAncestor(g, "A", "B") {
+	if !dag.IsReachable(g, "A", "B") {
 		t.Error("A should be ancestor of B")
 	}
 	
 	// Test transitive ancestry
-	if !IsAncestor(g, "A", "D") {
+	if !dag.IsReachable(g, "A", "D") {
 		t.Error("A should be ancestor of D")
 	}
 	
 	// Test non-ancestry
-	if IsAncestor(g, "D", "A") {
+	if dag.IsReachable(g, "D", "A") {
 		t.Error("D should not be ancestor of A")
 	}
 	
 	// Test self-ancestry
-	if !IsAncestor(g, "A", "A") {
+	if !dag.IsReachable(g, "A", "A") {
 		t.Error("A should be ancestor of itself")
 	}
 }
@@ -66,22 +68,22 @@ func TestLCA(t *testing.T) {
 	g.AddEdge("B", "D")
 	g.AddEdge("C", "D")
 	
-	// LCA of B and C should be A
-	lca, found := LCA(g, "B", "C")
+	// dag.LCA of B and C should be A
+	lca, found := dag.LCA(g, "B", "C")
 	if !found || lca != "A" {
-		t.Errorf("LCA of B and C should be A, got %v (found=%v)", lca, found)
+		t.Errorf("dag.LCA of B and C should be A, got %v (found=%v)", lca, found)
 	}
 	
-	// LCA of B and D should be B
-	lca, found = LCA(g, "B", "D")
+	// dag.LCA of B and D should be B
+	lca, found = dag.LCA(g, "B", "D")
 	if !found || lca != "B" {
-		t.Errorf("LCA of B and D should be B, got %v (found=%v)", lca, found)
+		t.Errorf("dag.LCA of B and D should be B, got %v (found=%v)", lca, found)
 	}
 	
-	// LCA of D and D should be D
-	lca, found = LCA(g, "D", "D")
+	// dag.LCA of D and D should be D
+	lca, found = dag.LCA(g, "D", "D")
 	if !found || lca != "D" {
-		t.Errorf("LCA of D and D should be D, got %v (found=%v)", lca, found)
+		t.Errorf("dag.LCA of D and D should be D, got %v (found=%v)", lca, found)
 	}
 }
 
@@ -101,20 +103,20 @@ func TestAntichain(t *testing.T) {
 	
 	// B and C form an antichain
 	vertices := []string{"B", "C"}
-	antichain := Antichain(g, vertices)
+	antichain := dag.Antichain(g, vertices)
 	if len(antichain) != 2 {
 		t.Errorf("Expected antichain of size 2, got %d", len(antichain))
 	}
 	
 	// A, B, D - A is ancestor of B and D
 	vertices = []string{"A", "B", "D"}
-	antichain = Antichain(g, vertices)
+	antichain = dag.Antichain(g, vertices)
 	if len(antichain) != 1 || antichain[0] != "D" {
 		t.Errorf("Expected antichain [D], got %v", antichain)
 	}
 }
 
-func TestTopologicalSort(t *testing.T) {
+func TestComputeHorizonOrder(t *testing.T) {
 	g := NewTestGraph()
 	
 	// Create a DAG:
@@ -125,7 +127,7 @@ func TestTopologicalSort(t *testing.T) {
 	g.AddEdge("B", "D")
 	g.AddEdge("C", "D")
 	
-	sorted := TopologicalSort(g, []string{"D"})
+	sorted := dag.ComputeHorizonOrder(g, []string{"D"})
 	
 	// Check that vertices are in the sorted list
 	found := map[string]bool{}
@@ -145,7 +147,7 @@ func TestTopologicalSort(t *testing.T) {
 	}
 	
 	// The exact order depends on the traversal, but D should be reachable from all
-	if !IsAncestor(g, "A", "D") || !IsAncestor(g, "B", "D") || !IsAncestor(g, "C", "D") {
+	if !dag.IsReachable(g, "A", "D") || !dag.IsReachable(g, "B", "D") || !dag.IsReachable(g, "C", "D") {
 		t.Error("D should be reachable from A, B, and C")
 	}
 }
