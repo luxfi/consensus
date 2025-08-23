@@ -3,9 +3,9 @@ package nebula
 import (
 	"context"
 	"time"
-	
-	"github.com/luxfi/consensus/protocol/field"
+
 	"github.com/luxfi/consensus/prism"
+	"github.com/luxfi/consensus/protocol/field"
 	"github.com/luxfi/consensus/wave"
 )
 
@@ -35,14 +35,14 @@ func NewNebula[V VID](cfg Config, cut prism.Cut[V], tx wave.Transport[V], store 
 		Beta:     cfg.Beta,
 		RoundTO:  cfg.RoundTO,
 	}
-	
+
 	return &Nebula[V]{
 		fieldEngine: field.NewDriver(fieldConfig, cut, tx, store, prop, com),
 		config:      cfg,
 	}
 }
 
-// Start begins Nebula DAG consensus operation  
+// Start begins Nebula DAG consensus operation
 func (n *Nebula[V]) Start(ctx context.Context) error {
 	return n.fieldEngine.Start(ctx)
 }

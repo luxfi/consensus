@@ -1,8 +1,8 @@
 package iface
 
 import (
-	"github.com/luxfi/ids"
 	"github.com/luxfi/database"
+	"github.com/luxfi/ids"
 )
 
 // BCLookup provides blockchain lookup functionality

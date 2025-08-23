@@ -1,8 +1,8 @@
 package flare
 
 import (
-	"testing"
 	"github.com/luxfi/consensus/core/dag"
+	"testing"
 )
 
 type testVertex struct {
@@ -12,9 +12,9 @@ type testVertex struct {
 	parents []dag.VertexID
 }
 
-func (v *testVertex) ID() dag.VertexID         { return v.id }
-func (v *testVertex) Author() string       { return v.author }
-func (v *testVertex) Round() uint64        { return v.round }
+func (v *testVertex) ID() dag.VertexID        { return v.id }
+func (v *testVertex) Author() string          { return v.author }
+func (v *testVertex) Round() uint64           { return v.round }
 func (v *testVertex) Parents() []dag.VertexID { return v.parents }
 
 type testView struct {
@@ -48,7 +48,7 @@ func (v *testView) Supports(from dag.VertexID, author string, round uint64) bool
 	if !ok {
 		return false
 	}
-	
+
 	// Check if from vertex has parent from author at round
 	for _, parentID := range fromV.Parents() {
 		if parent, ok := v.Get(parentID); ok {

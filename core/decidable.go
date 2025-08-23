@@ -9,13 +9,13 @@ import (
 type Decidable interface {
 	// ID returns the ID of this decidable
 	ID() ids.ID
-	
+
 	// Accept marks this as accepted
 	Accept(context.Context) error
-	
-	// Reject marks this as rejected  
+
+	// Reject marks this as rejected
 	Reject(context.Context) error
-	
+
 	// Status returns the current status
 	Status() Status
 }
