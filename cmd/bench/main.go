@@ -17,14 +17,14 @@ import (
 
 func main() {
 	var (
-		engine    = flag.String("engine", "all", "Engine to benchmark (chain, dag, pq, all)")
-		network   = flag.String("network", "local", "Network configuration (mainnet, testnet, local)")
-		duration  = flag.Duration("duration", 10*time.Second, "Benchmark duration")
-		blocks    = flag.Int("blocks", 1000, "Number of blocks to process")
-		parallel  = flag.Int("parallel", 1, "Number of parallel workers")
-		useZMQ    = flag.Bool("zmq", false, "Use ZMQ transport (if available)")
-		verbose   = flag.Bool("verbose", false, "Verbose output")
-		help      = flag.Bool("help", false, "Show help message")
+		engine   = flag.String("engine", "all", "Engine to benchmark (chain, dag, pq, all)")
+		network  = flag.String("network", "local", "Network configuration (mainnet, testnet, local)")
+		duration = flag.Duration("duration", 10*time.Second, "Benchmark duration")
+		blocks   = flag.Int("blocks", 1000, "Number of blocks to process")
+		parallel = flag.Int("parallel", 1, "Number of parallel workers")
+		useZMQ   = flag.Bool("zmq", false, "Use ZMQ transport (if available)")
+		verbose  = flag.Bool("verbose", false, "Verbose output")
+		help     = flag.Bool("help", false, "Show help message")
 	)
 	flag.Parse()
 
@@ -35,7 +35,7 @@ func main() {
 
 	// Get network configuration
 	params := getNetworkParams(*network)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), *duration)
 	defer cancel()
 
@@ -99,16 +99,16 @@ func getNetworkParams(network string) config.Parameters {
 func benchmarkChain(ctx context.Context, params config.Parameters, blocks int, parallel int, verbose bool) {
 	fmt.Println("=== Chain Engine Benchmark ===")
 	engine := chain.New()
-	
+
 	start := time.Now()
 	if err := engine.Start(ctx, 1); err != nil {
 		fmt.Printf("Failed to start chain engine: %v\n", err)
 		return
 	}
-	
+
 	processed := 0
 	errors := 0
-	
+
 	for i := 0; i < blocks && ctx.Err() == nil; i++ {
 		blockID := ids.GenerateTestID()
 		err := engine.GetBlock(ctx, ids.EmptyNodeID, 0, blockID)
@@ -120,37 +120,37 @@ func benchmarkChain(ctx context.Context, params config.Parameters, blocks int, p
 		} else {
 			processed++
 		}
-		
+
 		if verbose && i%100 == 0 {
 			fmt.Printf("Processed %d blocks...\n", i)
 		}
 	}
-	
+
 	elapsed := time.Since(start)
 	tps := float64(processed) / elapsed.Seconds()
-	
+
 	fmt.Printf("Results:\n")
 	fmt.Printf("  Processed: %d blocks\n", processed)
 	fmt.Printf("  Errors:    %d\n", errors)
 	fmt.Printf("  Time:      %s\n", elapsed)
 	fmt.Printf("  TPS:       %.2f blocks/sec\n", tps)
-	
+
 	_ = engine.Stop(ctx)
 }
 
 func benchmarkDAG(ctx context.Context, params config.Parameters, blocks int, parallel int, verbose bool) {
 	fmt.Println("=== DAG Engine Benchmark ===")
 	engine := dag.New()
-	
+
 	start := time.Now()
 	if err := engine.Start(ctx, 1); err != nil {
 		fmt.Printf("Failed to start DAG engine: %v\n", err)
 		return
 	}
-	
+
 	processed := 0
 	errors := 0
-	
+
 	for i := 0; i < blocks && ctx.Err() == nil; i++ {
 		vertexID := ids.GenerateTestID()
 		err := engine.GetVertex(ctx, ids.EmptyNodeID, 0, vertexID)
@@ -162,38 +162,38 @@ func benchmarkDAG(ctx context.Context, params config.Parameters, blocks int, par
 		} else {
 			processed++
 		}
-		
+
 		if verbose && i%100 == 0 {
 			fmt.Printf("Processed %d vertices...\n", i)
 		}
 	}
-	
+
 	elapsed := time.Since(start)
 	tps := float64(processed) / elapsed.Seconds()
-	
+
 	fmt.Printf("Results:\n")
 	fmt.Printf("  Processed: %d vertices\n", processed)
 	fmt.Printf("  Errors:    %d\n", errors)
 	fmt.Printf("  Time:      %s\n", elapsed)
 	fmt.Printf("  TPS:       %.2f vertices/sec\n", tps)
-	
+
 	_ = engine.Stop(ctx)
 }
 
 func benchmarkPQ(ctx context.Context, params config.Parameters, blocks int, parallel int, verbose bool) {
 	fmt.Println("=== Post-Quantum Engine Benchmark ===")
 	engine := pq.New()
-	
+
 	start := time.Now()
 	if err := engine.Start(ctx, 1); err != nil {
 		fmt.Printf("Failed to start PQ engine: %v\n", err)
 		return
 	}
-	
+
 	processed := 0
 	errors := 0
 	proofSizes := []int{}
-	
+
 	for i := 0; i < blocks && ctx.Err() == nil; i++ {
 		blockID := ids.GenerateTestID()
 		proof, err := engine.GenerateQuantumProof(ctx, blockID)
@@ -206,15 +206,15 @@ func benchmarkPQ(ctx context.Context, params config.Parameters, blocks int, para
 			processed++
 			proofSizes = append(proofSizes, len(proof))
 		}
-		
+
 		if verbose && i%100 == 0 {
 			fmt.Printf("Generated %d proofs...\n", i)
 		}
 	}
-	
+
 	elapsed := time.Since(start)
 	tps := float64(processed) / elapsed.Seconds()
-	
+
 	// Calculate average proof size
 	avgProofSize := 0
 	if len(proofSizes) > 0 {
@@ -224,14 +224,14 @@ func benchmarkPQ(ctx context.Context, params config.Parameters, blocks int, para
 		}
 		avgProofSize = sum / len(proofSizes)
 	}
-	
+
 	fmt.Printf("Results:\n")
 	fmt.Printf("  Generated: %d proofs\n", processed)
 	fmt.Printf("  Errors:    %d\n", errors)
 	fmt.Printf("  Time:      %s\n", elapsed)
 	fmt.Printf("  TPS:       %.2f proofs/sec\n", tps)
 	fmt.Printf("  Avg Proof: %d bytes\n", avgProofSize)
-	
+
 	_ = engine.Stop(ctx)
 }
 

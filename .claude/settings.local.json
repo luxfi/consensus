@@ -12,7 +12,9 @@
       "Bash(grep:*)",
       "Bash(go build:*)",
       "Bash(make:*)",
-      "Bash(go mod:*)"
+      "Bash(go mod:*)",
+      "Bash(git tag:*)",
+      "Bash(gofmt:*)"
     ],
     "deny": [],
     "ask": [],

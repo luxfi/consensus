@@ -22,10 +22,10 @@ type mockVertex struct {
 	round   uint64
 }
 
-func (v *mockVertex) ID() VertexID         { return v.id }
-func (v *mockVertex) Parents() []VertexID  { return v.parents }
-func (v *mockVertex) Author() string       { return v.author }
-func (v *mockVertex) Round() uint64        { return v.round }
+func (v *mockVertex) ID() VertexID        { return v.id }
+func (v *mockVertex) Parents() []VertexID { return v.parents }
+func (v *mockVertex) Author() string      { return v.author }
+func (v *mockVertex) Round() uint64       { return v.round }
 
 func newMockStore() *mockStore {
 	return &mockStore{

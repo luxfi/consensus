@@ -65,7 +65,7 @@ func printTable(p config.Parameters) {
 	fmt.Printf("Beta (decision rounds): %d\n", p.Beta)
 	fmt.Printf("Block Time:             %s\n", p.BlockTime)
 	fmt.Printf("Round Timeout:          %s\n", p.RoundTO)
-	
+
 	if p.AlphaPreference > 0 {
 		fmt.Printf("Alpha Preference:       %d\n", p.AlphaPreference)
 	}

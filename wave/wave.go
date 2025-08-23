@@ -42,7 +42,7 @@ type Wave[T comparable] struct {
 	cfg Config
 	cut prism.Cut[T]
 	tx  Transport[T]
-	
+
 	// State tracking
 	states map[T]*WaveState
 	prefs  map[T]bool // current preferences
@@ -67,20 +67,20 @@ func (w *Wave[T]) Tick(ctx context.Context, item T) {
 		state = &WaveState{Decided: false, Result: types.DecideUndecided, Count: 0}
 		w.states[item] = state
 	}
-	
+
 	// Skip if already decided
 	if state.Decided {
 		return
 	}
-	
+
 	// Cut light rays (sample peers) and request votes
 	peers := w.cut.Sample(w.cfg.K)
 	votes := w.tx.RequestVotes(ctx, peers, item)
-	
+
 	// Count votes
 	yesVotes := 0
 	totalVotes := 0
-	
+
 	// Collect votes with timeout
 	timeout := time.After(w.cfg.RoundTO)
 	for {
@@ -100,16 +100,16 @@ func (w *Wave[T]) Tick(ctx context.Context, item T) {
 			return
 		}
 	}
-	
+
 countVotes:
 	if totalVotes == 0 {
 		return
 	}
-	
+
 	// Check threshold
 	threshold := int(float64(w.cfg.K) * w.cfg.Alpha)
 	currentPref := w.prefs[item]
-	
+
 	if yesVotes >= threshold {
 		// Strong preference for yes
 		w.prefs[item] = true
@@ -124,7 +124,7 @@ countVotes:
 		// Strong preference for no
 		w.prefs[item] = false
 		if !currentPref {
-			// Consecutive confirmation  
+			// Consecutive confirmation
 			state.Count++
 		} else {
 			// Preference switch
@@ -134,7 +134,7 @@ countVotes:
 		// No strong preference, reset count
 		state.Count = 0
 	}
-	
+
 	// Check for decision
 	if state.Count >= w.cfg.Beta {
 		state.Decided = true

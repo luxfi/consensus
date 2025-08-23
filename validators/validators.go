@@ -36,7 +36,7 @@ type Validator interface {
 
 // ValidatorImpl is a concrete implementation of Validator
 type ValidatorImpl struct {
-	NodeID  ids.NodeID
+	NodeID   ids.NodeID
 	LightVal uint64
 }
 
@@ -45,7 +45,7 @@ func (v *ValidatorImpl) ID() ids.NodeID {
 	return v.NodeID
 }
 
-// Light returns the validator light  
+// Light returns the validator light
 func (v *ValidatorImpl) Light() uint64 {
 	return v.LightVal
 }

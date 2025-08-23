@@ -31,14 +31,14 @@ func (m *MockRouter) RouteMessage(ctx context.Context, from, to types.NodeID, co
 	if _, exists := m.routes[to]; !exists {
 		m.routes[to] = make([]Message, 0)
 	}
-	
+
 	m.routes[to] = append(m.routes[to], Message{
 		From:    from,
 		To:      to,
 		Content: content,
 		Type:    msgType,
 	})
-	
+
 	return nil
 }
 

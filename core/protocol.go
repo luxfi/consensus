@@ -9,10 +9,10 @@ type ID interface{ ~[32]byte }
 type Protocol[I comparable] interface {
 	// Initialize initializes the protocol
 	Initialize(ctx context.Context) error
-	
+
 	// Step runs one poll/round of the protocol
 	Step(ctx context.Context) error
-	
+
 	// Status returns the status of an item (e.g., {unknown, preferred, decided})
 	Status(id I) (string, error)
 }

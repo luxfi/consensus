@@ -90,48 +90,48 @@ func printHelp() {
 
 func checkEngine(ctx context.Context, name string, engine consensus.Engine, verbose bool) bool {
 	fmt.Printf("Checking %s engine... ", name)
-	
+
 	// Start engine
 	if err := engine.Start(ctx, 1); err != nil {
 		fmt.Printf("✗ Failed to start: %v\n", err)
 		return false
 	}
 	defer func() { _ = engine.Stop(ctx) }()
-	
+
 	// Check bootstrapped
 	if !engine.IsBootstrapped() {
 		fmt.Println("✗ Not bootstrapped")
 		return false
 	}
-	
+
 	// Perform health check
 	health, err := engine.HealthCheck(ctx)
 	if err != nil {
 		fmt.Printf("✗ Health check failed: %v\n", err)
 		return false
 	}
-	
+
 	fmt.Println("✓")
-	
+
 	if verbose {
 		fmt.Printf("  Health data: %+v\n", health)
 	}
-	
+
 	return true
 }
 
 func checkConfigurations(verbose bool) bool {
 	fmt.Println("\nChecking configurations...")
-	
+
 	configs := map[string]config.Parameters{
 		"mainnet": config.MainnetParams(),
 		"testnet": config.TestnetParams(),
 		"local":   config.LocalParams(),
 		"xchain":  config.XChainParams(),
 	}
-	
+
 	allValid := true
-	
+
 	for name, cfg := range configs {
 		fmt.Printf("  %s: ", name)
 		if err := cfg.Valid(); err != nil {
@@ -145,6 +145,6 @@ func checkConfigurations(verbose bool) bool {
 			}
 		}
 	}
-	
+
 	return allValid
 }

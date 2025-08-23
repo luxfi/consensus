@@ -6,16 +6,16 @@ type Status int
 const (
 	// StatusUnknown means the status is unknown
 	StatusUnknown Status = iota
-	
+
 	// StatusPending means the item is pending decision
 	StatusPending
-	
+
 	// StatusProcessing means the item is being processed
 	StatusProcessing
-	
+
 	// StatusAccepted means the item has been accepted
 	StatusAccepted
-	
+
 	// StatusRejected means the item has been rejected
 	StatusRejected
 )

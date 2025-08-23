@@ -7,16 +7,16 @@ import (
 type VertexID [32]byte
 
 type Meta interface {
-    ID() VertexID
-    Author() string
-    Round() uint64
-    Parents() []VertexID
+	ID() VertexID
+	Author() string
+	Round() uint64
+	Parents() []VertexID
 }
 
 type View interface {
-    Get(VertexID) (Meta, bool)
-    ByRound(round uint64) []Meta
-    Supports(from VertexID, author string, round uint64) bool
+	Get(VertexID) (Meta, bool)
+	ByRound(round uint64) []Meta
+	Supports(from VertexID, author string, round uint64) bool
 }
 
 type Params struct{ N, F int }
@@ -57,7 +57,7 @@ func BuildSkipList[V comparable](store dag.Store[V], vertices []V) *SkipList[V] 
 	sl := &SkipList[V]{
 		Levels: make(map[V][]V),
 	}
-	
+
 	// Simple placeholder: each vertex points to its first parent
 	for _, v := range vertices {
 		if block, exists := store.Get(v); exists {
@@ -69,7 +69,7 @@ func BuildSkipList[V comparable](store dag.Store[V], vertices []V) *SkipList[V] 
 			}
 		}
 	}
-	
+
 	return sl
 }
 

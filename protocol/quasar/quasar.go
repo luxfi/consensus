@@ -133,11 +133,11 @@ func (q *Quasar) EstablishHorizon(ctx context.Context, checkpoint VertexID, vali
 	// Compute new event horizon using Ringtail + BLS signatures
 	horizon := dag.EventHorizon[VertexID]{
 		Checkpoint: checkpoint,
-		Height:     uint64(len(q.horizons) + 1),
+		Height:     uint64(len(q.horizons)) + 1,
 		Validators: validators,
 		Signature:  q.createHorizonSignature(checkpoint, validators),
 	}
-	
+
 	q.horizons = append(q.horizons, horizon)
 	return &horizon, nil
 }
@@ -147,7 +147,7 @@ func (q *Quasar) IsBeyondHorizon(vertex VertexID) bool {
 	if len(q.horizons) == 0 {
 		return false
 	}
-	
+
 	latestHorizon := q.horizons[len(q.horizons)-1]
 	return dag.BeyondHorizon(q.store, vertex, latestHorizon)
 }
@@ -157,7 +157,7 @@ func (q *Quasar) ComputeCanonicalOrder() []VertexID {
 	if len(q.horizons) == 0 {
 		return []VertexID{}
 	}
-	
+
 	latestHorizon := q.horizons[len(q.horizons)-1]
 	return dag.ComputeHorizonOrder(q.store, latestHorizon)
 }
@@ -176,7 +176,7 @@ func (q *Quasar) createHorizonSignature(checkpoint VertexID, validators []string
 	// This should combine:
 	// 1. BLS aggregate signature for efficiency
 	// 2. Ringtail post-quantum threshold signature for security
-	
+
 	// Placeholder implementation
 	signature := append(q.blsKey, q.pqKey...)
 	signature = append(signature, checkpoint[:]...)
