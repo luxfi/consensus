@@ -2,10 +2,18 @@ package common
 
 import "errors"
 
-// AppError represents an application-level error
+// Common errors
+var (
+	ErrUndefined = errors.New("undefined error")
+)
+
+// AppError represents an application error
 type AppError struct {
-    error
+	Code    int32
+	Message string
 }
 
-// ErrUndefined is returned when an undefined error occurs
-var ErrUndefined = errors.New("undefined error")
+// Error returns the error message
+func (e *AppError) Error() string {
+	return e.Message
+}
