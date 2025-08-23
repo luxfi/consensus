@@ -1,10 +1,10 @@
 # Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
 # See the file LICENSE for licensing terms.
 
-.PHONY: all test build clean lint format check tools help benchmark benchmark-node benchmark-zmq test-parallel test-cluster
+.PHONY: all test build clean lint format check tools help benchmark benchmark-node benchmark-zmq test-parallel test-cluster paper paper-clean paper-watch check-latex
 
 # Default target
-all: build test bench
+all: build test bench paper
 
 # Build all tools and commands
 build: ## Build all tools and commands
@@ -157,6 +157,7 @@ generate-mocks: ## Generate mock files
 clean: ## Clean build artifacts
 	@echo "Cleaning..."
 	@rm -rf bin/ coverage.out coverage.html benchmark_report.txt *.prof
+	@$(MAKE) paper-clean
 
 # Install development tools
 tools: ## Install development tools
@@ -231,3 +232,39 @@ help: ## Show this help
 	@echo ""
 	@echo "  # Run on remote machine"
 	@echo "  ssh user@remote 'cd consensus && make benchmark-node PORT=30001'"
+	@echo ""
+	@echo "Paper Targets:"
+	@echo "  make paper          # Build PDF white paper"
+	@echo "  make paper-clean    # Clean paper build artifacts"
+	@echo "  make paper-watch    # Watch and rebuild paper on changes"
+
+# Paper building targets
+.PHONY: paper paper-clean paper-watch check-latex
+
+# Build the PDF white paper
+paper: check-latex ## Build PDF white paper
+	@echo "📄 Building white paper..."
+	@cd paper && pdflatex main.tex
+	@cd paper && bibtex main
+	@cd paper && pdflatex main.tex
+	@cd paper && pdflatex main.tex
+	@echo "✅ Paper built: paper/main.pdf"
+
+# Clean paper build artifacts
+paper-clean: ## Clean paper build artifacts
+	@echo "🧹 Cleaning paper build artifacts..."
+	@cd paper && rm -f *.aux *.bbl *.blg *.log *.out *.toc *.fdb_latexmk *.fls *.synctex.gz
+
+# Watch and rebuild paper on changes (requires entr)
+paper-watch: check-latex check-entr ## Watch and rebuild paper on changes
+	@echo "👀 Watching for paper changes..."
+	@find paper -name "*.tex" -o -name "*.bib" | entr -s 'make paper'
+
+# Check if LaTeX is installed
+check-latex:
+	@which pdflatex > /dev/null || (echo "❌ pdflatex not found. Install LaTeX (e.g., brew install --cask mactex)"; exit 1)
+	@which bibtex > /dev/null || (echo "❌ bibtex not found. Install LaTeX (e.g., brew install --cask mactex)"; exit 1)
+
+# Check if entr is installed (for watch mode)
+check-entr:
+	@which entr > /dev/null || (echo "📦 Installing entr for watch mode..."; brew install entr || echo "⚠️  Could not install entr. Install manually for watch mode.")

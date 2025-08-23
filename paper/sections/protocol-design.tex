@@ -1,0 +1,159 @@
+\section{Lux Protocol Design}
+
+We now describe the Lux consensus protocol in a bottom-up manner, mirroring the progressive stages introduced earlier. Pseudocode and formal definitions are provided for key modules. Throughout, we maintain two parallel interpretations: one in technical terms and one in the guiding physics metaphor.
+
+\subsection{Photon Module – Basic Voting Interaction}
+
+\textbf{Technical role}: The Photon module encapsulates the fundamental operation of querying other nodes and collecting their votes. It defines how a single query-response round works. Conceptually, a "Photon" is a message (or a pair of request+response messages) that carries a vote on a given proposal or transaction.
+
+Each node $i$ maintains a current preference for each conflict set it is involved in. For example, in a binary decision scenario (red vs blue), the preference is a color; in a multi-choice conflict (multiple conflicting transactions), the preference is the specific transaction ID it currently believes should win.
+
+\textbf{Photon broadcast}: To initiate a consensus step for a given conflict set, node $i$ sends a query to $k$ randomly chosen validators out of the $N$ total. This query asks: "Which value do you currently prefer for conflict set $C$?"
+
+\textbf{Photon response}: Each queried node responds with its current preference (signed to prevent tampering). If a queried node has not yet seen any transaction in that conflict set, it can respond with an empty/null vote or adopt the query's transaction as its new preference.
+
+\textbf{Photon as particle}: In the metaphor, a single query is like emitting a photon that travels to sampled nodes, and each response is like that photon reflecting back with a certain polarization. The crucial property is that each photon (vote) carries the same weight (constant mass)~\cite{saleh}. No matter which node it came from, a vote is a vote.
+
+\textbf{Random sampling}: The selection of $k$ peers for the query is done uniformly at random from the known validator set. This randomness is crucial for both efficiency and security—it reduces message complexity and prevents adversaries from easily predicting which nodes will be queried.
+
+The Photon module provides an interface like:
+\begin{lstlisting}
+CollectVotes(conflict_set C, int k) -> Multiset<vote>
+\end{lstlisting}
+
+\subsection{Wave Module – Threshold Voting and Metastable Propagation}
+
+\textbf{Technical role}: The Wave module processes the collected votes from the Photon queries and applies the threshold rule to update the node's preference. It corresponds to the Snowflake algorithm in Avalanche terms. The module's key parameter is the threshold $\alpha$ (an integer $1 \le \alpha \le k$).
+
+\textbf{Threshold rule}: After node $i$ collects $k$ votes for conflict set $C$, suppose the votes for each candidate are counted. Let $v_x$ be the number of responses favoring candidate $x$. The Wave rule is:
+
+\begin{itemize}
+\item If there exists some candidate $x$ such that $v_x \ge \alpha$, then node $i$ will adopt $x$ as its new preference for $C$.
+\item If no candidate reaches $\alpha$ in the responses, then the node does not change its preference in this round.
+\end{itemize}
+
+\begin{algorithm}
+\caption{Wave Update Rule}
+\begin{algorithmic}[1]
+\REQUIRE Conflict set $C$, threshold $\alpha$, sample size $k$
+\STATE $votes \leftarrow$ CollectVotes($C$, $k$)
+\STATE $count[x] \leftarrow$ number of votes for candidate $x$ in $votes$
+\STATE $x_{max} \leftarrow \arg\max_x count[x]$
+\IF{$count[x_{max}] \geq \alpha$}
+    \STATE $preference[C] \leftarrow x_{max}$
+\ENDIF
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Metaphor – waves and interference}: Each round of querying is a wave emanating from the node and sampling the state of the system. The responses from peers superpose like waves: if most peers are in phase (share the same preference), their responses amplify that signal (constructive interference). The threshold $\alpha$ is analogous to requiring a certain amplitude for the wave to be considered a coherent signal.
+
+\textbf{Parameter choices}: The choice of $k$ and $\alpha$ is critical. For example, Avalanche's analysis often uses $k=10$, $\alpha=8$, which yields excellent safety for up to 20\% Byzantine nodes. More generally, we typically want $\alpha > k/2$ and often set $\alpha = \lceil k \cdot u \rceil$ for some $u \in (0.5,1)$.
+
+\subsection{Focus Module – Confidence and Finalization}
+
+\textbf{Technical role}: The Focus module implements the decision finalization logic by requiring $\beta$ consecutive successful waves for a value before declaring it decided. This is akin to Avalanche's Snowball algorithm. Each node $i$ maintains, for each conflict set, not only a current preference but also a counter representing how many consecutive rounds that preference has been confirmed.
+
+When a node executes the Wave module and sees $\ge \alpha$ votes for its current preference, it increments a counter $cnt_i(C)$ (confidence count). If it sees a supermajority for a different value, it switches preference and resets the counter. When $cnt_i(C)$ reaches the threshold value $\beta$, the node finalizes the decision for $C$.
+
+\begin{algorithm}
+\caption{Focus Confidence Tracking}
+\begin{algorithmic}[1]
+\REQUIRE Conflict set $C$, confidence threshold $\beta$
+\STATE Initialize $preference[C] \leftarrow \bot$, $count\_streak[C] \leftarrow 0$
+\UPON{Wave round completion for $C$ with result $x$ and vote count $v_x$}
+\IF{$preference[C] = x$ AND $v_x \geq \alpha$}
+    \STATE $count\_streak[C] \leftarrow count\_streak[C] + 1$
+\ELSIF{$preference[C] \neq x$ AND $v_x \geq \alpha$}
+    \STATE $preference[C] \leftarrow x$
+    \STATE $count\_streak[C] \leftarrow 1$
+\ELSE
+    \STATE $count\_streak[C] \leftarrow 0$ \COMMENT{Reset on inconclusive round}
+\ENDIF
+\IF{$count\_streak[C] \geq \beta$}
+    \STATE Finalize value $preference[C]$ for conflict set $C$
+\ENDIF
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Physics perspective}: Focus corresponds to the system cooling and crystallizing into a single state. After enough reinforcement waves, the nodes' preferences become solid—like a blurry image coming into focus. Another apt analogy is gravitational well: each vote for a value adds "mass" to that value's gravity, and by $\beta$ confirmations it's so massive that nothing can escape its pull.
+
+\subsection{Prism Module – Managing Conflict Sets and Parallel Instances}
+
+The Prism module is responsible for structuring multiple decision instances to keep them independent yet collectively consistent. A conflict set is a group of two or more actions that cannot all be accepted together (e.g., double-spending transactions).
+
+\textbf{Conflict sets}: Prism identifies conflicts and assigns them to separate consensus instances. For a UTXO transaction, the conflict set could be "all transactions spending output $U$." For blocks, conflict might mean same height or same parent block.
+
+\textbf{One consensus per conflict set}: Prism creates a separate instance of the metastable voting (Photon+Wave+Focus) for each conflict set. For example, if conflict set $C$ is $\{Tx_1, Tx_2, Tx_3\}$ (three double-spends), the nodes will run a mini-consensus among these to pick one.
+
+\textbf{Acyclic dependency graph}: Prism ensures composability by maintaining that these mini-consensus instances do not interfere. When nodes sample and vote, they only compare values within the same conflict set.
+
+\subsection{Nova – Linear Blockchain Mode}
+
+With the core modules defined, we can build higher-level consensus forms. Lux Nova is the configuration that yields a single, totally ordered chain of blocks, analogous to a traditional blockchain but reached via metastable voting. Internally, Nova uses the Ray protocol engine for linear consensus.
+
+\textbf{Blocks and heights}: In Nova, time is discretized into block heights. At each height $h$, one block is to be chosen. Multiple validators may propose blocks for height $h$, and these competing blocks form a conflict set $C_h$.
+
+\textbf{Protocol operation}: Nova proceeds height by height using the internal Ray engine:
+\begin{enumerate}
+\item At genesis height 0, a block is predetermined
+\item For height 1, any validator can propose a block. All proposals for height 1 conflict with each other
+\item The consensus (Photon/Wave/Focus on conflict set $C_1$) chooses one as the accepted block 1
+\item Once height 1 is decided, the network moves to height 2, and so on
+\end{enumerate}
+
+\textbf{Leaderless block proposal}: Without a designated leader, multiple proposals may occur. The consensus treats them as conflicting and picks one through the metastable voting process.
+
+\textbf{Finality}: Once a block is accepted (by Focus reaching $\beta$), that block is final with probability $1-\epsilon$ where $\epsilon$ can be made arbitrarily small.
+
+\subsection{Nebula – DAG-Based Concurrent Consensus}
+
+Lux Nebula forgoes the single-chain restriction to allow a DAG of transactions/blocks for higher parallelism. Internally, Nebula uses the Field protocol engine for DAG consensus.
+
+\textbf{Vertices and edges}: Each validator can create a new vertex (container of transactions) that references some earlier vertices by their hashes. These references imply that the creator considered those earlier vertices as valid and wanted to build on them.
+
+\textbf{Voting in Nebula}: The Field engine integrates voting with transaction issuance:
+\begin{itemize}
+\item When a node wants to vote on a transaction's status, it can issue a new vertex that references that transaction
+\item Use Photon/Wave to query random samples about transaction preferences
+\item Focus to finalize decisions based on accumulated support
+\end{itemize}
+
+\textbf{Partial order and finality}: In Nebula, finality of a transaction is reached when it has accumulated sufficient support in the DAG. Different nodes might see transactions in different orders, but consensus ensures they agree on the set of accepted transactions and all pairwise conflicts are resolved consistently.
+
+\textbf{Double spend handling}: If $Tx_1$ and $Tx_2$ conflict, they form one conflict set. Nodes vote by issuing reference transactions. If $Tx_1$ gets more support, many new vertices reference $Tx_1$ and not $Tx_2$, giving $Tx_1$ accumulated confidence while $Tx_2$ fails to gain references.
+
+\subsection{Quasar – P-Chain Post-Quantum Finality}
+
+Lux Quasar operates as the Platform Chain (P-Chain) that provides post-quantum finality for both Nova and Nebula consensus modes. Quasar merges Ringtail threshold signatures with BLS aggregation to achieve quantum-resistant unified finality across the entire network.
+
+\textbf{P-Chain Architecture}: Quasar functions as the meta-consensus layer:
+\begin{itemize}
+\item \textbf{Validator Set Management}: P-Chain maintains the canonical validator set for all consensus instances
+\item \textbf{Cross-Chain Finality}: Checkpoints finalize state across Nova chains and Nebula DAGs
+\item \textbf{Threshold Coordination}: Combines Ringtail (post-quantum threshold) with BLS (classical aggregation) for hybrid security
+\end{itemize}
+
+\textbf{Ringtail + BLS Fusion}: The signature scheme combines:
+\begin{itemize}
+\item \textbf{Ringtail}: Post-quantum threshold signatures for quantum-resistant finality
+\item \textbf{BLS}: Classical signature aggregation for efficiency in benign conditions
+\item \textbf{Hybrid Mode}: Classical BLS for speed, Ringtail checkpoints for quantum security
+\end{itemize}
+
+\textbf{Event Horizon Finality}: Quasar establishes event horizons using the Horizon ordering algorithm:
+\begin{itemize}
+\item \textbf{Event Horizon}: A finality boundary beyond which no events can affect the committed state
+\item \textbf{Horizon Ordering}: Canonical ordering of vertices that have crossed the event horizon
+\item \textbf{Reachability Analysis}: Uses DAG reachability to determine which vertices are beyond the horizon
+\item \textbf{P-Chain Checkpoints}: Event horizons are signed with Ringtail + BLS for quantum-resistant finality
+\end{itemize}
+
+\textbf{Unified Cross-Chain Finality}: Quasar event horizons provide:
+\begin{itemize}
+\item Irreversible finality that cannot be affected by quantum attacks
+\item Cross-chain asset transfers with unified security guarantees  
+\item Subnet interoperability through mutually recognized P-Chain event horizons
+\item Canonical ordering for deterministic state transitions across all chains
+\end{itemize}
+
+\textbf{Trade-offs}: Post-quantum cryptography is computationally heavier with larger signatures. Quasar mode may reduce performance but provides forward-looking security. The modular design allows hybrid operation where normal consensus uses classical keys for speed, but critical checkpoints use post-quantum signatures.

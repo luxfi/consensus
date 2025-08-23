@@ -2,17 +2,17 @@ package prism
 
 import "github.com/luxfi/consensus/types"
 
-// Cut represents a frontier in the DAG partial order
-type Cut struct {
+// Frontier represents a cut/frontier in the DAG partial order
+type Frontier struct {
     Height   uint64
-    Frontier []types.NodeID
+    Vertices []types.NodeID
 }
 
-// Refract analyzes light paths through the DAG structure
+// Refractor analyzes light paths through the DAG structure
 // to determine optimal ordering and conflict resolution
 type Refractor interface {
-    // ComputeCut returns the current frontier of the DAG
-    ComputeCut() Cut
+    // ComputeFrontier returns the current frontier of the DAG
+    ComputeFrontier() Frontier
     
     // RefractPath determines the optimal path through conflicting vertices
     RefractPath(from, to types.NodeID) []types.NodeID
