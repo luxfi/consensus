@@ -4,13 +4,13 @@ package config
 type FPCConfig struct {
 	// Enable indicates whether FPC is enabled (default: true)
 	Enable bool
-	
+
 	// Rounds is the number of FPC rounds to run
 	Rounds int
-	
+
 	// Threshold is the confidence threshold for FPC
 	Threshold float64
-	
+
 	// SampleSize is the number of nodes to sample per round
 	SampleSize int
 }
@@ -18,7 +18,7 @@ type FPCConfig struct {
 // DefaultFPC returns the default FPC configuration
 func DefaultFPC() FPCConfig {
 	return FPCConfig{
-		Enable:     true,  // FPC enabled by default
+		Enable:     true, // FPC enabled by default
 		Rounds:     10,
 		Threshold:  0.8,
 		SampleSize: 20,

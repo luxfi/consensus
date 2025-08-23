@@ -44,7 +44,7 @@ type Store[V VID] interface {
 func ComputeSafePrefix[V VID](store Store[V], frontier []V) []V {
 	// TODO: Implement using horizon reachability analysis and flare cert/skip detection
 	// This should return vertices that have achieved finality according to DAG consensus rules
-	
+
 	// Placeholder implementation - return empty for now
 	return []V{}
 }
@@ -57,7 +57,7 @@ func ChooseFrontier[V VID](frontier []V) []V {
 	// - Choose all recent vertices (small frontier)
 	// - Choose 2f+1 vertices for Byzantine tolerance
 	// - Choose based on validator weight or other criteria
-	
+
 	// Placeholder implementation - return first few vertices
 	if len(frontier) <= 3 {
 		return frontier
@@ -105,12 +105,12 @@ func Horizon[V VID](store Store[V], checkpoints []EventHorizon[V]) EventHorizon[
 	// 1. Analyze reachability from latest checkpoints
 	// 2. Find vertices that have achieved post-quantum finality
 	// 3. Establish new event horizon boundary
-	
+
 	// Placeholder - return latest checkpoint
 	if len(checkpoints) > 0 {
 		return checkpoints[len(checkpoints)-1]
 	}
-	
+
 	var zero EventHorizon[V]
 	return zero
 }

@@ -11,13 +11,13 @@ import (
 type State interface {
 	// GetBlock gets a block
 	GetBlock(ids.ID) (Block, error)
-	
+
 	// PutBlock puts a block
 	PutBlock(Block) error
-	
+
 	// GetLastAccepted gets last accepted
 	GetLastAccepted() (ids.ID, error)
-	
+
 	// SetLastAccepted sets last accepted
 	SetLastAccepted(ids.ID) error
 }

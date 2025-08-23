@@ -3,9 +3,9 @@ package nova
 import (
 	"context"
 	"time"
-	
-	"github.com/luxfi/consensus/protocol/ray"
+
 	"github.com/luxfi/consensus/prism"
+	"github.com/luxfi/consensus/protocol/ray"
 	"github.com/luxfi/consensus/wave"
 )
 
@@ -19,7 +19,7 @@ type Nova[T comparable] struct {
 type Config struct {
 	SampleSize  int           // k parameter for sampling
 	Alpha       float64       // threshold ratio
-	Beta        uint32        // confidence threshold  
+	Beta        uint32        // confidence threshold
 	RoundTO     time.Duration // round timeout
 	GenesisHash [32]byte      // genesis block hash
 }
@@ -32,7 +32,7 @@ func NewNova[T comparable](cfg Config, cut prism.Cut[T], tx wave.Transport[T], s
 		Beta:     cfg.Beta,
 		RoundTO:  cfg.RoundTO,
 	}
-	
+
 	return &Nova[T]{
 		rayEngine: ray.NewDriver(rayConfig, cut, tx, source, sink),
 		config:    cfg,

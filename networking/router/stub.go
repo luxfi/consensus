@@ -2,8 +2,9 @@
 // This package should be in the node repository as it's part of the P2P layer, not consensus.
 //
 // Migration:
-//   OLD: import "github.com/luxfi/consensus/networking/router"
-//   NEW: import "github.com/luxfi/node/network/router"
+//
+//	OLD: import "github.com/luxfi/consensus/networking/router"
+//	NEW: import "github.com/luxfi/node/network/router"
 package router
 
 import "errors"

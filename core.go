@@ -20,3 +20,13 @@ type AcceptorGroup struct {
 func NewAcceptorGroup() *AcceptorGroup {
 	return &AcceptorGroup{}
 }
+
+// RegisterAcceptor registers an acceptor
+func (a *AcceptorGroup) RegisterAcceptor(acceptor interface{}) error {
+	return nil
+}
+
+// DeregisterAcceptor deregisters an acceptor
+func (a *AcceptorGroup) DeregisterAcceptor(acceptor interface{}) error {
+	return nil
+}

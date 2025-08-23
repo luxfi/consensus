@@ -10,17 +10,17 @@ import (
 
 // Context provides consensus context for VMs
 type Context struct {
-	NetworkID   uint32        `json:"networkID"`
-	ChainID     ids.ID        `json:"chainID"`
-	NodeID      ids.NodeID    `json:"nodeID"`
-	PublicKey   []byte        `json:"publicKey"`
-	XChainID    ids.ID        `json:"xChainID"`
-	CChainID    ids.ID        `json:"cChainID"`
-	AVAXAssetID ids.ID        `json:"avaxAssetID"`
-	
+	NetworkID   uint32     `json:"networkID"`
+	ChainID     ids.ID     `json:"chainID"`
+	NodeID      ids.NodeID `json:"nodeID"`
+	PublicKey   []byte     `json:"publicKey"`
+	XChainID    ids.ID     `json:"xChainID"`
+	CChainID    ids.ID     `json:"cChainID"`
+	AVAXAssetID ids.ID     `json:"avaxAssetID"`
+
 	// Timing
 	StartTime time.Time `json:"startTime"`
-	
+
 	// Additional fields for consensus
 	ValidatorState ValidatorState
 	Keystore       Keystore

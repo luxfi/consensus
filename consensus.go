@@ -16,13 +16,13 @@ import (
 type Engine interface {
 	// Start starts the engine
 	Start(context.Context, uint32) error
-	
+
 	// Stop stops the engine
 	Stop(context.Context) error
-	
+
 	// HealthCheck performs a health check
 	HealthCheck(context.Context) (interface{}, error)
-	
+
 	// IsBootstrapped returns whether the engine is bootstrapped
 	IsBootstrapped() bool
 }
@@ -63,13 +63,13 @@ func Config(nodes int) config.Parameters {
 type (
 	// Context is the consensus context
 	Context = consensuscontext.Context
-	
+
 	// ValidatorState provides validator information
 	ValidatorState = consensuscontext.ValidatorState
-	
+
 	// IDs holds consensus IDs
 	IDs = consensuscontext.IDs
-	
+
 	// CodecVersion is the codec version
 	CodecVersion = codec.CodecVersion
 )
@@ -90,7 +90,6 @@ var (
 var (
 	GetTimestamp       = consensuscontext.GetTimestamp
 	GetChainID         = consensuscontext.GetChainID
-	GetSubnetID        = consensuscontext.GetSubnetID // Deprecated: use GetChainID
 	GetValidatorState  = consensuscontext.GetValidatorState
 	WithContext        = consensuscontext.WithContext
 	FromContext        = consensuscontext.FromContext
@@ -98,6 +97,9 @@ var (
 	WithIDs            = consensuscontext.WithIDs
 	WithValidatorState = consensuscontext.WithValidatorState
 )
+
+// Deprecated: GetSubnetID is deprecated, use GetChainID instead
+var GetSubnetID = consensuscontext.GetSubnetID
 
 // AppError represents an application error
 type AppError struct {

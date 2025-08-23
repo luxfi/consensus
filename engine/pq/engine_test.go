@@ -29,7 +29,7 @@ func TestNew(t *testing.T) {
 func TestInitialize(t *testing.T) {
 	engine := NewConsensus(config.DefaultParams())
 	ctx := context.Background()
-	
+
 	err := engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
@@ -39,20 +39,20 @@ func TestInitialize(t *testing.T) {
 func TestProcessBlock(t *testing.T) {
 	engine := NewConsensus(config.DefaultParams())
 	ctx := context.Background()
-	
+
 	err := engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	blockID := ids.GenerateTestID()
-	
+
 	// Test insufficient votes
 	votes := map[string]int{
 		blockID.String(): 10,
 		"other":          11,
 	}
-	
+
 	err = engine.ProcessBlock(ctx, blockID, votes)
 	if err == nil {
 		t.Error("ProcessBlock should fail with insufficient votes")
@@ -63,7 +63,7 @@ func TestProcessBlock(t *testing.T) {
 		blockID.String(): 18,
 		"other":          3,
 	}
-	
+
 	err = engine.ProcessBlock(ctx, blockID, votes)
 	if err != nil {
 		t.Errorf("ProcessBlock failed with sufficient votes: %v", err)
@@ -89,7 +89,7 @@ func TestProcessBlock(t *testing.T) {
 func TestFinalityChannel(t *testing.T) {
 	engine := NewConsensus(config.DefaultParams())
 	ctx := context.Background()
-	
+
 	err := engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
@@ -97,13 +97,13 @@ func TestFinalityChannel(t *testing.T) {
 
 	// Start listening for finality events
 	finality := engine.FinalityChannel()
-	
+
 	blockID := ids.GenerateTestID()
 	votes := map[string]int{
 		blockID.String(): 18,
 		"other":          3,
 	}
-	
+
 	// Process block in background
 	go func() {
 		time.Sleep(10 * time.Millisecond)
@@ -132,9 +132,9 @@ func TestFinalityChannel(t *testing.T) {
 
 func TestSetFinalizedCallback(t *testing.T) {
 	engine := NewConsensus(config.DefaultParams())
-	
+
 	called := false
-	
+
 	engine.SetFinalizedCallback(func(event FinalityEvent) {
 		called = true
 		if event.Height == 0 {
@@ -146,11 +146,12 @@ func TestSetFinalizedCallback(t *testing.T) {
 	if engine.quasar != nil {
 		// This tests that the callback is properly wired
 		// In production, this would be triggered by actual consensus
+		t.Log("Quasar is properly initialized for event horizon callbacks")
 	}
-	
+
 	// The callback is set, even if not triggered in this test
 	_ = called
-	
+
 	// Test metrics
 	metrics := engine.Metrics()
 	if metrics["height"] != uint64(0) {
@@ -164,7 +165,7 @@ func TestSetFinalizedCallback(t *testing.T) {
 func TestMultipleBlocks(t *testing.T) {
 	engine := NewConsensus(config.XChainParams()) // Fast params
 	ctx := context.Background()
-	
+
 	err := engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
@@ -177,12 +178,12 @@ func TestMultipleBlocks(t *testing.T) {
 			blockID.String(): 4, // 4/5 = 0.8 > 0.6 (alpha for XChain)
 			"other":          1,
 		}
-		
+
 		err := engine.ProcessBlock(ctx, blockID, votes)
 		if err != nil {
 			t.Errorf("Failed to process block %d: %v", i, err)
 		}
-		
+
 		if !engine.IsFinalized(blockID) {
 			t.Errorf("Block %d should be finalized", i)
 		}
@@ -197,12 +198,12 @@ func BenchmarkProcessBlock(b *testing.B) {
 	engine := NewConsensus(config.XChainParams())
 	ctx := context.Background()
 	_ = engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
-	
+
 	votes := map[string]int{
 		"block": 4,
 		"other": 1,
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		blockID := ids.GenerateTestID()
@@ -214,16 +215,16 @@ func BenchmarkIsFinalized(b *testing.B) {
 	engine := NewConsensus(config.DefaultParams())
 	ctx := context.Background()
 	_ = engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
-	
+
 	// Add some finalized blocks
 	for i := 0; i < 100; i++ {
 		blockID := ids.GenerateTestID()
 		engine.finalized[blockID] = true
 	}
-	
+
 	testID := ids.GenerateTestID()
 	engine.finalized[testID] = true
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = engine.IsFinalized(testID)

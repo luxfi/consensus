@@ -14,13 +14,13 @@ import (
 
 func main() {
 	var (
-		nodes    = flag.Int("nodes", 100, "Number of nodes in the network")
-		rounds   = flag.Int("rounds", 10, "Number of consensus rounds to simulate")
-		network  = flag.String("network", "mainnet", "Network configuration (mainnet, testnet, local)")
-		failure  = flag.Float64("failure", 0.1, "Node failure rate (0.0-1.0)")
-		latency  = flag.Duration("latency", 50*time.Millisecond, "Network latency")
-		verbose  = flag.Bool("verbose", false, "Verbose output")
-		help     = flag.Bool("help", false, "Show help message")
+		nodes   = flag.Int("nodes", 100, "Number of nodes in the network")
+		rounds  = flag.Int("rounds", 10, "Number of consensus rounds to simulate")
+		network = flag.String("network", "mainnet", "Network configuration (mainnet, testnet, local)")
+		failure = flag.Float64("failure", 0.1, "Node failure rate (0.0-1.0)")
+		latency = flag.Duration("latency", 50*time.Millisecond, "Network latency")
+		verbose = flag.Bool("verbose", false, "Verbose output")
+		help    = flag.Bool("help", false, "Show help message")
 	)
 	flag.Parse()
 
@@ -36,7 +36,7 @@ func main() {
 
 	// Get network configuration
 	params := getNetworkParams(*network)
-	
+
 	fmt.Println("=== Consensus Simulation ===")
 	fmt.Printf("Network:    %s\n", *network)
 	fmt.Printf("Nodes:      %d\n", *nodes)
@@ -47,7 +47,7 @@ func main() {
 
 	// Run simulation
 	results := runSimulation(*nodes, *rounds, params, *failure, *latency, *verbose)
-	
+
 	// Print results
 	printResults(results, params)
 }
@@ -97,28 +97,28 @@ type SimulationResult struct {
 func runSimulation(nodes int, rounds int, params config.Parameters, failureRate float64, latency time.Duration, verbose bool) []SimulationResult {
 	results := make([]SimulationResult, 0, rounds)
 	ctx := context.Background()
-	
+
 	for round := 1; round <= rounds; round++ {
 		if verbose {
 			fmt.Printf("Round %d: ", round)
 		}
-		
+
 		start := time.Now()
 		result := simulateRound(ctx, nodes, params, failureRate, latency)
 		result.Round = round
 		result.TimeToConsensus = time.Since(start)
-		
+
 		if verbose {
-			fmt.Printf("%s (confidence: %.2f%%, time: %s)\n", 
+			fmt.Printf("%s (confidence: %.2f%%, time: %s)\n",
 				result.Decision, result.Confidence*100, result.TimeToConsensus)
 		}
-		
+
 		results = append(results, result)
-		
+
 		// Simulate inter-round delay
 		time.Sleep(latency)
 	}
-	
+
 	return results
 }
 
@@ -126,34 +126,34 @@ func simulateRound(ctx context.Context, nodes int, params config.Parameters, fai
 	// Calculate failed nodes
 	failedNodes := int(float64(nodes) * failureRate)
 	activeNodes := nodes - failedNodes
-	
+
 	// Sample K nodes randomly
 	k := params.K
 	if k > activeNodes {
 		k = activeNodes
 	}
-	
+
 	// Simulate voting
 	votes := 0
 	for i := 0; i < k; i++ {
 		// Simulate network latency
 		time.Sleep(latency / time.Duration(k))
-		
+
 		// Random vote with Byzantine behavior
 		if rand.Float64() > 0.2 { // 80% honest nodes
 			votes++
 		}
 	}
-	
+
 	// Calculate confidence
 	confidence := float64(votes) / float64(k)
-	
+
 	// Determine decision based on alpha threshold
 	decision := "REJECT"
 	if confidence >= params.Alpha {
 		decision = "ACCEPT"
 	}
-	
+
 	return SimulationResult{
 		VotesReceived: votes,
 		Confidence:    confidence,
@@ -164,12 +164,12 @@ func simulateRound(ctx context.Context, nodes int, params config.Parameters, fai
 
 func printResults(results []SimulationResult, params config.Parameters) {
 	fmt.Println("=== Simulation Results ===")
-	
+
 	accepts := 0
 	rejects := 0
 	totalTime := time.Duration(0)
 	totalConfidence := 0.0
-	
+
 	for _, r := range results {
 		if r.Decision == "ACCEPT" {
 			accepts++
@@ -179,16 +179,16 @@ func printResults(results []SimulationResult, params config.Parameters) {
 		totalTime += r.TimeToConsensus
 		totalConfidence += r.Confidence
 	}
-	
+
 	fmt.Printf("\nConsensus Decisions:\n")
 	fmt.Printf("  Accepts:  %d (%.1f%%)\n", accepts, float64(accepts)/float64(len(results))*100)
 	fmt.Printf("  Rejects:  %d (%.1f%%)\n", rejects, float64(rejects)/float64(len(results))*100)
-	
+
 	fmt.Printf("\nPerformance:\n")
 	fmt.Printf("  Avg Time:       %s\n", totalTime/time.Duration(len(results)))
 	fmt.Printf("  Avg Confidence: %.2f%%\n", totalConfidence/float64(len(results))*100)
 	fmt.Printf("  Alpha Required: %.2f%%\n", params.Alpha*100)
-	
+
 	// Calculate finality probability
 	finalityProb := calculateFinalityProbability(params.Alpha, params.Beta, totalConfidence/float64(len(results)))
 	fmt.Printf("\nFinality:\n")

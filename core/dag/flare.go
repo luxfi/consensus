@@ -5,8 +5,8 @@ type Decision int
 
 const (
 	DecideUndecided Decision = iota
-	DecideCommit    // Certificate found - vertex should be committed  
-	DecideSkip      // Skip certificate found - vertex should be skipped
+	DecideCommit             // Certificate found - vertex should be committed
+	DecideSkip               // Skip certificate found - vertex should be skipped
 )
 
 // Cert: >=2f+1 in r+1 support proposer(author,round). Skip: >=2f+1 in r+1 not supporting.
@@ -17,7 +17,9 @@ func HasCertificate(v View, proposer Meta, p Params) bool {
 	for _, m := range next {
 		if v.Supports(m.ID(), proposer.Author(), proposer.Round()) {
 			support++
-			if support >= 2*p.F+1 { return true }
+			if support >= 2*p.F+1 {
+				return true
+			}
 		}
 	}
 	return false
@@ -30,13 +32,16 @@ func HasSkip(v View, proposer Meta, p Params) bool {
 	for _, m := range next {
 		if !v.Supports(m.ID(), proposer.Author(), proposer.Round()) {
 			nos++
-			if nos >= 2*p.F+1 { return true }
+			if nos >= 2*p.F+1 {
+				return true
+			}
 		}
 	}
 	return false
 }
 
 type Flare struct{ p Params }
+
 func NewFlare(p Params) *Flare { return &Flare{p: p} }
 
 func (f *Flare) Classify(v View, proposer Meta) Decision {
@@ -62,7 +67,7 @@ func HasCertificateGeneric[V VID](store Store[V], vertex V, params Params) bool 
 
 // HasSkipGeneric checks if a vertex has a skip certificate (≥2f+1 validators do not support it)
 func HasSkipGeneric[V VID](store Store[V], vertex V, params Params) bool {
-	// TODO: Implement skip detection  
+	// TODO: Implement skip detection
 	// A vertex has a skip certificate if ≥2f+1 vertices in the next round do NOT reference it
 	// This indicates the vertex should be skipped/rejected
 	return false

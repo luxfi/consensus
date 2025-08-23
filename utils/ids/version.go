@@ -10,8 +10,8 @@ type (
 
 // Re-export IDs constants and functions
 var (
-	Empty       = ids.Empty
-	EmptyNodeID = ids.EmptyNodeID
+	Empty          = ids.Empty
+	EmptyNodeID    = ids.EmptyNodeID
 	GenerateTestID = ids.GenerateTestID
 )
 

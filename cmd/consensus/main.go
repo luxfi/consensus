@@ -60,7 +60,7 @@ func showInfo(engineType, network string) {
 	fmt.Printf("=== Consensus Engine Info ===\n")
 	fmt.Printf("Engine:  %s\n", engineType)
 	fmt.Printf("Network: %s\n", network)
-	
+
 	params := getNetworkParams(network)
 	fmt.Printf("\nParameters:\n")
 	fmt.Printf("  K (sample size):        %d\n", params.K)
@@ -68,7 +68,7 @@ func showInfo(engineType, network string) {
 	fmt.Printf("  Beta (decision rounds): %d\n", params.Beta)
 	fmt.Printf("  Block Time:             %s\n", params.BlockTime)
 	fmt.Printf("  Round Timeout:          %s\n", params.RoundTO)
-	
+
 	switch engineType {
 	case "chain":
 		fmt.Println("\nChain Engine:")
@@ -90,10 +90,10 @@ func showInfo(engineType, network string) {
 
 func testEngine(engineType, network string) {
 	fmt.Printf("Testing %s engine with %s configuration...\n", engineType, network)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	var engine consensus.Engine
 	switch engineType {
 	case "chain":
@@ -106,37 +106,37 @@ func testEngine(engineType, network string) {
 		fmt.Fprintf(os.Stderr, "Unknown engine: %s\n", engineType)
 		os.Exit(1)
 	}
-	
+
 	// Start engine
 	if err := engine.Start(ctx, 1); err != nil {
 		fmt.Printf("✗ Failed to start: %v\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = engine.Stop(ctx) }()
-	
+
 	// Check bootstrapped
 	if !engine.IsBootstrapped() {
 		fmt.Println("✗ Not bootstrapped")
 		os.Exit(1)
 	}
-	
+
 	// Health check
 	health, err := engine.HealthCheck(ctx)
 	if err != nil {
 		fmt.Printf("✗ Health check failed: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Println("✓ Engine test passed")
 	fmt.Printf("  Health: %+v\n", health)
 }
 
 func checkHealth(engineType string) {
 	fmt.Printf("Checking %s engine health...\n", engineType)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	
+
 	var engine consensus.Engine
 	switch engineType {
 	case "chain":
@@ -149,21 +149,21 @@ func checkHealth(engineType string) {
 		fmt.Fprintf(os.Stderr, "Unknown engine: %s\n", engineType)
 		os.Exit(1)
 	}
-	
+
 	// Start engine
 	if err := engine.Start(ctx, 1); err != nil {
 		fmt.Printf("✗ Failed to start: %v\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = engine.Stop(ctx) }()
-	
+
 	// Health check
 	health, err := engine.HealthCheck(ctx)
 	if err != nil {
 		fmt.Printf("✗ Health check failed: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Println("✓ Healthy")
 	fmt.Printf("  Status: %+v\n", health)
 }
