@@ -18,13 +18,13 @@ func NewTestState() *TestState {
 }
 
 // GetCurrentValidators returns current validators
-func (s *TestState) GetCurrentValidators(subnetID ids.ID) (map[ids.NodeID]*validators.Validator, error) {
+func (s *TestState) GetCurrentValidators(chainID ids.ID) (map[ids.NodeID]*validators.Validator, error) {
     return make(map[ids.NodeID]*validators.Validator), nil
 }
 
 // GetValidatorSet returns a validator set
-func (s *TestState) GetValidatorSet(subnetID ids.ID) (validators.Set, error) {
-    if set, ok := s.validators[subnetID]; ok {
+func (s *TestState) GetValidatorSet(chainID ids.ID) (validators.Set, error) {
+    if set, ok := s.validators[chainID]; ok {
         return set, nil
     }
     return nil, nil
