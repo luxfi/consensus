@@ -11,7 +11,6 @@ import (
 // Context provides consensus context for VMs
 type Context struct {
 	NetworkID   uint32        `json:"networkID"`
-	SubnetID    ids.ID        `json:"subnetID"`
 	ChainID     ids.ID        `json:"chainID"`
 	NodeID      ids.NodeID    `json:"nodeID"`
 	PublicKey   []byte        `json:"publicKey"`
@@ -31,6 +30,7 @@ type Context struct {
 
 // ValidatorState provides validator information
 type ValidatorState interface {
+	GetChainID(ids.ID) (ids.ID, error)
 	GetSubnetID(ids.ID) (ids.ID, error)
 	GetValidatorSet(uint64, ids.ID) (map[ids.NodeID]uint64, error)
 	GetCurrentHeight() (uint64, error)
@@ -73,12 +73,9 @@ func GetChainID(ctx context.Context) ids.ID {
 	return ids.Empty
 }
 
-// GetSubnetID gets the subnet ID from context
+// Deprecated: GetSubnetID is deprecated, use GetChainID instead
 func GetSubnetID(ctx context.Context) ids.ID {
-	if c, ok := ctx.Value(contextKey).(*Context); ok {
-		return c.SubnetID
-	}
-	return ids.Empty
+	return GetChainID(ctx)
 }
 
 // GetValidatorState gets the validator state from context
@@ -113,7 +110,6 @@ func GetNodeID(ctx context.Context) ids.NodeID {
 // IDs holds the IDs for consensus context
 type IDs struct {
 	NetworkID uint32
-	SubnetID  ids.ID
 	ChainID   ids.ID
 	NodeID    ids.NodeID
 	PublicKey []byte
@@ -126,7 +122,6 @@ func WithIDs(ctx context.Context, ids IDs) context.Context {
 		c = &Context{}
 	}
 	c.NetworkID = ids.NetworkID
-	c.SubnetID = ids.SubnetID
 	c.ChainID = ids.ChainID
 	c.NodeID = ids.NodeID
 	c.PublicKey = ids.PublicKey

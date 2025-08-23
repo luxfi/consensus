@@ -98,7 +98,6 @@ type ChainVM interface {
 // ChainContext provides context for chain operations
 type ChainContext struct {
 	NetworkID uint32
-	SubnetID  ids.ID
 	ChainID   ids.ID
 	NodeID    ids.NodeID
 	
