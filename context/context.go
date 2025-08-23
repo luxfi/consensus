@@ -87,7 +87,11 @@ func GetNetID(ctx context.Context) ids.ID {
 
 // Deprecated: GetSubnetID is deprecated, use GetNetID instead  
 func GetSubnetID(ctx context.Context) ids.ID {
-	return GetNetID(ctx)
+	// Direct implementation to avoid calling deprecated functions
+	if c, ok := ctx.Value(contextKey).(*Context); ok {
+		return c.NetID
+	}
+	return ids.Empty
 }
 
 // GetValidatorState gets the validator state from context
