@@ -9,7 +9,8 @@ import (
 // State provides validator state management
 type State interface {
 	GetValidatorSet(ctx context.Context, height uint64, netID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
-	GetCurrentValidators(netID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
+	GetCurrentValidators(ctx context.Context, height uint64, netID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
+	GetCurrentHeight(ctx context.Context) (uint64, error)
 }
 
 // GetValidatorOutput provides validator information
@@ -17,6 +18,8 @@ type GetValidatorOutput struct {
 	NodeID    ids.NodeID
 	PublicKey []byte
 	Light     uint64
+	Weight    uint64 // Alias for Light for backward compatibility
+	TxID      ids.ID // Transaction ID that added this validator
 }
 
 // Set represents a set of validators
@@ -53,6 +56,7 @@ func (v *ValidatorImpl) Light() uint64 {
 // Manager manages validator sets
 type Manager interface {
 	GetValidators(netID ids.ID) (Set, error)
+	GetValidator(netID ids.ID, nodeID ids.NodeID) (*GetValidatorOutput, bool)
 	GetLight(netID ids.ID, nodeID ids.NodeID) uint64
 	GetWeight(netID ids.ID, nodeID ids.NodeID) uint64 // Deprecated: use GetLight
 	TotalLight(netID ids.ID) (uint64, error)
