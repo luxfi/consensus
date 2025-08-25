@@ -12,6 +12,7 @@ type Block interface {
 	ParentID() ids.ID
 	Height() uint64
 	Timestamp() time.Time
+	Status() uint8
 	Verify(context.Context) error
 	Accept(context.Context) error
 	Reject(context.Context) error
