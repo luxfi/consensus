@@ -36,6 +36,7 @@ type Context struct {
 type ValidatorState interface {
 	GetChainID(ids.ID) (ids.ID, error)
 	GetNetID(ids.ID) (ids.ID, error)
+	GetSubnetID(chainID ids.ID) (ids.ID, error)
 	GetValidatorSet(uint64, ids.ID) (map[ids.NodeID]uint64, error)
 	GetCurrentHeight() (uint64, error)
 	GetMinimumHeight(context.Context) (uint64, error)
@@ -94,6 +95,14 @@ func GetSubnetID(ctx context.Context) ids.ID {
 	return ids.Empty
 }
 
+// GetNetworkID gets the network ID from context
+func GetNetworkID(ctx context.Context) uint32 {
+	if c, ok := ctx.Value(contextKey).(*Context); ok {
+		return c.QuantumID
+	}
+	return 0
+}
+
 // GetValidatorState gets the validator state from context
 func GetValidatorState(ctx context.Context) ValidatorState {
 	if c, ok := ctx.Value(contextKey).(*Context); ok {
@@ -101,6 +110,7 @@ func GetValidatorState(ctx context.Context) ValidatorState {
 	}
 	return nil
 }
+
 
 // WithContext adds consensus context to a context
 func WithContext(ctx context.Context, cc *Context) context.Context {

@@ -8,6 +8,7 @@ import (
 // Block represents a blockchain block
 type Block interface {
 	ID() ids.ID
+	Parent() ids.ID  // Alias for ParentID for compatibility
 	ParentID() ids.ID
 	Height() uint64
 	Timestamp() int64
