@@ -91,7 +91,9 @@ var (
 	GetTimestamp       = consensuscontext.GetTimestamp
 	GetChainID         = consensuscontext.GetChainID
 	GetNetID           = consensuscontext.GetNetID
+	GetNetworkID       = consensuscontext.GetNetworkID
 	GetValidatorState  = consensuscontext.GetValidatorState
+	GetSubnetID        = consensuscontext.GetSubnetID
 	WithContext        = consensuscontext.WithContext
 	FromContext        = consensuscontext.FromContext
 	GetNodeID          = consensuscontext.GetNodeID

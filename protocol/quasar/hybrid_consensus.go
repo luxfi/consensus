@@ -168,7 +168,7 @@ func (q *QuasarHybridConsensus) VerifyHybridSignature(message []byte, sig *Hybri
 	}
 	
 	// BLS verification using Verify method
-	if !bls.Verify(validator.BLSPubKey, message, blsSig) {
+	if !bls.Verify(validator.BLSPubKey, blsSig, message) {
 		return false
 	}
 	
@@ -251,7 +251,7 @@ func (q *QuasarHybridConsensus) VerifyAggregatedSignature(message []byte, aggSig
 		return false
 	}
 	
-	if !bls.Verify(aggPubKey, message, blsSig) {
+	if !bls.Verify(aggPubKey, blsSig, message) {
 		return false
 	}
 	
