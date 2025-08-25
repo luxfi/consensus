@@ -21,6 +21,19 @@ type Block interface {
 
 // ChainVM defines the interface for a blockchain VM
 type ChainVM interface {
+	// Initialize initializes the VM
+	Initialize(
+		ctx context.Context,
+		chainCtx interface{},
+		db interface{},
+		genesisBytes []byte,
+		upgradeBytes []byte,
+		configBytes []byte,
+		msgChan chan interface{},
+		fxs []interface{},
+		appSender interface{},
+	) error
+
 	// BuildBlock builds a new block
 	BuildBlock(context.Context) (Block, error)
 
@@ -29,6 +42,9 @@ type ChainVM interface {
 
 	// GetBlock gets a block by ID
 	GetBlock(context.Context, ids.ID) (Block, error)
+
+	// GetBlockIDAtHeight gets block ID at a specific height
+	GetBlockIDAtHeight(context.Context, uint64) (ids.ID, error)
 
 	// SetPreference sets the preferred block
 	SetPreference(context.Context, ids.ID) error
