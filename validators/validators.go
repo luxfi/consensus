@@ -3,7 +3,7 @@ package validators
 import (
 	"context"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/node/version"
+	"github.com/luxfi/consensus/version"
 )
 
 // State provides validator state management
