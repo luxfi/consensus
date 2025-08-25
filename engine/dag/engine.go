@@ -37,3 +37,31 @@ type Engine interface {
 	// Shutdown shuts down the engine
 	Shutdown(context.Context) error
 }
+
+// dagEngine implements the Engine interface
+type dagEngine struct{}
+
+// New creates a new DAG engine
+func New() Engine {
+	return &dagEngine{}
+}
+
+func (e *dagEngine) GetVtx(ctx context.Context, id ids.ID) (Transaction, error) {
+	return nil, nil
+}
+
+func (e *dagEngine) BuildVtx(ctx context.Context) (Transaction, error) {
+	return nil, nil
+}
+
+func (e *dagEngine) ParseVtx(ctx context.Context, b []byte) (Transaction, error) {
+	return nil, nil
+}
+
+func (e *dagEngine) Start(ctx context.Context, requestID uint32) error {
+	return nil
+}
+
+func (e *dagEngine) Shutdown(ctx context.Context) error {
+	return nil
+}
