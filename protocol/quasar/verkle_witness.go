@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"sync"
-	"time"
 	
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/ipa/banderwagon"
