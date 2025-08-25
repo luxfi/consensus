@@ -3,8 +3,15 @@
 
 package core
 
+import "fmt"
+
 // AppError represents an application error
 type AppError struct {
-	Code    int
+	Code    int32
 	Message string
+}
+
+// Error implements the error interface
+func (e *AppError) Error() string {
+	return fmt.Sprintf("app error %d: %s", e.Code, e.Message)
 }
