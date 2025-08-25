@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"time"
 
 	"github.com/luxfi/ids"
 )
@@ -40,4 +41,17 @@ type ExternalHandler interface {
 type AppError struct {
 	Code    int32
 	Message string
+}
+
+// HealthConfig configures health checks
+type HealthConfig struct {
+	Enabled              bool
+	Interval             time.Duration
+	Timeout              time.Duration
+	MaxOutstandingChecks int
+}
+
+// InboundHandler handles inbound messages
+type InboundHandler interface {
+	HandleInbound(context.Context, Message) error
 }
