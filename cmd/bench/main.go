@@ -153,7 +153,7 @@ func benchmarkDAG(ctx context.Context, params config.Parameters, blocks int, par
 
 	for i := 0; i < blocks && ctx.Err() == nil; i++ {
 		vertexID := ids.GenerateTestID()
-		err := engine.GetVertex(ctx, ids.EmptyNodeID, 0, vertexID)
+		_, err := engine.GetVtx(ctx, vertexID)
 		if err != nil {
 			errors++
 			if verbose {
@@ -177,7 +177,7 @@ func benchmarkDAG(ctx context.Context, params config.Parameters, blocks int, par
 	fmt.Printf("  Time:      %s\n", elapsed)
 	fmt.Printf("  TPS:       %.2f vertices/sec\n", tps)
 
-	_ = engine.Stop(ctx)
+	_ = engine.Shutdown(ctx)
 }
 
 func benchmarkPQ(ctx context.Context, params config.Parameters, blocks int, parallel int, verbose bool) {
