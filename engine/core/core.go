@@ -2,9 +2,10 @@ package core
 
 import (
 	"context"
+	"time"
+
 	"github.com/luxfi/consensus/engine/core/common"
 	"github.com/luxfi/ids"
-	"time"
 )
 
 // Fx represents a feature extension

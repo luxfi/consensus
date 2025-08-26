@@ -3,7 +3,7 @@ package snow
 import (
 	"context"
 	"time"
-	
+
 	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
@@ -53,23 +53,23 @@ type Engine interface {
 // Context provides Snow consensus context
 type Context struct {
 	ConsensusContext
-	Log              log.Logger
-	Lock             interface{} // sync.RWMutex in actual use
-	Registerer       interface{} // prometheus.Registerer
-	StartTime        time.Time
-	
+	Log        log.Logger
+	Lock       interface{} // sync.RWMutex in actual use
+	Registerer interface{} // prometheus.Registerer
+	StartTime  time.Time
+
 	// Network and chain IDs
-	NetworkID   uint32
-	SubnetID    ids.ID
-	ChainID     ids.ID
-	NodeID      ids.NodeID
-	PublicKey   []byte
-	
+	NetworkID uint32
+	SubnetID  ids.ID
+	ChainID   ids.ID
+	NodeID    ids.NodeID
+	PublicKey []byte
+
 	// Chain IDs
 	XChainID    ids.ID
 	CChainID    ids.ID
 	AVAXAssetID ids.ID
-	
+
 	// State management
 	ValidatorState consensuscontext.ValidatorState
 	Keystore       interface{}
@@ -80,9 +80,9 @@ type Context struct {
 // ConsensusContext provides consensus-specific context
 type ConsensusContext struct {
 	// Fields used for consensus operations
-	Alpha             int
-	BetaVirtuous      int
-	BetaRogue         int
+	Alpha        int
+	BetaVirtuous int
+	BetaRogue    int
 }
 
 // State represents the state of a consensus engine

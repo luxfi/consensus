@@ -2,8 +2,9 @@ package block
 
 import (
 	"context"
-	"github.com/luxfi/ids"
 	"time"
+
+	"github.com/luxfi/ids"
 )
 
 // QuantumBlock is a post-quantum secured block

@@ -11,9 +11,9 @@ import (
 // Context provides consensus context for VMs
 type Context struct {
 	// QuantumID is the root quantum network identifier
-	QuantumID   uint32     `json:"quantumID"`
+	QuantumID uint32 `json:"quantumID"`
 	// NetID identifies the specific network/subnet within the quantum network
-	NetID       ids.ID     `json:"netID"`
+	NetID ids.ID `json:"netID"`
 	// ChainID identifies the specific chain within the network
 	ChainID     ids.ID     `json:"chainID"`
 	NodeID      ids.NodeID `json:"nodeID"`
@@ -86,7 +86,7 @@ func GetNetID(ctx context.Context) ids.ID {
 	return ids.Empty
 }
 
-// Deprecated: GetSubnetID is deprecated, use GetNetID instead  
+// Deprecated: GetSubnetID is deprecated, use GetNetID instead
 func GetSubnetID(ctx context.Context) ids.ID {
 	// Direct implementation to avoid calling deprecated functions
 	if c, ok := ctx.Value(contextKey).(*Context); ok {
@@ -110,7 +110,6 @@ func GetValidatorState(ctx context.Context) ValidatorState {
 	}
 	return nil
 }
-
 
 // WithContext adds consensus context to a context
 func WithContext(ctx context.Context, cc *Context) context.Context {
@@ -138,7 +137,7 @@ type IDs struct {
 	// QuantumID is the root quantum network identifier
 	QuantumID uint32
 	// NetID identifies the network within the quantum network
-	NetID     ids.ID
+	NetID ids.ID
 	// ChainID identifies the chain within the network
 	ChainID   ids.ID
 	NodeID    ids.NodeID

@@ -2,6 +2,7 @@ package snowman
 
 import (
 	"context"
+
 	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/ids"
 )

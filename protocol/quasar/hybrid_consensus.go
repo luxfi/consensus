@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	
+
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
 )
@@ -16,20 +16,20 @@ import (
 // QuasarHybridConsensus implements parallel BLS+Ringtail for PQ-safe consensus
 type QuasarHybridConsensus struct {
 	mu sync.RWMutex
-	
+
 	// BLS for classical threshold signatures
 	blsThreshold int
 	blsKeys      map[string]*bls.SecretKey
 	blsPubKeys   map[string]*bls.PublicKey
-	
+
 	// Ringtail for post-quantum signatures
 	ringtailEngine RingtailPQ
 	ringtailKeys   map[string]*RingtailKeyPair
-	
+
 	// Hybrid signature aggregation
 	pendingBLS      map[string][]*bls.Signature
 	pendingRingtail map[string][]RingtailSignature
-	
+
 	// Consensus state
 	validators map[string]*Validator
 	threshold  int // Number of validators needed for consensus
@@ -48,8 +48,8 @@ type RingtailKeyPair struct {
 
 // RingtailSignature represents a post-quantum signature
 type RingtailSignature struct {
-	Signature []byte
-	PublicKey []byte
+	Signature   []byte
+	PublicKey   []byte
 	ValidatorID string
 }
 
@@ -67,7 +67,7 @@ func NewQuasarHybridConsensus(threshold int) (*QuasarHybridConsensus, error) {
 	if threshold < 1 {
 		return nil, errors.New("threshold must be at least 1")
 	}
-	
+
 	return &QuasarHybridConsensus{
 		blsThreshold:    threshold,
 		blsKeys:         make(map[string]*bls.SecretKey),
@@ -85,20 +85,20 @@ func NewQuasarHybridConsensus(threshold int) (*QuasarHybridConsensus, error) {
 func (q *QuasarHybridConsensus) AddValidator(id string, weight uint64) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	
+
 	// Generate BLS key pair
 	blsSK, err := bls.NewSecretKey()
 	if err != nil {
 		return fmt.Errorf("failed to generate BLS key: %w", err)
 	}
 	blsPK := blsSK.PublicKey()
-	
+
 	// Generate Ringtail (ML-DSA) key pair
 	ringtailPriv, err := mldsa.GenerateKey(rand.Reader, q.ringtailEngine.mode)
 	if err != nil {
 		return fmt.Errorf("failed to generate Ringtail key: %w", err)
 	}
-	
+
 	// Store keys
 	q.blsKeys[id] = blsSK
 	q.blsPubKeys[id] = blsPK
@@ -106,7 +106,7 @@ func (q *QuasarHybridConsensus) AddValidator(id string, weight uint64) error {
 		PrivateKey: ringtailPriv,
 		PublicKey:  ringtailPriv.PublicKey,
 	}
-	
+
 	// Add validator
 	q.validators[id] = &Validator{
 		ID:          id,
@@ -115,7 +115,7 @@ func (q *QuasarHybridConsensus) AddValidator(id string, weight uint64) error {
 		Weight:      weight,
 		Active:      true,
 	}
-	
+
 	return nil
 }
 
@@ -123,30 +123,30 @@ func (q *QuasarHybridConsensus) AddValidator(id string, weight uint64) error {
 func (q *QuasarHybridConsensus) SignMessage(validatorID string, message []byte) (*HybridSignature, error) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
-	
+
 	// Get keys
 	blsSK, exists := q.blsKeys[validatorID]
 	if !exists {
 		return nil, errors.New("validator not found")
 	}
-	
+
 	ringtailKP, exists := q.ringtailKeys[validatorID]
 	if !exists {
 		return nil, errors.New("ringtail keys not found")
 	}
-	
+
 	// Create BLS signature
 	blsSig := blsSK.Sign(message)
-	
+
 	// Create Ringtail (ML-DSA) signature
 	ringtailSig, err := ringtailKP.PrivateKey.Sign(rand.Reader, message, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Ringtail sign failed: %w", err)
 	}
-	
+
 	return &HybridSignature{
-		BLS:      bls.SignatureToBytes(blsSig),
-		Ringtail: ringtailSig,
+		BLS:         bls.SignatureToBytes(blsSig),
+		Ringtail:    ringtailSig,
 		ValidatorID: validatorID,
 	}, nil
 }
@@ -155,28 +155,28 @@ func (q *QuasarHybridConsensus) SignMessage(validatorID string, message []byte) 
 func (q *QuasarHybridConsensus) VerifyHybridSignature(message []byte, sig *HybridSignature) bool {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
-	
+
 	validator, exists := q.validators[sig.ValidatorID]
 	if !exists {
 		return false
 	}
-	
+
 	// Verify BLS signature
 	blsSig, err := bls.SignatureFromBytes(sig.BLS)
 	if err != nil {
 		return false
 	}
-	
+
 	// BLS verification using Verify method
 	if !bls.Verify(validator.BLSPubKey, blsSig, message) {
 		return false
 	}
-	
+
 	// Verify Ringtail (ML-DSA) signature
 	if !validator.RingtailPub.Verify(message, sig.Ringtail, nil) {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -184,11 +184,11 @@ func (q *QuasarHybridConsensus) VerifyHybridSignature(message []byte, sig *Hybri
 func (q *QuasarHybridConsensus) AggregateSignatures(message []byte, signatures []*HybridSignature) (*AggregatedSignature, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	
+
 	if len(signatures) < q.threshold {
 		return nil, fmt.Errorf("insufficient signatures: %d < %d", len(signatures), q.threshold)
 	}
-	
+
 	// Aggregate BLS signatures
 	blsSigs := make([]*bls.Signature, 0, len(signatures))
 	for _, sig := range signatures {
@@ -198,12 +198,12 @@ func (q *QuasarHybridConsensus) AggregateSignatures(message []byte, signatures [
 		}
 		blsSigs = append(blsSigs, blsSig)
 	}
-	
+
 	aggregatedBLS, err := bls.AggregateSignatures(blsSigs)
 	if err != nil {
 		return nil, fmt.Errorf("BLS aggregation failed: %w", err)
 	}
-	
+
 	// Collect Ringtail signatures (can't aggregate, but verify threshold)
 	ringtailSigs := make([]RingtailSignature, 0, len(signatures))
 	for _, sig := range signatures {
@@ -212,7 +212,7 @@ func (q *QuasarHybridConsensus) AggregateSignatures(message []byte, signatures [
 			ValidatorID: sig.ValidatorID,
 		})
 	}
-	
+
 	return &AggregatedSignature{
 		BLSAggregated: bls.SignatureToBytes(aggregatedBLS),
 		RingtailSigs:  ringtailSigs,
@@ -224,18 +224,18 @@ func (q *QuasarHybridConsensus) AggregateSignatures(message []byte, signatures [
 func (q *QuasarHybridConsensus) VerifyAggregatedSignature(message []byte, aggSig *AggregatedSignature) bool {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
-	
+
 	// Check threshold
 	if aggSig.SignerCount < q.threshold {
 		return false
 	}
-	
+
 	// Verify aggregated BLS signature
 	blsSig, err := bls.SignatureFromBytes(aggSig.BLSAggregated)
 	if err != nil {
 		return false
 	}
-	
+
 	// Collect public keys for BLS verification
 	pubKeys := make([]*bls.PublicKey, 0, len(aggSig.RingtailSigs))
 	for _, ringtailSig := range aggSig.RingtailSigs {
@@ -245,28 +245,28 @@ func (q *QuasarHybridConsensus) VerifyAggregatedSignature(message []byte, aggSig
 		}
 		pubKeys = append(pubKeys, validator.BLSPubKey)
 	}
-	
+
 	aggPubKey, err := bls.AggregatePublicKeys(pubKeys)
 	if err != nil {
 		return false
 	}
-	
+
 	if !bls.Verify(aggPubKey, blsSig, message) {
 		return false
 	}
-	
+
 	// Verify each Ringtail signature
 	for _, ringtailSig := range aggSig.RingtailSigs {
 		validator, exists := q.validators[ringtailSig.ValidatorID]
 		if !exists {
 			return false
 		}
-		
+
 		if !validator.RingtailPub.Verify(message, ringtailSig.Signature, nil) {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -288,7 +288,7 @@ type AggregatedSignature struct {
 func (q *QuasarHybridConsensus) GetActiveValidatorCount() int {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
-	
+
 	count := 0
 	for _, v := range q.validators {
 		if v.Active {
