@@ -16,22 +16,28 @@ type State interface {
 }
 
 // AcceptorGroup manages a group of acceptors
-type AcceptorGroup struct {
+type AcceptorGroup interface {
+	RegisterAcceptor(chainID ids.ID, acceptorName string, acceptor Acceptor, dieOnError bool) error
+	DeregisterAcceptor(chainID ids.ID, acceptorName string) error
+}
+
+// acceptorGroupImpl implements AcceptorGroup
+type acceptorGroupImpl struct {
 	// Add fields as needed
 }
 
 // NewAcceptorGroup creates a new acceptor group
-func NewAcceptorGroup() *AcceptorGroup {
-	return &AcceptorGroup{}
+func NewAcceptorGroup() AcceptorGroup {
+	return &acceptorGroupImpl{}
 }
 
 // RegisterAcceptor registers an acceptor
-func (a *AcceptorGroup) RegisterAcceptor(acceptor interface{}) error {
+func (a *acceptorGroupImpl) RegisterAcceptor(chainID ids.ID, acceptorName string, acceptor Acceptor, dieOnError bool) error {
 	return nil
 }
 
 // DeregisterAcceptor deregisters an acceptor
-func (a *AcceptorGroup) DeregisterAcceptor(acceptor interface{}) error {
+func (a *acceptorGroupImpl) DeregisterAcceptor(chainID ids.ID, acceptorName string) error {
 	return nil
 }
 
