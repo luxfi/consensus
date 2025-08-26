@@ -26,22 +26,22 @@ type VM interface {
 		fxs []*Fx,
 		appSender interface{}, // AppSender interface from appsender package
 	) error
-	
+
 	// SetState sets the state of the VM
 	SetState(ctx context.Context, state snow.State) error
-	
+
 	// Shutdown shuts down the VM
 	Shutdown(ctx context.Context) error
-	
+
 	// Version returns the version of the VM
 	Version(ctx context.Context) (string, error)
-	
+
 	// HealthCheck returns nil if the VM is healthy
 	HealthCheck(ctx context.Context) (interface{}, error)
-	
+
 	// CreateHandlers returns the HTTP handlers for the VM
 	CreateHandlers(ctx context.Context) (map[string]http.Handler, error)
-	
+
 	// CreateStaticHandlers returns the static HTTP handlers for the VM
 	CreateStaticHandlers(ctx context.Context) (map[string]http.Handler, error)
 }

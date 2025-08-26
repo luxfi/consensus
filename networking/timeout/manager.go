@@ -2,8 +2,9 @@ package timeout
 
 import (
 	"context"
-	"github.com/luxfi/ids"
 	"time"
+
+	"github.com/luxfi/ids"
 )
 
 // Manager manages timeouts
