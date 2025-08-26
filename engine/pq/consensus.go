@@ -105,6 +105,16 @@ func NewConsensus(params config.Parameters) *ConsensusEngine {
 	}
 }
 
+// New creates a new post-quantum consensus engine with default parameters
+func New() *ConsensusEngine {
+	return NewConsensus(config.LocalParams())
+}
+
+// GetID returns the engine identifier
+func (e *ConsensusEngine) GetID() interface{} {
+	return ids.ID{'p', 'q', '-', 'e', 'n', 'g', 'i', 'n', 'e'}
+}
+
 // Initialize sets up the PQ engine with keys
 func (e *ConsensusEngine) Initialize(ctx context.Context, blsKey, pqKey []byte) error {
 	return e.quasar.Initialize(ctx, blsKey, pqKey)

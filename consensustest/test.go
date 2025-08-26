@@ -3,6 +3,7 @@ package consensustest
 import (
 	"context"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/node/consensus/choices"
 	"testing"
 )
 
@@ -51,3 +52,6 @@ func (m *MockEngine) IsBootstrapped() bool {
 func (m *MockEngine) HealthCheck(ctx context.Context) (interface{}, error) {
 	return map[string]bool{"healthy": true}, nil
 }
+
+// Accepted is the accepted choice status for testing
+var Accepted = choices.Accepted

@@ -30,8 +30,15 @@ func QuantumNetworkID(ctx context.Context) uint32 {
 	return 0
 }
 
+type idsKeyType struct{}
+var idsKey = idsKeyType{}
+
 // GetQuantumIDs retrieves QuantumIDs from context
 func GetQuantumIDs(ctx context.Context) *QuantumIDs {
-	// Placeholder - would retrieve from context
+	if val := ctx.Value(idsKey); val != nil {
+		if qids, ok := val.(*QuantumIDs); ok {
+			return qids
+		}
+	}
 	return nil
 }
