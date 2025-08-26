@@ -14,7 +14,8 @@
       "Bash(make:*)",
       "Bash(go mod:*)",
       "Bash(git tag:*)",
-      "Bash(gofmt:*)"
+      "Bash(gofmt:*)",
+      "Bash(go run:*)"
     ],
     "deny": [],
     "ask": [],

@@ -12,8 +12,8 @@ import (
 	"github.com/luxfi/consensus/engine/pq"
 )
 
-// Engine is the main consensus engine interface
-type Engine interface {
+// LegacyEngine is the legacy consensus engine interface
+type LegacyEngine interface {
 	// Start starts the engine
 	Start(context.Context, uint32) error
 
@@ -27,18 +27,24 @@ type Engine interface {
 	IsBootstrapped() bool
 }
 
+// ModernEngine represents a modern consensus engine interface
+type ModernEngine interface {
+	// GetID returns the engine identifier  
+	GetID() interface{}
+}
+
 // NewChainEngine creates a new chain consensus engine
-func NewChainEngine() Engine {
+func NewChainEngine() LegacyEngine {
 	return chain.New()
 }
 
 // NewDAGEngine creates a new DAG consensus engine
-func NewDAGEngine() Engine {
+func NewDAGEngine() LegacyEngine {
 	return dag.New()
 }
 
 // NewPQEngine creates a new post-quantum consensus engine
-func NewPQEngine() Engine {
+func NewPQEngine() ModernEngine {
 	return pq.New()
 }
 
@@ -64,11 +70,8 @@ type (
 	// Context is the consensus context
 	Context = consensuscontext.Context
 
-	// ValidatorState provides validator information
+	// ValidatorState is the validator state interface
 	ValidatorState = consensuscontext.ValidatorState
-
-	// IDs holds consensus IDs
-	IDs = consensuscontext.IDs
 
 	// CodecVersion is the codec version
 	CodecVersion = codec.CodecVersion
@@ -98,6 +101,20 @@ var (
 	WithIDs            = consensuscontext.WithIDs
 	WithValidatorState = consensuscontext.WithValidatorState
 )
+
+// WithQuantumIDs adds quantum IDs to context
+func WithQuantumIDs(ctx context.Context, qids *QuantumIDs) context.Context {
+	if qids == nil {
+		return ctx
+	}
+	ids := consensuscontext.IDs{
+		QuantumID: qids.QuantumID,
+		NetID:     qids.NetID,
+		ChainID:   qids.ChainID,
+		NodeID:    qids.NodeID,
+	}
+	return consensuscontext.WithIDs(ctx, ids)
+}
 
 
 // AppError represents an application error
