@@ -110,14 +110,13 @@ var (
 	GetNetID           = consensuscontext.GetNetID
 	GetNetworkID       = consensuscontext.GetNetworkID
 	GetValidatorState  = consensuscontext.GetValidatorState
-	GetSubnetID        = consensuscontext.GetSubnetID
+	GetSubnetID        = consensuscontext.GetNetID // GetSubnetID is an alias for GetNetID for backward compatibility
 	WithContext        = consensuscontext.WithContext
 	FromContext        = consensuscontext.FromContext
 	GetNodeID          = consensuscontext.GetNodeID
 	WithIDs            = consensuscontext.WithIDs
 	WithValidatorState = consensuscontext.WithValidatorState
 )
-
 
 // AppError represents an application error
 type AppError struct {

@@ -2,6 +2,7 @@ package ray
 
 import (
 	"context"
+
 	"github.com/luxfi/consensus/types"
 )
 

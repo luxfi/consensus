@@ -2,8 +2,9 @@ package core
 
 import (
 	"context"
-	"github.com/luxfi/ids"
 	"time"
+
+	"github.com/luxfi/ids"
 )
 
 // ConsensusContext provides context for consensus operations

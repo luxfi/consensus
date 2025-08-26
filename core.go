@@ -38,11 +38,11 @@ func (a *AcceptorGroup) DeregisterAcceptor(acceptor interface{}) error {
 // QuantumIDs contains various quantum network and chain IDs
 type QuantumIDs struct {
 	// QuantumID is the root quantum network identifier
-	QuantumID   uint32
-	NodeID      ids.NodeID
+	QuantumID uint32
+	NodeID    ids.NodeID
 	// NetID identifies networks within the quantum network
-	NetID       ids.ID
-	ChainID     ids.ID
+	NetID   ids.ID
+	ChainID ids.ID
 	// P-Chain is the quantum validation chain
 	PChainID    ids.ID
 	XChainID    ids.ID

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"time"
-	
+
 	"github.com/luxfi/consensus/snow"
 	"github.com/luxfi/database/manager"
 	"github.com/luxfi/ids"

@@ -15,7 +15,7 @@ import (
 // MockAppSender is a mock implementation of AppSender
 type MockAppSender struct {
 	mu sync.RWMutex
-	
+
 	SendAppRequestF        func(context.Context, set.Set[ids.NodeID], uint32, []byte) error
 	SendAppResponseF       func(context.Context, ids.NodeID, uint32, []byte) error
 	SendAppErrorF          func(context.Context, ids.NodeID, uint32, int32, string) error

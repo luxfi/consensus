@@ -2,6 +2,7 @@ package queue
 
 import (
 	"container/heap"
+
 	"github.com/luxfi/ids"
 )
 

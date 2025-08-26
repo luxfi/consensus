@@ -139,8 +139,8 @@ func simulateRound(ctx context.Context, nodes int, params config.Parameters, fai
 		// Simulate network latency
 		time.Sleep(latency / time.Duration(k))
 
-		// Random vote with Byzantine behavior
-		if rand.Float64() > 0.2 { // 80% honest nodes
+		// Random vote with Byzantine behavior (simulation only, not security-critical)
+		if rand.Float64() > 0.2 { // 80% honest nodes //nolint:gosec // simulation randomness
 			votes++
 		}
 	}
