@@ -72,6 +72,8 @@ func TestnetParams() Parameters {
 	p.K = 11
 	p.Alpha = 0.7
 	p.Beta = 6
+	p.AlphaPreference = 8
+	p.AlphaConfidence = 8
 	p.BlockTime = 100 * time.Millisecond
 	p.RoundTO = 225 * time.Millisecond
 	return p
@@ -83,6 +85,8 @@ func LocalParams() Parameters {
 	p.K = 5
 	p.Alpha = 0.6
 	p.Beta = 3
+	p.AlphaPreference = 4
+	p.AlphaConfidence = 4
 	p.BlockTime = 10 * time.Millisecond
 	p.RoundTO = 45 * time.Millisecond
 	return p
@@ -94,6 +98,8 @@ func XChainParams() Parameters {
 	p.K = 5
 	p.Alpha = 0.6
 	p.Beta = 3
+	p.AlphaPreference = 4
+	p.AlphaConfidence = 4
 	p.BlockTime = 1 * time.Millisecond
 	p.RoundTO = 5 * time.Millisecond
 	return p

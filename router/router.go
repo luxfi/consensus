@@ -50,8 +50,3 @@ type HealthConfig struct {
 	Timeout              time.Duration
 	MaxOutstandingChecks int
 }
-
-// InboundHandler handles inbound messages
-type InboundHandler interface {
-	HandleInbound(context.Context, Message) error
-}
