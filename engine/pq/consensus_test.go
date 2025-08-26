@@ -110,7 +110,7 @@ func TestConsensusMetrics(t *testing.T) {
 func TestNewFunction(t *testing.T) {
 	engine := New()
 	require.NotNil(t, engine)
-	require.IsType(t, &ConsensusEngine{}, engine)
+	require.IsType(t, &PostQuantum{}, engine)
 }
 
 func TestConsensusSetFinalizedCallback(t *testing.T) {
