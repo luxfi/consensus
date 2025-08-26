@@ -20,40 +20,40 @@ type Engine interface {
 	IsBootstrapped() bool
 }
 
-// Avalanche implements Avalanche DAG consensus
-type Avalanche struct {
+// Quantum implements Quantum DAG consensus
+type Quantum struct {
 	bootstrapped bool
 }
 
 // New creates a new DAG consensus engine
-func New() *Avalanche {
-	return &Avalanche{
+func New() *Quantum {
+	return &Quantum{
 		bootstrapped: false,
 	}
 }
 
 // Start starts the engine
-func (a *Avalanche) Start(ctx context.Context, requestID uint32) error {
-	a.bootstrapped = true
+func (q *Quantum) Start(ctx context.Context, requestID uint32) error {
+	q.bootstrapped = true
 	return nil
 }
 
 // Stop stops the engine
-func (a *Avalanche) Stop(ctx context.Context) error {
+func (q *Quantum) Stop(ctx context.Context) error {
 	return nil
 }
 
 // HealthCheck performs a health check
-func (a *Avalanche) HealthCheck(ctx context.Context) (interface{}, error) {
+func (q *Quantum) HealthCheck(ctx context.Context) (interface{}, error) {
 	return map[string]interface{}{"healthy": true}, nil
 }
 
 // IsBootstrapped returns whether the DAG is bootstrapped
-func (a *Avalanche) IsBootstrapped() bool {
-	return a.bootstrapped
+func (q *Quantum) IsBootstrapped() bool {
+	return q.bootstrapped
 }
 
 // GetVertex gets a vertex by ID
-func (a *Avalanche) GetVertex(ctx context.Context, nodeID ids.NodeID, requestID uint32, vertexID ids.ID) error {
+func (q *Quantum) GetVertex(ctx context.Context, nodeID ids.NodeID, requestID uint32, vertexID ids.ID) error {
 	return nil
 }

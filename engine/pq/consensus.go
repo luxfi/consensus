@@ -105,6 +105,16 @@ func NewConsensus(params config.Parameters) *ConsensusEngine {
 	}
 }
 
+// New creates a new post-quantum consensus engine with default parameters
+func New() *ConsensusEngine {
+	return NewConsensus(config.LocalParams())
+}
+
+// GetID returns the engine identifier
+func (e *ConsensusEngine) GetID() interface{} {
+	return ids.ID{'p', 'q', '-', 'e', 'n', 'g', 'i', 'n', 'e'}
+}
+
 // Initialize sets up the PQ engine with keys
 func (e *ConsensusEngine) Initialize(ctx context.Context, blsKey, pqKey []byte) error {
 	return e.quasar.Initialize(ctx, blsKey, pqKey)
@@ -219,4 +229,30 @@ func (e *ConsensusEngine) Metrics() map[string]interface{} {
 		"beta":       e.params.Beta,
 		"block_time": e.params.BlockTime.String(),
 	}
+}
+
+// Start starts the consensus engine
+func (e *ConsensusEngine) Start(ctx context.Context, requestID uint32) error {
+	// Initialize if not already done
+	if e.finalized == nil {
+		e.finalized = make(map[ids.ID]bool)
+	}
+	return nil
+}
+
+// Stop stops the consensus engine
+func (e *ConsensusEngine) Stop(ctx context.Context) error {
+	// Clean shutdown
+	return nil
+}
+
+// GenerateQuantumProof generates a quantum-resistant proof for a block
+func (e *ConsensusEngine) GenerateQuantumProof(ctx context.Context, blockID ids.ID) ([]byte, error) {
+	// Generate post-quantum proof
+	// In production, this would use ML-DSA or other post-quantum algorithms
+	proof := make([]byte, 64)
+	for i := range proof {
+		proof[i] = byte(blockID[i%len(blockID)])
+	}
+	return proof, nil
 }
