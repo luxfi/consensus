@@ -15,13 +15,13 @@ import (
 type Tracker interface {
 	// Track starts tracking an operation
 	Track(id ids.ID) time.Time
-	
+
 	// Stop stops tracking an operation
 	Stop(id ids.ID) time.Duration
-	
+
 	// IsTracked checks if an operation is being tracked
 	IsTracked(id ids.ID) bool
-	
+
 	// Len returns the number of tracked operations
 	Len() int
 }
@@ -43,7 +43,7 @@ func NewTimeTracker() *TimeTracker {
 func (t *TimeTracker) Track(id ids.ID) time.Time {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	now := time.Now()
 	t.starts[id] = now
 	return now
@@ -53,12 +53,12 @@ func (t *TimeTracker) Track(id ids.ID) time.Time {
 func (t *TimeTracker) Stop(id ids.ID) time.Duration {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	start, ok := t.starts[id]
 	if !ok {
 		return 0
 	}
-	
+
 	delete(t.starts, id)
 	return time.Since(start)
 }
@@ -67,7 +67,7 @@ func (t *TimeTracker) Stop(id ids.ID) time.Duration {
 func (t *TimeTracker) IsTracked(id ids.ID) bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	
+
 	_, ok := t.starts[id]
 	return ok
 }
@@ -76,6 +76,6 @@ func (t *TimeTracker) IsTracked(id ids.ID) bool {
 func (t *TimeTracker) Len() int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	
+
 	return len(t.starts)
 }
