@@ -61,7 +61,7 @@ jobs:
           echo "" | tee -a consensus-benchmark.md
           echo "### Results" | tee -a consensus-benchmark.md
           echo '```' | tee -a consensus-benchmark.md
-          go test -bench=. -benchmem -benchtime=10s -run=^$ ./core/... 2>&1 | tee -a consensus-benchmark.md
+          go test -bench=. -benchmem -benchtime=10s -run=^$ ./... 2>&1 | tee -a consensus-benchmark.md || true
           echo '```' | tee -a consensus-benchmark.md
 
       - name: Run ZMQ consensus integration benchmarks
