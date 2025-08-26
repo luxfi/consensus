@@ -2,8 +2,9 @@ package consensustest
 
 import (
 	"context"
-	"github.com/luxfi/ids"
 	"testing"
+
+	"github.com/luxfi/ids"
 )
 
 // TestConfig provides test configuration

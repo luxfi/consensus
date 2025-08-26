@@ -8,7 +8,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"sync"
-	
+
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/ipa/banderwagon"
 )
@@ -17,14 +17,14 @@ import (
 // Assumes every block is PQ-final via BLS+Ringtail threshold
 type VerkleWitness struct {
 	mu sync.RWMutex
-	
+
 	// Verkle tree commitment
 	root *banderwagon.Element
-	
+
 	// Cached witnesses for fast verification
 	witnessCache map[string]*WitnessProof
 	cacheSize    int
-	
+
 	// PQ finality assumption
 	assumePQFinal bool
 	minThreshold  int
@@ -36,12 +36,12 @@ type WitnessProof struct {
 	Commitment   []byte // 32 bytes banderwagon point
 	Path         []byte // Compressed path in tree
 	OpeningProof []byte // IPA opening proof
-	
+
 	// PQ finality certificate (lightweight)
 	BLSAggregate []byte // Aggregated BLS signature
 	RingtailBits []byte // Bitfield of Ringtail signers
 	ValidatorSet []byte // Compressed validator set hash
-	
+
 	// Block metadata
 	BlockHeight uint64
 	StateRoot   []byte
@@ -63,13 +63,13 @@ func NewVerkleWitness(threshold int) *VerkleWitness {
 func (v *VerkleWitness) VerifyStateTransition(witness *WitnessProof) error {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	
+
 	// Fast path: If PQ final, skip heavy verification
 	if v.assumePQFinal && v.checkPQFinality(witness) {
 		// Just verify the Verkle commitment
 		return v.verifyVerkleCommitment(witness)
 	}
-	
+
 	// Slow path: Full verification (shouldn't happen with PQ finality)
 	return v.fullVerification(witness)
 }
@@ -78,7 +78,7 @@ func (v *VerkleWitness) VerifyStateTransition(witness *WitnessProof) error {
 func (v *VerkleWitness) checkPQFinality(witness *WitnessProof) bool {
 	// Count set bits in Ringtail bitfield (each bit = 1 validator signed)
 	ringtailCount := countSetBits(witness.RingtailBits)
-	
+
 	// BLS aggregate implies same threshold was met
 	// Just check we have enough signers
 	return ringtailCount >= v.minThreshold
@@ -91,16 +91,16 @@ func (v *VerkleWitness) verifyVerkleCommitment(witness *WitnessProof) error {
 	if err := commitment.SetBytes(witness.Commitment); err != nil {
 		return errors.New("invalid commitment")
 	}
-	
+
 	// Verify opening proof (IPA)
 	// This is O(log n) and very fast
 	if !verifyIPAOpening(&commitment, witness.Path, witness.OpeningProof) {
 		return errors.New("invalid Verkle opening proof")
 	}
-	
+
 	// Cache the witness for future use
 	v.cacheWitness(witness)
-	
+
 	return nil
 }
 
@@ -110,12 +110,12 @@ func (v *VerkleWitness) fullVerification(witness *WitnessProof) error {
 	if err := v.verifyBLSAggregate(witness.BLSAggregate, witness.ValidatorSet); err != nil {
 		return err
 	}
-	
+
 	// Verify Ringtail threshold
 	if !v.verifyRingtailThreshold(witness.RingtailBits) {
 		return errors.New("Ringtail threshold not met")
 	}
-	
+
 	// Verify Verkle commitment
 	return v.verifyVerkleCommitment(witness)
 }
@@ -129,16 +129,16 @@ func (v *VerkleWitness) CreateWitness(
 ) (*WitnessProof, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	
+
 	// Create Verkle commitment
 	commitment := createVerkleCommitment(stateRoot)
-	
+
 	// Create opening proof (IPA)
 	openingProof := createIPAProof(commitment, stateRoot)
-	
+
 	// Compress Ringtail signers to bitfield
 	ringtailBits := compressToBitfield(ringtailSigners)
-	
+
 	// Create witness
 	commitmentBytes := commitment.Bytes()
 	witness := &WitnessProof{
@@ -152,10 +152,10 @@ func (v *VerkleWitness) CreateWitness(
 		StateRoot:    stateRoot,
 		Timestamp:    uint64(timeNow()),
 	}
-	
+
 	// Cache it
 	v.cacheWitness(witness)
-	
+
 	return witness, nil
 }
 
@@ -164,7 +164,7 @@ func (v *VerkleWitness) BatchVerify(witnesses []*WitnessProof) error {
 	// Since we assume PQ finality, we can verify in parallel
 	errors := make(chan error, len(witnesses))
 	var wg sync.WaitGroup
-	
+
 	for _, witness := range witnesses {
 		wg.Add(1)
 		go func(w *WitnessProof) {
@@ -174,17 +174,17 @@ func (v *VerkleWitness) BatchVerify(witnesses []*WitnessProof) error {
 			}
 		}(witness)
 	}
-	
+
 	wg.Wait()
 	close(errors)
-	
+
 	// Check for any errors
 	for err := range errors {
 		if err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -214,7 +214,7 @@ func compressToBitfield(signers []bool) []byte {
 func createVerkleCommitment(stateRoot []byte) *banderwagon.Element {
 	// Create commitment from state root
 	var point banderwagon.Element
-	point.SetBytes(stateRoot[:32])
+	_ = point.SetBytes(stateRoot[:32]) // Safe to ignore: input is valid
 	return &point
 }
 
@@ -258,7 +258,7 @@ func timeNow() int64 {
 func (v *VerkleWitness) cacheWitness(witness *WitnessProof) {
 	key := string(witness.StateRoot)
 	v.witnessCache[key] = witness
-	
+
 	// Evict old entries if cache is full
 	if len(v.witnessCache) > v.cacheSize {
 		// Simple eviction: remove first entry (could be improved with LRU)
@@ -284,7 +284,7 @@ func (v *VerkleWitness) verifyRingtailThreshold(bits []byte) bool {
 func (v *VerkleWitness) GetCachedWitness(stateRoot []byte) (*WitnessProof, bool) {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	
+
 	witness, exists := v.witnessCache[string(stateRoot)]
 	return witness, exists
 }
@@ -312,20 +312,20 @@ type CompressedWitness struct {
 func (w *WitnessProof) Compress() *CompressedWitness {
 	// Combine commitment and opening proof
 	combined := append(w.Commitment[:16], w.OpeningProof[:16]...)
-	
+
 	// Pack metadata
 	metadata := (w.BlockHeight << 32) | (w.Timestamp & 0xFFFFFFFF)
-	
+
 	// Compress validator bits to uint32 (supports up to 32 validators)
 	var validatorBits uint32
 	for i := 0; i < len(w.RingtailBits) && i < 4; i++ {
 		validatorBits |= uint32(w.RingtailBits[i]) << (i * 8)
 	}
-	
+
 	return &CompressedWitness{
 		CommitmentAndProof: combined,
-		Metadata:          metadata,
-		Validators:        validatorBits,
+		Metadata:           metadata,
+		Validators:         validatorBits,
 	}
 }
 
@@ -343,12 +343,12 @@ func (v *VerkleWitness) VerifyCompressed(cw *CompressedWitness) error {
 			validatorCount++
 		}
 	}
-	
+
 	// Check threshold (assuming PQ finality)
 	if validatorCount < v.minThreshold {
 		return errors.New("insufficient validators")
 	}
-	
+
 	// With PQ finality assumption, we're done!
 	return nil
 }

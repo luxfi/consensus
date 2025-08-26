@@ -2,13 +2,14 @@ package chain
 
 import (
 	"context"
+
 	"github.com/luxfi/ids"
 )
 
 // Block represents a blockchain block
 type Block interface {
 	ID() ids.ID
-	Parent() ids.ID  // Alias for ParentID for compatibility
+	Parent() ids.ID // Alias for ParentID for compatibility
 	ParentID() ids.ID
 	Height() uint64
 	Timestamp() int64

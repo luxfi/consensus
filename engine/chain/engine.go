@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+
 	"github.com/luxfi/ids"
 )
 

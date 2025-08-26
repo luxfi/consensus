@@ -6,7 +6,7 @@ package core
 import (
 	"context"
 	"time"
-	
+
 	"github.com/luxfi/consensus/core/appsender"
 )
 

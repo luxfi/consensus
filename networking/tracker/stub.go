@@ -10,7 +10,7 @@ package tracker
 import (
 	"errors"
 	"time"
-	
+
 	"github.com/luxfi/ids"
 )
 

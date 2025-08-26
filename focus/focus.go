@@ -150,7 +150,7 @@ func Calc(yes, total, prev int) (float64, int) {
 
 	// Consider previous confidence
 	if prev > 0 && conf > 0 {
-		conf = conf + prev/2 // Boost with previous confidence
+		conf += prev / 2 // Boost with previous confidence
 	}
 
 	return ratio, conf
