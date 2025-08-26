@@ -61,7 +61,7 @@ jobs:
           echo "" | tee -a consensus-benchmark.md
           echo "### Results" | tee -a consensus-benchmark.md
           echo '```' | tee -a consensus-benchmark.md
-          go test -bench=. -benchmem -benchtime=10s -run=^$ ./... 2>&1 | tee -a consensus-benchmark.md || true
+          go test -bench=. -benchmem -benchtime=10s -run=XXX ./config ./engine/pq ./protocol/field ./protocol/quasar ./qzmq 2>&1 | tee -a consensus-benchmark.md || true
           echo '```' | tee -a consensus-benchmark.md
 
       - name: Run ZMQ consensus integration benchmarks
@@ -160,12 +160,18 @@ jobs:
               });
             }
 
-      - name: Store benchmark results for comparison
+      - name: Extract benchmark data
         if: github.ref == 'refs/heads/main'
+        run: |
+          # Extract just the benchmark lines in the format expected by benchmark-action
+          grep -E "^Benchmark" consensus-benchmark.md > benchmark-data.txt || true
+          
+      - name: Store benchmark results for comparison
+        if: github.ref == 'refs/heads/main' && success()
         uses: benchmark-action/github-action-benchmark@v1
         with:
           tool: 'go'
-          output-file-path: benchmark-results.md
+          output-file-path: benchmark-data.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
           alert-threshold: '150%'
