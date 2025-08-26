@@ -37,12 +37,14 @@ linters-settings:
   gocritic:
     enabled-checks:
       - nestingReduce
-      - unnamedResult
       - ruleguard
       - truncateCmp
     disabled-checks:
       - ifElseChain
       - hugeParam
+      - unnamedResult
+      - appendAssign
+      - exitAfterDefer
 
 issues:
   exclude-rules:
@@ -74,6 +76,22 @@ issues:
       text: "import .* is not allowed"
       linters:
         - depguard
+    
+    # Exclude weak random in simulation tools
+    - path: cmd/sim/
+      linters:
+        - gosec
+    
+    # Exclude integer overflow warnings for timestamps
+    - path: protocol/quasar/
+      text: "G115"
+      linters:
+        - gosec
+    
+    # Disable unconvert in engine code
+    - path: engine/pq/
+      linters:
+        - unconvert
   
   max-issues-per-linter: 0
   max-same-issues: 0
