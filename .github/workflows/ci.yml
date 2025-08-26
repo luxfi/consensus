@@ -64,7 +64,7 @@ jobs:
       - name: Run consensus benchmarks
         run: |
           echo "=== Running Consensus Benchmarks ==="
-          go test -bench=. -benchmem -benchtime=10s -run=^$ ./core/... | tee consensus-benchmark-results.txt || echo "No benchmarks found"
+          go test -bench=. -benchmem -benchtime=10s -run=^$ ./... | tee consensus-benchmark-results.txt || true
 
       - name: Display consensus benchmark results
         run: |
