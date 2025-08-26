@@ -134,6 +134,8 @@ func GetNodeID(ctx context.Context) ids.NodeID {
 
 // IDs holds the IDs for consensus context
 type IDs struct {
+	// NetworkID is the network identifier
+	NetworkID uint32
 	// QuantumID is the root quantum network identifier
 	QuantumID uint32
 	// NetID identifies the network within the quantum network
@@ -142,6 +144,8 @@ type IDs struct {
 	ChainID   ids.ID
 	NodeID    ids.NodeID
 	PublicKey []byte
+	// LUXAssetID is the asset ID for LUX
+	LUXAssetID ids.ID
 }
 
 // WithIDs adds IDs to the context
