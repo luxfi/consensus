@@ -34,7 +34,24 @@ func NewChainEngine() Engine {
 
 // NewDAGEngine creates a new DAG consensus engine
 func NewDAGEngine() Engine {
-	return dag.New()
+	return &dagEngineWrapper{dag.New()}
+}
+
+// dagEngineWrapper wraps dag.Engine to implement consensus.Engine
+type dagEngineWrapper struct {
+	dag.Engine
+}
+
+func (d *dagEngineWrapper) Stop(ctx context.Context) error {
+	return d.Shutdown(ctx)
+}
+
+func (d *dagEngineWrapper) HealthCheck(ctx context.Context) (interface{}, error) {
+	return map[string]string{"status": "healthy"}, nil
+}
+
+func (d *dagEngineWrapper) IsBootstrapped() bool {
+	return true
 }
 
 // NewPQEngine creates a new post-quantum consensus engine
