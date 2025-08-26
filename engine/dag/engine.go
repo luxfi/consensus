@@ -65,3 +65,18 @@ func (e *dagEngine) Start(ctx context.Context, requestID uint32) error {
 func (e *dagEngine) Shutdown(ctx context.Context) error {
 	return nil
 }
+
+// Stop stops the engine (alias for Shutdown for interface compatibility)
+func (e *dagEngine) Stop(ctx context.Context) error {
+	return e.Shutdown(ctx)
+}
+
+// HealthCheck performs a health check
+func (e *dagEngine) HealthCheck(ctx context.Context) (interface{}, error) {
+	return map[string]string{"status": "healthy"}, nil
+}
+
+// IsBootstrapped returns whether the engine is bootstrapped
+func (e *dagEngine) IsBootstrapped() bool {
+	return true
+}

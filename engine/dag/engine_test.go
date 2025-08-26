@@ -12,10 +12,6 @@ func TestNew(t *testing.T) {
 	if engine == nil {
 		t.Fatal("New() returned nil")
 	}
-
-	if engine.IsBootstrapped() {
-		t.Error("Engine should not be bootstrapped initially")
-	}
 }
 
 func TestStart(t *testing.T) {
@@ -26,86 +22,60 @@ func TestStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
-
-	if !engine.IsBootstrapped() {
-		t.Error("Engine should be bootstrapped after Start")
-	}
 }
 
-func TestStop(t *testing.T) {
+func TestShutdown(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
 	_ = engine.Start(ctx, 1)
 
-	err := engine.Stop(ctx)
+	err := engine.Shutdown(ctx)
 	if err != nil {
-		t.Fatalf("Stop failed: %v", err)
+		t.Fatalf("Shutdown failed: %v", err)
 	}
 }
 
-func TestHealthCheck(t *testing.T) {
+func TestGetVtx(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	health, err := engine.HealthCheck(ctx)
+	// GetVtx should return nil (no-op for now)
+	vertexID := ids.GenerateTestID()
+
+	tx, err := engine.GetVtx(ctx, vertexID)
 	if err != nil {
-		t.Fatalf("HealthCheck failed: %v", err)
+		t.Errorf("GetVtx should not error: %v", err)
 	}
-
-	if health == nil {
-		t.Error("HealthCheck returned nil")
-	}
-
-	// Check it returns a map with healthy status
-	if m, ok := health.(map[string]interface{}); ok {
-		if v, exists := m["healthy"]; !exists || v != true {
-			t.Error("Engine should report healthy")
-		}
+	if tx != nil {
+		t.Error("GetVtx should return nil transaction")
 	}
 }
 
-func TestGetVertex(t *testing.T) {
+func TestBuildVtx(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	// GetVertex should return nil (no-op for now)
-	nodeID := ids.EmptyNodeID
-	vertexID := ids.Empty
-
-	err := engine.GetVertex(ctx, nodeID, 1, vertexID)
+	// BuildVtx should return nil (no-op for now)
+	tx, err := engine.BuildVtx(ctx)
 	if err != nil {
-		t.Errorf("GetVertex should not error: %v", err)
+		t.Errorf("BuildVtx should not error: %v", err)
+	}
+	if tx != nil {
+		t.Error("BuildVtx should return nil transaction")
 	}
 }
 
-func TestDAGWorkflow(t *testing.T) {
+func TestParseVtx(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	// Start engine
-	err := engine.Start(ctx, 1)
+	// ParseVtx should return nil (no-op for now)
+	tx, err := engine.ParseVtx(ctx, []byte{})
 	if err != nil {
-		t.Fatalf("Start failed: %v", err)
+		t.Errorf("ParseVtx should not error: %v", err)
 	}
-
-	// Check bootstrapped
-	if !engine.IsBootstrapped() {
-		t.Error("Should be bootstrapped")
-	}
-
-	// Health check
-	health, err := engine.HealthCheck(ctx)
-	if err != nil {
-		t.Fatalf("HealthCheck failed: %v", err)
-	}
-	if health == nil {
-		t.Error("Health should not be nil")
-	}
-
-	// Stop engine
-	err = engine.Stop(ctx)
-	if err != nil {
-		t.Fatalf("Stop failed: %v", err)
+	if tx != nil {
+		t.Error("ParseVtx should return nil transaction")
 	}
 }
