@@ -50,21 +50,12 @@ func (v *ValidatorImpl) Light() uint64 {
 	return v.LightVal
 }
 
-// Manager manages validator sets
-type Manager interface {
+// AdvancedManager extends Manager with additional methods
+type AdvancedManager interface {
+	Manager // Embed the basic Manager from manager.go
 	GetValidators(netID ids.ID) (Set, error)
-	GetLight(netID ids.ID, nodeID ids.NodeID) uint64
-	GetWeight(netID ids.ID, nodeID ids.NodeID) uint64 // Deprecated: use GetLight
-	TotalLight(netID ids.ID) (uint64, error)
-	TotalWeight(netID ids.ID) (uint64, error) // Deprecated: use TotalLight
 }
 
-// SetCallbackListener listens to validator set changes
-type SetCallbackListener interface {
-	OnValidatorAdded(nodeID ids.NodeID, light uint64)
-	OnValidatorRemoved(nodeID ids.NodeID, light uint64)
-	OnValidatorLightChanged(nodeID ids.NodeID, oldLight, newLight uint64)
-}
 
 // ManagerCallbackListener listens to manager changes
 type ManagerCallbackListener interface {

@@ -52,3 +52,32 @@ const (
 	// Chits is chits response
 	Chits
 )
+
+// ExternalSender sends messages to external nodes
+type ExternalSender interface {
+	Sender
+	
+	// Send a message to a specific set of nodes
+	SendGetStateSummaryFrontier(context.Context, set.Set[ids.NodeID], uint32) error
+	SendStateSummaryFrontier(context.Context, ids.NodeID, uint32, []byte) error
+	SendGetAcceptedStateSummary(context.Context, set.Set[ids.NodeID], uint32, []uint64) error
+	SendAcceptedStateSummary(context.Context, ids.NodeID, uint32, []ids.ID) error
+	
+	// Consensus messages
+	SendGetAcceptedFrontier(context.Context, set.Set[ids.NodeID], uint32) error
+	SendAcceptedFrontier(context.Context, ids.NodeID, uint32, []ids.ID) error
+	SendGetAccepted(context.Context, set.Set[ids.NodeID], uint32, []ids.ID) error
+	SendAccepted(context.Context, ids.NodeID, uint32, []ids.ID) error
+	SendGetAncestors(context.Context, ids.NodeID, uint32, ids.ID) error
+	SendAncestors(context.Context, ids.NodeID, uint32, [][]byte) error
+	SendGet(context.Context, ids.NodeID, uint32, ids.ID) error
+	SendPut(context.Context, ids.NodeID, uint32, []byte) error
+	SendPushQuery(context.Context, set.Set[ids.NodeID], uint32, []byte, uint64) error
+	SendPullQuery(context.Context, set.Set[ids.NodeID], uint32, ids.ID, uint64) error
+	SendChits(context.Context, ids.NodeID, uint32, ids.ID, ids.ID, ids.ID) error
+	
+	// CrossChain messages
+	SendCrossChainAppRequest(context.Context, ids.ID, uint32, []byte) error
+	SendCrossChainAppResponse(context.Context, ids.ID, uint32, []byte) error
+	SendCrossChainAppError(context.Context, ids.ID, uint32, int32, string) error
+}

@@ -15,3 +15,12 @@ var ErrDeprecated = errors.New("router package should be in github.com/luxfi/nod
 type Router interface {
 	Deprecated()
 }
+
+// ExternalHandler handles external messages
+type ExternalHandler interface {
+	// Connected is called when a peer connects
+	Connected(nodeID interface{}, nodeVersion interface{}, subnetID interface{})
+	
+	// Disconnected is called when a peer disconnects
+	Disconnected(nodeID interface{})
+}

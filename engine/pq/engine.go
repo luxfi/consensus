@@ -2,6 +2,7 @@ package pq
 
 import (
 	"context"
+
 	"github.com/luxfi/ids"
 )
 
@@ -32,8 +33,8 @@ type PostQuantum struct {
 	algorithm    string // ML-DSA, ML-KEM, etc.
 }
 
-// New creates a new post-quantum consensus engine
-func New() *PostQuantum {
+// NewEngine creates a new post-quantum consensus engine
+func NewEngine() *PostQuantum {
 	return &PostQuantum{
 		bootstrapped: false,
 		algorithm:    "ML-DSA-65", // Default to ML-DSA-65

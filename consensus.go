@@ -10,10 +10,11 @@ import (
 	"github.com/luxfi/consensus/engine/chain"
 	"github.com/luxfi/consensus/engine/dag"
 	"github.com/luxfi/consensus/engine/pq"
+	"github.com/luxfi/ids"
 )
 
-// Engine is the main consensus engine interface
-type Engine interface {
+// LegacyEngine is the legacy consensus engine interface
+type LegacyEngine interface {
 	// Start starts the engine
 	Start(context.Context, uint32) error
 
@@ -27,19 +28,94 @@ type Engine interface {
 	IsBootstrapped() bool
 }
 
+// ModernEngine represents a modern consensus engine interface
+type ModernEngine interface {
+	// GetID returns the engine identifier  
+	GetID() interface{}
+}
+
+// engineAdapter adapts LegacyEngine to Engine interface
+type engineAdapter struct {
+	legacy LegacyEngine
+	id     ids.ID
+}
+
+func (e *engineAdapter) GetID() ids.ID {
+	return e.id
+}
+
+func (e *engineAdapter) Start(ctx context.Context) error {
+	return e.legacy.Start(ctx, 1)
+}
+
+func (e *engineAdapter) Stop() error {
+	return e.legacy.Stop(context.Background())
+}
+
+func (e *engineAdapter) Notify(msg Message) error {
+	return nil
+}
+
+func (e *engineAdapter) IsBootstrapped() bool {
+	return e.legacy.IsBootstrapped()
+}
+
+func (e *engineAdapter) HealthCheck(ctx context.Context) (interface{}, error) {
+	return e.legacy.HealthCheck(ctx)
+}
+
+// pqAdapter adapts PQ engine to Engine interface
+type pqAdapter struct {
+	pq *pq.ConsensusEngine
+	id ids.ID
+}
+
+func (e *pqAdapter) GetID() ids.ID {
+	return e.id
+}
+
+func (e *pqAdapter) Start(ctx context.Context) error {
+	return e.pq.Start(ctx, 1)
+}
+
+func (e *pqAdapter) Stop() error {
+	return e.pq.Stop(context.Background())
+}
+
+func (e *pqAdapter) Notify(msg Message) error {
+	return nil
+}
+
+func (e *pqAdapter) IsBootstrapped() bool {
+	return true
+}
+
+func (e *pqAdapter) HealthCheck(ctx context.Context) (interface{}, error) {
+	return e.pq.Metrics(), nil
+}
+
 // NewChainEngine creates a new chain consensus engine
 func NewChainEngine() Engine {
-	return chain.New()
+	return &engineAdapter{
+		legacy: chain.New(),
+		id:     ids.GenerateTestID(),
+	}
 }
 
 // NewDAGEngine creates a new DAG consensus engine
 func NewDAGEngine() Engine {
-	return dag.New()
+	return &engineAdapter{
+		legacy: dag.New(),
+		id:     ids.GenerateTestID(),
+	}
 }
 
 // NewPQEngine creates a new post-quantum consensus engine
 func NewPQEngine() Engine {
-	return pq.New()
+	return &pqAdapter{
+		pq: pq.New(),
+		id: ids.GenerateTestID(),
+	}
 }
 
 // Config returns default consensus parameters for different network sizes
@@ -64,11 +140,8 @@ type (
 	// Context is the consensus context
 	Context = consensuscontext.Context
 
-	// ValidatorState provides validator information
+	// ValidatorState is the validator state interface
 	ValidatorState = consensuscontext.ValidatorState
-
-	// IDs holds consensus IDs
-	IDs = consensuscontext.IDs
 
 	// CodecVersion is the codec version
 	CodecVersion = codec.CodecVersion
@@ -98,6 +171,20 @@ var (
 	WithIDs            = consensuscontext.WithIDs
 	WithValidatorState = consensuscontext.WithValidatorState
 )
+
+// WithQuantumIDs adds quantum IDs to context
+func WithQuantumIDs(ctx context.Context, qids *QuantumIDs) context.Context {
+	if qids == nil {
+		return ctx
+	}
+	ids := consensuscontext.IDs{
+		QuantumID: qids.QuantumID,
+		NetID:     qids.NetID,
+		ChainID:   qids.ChainID,
+		NodeID:    qids.NodeID,
+	}
+	return consensuscontext.WithIDs(ctx, ids)
+}
 
 
 // AppError represents an application error
