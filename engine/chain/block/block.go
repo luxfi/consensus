@@ -10,6 +10,7 @@ import (
 // Block is a block in the chain
 type Block interface {
 	ID() ids.ID
+	Parent() ids.ID // Alias for ParentID for compatibility
 	ParentID() ids.ID
 	Height() uint64
 	Timestamp() time.Time
@@ -30,7 +31,7 @@ type ChainVM interface {
 		genesisBytes []byte,
 		upgradeBytes []byte,
 		configBytes []byte,
-		msgChan chan interface{},
+		msgChan interface{},
 		fxs []interface{},
 		appSender interface{},
 	) error
