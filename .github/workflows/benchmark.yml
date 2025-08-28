@@ -160,21 +160,22 @@ jobs:
               });
             }
 
-      - name: Extract benchmark data
-        if: github.ref == 'refs/heads/main'
-        run: |
-          # Extract just the benchmark lines in the format expected by benchmark-action
-          grep -E "^Benchmark" consensus-benchmark.md > benchmark-data.txt || true
-          
-      - name: Store benchmark results for comparison
-        if: github.ref == 'refs/heads/main' && success()
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          tool: 'go'
-          output-file-path: benchmark-data.txt
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          alert-threshold: '150%'
-          comment-on-alert: true
-          fail-on-alert: false
-          alert-comment-cc-users: '@${{ github.repository_owner }}'
+      # Benchmark comparison disabled - we don't use gh-pages
+      # To enable: set up gh-pages branch and uncomment below
+      # - name: Extract benchmark data
+      #   if: github.ref == 'refs/heads/main'
+      #   run: |
+      #     grep -E "^Benchmark" consensus-benchmark.md > benchmark-data.txt || true
+      #     
+      # - name: Store benchmark results for comparison
+      #   if: github.ref == 'refs/heads/main' && success()
+      #   uses: benchmark-action/github-action-benchmark@v1
+      #   with:
+      #     tool: 'go'
+      #     output-file-path: benchmark-data.txt
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+      #     auto-push: true
+      #     alert-threshold: '150%'
+      #     comment-on-alert: true
+      #     fail-on-alert: false
+      #     alert-comment-cc-users: '@${{ github.repository_owner }}'
