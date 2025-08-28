@@ -24,6 +24,30 @@ func (v *Application) Compatible(other *Application) bool {
 	return v.Major == other.Major
 }
 
+// Compare compares two versions
+// Returns -1 if v < other, 0 if v == other, 1 if v > other
+func (v *Application) Compare(other *Application) int {
+	if v.Major < other.Major {
+		return -1
+	}
+	if v.Major > other.Major {
+		return 1
+	}
+	if v.Minor < other.Minor {
+		return -1
+	}
+	if v.Minor > other.Minor {
+		return 1
+	}
+	if v.Patch < other.Patch {
+		return -1
+	}
+	if v.Patch > other.Patch {
+		return 1
+	}
+	return 0
+}
+
 // Current returns the current version
 func Current() *Application {
 	return &Application{
