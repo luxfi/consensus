@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"time"
 
 	"github.com/luxfi/ids"
 )
@@ -12,7 +13,7 @@ type Block interface {
 	Parent() ids.ID // Alias for ParentID for compatibility
 	ParentID() ids.ID
 	Height() uint64
-	Timestamp() int64
+	Timestamp() time.Time
 	Bytes() []byte
 	Status() uint8
 	Accept(context.Context) error
