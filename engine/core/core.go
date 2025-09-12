@@ -1,9 +1,7 @@
 package core
 
 import (
-	"context"
-	"time"
-
+	consensus_core "github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/engine/core/common"
 	"github.com/luxfi/ids"
 )
@@ -15,11 +13,15 @@ type Fx struct {
 }
 
 // AppError represents an application error
-type AppError = common.AppError
+type AppError = consensus_core.AppError
 
 // AppHandler handles application messages
-type AppHandler interface {
-	AppGossip(context.Context, ids.NodeID, []byte)
-	AppRequest(context.Context, ids.NodeID, time.Time, []byte) ([]byte, *AppError)
-	CrossChainAppRequest(context.Context, ids.ID, time.Time, []byte) ([]byte, error)
-}
+type AppHandler = consensus_core.AppHandler
+
+// MessageType represents the type of message
+type MessageType = common.MessageType
+
+// Message constants
+const (
+	PendingTxs = common.PendingTxs
+)
