@@ -11,11 +11,12 @@ func TestDefaultParams(t *testing.T) {
 	if p.K != 20 {
 		t.Errorf("expected K=20, got %d", p.K)
 	}
-	if p.Alpha != 0.8 {
-		t.Errorf("expected Alpha=0.8, got %f", p.Alpha)
+	// 69% threshold update
+	if p.Alpha != 0.69 {
+		t.Errorf("expected Alpha=0.69 (69%% threshold), got %f", p.Alpha)
 	}
-	if p.Beta != 15 {
-		t.Errorf("expected Beta=15, got %d", p.Beta)
+	if p.Beta != 14 {
+		t.Errorf("expected Beta=14 (adjusted for 69%%), got %d", p.Beta)
 	}
 	if p.RoundTO != 250*time.Millisecond {
 		t.Errorf("expected RoundTO=250ms, got %v", p.RoundTO)
@@ -38,11 +39,12 @@ func TestXChainParams(t *testing.T) {
 	if p.K != 5 {
 		t.Errorf("X-Chain should have K=5 for low latency, got %d", p.K)
 	}
-	if p.Alpha != 0.6 {
-		t.Errorf("X-Chain should have Alpha=0.6, got %f", p.Alpha)
+	// 69% threshold update
+	if p.Alpha != 0.69 {
+		t.Errorf("X-Chain should have Alpha=0.69 (69%% threshold), got %f", p.Alpha)
 	}
-	if p.Beta != 3 {
-		t.Errorf("X-Chain should have Beta=3, got %d", p.Beta)
+	if p.Beta != 4 {
+		t.Errorf("X-Chain should have Beta=4 (adjusted for 69%%), got %d", p.Beta)
 	}
 }
 
@@ -52,11 +54,12 @@ func TestMainnetParams(t *testing.T) {
 	if p.K != 21 {
 		t.Errorf("Mainnet should have 21 validators, got %d", p.K)
 	}
-	if p.Alpha != 0.8 {
-		t.Errorf("Mainnet Alpha should be 0.8, got %f", p.Alpha)
+	// 69% threshold update
+	if p.Alpha != 0.69 {
+		t.Errorf("Mainnet Alpha should be 0.69 (69%% threshold), got %f", p.Alpha)
 	}
-	if p.Beta != 15 {
-		t.Errorf("Mainnet Beta should be 15, got %d", p.Beta)
+	if p.Beta != 14 {
+		t.Errorf("Mainnet Beta should be 14 (adjusted for 69%%), got %d", p.Beta)
 	}
 	if p.BlockTime != 200*time.Millisecond {
 		t.Errorf("Mainnet BlockTime should be 200ms, got %v", p.BlockTime)
@@ -69,11 +72,12 @@ func TestTestnetParams(t *testing.T) {
 	if p.K != 11 {
 		t.Errorf("Testnet should have 11 validators, got %d", p.K)
 	}
-	if p.Alpha != 0.7 {
-		t.Errorf("Testnet Alpha should be 0.7, got %f", p.Alpha)
+	// 69% threshold update
+	if p.Alpha != 0.69 {
+		t.Errorf("Testnet Alpha should be 0.69 (69%% threshold), got %f", p.Alpha)
 	}
-	if p.Beta != 6 {
-		t.Errorf("Testnet Beta should be 6, got %d", p.Beta)
+	if p.Beta != 8 {
+		t.Errorf("Testnet Beta should be 8 (adjusted for 69%%), got %d", p.Beta)
 	}
 }
 
@@ -128,8 +132,8 @@ func TestValidate(t *testing.T) {
 			name: "invalid K",
 			params: Parameters{
 				K:         0,
-				Alpha:     0.8,
-				Beta:      15,
+				Alpha:     0.69, // 69% threshold
+				Beta:      14,   // Adjusted for 69%
 				RoundTO:   250 * time.Millisecond,
 				BlockTime: 100 * time.Millisecond,
 			},
@@ -161,7 +165,7 @@ func TestValidate(t *testing.T) {
 			name: "invalid Beta",
 			params: Parameters{
 				K:         20,
-				Alpha:     0.8,
+				Alpha:     0.69, // 69% threshold
 				Beta:      0,
 				RoundTO:   250 * time.Millisecond,
 				BlockTime: 100 * time.Millisecond,
@@ -172,8 +176,8 @@ func TestValidate(t *testing.T) {
 			name: "block time too low",
 			params: Parameters{
 				K:         20,
-				Alpha:     0.8,
-				Beta:      15,
+				Alpha:     0.69, // 69% threshold
+				Beta:      14,   // Adjusted for 69%
 				RoundTO:   250 * time.Millisecond,
 				BlockTime: 500 * time.Microsecond, // < 1ms
 			},
@@ -183,8 +187,8 @@ func TestValidate(t *testing.T) {
 			name: "round timeout too low",
 			params: Parameters{
 				K:         20,
-				Alpha:     0.8,
-				Beta:      15,
+				Alpha:     0.69, // 69% threshold
+				Beta:      14,   // Adjusted for 69%
 				RoundTO:   50 * time.Millisecond,
 				BlockTime: 100 * time.Millisecond,
 			},
@@ -194,8 +198,8 @@ func TestValidate(t *testing.T) {
 			name: "1ms blocks are valid",
 			params: Parameters{
 				K:         5,
-				Alpha:     0.6,
-				Beta:      3,
+				Alpha:     0.69, // 69% threshold
+				Beta:      4,    // Adjusted for 69%
 				RoundTO:   5 * time.Millisecond,
 				BlockTime: 1 * time.Millisecond,
 			},
