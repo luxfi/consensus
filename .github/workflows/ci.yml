@@ -62,9 +62,10 @@ jobs:
         run: go build -o bin/consensus ./cmd/consensus
 
       - name: Run consensus benchmarks
+        timeout-minutes: 5
         run: |
           echo "=== Running Consensus Benchmarks ==="
-          go test -bench=. -benchmem -benchtime=10s -run=^$ ./... | tee consensus-benchmark-results.txt || true
+          go test -bench=. -benchmem -benchtime=3s -timeout=5m -run=^$ ./... | tee consensus-benchmark-results.txt || true
 
       - name: Display consensus benchmark results
         run: |
