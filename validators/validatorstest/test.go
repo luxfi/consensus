@@ -2,7 +2,7 @@ package validatorstest
 
 import (
 	"context"
-	
+
 	"github.com/luxfi/consensus/validators"
 	"github.com/luxfi/ids"
 )
@@ -13,7 +13,7 @@ type State = TestState
 // TestState is a test implementation of validators.State
 type TestState struct {
 	validators map[ids.ID]validators.Set
-	
+
 	// Function fields for test customization
 	GetCurrentHeightF func(context.Context) (uint64, error)
 	GetValidatorSetF  func(context.Context, uint64, ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error)

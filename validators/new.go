@@ -20,7 +20,7 @@ func (m *manager) AddStaker(netID ids.ID, nodeID ids.NodeID, publicKey []byte, t
 	if m.validators[netID] == nil {
 		m.validators[netID] = make(map[ids.NodeID]*GetValidatorOutput)
 	}
-	
+
 	m.validators[netID][nodeID] = &GetValidatorOutput{
 		NodeID:    nodeID,
 		PublicKey: publicKey,
@@ -117,10 +117,10 @@ func (s *validatorSet) Sample(size int) ([]ids.NodeID, error) {
 // emptySet represents an empty validator set
 type emptySet struct{}
 
-func (s *emptySet) Has(ids.NodeID) bool               { return false }
-func (s *emptySet) Len() int                           { return 0 }
-func (s *emptySet) List() []Validator                  { return nil }
-func (s *emptySet) Light() uint64                      { return 0 }
-func (s *emptySet) Sample(size int) ([]ids.NodeID, error) { 
-	return nil, nil 
+func (s *emptySet) Has(ids.NodeID) bool { return false }
+func (s *emptySet) Len() int            { return 0 }
+func (s *emptySet) List() []Validator   { return nil }
+func (s *emptySet) Light() uint64       { return 0 }
+func (s *emptySet) Sample(size int) ([]ids.NodeID, error) {
+	return nil, nil
 }
