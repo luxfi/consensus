@@ -10,10 +10,10 @@ import (
 
 // Block status constants
 const (
-	Unknown  uint8 = 0
+	Unknown    uint8 = 0
 	Processing uint8 = 1
-	Accepted uint8 = 2
-	Rejected uint8 = 3
+	Accepted   uint8 = 2
+	Rejected   uint8 = 3
 )
 
 // Decidable is an embedded struct for test blocks
