@@ -13,10 +13,10 @@ import (
 type State interface {
 	// GetUptime returns the uptime for a validator
 	GetUptime(nodeID ids.NodeID, netID ids.ID) (time.Duration, time.Duration, error)
-	
+
 	// SetUptime sets the uptime for a validator
 	SetUptime(nodeID ids.NodeID, netID ids.ID, uptime time.Duration, lastUpdated time.Time) error
-	
+
 	// GetStartTime returns when the validator started
 	GetStartTime(nodeID ids.NodeID, netID ids.ID) (time.Time, error)
 }
