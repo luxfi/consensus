@@ -30,7 +30,7 @@ type AppSenderOriginal interface {
 
 	// SendCrossChainAppError sends a cross-chain app error
 	SendCrossChainAppError(ctx context.Context, chainID ids.ID, requestID uint32, errorCode int32, errorMessage string) error
-	
+
 	// SendAppError sends an application-level error response to the given node
 	SendAppError(ctx context.Context, nodeID ids.NodeID, requestID uint32, errorCode int32, errorMessage string) error
 }
