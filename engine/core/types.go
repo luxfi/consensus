@@ -13,12 +13,12 @@ import (
 // ConsensusParams defines consensus parameters
 type ConsensusParams struct {
 	K                     int
-	AlphaPreference      int
-	AlphaConfidence      int
-	Beta                 int
-	ConcurrentPolls      int
-	OptimalProcessing    int
-	MaxOutstandingItems  int
+	AlphaPreference       int
+	AlphaConfidence       int
+	Beta                  int
+	ConcurrentPolls       int
+	OptimalProcessing     int
+	MaxOutstandingItems   int
 	MaxItemProcessingTime time.Duration
 }
 
@@ -47,10 +47,10 @@ type Consensus interface {
 
 // Stats represents consensus statistics
 type Stats struct {
-	BlocksAccepted uint64
-	BlocksRejected uint64
-	VotesProcessed uint64
-	PollsCompleted uint64
+	BlocksAccepted        uint64
+	BlocksRejected        uint64
+	VotesProcessed        uint64
+	PollsCompleted        uint64
 	AverageDecisionTimeMs float64
 }
 
