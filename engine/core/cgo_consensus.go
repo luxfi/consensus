@@ -19,26 +19,26 @@ type CGOConsensus struct {
 	mu         sync.RWMutex
 	preference atomic.Value // ids.ID
 	finalized  atomic.Bool
-	
+
 	// Cache for blocks
 	blockCache map[ids.ID]*cachedBlock
 	cacheMu    sync.RWMutex
-	
+
 	// Store parameters for later retrieval
 	params ConsensusParams
-	
+
 	// Consensus state
 	accepted map[ids.ID]bool
 }
 
 // cachedBlock stores block data
 type cachedBlock struct {
-	id       ids.ID
-	parentID ids.ID
-	height   uint64
+	id        ids.ID
+	parentID  ids.ID
+	height    uint64
 	timestamp int64
-	data     []byte
-	status   BlockStatus
+	data      []byte
+	status    BlockStatus
 }
 
 // NewCGOConsensus creates a new CGO consensus engine
@@ -48,10 +48,10 @@ func NewCGOConsensus(params ConsensusParams) (*CGOConsensus, error) {
 		params:     params,
 		accepted:   make(map[ids.ID]bool),
 	}
-	
+
 	// Set initial preference to empty ID
 	c.preference.Store(ids.Empty)
-	
+
 	return c, nil
 }
 
@@ -59,9 +59,9 @@ func NewCGOConsensus(params ConsensusParams) (*CGOConsensus, error) {
 func (c *CGOConsensus) Add(block Block) error {
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
-	
+
 	blockID := block.ID()
-	
+
 	// Cache the block
 	c.blockCache[blockID] = &cachedBlock{
 		id:        blockID,
@@ -71,10 +71,10 @@ func (c *CGOConsensus) Add(block Block) error {
 		data:      block.Bytes(),
 		status:    StatusProcessing,
 	}
-	
+
 	// Update preference to latest block
 	c.preference.Store(blockID)
-	
+
 	return nil
 }
 
@@ -82,11 +82,11 @@ func (c *CGOConsensus) Add(block Block) error {
 func (c *CGOConsensus) RecordPoll(blockID ids.ID, accept bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	if accept {
 		c.accepted[blockID] = true
 	}
-	
+
 	return nil
 }
 
@@ -94,7 +94,7 @@ func (c *CGOConsensus) RecordPoll(blockID ids.ID, accept bool) error {
 func (c *CGOConsensus) IsAccepted(blockID ids.ID) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	return c.accepted[blockID]
 }
 
