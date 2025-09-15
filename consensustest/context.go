@@ -5,17 +5,10 @@ package consensustest
 
 import (
 	"context"
-	"errors"
 	"testing"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/require"
-
-	"github.com/luxfi/crypto/bls"
-	"github.com/luxfi/database/memdb"
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus"
-	"github.com/luxfi/consensus/validators"
+	"github.com/luxfi/ids"
 )
 
 var (
@@ -23,24 +16,38 @@ var (
 	XChainID   = ids.GenerateTestID()
 	CChainID   = ids.GenerateTestID()
 	LUXAssetID = ids.GenerateTestID()
-
-	errMissing = errors.New("missing")
-
-	_ consensus.Acceptor = noOpAcceptor{}
 )
 
-type noOpAcceptor struct{}
+// SimpleValidatorState is a minimal validator state for testing
+type SimpleValidatorState struct{}
 
-func (noOpAcceptor) Accept(context.Context, ids.ID, []byte) error {
-	return nil
+func (s *SimpleValidatorState) GetChainID(chainID ids.ID) (ids.ID, error) {
+	return chainID, nil
 }
 
+func (s *SimpleValidatorState) GetNetID(chainID ids.ID) (ids.ID, error) {
+	return ids.Empty, nil
+}
+
+func (s *SimpleValidatorState) GetSubnetID(chainID ids.ID) (ids.ID, error) {
+	return ids.Empty, nil
+}
+
+func (s *SimpleValidatorState) GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error) {
+	return map[ids.NodeID]uint64{}, nil
+}
+
+func (s *SimpleValidatorState) GetCurrentHeight() (uint64, error) {
+	return 0, nil
+}
+
+func (s *SimpleValidatorState) GetMinimumHeight(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
+// ConsensusContext updates a consensus context with default test values
 func ConsensusContext(ctx *consensus.Context) *consensus.Context {
-	ctx.PrimaryAlias = ctx.ChainID.String()
-	ctx.Registerer = prometheus.NewRegistry()
-	ctx.BlockAcceptor = noOpAcceptor{}
-	ctx.TxAcceptor = noOpAcceptor{}
-	ctx.VertexAcceptor = noOpAcceptor{}
+	// Simple consensus package doesn't have these fields, just return the context as-is
 	return ctx
 }
 
@@ -50,61 +57,19 @@ func NewContext(tb testing.TB) *consensus.Context {
 	return Context(tb, ids.GenerateTestID())
 }
 
+// Context creates a new consensus context for testing with a specific chain ID
 func Context(tb testing.TB, chainID ids.ID) *consensus.Context {
-	require := require.New(tb)
+	tb.Helper()
 
-	secretKey, err := bls.NewSecretKey()
-	require.NoError(err)
-	publicKey := bls.PublicFromSecretKey(secretKey)
-
-	memory := atomic.NewMemory(memdb.New())
-	sharedMemory := memory.NewSharedMemory(chainID)
-
-	aliaser := ids.NewAliaser()
-	require.NoError(aliaser.Alias(PChainID, "P"))
-	require.NoError(aliaser.Alias(PChainID, PChainID.String()))
-	require.NoError(aliaser.Alias(XChainID, "X"))
-	require.NoError(aliaser.Alias(XChainID, XChainID.String()))
-	require.NoError(aliaser.Alias(CChainID, "C"))
-	require.NoError(aliaser.Alias(CChainID, CChainID.String()))
-
-	validatorState := &validatorstest.State{
-		GetMinimumHeightF: func(context.Context) (uint64, error) {
-			return 0, nil
-		},
-		GetSubnetIDF: func(_ context.Context, chainID ids.ID) (ids.ID, error) {
-			switch chainID {
-			case PChainID, XChainID, CChainID:
-				return constants.PrimaryNetworkID, nil
-			default:
-				return ids.Empty, errMissing
-			}
-		},
-		GetValidatorSetF: func(context.Context, uint64, ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error) {
-			return map[ids.NodeID]*validators.GetValidatorOutput{}, nil
-		},
+	ctx := &consensus.Context{
+		QuantumID: 1,
+		ChainID:   chainID,
+		NodeID:    ids.GenerateTestNodeID(),
+		NetID:     ids.Empty,
 	}
 
-	return &consensus.Context{
-		NetworkID:       constants.UnitTestID,
-		SubnetID:        constants.PrimaryNetworkID,
-		ChainID:         chainID,
-		NodeID:          ids.GenerateTestNodeID(),
-		PublicKey:       publicKey,
-		NetworkUpgrades: upgradetest.GetConfig(upgradetest.Latest),
+	// Set up a simple validator state
+	ctx.ValidatorState = &SimpleValidatorState{}
 
-		XChainID:   XChainID,
-		CChainID:   CChainID,
-		LUXAssetID: LUXAssetID,
-
-		Log:          nil,
-		SharedMemory: sharedMemory,
-		BCLookup:     aliaser,
-		Metrics:      metrics.NewPrefixGatherer(),
-
-		WarpSigner: warp.NewSigner(secretKey, constants.UnitTestID, chainID),
-
-		ValidatorState: validatorState,
-		ChainDataDir:   tb.TempDir(),
-	}
+	return ctx
 }
