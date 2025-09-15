@@ -7,10 +7,10 @@ const (
 	// ConsensusSuperMajority is the 69% threshold for Byzantine fault tolerance
 	// This provides an additional 2% safety margin above traditional 67% BFT
 	ConsensusSuperMajority = 0.69
-	
+
 	// ConsensusSimpleMajority is the simple majority threshold
 	ConsensusSimpleMajority = 0.51
-	
+
 	// MaxByzantineWeight is the maximum tolerable Byzantine weight (31%)
 	MaxByzantineWeight = 0.31
 )
@@ -22,17 +22,17 @@ func CalculateQuorum(totalWeight uint64) uint64 {
 
 // HasSuperMajority checks if the given weight meets the 69% threshold
 func HasSuperMajority(weight, totalWeight uint64) bool {
-	return float64(weight) >= float64(totalWeight) * ConsensusSuperMajority
+	return float64(weight) >= float64(totalWeight)*ConsensusSuperMajority
 }
 
 // HasSimpleMajority checks if the given weight meets simple majority
 func HasSimpleMajority(weight, totalWeight uint64) bool {
-	return float64(weight) >= float64(totalWeight) * ConsensusSimpleMajority
+	return float64(weight) >= float64(totalWeight)*ConsensusSimpleMajority
 }
 
 // CanTolerateFailure checks if the Byzantine weight is within tolerance
 func CanTolerateFailure(byzantineWeight, totalWeight uint64) bool {
-	return float64(byzantineWeight) <= float64(totalWeight) * MaxByzantineWeight
+	return float64(byzantineWeight) <= float64(totalWeight)*MaxByzantineWeight
 }
 
 // AlphaForK calculates the appropriate Alpha value for a given K

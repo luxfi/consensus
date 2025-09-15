@@ -39,18 +39,18 @@ type Parameters struct {
 func DefaultParams() Parameters {
 	return Parameters{
 		K:                     20,
-		Alpha:                 0.69,  // 69% threshold for BFT
-		Beta:                  14,    // Adjusted for 69% (was 15)
-		AlphaPreference:       14,    // 70% of K for 69% threshold
-		AlphaConfidence:       14,    // Matches AlphaPreference for 69%
-		BetaVirtuous:          14,    // Virtuous confidence for 69%
-		BetaRogue:             20,    // Rogue confidence remains high
+		Alpha:                 0.69, // 69% threshold for BFT
+		Beta:                  14,   // Adjusted for 69% (was 15)
+		AlphaPreference:       14,   // 70% of K for 69% threshold
+		AlphaConfidence:       14,   // Matches AlphaPreference for 69%
+		BetaVirtuous:          14,   // Virtuous confidence for 69%
+		BetaRogue:             20,   // Rogue confidence remains high
 		ConcurrentPolls:       4,
 		ConcurrentRepolls:     4,
 		OptimalProcessing:     10,
 		MaxOutstandingItems:   1024,
 		MaxItemProcessingTime: 2 * time.Minute,
-		Parents:               2,     // Reduced for efficiency
+		Parents:               2, // Reduced for efficiency
 		BatchSize:             30,
 		BlockTime:             100 * time.Millisecond,
 		RoundTO:               250 * time.Millisecond,
@@ -61,9 +61,9 @@ func DefaultParams() Parameters {
 func MainnetParams() Parameters {
 	p := DefaultParams()
 	p.K = 21
-	p.AlphaPreference = 15  // ~71% of K for 69% threshold
-	p.AlphaConfidence = 15  // Matches AlphaPreference
-	p.BetaVirtuous = 15     // Virtuous confidence for 69%
+	p.AlphaPreference = 15 // ~71% of K for 69% threshold
+	p.AlphaConfidence = 15 // Matches AlphaPreference
+	p.BetaVirtuous = 15    // Virtuous confidence for 69%
 	p.BlockTime = 200 * time.Millisecond
 	p.RoundTO = 400 * time.Millisecond
 	return p
@@ -73,11 +73,11 @@ func MainnetParams() Parameters {
 func TestnetParams() Parameters {
 	p := DefaultParams()
 	p.K = 11
-	p.Alpha = 0.69  // 69% threshold
-	p.Beta = 8      // Adjusted for 69%
-	p.AlphaPreference = 8  // ~73% of K for 69% threshold
-	p.AlphaConfidence = 8  // Matches AlphaPreference
-	p.BetaVirtuous = 8     // Virtuous confidence for 69%
+	p.Alpha = 0.69        // 69% threshold
+	p.Beta = 8            // Adjusted for 69%
+	p.AlphaPreference = 8 // ~73% of K for 69% threshold
+	p.AlphaConfidence = 8 // Matches AlphaPreference
+	p.BetaVirtuous = 8    // Virtuous confidence for 69%
 	p.BlockTime = 100 * time.Millisecond
 	p.RoundTO = 225 * time.Millisecond
 	return p
@@ -87,11 +87,11 @@ func TestnetParams() Parameters {
 func LocalParams() Parameters {
 	p := DefaultParams()
 	p.K = 5
-	p.Alpha = 0.69  // 69% threshold
-	p.Beta = 4      // Adjusted for 69%
-	p.AlphaPreference = 4  // 80% of K for 69% threshold
-	p.AlphaConfidence = 4  // Matches AlphaPreference
-	p.BetaVirtuous = 4     // Virtuous confidence for 69%
+	p.Alpha = 0.69        // 69% threshold
+	p.Beta = 4            // Adjusted for 69%
+	p.AlphaPreference = 4 // 80% of K for 69% threshold
+	p.AlphaConfidence = 4 // Matches AlphaPreference
+	p.BetaVirtuous = 4    // Virtuous confidence for 69%
 	p.BlockTime = 10 * time.Millisecond
 	p.RoundTO = 45 * time.Millisecond
 	return p
@@ -101,11 +101,11 @@ func LocalParams() Parameters {
 func XChainParams() Parameters {
 	p := DefaultParams()
 	p.K = 5
-	p.Alpha = 0.69  // 69% threshold
-	p.Beta = 4      // Adjusted for 69%
-	p.AlphaPreference = 4  // 80% of K for 69% threshold
-	p.AlphaConfidence = 4  // Matches AlphaPreference
-	p.BetaVirtuous = 4     // Virtuous confidence for 69%
+	p.Alpha = 0.69        // 69% threshold
+	p.Beta = 4            // Adjusted for 69%
+	p.AlphaPreference = 4 // 80% of K for 69% threshold
+	p.AlphaConfidence = 4 // Matches AlphaPreference
+	p.BetaVirtuous = 4    // Virtuous confidence for 69%
 	p.BlockTime = 1 * time.Millisecond
 	p.RoundTO = 5 * time.Millisecond
 	return p
