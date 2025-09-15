@@ -4,8 +4,45 @@ import (
 	"context"
 	"testing"
 
+	"github.com/luxfi/consensus/choices"
 	"github.com/luxfi/ids"
 )
+
+// Block status constants
+const (
+	Unknown  uint8 = 0
+	Processing uint8 = 1
+	Accepted uint8 = 2
+	Rejected uint8 = 3
+)
+
+// Decidable is an embedded struct for test blocks
+type Decidable struct {
+	IDV     ids.ID
+	StatusV choices.Status
+}
+
+// ID returns the ID of this decidable
+func (d *Decidable) ID() ids.ID {
+	return d.IDV
+}
+
+// Accept marks this as accepted
+func (d *Decidable) Accept(context.Context) error {
+	d.StatusV = choices.Accepted
+	return nil
+}
+
+// Reject marks this as rejected
+func (d *Decidable) Reject(context.Context) error {
+	d.StatusV = choices.Rejected
+	return nil
+}
+
+// Status returns the current status
+func (d *Decidable) Status() choices.Status {
+	return d.StatusV
+}
 
 // TestConfig provides test configuration
 type TestConfig struct {

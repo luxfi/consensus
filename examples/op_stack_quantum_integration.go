@@ -1,6 +1,9 @@
 // Copyright (C) 2019-2024, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
+//go:build skip
+// +build skip
+
 // Package main demonstrates integrating Lux Consensus with OP Stack
 // for quantum-resistant finality in Layer 2 rollups.
 package main
