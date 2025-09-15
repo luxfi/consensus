@@ -6,21 +6,40 @@
 # Default target
 all: build test bench
 
-# Build all tools and commands
-build: ## Build all tools and commands
-	@echo "Building all tools..."
-	@echo "Building params..."
-	@go build -o bin/params ./cmd/params || echo "ERROR: Failed to build params"
-	@echo "Building checker..."
-	@go build -o bin/checker ./cmd/checker || echo "ERROR: Failed to build checker"
-	@echo "Building simulator..."
-	@go build -o bin/sim ./cmd/sim || echo "ERROR: Failed to build sim"
-	@echo "Building bench..."
-	@go build -tags zmq -o bin/bench ./cmd/bench || echo "WARNING: Building without ZMQ support"
-	@echo "Building consensus CLI..."
-	@go build -o bin/consensus ./cmd/consensus || echo "ERROR: Failed to build consensus CLI"
-	@echo "Build complete! Successfully built tools:"
+# Build all implementations
+build: build-go build-c build-rust build-python build-cpp ## Build all implementations
+
+# Build Go implementation
+build-go: ## Build Go implementation
+	@echo "Building Go implementation..."
+	@cd src/go && go build -o ../../bin/params ./cmd/params || echo "ERROR: Failed to build params"
+	@cd src/go && go build -o ../../bin/checker ./cmd/checker || echo "ERROR: Failed to build checker"
+	@cd src/go && go build -o ../../bin/sim ./cmd/sim || echo "ERROR: Failed to build sim"
+	@cd src/go && go build -tags zmq -o ../../bin/bench ./cmd/bench || echo "WARNING: Building without ZMQ support"
+	@cd src/go && go build -o ../../bin/consensus ./cmd/consensus || echo "ERROR: Failed to build consensus CLI"
+	@echo "Go build complete! Successfully built tools:"
 	@ls -1 bin/ 2>/dev/null | grep -v '^$$' || echo "No tools built"
+
+# Build C implementation
+build-c: ## Build C implementation
+	@echo "Building C implementation..."
+	@$(MAKE) -C src/c
+
+# Build Rust implementation
+build-rust: ## Build Rust implementation
+	@echo "Building Rust implementation..."
+	@cd src/rust && cargo build --release
+
+# Build Python implementation
+build-python: ## Build Python implementation
+	@echo "Building Python implementation..."
+	@cd src/python && python setup.py build
+
+# Build C++ implementation
+build-cpp: ## Build C++ implementation
+	@echo "Building C++ implementation..."
+	@mkdir -p src/cpp/build
+	@cd src/cpp/build && cmake .. && make
 
 # Build tools that depend on node package (currently broken due to unused imports)
 # build-full: build ## Build all tools including those with node dependencies
@@ -30,9 +49,32 @@ build: ## Build all tools and commands
 # 	@go build -o bin/benchmark ./cmd/benchmark 2>&1 || echo "WARNING: Skipping - fix needed in node package"
 
 # Run all tests
-test: ## Run all tests
-	@echo "Running tests..."
-	@go test -race -timeout 5m -tags="!integration" ./... 2>&1 | grep -v "warning.*LD_DYSYMTAB" | grep -v "has malformed LC_DYSYMTAB"
+test: test-go test-c test-rust test-python test-cpp ## Run all tests
+
+# Test Go implementation
+test-go: ## Test Go implementation
+	@echo "Running Go tests..."
+	@cd src/go && go test -race -timeout 5m -tags="!integration" ./... 2>&1 | grep -v "warning.*LD_DYSYMTAB" | grep -v "has malformed LC_DYSYMTAB"
+
+# Test C implementation
+test-c: ## Test C implementation
+	@echo "Running C tests..."
+	@$(MAKE) -C src/c test
+
+# Test Rust implementation
+test-rust: ## Test Rust implementation
+	@echo "Running Rust tests..."
+	@cd src/rust && cargo test
+
+# Test Python implementation
+test-python: ## Test Python implementation
+	@echo "Running Python tests..."
+	@cd src/python && python -m pytest test_consensus.py
+
+# Test C++ implementation
+test-cpp: ## Test C++ implementation
+	@echo "Running C++ tests..."
+	@cd src/cpp/build && ctest
 
 # Run tests (verbose, showing warnings)
 test-verbose: ## Run tests with all output including warnings
