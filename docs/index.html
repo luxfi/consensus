@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lux Consensus Documentation</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --secondary: #10b981;
+            --background: #0f172a;
+            --surface: #1e293b;
+            --surface-light: #334155;
+            --text: #e2e8f0;
+            --text-dim: #94a3b8;
+            --accent: #f59e0b;
+            --code-bg: #0f172a;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--background);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--surface-light);
+            padding: 20px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            background: rgba(30, 41, 59, 0.95);
+        }
+        
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 30px;
+            list-style: none;
+        }
+        
+        .nav-links a {
+            color: var(--text);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+        
+        .hero {
+            padding: 80px 0;
+            text-align: center;
+            background: linear-gradient(135deg, var(--surface) 0%, var(--background) 100%);
+        }
+        
+        h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            font-size: 20px;
+            color: var(--text-dim);
+            margin-bottom: 40px;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 40px 0;
+        }
+        
+        .metric {
+            background: var(--surface);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid var(--surface-light);
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: var(--accent);
+        }
+        
+        .metric-label {
+            color: var(--text-dim);
+            margin-top: 5px;
+        }
+        
+        .languages {
+            padding: 60px 0;
+        }
+        
+        .section-title {
+            font-size: 32px;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+        
+        .language-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+        }
+        
+        .language-card {
+            background: var(--surface);
+            border: 1px solid var(--surface-light);
+            border-radius: 10px;
+            padding: 30px;
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+            text-decoration: none;
+            color: var(--text);
+        }
+        
+        .language-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-color: var(--primary);
+        }
+        
+        .language-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .language-name {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .language-desc {
+            color: var(--text-dim);
+            font-size: 14px;
+        }
+        
+        .features {
+            padding: 60px 0;
+            background: var(--surface);
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 40px;
+        }
+        
+        .feature {
+            text-align: center;
+        }
+        
+        .feature-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: var(--secondary);
+        }
+        
+        .feature-title {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .feature-desc {
+            color: var(--text-dim);
+        }
+        
+        .code-example {
+            background: var(--code-bg);
+            border: 1px solid var(--surface-light);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 40px 0;
+            overflow-x: auto;
+        }
+        
+        pre {
+            color: var(--text);
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        .highlight {
+            color: var(--accent);
+        }
+        
+        footer {
+            padding: 40px 0;
+            text-align: center;
+            border-top: 1px solid var(--surface-light);
+            color: var(--text-dim);
+        }
+        
+        .cta-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(37, 99, 235, 0.3);
+        }
+        
+        .btn-secondary {
+            background: transparent;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--primary);
+            color: white;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 36px;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+            
+            .language-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="#" class="logo">
+                <span>⚡</span>
+                <span>Lux Consensus</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#languages">Languages</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#performance">Performance</a></li>
+                <li><a href="https://github.com/luxfi/consensus">GitHub</a></li>
+            </ul>
+        </nav>
+    </header>
+    
+    <section class="hero" id="overview">
+        <div class="container">
+            <h1>High-Performance Consensus</h1>
+            <p class="subtitle">Byzantine fault-tolerant consensus implementations across multiple languages</p>
+            
+            <div class="cta-buttons">
+                <a href="./README.md" class="btn btn-primary">Read Documentation</a>
+                <a href="https://github.com/luxfi/consensus" class="btn btn-secondary">View on GitHub</a>
+            </div>
+            
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-value">14K+</div>
+                    <div class="metric-label">Votes/Second</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">625M</div>
+                    <div class="metric-label">Theoretical @ 40Gbps</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">&lt;10s</div>
+                    <div class="metric-label">Mainnet Finality</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">6</div>
+                    <div class="metric-label">Consensus Engines</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">5</div>
+                    <div class="metric-label">Languages</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">100%</div>
+                    <div class="metric-label">Test Coverage</div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section class="languages container" id="languages">
+        <h2 class="section-title">Choose Your Implementation</h2>
+        
+        <div class="language-grid">
+            <a href="./c/README.md" class="language-card">
+                <div class="language-icon">🔧</div>
+                <div class="language-name">C</div>
+                <div class="language-desc">High-performance native implementation with minimal overhead. Ideal for embedded systems and performance-critical applications.</div>
+            </a>
+            
+            <a href="./cpp/README.md" class="language-card">
+                <div class="language-icon">⚙️</div>
+                <div class="language-name">C++ MLX</div>
+                <div class="language-desc">Modern C++ with MLX extensions for GPU acceleration. Template metaprogramming and SIMD optimizations.</div>
+            </a>
+            
+            <a href="./rust/README.md" class="language-card">
+                <div class="language-icon">🦀</div>
+                <div class="language-name">Rust</div>
+                <div class="language-desc">Memory-safe systems programming with zero-cost abstractions. Async/await support and compile-time guarantees.</div>
+            </a>
+            
+            <a href="./python/README.md" class="language-card">
+                <div class="language-icon">🐍</div>
+                <div class="language-name">Python</div>
+                <div class="language-desc">High-level interface for research and prototyping. Integration with NumPy, Pandas, and ML frameworks.</div>
+            </a>
+            
+            <a href="./go/README.md" class="language-card">
+                <div class="language-icon">🔷</div>
+                <div class="language-name">Go</div>
+                <div class="language-desc">Production blockchain integration. Concurrent processing with goroutines and channels.</div>
+            </a>
+        </div>
+    </section>
+    
+    <section class="features" id="features">
+        <div class="container">
+            <h2 class="section-title">Core Features</h2>
+            
+            <div class="feature-grid">
+                <div class="feature">
+                    <div class="feature-icon">🛡️</div>
+                    <div class="feature-title">Byzantine Fault Tolerance</div>
+                    <div class="feature-desc">Tolerates up to f < n/3 malicious nodes with proven safety and liveness guarantees</div>
+                </div>
+                
+                <div class="feature">
+                    <div class="feature-icon">🚀</div>
+                    <div class="feature-title">High Performance</div>
+                    <div class="feature-desc">Optimized implementations achieving 14,000+ votes/second in production</div>
+                </div>
+                
+                <div class="feature">
+                    <div class="feature-icon">🔌</div>
+                    <div class="feature-title">ZeroMQ Transport</div>
+                    <div class="feature-desc">Binary protocol over ZeroMQ for efficient network communication</div>
+                </div>
+                
+                <div class="feature">
+                    <div class="feature-icon">🔒</div>
+                    <div class="feature-title">Post-Quantum Ready</div>
+                    <div class="feature-desc">PostQuantum engine with ML-KEM and ML-DSA cryptography</div>
+                </div>
+                
+                <div class="feature">
+                    <div class="feature-icon">🎯</div>
+                    <div class="feature-title">Multiple Engines</div>
+                    <div class="feature-desc">Snowball, Avalanche, Snowflake, DAG, Chain, and PostQuantum consensus</div>
+                </div>
+                
+                <div class="feature">
+                    <div class="feature-icon">📊</div>
+                    <div class="feature-title">Comprehensive Testing</div>
+                    <div class="feature-desc">100% test coverage with parity testing across all implementations</div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section class="container" id="performance">
+        <h2 class="section-title">Quick Start Example</h2>
+        
+        <div class="code-example">
+            <pre><code><span class="highlight">// Initialize consensus with Snowball engine</span>
+params := ConsensusParams{
+    K:               20,
+    AlphaPreference: 15,
+    AlphaConfidence: 15,
+    Beta:            20,
+}
+
+consensus := NewConsensus(SNOWBALL, params)
+
+<span class="highlight">// Add block to consensus</span>
+block := Block{
+    ID:       0x1234,
+    ParentID: 0x0000,
+    Height:   1,
+    Data:     []byte("Hello, Consensus!"),
+}
+consensus.Add(block)
+
+<span class="highlight">// Process votes until consensus</span>
+for i := 0; i < 20; i++ {
+    vote := Vote{
+        NodeID:   i,
+        BlockID:  0x1234,
+        VoteType: VOTE_PREFER,
+    }
+    consensus.ProcessVote(vote)
+}
+
+<span class="highlight">// Check if block achieved consensus</span>
+if consensus.IsAccepted(0x1234) {
+    fmt.Println("✅ Consensus achieved!")
+}</code></pre>
+        </div>
+    </section>
+    
+    <footer>
+        <div class="container">
+            <p>Copyright © 2019-2024, Lux Industries Inc. All rights reserved.</p>
+            <p>Part of the <a href="https://lux.network" style="color: var(--primary);">Lux Network</a> ecosystem</p>
+        </div>
+    </footer>
+    
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+        
+        // Add animation on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+        
+        // Observe all feature and language cards
+        document.querySelectorAll('.feature, .language-card, .metric').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(20px)';
+            el.style.transition = 'opacity 0.5s, transform 0.5s';
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>
