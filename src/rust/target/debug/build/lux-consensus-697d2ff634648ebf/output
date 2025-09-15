@@ -1,0 +1,6 @@
+cargo:rustc-link-search=native=/Users/z/work/lux/consensus/src/c/lib
+cargo:rustc-link-lib=luxconsensus
+cargo:rustc-link-arg=-Wl,-rpath,/Users/z/work/lux/consensus/src/c/lib
+cargo:rerun-if-changed=../c/lib/libluxconsensus.a
+cargo:rerun-if-changed=../c/lib/libluxconsensus.dylib
+cargo:rerun-if-changed=../c/lib/libluxconsensus.so
