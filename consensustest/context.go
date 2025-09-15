@@ -14,19 +14,12 @@ import (
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/database/memdb"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/log"
-	"github.com/luxfi/node/api/metrics"
-	"github.com/luxfi/node/chains/atomic"
-	"github.com/luxfi/node/consensus"
-	"github.com/luxfi/node/consensus/validators"
-	"github.com/luxfi/node/consensus/validators/validatorstest"
-	"github.com/luxfi/node/upgrade/upgradetest"
-	"github.com/luxfi/node/utils/constants"
-	"github.com/luxfi/node/vms/platformvm/warp"
+	"github.com/luxfi/consensus"
+	"github.com/luxfi/consensus/validators"
 )
 
 var (
-	PChainID   = constants.PlatformChainID
+	PChainID   = ids.GenerateTestID()
 	XChainID   = ids.GenerateTestID()
 	CChainID   = ids.GenerateTestID()
 	LUXAssetID = ids.GenerateTestID()
@@ -38,7 +31,7 @@ var (
 
 type noOpAcceptor struct{}
 
-func (noOpAcceptor) Accept(*consensus.Context, ids.ID, []byte) error {
+func (noOpAcceptor) Accept(context.Context, ids.ID, []byte) error {
 	return nil
 }
 
