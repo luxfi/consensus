@@ -60,18 +60,18 @@ func (m *MockValidatorSet) Size() int {
 
 // State provides a mock implementation for validator state
 type State struct {
-	T              *testing.T
-	currentHeight  uint64
-	minimumHeight  uint64
-	validators     map[uint64][]Validator
-	chainID        ids.ID
-	
+	T             *testing.T
+	currentHeight uint64
+	minimumHeight uint64
+	validators    map[uint64][]Validator
+	chainID       ids.ID
+
 	// Function fields that can be overridden
-	GetNetIDF func(context.Context, ids.ID) (ids.ID, error)
+	GetNetIDF         func(context.Context, ids.ID) (ids.ID, error)
 	GetCurrentHeightF func(context.Context) (uint64, error)
 	GetMinimumHeightF func(context.Context) (uint64, error)
-	GetValidatorSetF func(context.Context, uint64, ids.ID) ([]Validator, error)
-	GetChainIDF func(ids.ID) (ids.ID, error)
+	GetValidatorSetF  func(context.Context, uint64, ids.ID) ([]Validator, error)
+	GetChainIDF       func(ids.ID) (ids.ID, error)
 }
 
 // NewState creates a new mock validator state
