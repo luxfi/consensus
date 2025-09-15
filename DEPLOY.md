@@ -1,6 +1,6 @@
-# Deployment Guide for ui.lux.finance
+# Deployment Guide for consensus.lux.network
 
-This guide explains how to deploy the Lux Consensus Documentation site to ui.lux.finance.
+This guide explains how to deploy the Lux Consensus Documentation site to consensus.lux.network.
 
 ## 🚀 Quick Deploy
 
@@ -16,9 +16,9 @@ vercel --prod
    - Go to Vercel Dashboard
    - Select your project
    - Go to Settings → Domains
-   - Add `ui.lux.finance`
+   - Add `consensus.lux.network`
    - Configure DNS:
-     - Add CNAME record: `ui` → `cname.vercel-dns.com`
+     - Add CNAME record: `consensus` → `cname.vercel-dns.com`
      - Or A record to Vercel's IP
 
 ### Option 2: GitHub Pages
@@ -34,12 +34,12 @@ git push origin main
    - Go to Repository Settings
    - Navigate to Pages section
    - Source: Deploy from a branch
-   - Branch: main
-   - Folder: /docs
-   - Custom domain: ui.lux.finance
+   - Branch: gh-pages
+   - Folder: / (root)
+   - Custom domain: consensus.lux.network
 
 3. **DNS Configuration:**
-   - Add CNAME record: `ui` → `luxfi.github.io`
+   - Add CNAME record: `consensus` → `luxfi.github.io`
    - Or A records to GitHub Pages IPs:
      - 185.199.108.153
      - 185.199.109.153
@@ -58,7 +58,7 @@ git push origin main
    - Publish directory: `docs`
 
 3. **Custom Domain:**
-   - Add domain: ui.lux.finance
+   - Add domain: consensus.lux.network
    - Configure DNS as directed
 
 ## 📦 Build Locally
@@ -85,26 +85,26 @@ npm run build
 
 ## 🌐 DNS Configuration
 
-For ui.lux.finance to work, configure DNS with your domain provider:
+For consensus.lux.network to work, configure DNS with your domain provider:
 
 ### For Vercel:
 ```
 Type: CNAME
-Name: ui
+Name: consensus
 Value: cname.vercel-dns.com
 ```
 
-### For GitHub Pages:
+### For GitHub Pages (Recommended):
 ```
 Type: CNAME
-Name: ui
+Name: consensus
 Value: luxfi.github.io
 ```
 
 ### For Netlify:
 ```
 Type: CNAME
-Name: ui
+Name: consensus
 Value: [your-site].netlify.app
 ```
 
