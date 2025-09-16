@@ -1,0 +1,13 @@
+{
+  "backend": "go",
+  "go_config": {
+    "max_goroutines": 100,
+    "enable_profiling": false
+  },
+  "performance": {
+    "cache_size": 1000,
+    "batch_processing": true,
+    "parallel_ops": 4
+  },
+  "debug": false
+}
