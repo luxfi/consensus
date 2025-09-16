@@ -1,13 +1,14 @@
 import { Link } from 'react-router-dom'
 import { Menu, X, Github, Book, Code2 } from 'lucide-react'
 import { useState } from 'react'
+import { Button } from './ui/button'
 import LuxLogo from './LuxLogo'
 
 export default function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <nav className="border-b border-gray-200 sticky top-0 z-50 bg-white/95 backdrop-blur-lg">
+    <nav className="border-b border-black sticky top-0 z-50 bg-white">
       <div className="container">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
@@ -16,28 +17,28 @@ export default function Navigation() {
             size="md"
             variant="full"
             outerClx="no-underline"
-            textClx="text-black"
+            textClx="text-black font-heading uppercase"
           />
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center space-x-8">
-            <Link to="/docs" className="flex items-center space-x-1 text-gray-600 hover:text-black transition-colors">
-              <Book className="w-4 h-4" />
-              <span className="font-medium">Documentation</span>
+            <Link to="/docs" className="text-sm font-medium text-black hover:text-gray-600 transition-colors uppercase tracking-wide">
+              Documentation
             </Link>
-            <Link to="/docs#languages" className="flex items-center space-x-1 text-gray-600 hover:text-black transition-colors">
-              <Code2 className="w-4 h-4" />
-              <span className="font-medium">Languages</span>
+            <Link to="/docs#languages" className="text-sm font-medium text-black hover:text-gray-600 transition-colors uppercase tracking-wide">
+              Implementations
             </Link>
-            <a 
-              href="https://github.com/luxfi/consensus" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center space-x-1 text-gray-600 hover:text-black transition-colors"
-            >
-              <Github className="w-4 h-4" />
-              <span className="font-medium">GitHub</span>
-            </a>
+            <Button variant="outline" size="sm" asChild>
+              <a 
+                href="https://github.com/luxfi/consensus" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center"
+              >
+                <Github className="w-4 h-4 mr-2" />
+                GitHub
+              </a>
+            </Button>
           </div>
 
           {/* Mobile menu button */}
