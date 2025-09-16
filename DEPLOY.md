@@ -157,10 +157,10 @@ No environment variables required for static site deployment.
 - ✅ Vercel configuration ready
 - ✅ GitHub Pages workflow configured
 - ✅ CNAME file in place
-- ⏳ Awaiting DNS configuration for ui.lux.finance
+- ⏳ Awaiting DNS configuration for consensus.lux.network
 
 ## 🔗 Related Links
 
-- Production: https://ui.lux.finance (pending DNS)
+- Production: https://consensus.lux.network (pending DNS)
 - Repository: https://github.com/luxfi/consensus
 - Main Site: https://lux.network
