@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
-import { ArrowRight, Zap, Shield, Cpu, Globe, Code2, BarChart3 } from 'lucide-react'
+import { ArrowRight, Zap, Shield, Cpu, Code2, BarChart3, Globe } from 'lucide-react'
 import { motion } from 'framer-motion'
 import LuxLogo from '../components/LuxLogo'
+import { Button } from '../components/ui/button'
 
 export default function HomePage() {
   const stats = [
@@ -74,26 +75,30 @@ export default function HomePage() {
             </p>
             
             <div className="flex flex-wrap gap-4">
-              <Link to="/docs" className="btn btn-primary inline-flex items-center">
-                Documentation
-                <ArrowRight className="ml-2 w-4 h-4" />
-              </Link>
-              <a 
-                href="https://github.com/luxfi/consensus" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="btn inline-flex items-center"
-              >
-                View on GitHub
-                <ArrowRight className="ml-2 w-4 h-4" />
-              </a>
+              <Button size="lg" asChild>
+                <Link to="/docs" className="inline-flex items-center">
+                  DOCUMENTATION
+                  <ArrowRight className="ml-2 w-4 h-4" />
+                </Link>
+              </Button>
+              <Button variant="outline" size="lg" asChild>
+                <a 
+                  href="https://github.com/luxfi/consensus" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center"
+                >
+                  VIEW ON GITHUB
+                  <ArrowRight className="ml-2 w-4 h-4" />
+                </a>
+              </Button>
             </div>
           </motion.div>
         </div>
       </section>
 
       {/* Stats Grid */}
-      <section className="py-16 border-y border-gray-200 bg-gray-50">
+      <section className="py-16 border-y-2 border-black bg-white">
         <div className="container">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
             {stats.map((stat, index) => (
