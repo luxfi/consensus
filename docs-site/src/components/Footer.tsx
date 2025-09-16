@@ -2,7 +2,7 @@ import { LuxIcon } from './LuxLogo'
 
 export default function Footer() {
   return (
-    <footer className="border-t-2 border-black py-12 mt-24 bg-black text-white">
+    <footer className="border-t-4 border-black py-12 mt-24 bg-black text-white">
       <div className="container">
         <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
           <div className="flex items-center space-x-3">

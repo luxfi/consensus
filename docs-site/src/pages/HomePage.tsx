@@ -98,7 +98,7 @@ export default function HomePage() {
       </section>
 
       {/* Stats Grid */}
-      <section className="py-16 border-y-2 border-black bg-white">
+      <section className="py-16 bg-black text-white">
         <div className="container">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
             {stats.map((stat, index) => (
@@ -109,12 +109,12 @@ export default function HomePage() {
                 transition={{ duration: 0.5, delay: index * 0.1 }}
                 className="text-center"
               >
-                <stat.icon className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                <div className="text-2xl font-bold font-mono">{stat.value}</div>
+                <stat.icon className="w-8 h-8 mx-auto mb-2" />
+                <div className="text-2xl font-black font-mono uppercase">{stat.value}</div>
                 {stat.unit && (
-                  <div className="text-xs text-gray-500 font-mono">{stat.unit}</div>
+                  <div className="text-xs opacity-75 font-mono">{stat.unit}</div>
                 )}
-                <div className="text-sm text-gray-600 mt-1">
+                <div className="text-sm opacity-75 mt-1 uppercase tracking-wider">
                   {stat.label}
                 </div>
               </motion.div>
@@ -131,7 +131,7 @@ export default function HomePage() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
           >
-            <h2 className="text-3xl lg:text-4xl font-bold font-mono mb-12">
+            <h2 className="text-3xl lg:text-4xl font-black uppercase mb-12">
               Choose Your Implementation
             </h2>
             
@@ -145,7 +145,7 @@ export default function HomePage() {
                 >
                   <Link
                     to={`/docs/${lang.path}`}
-                    className="card block hover:border-black transition-all group bg-white"
+                    className="block border-2 border-black bg-white p-6 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all group"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="text-3xl">{lang.icon}</div>
