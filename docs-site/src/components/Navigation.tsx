@@ -8,9 +8,9 @@ export default function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <nav className="border-b border-black sticky top-0 z-50 bg-white">
+    <nav className="border-b-4 border-black sticky top-0 z-50 bg-white">
       <div className="container">
-        <div className="flex h-16 items-center justify-between">
+        <div className="flex h-20 items-center justify-between">
           {/* Logo */}
           <LuxLogo 
             href="/" 
