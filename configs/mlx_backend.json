@@ -1,0 +1,15 @@
+{
+  "backend": "mlx",
+  "mlx_config": {
+    "model_path": "/models/consensus/mlx_model.bin",
+    "device_type": "metal",
+    "batch_size": 32,
+    "enable_quantization": true
+  },
+  "performance": {
+    "cache_size": 5000,
+    "batch_processing": true,
+    "parallel_ops": 8
+  },
+  "debug": false
+}

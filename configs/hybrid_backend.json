@@ -1,0 +1,36 @@
+{
+  "backend": "go",
+  "go_config": {
+    "max_goroutines": 100,
+    "enable_profiling": false
+  },
+  "c_config": {
+    "library_path": "/usr/local/lib/luxconsensus.so",
+    "thread_count": 8,
+    "enable_avx": true
+  },
+  "mlx_config": {
+    "model_path": "/models/consensus/mlx_model.bin",
+    "device_type": "metal",
+    "batch_size": 32,
+    "enable_quantization": true
+  },
+  "hybrid_mode": {
+    "primary": "go",
+    "fallback": "c",
+    "specializations": {
+      "verify_signature": "c",
+      "compute_merkle": "c",
+      "validate_block": "mlx",
+      "predict_consensus": "mlx"
+    },
+    "auto_switch": true,
+    "load_threshold": 0.8
+  },
+  "performance": {
+    "cache_size": 5000,
+    "batch_processing": true,
+    "parallel_ops": 8
+  },
+  "debug": false
+}

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/luxfi/consensus/snow"
+	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/database/manager"
 	"github.com/luxfi/ids"
 )
@@ -38,8 +38,7 @@ type BuildBlockWithContextChainVM interface {
 
 // ChainContext provides chain context
 type ChainContext struct {
-	*snow.ConsensusContext
-	*snow.Context
+	*consensuscontext.Context
 }
 
 // DBManager manages databases

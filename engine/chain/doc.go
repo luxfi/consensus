@@ -1,4 +1,4 @@
-// Package chain implements linear consensus via the Snowman protocol.
+// Package chain implements linear consensus protocol.
 //
 // Chain handles sequential blocks in a linear topology, where each block
 // extends exactly one parent. The consensus pipeline flows:
