@@ -1,0 +1,28 @@
+{
+  "backend": "ai",
+  "ai": {
+    "prediction_model": "/models/consensus/prediction.mlx",
+    "optimization_model": "/models/consensus/optimizer.mlx",
+    "validation_model": "/models/consensus/validator.mlx",
+    "enable_prediction": true,
+    "enable_optimization": true,
+    "enable_validation": true,
+    "confidence_threshold": 0.95,
+    "consensus_threshold": 0.67,
+    "enable_learning": true,
+    "learning_rate": 0.001
+  },
+  "mlx_config": {
+    "model_path": "/models/consensus/mlx_model.bin",
+    "device_type": "metal",
+    "batch_size": 32,
+    "enable_quantization": true
+  },
+  "performance": {
+    "cache_size": 10000,
+    "batch_processing": true,
+    "parallel_ops": 16,
+    "max_latency": 50
+  },
+  "debug": false
+}
