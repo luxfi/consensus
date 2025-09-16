@@ -7,9 +7,23 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/luxfi/consensus/snow"
+	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/database/manager"
 	"github.com/luxfi/ids"
+)
+
+// VMState represents the state of a VM
+type VMState uint8
+
+const (
+	// VMInitializing is the state of a VM that is initializing
+	VMInitializing VMState = iota
+	// VMStateSyncing is the state of a VM that is syncing state
+	VMStateSyncing
+	// VMBootstrapping is the state of a VM that is bootstrapping
+	VMBootstrapping
+	// VMNormalOp is the state of a VM that is in normal operation
+	VMNormalOp
 )
 
 // VM defines the interface that all VMs must implement
@@ -17,7 +31,7 @@ type VM interface {
 	// Initialize initializes the VM
 	Initialize(
 		ctx context.Context,
-		chainCtx *snow.Context,
+		chainCtx *consensuscontext.Context,
 		dbManager manager.Manager,
 		genesisBytes []byte,
 		upgradeBytes []byte,
@@ -28,7 +42,7 @@ type VM interface {
 	) error
 
 	// SetState sets the state of the VM
-	SetState(ctx context.Context, state snow.State) error
+	SetState(ctx context.Context, state VMState) error
 
 	// Shutdown shuts down the VM
 	Shutdown(ctx context.Context) error
