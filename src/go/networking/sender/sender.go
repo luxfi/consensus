@@ -1,13 +1,23 @@
+// Package sender is DEPRECATED.
+// This package should be in the node repository as it's part of the P2P layer, not consensus.
+//
+// Migration:
+//
+//	OLD: import "github.com/luxfi/consensus/networking/sender"
+//	NEW: import "github.com/luxfi/node/network/router"
 package sender
 
 import (
 	"context"
+	"errors"
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/math/set"
 )
 
-// Sender sends messages
+var ErrDeprecated = errors.New("sender package should be in github.com/luxfi/node/network/router")
+
+// Sender sends messages - DEPRECATED
 type Sender interface {
 	// Send sends a message
 	Send(context.Context, Message) error
@@ -22,7 +32,7 @@ type Sender interface {
 	SendAppGossip(context.Context, set.Set[ids.NodeID], []byte) error
 }
 
-// Message represents a message to send
+// Message represents a message to send - DEPRECATED
 type Message struct {
 	NodeIDs   set.Set[ids.NodeID]
 	RequestID uint32
@@ -30,7 +40,7 @@ type Message struct {
 	Bytes     []byte
 }
 
-// Op represents an operation
+// Op represents an operation - DEPRECATED
 type Op byte
 
 const (

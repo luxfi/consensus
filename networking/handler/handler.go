@@ -1,12 +1,22 @@
+// Package handler is DEPRECATED.
+// This package should be in the node repository as it's part of the P2P layer, not consensus.
+//
+// Migration:
+//
+//	OLD: import "github.com/luxfi/consensus/networking/handler"
+//	NEW: import "github.com/luxfi/node/network/router"
 package handler
 
 import (
 	"context"
+	"errors"
 
 	"github.com/luxfi/ids"
 )
 
-// Handler handles network messages
+var ErrDeprecated = errors.New("handler package should be in github.com/luxfi/node/network/router")
+
+// Handler handles network messages - DEPRECATED
 type Handler interface {
 	// HandleInbound handles inbound messages
 	HandleInbound(context.Context, Message) error
@@ -21,7 +31,7 @@ type Handler interface {
 	Disconnected(context.Context, ids.NodeID) error
 }
 
-// Message represents a network message
+// Message represents a network message - DEPRECATED
 type Message struct {
 	NodeID    ids.NodeID
 	RequestID uint32
@@ -29,7 +39,7 @@ type Message struct {
 	Message   []byte
 }
 
-// Op represents an operation
+// Op represents an operation - DEPRECATED
 type Op byte
 
 const (

@@ -1,9 +1,9 @@
 module github.com/luxfi/consensus
 
-go 1.24.6
+go 1.24.5
 
 require (
-	github.com/ethereum/go-ethereum v1.16.3
+	github.com/luxfi/geth v1.16.34-lux.6
 	github.com/luxfi/crypto v1.3.2
 	github.com/luxfi/database v1.1.13
 	github.com/luxfi/ids v1.0.2
