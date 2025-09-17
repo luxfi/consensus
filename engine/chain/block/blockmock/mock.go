@@ -49,6 +49,14 @@ func (m *MockBlock) Reject(ctx context.Context) error {
 	return nil
 }
 
+// ChainVM is a mock implementation of a chain VM
+type ChainVM struct{}
+
+// NewChainVM creates a new mock chain VM
+func NewChainVM() *ChainVM {
+	return &ChainVM{}
+}
+
 // Status returns the block status
 func (m *MockBlock) Status() int {
 	if m.accepted {

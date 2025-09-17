@@ -1,6 +1,6 @@
 module github.com/luxfi/consensus
 
-go 1.24.6
+go 1.23
 
 require (
 	github.com/ethereum/go-ethereum v1.16.3
@@ -17,7 +17,7 @@ require (
 require (
 	github.com/DataDog/zstd v1.5.7 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bits-and-blooms/bitset v1.22.0 // indirect
+	github.com/bits-and-blooms/bitset v1.24.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
@@ -78,3 +78,5 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/luxfi/crypto => ../crypto

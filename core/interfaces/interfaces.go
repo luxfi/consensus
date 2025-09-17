@@ -10,6 +10,13 @@ import (
 	"github.com/luxfi/ids"
 )
 
+// Operation states
+const (
+	NormalOp    = 0
+	StoppedOp   = 1
+	BootstrapOp = 2
+)
+
 // State represents the state of the consensus
 type State interface {
 	// GetBlock retrieves a block by its ID
