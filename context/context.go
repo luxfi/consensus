@@ -21,6 +21,7 @@ type Context struct {
 	XChainID    ids.ID     `json:"xChainID"`
 	CChainID    ids.ID     `json:"cChainID"`
 	AVAXAssetID ids.ID     `json:"avaxAssetID"`
+	LUXAssetID  ids.ID     `json:"luxAssetID"`
 
 	// Timing
 	StartTime time.Time `json:"startTime"`
@@ -170,6 +171,15 @@ func WithValidatorState(ctx context.Context, vs ValidatorState) context.Context 
 	}
 	c.ValidatorState = vs
 	return WithContext(ctx, c)
+}
+
+// GetLUXAssetID returns the LUX asset ID from the context
+func GetLUXAssetID(ctx context.Context) ids.ID {
+	c := FromContext(ctx)
+	if c == nil {
+		return ids.Empty
+	}
+	return c.LUXAssetID
 }
 
 type contextKeyType struct{}

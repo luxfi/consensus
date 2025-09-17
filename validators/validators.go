@@ -3,7 +3,9 @@ package validators
 import (
 	"context"
 
+	"github.com/luxfi/consensus/utils/set"
 	"github.com/luxfi/consensus/version"
+	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/ids"
 )
 
@@ -56,12 +58,35 @@ func (v *ValidatorImpl) Light() uint64 {
 
 // Manager manages validator sets
 type Manager interface {
+	// Add a new staker to the subnet
+	AddStaker(subnetID ids.ID, nodeID ids.NodeID, pk *bls.PublicKey, txID ids.ID, weight uint64) error
+
+	// AddWeight to an existing staker
+	AddWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error
+
+	// RemoveWeight from a staker. If weight becomes 0, removes the staker
+	RemoveWeight(subnetID ids.ID, nodeID ids.NodeID, weight uint64) error
+
+	// Get all validators for a subnet
 	GetValidators(netID ids.ID) (Set, error)
 	GetValidator(netID ids.ID, nodeID ids.NodeID) (*GetValidatorOutput, bool)
 	GetLight(netID ids.ID, nodeID ids.NodeID) uint64
 	GetWeight(netID ids.ID, nodeID ids.NodeID) uint64 // Deprecated: use GetLight
 	TotalLight(netID ids.ID) (uint64, error)
 	TotalWeight(netID ids.ID) (uint64, error) // Deprecated: use TotalLight
+
+	// Additional methods needed by overridden_manager
+	GetValidatorIDs(netID ids.ID) []ids.NodeID
+	GetMap(netID ids.ID) map[ids.NodeID]*GetValidatorOutput
+	Sample(netID ids.ID, size int) ([]ids.NodeID, error)
+	SubsetWeight(netID ids.ID, nodeIDs set.Set[ids.NodeID]) (uint64, error)
+	Count(netID ids.ID) int
+	NumSubnets() int
+	NumValidators(netID ids.ID) int
+
+	// Callback registration
+	RegisterCallbackListener(listener ManagerCallbackListener)
+	RegisterSetCallbackListener(netID ids.ID, listener SetCallbackListener)
 }
 
 // SetCallbackListener listens to validator set changes
