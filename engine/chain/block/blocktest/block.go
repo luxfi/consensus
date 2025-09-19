@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/choices"
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/protocol/chain"
+	"github.com/luxfi/ids"
 )
 
 var (
@@ -40,7 +40,7 @@ type Block struct {
 	StatusV    choices.Status
 
 	ShouldVerifyV bool
-	ErrV         error
+	ErrV          error
 }
 
 func (b *Block) ID() ids.ID {
@@ -97,12 +97,12 @@ func BuildChild(parent chain.Block) *Block {
 	timestamp := parent.Timestamp().Add(time.Second)
 
 	return &Block{
-		IDV:        blockID,
-		HeightV:    parent.Height() + 1,
-		TimestampV: timestamp,
-		ParentV:    parent.ID(),
-		BytesV:     []byte(fmt.Sprintf("block_%d", nextID)),
-		StatusV:    choices.Processing,
+		IDV:           blockID,
+		HeightV:       parent.Height() + 1,
+		TimestampV:    timestamp,
+		ParentV:       parent.ID(),
+		BytesV:        []byte(fmt.Sprintf("block_%d", nextID)),
+		StatusV:       choices.Processing,
 		ShouldVerifyV: true,
 	}
 }

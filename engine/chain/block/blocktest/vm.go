@@ -29,12 +29,12 @@ type VM struct {
 		interface{},
 	) error
 
-	LastAcceptedF func(context.Context) (ids.ID, error)
-	GetBlockF     func(context.Context, ids.ID) (block.Block, error)
-	ParseBlockF   func(context.Context, []byte) (block.Block, error)
-	BuildBlockF   func(context.Context) (block.Block, error)
+	LastAcceptedF       func(context.Context) (ids.ID, error)
+	GetBlockF           func(context.Context, ids.ID) (block.Block, error)
+	ParseBlockF         func(context.Context, []byte) (block.Block, error)
+	BuildBlockF         func(context.Context) (block.Block, error)
 	GetBlockIDAtHeightF func(context.Context, uint64) (ids.ID, error)
-	SetPreferenceF func(context.Context, ids.ID) error
+	SetPreferenceF      func(context.Context, ids.ID) error
 }
 
 func (vm *VM) Initialize(

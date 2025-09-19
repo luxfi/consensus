@@ -20,26 +20,26 @@ type CGOConsensus struct {
 	mu         sync.RWMutex
 	preference atomic.Value // ids.ID
 	finalized  atomic.Bool
-	
+
 	// Cache for blocks
 	blockCache map[ids.ID]*cachedBlock
 	cacheMu    sync.RWMutex
-	
+
 	// Store parameters for later retrieval
 	params ConsensusParams
-	
+
 	// Consensus state
 	accepted map[ids.ID]bool
 }
 
 // cachedBlock stores block data
 type cachedBlock struct {
-	id       ids.ID
-	parentID ids.ID
-	height   uint64
+	id        ids.ID
+	parentID  ids.ID
+	height    uint64
 	timestamp int64
-	data     []byte
-	status   BlockStatus
+	data      []byte
+	status    BlockStatus
 }
 
 // BlockStatus is defined in types.go
@@ -51,10 +51,10 @@ func NewCGOConsensus(params ConsensusParams) (*CGOConsensus, error) {
 		params:     params,
 		accepted:   make(map[ids.ID]bool),
 	}
-	
+
 	// Set initial preference
 	c.preference.Store(ids.Empty)
-	
+
 	return c, nil
 }
 
@@ -62,7 +62,7 @@ func NewCGOConsensus(params ConsensusParams) (*CGOConsensus, error) {
 func (c *CGOConsensus) Add(block Block) error {
 	// Fast path: check cache first
 	blockID := block.ID()
-	
+
 	c.cacheMu.RLock()
 	if _, exists := c.blockCache[blockID]; exists {
 		c.cacheMu.RUnlock()
@@ -98,7 +98,7 @@ func (c *CGOConsensus) RecordPoll(blockID ids.ID, isPreference bool) error {
 	if isPreference {
 		c.accepted[blockID] = true
 		c.preference.Store(blockID)
-		
+
 		// Update cache
 		c.cacheMu.Lock()
 		if cached, ok := c.blockCache[blockID]; ok {
@@ -123,7 +123,7 @@ func (c *CGOConsensus) IsAccepted(blockID ids.ID) bool {
 	// Slow path: check accepted map
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	return c.accepted[blockID]
 }
 
@@ -160,12 +160,12 @@ func (c *CGOConsensus) GetStats() (*Stats, error) {
 	defer c.mu.RUnlock()
 
 	acceptedCount := uint64(len(c.accepted))
-	
+
 	return &Stats{
-		BlocksAccepted: acceptedCount,
-		BlocksRejected: 0,
-		VotesProcessed: acceptedCount * 2, // Rough estimate
-		PollsCompleted: acceptedCount,
+		BlocksAccepted:        acceptedCount,
+		BlocksRejected:        0,
+		VotesProcessed:        acceptedCount * 2, // Rough estimate
+		PollsCompleted:        acceptedCount,
 		AverageDecisionTimeMs: 100, // Mock value
 	}, nil
 }
