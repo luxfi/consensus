@@ -1,6 +1,6 @@
 module github.com/luxfi/consensus
 
-go 1.24.5
+go 1.22
 
 require (
 	github.com/luxfi/geth v1.16.34-lux.6

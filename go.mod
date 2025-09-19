@@ -1,6 +1,6 @@
 module github.com/luxfi/consensus
 
-go 1.24.5
+go 1.23
 
 require (
 	github.com/ethereum/go-ethereum v1.16.3
