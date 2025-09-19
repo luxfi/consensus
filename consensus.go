@@ -3,6 +3,7 @@ package consensus
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/luxfi/consensus/codec"
 	"github.com/luxfi/consensus/config"
@@ -25,6 +26,13 @@ type Engine interface {
 
 	// IsBootstrapped returns whether the engine is bootstrapped
 	IsBootstrapped() bool
+}
+
+// GetChainDataDir returns the chain data directory for the consensus context
+func GetChainDataDir(ctx interface{}) string {
+	// TODO: implement proper chain data directory resolution
+	// For now, return a default path
+	return filepath.Join("/tmp", "chaindata")
 }
 
 // NewChainEngine creates a new chain consensus engine
