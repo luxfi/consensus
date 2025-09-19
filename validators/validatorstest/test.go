@@ -15,12 +15,12 @@ type TestState struct {
 	validators map[ids.ID]validators.Set
 
 	// Function fields for test customization
-	GetCurrentHeightF    func(context.Context) (uint64, error)
-	GetMinimumHeightF    func(context.Context) (uint64, error)
-	GetValidatorSetF     func(context.Context, uint64, ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error)
-	GetChainIDF          func(ids.ID) (ids.ID, error)
-	GetNetIDF            func(ids.ID) (ids.ID, error)
-	GetSubnetIDF         func(ids.ID) (ids.ID, error)
+	GetCurrentHeightF      func(context.Context) (uint64, error)
+	GetMinimumHeightF      func(context.Context) (uint64, error)
+	GetValidatorSetF       func(context.Context, uint64, ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error)
+	GetChainIDF            func(ids.ID) (ids.ID, error)
+	GetNetIDF              func(ids.ID) (ids.ID, error)
+	GetSubnetIDF           func(ids.ID) (ids.ID, error)
 	GetValidatorSetSimpleF func(uint64, ids.ID) (map[ids.NodeID]uint64, error)
 }
 
@@ -92,7 +92,6 @@ func (s *TestState) GetSubnetID(chainID ids.ID) (ids.ID, error) {
 	return ids.Empty, nil
 }
 
-
 // GetValidatorSetSimple returns validator set for ValidatorState interface
 func (s *TestState) GetValidatorSetSimple(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error) {
 	if s.GetValidatorSetSimpleF != nil {
@@ -119,5 +118,3 @@ func (s *TestState) GetValidatorSetSimple(height uint64, subnetID ids.ID) (map[i
 func (s *TestState) GetValidatorSetForConsensus(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error) {
 	return s.GetValidatorSetSimple(height, subnetID)
 }
-
-

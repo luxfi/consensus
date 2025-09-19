@@ -155,11 +155,17 @@ func WithIDs(ctx context.Context, ids IDs) context.Context {
 	if c == nil {
 		c = &Context{}
 	}
-	c.QuantumID = ids.QuantumID
+	// Set QuantumID from NetworkID if QuantumID is not provided
+	if ids.QuantumID != 0 {
+		c.QuantumID = ids.QuantumID
+	} else if ids.NetworkID != 0 {
+		c.QuantumID = ids.NetworkID
+	}
 	c.NetID = ids.NetID
 	c.ChainID = ids.ChainID
 	c.NodeID = ids.NodeID
 	c.PublicKey = ids.PublicKey
+	c.LUXAssetID = ids.LUXAssetID
 	return WithContext(ctx, c)
 }
 

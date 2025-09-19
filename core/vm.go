@@ -149,4 +149,3 @@ const (
 	// NormalOp means the VM is operating normally
 	NormalOp = interfaces.NormalOp
 )
-

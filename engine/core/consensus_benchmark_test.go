@@ -56,16 +56,16 @@ func BenchmarkSingleBlockAdd(b *testing.B) {
 // BenchmarkBatchBlockOperations benchmarks batch block operations
 func BenchmarkBatchBlockOperations(b *testing.B) {
 	sizes := []int{100, 1000, 10000}
-	
+
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("Batch_%d", size), func(b *testing.B) {
 			b.ResetTimer()
-			
+
 			for n := 0; n < b.N; n++ {
 				config := DefaultConfig()
 				config.MaxOutstandingItems = 100000
 				engine := NewConsensus(config)
-				
+
 				for i := 0; i < size; i++ {
 					blockID := makeID(byte(i>>16), byte(i>>8), byte(i&0xFF))
 					block := &TestBlock{
@@ -85,7 +85,7 @@ func BenchmarkBatchBlockOperations(b *testing.B) {
 func BenchmarkSingleVoteProcessing(b *testing.B) {
 	config := DefaultConfig()
 	engine := NewConsensus(config)
-	
+
 	// Add blocks to vote on
 	for i := 0; i < 100; i++ {
 		blockID := makeID(byte(i))
@@ -97,18 +97,18 @@ func BenchmarkSingleVoteProcessing(b *testing.B) {
 		err := engine.Add(block)
 		require.NoError(b, err)
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		voterID := makeID(byte(i>>8), byte(i&0xFF))
 		blockID := makeID(byte(i % 100))
-		
+
 		vote := Vote{
 			VoterID:      voterID,
 			BlockID:      blockID,
 			IsPreference: i%2 == 0,
 		}
-		
+
 		err := engine.ProcessVote(vote)
 		require.NoError(b, err)
 	}
@@ -117,12 +117,12 @@ func BenchmarkSingleVoteProcessing(b *testing.B) {
 // BenchmarkBatchVoteProcessing benchmarks batch vote processing
 func BenchmarkBatchVoteProcessing(b *testing.B) {
 	sizes := []int{1000, 10000, 100000}
-	
+
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("Batch_%d", size), func(b *testing.B) {
 			config := DefaultConfig()
 			engine := NewConsensus(config)
-			
+
 			// Add blocks to vote on
 			for i := 0; i < 100; i++ {
 				blockID := makeID(byte(i))
@@ -134,19 +134,19 @@ func BenchmarkBatchVoteProcessing(b *testing.B) {
 				err := engine.Add(block)
 				require.NoError(b, err)
 			}
-			
+
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
 				for i := 0; i < size; i++ {
 					voterID := makeID(byte(i>>16), byte(i>>8), byte(i&0xFF))
 					blockID := makeID(byte(i % 100))
-					
+
 					vote := Vote{
 						VoterID:      voterID,
 						BlockID:      blockID,
 						IsPreference: i%2 == 0,
 					}
-					
+
 					err := engine.ProcessVote(vote)
 					require.NoError(b, err)
 				}
@@ -159,7 +159,7 @@ func BenchmarkBatchVoteProcessing(b *testing.B) {
 func BenchmarkQueryOperations(b *testing.B) {
 	config := DefaultConfig()
 	engine := NewConsensus(config)
-	
+
 	// Add blocks
 	blockIDs := make([]ID, 1000)
 	for i := 0; i < 1000; i++ {
@@ -173,7 +173,7 @@ func BenchmarkQueryOperations(b *testing.B) {
 		err := engine.Add(block)
 		require.NoError(b, err)
 	}
-	
+
 	b.Run("IsAccepted", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -181,14 +181,14 @@ func BenchmarkQueryOperations(b *testing.B) {
 			_ = engine.IsAccepted(blockID)
 		}
 	})
-	
+
 	b.Run("GetPreference", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			_ = engine.GetPreference()
 		}
 	})
-	
+
 	b.Run("GetStats", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -200,24 +200,24 @@ func BenchmarkQueryOperations(b *testing.B) {
 // BenchmarkConcurrentOperations benchmarks concurrent operations
 func BenchmarkConcurrentOperations(b *testing.B) {
 	threadCounts := []int{1, 2, 4, 8}
-	
+
 	for _, numThreads := range threadCounts {
 		b.Run(fmt.Sprintf("Threads_%d", numThreads), func(b *testing.B) {
 			b.ResetTimer()
-			
+
 			for n := 0; n < b.N; n++ {
 				config := DefaultConfig()
 				config.MaxOutstandingItems = 10000
 				engine := NewConsensus(config)
-				
+
 				operationsPerThread := 1000
 				var wg sync.WaitGroup
 				wg.Add(numThreads)
-				
+
 				for threadID := 0; threadID < numThreads; threadID++ {
 					go func(tid int) {
 						defer wg.Done()
-						
+
 						for i := 0; i < operationsPerThread; i++ {
 							blockID := makeID(byte(tid), byte(i>>8), byte(i&0xFF))
 							block := &TestBlock{
@@ -232,7 +232,7 @@ func BenchmarkConcurrentOperations(b *testing.B) {
 						}
 					}(threadID)
 				}
-				
+
 				wg.Wait()
 			}
 		})
@@ -242,16 +242,16 @@ func BenchmarkConcurrentOperations(b *testing.B) {
 // BenchmarkMemoryUsage benchmarks memory usage with large datasets
 func BenchmarkMemoryUsage(b *testing.B) {
 	sizes := []int{1000, 10000, 100000}
-	
+
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("Blocks_%d", size), func(b *testing.B) {
 			b.ResetTimer()
-			
+
 			for n := 0; n < b.N; n++ {
 				config := DefaultConfig()
 				config.MaxOutstandingItems = 200000
 				engine := NewConsensus(config)
-				
+
 				for i := 0; i < size; i++ {
 					blockID := makeID(byte(i>>24), byte(i>>16), byte(i>>8), byte(i&0xFF))
 					data := fmt.Sprintf("Block data %d", i)
@@ -273,12 +273,12 @@ func BenchmarkMemoryUsage(b *testing.B) {
 func BenchmarkPerformance(b *testing.B) {
 	b.Run("Add1000Blocks", func(b *testing.B) {
 		b.ResetTimer()
-		
+
 		for n := 0; n < b.N; n++ {
 			config := DefaultConfig()
 			config.MaxOutstandingItems = 10000
 			engine := NewConsensus(config)
-			
+
 			start := time.Now()
 			for i := 0; i < 1000; i++ {
 				blockID := makeID(byte(i>>8), byte(i&0xFF))
@@ -291,20 +291,20 @@ func BenchmarkPerformance(b *testing.B) {
 				require.NoError(b, err)
 			}
 			elapsed := time.Since(start)
-			
+
 			if elapsed > time.Second {
 				b.Errorf("Adding 1000 blocks took %v, expected < 1s", elapsed)
 			}
 		}
 	})
-	
+
 	b.Run("Process10000Votes", func(b *testing.B) {
 		b.ResetTimer()
-		
+
 		for n := 0; n < b.N; n++ {
 			config := DefaultConfig()
 			engine := NewConsensus(config)
-			
+
 			// Add blocks to vote on
 			for i := 0; i < 1000; i++ {
 				blockID := makeID(byte(i>>8), byte(i&0xFF))
@@ -316,24 +316,24 @@ func BenchmarkPerformance(b *testing.B) {
 				err := engine.Add(block)
 				require.NoError(b, err)
 			}
-			
+
 			start := time.Now()
 			for i := 0; i < 10000; i++ {
 				voterID := makeID(byte(i>>8), byte(i&0xFF))
 				blockIndex := i % 1000
 				blockID := makeID(byte(blockIndex>>8), byte(blockIndex&0xFF))
-				
+
 				vote := Vote{
 					VoterID:      voterID,
 					BlockID:      blockID,
 					IsPreference: i%2 == 0,
 				}
-				
+
 				err := engine.ProcessVote(vote)
 				require.NoError(b, err)
 			}
 			elapsed := time.Since(start)
-			
+
 			if elapsed > 2*time.Second {
 				b.Errorf("Processing 10000 votes took %v, expected < 2s", elapsed)
 			}

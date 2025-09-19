@@ -11,15 +11,15 @@ import (
 // NewManager creates a new validator manager
 func NewManager() *manager {
 	return &manager{
-		validators: make(map[ids.ID]map[ids.NodeID]*GetValidatorOutput),
-		callbacks:  []ManagerCallbackListener{},
+		validators:   make(map[ids.ID]map[ids.NodeID]*GetValidatorOutput),
+		callbacks:    []ManagerCallbackListener{},
 		setCallbacks: make(map[ids.ID][]SetCallbackListener),
 	}
 }
 
 type manager struct {
-	validators map[ids.ID]map[ids.NodeID]*GetValidatorOutput
-	callbacks  []ManagerCallbackListener
+	validators   map[ids.ID]map[ids.NodeID]*GetValidatorOutput
+	callbacks    []ManagerCallbackListener
 	setCallbacks map[ids.ID][]SetCallbackListener
 }
 

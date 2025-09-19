@@ -5,8 +5,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/engine/chain/block"
+	"github.com/luxfi/ids"
 )
 
 // Block interface for mocking - copy of the parent Block interface
@@ -82,13 +82,13 @@ func (m *MockBlock) Reject(ctx context.Context) error {
 // ChainVM is a mock implementation of a chain VM with configurable functions
 type ChainVM struct {
 	// Function fields for configurable behavior
-	InitializeF       func(context.Context, interface{}, interface{}, []byte, []byte, []byte, interface{}, []interface{}, interface{}) error
-	BuildBlockF       func(context.Context) (block.Block, error)
-	ParseBlockF       func(context.Context, []byte) (block.Block, error)
-	GetBlockF         func(context.Context, ids.ID) (block.Block, error)
+	InitializeF         func(context.Context, interface{}, interface{}, []byte, []byte, []byte, interface{}, []interface{}, interface{}) error
+	BuildBlockF         func(context.Context) (block.Block, error)
+	ParseBlockF         func(context.Context, []byte) (block.Block, error)
+	GetBlockF           func(context.Context, ids.ID) (block.Block, error)
 	GetBlockIDAtHeightF func(context.Context, uint64) (ids.ID, error)
-	SetPreferenceF    func(context.Context, ids.ID) error
-	LastAcceptedF     func(context.Context) (ids.ID, error)
+	SetPreferenceF      func(context.Context, ids.ID) error
+	LastAcceptedF       func(context.Context) (ids.ID, error)
 }
 
 // NewChainVM creates a new mock chain VM
