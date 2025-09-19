@@ -7,7 +7,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/luxfi/consensus/snow"
+	consensusContext "github.com/luxfi/consensus/context"
+	"github.com/luxfi/consensus/interfaces"
 	"github.com/luxfi/database/manager"
 	"github.com/luxfi/ids"
 )
@@ -17,7 +18,7 @@ type VM interface {
 	// Initialize initializes the VM
 	Initialize(
 		ctx context.Context,
-		chainCtx *snow.Context,
+		chainCtx *consensusContext.Context,
 		dbManager manager.Manager,
 		genesisBytes []byte,
 		upgradeBytes []byte,
@@ -28,7 +29,7 @@ type VM interface {
 	) error
 
 	// SetState sets the state of the VM
-	SetState(ctx context.Context, state snow.State) error
+	SetState(ctx context.Context, state interfaces.State) error
 
 	// Shutdown shuts down the VM
 	Shutdown(ctx context.Context) error
@@ -140,3 +141,12 @@ type Fx struct {
 	ID ids.ID
 	Fx interface{}
 }
+
+// Re-export State constants for convenience
+const (
+	// Bootstrapping means the VM is currently bootstrapping
+	Bootstrapping = interfaces.Bootstrapping
+	// NormalOp means the VM is operating normally
+	NormalOp = interfaces.NormalOp
+)
+

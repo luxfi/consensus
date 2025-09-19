@@ -185,3 +185,41 @@ func GetLUXAssetID(ctx context.Context) ids.ID {
 type contextKeyType struct{}
 
 var contextKey = contextKeyType{}
+
+// ValidatorStateAdapter adapts validators.State to consensus context ValidatorState
+type ValidatorStateAdapter struct {
+	validators interface {
+		GetCurrentHeight(ctx context.Context) (uint64, error)
+		GetValidatorSet(ctx context.Context, height uint64, subnetID ids.ID) (map[ids.NodeID]*interface{}, error)
+	}
+}
+
+// GetCurrentHeight implements ValidatorState
+func (a *ValidatorStateAdapter) GetCurrentHeight() (uint64, error) {
+	return a.validators.GetCurrentHeight(context.Background())
+}
+
+// GetMinimumHeight implements ValidatorState
+func (a *ValidatorStateAdapter) GetMinimumHeight(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
+// GetChainID implements ValidatorState
+func (a *ValidatorStateAdapter) GetChainID(chainID ids.ID) (ids.ID, error) {
+	return chainID, nil
+}
+
+// GetNetID implements ValidatorState
+func (a *ValidatorStateAdapter) GetNetID(chainID ids.ID) (ids.ID, error) {
+	return ids.Empty, nil
+}
+
+// GetSubnetID implements ValidatorState
+func (a *ValidatorStateAdapter) GetSubnetID(chainID ids.ID) (ids.ID, error) {
+	return ids.Empty, nil
+}
+
+// GetValidatorSet implements ValidatorState
+func (a *ValidatorStateAdapter) GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error) {
+	return make(map[ids.NodeID]uint64), nil
+}

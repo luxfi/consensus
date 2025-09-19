@@ -5,88 +5,39 @@ import (
 	"context"
 	"time"
 
-	"github.com/luxfi/consensus/consensustest"
+	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/ids"
 )
 
-// Block provides a full test implementation for blocks
-type Block struct {
-	consensustest.Decidable
-	HeightV    uint64
-	ParentV    ids.ID
-	BytesV     []byte
-	TimestampV time.Time
-	StatusV    uint8
-	VerifyV    error
-	AcceptV    error
-	RejectV    error
+// StateSummary provides a test implementation for state summaries
+type StateSummary struct {
+	IDV     ids.ID
+	HeightV uint64
+	BytesV  []byte
+	AcceptF func(context.Context) (block.StateSyncMode, error)
 }
 
-// Height returns the block height
-func (b *Block) Height() uint64 {
-	return b.HeightV
+// ID returns the state summary ID
+func (s *StateSummary) ID() ids.ID {
+	return s.IDV
 }
 
-// Parent returns the parent block ID
-func (b *Block) Parent() ids.ID {
-	return b.ParentV
+// Height returns the state summary height
+func (s *StateSummary) Height() uint64 {
+	return s.HeightV
 }
 
-// ParentID returns the parent block ID
-func (b *Block) ParentID() ids.ID {
-	return b.ParentV
+// Bytes returns the state summary bytes
+func (s *StateSummary) Bytes() []byte {
+	return s.BytesV
 }
 
-// Bytes returns the block bytes
-func (b *Block) Bytes() []byte {
-	return b.BytesV
-}
-
-// Timestamp returns the block timestamp
-func (b *Block) Timestamp() time.Time {
-	if b.TimestampV.IsZero() {
-		return time.Now()
+// Accept accepts the state summary
+func (s *StateSummary) Accept(ctx context.Context) (block.StateSyncMode, error) {
+	if s.AcceptF != nil {
+		return s.AcceptF(ctx)
 	}
-	return b.TimestampV
-}
-
-// Status returns the block status as uint8
-func (b *Block) Status() uint8 {
-	return b.StatusV
-}
-
-// Verify verifies the block
-func (b *Block) Verify(ctx context.Context) error {
-	if b.VerifyV != nil {
-		return b.VerifyV
-	}
-	return nil
-}
-
-// Accept accepts the block
-func (b *Block) Accept(ctx context.Context) error {
-	if b.AcceptV != nil {
-		return b.AcceptV
-	}
-	err := b.Decidable.Accept(ctx)
-	if err != nil {
-		return err
-	}
-	b.StatusV = consensustest.Accepted
-	return nil
-}
-
-// Reject rejects the block
-func (b *Block) Reject(ctx context.Context) error {
-	if b.RejectV != nil {
-		return b.RejectV
-	}
-	err := b.Decidable.Reject(ctx)
-	if err != nil {
-		return err
-	}
-	b.StatusV = consensustest.Rejected
-	return nil
+	return block.StateSyncSkipped, nil
 }
 
 // TestBlock provides a test implementation for blocks (deprecated, use Block)
