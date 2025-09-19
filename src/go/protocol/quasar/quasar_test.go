@@ -47,6 +47,64 @@ func (s *mockStore) Children(id VertexID) []VertexID {
 	return []VertexID{}
 }
 
+func TestCertBundleVerify(t *testing.T) {
+	tests := []struct {
+		name     string
+		bundle   *CertBundle
+		expected bool
+	}{
+		{
+			name: "valid bundle",
+			bundle: &CertBundle{
+				BLSAgg: []byte("valid_bls_signature"),
+				PQCert: []byte("valid_pq_certificate"),
+			},
+			expected: true,
+		},
+		{
+			name: "nil BLS signature",
+			bundle: &CertBundle{
+				BLSAgg: nil,
+				PQCert: []byte("valid_pq_certificate"),
+			},
+			expected: false,
+		},
+		{
+			name: "empty BLS signature",
+			bundle: &CertBundle{
+				BLSAgg: []byte{},
+				PQCert: []byte("valid_pq_certificate"),
+			},
+			expected: false,
+		},
+		{
+			name: "nil PQ certificate",
+			bundle: &CertBundle{
+				BLSAgg: []byte("valid_bls_signature"),
+				PQCert: nil,
+			},
+			expected: false,
+		},
+		{
+			name: "empty PQ certificate",
+			bundle: &CertBundle{
+				BLSAgg: []byte("valid_bls_signature"),
+				PQCert: []byte{},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.bundle.Verify([]string{"validator1", "validator2"})
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestNew(t *testing.T) {
 	cfg := config.DefaultParams()
 	q := New(cfg, newMockStore())
