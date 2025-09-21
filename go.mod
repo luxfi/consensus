@@ -2,11 +2,9 @@ module github.com/luxfi/consensus
 
 go 1.25.1
 
-toolchain go1.24.6
-
 require (
 	github.com/ethereum/go-ethereum v1.16.3
-	github.com/luxfi/crypto v1.3.2
+	github.com/luxfi/crypto v1.17.0
 	github.com/luxfi/database v1.1.13
 	github.com/luxfi/ids v1.0.2
 	github.com/luxfi/log v1.1.22
@@ -82,7 +80,3 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/luxfi/crypto => ../crypto
-
-replace github.com/luxfi/math => ../math
