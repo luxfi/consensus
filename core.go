@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/core"
 )
 
 // Fx represents a feature extension
@@ -14,6 +15,17 @@ type State interface {
 	GetTimestamp() int64
 	SetTimestamp(int64)
 }
+
+// VMState represents the state of a VM
+type VMState = core.VMState
+
+// VM state constants
+const (
+	VMInitializing = core.VMInitializing
+	VMStateSyncing = core.VMStateSyncing
+	VMBootstrapping = core.VMBootstrapping
+	VMNormalOp = core.VMNormalOp
+)
 
 // AcceptorGroup manages a group of acceptors
 type AcceptorGroup interface {
