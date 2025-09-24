@@ -10,15 +10,15 @@ all: build test bench
 build: ## Build all tools and commands
 	@echo "Building all tools..."
 	@echo "Building params..."
-	@go build -o bin/params ./cmd/params || echo "ERROR: Failed to build params"
+	@cd pkg/go && go build -o ../../bin/params ./cmd/params || echo "ERROR: Failed to build params"
 	@echo "Building checker..."
-	@go build -o bin/checker ./cmd/checker || echo "ERROR: Failed to build checker"
+	@cd pkg/go && go build -o ../../bin/checker ./cmd/checker || echo "ERROR: Failed to build checker"
 	@echo "Building simulator..."
-	@go build -o bin/sim ./cmd/sim || echo "ERROR: Failed to build sim"
+	@cd pkg/go && go build -o ../../bin/sim ./cmd/sim || echo "ERROR: Failed to build sim"
 	@echo "Building bench..."
-	@go build -tags zmq -o bin/bench ./cmd/bench || echo "WARNING: Building without ZMQ support"
+	@cd pkg/go && go build -tags zmq -o ../../bin/bench ./cmd/bench || echo "WARNING: Building without ZMQ support"
 	@echo "Building consensus CLI..."
-	@go build -o bin/consensus ./cmd/consensus || echo "ERROR: Failed to build consensus CLI"
+	@cd pkg/go && go build -o ../../bin/consensus ./cmd/consensus || echo "ERROR: Failed to build consensus CLI"
 	@echo "Build complete! Successfully built tools:"
 	@ls -1 bin/ 2>/dev/null | grep -v '^$$' || echo "No tools built"
 
@@ -32,36 +32,36 @@ build: ## Build all tools and commands
 # Run all tests
 test: ## Run all tests
 	@echo "Running tests..."
-	@go test -race -timeout 5m -tags="!integration" ./... 2>&1 | grep -v "warning.*LD_DYSYMTAB" | grep -v "has malformed LC_DYSYMTAB"
+	@cd pkg/go && go test -race -timeout 5m -tags="!integration" ./... 2>&1 | grep -v "warning.*LD_DYSYMTAB" | grep -v "has malformed LC_DYSYMTAB"
 
 # Run tests (verbose, showing warnings)
 test-verbose: ## Run tests with all output including warnings
 	@echo "Running tests (verbose)..."
-	@go test -race -timeout 5m -tags="!integration" ./...
+	@cd pkg/go && go test -race -timeout 5m -tags="!integration" ./...
 
 # Run tests with coverage
 test-coverage: ## Run tests with coverage report
 	@echo "Running tests with coverage..."
-	@go test -race -timeout 5m -coverprofile=coverage.out -covermode=atomic ./...
-	@go tool cover -html=coverage.out -o coverage.html
+	@cd pkg/go && go test -race -timeout 5m -coverprofile=../../coverage.out -covermode=atomic ./...
+	@cd pkg/go && go tool cover -html=../../coverage.out -o ../../coverage.html
 	@echo "Coverage report generated: coverage.html"
 
 # Run benchmarks
 bench: ## Run performance benchmarks
 	@echo "Running benchmarks..."
-	@go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
+	@cd pkg/go && go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
 
 # Run pure consensus benchmarks
 benchmark: ## Run pure algorithm benchmarks without networking
 	@echo "🚀 Running pure consensus benchmarks..."
-	@go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
+	@cd pkg/go && go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
 
 # Wave FPC benchmarks are now in protocol/wave
 
 # Build zmq-bench tool
 zmq-bench: ## Build the ZMQ benchmark tool
 	@echo "Building zmq-bench tool..."
-	@go build -tags zmq -o bin/zmq-bench ./cmd/zmq-bench || echo "ERROR: zmq-bench requires ZMQ"
+	@cd pkg/go && go build -tags zmq -o ../../bin/zmq-bench ./cmd/zmq-bench || echo "ERROR: zmq-bench requires ZMQ"
 
 # Run zmq-bench tool
 run-zmq-bench: zmq-bench ## Run ZMQ benchmark tool with configurable parameters
@@ -82,12 +82,12 @@ ROUNDS ?= 100
 # Run massively parallel ZMQ benchmarks with Ginkgo
 benchmark-zmq: check-ginkgo ## Run ZeroMQ transport benchmarks
 	@echo "🌐 Running transport benchmarks..."
-	go test -tags zmq -v ./qzmq -ginkgo.v
+	cd pkg/go && go test -tags zmq -v ./qzmq -ginkgo.v
 
 # Run Ginkgo tests in parallel
 test-parallel: check-ginkgo ## Run tests in parallel with Ginkgo
 	@echo "⚡ Running tests in parallel..."
-	ginkgo -p ./...
+	cd pkg/go && ginkgo -p ./...
 
 # Run CI benchmark suite (10, 100, 1000 nodes)
 ci-cluster: zmq-bench ## Run CI multi-node consensus benchmarks (10, 100, 1000 nodes)
@@ -120,38 +120,38 @@ benchmark-max-tps: zmq-bench ## Run benchmark optimized for maximum TPS
 
 # Check if Ginkgo is installed
 check-ginkgo:
-	@which ginkgo > /dev/null || (echo "📦 Installing Ginkgo..."; go install github.com/onsi/ginkgo/v2/ginkgo@latest)
+	@which ginkgo > /dev/null || (echo "📦 Installing Ginkgo..."; cd pkg/go && go install github.com/onsi/ginkgo/v2/ginkgo@latest)
 
 # Run linters
 lint: ## Run linters
 	@echo "Running linters..."
-	@golangci-lint run ./...
+	@cd pkg/go && golangci-lint run ./...
 
 # Format code
 format: ## Format code
 	@echo "Formatting code..."
-	@go fmt ./...
-	@goimports -w .
+	@cd pkg/go && go fmt ./...
+	@cd pkg/go && goimports -w .
 
 # Check if code is properly formatted
 check-format: ## Check if code is properly formatted
 	@echo "Checking code format..."
-	@if [ -n "$$(gofmt -l .)" ]; then \
+	@if [ -n "$$(cd pkg/go && gofmt -l .)" ]; then \
 		echo "The following files need formatting:"; \
-		gofmt -l .; \
+		cd pkg/go && gofmt -l .; \
 		exit 1; \
 	fi
 
 # Run static analysis
 static-analysis: ## Run static analysis
 	@echo "Running static analysis..."
-	@go vet ./...
-	@staticcheck ./...
+	@cd pkg/go && go vet ./...
+	@cd pkg/go && staticcheck ./...
 
 # Generate mocks
 generate-mocks: ## Generate mock files
 	@echo "Generating mocks..."
-	@go generate ./...
+	@cd pkg/go && go generate ./...
 
 # Clean build artifacts
 clean: ## Clean build artifacts
@@ -162,10 +162,10 @@ clean: ## Clean build artifacts
 # Install development tools
 tools: ## Install development tools
 	@echo "Installing development tools..."
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	@go install honnef.co/go/tools/cmd/staticcheck@latest
-	@go install golang.org/x/tools/cmd/goimports@latest
-	@go install github.com/golang/mock/mockgen@latest
+	@cd pkg/go && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@cd pkg/go && go install honnef.co/go/tools/cmd/staticcheck@latest
+	@cd pkg/go && go install golang.org/x/tools/cmd/goimports@latest
+	@cd pkg/go && go install github.com/golang/mock/mockgen@latest
 
 # Run a specific test
 test-specific: ## Run a specific test (use TEST=TestName)
@@ -174,7 +174,7 @@ test-specific: ## Run a specific test (use TEST=TestName)
 		exit 1; \
 	fi
 	@echo "Running test: $(TEST)"
-	@go test -race -v -run $(TEST) ./...
+	@cd pkg/go && go test -race -v -run $(TEST) ./...
 
 # Run tests for a specific package
 test-package: ## Run tests for a specific package (use PKG=./confidence)
@@ -183,23 +183,23 @@ test-package: ## Run tests for a specific package (use PKG=./confidence)
 		exit 1; \
 	fi
 	@echo "Testing package: $(PKG)"
-	@go test -race -v $(PKG)
+	@cd pkg/go && go test -race -v $(PKG)
 
 # Check for security vulnerabilities
 security: ## Check for security vulnerabilities
 	@echo "Checking for vulnerabilities..."
-	@govulncheck ./...
+	@cd pkg/go && govulncheck ./...
 
 # Update dependencies
 update-deps: ## Update dependencies
 	@echo "Updating dependencies..."
-	@go get -u ./...
-	@go mod tidy
+	@cd pkg/go && go get -u ./...
+	@cd pkg/go && go mod tidy
 
 # Verify dependencies
 verify-deps: ## Verify dependencies
 	@echo "Verifying dependencies..."
-	@go mod verify
+	@cd pkg/go && go mod verify
 
 # Run pre-commit checks
 pre-commit: check-format lint test ## Run pre-commit checks
