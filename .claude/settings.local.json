@@ -14,7 +14,12 @@
       "Bash(make:*)",
       "Bash(go mod:*)",
       "Bash(git tag:*)",
-      "Bash(gofmt:*)"
+      "Bash(gofmt:*)",
+      "Read(//Users/z/work/lux/lps/**)",
+      "Read(//Users/z/work/hanzo/hips/**)",
+      "Read(//Users/z/work/zoo/zips/**)",
+      "Bash(go doc:*)",
+      "Read(//Users/z/work/lux/**)"
     ],
     "deny": [],
     "ask": [],

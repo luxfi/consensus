@@ -1,5 +1,5 @@
-// Package main demonstrates integration between consensus and node packages
-package main
+// Package examples demonstrates integration between consensus and node packages
+package examples
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func (b *ExampleBlock) Reject(context.Context) error  {
 	return nil 
 }
 
-func main() {
+func RunNodeIntegrationExample() {
 	// Configure consensus parameters for fast finality
 	params := core.ConsensusParams{
 		K:                     20,
