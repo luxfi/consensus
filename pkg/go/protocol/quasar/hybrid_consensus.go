@@ -136,7 +136,7 @@ func (q *QuasarHybridConsensus) SignMessage(validatorID string, message []byte) 
 	}
 
 	// Create BLS signature
-	blsSig, err := blsSK.Sign(message, nil)
+	blsSig, err := blsSK.Sign(message)
 	if err != nil {
 		return nil, fmt.Errorf("BLS sign failed: %w", err)
 	}
