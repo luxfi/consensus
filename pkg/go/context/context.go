@@ -21,6 +21,7 @@ type Context struct {
 	XChainID    ids.ID     `json:"xChainID"`
 	CChainID    ids.ID     `json:"cChainID"`
 	AVAXAssetID ids.ID     `json:"avaxAssetID"`
+	LUXAssetID  ids.ID     `json:"luxAssetID"`
 
 	// Timing
 	StartTime time.Time `json:"startTime"`
