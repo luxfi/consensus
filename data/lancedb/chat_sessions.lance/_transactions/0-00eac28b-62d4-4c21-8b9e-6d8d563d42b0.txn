@@ -1,0 +1,7 @@
+$00eac28b-62d4-4c21-8b9e-6d8d563d42b0²Ù*
+session_id ÿÿÿÿÿÿÿÿÿ*string8Zdefault)user_id ÿÿÿÿÿÿÿÿÿ*string8Zdefault,
+project_id ÿÿÿÿÿÿÿÿÿ*string8Zdefault*metadata ÿÿÿÿÿÿÿÿÿ*string8Zdefault,
+created_at ÿÿÿÿÿÿÿÿÿ*string8Zdefault,
+updated_at ÿÿÿÿÿÿÿÿÿ*string8Zdefault"!
+lance.auto_cleanup.interval20"'
+lance.auto_cleanup.older_than14days
