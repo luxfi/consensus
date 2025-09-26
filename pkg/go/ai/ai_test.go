@@ -1,4 +1,4 @@
-// Copyright (C) 2024, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
 // AI Package Tests - Validate Orthogonal Design
 
 package ai

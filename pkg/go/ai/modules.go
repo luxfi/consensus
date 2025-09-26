@@ -1,4 +1,4 @@
-// Copyright (C) 2024, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
 // Orthogonal Module Implementations - Single Implementation Per Concern
 
 package ai

@@ -1,4 +1,4 @@
-// Copyright (C) 2024, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
 // Orthogonal, Composable AI Interfaces - One Way To Do Everything
 
 package ai
