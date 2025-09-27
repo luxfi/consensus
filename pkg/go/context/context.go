@@ -12,6 +12,8 @@ import (
 type Context struct {
 	// QuantumID is the root quantum network identifier
 	QuantumID uint32 `json:"quantumID"`
+	// NetworkID is an alias for QuantumID for backward compatibility
+	NetworkID uint32 `json:"networkID"`
 	// NetID identifies the specific network/subnet within the quantum network
 	NetID ids.ID `json:"netID"`
 	// ChainID identifies the specific chain within the network
@@ -22,6 +24,8 @@ type Context struct {
 	CChainID    ids.ID     `json:"cChainID"`
 	AVAXAssetID ids.ID     `json:"avaxAssetID"`
 	LUXAssetID  ids.ID     `json:"luxAssetID"`
+	// XAssetID is an alias for LUXAssetID for backward compatibility
+	XAssetID ids.ID `json:"xAssetID"`
 
 	// Timing
 	StartTime time.Time `json:"startTime"`
