@@ -11,9 +11,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/luxfi/bft"
+	simplex "github.com/luxfi/bft"
 
-	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/node/utils/hashing"
 	"github.com/luxfi/node/utils/tree"
@@ -119,7 +118,7 @@ func computeDigest(bytes []byte) simplex.Digest {
 }
 
 type blockDeserializer struct {
-	parser       block.Parser
+	vm           block.ChainVM
 	blockTracker *blockTracker
 }
 
@@ -135,7 +134,7 @@ func (d *blockDeserializer) DeserializeBlock(ctx context.Context, bytes []byte) 
 		return nil, fmt.Errorf("failed to parse protocol metadata: %w", err)
 	}
 
-	vmblock, err := d.parser.ParseBlock(ctx, canotoBlock.InnerBlock)
+	vmblock, err := d.vm.ParseBlock(ctx, canotoBlock.InnerBlock)
 	if err != nil {
 		return nil, err
 	}

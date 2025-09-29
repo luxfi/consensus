@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luxfi/bft"
+	simplex "github.com/luxfi/bft"
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/node/snow/engine/common"
+	"github.com/luxfi/consensus/engine/core/common"
 	"github.com/luxfi/log"
 )
 
@@ -67,7 +67,7 @@ func TestBlockBuilder(t *testing.T) {
 			count := 0
 			vm := newTestVM()
 
-			vm.WaitForEventF = func(_ context.Context) (common.Message, error) {
+			vm.WaitForEventF = func(_ context.Context) (interface{}, error) {
 				count++
 				return common.PendingTxs, nil
 			}
@@ -99,7 +99,7 @@ func TestBlockBuilderCancelContext(t *testing.T) {
 	child := newTestBlock(t, newBlockConfig{
 		prev: genesis,
 	})
-	vm.WaitForEventF = func(ctx context.Context) (common.Message, error) {
+	vm.WaitForEventF = func(ctx context.Context) (interface{}, error) {
 		<-ctx.Done()
 		return 0, ctx.Err()
 	}
@@ -122,10 +122,10 @@ func TestWaitForPendingBlock(t *testing.T) {
 	vm := newTestVM()
 	genesis := newTestBlock(t, newBlockConfig{})
 	count := 0
-	vm.WaitForEventF = func(_ context.Context) (common.Message, error) {
+	vm.WaitForEventF = func(_ context.Context) (interface{}, error) {
 		if count == 0 {
 			count++
-			return common.StateSyncDone, nil
+			return "StateSyncDone", nil
 		}
 		return common.PendingTxs, nil
 	}
@@ -152,7 +152,7 @@ func TestBlockBuildingExponentialBackoff(t *testing.T) {
 		minimumExpectedDelay = initBackoff * (1<<failedAttempts - 1)
 	)
 
-	vm.WaitForEventF = func(_ context.Context) (common.Message, error) {
+	vm.WaitForEventF = func(_ context.Context) (interface{}, error) {
 		return common.PendingTxs, nil
 	}
 
@@ -193,10 +193,10 @@ func TestWaitForPendingBlockBackoff(t *testing.T) {
 	)
 
 	count := 0
-	vm.WaitForEventF = func(_ context.Context) (common.Message, error) {
+	vm.WaitForEventF = func(_ context.Context) (interface{}, error) {
 		if count < failedAttempts {
 			count++
-			return common.StateSyncDone, nil
+			return "StateSyncDone", nil
 		}
 
 		return common.PendingTxs, nil
