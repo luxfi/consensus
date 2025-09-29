@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/luxfi/bft"
+	simplex "github.com/luxfi/bft"
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/utils"
@@ -122,7 +122,13 @@ func createVerifier(config *Config) BLSVerifier {
 
 	nodeIDs := make([]ids.NodeID, 0, len(config.Validators))
 	for _, node := range config.Validators {
-		verifier.nodeID2PK[node.NodeID] = node.PublicKey
+		// Convert PublicKey bytes to *bls.PublicKey
+		publicKey, err := bls.PublicKeyFromCompressedBytes(node.PublicKey)
+		if err != nil {
+			// Skip invalid public keys - they won't be able to participate
+			continue
+		}
+		verifier.nodeID2PK[node.NodeID] = publicKey
 		nodeIDs = append(nodeIDs, node.NodeID)
 	}
 

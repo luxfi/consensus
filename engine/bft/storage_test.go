@@ -7,19 +7,20 @@ import (
 	"context"
 	"testing"
 
-	"github.com/luxfi/bft"
+	simplex "github.com/luxfi/bft"
 	"github.com/stretchr/testify/require"
 
+	"github.com/luxfi/consensus/consensustest"
+	"github.com/luxfi/consensus/engine/chain/block"
+	"github.com/luxfi/consensus/engine/chain/chaintest"
 	"github.com/luxfi/database"
 	"github.com/luxfi/database/memdb"
-	"github.com/luxfi/node/snow/consensus/snowman/snowmantest"
-	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/node/snow/snowtest"
 )
 
 func TestStorageNew(t *testing.T) {
 	ctx := context.Background()
-	child := snowmantest.BuildChild(snowmantest.Genesis)
+	// Create a child block for testing
+	child := chaintest.BuildChild(chaintest.Genesis)
 	tests := []struct {
 		name           string
 		vm             block.ChainVM
@@ -106,7 +107,7 @@ func TestStorageRetrieve(t *testing.T) {
 			seq:                  1,
 			expectedBlock:        nil,
 			expectedFinalization: simplex.Finalization{},
-			expectedErr:          simplex.ErrBlockNotFound,
+			expectedErr:          database.ErrNotFound,
 		},
 	}
 
@@ -115,16 +116,18 @@ func TestStorageRetrieve(t *testing.T) {
 			s, err := newStorage(ctx, config, &qc, genesis.blockTracker)
 			require.NoError(t, err)
 
-			block, finalization, err := s.Retrieve(tt.seq)
+			block, finalization, found := s.Retrieve(tt.seq)
 			if tt.expectedErr == nil {
+				require.True(t, found)
 				bytes, err := block.Bytes()
 				require.NoError(t, err)
 
 				require.Equal(t, tt.expectedBytes, bytes)
+			} else {
+				require.False(t, found)
 			}
 
 			require.Equal(t, tt.expectedFinalization, finalization)
-			require.Equal(t, tt.expectedErr, err)
 		})
 	}
 }
@@ -200,8 +203,8 @@ func TestStorageIndexFails(t *testing.T) {
 
 			if tt.block.metadata.Seq != 0 {
 				// ensure that the block is not retrievable
-				block, finalization, err := s.Retrieve(tt.block.BlockHeader().Seq)
-				require.ErrorIs(t, err, simplex.ErrBlockNotFound)
+				block, finalization, found := s.Retrieve(tt.block.BlockHeader().Seq)
+				require.False(t, found)
 				require.Nil(t, block)
 				require.Equal(t, simplex.Finalization{}, finalization)
 			}
@@ -283,8 +286,8 @@ func TestStorageIndexSuccess(t *testing.T) {
 	}
 
 	for i := 0; i <= numBlocks; i++ {
-		gotBlock, gotFin, err := s.Retrieve(uint64(i))
-		require.NoError(t, err)
+		gotBlock, gotFin, found := s.Retrieve(uint64(i))
+		require.True(t, found)
 
 		expectedBytes, err := blocks[i].Bytes()
 		require.NoError(t, err)
@@ -296,8 +299,8 @@ func TestStorageIndexSuccess(t *testing.T) {
 		require.Equal(t, finalizations[i].Finalization, gotFin.Finalization)
 
 		// verify that the blocks were also accepted in the VM
-		accepted := blocks[i].vmBlock.(*wrappedBlock).Status
-		require.Equal(t, snowtest.Accepted, accepted)
+		accepted := blocks[i].vmBlock.(*wrappedBlock).Status()
+		require.Equal(t, consensustest.Accepted, accepted)
 	}
 
 	require.Equal(t, uint64(numBlocks+1), s.NumBlocks())

@@ -5,19 +5,20 @@ package simplex
 
 import (
 	"context"
+	"errors"
 	"testing"
 
-	"github.com/luxfi/bft"
+	simplex "github.com/luxfi/bft"
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/database"
 	"github.com/luxfi/database/memdb"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/node/snow/consensus/snowman/snowmantest"
-	"github.com/luxfi/node/snow/engine/snowman/block/blocktest"
+	"github.com/luxfi/consensus/engine/chain/chaintest"
 	"github.com/luxfi/consensus/validators"
 	"github.com/luxfi/node/utils/constants"
+	"github.com/luxfi/node/utils/crypto/bls"
 	"github.com/luxfi/node/utils/crypto/bls/signer/localsigner"
 	"github.com/luxfi/log"
 )
@@ -33,8 +34,8 @@ func newTestBlock(t *testing.T, config newBlockConfig) *Block {
 	if config.prev == nil {
 		block := &Block{
 			vmBlock: &wrappedBlock{
-				Block: snowmantest.Genesis,
-				vm:    newTestVM(),
+				TestBlock: chaintest.Genesis,
+				vm:        newTestVM(),
 			},
 			metadata: genesisMetadata,
 		}
@@ -51,11 +52,11 @@ func newTestBlock(t *testing.T, config newBlockConfig) *Block {
 		config.round = config.prev.metadata.Round + 1
 	}
 
-	vmBlock := snowmantest.BuildChild(config.prev.vmBlock.(*wrappedBlock).Block)
+	vmBlock := chaintest.BuildChild(config.prev.vmBlock.(*wrappedBlock).TestBlock)
 	block := &Block{
 		vmBlock: &wrappedBlock{
-			Block: vmBlock,
-			vm:    config.prev.vmBlock.(*wrappedBlock).vm,
+			TestBlock: vmBlock,
+			vm:        config.prev.vmBlock.(*wrappedBlock).vm,
 		},
 		blockTracker: config.prev.blockTracker,
 		metadata: simplex.ProtocolMetadata{
@@ -128,10 +129,12 @@ func generateTestNodes(t *testing.T, num uint64) []*testNode {
 		require.NoError(t, err)
 
 		nodeID := ids.GenerateTestNodeID()
+		pk := ls.PublicKey()
+		pkBytes := bls.PublicKeyToCompressedBytes(pk)
 		nodes[i] = &testNode{
 			validator: validators.GetValidatorOutput{
 				NodeID:    nodeID,
-				PublicKey: ls.PublicKey(),
+				PublicKey: pkBytes,
 			},
 			signFunc: ls.Sign,
 		}
@@ -164,38 +167,50 @@ func newTestFinalization(t *testing.T, configs []*Config, bh simplex.BlockHeader
 	_, verifier := NewBLSAuth(configs[0])
 	sigAgg := &SignatureAggregator{verifier: &verifier}
 
-	finalization, err := simplex.NewFinalization(configs[0].Log, sigAgg, finalizedVotes)
+	finalization, err := simplex.NewFinalization(&loggerWrapper{configs[0].Log}, sigAgg, finalizedVotes)
 	require.NoError(t, err)
 	return finalization
 }
 
 func newTestVM() *wrappedVM {
 	return &wrappedVM{
-		VM: &blocktest.VM{},
-		blocks: map[ids.ID]*snowmantest.Block{
-			snowmantest.Genesis.ID(): snowmantest.Genesis,
+		VM: &chaintest.VM{},
+		blocks: map[ids.ID]*chaintest.TestBlock{
+			chaintest.Genesis.ID(): chaintest.Genesis,
 		},
 	}
 }
 
 // wrappedBlock wraps a test block in a VM so that on Accept, it is stored in the VM's block store.
 type wrappedBlock struct {
-	*snowmantest.Block
-	vm *wrappedVM
+	*chaintest.TestBlock
+	vm      *wrappedVM
+	VerifyV error // Mock error for Verify
 }
 
 type wrappedVM struct {
-	*blocktest.VM
-	blocks map[ids.ID]*snowmantest.Block
+	*chaintest.VM
+	blocks map[ids.ID]*chaintest.TestBlock
+
+	// Mock functions for testing
+	WaitForEventF func(context.Context) (interface{}, error)
+	BuildBlockF   func(context.Context) (block.Block, error)
 }
 
 func (wb *wrappedBlock) Accept(ctx context.Context) error {
-	if err := wb.Block.Accept(ctx); err != nil {
+	if err := wb.TestBlock.Accept(ctx); err != nil {
 		return err
 	}
 
-	wb.vm.blocks[wb.ID()] = wb.Block
+	wb.vm.blocks[wb.ID()] = wb.TestBlock
 	return nil
+}
+
+func (wb *wrappedBlock) Verify(ctx context.Context) error {
+	if wb.VerifyV != nil {
+		return wb.VerifyV
+	}
+	return wb.TestBlock.Verify(ctx)
 }
 
 func (v *wrappedVM) GetBlockIDAtHeight(_ context.Context, height uint64) (ids.ID, error) {
@@ -221,7 +236,7 @@ func (v *wrappedVM) LastAccepted(_ context.Context) (ids.ID, error) {
 		return ids.Empty, database.ErrNotFound
 	}
 
-	lastAccepted := snowmantest.Genesis
+	lastAccepted := chaintest.Genesis
 	for _, block := range v.blocks {
 		if block.Height() > lastAccepted.Height() {
 			lastAccepted = block
@@ -229,4 +244,46 @@ func (v *wrappedVM) LastAccepted(_ context.Context) (ids.ID, error) {
 	}
 
 	return lastAccepted.ID(), nil
+}
+
+func (v *wrappedVM) WaitForEvent(ctx context.Context) (interface{}, error) {
+	if v.WaitForEventF != nil {
+		return v.WaitForEventF(ctx)
+	}
+	return nil, errors.New("WaitForEvent not implemented")
+}
+
+func (v *wrappedVM) BuildBlock(ctx context.Context) (block.Block, error) {
+	if v.BuildBlockF != nil {
+		return v.BuildBlockF(ctx)
+	}
+	return nil, errors.New("BuildBlock not implemented")
+}
+
+func (v *wrappedVM) Initialize(
+	ctx context.Context,
+	chainCtx interface{},
+	db interface{},
+	genesisBytes []byte,
+	upgradeBytes []byte,
+	configBytes []byte,
+	msgChan interface{},
+	fxs []interface{},
+	appSender interface{},
+) error {
+	return nil
+}
+
+func (v *wrappedVM) ParseBlock(ctx context.Context, bytes []byte) (block.Block, error) {
+	if v.VM != nil && v.VM.ParseBlockF != nil {
+		return v.VM.ParseBlockF(ctx, bytes)
+	}
+	return &wrappedBlock{
+		TestBlock: &chaintest.TestBlock{BytesV: bytes},
+		vm:        v,
+	}, nil
+}
+
+func (v *wrappedVM) SetPreference(ctx context.Context, id ids.ID) error {
+	return nil
 }
