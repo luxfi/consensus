@@ -7,15 +7,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/luxfi/bft"
+	simplex "github.com/luxfi/bft"
 	"go.uber.org/zap"
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/message"
+	"github.com/luxfi/node/network"
 	"github.com/luxfi/node/proto/pb/p2p"
-	"github.com/luxfi/node/snow/engine/common"
-	"github.com/luxfi/node/snow/networking/sender"
-	"github.com/luxfi/node/subnets"
 	"github.com/luxfi/node/utils/set"
 )
 
@@ -34,7 +32,7 @@ type Comm struct {
 	allNodes []simplex.NodeID
 
 	// sender is used to send messages to other nodes
-	sender     sender.ExternalSender
+	sender     network.ExternalSender
 	msgBuilder message.OutboundMsgBuilder
 }
 
@@ -64,7 +62,7 @@ func NewComm(config *Config) (*Comm, error) {
 		subnetID:       config.Ctx.SubnetID,
 		broadcastNodes: broadcastNodes,
 		allNodes:       allNodes,
-		logger:         config.Log,
+		logger:         NewLoggerWrapper(config.Log),
 		sender:         config.Sender,
 		msgBuilder:     config.OutboundMsgBuilder,
 		chainID:        config.Ctx.ChainID,
@@ -88,7 +86,7 @@ func (c *Comm) Send(msg *simplex.Message, destination simplex.NodeID) {
 		return
 	}
 
-	c.sender.Send(outboundMsg, common.SendConfig{NodeIDs: set.Of(dest)}, c.subnetID, subnets.NoOpAllower)
+	c.sender.Send(outboundMsg, set.Of(dest), c.subnetID, 0)
 }
 
 func (c *Comm) Broadcast(msg *simplex.Message) {
@@ -98,41 +96,41 @@ func (c *Comm) Broadcast(msg *simplex.Message) {
 		return
 	}
 
-	c.sender.Send(outboundMsg, common.SendConfig{NodeIDs: c.broadcastNodes}, c.subnetID, subnets.NoOpAllower)
+	c.sender.Send(outboundMsg, c.broadcastNodes, c.subnetID, 0)
 }
 
 func (c *Comm) simplexMessageToOutboundMessage(msg *simplex.Message) (message.OutboundMessage, error) {
-	var simplexMsg *p2p.Simplex
+	var bftMsg *p2p.BFT
 	switch {
 	case msg.VerifiedBlockMessage != nil:
 		bytes, err := msg.VerifiedBlockMessage.VerifiedBlock.Bytes()
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize block: %w", err)
 		}
-		simplexMsg = newBlockProposal(c.chainID, bytes, msg.VerifiedBlockMessage.Vote)
+		bftMsg = newBlockProposal(c.chainID, bytes, msg.VerifiedBlockMessage.Vote)
 	case msg.VoteMessage != nil:
-		simplexMsg = newVote(c.chainID, msg.VoteMessage)
+		bftMsg = newVote(c.chainID, msg.VoteMessage)
 	case msg.EmptyVoteMessage != nil:
-		simplexMsg = newEmptyVote(c.chainID, msg.EmptyVoteMessage)
+		bftMsg = newEmptyVote(c.chainID, msg.EmptyVoteMessage)
 	case msg.FinalizeVote != nil:
-		simplexMsg = newFinalizeVote(c.chainID, msg.FinalizeVote)
+		bftMsg = newFinalizeVote(c.chainID, msg.FinalizeVote)
 	case msg.Notarization != nil:
-		simplexMsg = newNotarization(c.chainID, msg.Notarization)
+		bftMsg = newNotarization(c.chainID, msg.Notarization)
 	case msg.EmptyNotarization != nil:
-		simplexMsg = newEmptyNotarization(c.chainID, msg.EmptyNotarization)
+		bftMsg = newEmptyNotarization(c.chainID, msg.EmptyNotarization)
 	case msg.Finalization != nil:
-		simplexMsg = newFinalization(c.chainID, msg.Finalization)
+		bftMsg = newFinalization(c.chainID, msg.Finalization)
 	case msg.ReplicationRequest != nil:
-		simplexMsg = newReplicationRequest(c.chainID, msg.ReplicationRequest)
+		bftMsg = newReplicationRequest(c.chainID, msg.ReplicationRequest)
 	case msg.VerifiedReplicationResponse != nil:
 		msg, err := newReplicationResponse(c.chainID, msg.VerifiedReplicationResponse)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create replication response: %w", err)
 		}
-		simplexMsg = msg
+		bftMsg = msg
 	default:
 		return nil, fmt.Errorf("unknown message type: %+v", msg)
 	}
 
-	return c.msgBuilder.SimplexMessage(simplexMsg)
+	return c.msgBuilder.BFTMessage(bftMsg)
 }

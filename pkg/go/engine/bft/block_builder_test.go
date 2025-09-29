@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/node/snow/engine/common"
+	"github.com/luxfi/consensus/engine/core/common"
 	"github.com/luxfi/log"
 )
 

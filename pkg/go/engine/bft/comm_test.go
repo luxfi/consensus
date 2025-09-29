@@ -14,8 +14,8 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/message"
-	"github.com/luxfi/node/snow/engine/common"
-	"github.com/luxfi/node/snow/networking/sender/sendermock"
+	"github.com/luxfi/consensus/engine/core/common"
+	"github.com/luxfi/consensus/networking/sender/sendertest"
 	"github.com/luxfi/node/utils/constants"
 	"github.com/luxfi/node/utils/set"
 )

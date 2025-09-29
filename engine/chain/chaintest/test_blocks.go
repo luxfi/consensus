@@ -8,6 +8,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/luxfi/consensus/choices"
 	"github.com/luxfi/consensus/consensustest"
 	"github.com/luxfi/ids"
 )
@@ -20,6 +21,10 @@ type TestBlock struct {
 	bytes     []byte
 	status    uint8
 	timestamp time.Time
+	// Additional fields for BFT testing
+	BytesV    []byte
+	ParentV   ids.ID
+	Decidable choices.Decidable
 }
 
 // ID returns the block ID
@@ -49,6 +54,9 @@ func (b *TestBlock) Timestamp() time.Time {
 
 // Bytes returns the block bytes
 func (b *TestBlock) Bytes() []byte {
+	if b.BytesV != nil {
+		return b.BytesV
+	}
 	return b.bytes
 }
 
@@ -60,12 +68,14 @@ func (b *TestBlock) Status() uint8 {
 // Accept accepts the block
 func (b *TestBlock) Accept(ctx context.Context) error {
 	b.status = consensustest.Accepted
+	b.Decidable.Status = choices.Accepted
 	return nil
 }
 
 // Reject rejects the block
 func (b *TestBlock) Reject(ctx context.Context) error {
 	b.status = consensustest.Rejected
+	b.Decidable.Status = choices.Rejected
 	return nil
 }
 
@@ -82,28 +92,43 @@ var Genesis = &TestBlock{
 	bytes:     []byte("genesis"),
 	status:    consensustest.Accepted,
 	timestamp: time.Now(),
+	BytesV:    []byte("genesis"),
+	ParentV:   ids.Empty,
+	Decidable: choices.Decidable{Status: choices.Accepted},
 }
 
 // BuildChild builds a child block
 func BuildChild(parent *TestBlock) *TestBlock {
+	childID := ids.GenerateTestID()
+	// Make bytes unique by including the ID
+	childBytes := append([]byte("child-"), childID[:]...)
 	return &TestBlock{
-		id:        ids.GenerateTestID(),
+		id:        childID,
 		parentID:  parent.ID(),
 		height:    parent.Height() + 1,
-		bytes:     []byte("child"),
+		bytes:     childBytes,
 		status:    consensustest.Processing,
 		timestamp: time.Now(),
+		BytesV:    childBytes,
+		ParentV:   parent.ID(),
+		Decidable: choices.Decidable{Status: choices.Processing},
 	}
 }
 
 // BuildChildWithTime builds a child block with timestamp
 func BuildChildWithTime(parent *TestBlock, timestamp time.Time) *TestBlock {
+	childID := ids.GenerateTestID()
+	// Make bytes unique by including the ID
+	childBytes := append([]byte("child-"), childID[:]...)
 	return &TestBlock{
-		id:        ids.GenerateTestID(),
+		id:        childID,
 		parentID:  parent.ID(),
 		height:    parent.Height() + 1,
-		bytes:     append([]byte("child"), timestamp.Format(time.RFC3339)...),
+		bytes:     childBytes,
 		status:    consensustest.Processing,
 		timestamp: timestamp,
+		BytesV:    childBytes,
+		ParentV:   parent.ID(),
+		Decidable: choices.Decidable{Status: choices.Processing},
 	}
 }
