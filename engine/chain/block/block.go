@@ -53,6 +53,9 @@ type ChainVM interface {
 
 	// LastAccepted returns the last accepted block
 	LastAccepted(context.Context) (ids.ID, error)
+
+	// WaitForEvent blocks until an event occurs that should trigger block building
+	WaitForEvent(context.Context) (interface{}, error)
 }
 
 // StateSyncMode defines state sync modes

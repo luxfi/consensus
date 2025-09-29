@@ -7,8 +7,8 @@ import (
 	"github.com/luxfi/database"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/message"
+	"github.com/luxfi/node/network"
 	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/node/snow/networking/sender"
 	"github.com/luxfi/consensus/validators"
 	"github.com/luxfi/log"
 )
@@ -18,7 +18,7 @@ type Config struct {
 	Ctx SimplexChainContext
 	Log log.Logger
 
-	Sender             sender.ExternalSender
+	Sender             network.ExternalSender
 	OutboundMsgBuilder message.OutboundMsgBuilder
 
 	// Validators is a map of node IDs to their validator information.

@@ -15,10 +15,10 @@ import (
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/node/snow/consensus/snowman/snowmantest"
-	"github.com/luxfi/node/snow/engine/enginetest"
-	"github.com/luxfi/node/snow/engine/snowman/block/blocktest"
-	"github.com/luxfi/node/snow/snowtest"
+	"github.com/luxfi/consensus/consensustest"
+	"github.com/luxfi/consensus/engine/enginetest"
+	"github.com/luxfi/consensus/engine/chain/block/blocktest"
+	"github.com/luxfi/consensus/consensustest"
 )
 
 func TestBlockSerialization(t *testing.T) {

@@ -10,22 +10,20 @@ import (
 	"testing"
 
 	"github.com/StephenButtolph/canoto"
-	"github.com/luxfi/bft"
+	simplex "github.com/luxfi/bft"
 	"github.com/stretchr/testify/require"
 
-	"github.com/luxfi/ids"
+	"github.com/luxfi/consensus/choices"
 	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/node/snow/consensus/snowman/snowmantest"
-	"github.com/luxfi/node/snow/engine/enginetest"
-	"github.com/luxfi/node/snow/engine/snowman/block/blocktest"
-	"github.com/luxfi/node/snow/snowtest"
+	"github.com/luxfi/consensus/engine/chain/chaintest"
+	"github.com/luxfi/ids"
 )
 
 func TestBlockSerialization(t *testing.T) {
 	unexpectedBlockBytes := errors.New("unexpected block bytes")
 	ctx := context.Background()
 	genesisBlock := newTestBlock(t, newBlockConfig{})
-	testBlock := snowmantest.BuildChild(snowmantest.Genesis)
+	testBlock := chaintest.BuildChild(chaintest.Genesis)
 
 	b := &Block{
 		vmBlock: testBlock,
@@ -79,15 +77,13 @@ func TestBlockSerialization(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testVM := &blocktest.VM{
-				VM: enginetest.VM{
-					T: t,
-				},
+			testVM := &chaintest.VM{
+				T: t,
 			}
 
 			testVM.ParseBlockF = tt.parseFunc
 			deserializer := &blockDeserializer{
-				parser:       testVM,
+				vm:           testVM,
 				blockTracker: newBlockTracker(genesisBlock),
 			}
 
@@ -183,13 +179,13 @@ func TestVerifyParentAccepted(t *testing.T) {
 	_, err := seq1Block.Verify(ctx)
 	require.NoError(t, err)
 	require.NoError(t, seq1Block.blockTracker.indexBlock(ctx, seq1Block.digest))
-	require.Equal(t, snowtest.Accepted, seq1Block.vmBlock.(*wrappedBlock).Decidable.Status)
+	require.Equal(t, choices.Accepted, seq1Block.vmBlock.(*wrappedBlock).Decidable.Status)
 
 	// Verify the second block with the first block as its parent
 	_, err = seq2Block.Verify(ctx)
 	require.NoError(t, err)
 	require.NoError(t, seq2Block.blockTracker.indexBlock(ctx, seq2Block.digest))
-	require.Equal(t, snowtest.Accepted, seq2Block.vmBlock.(*wrappedBlock).Decidable.Status)
+	require.Equal(t, choices.Accepted, seq2Block.vmBlock.(*wrappedBlock).Decidable.Status)
 
 	// ensure tracker cleans up the block
 	require.NotContains(t, genesis.blockTracker.simplexDigestsToBlock, seq1Block.digest)
@@ -219,11 +215,21 @@ func TestVerifyBlockRejectsSiblings(t *testing.T) {
 
 	// When the we index the second block, the first block should be rejected
 	require.NoError(t, genesis.blockTracker.indexBlock(ctx, genesisChild1.digest))
-	require.Equal(t, snowtest.Rejected, genesisChild0.vmBlock.(*wrappedBlock).Decidable.Status)
-	require.Equal(t, snowtest.Accepted, genesisChild1.vmBlock.(*wrappedBlock).Decidable.Status)
+	require.Equal(t, choices.Rejected, genesisChild0.vmBlock.(*wrappedBlock).Decidable.Status)
+	require.Equal(t, choices.Accepted, genesisChild1.vmBlock.(*wrappedBlock).Decidable.Status)
 
 	_, exists := genesis.blockTracker.getBlockByDigest(genesis.digest)
 	require.False(t, exists)
+}
+
+// modifiedParentBlock wraps a block and overrides its Parent() method
+type modifiedParentBlock struct {
+	*wrappedBlock
+	modifiedParentID ids.ID
+}
+
+func (m *modifiedParentBlock) Parent() ids.ID {
+	return m.modifiedParentID
 }
 
 func TestVerifyInnerBlockBreaksHashChain(t *testing.T) {
@@ -236,7 +242,22 @@ func TestVerifyInnerBlockBreaksHashChain(t *testing.T) {
 
 	// This block does not extend the genesis, however it has a valid previous
 	// digest.
-	b.vmBlock.(*wrappedBlock).ParentV[0]++
+	// Modify the parent to break the hash chain
+	wrapped := b.vmBlock.(*wrappedBlock)
+	originalParentID := wrapped.TestBlock.ParentID()
+
+	// We need to make Parent() return a different value
+	// Create a wrapper that overrides the Parent() method
+	parentBytes := originalParentID[:]
+	parentBytes[0]++
+	modifiedParentID := ids.ID(parentBytes)
+
+	// Replace the wrappedBlock with a new one that has modified parent
+	modifiedWrapped := &modifiedParentBlock{
+		wrappedBlock:     wrapped,
+		modifiedParentID: modifiedParentID,
+	}
+	b.vmBlock = modifiedWrapped
 
 	_, err := b.Verify(ctx)
 	require.ErrorIs(t, err, errMismatchedPrevDigest)

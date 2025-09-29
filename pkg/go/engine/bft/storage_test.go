@@ -12,9 +12,9 @@ import (
 
 	"github.com/luxfi/database"
 	"github.com/luxfi/database/memdb"
-	"github.com/luxfi/node/snow/consensus/snowman/snowmantest"
+	"github.com/luxfi/consensus/consensustest"
 	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/node/snow/snowtest"
+	"github.com/luxfi/consensus/consensustest"
 )
 
 func TestStorageNew(t *testing.T) {

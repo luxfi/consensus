@@ -8,7 +8,7 @@ import (
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/message"
 	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/node/snow/networking/sender"
+	"github.com/luxfi/consensus/networking/sender"
 	"github.com/luxfi/consensus/validators"
 	"github.com/luxfi/log"
 )
