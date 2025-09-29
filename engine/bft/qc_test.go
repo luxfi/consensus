@@ -6,7 +6,7 @@ package simplex
 import (
 	"testing"
 
-	"github.com/luxfi/bft"
+	simplex "github.com/luxfi/bft"
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/ids"
