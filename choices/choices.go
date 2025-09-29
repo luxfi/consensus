@@ -25,3 +25,8 @@ func (s Status) String() string {
 		return "Invalid"
 	}
 }
+
+// Decidable represents a block that can be decided
+type Decidable struct {
+	Status Status
+}

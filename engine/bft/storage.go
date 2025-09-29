@@ -12,11 +12,10 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/luxfi/bft"
+	simplex "github.com/luxfi/bft"
 	"go.uber.org/zap"
 
 	"github.com/luxfi/database"
-	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/log"
 )
@@ -88,9 +87,9 @@ func newStorage(ctx context.Context, config *Config, qcDeserializer *QCDeseriali
 	s.numBlocks.Store(lastAcceptedBlock.Height() + 1)
 
 	// set the last accepted digest by retrieving the last accepted simplex block
-	lastAcceptedSimplexBlock, _, err := s.Retrieve(lastAcceptedBlock.Height())
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve last accepted simplex block: %w", err)
+	lastAcceptedSimplexBlock, _, found := s.Retrieve(lastAcceptedBlock.Height())
+	if !found {
+		return nil, fmt.Errorf("failed to retrieve last accepted simplex block at height %d", lastAcceptedBlock.Height())
 	}
 	s.lastIndexedDigest = lastAcceptedSimplexBlock.BlockHeader().Digest
 
@@ -101,35 +100,44 @@ func (s *Storage) NumBlocks() uint64 {
 	return s.numBlocks.Load()
 }
 
+// Height returns the current height of the chain (number of blocks - 1)
+func (s *Storage) Height() uint64 {
+	num := s.numBlocks.Load()
+	if num == 0 {
+		return 0
+	}
+	return num - 1
+}
+
 // Retrieve returns the block and finalization at [seq].
-// If [seq] is not found, returns simplex.ErrBlockNotFound.
-func (s *Storage) Retrieve(seq uint64) (simplex.VerifiedBlock, simplex.Finalization, error) {
+// If [seq] is not found, returns false.
+func (s *Storage) Retrieve(seq uint64) (simplex.VerifiedBlock, simplex.Finalization, bool) {
 	// THe genesis block doesn't have a finalization, so we need to handle it specifically.
 	if seq == 0 {
-		return s.genesisBlock, simplex.Finalization{}, nil
+		return s.genesisBlock, simplex.Finalization{}, true
 	}
 
 	block, err := getBlock(context.TODO(), s.vm, seq)
 	if err != nil {
 		if err == database.ErrNotFound {
-			return nil, simplex.Finalization{}, simplex.ErrBlockNotFound
+			return nil, simplex.Finalization{}, false
 		}
 		s.log.Error("Error retrieving block from storage", zap.Uint64("seq", seq), zap.Error(err))
-		return nil, simplex.Finalization{}, err
+		return nil, simplex.Finalization{}, false
 	}
 
 	finalization, err := s.retrieveFinalization(seq)
 	if err != nil {
-		return nil, simplex.Finalization{}, err
+		return nil, simplex.Finalization{}, false
 	}
 
 	vb, err := newBlock(finalization.Finalization.ProtocolMetadata, block, s.blockTracker)
 	if err != nil {
 		s.log.Error("failed to create simplex block", zap.Uint64("seq", seq), zap.Error(err))
-		return nil, simplex.Finalization{}, err
+		return nil, simplex.Finalization{}, false
 	}
 
-	return vb, finalization, nil
+	return vb, finalization, true
 }
 
 // Index indexes the finalization in the storage.
@@ -209,12 +217,11 @@ func getGenesisBlock(ctx context.Context, config *Config, blockTracker *blockTra
 }
 
 // retrieveFinalization retrieves the finalization at [seq].
-// If the finalization is not found, it returns false.
 func (s *Storage) retrieveFinalization(seq uint64) (simplex.Finalization, error) {
 	finalizationBytes, err := s.db.Get(finalizationKey(seq))
 	if err != nil {
 		if err == database.ErrNotFound {
-			return simplex.Finalization{}, simplex.ErrBlockNotFound
+			return simplex.Finalization{}, err
 		}
 		s.log.Debug("Failed to retrieve finalization", zap.Uint64("seq", seq), zap.Error(err))
 		return simplex.Finalization{}, err
