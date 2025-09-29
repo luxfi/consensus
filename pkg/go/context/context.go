@@ -18,14 +18,11 @@ type Context struct {
 	NetID ids.ID `json:"netID"`
 	// ChainID identifies the specific chain within the network
 	ChainID     ids.ID     `json:"chainID"`
-	NodeID      ids.NodeID `json:"nodeID"`
-	PublicKey   []byte     `json:"publicKey"`
-	XChainID    ids.ID     `json:"xChainID"`
-	CChainID    ids.ID     `json:"cChainID"`
-	AVAXAssetID ids.ID     `json:"avaxAssetID"`
-	LUXAssetID  ids.ID     `json:"luxAssetID"`
-	// XAssetID is an alias for LUXAssetID for backward compatibility
-	XAssetID ids.ID `json:"xAssetID"`
+	NodeID    ids.NodeID `json:"nodeID"`
+	PublicKey []byte     `json:"publicKey"`
+	XChainID  ids.ID     `json:"xChainID"`
+	CChainID  ids.ID     `json:"cChainID"`
+	XAssetID  ids.ID     `json:"xAssetID"`
 
 	// Timing
 	StartTime time.Time `json:"startTime"`
@@ -149,8 +146,8 @@ type IDs struct {
 	ChainID   ids.ID
 	NodeID    ids.NodeID
 	PublicKey []byte
-	// LUXAssetID is the asset ID for LUX
-	LUXAssetID ids.ID
+	// XAssetID is the asset ID
+	XAssetID ids.ID
 }
 
 // WithIDs adds IDs to the context
