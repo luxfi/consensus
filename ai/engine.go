@@ -169,7 +169,7 @@ func (e *engine) Configure(config Config) error {
 		moduleConfig, exists := config.Modules[id]
 		if exists {
 			if err := module.Initialize(context.Background(), Config{
-				Global: config.Global,
+				Global:  config.Global,
 				Modules: map[string]interface{}{id: moduleConfig},
 			}); err != nil {
 				return fmt.Errorf("failed to configure module %s: %w", id, err)

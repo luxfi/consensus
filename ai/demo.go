@@ -29,16 +29,16 @@ func demoOrthogonalComposition() {
 			"max_tokens": 4096,
 		}).
 		WithDecision("consensus_decision", map[string]interface{}{
-			"strategy": "weighted_voting",
+			"strategy":  "weighted_voting",
 			"threshold": 0.67,
 		}).
 		WithLearning("adaptive_learning", map[string]interface{}{
 			"learning_rate": 0.01,
-			"memory_size": 10000,
+			"memory_size":   10000,
 		}).
 		WithCoordination("network_coord", map[string]interface{}{
 			"broadcast_mode": "gossip",
-			"retry_count": 3,
+			"retry_count":    3,
 		}).
 		Build()
 

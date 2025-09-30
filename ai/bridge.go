@@ -21,23 +21,23 @@ type SimpleBridge struct {
 	exchangeRates map[string]map[string]*big.Int // from -> to -> rate
 
 	// Transaction tracking
-	pendingTxs    map[string]*BridgeTransaction
-	completedTxs  map[string]*BridgeTransaction
+	pendingTxs   map[string]*BridgeTransaction
+	completedTxs map[string]*BridgeTransaction
 
 	logger Logger
 }
 
 // BridgeChain represents a connected blockchain
 type BridgeChain struct {
-	ChainID      string    `json:"chain_id"`
-	Name         string    `json:"name"`
-	RPC          string    `json:"rpc"`
-	Contract     string    `json:"contract"`
-	Currency     string    `json:"currency"`
-	Decimals     int       `json:"decimals"`
-	LastBlock    uint64    `json:"last_block"`
-	LastSync     time.Time `json:"last_sync"`
-	Active       bool      `json:"active"`
+	ChainID   string    `json:"chain_id"`
+	Name      string    `json:"name"`
+	RPC       string    `json:"rpc"`
+	Contract  string    `json:"contract"`
+	Currency  string    `json:"currency"`
+	Decimals  int       `json:"decimals"`
+	LastBlock uint64    `json:"last_block"`
+	LastSync  time.Time `json:"last_sync"`
+	Active    bool      `json:"active"`
 }
 
 // BridgeTransaction tracks cross-chain transfers
@@ -146,14 +146,14 @@ func (sb *SimpleBridge) TransferPayment(ctx context.Context, sourceChain, target
 
 	// Create bridge transaction
 	tx := &BridgeTransaction{
-		ID:           generateID(),
-		FromChain:    sourceChain,
-		ToChain:      targetChain,
-		Amount:       convertedAmount,
-		Sender:       "bridge_sender", // Simplified
-		Recipient:    recipient,
-		Status:       TxPending,
-		CreatedAt:    time.Now(),
+		ID:        generateID(),
+		FromChain: sourceChain,
+		ToChain:   targetChain,
+		Amount:    convertedAmount,
+		Sender:    "bridge_sender", // Simplified
+		Recipient: recipient,
+		Status:    TxPending,
+		CreatedAt: time.Now(),
 	}
 
 	sb.pendingTxs[tx.ID] = tx
@@ -285,12 +285,12 @@ func (sb *SimpleBridge) GetBridgeStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"node_id":         sb.nodeID,
-		"total_chains":    len(sb.chains),
-		"active_chains":   activeChains,
-		"pending_txs":     len(sb.pendingTxs),
-		"completed_txs":   len(sb.completedTxs),
-		"exchange_pairs":  len(sb.exchangeRates),
+		"node_id":        sb.nodeID,
+		"total_chains":   len(sb.chains),
+		"active_chains":  activeChains,
+		"pending_txs":    len(sb.pendingTxs),
+		"completed_txs":  len(sb.completedTxs),
+		"exchange_pairs": len(sb.exchangeRates),
 	}
 }
 
