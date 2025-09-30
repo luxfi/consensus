@@ -16,20 +16,20 @@ type NodeIntegration struct {
 	mu sync.RWMutex
 
 	// Node integration
-	nodeID   string
-	enabled  bool
+	nodeID  string
+	enabled bool
 
 	// AI agents for different data types
-	blockAgent     *BlockAgent
-	txAgent        *Agent[TransactionData]
-	upgradeAgent   *UpgradeAgent
-	securityAgent  *SecurityAgent
-	disputeAgent   *DisputeAgent
+	blockAgent    *BlockAgent
+	txAgent       *Agent[TransactionData]
+	upgradeAgent  *UpgradeAgent
+	securityAgent *SecurityAgent
+	disputeAgent  *DisputeAgent
 
 	// Integration state
-	decisions      map[string]*AnyDecision
-	lastUpdate     time.Time
-	healthStatus   string
+	decisions    map[string]*AnyDecision
+	lastUpdate   time.Time
+	healthStatus string
 
 	// Cross-chain compute marketplace
 	marketplace *ComputeMarketplace
@@ -48,17 +48,17 @@ type AnyDecision struct {
 
 // Config for node integration
 type IntegrationConfig struct {
-	NodeID         string                  `json:"node_id"`
-	Enabled        bool                    `json:"enabled"`
-	ModelPaths     map[string]string       `json:"model_paths"`
-	SyncInterval   time.Duration           `json:"sync_interval"`
-	LogLevel       string                  `json:"log_level"`
+	NodeID       string            `json:"node_id"`
+	Enabled      bool              `json:"enabled"`
+	ModelPaths   map[string]string `json:"model_paths"`
+	SyncInterval time.Duration     `json:"sync_interval"`
+	LogLevel     string            `json:"log_level"`
 
 	// Cross-chain marketplace config
-	EnableMarketplace bool                   `json:"enable_marketplace"`
-	SupportedChains   []*ChainConfig         `json:"supported_chains"`
-	PricePerUnit      int64                  `json:"price_per_unit"`
-	MaxComputeUnits   int64                  `json:"max_compute_units"`
+	EnableMarketplace bool           `json:"enable_marketplace"`
+	SupportedChains   []*ChainConfig `json:"supported_chains"`
+	PricePerUnit      int64          `json:"price_per_unit"`
+	MaxComputeUnits   int64          `json:"max_compute_units"`
 }
 
 // SimpleLogger implements the Logger interface
@@ -401,7 +401,7 @@ func (ni *NodeIntegration) initializeAgents() error {
 	// Initialize photon emitter (simplified for now)
 	// TODO: Pass actual validator set from engine
 	nodes := []interface{}{ni.nodeID} // Convert to proper types
-	_ = nodes // Placeholder
+	_ = nodes                         // Placeholder
 
 	// Initialize specialized agents
 	blockExtractor := &BlockFeatureExtractor{}
@@ -473,11 +473,11 @@ func (e *SecurityFeatureExtractor) Extract(data SecurityData) map[string]float64
 	}
 
 	return map[string]float64{
-		"threat_score":    threatScore,
-		"threat_count":    float64(len(data.Threats)),
-		"evidence_count":  float64(len(data.Evidence)),
-		"age_minutes":     time.Since(data.Timestamp).Minutes(),
-		"node_entropy":    addressEntropy(data.NodeID),
+		"threat_score":   threatScore,
+		"threat_count":   float64(len(data.Threats)),
+		"evidence_count": float64(len(data.Evidence)),
+		"age_minutes":    time.Since(data.Timestamp).Minutes(),
+		"node_entropy":   addressEntropy(data.NodeID),
 	}
 }
 
@@ -501,11 +501,11 @@ func (e *DisputeFeatureExtractor) Extract(data DisputeData) map[string]float64 {
 	}
 
 	return map[string]float64{
-		"type_score":      typeScore,
-		"party_count":     float64(len(data.Parties)),
-		"evidence_count":  float64(len(data.Evidence)),
-		"age_hours":       time.Since(data.Timestamp).Hours(),
-		"chain_entropy":   addressEntropy(data.ChainID),
+		"type_score":     typeScore,
+		"party_count":    float64(len(data.Parties)),
+		"evidence_count": float64(len(data.Evidence)),
+		"age_hours":      time.Since(data.Timestamp).Hours(),
+		"chain_entropy":  addressEntropy(data.ChainID),
 	}
 }
 
@@ -621,12 +621,12 @@ func (ni *NodeIntegration) RequestCrossChainCompute(ctx context.Context, targetC
 
 	// Placeholder implementation
 	return &ComputeJob{
-		ID:            generateID(),
-		SourceChain:   req.SourceChain,
-		Requester:     req.Requester,
-		JobType:       req.JobType,
-		Data:          req.Data,
-		Status:        JobPending,
-		CreatedAt:     time.Now(),
+		ID:          generateID(),
+		SourceChain: req.SourceChain,
+		Requester:   req.Requester,
+		JobType:     req.JobType,
+		Data:        req.Data,
+		Status:      JobPending,
+		CreatedAt:   time.Now(),
 	}, nil
 }
