@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/consensus/photon"
+	"github.com/luxfi/consensus/protocol/quasar"
 )
 
 // Agent represents an AI consensus node with shared hallucinations
@@ -18,11 +18,11 @@ type Agent[T ConsensusData] struct {
 	mu sync.RWMutex
 
 	// Core components
-	nodeID    string
-	model     Model[T]
-	memory    *SharedMemory[T]
-	quasar    *quasar.Quasar
-	photon    *photon.UniformEmitter
+	nodeID string
+	model  Model[T]
+	memory *SharedMemory[T]
+	quasar *quasar.Quasar
+	photon *photon.UniformEmitter
 
 	// Shared hallucination state
 	hallucinations map[string]*Hallucination[T]
@@ -43,22 +43,22 @@ type ConsensusData interface {
 
 // Hallucination represents a shared model state across nodes
 type Hallucination[T ConsensusData] struct {
-	ID          string                 `json:"id"`
-	ModelID     string                 `json:"model_id"`
-	State       map[string]interface{} `json:"state"`
-	Confidence  float64                `json:"confidence"`
-	NodeVotes   map[string]float64     `json:"node_votes"`
-	UsageCount  int64                  `json:"usage_count"`
-	CreatedAt   time.Time              `json:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
-	Evidence    []Evidence[T]          `json:"evidence"`
+	ID         string                 `json:"id"`
+	ModelID    string                 `json:"model_id"`
+	State      map[string]interface{} `json:"state"`
+	Confidence float64                `json:"confidence"`
+	NodeVotes  map[string]float64     `json:"node_votes"`
+	UsageCount int64                  `json:"usage_count"`
+	CreatedAt  time.Time              `json:"created_at"`
+	UpdatedAt  time.Time              `json:"updated_at"`
+	Evidence   []Evidence[T]          `json:"evidence"`
 }
 
 // Evidence supports a hallucination with concrete data
 type Evidence[T ConsensusData] struct {
-	Data      T       `json:"data"`
-	NodeID    string  `json:"node_id"`
-	Weight    float64 `json:"weight"`
+	Data      T         `json:"data"`
+	NodeID    string    `json:"node_id"`
+	Weight    float64   `json:"weight"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
@@ -74,13 +74,13 @@ type TrainingExample[T ConsensusData] struct {
 
 // ConsensusState tracks the AI consensus process
 type ConsensusState[T ConsensusData] struct {
-	Round       uint64                    `json:"round"`
-	Phase       ConsensusPhase            `json:"phase"`
-	Proposals   map[string]*Proposal[T]   `json:"proposals"`
+	Round       uint64                        `json:"round"`
+	Phase       ConsensusPhase                `json:"phase"`
+	Proposals   map[string]*Proposal[T]       `json:"proposals"`
 	Votes       map[string]map[string]float64 `json:"votes"` // proposal -> node -> weight
-	Finalized   *Decision[T]              `json:"finalized,omitempty"`
-	StartedAt   time.Time                 `json:"started_at"`
-	FinalizedAt time.Time                 `json:"finalized_at,omitempty"`
+	Finalized   *Decision[T]                  `json:"finalized,omitempty"`
+	StartedAt   time.Time                     `json:"started_at"`
+	FinalizedAt time.Time                     `json:"finalized_at,omitempty"`
 }
 
 // ConsensusPhase follows the photon->quasar flow
@@ -96,13 +96,13 @@ const (
 
 // Proposal represents an AI decision proposal
 type Proposal[T ConsensusData] struct {
-	ID          string                 `json:"id"`
-	NodeID      string                 `json:"node_id"`
-	Decision    *Decision[T]           `json:"decision"`
-	Evidence    []Evidence[T]          `json:"evidence"`
-	Weight      float64                `json:"weight"`
-	Confidence  float64                `json:"confidence"`
-	Timestamp   time.Time              `json:"timestamp"`
+	ID         string        `json:"id"`
+	NodeID     string        `json:"node_id"`
+	Decision   *Decision[T]  `json:"decision"`
+	Evidence   []Evidence[T] `json:"evidence"`
+	Weight     float64       `json:"weight"`
+	Confidence float64       `json:"confidence"`
+	Timestamp  time.Time     `json:"timestamp"`
 }
 
 // SharedMemory manages distributed model state
@@ -111,9 +111,9 @@ type SharedMemory[T ConsensusData] struct {
 
 	// Distributed state
 	modelStates   map[string]map[string]interface{} // modelID -> state
-	nodeWeights   map[string]float64                 // nodeID -> weight
+	nodeWeights   map[string]float64                // nodeID -> weight
 	trainingQueue []TrainingExample[T]
-	gradientSync  map[string][]float64               // modelID -> gradients
+	gradientSync  map[string][]float64 // modelID -> gradients
 
 	// Synchronization
 	lastSync     time.Time
@@ -132,8 +132,8 @@ type Decision[T ConsensusData] struct {
 	Timestamp    time.Time              `json:"timestamp"`
 
 	// Consensus metadata
-	ProposerID   string  `json:"proposer_id"`
-	VoteCount    int     `json:"vote_count"`
+	ProposerID    string  `json:"proposer_id"`
+	VoteCount     int     `json:"vote_count"`
 	WeightedVotes float64 `json:"weighted_votes"`
 }
 
@@ -182,7 +182,6 @@ func New[T ConsensusData](
 		lastUpdate: time.Now(),
 	}
 }
-
 
 // === SHARED HALLUCINATION CONSENSUS ===
 
@@ -370,7 +369,7 @@ func (a *Agent[T]) updateHallucination(decision *Decision[T]) {
 		UsageCount: 1,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
-		Evidence:   []Evidence[T]{{
+		Evidence: []Evidence[T]{{
 			Data:      decision.Data,
 			NodeID:    a.nodeID,
 			Weight:    a.weights[a.nodeID],
@@ -423,11 +422,11 @@ func (a *Agent[T]) aggregateModelStates() map[string]interface{} {
 // === TYPE DEFINITIONS ===
 
 type BlockData struct {
-	Height      uint64    `json:"height"`
-	Hash        string    `json:"hash"`
-	Transactions []string `json:"transactions"`
-	Timestamp   time.Time `json:"timestamp"`
-	Validator   string    `json:"validator"`
+	Height       uint64    `json:"height"`
+	Hash         string    `json:"hash"`
+	Transactions []string  `json:"transactions"`
+	Timestamp    time.Time `json:"timestamp"`
+	Validator    string    `json:"validator"`
 }
 
 type TransactionData struct {
@@ -441,25 +440,25 @@ type TransactionData struct {
 }
 
 type UpgradeData struct {
-	Version     string   `json:"version"`
-	Changes     []string `json:"changes"`
-	Risk        string   `json:"risk"`
-	TestResults []string `json:"test_results"`
+	Version     string    `json:"version"`
+	Changes     []string  `json:"changes"`
+	Risk        string    `json:"risk"`
+	TestResults []string  `json:"test_results"`
 	Timestamp   time.Time `json:"timestamp"`
 }
 
 type SecurityData struct {
-	ThreatLevel string   `json:"threat_level"`
-	Threats     []string `json:"threats"`
-	NodeID      string   `json:"node_id"`
-	Evidence    []string `json:"evidence"`
+	ThreatLevel string    `json:"threat_level"`
+	Threats     []string  `json:"threats"`
+	NodeID      string    `json:"node_id"`
+	Evidence    []string  `json:"evidence"`
 	Timestamp   time.Time `json:"timestamp"`
 }
 
 type DisputeData struct {
-	Type      string   `json:"type"`
-	Parties   []string `json:"parties"`
-	Evidence  []string `json:"evidence"`
-	ChainID   string   `json:"chain_id"`
+	Type      string    `json:"type"`
+	Parties   []string  `json:"parties"`
+	Evidence  []string  `json:"evidence"`
+	ChainID   string    `json:"chain_id"`
 	Timestamp time.Time `json:"timestamp"`
 }

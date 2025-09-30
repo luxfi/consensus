@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus"
+	"github.com/luxfi/consensus/config"
 )
 
 func main() {

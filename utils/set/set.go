@@ -3,6 +3,7 @@ package set
 import "github.com/luxfi/math/set"
 
 // Re-export set types from math package
+// Generic type aliases work natively in Go 1.23+
 type Set[T comparable] = set.Set[T]
 
 // Of creates a new set
