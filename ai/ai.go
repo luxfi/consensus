@@ -35,23 +35,23 @@ type SimpleDecision struct {
 
 // State tracks what the AI knows
 type State struct {
-	mu          sync.RWMutex
-	chains      map[string]*ChainState
-	disputes    map[string]*Dispute
-	upgrades    map[string]*Upgrade
-	security    *SecurityState
-	lastUpdate  time.Time
+	mu         sync.RWMutex
+	chains     map[string]*ChainState
+	disputes   map[string]*Dispute
+	upgrades   map[string]*Upgrade
+	security   *SecurityState
+	lastUpdate time.Time
 }
 
 // ChainState is what we know about a blockchain
 type ChainState struct {
-	Height       uint64                 `json:"height"`
-	Hash         string                 `json:"hash"`
-	Validators   []string               `json:"validators"`
-	Performance  *Performance           `json:"performance"`
-	Issues       []string               `json:"issues"`
-	LastSeen     time.Time              `json:"last_seen"`
-	Metadata     map[string]interface{} `json:"metadata"`
+	Height      uint64                 `json:"height"`
+	Hash        string                 `json:"hash"`
+	Validators  []string               `json:"validators"`
+	Performance *Performance           `json:"performance"`
+	Issues      []string               `json:"issues"`
+	LastSeen    time.Time              `json:"last_seen"`
+	Metadata    map[string]interface{} `json:"metadata"`
 }
 
 // Performance metrics for the chain
@@ -64,15 +64,15 @@ type Performance struct {
 
 // Dispute represents a fork or conflict that needs resolution
 type Dispute struct {
-	ID          string    `json:"id"`
-	Type        string    `json:"type"` // "fork", "validator", "upgrade", "security"
-	ChainID     string    `json:"chain_id"`
-	Parties     []string  `json:"parties"`
-	Evidence    []string  `json:"evidence"`
-	Status      string    `json:"status"` // "open", "resolved", "escalated"
-	Resolution  string    `json:"resolution,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	ResolvedAt  time.Time `json:"resolved_at,omitempty"`
+	ID         string    `json:"id"`
+	Type       string    `json:"type"` // "fork", "validator", "upgrade", "security"
+	ChainID    string    `json:"chain_id"`
+	Parties    []string  `json:"parties"`
+	Evidence   []string  `json:"evidence"`
+	Status     string    `json:"status"` // "open", "resolved", "escalated"
+	Resolution string    `json:"resolution,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	ResolvedAt time.Time `json:"resolved_at,omitempty"`
 }
 
 // Upgrade represents a potential blockchain upgrade
@@ -82,7 +82,7 @@ type Upgrade struct {
 	ChainID     string                 `json:"chain_id"`
 	Version     string                 `json:"version"`
 	Changes     []string               `json:"changes"`
-	Risk        string                 `json:"risk"` // "low", "medium", "high", "critical"
+	Risk        string                 `json:"risk"`   // "low", "medium", "high", "critical"
 	Status      string                 `json:"status"` // "proposed", "testing", "approved", "deployed"
 	TestResults map[string]interface{} `json:"test_results,omitempty"`
 	CreatedAt   time.Time              `json:"created_at"`
@@ -192,8 +192,8 @@ func (a *SimpleAgent) ResolveDispute(ctx context.Context, disputeID string) (*Si
 // ResolveFork chooses the correct chain in a fork
 func (a *SimpleAgent) ResolveFork(ctx context.Context, chainID string, forks []string) (*SimpleDecision, error) {
 	data := map[string]interface{}{
-		"chain_id": chainID,
-		"forks":    forks,
+		"chain_id":  chainID,
+		"forks":     forks,
 		"timestamp": time.Now(),
 	}
 
