@@ -111,6 +111,29 @@ func XChainParams() Parameters {
 	return p
 }
 
+// SingleValidatorParams returns parameters for single validator mainnet (K=1)
+// This configuration is used for POA mode with a single staking validator
+func SingleValidatorParams() Parameters {
+	return Parameters{
+		K:                     1,     // Single validator
+		Alpha:                 1.0,   // 100% threshold (only one validator)
+		Beta:                  1,     // Immediate finalization
+		AlphaPreference:       1,     // Single validator preference
+		AlphaConfidence:       1,     // Single validator confidence
+		BetaVirtuous:          1,     // Immediate virtuous confidence
+		BetaRogue:             1,     // No rogue behavior possible
+		ConcurrentPolls:       1,     // Single poll at a time
+		ConcurrentRepolls:     1,     // Single repoll if needed
+		OptimalProcessing:     1,     // Process one at a time
+		MaxOutstandingItems:   256,   // Reduced for single validator
+		MaxItemProcessingTime: 30 * time.Second, // Faster timeout for single validator
+		Parents:               1,     // Single parent for linear chain
+		BatchSize:             10,    // Smaller batches for single validator
+		BlockTime:             100 * time.Millisecond, // Fast block time
+		RoundTO:               200 * time.Millisecond, // Quick round timeout
+	}
+}
+
 // WithBlockTime returns a copy of Parameters with updated block time
 func (p Parameters) WithBlockTime(blockTime time.Duration) Parameters {
 	p.BlockTime = blockTime
