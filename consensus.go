@@ -62,6 +62,9 @@ func NewPQEngine() Engine {
 // Config returns default consensus parameters for different network sizes
 func Config(nodes int) config.Parameters {
 	switch {
+	case nodes == 1:
+		// Single validator mode for POA mainnet
+		return config.SingleValidatorParams()
 	case nodes <= 5:
 		return config.LocalParams()
 	case nodes <= 11:
