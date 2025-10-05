@@ -22,7 +22,7 @@ type Context struct {
 	PublicKey   []byte     `json:"publicKey"`
 	XChainID    ids.ID     `json:"xChainID"`
 	CChainID    ids.ID     `json:"cChainID"`
-	AVAXAssetID ids.ID     `json:"avaxAssetID"`
+	LUXAssetID ids.ID     `json:"luxAssetID"`
 	LUXAssetID  ids.ID     `json:"luxAssetID"`
 	// XAssetID is an alias for LUXAssetID for backward compatibility
 	XAssetID ids.ID `json:"xAssetID"`
