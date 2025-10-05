@@ -53,5 +53,5 @@ type QuantumIDs struct {
 	PChainID    ids.ID
 	XChainID    ids.ID
 	CChainID    ids.ID
-	AVAXAssetID ids.ID
+	LUXAssetID ids.ID
 }
