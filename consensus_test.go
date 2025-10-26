@@ -74,3 +74,30 @@ func TestEngineHealthCheck(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+func TestConfig(t *testing.T) {
+	tests := []struct {
+		name  string
+		nodes int
+	}{
+		{
+			name:  "local config (5 nodes)",
+			nodes: 5,
+		},
+		{
+			name:  "testnet config (11 nodes)",
+			nodes: 11,
+		},
+		{
+			name:  "mainnet config (21 nodes)",
+			nodes: 21,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config(tt.nodes)
+			require.NotNil(t, cfg)
+		})
+	}
+}
