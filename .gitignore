@@ -1,9 +1,14 @@
 LLM.md
-AGENTS.md
-CLAUDE.md
-GEMINI.md
 
 *.test
 *.log
 bin/
 *.out
+
+
+
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+GROK.md
+QWEN.md

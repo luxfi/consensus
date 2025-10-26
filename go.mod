@@ -3,6 +3,7 @@ module github.com/luxfi/consensus
 go 1.25.1
 
 exclude github.com/ethereum/go-ethereum v1.10.26
+
 exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
