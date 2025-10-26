@@ -15,7 +15,7 @@ import (
 
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/node/utils/hashing"
-	"github.com/luxfi/node/utils/tree"
+	"github.com/luxfi/node/vms/proposervm/tree"
 )
 
 var (
