@@ -15,7 +15,7 @@ var (
 	PChainID   = ids.GenerateTestID()
 	XChainID   = ids.GenerateTestID()
 	CChainID   = ids.GenerateTestID()
-	LUXAssetID = ids.GenerateTestID()
+	XAssetID = ids.GenerateTestID()
 )
 
 // SimpleValidatorState is a minimal validator state for testing

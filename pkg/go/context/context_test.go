@@ -122,7 +122,7 @@ func TestContext(t *testing.T) {
 		PublicKey:   []byte("test-public-key"),
 		XChainID:    ids.GenerateTestID(),
 		CChainID:    ids.GenerateTestID(),
-		LUXAssetID: ids.GenerateTestID(),
+		XAssetID: ids.GenerateTestID(),
 		StartTime:   time.Now(),
 	}
 
@@ -256,7 +256,7 @@ func TestWithIDs(t *testing.T) {
 		ChainID:    ids.GenerateTestID(),
 		NodeID:     ids.GenerateTestNodeID(),
 		PublicKey:  []byte("test-key"),
-		LUXAssetID: ids.GenerateTestID(),
+		XAssetID: ids.GenerateTestID(),
 	}
 
 	t.Run("WithIDs on empty context", func(t *testing.T) {
@@ -484,7 +484,7 @@ func TestContextWithAllFields(t *testing.T) {
 		PublicKey:   []byte("test-public-key"),
 		XChainID:    ids.GenerateTestID(),
 		CChainID:    ids.GenerateTestID(),
-		LUXAssetID: ids.GenerateTestID(),
+		XAssetID: ids.GenerateTestID(),
 		StartTime:   time.Now(),
 		ValidatorState: &mockValidatorState{
 			height: 100,
@@ -511,7 +511,7 @@ func TestContextWithAllFields(t *testing.T) {
 	require.Equal(t, fullCtx.PublicKey, retrieved.PublicKey)
 	require.Equal(t, fullCtx.XChainID, retrieved.XChainID)
 	require.Equal(t, fullCtx.CChainID, retrieved.CChainID)
-	require.Equal(t, fullCtx.LUXAssetID, retrieved.LUXAssetID)
+	require.Equal(t, fullCtx.XAssetID, retrieved.XAssetID)
 	require.Equal(t, fullCtx.StartTime, retrieved.StartTime)
 	require.NotNil(t, retrieved.ValidatorState)
 	require.NotNil(t, retrieved.Keystore)
