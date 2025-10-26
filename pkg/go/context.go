@@ -15,8 +15,8 @@ type Contextualizable interface {
 	InitializeContext(context.Context) error
 }
 
-// LuxAssetID returns the ID of the LUX asset
-func LuxAssetID(ctx context.Context) interface{} {
+// XAssetID returns the ID of the X-Chain native asset
+func XAssetID(ctx context.Context) interface{} {
 	// This is a placeholder implementation
 	// In production, this would get the actual LUX asset ID from context
 	return nil
