@@ -15,7 +15,7 @@ require (
 	github.com/luxfi/ids v1.1.1
 	github.com/luxfi/log v1.1.22
 	github.com/luxfi/math v0.1.1
-	github.com/luxfi/node v1.18.18
+	github.com/luxfi/node v1.19.8
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b
@@ -84,9 +84,12 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	gonum.org/v1/gonum v0.16.0 // indirect
-	google.golang.org/protobuf v1.36.8 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
+	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
+
+exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090

@@ -7,15 +7,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLuxAssetID(t *testing.T) {
+func TestXAssetID(t *testing.T) {
 	ctx := context.Background()
 
-	// Test that LuxAssetID returns something (nil in this implementation)
-	assetID := LuxAssetID(ctx)
+	// Test that XAssetID returns something (nil in this implementation)
+	assetID := XAssetID(ctx)
 	require.Nil(t, assetID) // Current implementation returns nil
 
 	// Test that it returns the same value each time (should be deterministic)
-	assetID2 := LuxAssetID(ctx)
+	assetID2 := XAssetID(ctx)
 	require.Equal(t, assetID, assetID2)
 }
 
