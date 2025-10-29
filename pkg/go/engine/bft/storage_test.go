@@ -19,7 +19,7 @@ import (
 
 func TestStorageNew(t *testing.T) {
 	ctx := context.Background()
-	child := snowmantest.BuildChild(snowmantest.Genesis)
+	child := chaintest.BuildChild(chaintest.Genesis)
 	tests := []struct {
 		name           string
 		vm             block.ChainVM

@@ -25,7 +25,7 @@ func TestBlockSerialization(t *testing.T) {
 	unexpectedBlockBytes := errors.New("unexpected block bytes")
 	ctx := context.Background()
 	genesisBlock := newTestBlock(t, newBlockConfig{})
-	testBlock := snowmantest.BuildChild(snowmantest.Genesis)
+	testBlock := chaintest.BuildChild(chaintest.Genesis)
 
 	b := &Block{
 		vmBlock: testBlock,

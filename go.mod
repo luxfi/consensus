@@ -11,11 +11,11 @@ require (
 	github.com/ethereum/go-ethereum v1.16.4
 	github.com/luxfi/bft v0.1.0
 	github.com/luxfi/crypto v1.17.4
-	github.com/luxfi/database v1.2.1
-	github.com/luxfi/ids v1.1.1
+	github.com/luxfi/database v1.2.3
+	github.com/luxfi/ids v1.1.2
 	github.com/luxfi/log v1.1.22
-	github.com/luxfi/math v0.1.1
-	github.com/luxfi/node v1.19.8
+	github.com/luxfi/math v0.1.2
+	github.com/luxfi/node v1.20.1
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b
@@ -56,7 +56,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/luxfi/metric v1.4.0 // indirect
+	github.com/luxfi/metric v1.4.3 // indirect
 	github.com/luxfi/mock v0.1.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect

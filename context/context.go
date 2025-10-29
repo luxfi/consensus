@@ -3,6 +3,7 @@ package context
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/luxfi/ids"
@@ -16,6 +17,7 @@ type Context struct {
 	NetworkID uint32 `json:"networkID"`
 	// NetID identifies the specific network/subnet within the quantum network
 	NetID ids.ID `json:"netID"`
+	SubnetID    ids.ID `json:"subnetID"` // Alias for NetID
 	// ChainID identifies the specific chain within the network
 	ChainID     ids.ID     `json:"chainID"`
 	NodeID      ids.NodeID `json:"nodeID"`
@@ -23,15 +25,22 @@ type Context struct {
 	XChainID    ids.ID     `json:"xChainID"`
 	CChainID    ids.ID     `json:"cChainID"`
 	XAssetID ids.ID     `json:"xAssetID"`
+	LUXAssetID   ids.ID     `json:"luxAssetID"`
+	ChainDataDir string     `json:"chainDataDir"`
 
 	// Timing
 	StartTime time.Time `json:"startTime"`
 
-	// Additional fields for consensus
-	ValidatorState ValidatorState
+	ValidatorState interface{}
 	Keystore       Keystore
-	BCLookup       BlockchainIDLookup
-	Metrics        Metrics
+	Metrics        interface{}
+	Log             interface{} // logging.Logger
+	SharedMemory    interface{} // atomic.SharedMemory
+	WarpSigner      interface{} // warp.Signer
+	NetworkUpgrades interface{} // upgrade.Config
+	
+	// Lock for thread-safe access to context
+	Lock sync.RWMutex
 }
 
 // ValidatorState provides validator information
@@ -40,7 +49,7 @@ type ValidatorState interface {
 	GetNetID(ids.ID) (ids.ID, error)
 	GetSubnetID(chainID ids.ID) (ids.ID, error)
 	GetValidatorSet(uint64, ids.ID) (map[ids.NodeID]uint64, error)
-	GetCurrentHeight() (uint64, error)
+	GetCurrentHeight(context.Context) (uint64, error)
 	GetMinimumHeight(context.Context) (uint64, error)
 }
 
@@ -60,6 +69,8 @@ type Keystore interface {
 // BlockchainIDLookup provides blockchain ID lookup
 type BlockchainIDLookup interface {
 	Lookup(alias string) (ids.ID, error)
+	PrimaryAlias(id ids.ID) (string, error)
+	Aliases(id ids.ID) ([]string, error)
 }
 
 // Metrics provides metrics tracking
@@ -108,7 +119,7 @@ func GetNetworkID(ctx context.Context) uint32 {
 // GetValidatorState gets the validator state from context
 func GetValidatorState(ctx context.Context) ValidatorState {
 	if c, ok := ctx.Value(contextKey).(*Context); ok {
-		return c.ValidatorState
+	return c.ValidatorState.(ValidatorState)
 	}
 	return nil
 }
@@ -148,6 +159,8 @@ type IDs struct {
 	PublicKey []byte
 	// XAssetID is the asset ID for the X-Chain native asset
 	XAssetID ids.ID
+	LUXAssetID   ids.ID     `json:"luxAssetID"`
+	ChainDataDir string     `json:"chainDataDir"`
 }
 
 // WithIDs adds IDs to the context
@@ -177,3 +190,33 @@ func WithValidatorState(ctx context.Context, vs ValidatorState) context.Context 
 type contextKeyType struct{}
 
 var contextKey = contextKeyType{}
+
+// Logger provides logging functionality
+type Logger interface {
+	Debug(msg string, fields ...interface{}) // zap.Field
+	Info(msg string, fields ...interface{}) // zap.Field
+	Warn(msg string, fields ...interface{}) // zap.Field
+	Error(msg string, fields ...interface{}) // zap.Field
+	Fatal(msg string, fields ...interface{}) // zap.Field
+}
+
+// SharedMemory provides cross-chain shared memory
+type SharedMemory interface {
+	Get(peerChainID ids.ID, keys [][]byte) (values [][]byte, err error)
+	Indexed(
+		peerChainID ids.ID,
+		traits [][]byte,
+		startTrait, startKey []byte,
+		limit int,
+	) (values [][]byte, lastTrait, lastKey []byte, err error)
+}
+
+// WarpSigner provides BLS signing for Warp messages
+type WarpSigner interface {
+	Sign(msg interface{}) ([]byte, error)
+}
+
+// NetworkUpgrades contains network upgrade activation times
+type NetworkUpgrades interface {
+	// Methods to query upgrade times
+}
