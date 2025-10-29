@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2025, Lux Industries Inc. All rights reserved.
+# Copyright (C) 2020-2025, Lux Partners Limited All rights reserved.
 # See the file LICENSE for licensing terms.
 
 .PHONY: all test build clean lint format check tools help benchmark benchmark-node benchmark-zmq test-parallel test-cluster paper paper-clean paper-watch check-latex
