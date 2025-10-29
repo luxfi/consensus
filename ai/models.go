@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2025, Lux Partners Limited All rights reserved.
 // Practical AI Models - Simple, Effective, No Bullshit
 
 package ai

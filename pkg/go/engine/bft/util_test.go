@@ -33,7 +33,7 @@ func newTestBlock(t *testing.T, config newBlockConfig) *Block {
 	if config.prev == nil {
 		block := &Block{
 			vmBlock: &wrappedBlock{
-				Block: snowmantest.Genesis,
+				Block: chaintest.Genesis,
 				vm:    newTestVM(),
 			},
 			metadata: genesisMetadata,
@@ -51,7 +51,7 @@ func newTestBlock(t *testing.T, config newBlockConfig) *Block {
 		config.round = config.prev.metadata.Round + 1
 	}
 
-	vmBlock := snowmantest.BuildChild(config.prev.vmBlock.(*wrappedBlock).Block)
+	vmBlock := chaintest.BuildChild(config.prev.vmBlock.(*wrappedBlock).Block)
 	block := &Block{
 		vmBlock: &wrappedBlock{
 			Block: vmBlock,
@@ -172,21 +172,21 @@ func newTestFinalization(t *testing.T, configs []*Config, bh simplex.BlockHeader
 func newTestVM() *wrappedVM {
 	return &wrappedVM{
 		VM: &blocktest.VM{},
-		blocks: map[ids.ID]*snowmantest.Block{
-			snowmantest.Genesis.ID(): snowmantest.Genesis,
+		blocks: map[ids.ID]*chaintest.Block{
+			chaintest.Genesis.ID(): chaintest.Genesis,
 		},
 	}
 }
 
 // wrappedBlock wraps a test block in a VM so that on Accept, it is stored in the VM's block store.
 type wrappedBlock struct {
-	*snowmantest.Block
+	*chaintest.Block
 	vm *wrappedVM
 }
 
 type wrappedVM struct {
 	*blocktest.VM
-	blocks map[ids.ID]*snowmantest.Block
+	blocks map[ids.ID]*chaintest.Block
 }
 
 func (wb *wrappedBlock) Accept(ctx context.Context) error {
@@ -221,7 +221,7 @@ func (v *wrappedVM) LastAccepted(_ context.Context) (ids.ID, error) {
 		return ids.Empty, database.ErrNotFound
 	}
 
-	lastAccepted := snowmantest.Genesis
+	lastAccepted := chaintest.Genesis
 	for _, block := range v.blocks {
 		if block.Height() > lastAccepted.Height() {
 			lastAccepted = block
