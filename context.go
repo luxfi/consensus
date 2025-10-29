@@ -38,7 +38,9 @@ func GetQuantumIDs(ctx *consensusctx.Context) *QuantumIDs {
 	if ctx != nil {
 		return &QuantumIDs{
 			QuantumID: ctx.QuantumID,
-			NetworkID: ctx.NetworkID,
+			NetID:     ctx.NetID,
+			ChainID:   ctx.ChainID,
+			NodeID:    ctx.NodeID,
 		}
 	}
 	return nil
