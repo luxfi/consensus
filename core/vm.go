@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2019-2025, Lux Partners Limited All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package core
@@ -58,6 +58,9 @@ type VM interface {
 
 	// CreateStaticHandlers returns the static HTTP handlers for the VM
 	CreateStaticHandlers(ctx context.Context) (map[string]http.Handler, error)
+	
+	// NewHTTPHandler returns a new HTTP handler for the VM
+	NewHTTPHandler(ctx context.Context) (http.Handler, error)
 }
 
 // Message defines a message that can be sent to the consensus engine

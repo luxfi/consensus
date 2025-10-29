@@ -82,11 +82,6 @@ type ChainVM interface {
 	// Version returns the VM version
 	Version(context.Context) (string, error)
 
-	// Network callbacks - optional
-	Connected(context.Context, ids.NodeID, interface{}) error
-	Disconnected(context.Context, ids.NodeID) error
-	HealthCheck(context.Context) (interface{}, error)
-
 	// GetBlockIDAtHeight gets block ID at a specific height
 	GetBlockIDAtHeight(context.Context, uint64) (ids.ID, error)
 
@@ -198,16 +193,3 @@ func GetAncestors(
 }
 
 
-
-// Network callbacks
-type ChainVMWithNetwork interface {
-	ChainVM
-	Connected(ctx context.Context, nodeID ids.NodeID, version interface{}) error
-	Disconnected(ctx context.Context, nodeID ids.NodeID) error
-}
-
-// HealthCheck interface
-type ChainVMWithHealth interface {
-	ChainVM
-	HealthCheck(ctx context.Context) (interface{}, error)
-}
