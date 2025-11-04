@@ -5,6 +5,7 @@ import (
 
 	"github.com/luxfi/consensus/version"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/math/set"
 )
 
 // State provides validator state management
@@ -62,6 +63,22 @@ type Manager interface {
 	GetWeight(netID ids.ID, nodeID ids.NodeID) uint64 // Deprecated: use GetLight
 	TotalLight(netID ids.ID) (uint64, error)
 	TotalWeight(netID ids.ID) (uint64, error) // Deprecated: use TotalLight
+	
+	// Mutable operations
+	AddStaker(netID ids.ID, nodeID ids.NodeID, publicKey []byte, txID ids.ID, light uint64) error
+	AddWeight(netID ids.ID, nodeID ids.NodeID, light uint64) error
+	RemoveWeight(netID ids.ID, nodeID ids.NodeID, light uint64) error
+	NumNets() int
+
+	// Additional utility methods
+	Count(netID ids.ID) int
+	NumValidators(netID ids.ID) int // Alias for Count
+	Sample(netID ids.ID, size int) ([]ids.NodeID, error)
+	GetValidatorIDs(netID ids.ID) []ids.NodeID
+	SubsetWeight(netID ids.ID, nodeIDs set.Set[ids.NodeID]) (uint64, error)
+	GetMap(netID ids.ID) map[ids.NodeID]*GetValidatorOutput
+	RegisterCallbackListener(listener ManagerCallbackListener)
+	RegisterSetCallbackListener(netID ids.ID, listener SetCallbackListener)
 }
 
 // SetCallbackListener listens to validator set changes
