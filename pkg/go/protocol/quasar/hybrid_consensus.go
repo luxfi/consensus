@@ -136,7 +136,10 @@ func (q *QuasarHybridConsensus) SignMessage(validatorID string, message []byte) 
 	}
 
 	// Create BLS signature
-	blsSig := blsSK.Sign(message)
+	blsSig, err := blsSK.Sign(message)
+	if err != nil {
+		return nil, fmt.Errorf("BLS sign failed: %w", err)
+	}
 
 	// Create Ringtail (ML-DSA) signature
 	ringtailSig, err := ringtailKP.PrivateKey.Sign(rand.Reader, message, nil)
