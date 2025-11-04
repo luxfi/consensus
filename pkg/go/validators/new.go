@@ -31,6 +31,57 @@ func (m *manager) AddStaker(netID ids.ID, nodeID ids.NodeID, publicKey []byte, t
 	return nil
 }
 
+// AddWeight adds weight to an existing validator
+func (m *manager) AddWeight(netID ids.ID, nodeID ids.NodeID, light uint64) error {
+	if m.validators[netID] == nil {
+		m.validators[netID] = make(map[ids.NodeID]*GetValidatorOutput)
+	}
+	
+	val, exists := m.validators[netID][nodeID]
+	if !exists {
+		return nil // Validator doesn't exist, nothing to add
+	}
+	
+	val.Light += light
+	val.Weight += light
+	return nil
+}
+
+// RemoveWeight removes weight from an existing validator
+func (m *manager) RemoveWeight(netID ids.ID, nodeID ids.NodeID, light uint64) error {
+	if m.validators[netID] == nil {
+		return nil
+	}
+	
+	val, exists := m.validators[netID][nodeID]
+	if !exists {
+		return nil // Validator doesn't exist, nothing to remove
+	}
+	
+	if val.Light >= light {
+		val.Light -= light
+		val.Weight -= light
+	} else {
+		val.Light = 0
+		val.Weight = 0
+	}
+	
+	// Remove validator if weight is 0
+	if val.Light == 0 {
+		delete(m.validators[netID], nodeID)
+		if len(m.validators[netID]) == 0 {
+			delete(m.validators, netID)
+		}
+	}
+	
+	return nil
+}
+
+// NumNets returns the number of networks with validators
+func (m *manager) NumNets() int {
+	return len(m.validators)
+}
+
 func (m *manager) GetValidators(netID ids.ID) (Set, error) {
 	if validators, ok := m.validators[netID]; ok {
 		return &validatorSet{validators: validators}, nil
