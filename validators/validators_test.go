@@ -7,6 +7,7 @@ import (
 
 	"github.com/luxfi/consensus/version"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/math/set"
 	"github.com/stretchr/testify/require"
 )
 
@@ -162,6 +163,129 @@ func (m *mockManager) TotalLight(netID ids.ID) (uint64, error) {
 
 func (m *mockManager) TotalWeight(netID ids.ID) (uint64, error) {
 	return m.TotalLight(netID)
+}
+
+// Mutable operations for Manager interface
+func (m *mockManager) AddStaker(netID ids.ID, nodeID ids.NodeID, publicKey []byte, txID ids.ID, light uint64) error {
+	if m.err != nil {
+		return m.err
+	}
+	if m.validators == nil {
+		m.validators = make(map[ids.ID]map[ids.NodeID]*GetValidatorOutput)
+	}
+	if m.validators[netID] == nil {
+		m.validators[netID] = make(map[ids.NodeID]*GetValidatorOutput)
+	}
+	m.validators[netID][nodeID] = &GetValidatorOutput{
+		NodeID:    nodeID,
+		PublicKey: publicKey,
+		Light:     light,
+		Weight:    light,
+		TxID:      txID,
+	}
+	return nil
+}
+
+func (m *mockManager) AddWeight(netID ids.ID, nodeID ids.NodeID, light uint64) error {
+	if m.err != nil {
+		return m.err
+	}
+	if val, ok := m.GetValidator(netID, nodeID); ok {
+		val.Light += light
+		val.Weight += light
+		return nil
+	}
+	return errors.New("validator not found")
+}
+
+func (m *mockManager) RemoveWeight(netID ids.ID, nodeID ids.NodeID, light uint64) error {
+	if m.err != nil {
+		return m.err
+	}
+	if val, ok := m.GetValidator(netID, nodeID); ok {
+		if val.Light >= light {
+			val.Light -= light
+			val.Weight -= light
+			return nil
+		}
+		return errors.New("insufficient weight")
+	}
+	return errors.New("validator not found")
+}
+
+func (m *mockManager) NumNets() int {
+	return len(m.validators)
+}
+
+// Additional utility methods
+func (m *mockManager) Count(netID ids.ID) int {
+	if vals, ok := m.validators[netID]; ok {
+		return len(vals)
+	}
+	return 0
+}
+
+func (m *mockManager) NumValidators(netID ids.ID) int {
+	return m.Count(netID)
+}
+
+func (m *mockManager) Sample(netID ids.ID, size int) ([]ids.NodeID, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	nodeIDs := make([]ids.NodeID, 0, size)
+	if vals, ok := m.validators[netID]; ok {
+		for nodeID := range vals {
+			if len(nodeIDs) >= size {
+				break
+			}
+			nodeIDs = append(nodeIDs, nodeID)
+		}
+	}
+	return nodeIDs, nil
+}
+
+func (m *mockManager) GetValidatorIDs(netID ids.ID) []ids.NodeID {
+	nodeIDs := []ids.NodeID{}
+	if vals, ok := m.validators[netID]; ok {
+		for nodeID := range vals {
+			nodeIDs = append(nodeIDs, nodeID)
+		}
+	}
+	return nodeIDs
+}
+
+func (m *mockManager) SubsetWeight(netID ids.ID, nodeIDs set.Set[ids.NodeID]) (uint64, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	var totalWeight uint64
+	if vals, ok := m.validators[netID]; ok {
+		for nodeID := range nodeIDs {
+			if val, ok := vals[nodeID]; ok {
+				totalWeight += val.Weight
+			}
+		}
+	}
+	return totalWeight, nil
+}
+
+func (m *mockManager) GetMap(netID ids.ID) map[ids.NodeID]*GetValidatorOutput {
+	result := make(map[ids.NodeID]*GetValidatorOutput)
+	if vals, ok := m.validators[netID]; ok {
+		for k, v := range vals {
+			result[k] = v
+		}
+	}
+	return result
+}
+
+func (m *mockManager) RegisterCallbackListener(listener ManagerCallbackListener) {
+	// No-op for mock
+}
+
+func (m *mockManager) RegisterSetCallbackListener(netID ids.ID, listener SetCallbackListener) {
+	// No-op for mock
 }
 
 // Mock Connector implementation
