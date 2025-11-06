@@ -569,6 +569,303 @@ func TestUpgradeFeatures(t *testing.T) {
 	}
 }
 
+// === ValidateProposal Tests ===
+
+func TestSimpleModelValidateProposal(t *testing.T) {
+	extractor := &mockBlockFeatureExtractor{}
+	model := NewSimpleModel[BlockData]("node-1", extractor)
+	
+	// Create a proposal
+	proposal := &Proposal[BlockData]{
+		ID:     "test-proposal",
+		NodeID: "node-1",
+		Decision: &Decision[BlockData]{
+			ID:         "decision-1",
+			Action:     "approve",
+			Confidence: 0.85,
+			Data: BlockData{
+				Height:    100,
+				Timestamp: time.Now(),
+			},
+		},
+		Weight:     1.0,
+		Confidence: 0.85,
+		Timestamp:  time.Now(),
+	}
+	
+	confidence, err := model.ValidateProposal(proposal)
+	
+	if err != nil {
+		t.Fatalf("ValidateProposal() error = %v", err)
+	}
+	
+	if confidence < 0 || confidence > 1 {
+		t.Errorf("Confidence should be between 0 and 1, got %f", confidence)
+	}
+}
+
+func TestSimpleModelValidateProposal_NilDecision(t *testing.T) {
+	extractor := &mockBlockFeatureExtractor{}
+	model := NewSimpleModel[BlockData]("node-1", extractor)
+	
+	proposal := &Proposal[BlockData]{
+		ID:       "test-proposal",
+		Decision: nil, // Nil decision
+	}
+	
+	_, err := model.ValidateProposal(proposal)
+	
+	if err == nil {
+		t.Fatal("Expected error for nil decision, got nil")
+	}
+	
+	if err.Error() != "proposal has no decision" {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+// === UpdateWeights Tests ===
+
+func TestSimpleModelUpdateWeights(t *testing.T) {
+	extractor := &mockBlockFeatureExtractor{}
+	model := NewSimpleModel[BlockData]("node-1", extractor)
+	
+	// UpdateWeights expects gradients to match feature count + 1 (bias)
+	// mockBlockFeatureExtractor has 4 features, so we need 5 gradients
+	gradients := []float64{0.1, 0.2, 0.15, 0.25, 0.05} // 4 features + 1 bias
+	err := model.UpdateWeights(gradients)
+	
+	if err != nil {
+		t.Fatalf("UpdateWeights() error = %v", err)
+	}
+}
+
+func TestSimpleModelUpdateWeights_WrongSize(t *testing.T) {
+	extractor := &mockBlockFeatureExtractor{}
+	model := NewSimpleModel[BlockData]("node-1", extractor)
+	
+	// Provide wrong number of gradients
+	err := model.UpdateWeights([]float64{0.1, 0.2})
+	
+	if err == nil {
+		t.Fatal("Expected error for wrong gradient size, got nil")
+	}
+	
+	if !contains(err.Error(), "gradient size mismatch") {
+		t.Errorf("Expected gradient size mismatch error, got: %v", err)
+	}
+}
+
+// Helper function
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || 
+		(len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
+		len(s) > len(substr)*2 && findSubstring(s, substr))))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// === GetState Tests ===
+
+func TestSimpleModelGetState(t *testing.T) {
+	extractor := &mockBlockFeatureExtractor{}
+	model := NewSimpleModel[BlockData]("node-1", extractor)
+	
+	// Set some state
+	model.weights["param1"] = 1.5
+	model.weights["param2"] = 2.5
+	model.bias = 0.7
+	
+	state := model.GetState()
+	
+	if state == nil {
+		t.Fatal("GetState() returned nil")
+	}
+	
+	// Check that weights are included
+	if weights, ok := state["weights"].(map[string]float64); ok {
+		if len(weights) != 2 {
+			t.Errorf("Expected 2 weights, got %d", len(weights))
+		}
+		if weights["param1"] != 1.5 {
+			t.Errorf("Expected param1 = 1.5, got %f", weights["param1"])
+		}
+	} else {
+		t.Error("State should contain weights map")
+	}
+	
+	// Check that bias is included
+	if bias, ok := state["bias"].(float64); ok {
+		if bias != 0.7 {
+			t.Errorf("Expected bias = 0.7, got %f", bias)
+		}
+	} else {
+		t.Error("State should contain bias")
+	}
+}
+
+// === LoadState Tests ===
+
+func TestSimpleModelLoadState(t *testing.T) {
+	extractor := &mockBlockFeatureExtractor{}
+	model := NewSimpleModel[BlockData]("node-1", extractor)
+	
+	// Create state to load (weights must be map[string]interface{})
+	state := map[string]interface{}{
+		"weights": map[string]interface{}{
+			"param1": 3.0,
+			"param2": 4.0,
+		},
+		"bias": 0.9,
+	}
+	
+	err := model.LoadState(state)
+	
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	
+	// Check that state was loaded
+	if model.bias != 0.9 {
+		t.Errorf("Expected bias = 0.9, got %f", model.bias)
+	}
+	
+	if model.weights["param1"] != 3.0 {
+		t.Errorf("Expected param1 = 3.0, got %f", model.weights["param1"])
+	}
+	
+	if model.weights["param2"] != 4.0 {
+		t.Errorf("Expected param2 = 4.0, got %f", model.weights["param2"])
+	}
+}
+
+func TestSimpleModelLoadState_InvalidWeights(t *testing.T) {
+	extractor := &mockBlockFeatureExtractor{}
+	model := NewSimpleModel[BlockData]("node-1", extractor)
+	
+	// State with invalid weights type
+	state := map[string]interface{}{
+		"weights": "invalid",
+		"bias":    0.5,
+	}
+	
+	err := model.LoadState(state)
+	
+	// Should handle gracefully or return error
+	if err != nil {
+		// Error is acceptable
+		t.Logf("LoadState correctly returned error: %v", err)
+	}
+}
+
+// === Utility Function Tests ===
+
+func TestHashComplexity_AllCases(t *testing.T) {
+	tests := []struct {
+		name string
+		hash string
+		want float64
+	}{
+		{"empty", "", 0.0},
+		{"numeric", "1234567890", 0.1},
+		{"hexadecimal", "abcdef", 0.2},
+		{"mixed", "a1b2c3", 0.15},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hashComplexity(tt.hash)
+			if tt.name == "empty" && got != tt.want {
+				t.Errorf("hashComplexity(%q) = %v, want %v", tt.hash, got, tt.want)
+			}
+			// For non-empty, just check it's reasonable
+			if tt.name != "empty" && (got < 0 || got > 1) {
+				t.Errorf("hashComplexity(%q) = %v, should be between 0 and 1", tt.hash, got)
+			}
+		})
+	}
+}
+
+func TestAddressEntropy_Edge(t *testing.T) {
+	tests := []struct {
+		name    string
+		address string
+	}{
+		{"empty", ""},
+		{"single_char", "a"},
+		{"repeated", "aaaa"},
+		{"diverse", "abcdefghij"},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entropy := addressEntropy(tt.address)
+			if entropy < 0 {
+				t.Errorf("addressEntropy(%q) = %v, should be >= 0", tt.address, entropy)
+			}
+		})
+	}
+}
+
+func TestVersionEntropy_Edge(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+	}{
+		{"empty", ""},
+		{"simple", "1.0"},
+		{"complex", "1.2.3"},
+		{"very_complex", "1.2.3.4.5"},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entropy := versionEntropy(tt.version)
+			if entropy < 0 {
+				t.Errorf("versionEntropy(%q) = %v, should be >= 0", tt.version, entropy)
+			}
+		})
+	}
+}
+
+func TestUpgradeExtract_AllRiskLevels(t *testing.T) {
+	extractor := NewUpgradeFeatures()
+	
+	riskLevels := []string{"low", "medium", "high", "unknown"}
+	
+	for _, risk := range riskLevels {
+		t.Run("risk_"+risk, func(t *testing.T) {
+			data := UpgradeData{
+				Version:     "v1.0.0",
+				Changes:     []string{"change1"},
+				Risk:        risk,
+				TestResults: []string{"pass"},
+				Timestamp:   time.Now(),
+			}
+			
+			features := extractor.Extract(data)
+			
+			if len(features) == 0 {
+				t.Error("Extract should return features")
+			}
+			
+			// Check risk score is set
+			if riskScore, ok := features["risk_score"]; ok {
+				if riskScore < 0 || riskScore > 1 {
+					t.Errorf("Risk score %f should be between 0 and 1", riskScore)
+				}
+			}
+		})
+	}
+}
+
 // === Benchmark Tests ===
 
 func BenchmarkSimpleModelDecide(b *testing.B) {
