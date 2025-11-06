@@ -4,7 +4,7 @@ package routermock
 import (
 	"context"
 
-	"github.com/luxfi/consensus/types"
+	"github.com/luxfi/consensus/core/types"
 )
 
 // MockRouter provides a mock implementation for message routing

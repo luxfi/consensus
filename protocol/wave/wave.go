@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/luxfi/consensus/core/types"
 	"github.com/luxfi/consensus/protocol/prism"
-	"github.com/luxfi/consensus/types"
 )
 
 // Photon represents a vote message in the consensus protocol
