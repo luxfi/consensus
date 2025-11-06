@@ -8,7 +8,6 @@ const config: Config = {
     "./content/**/*.{md,mdx}",
     "./mdx-components.{ts,tsx}",
     "./node_modules/fumadocs-ui/dist/**/*.js",
-    "./node_modules/@hanzo/ui/dist/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
