@@ -65,7 +65,7 @@ type Manager interface {
 	GetWeight(netID ids.ID, nodeID ids.NodeID) uint64 // Deprecated: use GetLight
 	TotalLight(netID ids.ID) (uint64, error)
 	TotalWeight(netID ids.ID) (uint64, error) // Deprecated: use TotalLight
-	
+
 	// Mutable operations
 	AddStaker(netID ids.ID, nodeID ids.NodeID, publicKey []byte, txID ids.ID, light uint64) error
 	AddWeight(netID ids.ID, nodeID ids.NodeID, light uint64) error
