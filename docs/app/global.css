@@ -1,19 +1,18 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-:root {
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
-  --lux-primary: 198 93% 60%;
-}
-
-.dark {
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
-  --lux-primary: 198 93% 60%;
-}
-
-body {
-  font-feature-settings: "rlig" 1, "calt" 1;
+@theme {
+  --color-lux-50: #f0f9ff;
+  --color-lux-100: #e0f2fe;
+  --color-lux-200: #b9e6fe;
+  --color-lux-300: #7cd4fd;
+  --color-lux-400: #36bffa;
+  --color-lux-500: #0ba5ec;
+  --color-lux-600: #0086c9;
+  --color-lux-700: #026aa2;
+  --color-lux-800: #065986;
+  --color-lux-900: #0b4a6f;
+  --color-lux-950: #082f49;
+  
+  --font-family-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-family-mono: var(--font-geist-mono), monospace;
 }
