@@ -25,14 +25,17 @@ SHARED_LIB = lib/libluxconsensus.$(DYLIB_EXT)
 # Build targets
 all: $(STATIC_LIB) $(SHARED_LIB)
 
+%.o: %.c
+	@echo "Compiling $<..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(STATIC_LIB): $(OBJECTS) | lib
+	@echo "Creating static library $@..."
 	$(AR) rcs $@ $^
 
 $(SHARED_LIB): $(OBJECTS) | lib
+	@echo "Creating shared library $@..."
 	$(CC) $(LDFLAGS) -o $@ $^
-
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
 
 lib:
 	mkdir -p lib
