@@ -1,0 +1,15 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/luxfi/consensus/ai
+cpu: Apple M1 Max
+BenchmarkUpdateChain-10             	29688598	       122.1 ns/op	      16 B/op	       1 allocs/op
+BenchmarkGetState-10                	17279208	       212.3 ns/op	     432 B/op	       5 allocs/op
+BenchmarkShouldUpgrade-10           	 6943477	       502.2 ns/op	     791 B/op	      12 allocs/op
+BenchmarkConcurrentAccess-10        	 5895896	       611.1 ns/op	     480 B/op	       7 allocs/op
+BenchmarkOrthogonalProcessing-10    	 1702629	      2217 ns/op	    2704 B/op	      22 allocs/op
+BenchmarkSimpleModelDecide-10       	 2294877	      1566 ns/op	     912 B/op	      18 allocs/op
+BenchmarkSimpleModelLearn-10        	 5605466	       645.3 ns/op	    2327 B/op	       2 allocs/op
+BenchmarkFeatureExtraction-10       	95982830	        37.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSigmoid-10                 	638459846	         5.640 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/luxfi/consensus/ai	39.251s
