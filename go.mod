@@ -7,9 +7,9 @@ exclude github.com/ethereum/go-ethereum v1.10.26
 exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
-	github.com/ethereum/go-ethereum v1.16.4
 	github.com/luxfi/crypto v1.17.4
 	github.com/luxfi/database v1.2.7
+	github.com/luxfi/geth v1.16.39
 	github.com/luxfi/ids v1.1.2
 	github.com/luxfi/math v0.1.2
 	github.com/luxfi/node v1.20.1
@@ -20,6 +20,7 @@ require (
 
 require (
 	github.com/DataDog/zstd v1.5.7 // indirect
+	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
