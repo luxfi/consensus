@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --lux-primary: 198 93% 60%;
+}
+
+.dark {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --lux-primary: 198 93% 60%;
+}
+
+body {
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
