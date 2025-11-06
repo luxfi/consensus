@@ -1,6 +1,6 @@
 package prism
 
-import "github.com/luxfi/consensus/types"
+import "github.com/luxfi/consensus/core/types"
 
 // Frontier represents a cut/frontier in the DAG partial order
 type Frontier struct {

@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/luxfi/consensus/core/types"
 	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/consensus/protocol/wave"
-	"github.com/luxfi/consensus/types"
 )
 
 // ID is your item identifier (block hash, tx id, etc.).

@@ -5,12 +5,12 @@ package consensus
 import (
 	"context"
 
-	"github.com/luxfi/consensus/codec"
 	"github.com/luxfi/consensus/config"
 	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/consensus/engine/chain"
 	"github.com/luxfi/consensus/engine/dag"
 	"github.com/luxfi/consensus/engine/pq"
+	"github.com/luxfi/consensus/utils/codec"
 )
 
 // Engine is the main consensus engine interface
