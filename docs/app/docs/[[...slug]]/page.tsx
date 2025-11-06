@@ -31,7 +31,9 @@ export default async function Page({
 }
 
 export async function generateStaticParams() {
-  return docs.generateParams()
+  return docs.getPages().map((page) => ({
+    slug: page.slugs,
+  }))
 }
 
 export async function generateMetadata({
