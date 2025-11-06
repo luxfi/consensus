@@ -106,8 +106,8 @@ type ChainContext struct {
 	NodeID  ids.NodeID
 
 	// Additional fields
-	XChainID    ids.ID
-	CChainID    ids.ID
+	XChainID ids.ID
+	CChainID ids.ID
 	XAssetID ids.ID
 
 	// Consensus context

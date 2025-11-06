@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/luxfi/consensus/prism"
+	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/consensus/types"
 )
 

@@ -14,12 +14,12 @@ import (
 
 // SimpleModel is a basic but effective AI model for consensus decisions
 type SimpleModel[T ConsensusData] struct {
-	weights    map[string]float64 // feature -> weight
-	bias       float64
+	weights      map[string]float64 // feature -> weight
+	bias         float64
 	learningRate float64
-	features   FeatureExtractor[T]
-	history    []TrainingExample[T]
-	nodeID     string
+	features     FeatureExtractor[T]
+	history      []TrainingExample[T]
+	nodeID       string
 }
 
 // FeatureExtractor converts consensus data to features for ML
@@ -64,14 +64,14 @@ func (m *SimpleModel[T]) Decide(ctx context.Context, input T, context map[string
 	reasoning := m.generateReasoning(features, score, action)
 
 	decision := &Decision[T]{
-		ID:          generateID(),
-		Action:      action,
-		Data:        input,
-		Confidence:  confidence,
-		Reasoning:   reasoning,
-		Context:     context,
-		Timestamp:   time.Now(),
-		ProposerID:  m.nodeID,
+		ID:         generateID(),
+		Action:     action,
+		Data:       input,
+		Confidence: confidence,
+		Reasoning:  reasoning,
+		Context:    context,
+		Timestamp:  time.Now(),
+		ProposerID: m.nodeID,
 	}
 
 	return decision, nil
@@ -85,18 +85,18 @@ func (m *SimpleModel[T]) ProposeDecision(ctx context.Context, input T) (*Proposa
 	}
 
 	proposal := &Proposal[T]{
-		ID:          generateID(),
-		NodeID:      m.nodeID,
-		Decision:    decision,
-		Evidence:    []Evidence[T]{{
+		ID:       generateID(),
+		NodeID:   m.nodeID,
+		Decision: decision,
+		Evidence: []Evidence[T]{{
 			Data:      input,
 			NodeID:    m.nodeID,
 			Weight:    1.0,
 			Timestamp: time.Now(),
 		}},
-		Weight:      1.0,
-		Confidence:  decision.Confidence,
-		Timestamp:   time.Now(),
+		Weight:     1.0,
+		Confidence: decision.Confidence,
+		Timestamp:  time.Now(),
 	}
 
 	return proposal, nil
@@ -261,12 +261,12 @@ func (e *BlockFeatureExtractor) Extract(data BlockData) map[string]float64 {
 	age := now.Sub(data.Timestamp).Seconds()
 
 	return map[string]float64{
-		"height":           float64(data.Height),
-		"tx_count":         float64(len(data.Transactions)),
-		"age_seconds":      age,
-		"age_normalized":   sigmoid(age / 3600), // normalize by hour
-		"hash_complexity":  hashComplexity(data.Hash),
-		"time_since_last":  float64(now.Unix() - data.Timestamp.Unix()),
+		"height":          float64(data.Height),
+		"tx_count":        float64(len(data.Transactions)),
+		"age_seconds":     age,
+		"age_normalized":  sigmoid(age / 3600), // normalize by hour
+		"hash_complexity": hashComplexity(data.Hash),
+		"time_since_last": float64(now.Unix() - data.Timestamp.Unix()),
 	}
 }
 
@@ -279,13 +279,13 @@ type TransactionFeatureExtractor struct{}
 
 func (e *TransactionFeatureExtractor) Extract(data TransactionData) map[string]float64 {
 	return map[string]float64{
-		"amount":         float64(data.Amount),
-		"fee":            float64(data.Fee),
-		"fee_ratio":      float64(data.Fee) / math.Max(float64(data.Amount), 1),
-		"data_size":      float64(len(fmt.Sprintf("%v", data.Data))),
-		"age_seconds":    time.Since(data.Timestamp).Seconds(),
-		"from_entropy":   addressEntropy(data.From),
-		"to_entropy":     addressEntropy(data.To),
+		"amount":       float64(data.Amount),
+		"fee":          float64(data.Fee),
+		"fee_ratio":    float64(data.Fee) / math.Max(float64(data.Amount), 1),
+		"data_size":    float64(len(fmt.Sprintf("%v", data.Data))),
+		"age_seconds":  time.Since(data.Timestamp).Seconds(),
+		"from_entropy": addressEntropy(data.From),
+		"to_entropy":   addressEntropy(data.To),
 	}
 }
 
@@ -310,11 +310,11 @@ func (e *UpgradeFeatureExtractor) Extract(data UpgradeData) map[string]float64 {
 	}
 
 	return map[string]float64{
-		"change_count":     float64(len(data.Changes)),
-		"risk_score":       riskScore,
-		"test_count":       float64(len(data.TestResults)),
-		"age_hours":        time.Since(data.Timestamp).Hours(),
-		"version_entropy":  versionEntropy(data.Version),
+		"change_count":    float64(len(data.Changes)),
+		"risk_score":      riskScore,
+		"test_count":      float64(len(data.TestResults)),
+		"age_hours":       time.Since(data.Timestamp).Hours(),
+		"version_entropy": versionEntropy(data.Version),
 	}
 }
 
@@ -391,7 +391,6 @@ func versionEntropy(version string) float64 {
 
 	return entropy / float64(len(version))
 }
-
 
 // GetWeights returns the current model weights
 func (m *SimpleModel[T]) GetWeights() map[string]float64 {

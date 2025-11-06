@@ -413,7 +413,7 @@ func TestSigmoid(t *testing.T) {
 		epsilon  float64
 	}{
 		{0.0, 0.5, 0.001},
-		{1000.0, 1.0, 0.001}, // Large positive should approach 1
+		{1000.0, 1.0, 0.001},  // Large positive should approach 1
 		{-1000.0, 0.0, 0.001}, // Large negative should approach 0
 		{1.0, 0.731, 0.01},
 		{-1.0, 0.268, 0.01},
@@ -574,7 +574,7 @@ func TestUpgradeFeatures(t *testing.T) {
 func TestSimpleModelValidateProposal(t *testing.T) {
 	extractor := &mockBlockFeatureExtractor{}
 	model := NewSimpleModel[BlockData]("node-1", extractor)
-	
+
 	// Create a proposal
 	proposal := &Proposal[BlockData]{
 		ID:     "test-proposal",
@@ -592,13 +592,13 @@ func TestSimpleModelValidateProposal(t *testing.T) {
 		Confidence: 0.85,
 		Timestamp:  time.Now(),
 	}
-	
+
 	confidence, err := model.ValidateProposal(proposal)
-	
+
 	if err != nil {
 		t.Fatalf("ValidateProposal() error = %v", err)
 	}
-	
+
 	if confidence < 0 || confidence > 1 {
 		t.Errorf("Confidence should be between 0 and 1, got %f", confidence)
 	}
@@ -607,18 +607,18 @@ func TestSimpleModelValidateProposal(t *testing.T) {
 func TestSimpleModelValidateProposal_NilDecision(t *testing.T) {
 	extractor := &mockBlockFeatureExtractor{}
 	model := NewSimpleModel[BlockData]("node-1", extractor)
-	
+
 	proposal := &Proposal[BlockData]{
 		ID:       "test-proposal",
 		Decision: nil, // Nil decision
 	}
-	
+
 	_, err := model.ValidateProposal(proposal)
-	
+
 	if err == nil {
 		t.Fatal("Expected error for nil decision, got nil")
 	}
-	
+
 	if err.Error() != "proposal has no decision" {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -629,12 +629,12 @@ func TestSimpleModelValidateProposal_NilDecision(t *testing.T) {
 func TestSimpleModelUpdateWeights(t *testing.T) {
 	extractor := &mockBlockFeatureExtractor{}
 	model := NewSimpleModel[BlockData]("node-1", extractor)
-	
+
 	// UpdateWeights expects gradients to match feature count + 1 (bias)
 	// mockBlockFeatureExtractor has 4 features, so we need 5 gradients
 	gradients := []float64{0.1, 0.2, 0.15, 0.25, 0.05} // 4 features + 1 bias
 	err := model.UpdateWeights(gradients)
-	
+
 	if err != nil {
 		t.Fatalf("UpdateWeights() error = %v", err)
 	}
@@ -643,14 +643,14 @@ func TestSimpleModelUpdateWeights(t *testing.T) {
 func TestSimpleModelUpdateWeights_WrongSize(t *testing.T) {
 	extractor := &mockBlockFeatureExtractor{}
 	model := NewSimpleModel[BlockData]("node-1", extractor)
-	
+
 	// Provide wrong number of gradients
 	err := model.UpdateWeights([]float64{0.1, 0.2})
-	
+
 	if err == nil {
 		t.Fatal("Expected error for wrong gradient size, got nil")
 	}
-	
+
 	if !contains(err.Error(), "gradient size mismatch") {
 		t.Errorf("Expected gradient size mismatch error, got: %v", err)
 	}
@@ -658,9 +658,9 @@ func TestSimpleModelUpdateWeights_WrongSize(t *testing.T) {
 
 // Helper function
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || 
-		(len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		len(s) > len(substr)*2 && findSubstring(s, substr))))
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+			len(s) > len(substr)*2 && findSubstring(s, substr))))
 }
 
 func findSubstring(s, substr string) bool {
@@ -677,18 +677,18 @@ func findSubstring(s, substr string) bool {
 func TestSimpleModelGetState(t *testing.T) {
 	extractor := &mockBlockFeatureExtractor{}
 	model := NewSimpleModel[BlockData]("node-1", extractor)
-	
+
 	// Set some state
 	model.weights["param1"] = 1.5
 	model.weights["param2"] = 2.5
 	model.bias = 0.7
-	
+
 	state := model.GetState()
-	
+
 	if state == nil {
 		t.Fatal("GetState() returned nil")
 	}
-	
+
 	// Check that weights are included
 	if weights, ok := state["weights"].(map[string]float64); ok {
 		if len(weights) != 2 {
@@ -700,7 +700,7 @@ func TestSimpleModelGetState(t *testing.T) {
 	} else {
 		t.Error("State should contain weights map")
 	}
-	
+
 	// Check that bias is included
 	if bias, ok := state["bias"].(float64); ok {
 		if bias != 0.7 {
@@ -716,7 +716,7 @@ func TestSimpleModelGetState(t *testing.T) {
 func TestSimpleModelLoadState(t *testing.T) {
 	extractor := &mockBlockFeatureExtractor{}
 	model := NewSimpleModel[BlockData]("node-1", extractor)
-	
+
 	// Create state to load (weights must be map[string]interface{})
 	state := map[string]interface{}{
 		"weights": map[string]interface{}{
@@ -725,22 +725,22 @@ func TestSimpleModelLoadState(t *testing.T) {
 		},
 		"bias": 0.9,
 	}
-	
+
 	err := model.LoadState(state)
-	
+
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
-	
+
 	// Check that state was loaded
 	if model.bias != 0.9 {
 		t.Errorf("Expected bias = 0.9, got %f", model.bias)
 	}
-	
+
 	if model.weights["param1"] != 3.0 {
 		t.Errorf("Expected param1 = 3.0, got %f", model.weights["param1"])
 	}
-	
+
 	if model.weights["param2"] != 4.0 {
 		t.Errorf("Expected param2 = 4.0, got %f", model.weights["param2"])
 	}
@@ -749,15 +749,15 @@ func TestSimpleModelLoadState(t *testing.T) {
 func TestSimpleModelLoadState_InvalidWeights(t *testing.T) {
 	extractor := &mockBlockFeatureExtractor{}
 	model := NewSimpleModel[BlockData]("node-1", extractor)
-	
+
 	// State with invalid weights type
 	state := map[string]interface{}{
 		"weights": "invalid",
 		"bias":    0.5,
 	}
-	
+
 	err := model.LoadState(state)
-	
+
 	// Should handle gracefully or return error
 	if err != nil {
 		// Error is acceptable
@@ -778,7 +778,7 @@ func TestHashComplexity_AllCases(t *testing.T) {
 		{"hexadecimal", "abcdef", 0.2},
 		{"mixed", "a1b2c3", 0.15},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := hashComplexity(tt.hash)
@@ -803,7 +803,7 @@ func TestAddressEntropy_Edge(t *testing.T) {
 		{"repeated", "aaaa"},
 		{"diverse", "abcdefghij"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			entropy := addressEntropy(tt.address)
@@ -824,7 +824,7 @@ func TestVersionEntropy_Edge(t *testing.T) {
 		{"complex", "1.2.3"},
 		{"very_complex", "1.2.3.4.5"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			entropy := versionEntropy(tt.version)
@@ -837,9 +837,9 @@ func TestVersionEntropy_Edge(t *testing.T) {
 
 func TestUpgradeExtract_AllRiskLevels(t *testing.T) {
 	extractor := NewUpgradeFeatures()
-	
+
 	riskLevels := []string{"low", "medium", "high", "unknown"}
-	
+
 	for _, risk := range riskLevels {
 		t.Run("risk_"+risk, func(t *testing.T) {
 			data := UpgradeData{
@@ -849,13 +849,13 @@ func TestUpgradeExtract_AllRiskLevels(t *testing.T) {
 				TestResults: []string{"pass"},
 				Timestamp:   time.Now(),
 			}
-			
+
 			features := extractor.Extract(data)
-			
+
 			if len(features) == 0 {
 				t.Error("Extract should return features")
 			}
-			
+
 			// Check risk score is set
 			if riskScore, ok := features["risk_score"]; ok {
 				if riskScore < 0 || riskScore > 1 {
