@@ -5,6 +5,7 @@ package ai
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"fmt"
 	"math"
@@ -330,7 +331,10 @@ func sigmoid(x float64) float64 {
 
 func generateID() string {
 	h := sha256.New()
-	h.Write([]byte(fmt.Sprintf("%d_%f", time.Now().UnixNano(), rand.Float64())))
+	// Use crypto/rand for secure random bytes
+	randomBytes := make([]byte, 8)
+	_, _ = cryptorand.Read(randomBytes)
+	h.Write([]byte(fmt.Sprintf("%d_%x", time.Now().UnixNano(), randomBytes)))
 	return fmt.Sprintf("%x", h.Sum(nil))[:16]
 }
 
