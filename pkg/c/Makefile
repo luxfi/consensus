@@ -28,14 +28,23 @@ all: $(STATIC_LIB) $(SHARED_LIB)
 %.o: %.c
 	@echo "Compiling $<..."
 	$(CC) $(CFLAGS) -c $< -o $@
+	@echo "Verifying object file..."
+	@file $@ || (echo "ERROR: Invalid object file $@"; exit 1)
+	@test -s $@ || (echo "ERROR: Empty object file $@"; exit 1)
 
 $(STATIC_LIB): $(OBJECTS) | lib
 	@echo "Creating static library $@..."
 	$(AR) rcs $@ $^
+	@echo "Verifying static library..."
+	@file $@ || (echo "ERROR: Invalid static library $@"; exit 1)
 
 $(SHARED_LIB): $(OBJECTS) | lib
 	@echo "Creating shared library $@..."
+	@echo "Object files to link: $(OBJECTS)"
+	@for obj in $(OBJECTS); do echo "Checking $$obj..."; file $$obj; done
 	$(CC) $(LDFLAGS) -o $@ $^
+	@echo "Verifying shared library..."
+	@file $@ || (echo "ERROR: Invalid shared library $@"; exit 1)
 
 lib:
 	mkdir -p lib
