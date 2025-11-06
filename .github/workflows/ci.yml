@@ -176,7 +176,7 @@ jobs:
         working-directory: pkg/rust
         run: |
           cargo build --release
-          cargo test --release
+          LD_LIBRARY_PATH=../c/lib:$LD_LIBRARY_PATH cargo test --release
 
   test-python:
     name: Test Python
