@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"context"
-	"os/exec"
 	"sync"
 	"testing"
 	"time"
@@ -189,19 +188,3 @@ func getNodeLanguages(nodes map[string]NodeRunner) []string {
 	return languages
 }
 
-// Helper function to check if a binary exists
-func binaryExists(name string) bool {
-	_, err := exec.LookPath(name)
-	return err == nil
-}
-
-// Helper function to check if build succeeded
-func checkBuild(t *testing.T, lang string, buildCmd []string) bool {
-	t.Logf("Building %s implementation: %v", lang, buildCmd)
-	cmd := exec.Command(buildCmd[0], buildCmd[1:]...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Logf("⚠️  %s build failed: %v\n%s", lang, err, output)
-		return false
-	}
-	return true
-}
