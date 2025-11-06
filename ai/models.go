@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"math"
-	"math/rand"
 	"time"
 )
 
