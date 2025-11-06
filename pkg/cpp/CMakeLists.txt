@@ -8,17 +8,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Find required packages
 find_package(Threads REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(ZEROMQ REQUIRED libzmq)
+
+# Optional: Find ZeroMQ for network layer
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(ZEROMQ QUIET libzmq)
+endif()
 
 # Optional: Find MLX for GPU acceleration
 find_package(MLX QUIET)
 
-# Library sources
+# Library sources (matching Go implementation structure)
 set(SOURCES
     src/consensus.cpp
-    src/snowball.cpp
-    src/avalanche.cpp
     src/network.cpp
     src/vote_processor.cpp
 )
@@ -31,17 +33,21 @@ target_include_directories(lux_consensus
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
-    PRIVATE
-        ${ZEROMQ_INCLUDE_DIRS}
 )
 
 # Link libraries
 target_link_libraries(lux_consensus
     PUBLIC
         Threads::Threads
-    PRIVATE
-        ${ZEROMQ_LIBRARIES}
 )
+
+# Link ZeroMQ if available (optional)
+if(ZEROMQ_FOUND)
+    target_include_directories(lux_consensus PRIVATE ${ZEROMQ_INCLUDE_DIRS})
+    target_link_directories(lux_consensus INTERFACE ${ZEROMQ_LIBRARY_DIRS})
+    target_link_libraries(lux_consensus INTERFACE ${ZEROMQ_LIBRARIES})
+    target_compile_definitions(lux_consensus PRIVATE HAS_ZEROMQ)
+endif()
 
 # Compile options
 target_compile_options(lux_consensus PRIVATE
@@ -56,8 +62,8 @@ if(MLX_FOUND)
     target_link_libraries(lux_consensus PRIVATE MLX::MLX)
 endif()
 
-# Build examples
-add_subdirectory(examples)
+# Build examples (optional - may have linking issues)
+# add_subdirectory(examples)
 
 # Build tests
 enable_testing()

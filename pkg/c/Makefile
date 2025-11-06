@@ -41,6 +41,7 @@ clean:
 	rm -f $(OBJECTS)
 	rm -f $(STATIC_LIB) $(SHARED_LIB)
 	rm -rf lib
+	rm -rf test/bin
 
 install: $(STATIC_LIB) $(SHARED_LIB)
 	install -d /usr/local/lib
@@ -50,7 +51,14 @@ install: $(STATIC_LIB) $(SHARED_LIB)
 	install -m 644 include/lux_consensus.h /usr/local/include/
 
 test: $(SHARED_LIB)
-	$(CC) -o test/test_consensus test/test_consensus.c -L./lib -lluxconsensus -pthread
-	./test/test_consensus
+	@echo "Building C test suite..."
+	@mkdir -p test/bin
+	$(CC) $(CFLAGS) -o test/bin/test_consensus test/test_consensus.c -L./lib -lluxconsensus -pthread
+	@echo "Running C tests..."
+	@if [ "$(UNAME_S)" = "Darwin" ]; then \
+		DYLD_LIBRARY_PATH=./lib ./test/bin/test_consensus; \
+	else \
+		LD_LIBRARY_PATH=./lib ./test/bin/test_consensus; \
+	fi
 
 .PHONY: all clean install test
