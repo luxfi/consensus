@@ -319,12 +319,12 @@ func TestCurrent(t *testing.T) {
 
 	require.NotNil(t, current)
 	require.Equal(t, 1, current.Major)
-	require.Equal(t, 0, current.Minor)
+	require.Equal(t, 21, current.Minor)
 	require.Equal(t, 0, current.Patch)
 	require.Equal(t, "lux", current.Name)
 
 	// Test string representation
-	require.Equal(t, "lux-1.0.0", current.String())
+	require.Equal(t, "lux-1.21.0", current.String())
 
 	// Test that calling Current multiple times returns consistent results
 	current2 := Current()
