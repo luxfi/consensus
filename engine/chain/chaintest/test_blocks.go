@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/core/choices"
-	"github.com/luxfi/consensus/test/helpers"
+	consensustest "github.com/luxfi/consensus/test/helpers"
 	"github.com/luxfi/ids"
 )
 
