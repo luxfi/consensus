@@ -61,11 +61,11 @@ at runtime for dynamic consensus algorithm selection.
 
 The Photon→Quasar consensus flow provides fast, quantum-secure finalization:
 
-  1. Photon Phase:  Emit proposals at light speed
-  2. Wave Phase:    Amplify through network via QZMQ
-  3. Focus Phase:   Converge on best options using AI
-  4. Prism Phase:   Refract through DAG for validation
-  5. Horizon Phase: Finalize with quantum certificate
+ 1. Photon Phase:  Emit proposals at light speed
+ 2. Wave Phase:    Amplify through network via QZMQ
+ 3. Focus Phase:   Converge on best options using AI
+ 4. Prism Phase:   Refract through DAG for validation
+ 5. Horizon Phase: Finalize with quantum certificate
 
 Example:
 
@@ -135,26 +135,26 @@ The consensus system integrates with the Lux DEX for cross-chain operations:
 
 Benchmark results (Apple M1 Max):
 
-  Operation          Latency    Throughput
-  ─────────────────  ─────────  ────────────
-  Model Inference    1.5 μs     666K ops/sec
-  Consensus Vote     529 ns     1.9M ops/sec
-  Feature Extract    37 ns      27M ops/sec
-  Sigmoid            5.6 ns     179M ops/sec
-  Photon Emit        245 ms     4 proposals/sec
-  Full Consensus     200-300 ms 3-5 blocks/sec
+	Operation          Latency    Throughput
+	─────────────────  ─────────  ────────────
+	Model Inference    1.5 μs     666K ops/sec
+	Consensus Vote     529 ns     1.9M ops/sec
+	Feature Extract    37 ns      27M ops/sec
+	Sigmoid            5.6 ns     179M ops/sec
+	Photon Emit        245 ms     4 proposals/sec
+	Full Consensus     200-300 ms 3-5 blocks/sec
 
 # Examples
 
 Progressive tutorial examples are provided in examples/:
 
-  01-simple-bridge      Cross-chain bridge basics
-  02-ai-payment        AI payment validation
-  03-qzmq-networking   Quantum-secure messaging
-  04-grpc-service      gRPC API integration
-  05-python-client     Python integration
-  06-nodejs-client     TypeScript integration
-  07-ai-consensus      Dynamic AI consensus
+	01-simple-bridge      Cross-chain bridge basics
+	02-ai-payment        AI payment validation
+	03-qzmq-networking   Quantum-secure messaging
+	04-grpc-service      gRPC API integration
+	05-python-client     Python integration
+	06-nodejs-client     TypeScript integration
+	07-ai-consensus      Dynamic AI consensus
 
 Each example includes runnable code, comprehensive tests, and detailed documentation.
 

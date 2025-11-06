@@ -202,19 +202,19 @@ func (a *Agent[T]) ProposeDecision(ctx context.Context, input T, context map[str
 	a.consensus.StartedAt = time.Now()
 
 	// Phase 2: Wave - Broadcast through network
-	if err := a.broadcastProposal(proposal); err != nil {
-		return nil, fmt.Errorf("wave broadcast failed: %w", err)
+	if broadcastErr := a.broadcastProposal(proposal); broadcastErr != nil {
+		return nil, fmt.Errorf("wave broadcast failed: %w", broadcastErr)
 	}
 
 	// Phase 3: Focus - Collect votes and converge
-	decision, err := a.focusConsensus(ctx, proposal)
-	if err != nil {
-		return nil, fmt.Errorf("focus consensus failed: %w", err)
+	decision, focusErr := a.focusConsensus(ctx, proposal)
+	if focusErr != nil {
+		return nil, fmt.Errorf("focus consensus failed: %w", focusErr)
 	}
 
 	// Phase 4: Prism - Validate through DAG
-	if err := a.prismValidation(decision); err != nil {
-		return nil, fmt.Errorf("prism validation failed: %w", err)
+	if prismErr := a.prismValidation(decision); prismErr != nil {
+		return nil, fmt.Errorf("prism validation failed: %w", prismErr)
 	}
 
 	// Phase 5: Horizon - Finalize with quantum certificate
