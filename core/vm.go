@@ -58,7 +58,7 @@ type VM interface {
 
 	// CreateStaticHandlers returns the static HTTP handlers for the VM
 	CreateStaticHandlers(ctx context.Context) (map[string]http.Handler, error)
-	
+
 	// NewHTTPHandler returns a new HTTP handler for the VM
 	NewHTTPHandler(ctx context.Context) (http.Handler, error)
 }
