@@ -1,3 +1,4 @@
+// Engine factory functions
 // Package consensus provides the Lux consensus implementation.
 package consensus
 
