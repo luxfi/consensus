@@ -3,7 +3,6 @@ package integration
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/luxfi/consensus/ai"
 	"github.com/luxfi/consensus/protocol/quasar"
