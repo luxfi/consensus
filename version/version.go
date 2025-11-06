@@ -52,7 +52,7 @@ func (v *Application) Compare(other *Application) int {
 func Current() *Application {
 	return &Application{
 		Major: 1,
-		Minor: 0,
+		Minor: 21,
 		Patch: 0,
 		Name:  "lux",
 	}
