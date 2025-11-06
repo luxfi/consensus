@@ -1,5 +1,7 @@
 package validators
 
+//go:generate go run go.uber.org/mock/mockgen -package=validatorsmock -destination=validatorsmock/state.go -mock_names=State=State . State
+
 import (
 	"context"
 

@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2025, Lux Partners Limited All rights reserved.
+# Copyright (C) 2020-2025, Lux Industries Inc All rights reserved.
 # See the file LICENSE for licensing terms.
 
 .PHONY: all test build clean lint format check tools help benchmark benchmark-node benchmark-zmq test-parallel test-cluster paper paper-clean paper-watch check-latex
@@ -10,15 +10,15 @@ all: build test bench
 build: ## Build all tools and commands
 	@echo "Building all tools..."
 	@echo "Building params..."
-	@cd pkg/go && go build -o ../../bin/params ./cmd/params || echo "ERROR: Failed to build params"
+	@go build -o bin/params ./cmd/params || echo "ERROR: Failed to build params"
 	@echo "Building checker..."
-	@cd pkg/go && go build -o ../../bin/checker ./cmd/checker || echo "ERROR: Failed to build checker"
+	@go build -o bin/checker ./cmd/checker || echo "ERROR: Failed to build checker"
 	@echo "Building simulator..."
-	@cd pkg/go && go build -o ../../bin/sim ./cmd/sim || echo "ERROR: Failed to build sim"
+	@go build -o bin/sim ./cmd/sim || echo "ERROR: Failed to build sim"
 	@echo "Building bench..."
-	@cd pkg/go && go build -tags zmq -o ../../bin/bench ./cmd/bench || echo "WARNING: Building without ZMQ support"
+	@go build -tags zmq -o bin/bench ./cmd/bench || echo "WARNING: Building without ZMQ support"
 	@echo "Building consensus CLI..."
-	@cd pkg/go && go build -o ../../bin/consensus ./cmd/consensus || echo "ERROR: Failed to build consensus CLI"
+	@go build -o bin/consensus ./cmd/consensus || echo "ERROR: Failed to build consensus CLI"
 	@echo "Build complete! Successfully built tools:"
 	@ls -1 bin/ 2>/dev/null | grep -v '^$$' || echo "No tools built"
 
@@ -32,36 +32,36 @@ build: ## Build all tools and commands
 # Run all tests
 test: ## Run all tests
 	@echo "Running tests..."
-	@cd pkg/go && go test -race -timeout 5m -tags="!integration" ./... 2>&1 | grep -v "warning.*LD_DYSYMTAB" | grep -v "has malformed LC_DYSYMTAB"
+	@go test -race -timeout 5m -tags="!integration" ./... 2>&1 | grep -v "warning.*LD_DYSYMTAB" | grep -v "has malformed LC_DYSYMTAB"
 
 # Run tests (verbose, showing warnings)
 test-verbose: ## Run tests with all output including warnings
 	@echo "Running tests (verbose)..."
-	@cd pkg/go && go test -race -timeout 5m -tags="!integration" ./...
+	@go test -race -timeout 5m -tags="!integration" ./...
 
 # Run tests with coverage
 test-coverage: ## Run tests with coverage report
 	@echo "Running tests with coverage..."
-	@cd pkg/go && go test -race -timeout 5m -coverprofile=../../coverage.out -covermode=atomic ./...
-	@cd pkg/go && go tool cover -html=../../coverage.out -o ../../coverage.html
+	@go test -race -timeout 5m -coverprofile=coverage.out -covermode=atomic ./...
+	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
 # Run benchmarks
 bench: ## Run performance benchmarks
 	@echo "Running benchmarks..."
-	@cd pkg/go && go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
+	@go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
 
 # Run pure consensus benchmarks
 benchmark: ## Run pure algorithm benchmarks without networking
 	@echo "🚀 Running pure consensus benchmarks..."
-	@cd pkg/go && go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
+	@go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
 
 # Wave FPC benchmarks are now in protocol/wave
 
 # Build zmq-bench tool
 zmq-bench: ## Build the ZMQ benchmark tool
 	@echo "Building zmq-bench tool..."
-	@cd pkg/go && go build -tags zmq -o ../../bin/zmq-bench ./cmd/zmq-bench || echo "ERROR: zmq-bench requires ZMQ"
+	@go build -tags zmq -o bin/zmq-bench ./cmd/zmq-bench || echo "ERROR: zmq-bench requires ZMQ"
 
 # Run zmq-bench tool
 run-zmq-bench: zmq-bench ## Run ZMQ benchmark tool with configurable parameters
@@ -82,12 +82,12 @@ ROUNDS ?= 100
 # Run massively parallel ZMQ benchmarks with Ginkgo
 benchmark-zmq: check-ginkgo ## Run ZeroMQ transport benchmarks
 	@echo "🌐 Running transport benchmarks..."
-	cd pkg/go && go test -tags zmq -v ./qzmq -ginkgo.v
+	go test -tags zmq -v ./qzmq -ginkgo.v
 
 # Run Ginkgo tests in parallel
 test-parallel: check-ginkgo ## Run tests in parallel with Ginkgo
 	@echo "⚡ Running tests in parallel..."
-	cd pkg/go && ginkgo -p ./...
+	ginkgo -p ./...
 
 # Run CI benchmark suite (10, 100, 1000 nodes)
 ci-cluster: zmq-bench ## Run CI multi-node consensus benchmarks (10, 100, 1000 nodes)
@@ -120,38 +120,38 @@ benchmark-max-tps: zmq-bench ## Run benchmark optimized for maximum TPS
 
 # Check if Ginkgo is installed
 check-ginkgo:
-	@which ginkgo > /dev/null || (echo "📦 Installing Ginkgo..."; cd pkg/go && go install github.com/onsi/ginkgo/v2/ginkgo@latest)
+	@which ginkgo > /dev/null || (echo "📦 Installing Ginkgo..."; go install github.com/onsi/ginkgo/v2/ginkgo@latest)
 
 # Run linters
 lint: ## Run linters
 	@echo "Running linters..."
-	@cd pkg/go && golangci-lint run ./...
+	@golangci-lint run ./...
 
 # Format code
 format: ## Format code
 	@echo "Formatting code..."
-	@cd pkg/go && go fmt ./...
-	@cd pkg/go && goimports -w .
+	@go fmt ./...
+	@goimports -w .
 
 # Check if code is properly formatted
 check-format: ## Check if code is properly formatted
 	@echo "Checking code format..."
-	@if [ -n "$$(cd pkg/go && gofmt -l .)" ]; then \
+	@if [ -n "$$(gofmt -l .)" ]; then \
 		echo "The following files need formatting:"; \
-		cd pkg/go && gofmt -l .; \
+		gofmt -l .; \
 		exit 1; \
 	fi
 
 # Run static analysis
 static-analysis: ## Run static analysis
 	@echo "Running static analysis..."
-	@cd pkg/go && go vet ./...
-	@cd pkg/go && staticcheck ./...
+	@go vet ./...
+	@staticcheck ./...
 
 # Generate mocks
 generate-mocks: ## Generate mock files
 	@echo "Generating mocks..."
-	@cd pkg/go && go generate ./...
+	@go generate ./...
 
 # Clean build artifacts
 clean: ## Clean build artifacts
@@ -162,10 +162,10 @@ clean: ## Clean build artifacts
 # Install development tools
 tools: ## Install development tools
 	@echo "Installing development tools..."
-	@cd pkg/go && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	@cd pkg/go && go install honnef.co/go/tools/cmd/staticcheck@latest
-	@cd pkg/go && go install golang.org/x/tools/cmd/goimports@latest
-	@cd pkg/go && go install github.com/golang/mock/mockgen@latest
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@go install honnef.co/go/tools/cmd/staticcheck@latest
+	@go install golang.org/x/tools/cmd/goimports@latest
+	@go install github.com/golang/mock/mockgen@latest
 
 # Run a specific test
 test-specific: ## Run a specific test (use TEST=TestName)
@@ -174,7 +174,7 @@ test-specific: ## Run a specific test (use TEST=TestName)
 		exit 1; \
 	fi
 	@echo "Running test: $(TEST)"
-	@cd pkg/go && go test -race -v -run $(TEST) ./...
+	@go test -race -v -run $(TEST) ./...
 
 # Run tests for a specific package
 test-package: ## Run tests for a specific package (use PKG=./confidence)
@@ -183,23 +183,23 @@ test-package: ## Run tests for a specific package (use PKG=./confidence)
 		exit 1; \
 	fi
 	@echo "Testing package: $(PKG)"
-	@cd pkg/go && go test -race -v $(PKG)
+	@go test -race -v $(PKG)
 
 # Check for security vulnerabilities
 security: ## Check for security vulnerabilities
 	@echo "Checking for vulnerabilities..."
-	@cd pkg/go && govulncheck ./...
+	@govulncheck ./...
 
 # Update dependencies
 update-deps: ## Update dependencies
 	@echo "Updating dependencies..."
-	@cd pkg/go && go get -u ./...
-	@cd pkg/go && go mod tidy
+	@go get -u ./...
+	@go mod tidy
 
 # Verify dependencies
 verify-deps: ## Verify dependencies
 	@echo "Verifying dependencies..."
-	@cd pkg/go && go mod verify
+	@go mod verify
 
 # Run pre-commit checks
 pre-commit: check-format lint test ## Run pre-commit checks
