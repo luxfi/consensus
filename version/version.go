@@ -53,7 +53,7 @@ func Current() *Application {
 	return &Application{
 		Major: 1,
 		Minor: 21,
-		Patch: 0,
+		Patch: 1,
 		Name:  "lux",
 	}
 }
