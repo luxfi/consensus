@@ -16,12 +16,12 @@ func TestConsensusIntegration(t *testing.T) {
 	// Create consensus parameters
 	params := ConsensusParams{
 		K:                     20,
-		AlphaPreference:      15,
-		AlphaConfidence:      15,
-		Beta:                 20,
-		ConcurrentPolls:      10,
-		OptimalProcessing:    10,
-		MaxOutstandingItems:  1000,
+		AlphaPreference:       15,
+		AlphaConfidence:       15,
+		Beta:                  20,
+		ConcurrentPolls:       10,
+		OptimalProcessing:     10,
+		MaxOutstandingItems:   1000,
 		MaxItemProcessingTime: 30 * time.Second,
 	}
 
@@ -63,14 +63,14 @@ type MockBlock struct {
 	data      []byte
 }
 
-func (b *MockBlock) ID() ids.ID          { return b.id }
-func (b *MockBlock) ParentID() ids.ID    { return b.parentID }
-func (b *MockBlock) Height() uint64      { return b.height }
-func (b *MockBlock) Timestamp() int64    { return b.timestamp }
-func (b *MockBlock) Bytes() []byte       { return b.data }
-func (b *MockBlock) Verify(context.Context) error  { return nil }
-func (b *MockBlock) Accept(context.Context) error  { return nil }
-func (b *MockBlock) Reject(context.Context) error  { return nil }
+func (b *MockBlock) ID() ids.ID                   { return b.id }
+func (b *MockBlock) ParentID() ids.ID             { return b.parentID }
+func (b *MockBlock) Height() uint64               { return b.height }
+func (b *MockBlock) Timestamp() int64             { return b.timestamp }
+func (b *MockBlock) Bytes() []byte                { return b.data }
+func (b *MockBlock) Verify(context.Context) error { return nil }
+func (b *MockBlock) Accept(context.Context) error { return nil }
+func (b *MockBlock) Reject(context.Context) error { return nil }
 
 // TestConsensusWithBlocks tests the consensus engine with mock blocks
 func TestConsensusWithBlocks(t *testing.T) {
@@ -78,12 +78,12 @@ func TestConsensusWithBlocks(t *testing.T) {
 
 	params := ConsensusParams{
 		K:                     5,
-		AlphaPreference:      3,
-		AlphaConfidence:      3,
-		Beta:                 5,
-		ConcurrentPolls:      1,
-		OptimalProcessing:    1,
-		MaxOutstandingItems:  100,
+		AlphaPreference:       3,
+		AlphaConfidence:       3,
+		Beta:                  5,
+		ConcurrentPolls:       1,
+		OptimalProcessing:     1,
+		MaxOutstandingItems:   100,
 		MaxItemProcessingTime: 10 * time.Second,
 	}
 

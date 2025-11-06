@@ -15,9 +15,9 @@ type testStruct struct {
 }
 
 type nestedStruct struct {
-	ID    string      `json:"id"`
-	Inner testStruct  `json:"inner"`
-	List  []int       `json:"list"`
+	ID    string            `json:"id"`
+	Inner testStruct        `json:"inner"`
+	List  []int             `json:"list"`
 	Map   map[string]string `json:"map"`
 }
 
@@ -307,7 +307,7 @@ func TestJSONCodec_RoundTrip(t *testing.T) {
 			},
 		},
 		{
-			name:  "slice of structs",
+			name: "slice of structs",
 			input: []testStruct{
 				{Name: "first", Value: 1},
 				{Name: "second", Value: 2},
