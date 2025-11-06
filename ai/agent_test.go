@@ -38,7 +38,7 @@ func (m *mockAgentModel[T]) ProposeDecision(ctx context.Context, input T) (*Prop
 	if m.proposeErr != nil {
 		return nil, m.proposeErr
 	}
-	
+
 	decision, _ := m.Decide(ctx, input, nil)
 	return &Proposal[T]{
 		ID:         generateID(),
