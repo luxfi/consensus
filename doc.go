@@ -167,7 +167,7 @@ The package includes extensive tests:
   - Unit tests (co-located with source)
   - Integration tests (test/integration/)
   - Benchmarks (benchmarks/)
-  - Example tests (examples/*/test*.go)
+  - Example tests (in examples/ subdirectories)
 
 Run tests:
 
