@@ -49,7 +49,7 @@ func (m *mockValidatorState) GetValidatorSet(height uint64, subnetID ids.ID) (ma
 	return m.validatorSet, nil
 }
 
-func (m *mockValidatorState) GetCurrentHeight() (uint64, error) {
+func (m *mockValidatorState) GetCurrentHeight(ctx context.Context) (uint64, error) {
 	if m.shouldError {
 		return 0, errors.New("mock error")
 	}
@@ -375,7 +375,8 @@ func TestValidatorStateInterface(t *testing.T) {
 	})
 
 	t.Run("GetCurrentHeight", func(t *testing.T) {
-		height, err := mockVS.GetCurrentHeight()
+		ctx := context.Background()
+		height, err := mockVS.GetCurrentHeight(ctx)
 		require.NoError(t, err)
 		require.Equal(t, uint64(100), height)
 	})
@@ -490,11 +491,6 @@ func TestContextWithAllFields(t *testing.T) {
 			height: 100,
 		},
 		Keystore: &mockKeystore{},
-		BCLookup: &mockBlockchainIDLookup{
-			lookupMap: map[string]ids.ID{
-				"test": ids.GenerateTestID(),
-			},
-		},
 		Metrics: &mockMetrics{},
 	}
 
@@ -515,7 +511,6 @@ func TestContextWithAllFields(t *testing.T) {
 	require.Equal(t, fullCtx.StartTime, retrieved.StartTime)
 	require.NotNil(t, retrieved.ValidatorState)
 	require.NotNil(t, retrieved.Keystore)
-	require.NotNil(t, retrieved.BCLookup)
 	require.NotNil(t, retrieved.Metrics)
 }
 
