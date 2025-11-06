@@ -13,9 +13,9 @@ cc = "1.0"
 name = "lux_consensus"
 path = "src/lib.rs"
 
-[[example]]
-name = "basic_usage"
-path = "examples/basic_usage.rs"
+# [[example]]
+# name = "basic_usage"
+# path = "examples/basic_usage.rs"
 
 [dev-dependencies]
 criterion = { version = "0.7.0", features = ["html_reports"] }

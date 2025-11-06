@@ -392,3 +392,33 @@ func versionEntropy(version string) float64 {
 	return entropy / float64(len(version))
 }
 
+
+// GetWeights returns the current model weights
+func (m *SimpleModel[T]) GetWeights() map[string]float64 {
+	weights := make(map[string]float64, len(m.weights))
+	for k, v := range m.weights {
+		weights[k] = v
+	}
+	return weights
+}
+
+// SetWeights updates the model weights
+func (m *SimpleModel[T]) SetWeights(weights map[string]float64) {
+	m.weights = make(map[string]float64, len(weights))
+	for k, v := range weights {
+		m.weights[k] = v
+	}
+}
+
+// Factory functions for feature extractors
+func NewBlockFeatures() *BlockFeatureExtractor {
+	return &BlockFeatureExtractor{}
+}
+
+func NewTransactionFeatures() *TransactionFeatureExtractor {
+	return &TransactionFeatureExtractor{}
+}
+
+func NewUpgradeFeatures() *UpgradeFeatureExtractor {
+	return &UpgradeFeatureExtractor{}
+}
