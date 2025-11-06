@@ -6,13 +6,13 @@
 package simplex
 
 import (
+	"github.com/luxfi/consensus/engine/chain/block"
+	"github.com/luxfi/consensus/validator"
 	"github.com/luxfi/database"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/log"
 	"github.com/luxfi/node/message"
 	"github.com/luxfi/node/network"
-	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/consensus/validators"
-	"github.com/luxfi/log"
 )
 
 // Config wraps all the parameters needed for a simplex engine

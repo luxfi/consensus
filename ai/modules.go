@@ -17,8 +17,8 @@ type baseModule struct {
 	config Config
 }
 
-func (m *baseModule) ID() string        { return m.id }
-func (m *baseModule) Type() ModuleType  { return m.typ }
+func (m *baseModule) ID() string       { return m.id }
+func (m *baseModule) Type() ModuleType { return m.typ }
 
 func (m *baseModule) Initialize(ctx context.Context, config Config) error {
 	m.config = config
@@ -63,10 +63,10 @@ func (m *inferenceModule) Process(ctx context.Context, input Input) (Output, err
 func (m *inferenceModule) processBlock(ctx context.Context, input Input) (Output, error) {
 	// Unified block analysis
 	analysis := map[string]interface{}{
-		"validity":    true,
-		"confidence":  0.95,
-		"risk_score":  0.1,
-		"features":    []string{"valid_signatures", "correct_hash", "proper_structure"},
+		"validity":   true,
+		"confidence": 0.95,
+		"risk_score": 0.1,
+		"features":   []string{"valid_signatures", "correct_hash", "proper_structure"},
 	}
 
 	return Output{
@@ -82,10 +82,10 @@ func (m *inferenceModule) processBlock(ctx context.Context, input Input) (Output
 func (m *inferenceModule) processProposal(ctx context.Context, input Input) (Output, error) {
 	// Unified proposal analysis
 	analysis := map[string]interface{}{
-		"sentiment":     "positive",
-		"complexity":    "medium",
-		"impact_score":  0.7,
-		"stakeholders":  []string{"validators", "users"},
+		"sentiment":    "positive",
+		"complexity":   "medium",
+		"impact_score": 0.7,
+		"stakeholders": []string{"validators", "users"},
 	}
 
 	return Output{
@@ -97,9 +97,9 @@ func (m *inferenceModule) processProposal(ctx context.Context, input Input) (Out
 func (m *inferenceModule) processVote(ctx context.Context, input Input) (Output, error) {
 	// Unified vote analysis
 	analysis := map[string]interface{}{
-		"weight":        1.0,
-		"authenticity":  true,
-		"alignment":     "consistent",
+		"weight":       1.0,
+		"authenticity": true,
+		"alignment":    "consistent",
 	}
 
 	return Output{
@@ -111,9 +111,9 @@ func (m *inferenceModule) processVote(ctx context.Context, input Input) (Output,
 func (m *inferenceModule) processQuery(ctx context.Context, input Input) (Output, error) {
 	// Unified query processing
 	response := map[string]interface{}{
-		"answer":      "Based on current state analysis...",
-		"confidence":  0.85,
-		"sources":     []string{"historical_data", "current_metrics"},
+		"answer":     "Based on current state analysis...",
+		"confidence": 0.85,
+		"sources":    []string{"historical_data", "current_metrics"},
 	}
 
 	return Output{
@@ -141,9 +141,9 @@ func NewDecisionModule(id string, config interface{}) Module {
 func (m *decisionModule) Process(ctx context.Context, input Input) (Output, error) {
 	// Single way to make decisions regardless of strategy
 	decision := map[string]interface{}{
-		"action":      "approve",
-		"confidence":  0.9,
-		"reasoning":   "Analysis indicates positive outcome with high confidence",
+		"action":       "approve",
+		"confidence":   0.9,
+		"reasoning":    "Analysis indicates positive outcome with high confidence",
 		"alternatives": []string{"reject", "defer"},
 	}
 
@@ -179,10 +179,10 @@ func (m *learningModule) Process(ctx context.Context, input Input) (Output, erro
 
 	// Extract learning signals
 	signals := map[string]interface{}{
-		"outcome":     input.Data,
-		"feedback":    "positive",
-		"adjustment":  0.1,
-		"timestamp":   ctx.Value("timestamp"),
+		"outcome":    input.Data,
+		"feedback":   "positive",
+		"adjustment": 0.1,
+		"timestamp":  ctx.Value("timestamp"),
 	}
 
 	// Update internal state (in real implementation)
@@ -220,10 +220,10 @@ func NewCoordinationModule(id string, config interface{}) Module {
 func (m *coordinationModule) Process(ctx context.Context, input Input) (Output, error) {
 	// Single way to coordinate with other nodes/modules
 	coordination := map[string]interface{}{
-		"broadcast":   true,
-		"recipients":  []string{"validator_nodes", "governance_dao"},
-		"message":     input.Data,
-		"priority":    "normal",
+		"broadcast":  true,
+		"recipients": []string{"validator_nodes", "governance_dao"},
+		"message":    input.Data,
+		"priority":   "normal",
 	}
 
 	return Output{

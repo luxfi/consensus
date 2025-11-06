@@ -50,7 +50,7 @@ func TestThresholdEdgeCases(t *testing.T) {
 			totalWeight:     3,
 			byzantineWeight: 1,
 			voteWeight:      2,
-			expectQuorum:    3, // Ceiling of 2.07
+			expectQuorum:    3,     // Ceiling of 2.07
 			expectTolerance: false, // 33.3% > 31%
 			expectConsensus: false,
 		},
@@ -59,7 +59,7 @@ func TestThresholdEdgeCases(t *testing.T) {
 			totalWeight:     4,
 			byzantineWeight: 1,
 			voteWeight:      3,
-			expectQuorum:    3, // Ceiling of 2.76
+			expectQuorum:    3,    // Ceiling of 2.76
 			expectTolerance: true, // 25% < 31%
 			expectConsensus: true,
 		},
@@ -68,7 +68,7 @@ func TestThresholdEdgeCases(t *testing.T) {
 			totalWeight:     5,
 			byzantineWeight: 1,
 			voteWeight:      4,
-			expectQuorum:    4, // Ceiling of 3.45
+			expectQuorum:    4,    // Ceiling of 3.45
 			expectTolerance: true, // 20% < 31%
 			expectConsensus: true,
 		},
@@ -97,7 +97,7 @@ func TestThresholdEdgeCases(t *testing.T) {
 			totalWeight:     33,
 			byzantineWeight: 10,
 			voteWeight:      23,
-			expectQuorum:    23, // Ceiling of 22.77
+			expectQuorum:    23,   // Ceiling of 22.77
 			expectTolerance: true, // 30.3% < 31%
 			expectConsensus: true,
 		},
@@ -106,7 +106,7 @@ func TestThresholdEdgeCases(t *testing.T) {
 			totalWeight:     67,
 			byzantineWeight: 20,
 			voteWeight:      47,
-			expectQuorum:    47, // Ceiling of 46.23
+			expectQuorum:    47,   // Ceiling of 46.23
 			expectTolerance: true, // 29.85% < 31%
 			expectConsensus: true,
 		},
@@ -123,7 +123,7 @@ func TestThresholdEdgeCases(t *testing.T) {
 		{
 			name:            "max_uint64_weight",
 			totalWeight:     math.MaxUint64,
-			byzantineWeight: math.MaxUint64 / 3, // ~33%
+			byzantineWeight: math.MaxUint64 / 3,                     // ~33%
 			voteWeight:      uint64(float64(math.MaxUint64) * 0.68), // Just below 69%
 			expectQuorum:    uint64(math.Ceil(float64(math.MaxUint64) * 0.69)),
 			expectTolerance: false, // >31%
@@ -169,7 +169,7 @@ func TestThresholdPrecision(t *testing.T) {
 		{68999999, 100000000, false}, // 68.999999%
 		{69000000, 100000000, true},  // 69.000000%
 		{69000001, 100000000, true},  // 69.000001%
-		
+
 		// Test with prime numbers (harder to represent exactly)
 		{47, 68, true},  // 69.117% > 69%
 		{46, 67, false}, // 68.656% < 69%
@@ -190,20 +190,20 @@ func TestThresholdPrecision(t *testing.T) {
 // TestAlphaForKAllValues tests Alpha calculation for all practical K values
 func TestAlphaForKAllValues(t *testing.T) {
 	testCases := []struct {
-		k            int
+		k             int
 		expectedAlpha int
-		percentage   float64
+		percentage    float64
 	}{
-		{1, 1, 100.0},    // Special case: need all
-		{2, 2, 100.0},    // Ceiling of 1.38 = 2
-		{3, 3, 100.0},    // Ceiling of 2.07 = 3
-		{4, 3, 75.0},     // Ceiling of 2.76 = 3
-		{5, 4, 80.0},     // Ceiling of 3.45 = 4
-		{10, 7, 70.0},    // Ceiling of 6.9 = 7
-		{11, 8, 72.7},    // Ceiling of 7.59 = 8
-		{20, 14, 70.0},   // Ceiling of 13.8 = 14
-		{21, 15, 71.4},   // Ceiling of 14.49 = 15
-		{100, 69, 69.0},  // Exactly 69
+		{1, 1, 100.0},     // Special case: need all
+		{2, 2, 100.0},     // Ceiling of 1.38 = 2
+		{3, 3, 100.0},     // Ceiling of 2.07 = 3
+		{4, 3, 75.0},      // Ceiling of 2.76 = 3
+		{5, 4, 80.0},      // Ceiling of 3.45 = 4
+		{10, 7, 70.0},     // Ceiling of 6.9 = 7
+		{11, 8, 72.7},     // Ceiling of 7.59 = 8
+		{20, 14, 70.0},    // Ceiling of 13.8 = 14
+		{21, 15, 71.4},    // Ceiling of 14.49 = 15
+		{100, 69, 69.0},   // Exactly 69
 		{1000, 690, 69.0}, // Exactly 690
 	}
 
@@ -212,7 +212,7 @@ func TestAlphaForKAllValues(t *testing.T) {
 		if alpha != tc.expectedAlpha {
 			t.Errorf("AlphaForK(%d) = %d, want %d", tc.k, alpha, tc.expectedAlpha)
 		}
-		
+
 		// Verify the percentage is at least 69%
 		actualPercentage := float64(alpha) * 100 / float64(tc.k)
 		if actualPercentage < 69.0 && tc.k > 3 { // Allow small networks to exceed
@@ -227,15 +227,15 @@ func TestConcurrentThresholdCalculations(t *testing.T) {
 	// Run many concurrent calculations to ensure thread safety
 	const goroutines = 100
 	const iterations = 1000
-	
+
 	done := make(chan bool, goroutines)
-	
+
 	for i := 0; i < goroutines; i++ {
 		go func(id int) {
 			for j := 0; j < iterations; j++ {
 				weight := uint64(id*iterations + j)
 				total := weight + uint64(j)
-				
+
 				// These should be thread-safe pure functions
 				_ = CalculateQuorum(total)
 				_ = HasSuperMajority(weight, total)
@@ -245,7 +245,7 @@ func TestConcurrentThresholdCalculations(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	// Wait for all goroutines
 	for i := 0; i < goroutines; i++ {
 		<-done
@@ -261,7 +261,7 @@ func BenchmarkThresholdEdgeCases(b *testing.B) {
 			_ = CanTolerateFailure(1, 5)
 		}
 	})
-	
+
 	b.Run("large_network", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = CalculateQuorum(1000000)
@@ -269,7 +269,7 @@ func BenchmarkThresholdEdgeCases(b *testing.B) {
 			_ = CanTolerateFailure(310000, 1000000)
 		}
 	})
-	
+
 	b.Run("max_uint64", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = CalculateQuorum(math.MaxUint64)

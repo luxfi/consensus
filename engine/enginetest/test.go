@@ -52,14 +52,14 @@ func (t *TestEngine) SetHeight(height uint64) {
 
 // Sender is a test implementation of core.Sender for testing
 type Sender struct {
-	SendAppRequestF func(context.Context, set.Set[ids.NodeID], uint32, []byte) error
-	SendAppResponseF func(context.Context, ids.NodeID, uint32, []byte) error
-	SendAppErrorF func(context.Context, ids.NodeID, uint32, int32, string) error
-	SendAppGossipF func(context.Context, core.SendConfig, []byte) error
-	SendAppGossipSpecificF func(context.Context, core.SendConfig, []byte) error
-	SendCrossChainAppRequestF func(context.Context, ids.ID, uint32, []byte) error
+	SendAppRequestF            func(context.Context, set.Set[ids.NodeID], uint32, []byte) error
+	SendAppResponseF           func(context.Context, ids.NodeID, uint32, []byte) error
+	SendAppErrorF              func(context.Context, ids.NodeID, uint32, int32, string) error
+	SendAppGossipF             func(context.Context, core.SendConfig, []byte) error
+	SendAppGossipSpecificF     func(context.Context, core.SendConfig, []byte) error
+	SendCrossChainAppRequestF  func(context.Context, ids.ID, uint32, []byte) error
 	SendCrossChainAppResponseF func(context.Context, ids.ID, uint32, []byte) error
-	SendCrossChainAppErrorF func(context.Context, ids.ID, uint32, int32, string) error
+	SendCrossChainAppErrorF    func(context.Context, ids.ID, uint32, int32, string) error
 }
 
 func (s *Sender) SendAppRequest(ctx context.Context, nodeIDs set.Set[ids.NodeID], requestID uint32, request []byte) error {

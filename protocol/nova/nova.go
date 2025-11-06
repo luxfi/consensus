@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/luxfi/consensus/prism"
+	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/consensus/protocol/ray"
-	"github.com/luxfi/consensus/wave"
+	"github.com/luxfi/consensus/protocol/wave"
 )
 
 // Nova implements linear blockchain consensus using the internal Ray engine
