@@ -39,7 +39,7 @@ func BenchmarkBlockOperations(b *testing.B) {
 	b.Run("SingleBlock", func(b *testing.B) {
 		blocks := make([][]byte, 0, b.N)
 		b.ResetTimer()
-		
+
 		for i := 0; i < b.N; i++ {
 			block := make([]byte, 32)
 			block[0] = byte(i >> 8)
@@ -47,7 +47,7 @@ func BenchmarkBlockOperations(b *testing.B) {
 			blocks = append(blocks, block)
 		}
 	})
-	
+
 	b.Run("BatchBlocks_100", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
@@ -61,7 +61,7 @@ func BenchmarkBlockOperations(b *testing.B) {
 			_ = blocks
 		}
 	})
-	
+
 	b.Run("BatchBlocks_1000", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
@@ -82,7 +82,7 @@ func BenchmarkVoteProcessing(b *testing.B) {
 	b.Run("SingleVote", func(b *testing.B) {
 		votes := make([][]byte, 0, b.N)
 		b.ResetTimer()
-		
+
 		for i := 0; i < b.N; i++ {
 			vote := make([]byte, 65) // voter_id(32) + block_id(32) + is_preference(1)
 			vote[0] = byte(i >> 8)
@@ -90,7 +90,7 @@ func BenchmarkVoteProcessing(b *testing.B) {
 			votes = append(votes, vote)
 		}
 	})
-	
+
 	b.Run("BatchVotes_1000", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
@@ -104,7 +104,7 @@ func BenchmarkVoteProcessing(b *testing.B) {
 			_ = votes
 		}
 	})
-	
+
 	b.Run("BatchVotes_10000", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
@@ -131,7 +131,7 @@ func BenchmarkQueryOperations(b *testing.B) {
 		blockID[1] = byte(i & 0xFF)
 		blockIDs[i] = blockID
 	}
-	
+
 	b.Run("IsAccepted", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -140,7 +140,7 @@ func BenchmarkQueryOperations(b *testing.B) {
 			_ = len(blockID) == 32
 		}
 	})
-	
+
 	b.Run("GetPreference", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -149,7 +149,7 @@ func BenchmarkQueryOperations(b *testing.B) {
 			_ = pref
 		}
 	})
-	
+
 	b.Run("GetStats", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -175,10 +175,10 @@ func BenchmarkConcurrentOperations(b *testing.B) {
 	for _, numGoroutines := range []int{1, 2, 4, 8} {
 		b.Run(fmt.Sprintf("Goroutines_%d", numGoroutines), func(b *testing.B) {
 			b.ResetTimer()
-			
+
 			for n := 0; n < b.N; n++ {
 				done := make(chan bool, numGoroutines)
-				
+
 				for g := 0; g < numGoroutines; g++ {
 					go func(id int) {
 						// Simulate concurrent operations
@@ -192,7 +192,7 @@ func BenchmarkConcurrentOperations(b *testing.B) {
 						done <- true
 					}(g)
 				}
-				
+
 				// Wait for all goroutines
 				for g := 0; g < numGoroutines; g++ {
 					<-done
@@ -207,7 +207,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 	for _, size := range []int{1000, 10000} {
 		b.Run(fmt.Sprintf("Blocks_%d", size), func(b *testing.B) {
 			b.ResetTimer()
-			
+
 			for n := 0; n < b.N; n++ {
 				blocks := make([][]byte, 0, size)
 				for i := 0; i < size; i++ {

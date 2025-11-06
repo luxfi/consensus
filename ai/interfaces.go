@@ -67,8 +67,8 @@ type Input struct {
 
 // Output - single output format for all modules
 type Output struct {
-	Type    OutputType             `json:"type"`
-	Data    map[string]interface{} `json:"data"`
+	Type     OutputType             `json:"type"`
+	Data     map[string]interface{} `json:"data"`
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
