@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/luxfi/consensus/prism"
+	"github.com/luxfi/consensus/protocol/prism"
+	"github.com/luxfi/consensus/protocol/wave"
 	"github.com/luxfi/consensus/types"
-	"github.com/luxfi/consensus/wave"
 )
 
 type VID interface{ comparable } // vertex id

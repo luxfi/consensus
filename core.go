@@ -50,8 +50,8 @@ type QuantumIDs struct {
 	NetID   ids.ID
 	ChainID ids.ID
 	// P-Chain is the quantum validation chain
-	PChainID    ids.ID
-	XChainID    ids.ID
-	CChainID    ids.ID
+	PChainID ids.ID
+	XChainID ids.ID
+	CChainID ids.ID
 	XAssetID ids.ID
 }

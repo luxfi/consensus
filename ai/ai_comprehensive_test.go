@@ -43,10 +43,10 @@ func (m *mockModel) Decide(ctx context.Context, question string, data map[string
 }
 
 type mockLogger struct {
-	mu      sync.Mutex
-	infos   []string
-	warns   []string
-	errors  []string
+	mu     sync.Mutex
+	infos  []string
+	warns  []string
+	errors []string
 }
 
 func (l *mockLogger) Info(msg string, fields ...interface{}) {

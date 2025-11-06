@@ -27,10 +27,10 @@ func TestValidatorImpl(t *testing.T) {
 
 // Mock State implementation
 type mockState struct {
-	validators     map[ids.NodeID]*GetValidatorOutput
-	currentHeight  uint64
+	validators      map[ids.NodeID]*GetValidatorOutput
+	currentHeight   uint64
 	getValidatorErr error
-	getHeightErr   error
+	getHeightErr    error
 }
 
 func (m *mockState) GetValidatorSet(ctx context.Context, height uint64, netID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error) {

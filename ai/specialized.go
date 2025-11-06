@@ -32,8 +32,8 @@ func (ua *UpgradeAgent) AutonomousUpgrade(ctx context.Context, currentVersion st
 	for _, upgrade := range availableUpgrades {
 		decision, err := ua.model.Decide(ctx, upgrade, map[string]interface{}{
 			"current_version": currentVersion,
-			"node_id":        ua.nodeID,
-			"type":           "autonomous_upgrade",
+			"node_id":         ua.nodeID,
+			"type":            "autonomous_upgrade",
 		})
 		if err != nil {
 			continue
@@ -53,14 +53,14 @@ func (ua *UpgradeAgent) AutonomousUpgrade(ctx context.Context, currentVersion st
 
 	// Create upgrade decision
 	decision := &Decision[UpgradeData]{
-		ID:          generateID(),
-		Action:      "approve_upgrade",
-		Data:        bestUpgrade,
-		Confidence:  bestScore,
-		Reasoning:   fmt.Sprintf("Autonomous upgrade to %s recommended based on AI consensus", bestUpgrade.Version),
-		Context:     map[string]interface{}{"autonomous": true, "current_version": currentVersion},
-		Timestamp:   time.Now(),
-		ProposerID:  ua.nodeID,
+		ID:         generateID(),
+		Action:     "approve_upgrade",
+		Data:       bestUpgrade,
+		Confidence: bestScore,
+		Reasoning:  fmt.Sprintf("Autonomous upgrade to %s recommended based on AI consensus", bestUpgrade.Version),
+		Context:    map[string]interface{}{"autonomous": true, "current_version": currentVersion},
+		Timestamp:  time.Now(),
+		ProposerID: ua.nodeID,
 	}
 
 	return decision, nil
@@ -115,21 +115,21 @@ func (ba *BlockAgent) ArbitrateFork(ctx context.Context, forkOptions []BlockData
 	}
 
 	decision := &Decision[BlockData]{
-		ID:          generateID(),
-		Action:      "choose_fork",
-		Data:        bestFork,
-		Confidence:  bestScore,
-		Reasoning:   fmt.Sprintf("Fork at height %d chosen based on AI arbitration", bestFork.Height),
-		Context:     map[string]interface{}{"fork_arbitration": true},
-		Timestamp:   time.Now(),
-		ProposerID:  ba.nodeID,
+		ID:         generateID(),
+		Action:     "choose_fork",
+		Data:       bestFork,
+		Confidence: bestScore,
+		Reasoning:  fmt.Sprintf("Fork at height %d chosen based on AI arbitration", bestFork.Height),
+		Context:    map[string]interface{}{"fork_arbitration": true},
+		Timestamp:  time.Now(),
+		ProposerID: ba.nodeID,
 	}
 
 	return decision, nil
 }
 
 func (ba *BlockAgent) evaluateForkSupport(fork BlockData) float64 {
-	ageBonus := 1.0 - (time.Since(fork.Timestamp).Hours() / 24.0) // Prefer recent forks
+	ageBonus := 1.0 - (time.Since(fork.Timestamp).Hours() / 24.0)  // Prefer recent forks
 	txBonus := math.Min(1.0, float64(len(fork.Transactions))/10.0) // Prefer active forks
 	return (ageBonus + txBonus) / 2.0
 }
@@ -169,14 +169,14 @@ func (sa *SecurityAgent) AutomaticSecurityResponse(ctx context.Context, threat S
 	}
 
 	response := &Decision[SecurityData]{
-		ID:          generateID(),
-		Action:      decision.Action,
-		Data:        threat,
-		Confidence:  responseConfidence,
-		Reasoning:   fmt.Sprintf("Automatic security response to %s threat", threat.ThreatLevel),
-		Context:     map[string]interface{}{"automatic": true, "threat_level": threat.ThreatLevel},
-		Timestamp:   time.Now(),
-		ProposerID:  sa.nodeID,
+		ID:         generateID(),
+		Action:     decision.Action,
+		Data:       threat,
+		Confidence: responseConfidence,
+		Reasoning:  fmt.Sprintf("Automatic security response to %s threat", threat.ThreatLevel),
+		Context:    map[string]interface{}{"automatic": true, "threat_level": threat.ThreatLevel},
+		Timestamp:  time.Now(),
+		ProposerID: sa.nodeID,
 	}
 
 	return response, nil
@@ -243,14 +243,14 @@ func (da *DisputeAgent) ResolveDispute(ctx context.Context, dispute DisputeData)
 	finalConfidence := decision.Confidence * networkAgreement
 
 	resolution := &Decision[DisputeData]{
-		ID:          generateID(),
-		Action:      decision.Action,
-		Data:        dispute,
-		Confidence:  finalConfidence,
-		Reasoning:   fmt.Sprintf("Dispute %s resolved: %s", dispute.Type, decision.Reasoning),
-		Context:     map[string]interface{}{"dispute_resolution": true, "network_agreement": networkAgreement},
-		Timestamp:   time.Now(),
-		ProposerID:  da.nodeID,
+		ID:         generateID(),
+		Action:     decision.Action,
+		Data:       dispute,
+		Confidence: finalConfidence,
+		Reasoning:  fmt.Sprintf("Dispute %s resolved: %s", dispute.Type, decision.Reasoning),
+		Context:    map[string]interface{}{"dispute_resolution": true, "network_agreement": networkAgreement},
+		Timestamp:  time.Now(),
+		ProposerID: da.nodeID,
 	}
 
 	return resolution, nil

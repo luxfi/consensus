@@ -86,7 +86,7 @@ func main() {
 		timestamp: time.Now(),
 		data:      []byte("Block 1 data"),
 	}
-	
+
 	if err := consensus.Add(block1); err != nil {
 		log.Fatalf("Failed to add block 1: %v", err)
 	}
@@ -100,7 +100,7 @@ func main() {
 		timestamp: time.Now(),
 		data:      []byte("Block 2 data"),
 	}
-	
+
 	if err := consensus.Add(block2); err != nil {
 		log.Fatalf("Failed to add block 2: %v", err)
 	}
@@ -114,7 +114,7 @@ func main() {
 		timestamp: time.Now(),
 		data:      []byte("Block 3 data"),
 	}
-	
+
 	if err := consensus.Add(block3); err != nil {
 		log.Fatalf("Failed to add block 3: %v", err)
 	}
@@ -123,16 +123,16 @@ func main() {
 
 	// Simulate voting
 	fmt.Println("Processing votes for block 2...")
-	
+
 	for i := 0; i < 20; i++ {
 		voterID := ids.GenerateTestNodeID()
 		isPreference := i < 15 // First 15 are preference votes
-		
+
 		if err := consensus.ProcessVote(voterID, block2.ID(), isPreference); err != nil {
 			log.Fatalf("Failed to process vote: %v", err)
 		}
 	}
-	
+
 	fmt.Println("  Processed 20 votes (15 preference, 5 confidence)")
 	fmt.Println()
 
@@ -157,7 +157,7 @@ func main() {
 		ids.GenerateTestNodeID(),
 		ids.GenerateTestNodeID(),
 	}
-	
+
 	if err := consensus.Poll(validators); err != nil {
 		log.Fatalf("Failed to poll validators: %v", err)
 	}
@@ -188,7 +188,7 @@ func main() {
 
 	fmt.Println("✅ Example completed successfully!")
 	fmt.Println()
-	
+
 	// Instructions for running with different implementations
 	fmt.Println("To run with different implementations:")
 	fmt.Println("  Pure Go:  go run go_sdk_example.go")

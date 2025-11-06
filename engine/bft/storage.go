@@ -17,8 +17,8 @@ import (
 	simplex "github.com/luxfi/bft"
 	"go.uber.org/zap"
 
-	"github.com/luxfi/database"
 	"github.com/luxfi/consensus/engine/chain/block"
+	"github.com/luxfi/database"
 	"github.com/luxfi/log"
 )
 

@@ -60,7 +60,7 @@ func TestConsensusThreshold69(t *testing.T) {
 			// Verify AlphaPreference is at least 69% of K
 			minAlpha := math.Ceil(float64(tt.params.K) * 0.69)
 			if float64(tt.params.AlphaPreference) < minAlpha {
-				t.Errorf("AlphaPreference %d is below 69%% threshold %f", 
+				t.Errorf("AlphaPreference %d is below 69%% threshold %f",
 					tt.params.AlphaPreference, minAlpha)
 			}
 
@@ -79,10 +79,10 @@ func TestByzantineTolerance31(t *testing.T) {
 		totalWeight     uint64
 		canTolerate     bool
 	}{
-		{31, 100, true},   // Exactly 31%
-		{30, 100, true},   // Below threshold
-		{32, 100, false},  // Above threshold
-		{310, 1000, true}, // 31% at scale
+		{31, 100, true},    // Exactly 31%
+		{30, 100, true},    // Below threshold
+		{32, 100, false},   // Above threshold
+		{310, 1000, true},  // 31% at scale
 		{311, 1000, false}, // Slightly above 31%
 	}
 
@@ -124,10 +124,10 @@ func TestHasSuperMajority(t *testing.T) {
 		totalWeight uint64
 		hasMajority bool
 	}{
-		{69, 100, true},   // Exactly 69%
-		{70, 100, true},   // Above threshold
-		{68, 100, false},  // Below threshold
-		{690, 1000, true}, // 69% at scale
+		{69, 100, true},    // Exactly 69%
+		{70, 100, true},    // Above threshold
+		{68, 100, false},   // Below threshold
+		{690, 1000, true},  // 69% at scale
 		{689, 1000, false}, // Just below
 	}
 
@@ -143,13 +143,13 @@ func TestHasSuperMajority(t *testing.T) {
 // TestAlphaForK verifies Alpha calculation for different K values
 func TestAlphaForK(t *testing.T) {
 	tests := []struct {
-		k            int
+		k             int
 		expectedAlpha int
 	}{
-		{20, 14}, // Ceiling of 13.8
-		{21, 15}, // Ceiling of 14.49
-		{11, 8},  // Ceiling of 7.59
-		{5, 4},   // Ceiling of 3.45
+		{20, 14},  // Ceiling of 13.8
+		{21, 15},  // Ceiling of 14.49
+		{11, 8},   // Ceiling of 7.59
+		{5, 4},    // Ceiling of 3.45
 		{100, 69}, // Exactly 69
 	}
 
@@ -211,7 +211,7 @@ func TestParameterValidation(t *testing.T) {
 // BenchmarkQuorumCalculation benchmarks quorum calculations
 func BenchmarkQuorumCalculation(b *testing.B) {
 	weights := []uint64{100, 1000, 10000, 100000, 1000000}
-	
+
 	for _, w := range weights {
 		b.Run(fmt.Sprintf("weight_%d", w), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
@@ -225,7 +225,7 @@ func BenchmarkQuorumCalculation(b *testing.B) {
 func BenchmarkHasSuperMajority(b *testing.B) {
 	totalWeight := uint64(1000000)
 	weight := uint64(690000)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = HasSuperMajority(weight, totalWeight)
