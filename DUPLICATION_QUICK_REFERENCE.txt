@@ -1,0 +1,216 @@
+================================================================================
+CONSENSUS REPOSITORY INTERFACE DUPLICATION - QUICK REFERENCE
+================================================================================
+
+CRITICAL FINDING:
+  /Users/z/work/lux/consensus/pkg/go/ is a COMPLETE DUPLICATE of root directory
+  MD5 verification: block/block.go == pkg/go/block/block.go
+  ACTION: DELETE /Users/z/work/lux/consensus/pkg/go
+
+================================================================================
+BLOCK INTERFACE DEFINITIONS (14 locations)
+================================================================================
+
+Location 1: /Users/z/work/lux/consensus/block/block.go:31
+  - Timestamp: time.Time
+  - Methods: ID, Parent (alias), ParentID, Height, Timestamp, Status, Verify, Accept, Reject, Bytes
+  
+Location 2: /Users/z/work/lux/consensus/engine/chain/block/block.go:11
+  - Timestamp: time.Time
+  - Methods: ID, Parent (alias), ParentID, Height, Timestamp, Status, Verify, Accept, Reject, Bytes
+
+Location 3: /Users/z/work/lux/consensus/core/consensus.go:27
+  - Timestamp: int64
+  - Methods: ID, ParentID, Height, Timestamp, Bytes, Verify, Accept, Reject
+  - MISSING: Status, Parent alias
+
+Location 4: /Users/z/work/lux/consensus/core/interfaces/interfaces.go:29
+  - Timestamp: OMITTED
+  - Methods: ID, Parent, Height, Bytes, Accept, Reject
+  - MISSING: ParentID (has Parent only), Timestamp, Verify, Status
+
+Location 5: /Users/z/work/lux/consensus/engine/core/types.go:26
+  - Timestamp: int64
+  - Methods: ID, ParentID, Height, Timestamp, Bytes, Verify, Accept, Reject
+  - MISSING: Status, Parent alias
+
+Location 6: /Users/z/work/lux/consensus/protocol/chain/chain.go:11
+  - Timestamp: time.Time
+  - Methods: ID, Parent (alias), ParentID, Height, Timestamp, Bytes, Status, Accept, Reject, Verify
+  
+Location 7: /Users/z/work/lux/consensus/protocol/ray/chain.go:25
+  - Timestamp: OMITTED
+  - Methods: ID, ParentID, Height, Bytes, Verify, Accept, Reject
+  - MISSING: Status, Parent alias, Timestamp
+
+DUPLICATES IN /pkg/go/:
+  - /Users/z/work/lux/consensus/pkg/go/block/block.go:31
+  - /Users/z/work/lux/consensus/pkg/go/core/consensus.go:27
+  - /Users/z/work/lux/consensus/pkg/go/core/interfaces/interfaces.go:29
+  - /Users/z/work/lux/consensus/pkg/go/engine/chain/block/block.go:11
+  - /Users/z/work/lux/consensus/pkg/go/engine/core/types.go:26
+  - /Users/z/work/lux/consensus/pkg/go/protocol/chain/chain.go:11
+  - /Users/z/work/lux/consensus/pkg/go/protocol/ray/chain.go:25
+
+================================================================================
+ENGINE INTERFACE DEFINITIONS (14 locations)
+================================================================================
+
+STANDARD ENGINE INTERFACE (5 locations):
+  Methods: Start, Stop, HealthCheck, IsBootstrapped
+  Locations:
+    - /Users/z/work/lux/consensus/consensus.go:16
+    - /Users/z/work/lux/consensus/engine/core/interfaces/interfaces.go:10
+    - /Users/z/work/lux/consensus/engine/chain/engine.go:10
+    - /Users/z/work/lux/consensus/engine/pq/engine.go:10 (+quantum methods)
+
+DAG ENGINE INTERFACE (Location: /Users/z/work/lux/consensus/engine/dag/engine.go:24)
+  DIFFERENT: Uses Shutdown() instead of Stop()
+  DIFFERENT: Has GetVtx, BuildVtx, ParseVtx methods
+  Methods: GetVtx, BuildVtx, ParseVtx, Start, Shutdown
+
+CONSENSUS INTERFACE (Location: /Users/z/work/lux/consensus/engine/core/types.go:38)
+  COMPLETELY DIFFERENT - Named "Consensus" not "Engine"
+  Methods: Add, RecordPoll, IsAccepted, GetPreference, Finalized, Parameters, HealthCheck
+
+AI ENGINE INTERFACE (Location: /Users/z/work/lux/consensus/ai/interfaces.go:45)
+  COMPLETELY DIFFERENT - AI module specific
+  Methods: AddModule, RemoveModule, GetModule, ListModules, Process, Configure
+
+DUPLICATES IN /pkg/go/:
+  - /Users/z/work/lux/consensus/pkg/go/consensus.go:16
+  - /Users/z/work/lux/consensus/pkg/go/engine/core/interfaces/interfaces.go:10
+  - /Users/z/work/lux/consensus/pkg/go/engine/chain/engine.go:10
+  - /Users/z/work/lux/consensus/pkg/go/engine/dag/engine.go:24
+  - /Users/z/work/lux/consensus/pkg/go/engine/core/types.go:38
+  - /Users/z/work/lux/consensus/pkg/go/engine/pq/engine.go:10
+  - /Users/z/work/lux/consensus/pkg/go/ai/interfaces.go:45
+
+================================================================================
+STATE INTERFACE DEFINITIONS (12 locations) - SEMANTIC CONFLICTS
+================================================================================
+
+Location 1: /Users/z/work/lux/consensus/core/consensus.go:12
+  PURPOSE: Timestamp management
+  Methods: GetTimestamp, SetTimestamp
+
+Location 2: /Users/z/work/lux/consensus/core.go:13
+  PURPOSE: Timestamp management (IDENTICAL to above)
+  Methods: GetTimestamp, SetTimestamp
+
+Location 3: /Users/z/work/lux/consensus/core/interfaces/interfaces.go:14
+  PURPOSE: Block storage
+  Methods: GetBlock, PutBlock, GetLastAccepted, SetLastAccepted
+
+Location 4: /Users/z/work/lux/consensus/engine/dag/state/state.go:8
+  PURPOSE: DAG vertex tracking
+  Methods: GetVertex, AddVertex, VertexIssued, IsProcessing
+
+Location 5: /Users/z/work/lux/consensus/validators/validators.go:14
+  PURPOSE: Validator tracking
+
+Location 6: /Users/z/work/lux/consensus/uptime/state.go:13
+  PURPOSE: Uptime tracking
+
+PROBLEM: 6 interfaces with same name "State" serving completely different purposes!
+         This creates confusion and import ambiguity.
+
+DUPLICATES IN /pkg/go/:
+  - /Users/z/work/lux/consensus/pkg/go/core.go:13
+  - /Users/z/work/lux/consensus/pkg/go/core/consensus.go:12
+  - /Users/z/work/lux/consensus/pkg/go/core/interfaces/interfaces.go:14
+  - /Users/z/work/lux/consensus/pkg/go/engine/dag/state/state.go:8
+  - /Users/z/work/lux/consensus/pkg/go/uptime/state.go:13
+  - /Users/z/work/lux/consensus/pkg/go/validators/validators.go:11
+
+================================================================================
+OTHER INTERFACE DUPLICATIONS
+================================================================================
+
+VERTEX INTERFACES:
+  1. /Users/z/work/lux/consensus/engine/dag/vertex/vertex.go:11
+  2. /Users/z/work/lux/consensus/engine/dag/state/state.go:23 (different structure)
+  3. /Users/z/work/lux/consensus/dag/dag.go:12
+
+SENDER/HANDLER INTERFACES:
+  1. /Users/z/work/lux/consensus/networking/sender/sender.go:11
+  2. /Users/z/work/lux/consensus/pkg/go/networking/sender/sender.go:11 [DUPLICATE]
+  3. /Users/z/work/lux/consensus/networking/handler/handler.go:10
+  4. /Users/z/work/lux/consensus/pkg/go/networking/handler/handler.go:10 [DUPLICATE]
+
+DECIDABLE INTERFACE:
+  1. /Users/z/work/lux/consensus/core/decidable.go:10
+  2. /Users/z/work/lux/consensus/pkg/go/core/decidable.go:10 [DUPLICATE]
+
+================================================================================
+BLOCK INTERFACE INCONSISTENCIES SUMMARY
+================================================================================
+
+TIMESTAMP TYPE:
+  time.Time: block/block.go, engine/chain/block/block.go, protocol/chain/chain.go
+  int64:     core/consensus.go, engine/core/types.go
+  Missing:   protocol/ray/chain.go
+
+PARENT ID ACCESS:
+  Parent():        core/interfaces/interfaces.go (ONLY)
+  ParentID():      all others (but core/interfaces/interfaces.go MISSING ParentID)
+  Both:            block/block.go, engine/chain/block/block.go, protocol/chain/chain.go
+
+VERIFY() METHOD:
+  Present:  block/block.go, core/consensus.go, engine/chain/block/block.go, 
+            engine/core/types.go, protocol/chain/chain.go, protocol/ray/chain.go
+  MISSING:  core/interfaces/interfaces.go (!!!)
+
+STATUS FIELD:
+  Present:  block/block.go, engine/chain/block/block.go, protocol/chain/chain.go
+  Missing:  core/consensus.go, core/interfaces/interfaces.go, engine/core/types.go, protocol/ray/chain.go
+
+================================================================================
+RECOMMENDED ACTION PLAN
+================================================================================
+
+IMMEDIATE (Do NOW):
+  1. Verify no code imports from /Users/z/work/lux/consensus/pkg/go/
+  2. DELETE /Users/z/work/lux/consensus/pkg/go/ directory
+  3. Run full test suite to verify no breakage
+  4. UPDATE LLM.md with this cleanup
+
+SHORT TERM (This Sprint):
+  1. Create canonical Block interface definition
+  2. Consolidate to single Engine interface + specialized variants (PostQuantumEngine, etc)
+  3. Rename conflicting State interfaces (TimestampState, BlockStorageState, DAGState, etc)
+
+MEDIUM TERM (Next Sprint):
+  1. Standardize timestamp type (choose int64 or time.Time consistently)
+  2. Standardize Parent vs ParentID usage
+  3. Ensure all Block implementations have Verify()
+
+================================================================================
+STATISTICS
+================================================================================
+
+Total Interface Duplications: 48+ locations
+  - Block interfaces: 14 (7 in /pkg/go)
+  - Engine interfaces: 14 (7 in /pkg/go)
+  - State interfaces: 12 (6 in /pkg/go)
+  - Other: 6+ (3+ in /pkg/go)
+
+Total Inconsistencies: 20+
+  - Timestamp type conflicts: 3
+  - Parent ID method conflicts: 3
+  - Verify method missing: 1
+  - Status field missing: 4
+  - Semantic conflicts (State): 6
+  - Vertex interface conflicts: 2+
+
+================================================================================
+FILES WITH DETAILED ANALYSIS
+================================================================================
+
+Main Report:
+  /Users/z/work/lux/consensus/INTERFACE_DUPLICATION_REPORT.md
+
+This Quick Reference:
+  /Users/z/work/lux/consensus/DUPLICATION_QUICK_REFERENCE.txt
+
+================================================================================
