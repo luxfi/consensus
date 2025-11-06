@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luxfi/consensus/photon"
+	"github.com/luxfi/consensus/protocol/photon"
 	"github.com/luxfi/consensus/protocol/quasar"
 )
 

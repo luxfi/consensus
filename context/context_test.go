@@ -12,13 +12,13 @@ import (
 
 // Mock implementations for interfaces
 type mockValidatorState struct {
-	chainID       ids.ID
-	netID         ids.ID
-	subnetID      ids.ID
-	height        uint64
-	minHeight     uint64
-	validatorSet  map[ids.NodeID]uint64
-	shouldError   bool
+	chainID      ids.ID
+	netID        ids.ID
+	subnetID     ids.ID
+	height       uint64
+	minHeight    uint64
+	validatorSet map[ids.NodeID]uint64
+	shouldError  bool
 }
 
 func (m *mockValidatorState) GetChainID(id ids.ID) (ids.ID, error) {
@@ -115,15 +115,15 @@ func (m *mockMetrics) Register(namespace string, registerer interface{}) error {
 func TestContext(t *testing.T) {
 	// Create a test context
 	testCtx := &Context{
-		QuantumID:   1337,
-		NetID:       ids.GenerateTestID(),
-		ChainID:     ids.GenerateTestID(),
-		NodeID:      ids.GenerateTestNodeID(),
-		PublicKey:   []byte("test-public-key"),
-		XChainID:    ids.GenerateTestID(),
-		CChainID:    ids.GenerateTestID(),
-		XAssetID: ids.GenerateTestID(),
-		StartTime:   time.Now(),
+		QuantumID: 1337,
+		NetID:     ids.GenerateTestID(),
+		ChainID:   ids.GenerateTestID(),
+		NodeID:    ids.GenerateTestNodeID(),
+		PublicKey: []byte("test-public-key"),
+		XChainID:  ids.GenerateTestID(),
+		CChainID:  ids.GenerateTestID(),
+		XAssetID:  ids.GenerateTestID(),
+		StartTime: time.Now(),
 	}
 
 	// Test context fields
@@ -250,13 +250,13 @@ func TestWithIDs(t *testing.T) {
 	ctx := context.Background()
 
 	testIDs := IDs{
-		NetworkID:  1,
-		QuantumID:  1337,
-		NetID:      ids.GenerateTestID(),
-		ChainID:    ids.GenerateTestID(),
-		NodeID:     ids.GenerateTestNodeID(),
-		PublicKey:  []byte("test-key"),
-		XAssetID: ids.GenerateTestID(),
+		NetworkID: 1,
+		QuantumID: 1337,
+		NetID:     ids.GenerateTestID(),
+		ChainID:   ids.GenerateTestID(),
+		NodeID:    ids.GenerateTestNodeID(),
+		PublicKey: []byte("test-key"),
+		XAssetID:  ids.GenerateTestID(),
 	}
 
 	t.Run("WithIDs on empty context", func(t *testing.T) {
@@ -333,11 +333,11 @@ func TestWithValidatorState(t *testing.T) {
 
 func TestValidatorStateInterface(t *testing.T) {
 	mockVS := &mockValidatorState{
-		chainID:      ids.GenerateTestID(),
-		netID:        ids.GenerateTestID(),
-		subnetID:     ids.GenerateTestID(),
-		height:       100,
-		minHeight:    10,
+		chainID:   ids.GenerateTestID(),
+		netID:     ids.GenerateTestID(),
+		subnetID:  ids.GenerateTestID(),
+		height:    100,
+		minHeight: 10,
 		validatorSet: map[ids.NodeID]uint64{
 			ids.GenerateTestNodeID(): 1000,
 			ids.GenerateTestNodeID(): 2000,
@@ -478,20 +478,20 @@ func TestGetValidatorOutput(t *testing.T) {
 func TestContextWithAllFields(t *testing.T) {
 	// Create a fully populated context
 	fullCtx := &Context{
-		QuantumID:   1337,
-		NetID:       ids.GenerateTestID(),
-		ChainID:     ids.GenerateTestID(),
-		NodeID:      ids.GenerateTestNodeID(),
-		PublicKey:   []byte("test-public-key"),
-		XChainID:    ids.GenerateTestID(),
-		CChainID:    ids.GenerateTestID(),
-		XAssetID: ids.GenerateTestID(),
-		StartTime:   time.Now(),
+		QuantumID: 1337,
+		NetID:     ids.GenerateTestID(),
+		ChainID:   ids.GenerateTestID(),
+		NodeID:    ids.GenerateTestNodeID(),
+		PublicKey: []byte("test-public-key"),
+		XChainID:  ids.GenerateTestID(),
+		CChainID:  ids.GenerateTestID(),
+		XAssetID:  ids.GenerateTestID(),
+		StartTime: time.Now(),
 		ValidatorState: &mockValidatorState{
 			height: 100,
 		},
 		Keystore: &mockKeystore{},
-		Metrics: &mockMetrics{},
+		Metrics:  &mockMetrics{},
 	}
 
 	ctx := context.Background()

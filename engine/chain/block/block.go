@@ -1,8 +1,8 @@
 package block
 
 import (
-	"time"
 	"context"
+	"time"
 
 	"github.com/luxfi/ids"
 )
@@ -196,8 +196,6 @@ func GetAncestors(
 
 	return ancestors, nil
 }
-
-
 
 // Network callbacks
 type ChainVMWithNetwork interface {
