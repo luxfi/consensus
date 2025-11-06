@@ -1,8 +1,9 @@
-package consensus
+package integration
 
 import (
 	"testing"
 
+	"github.com/luxfi/consensus"
 	"github.com/luxfi/consensus/config"
 	"github.com/stretchr/testify/require"
 )
@@ -12,7 +13,7 @@ func TestK1ConsensusIntegration(t *testing.T) {
 	require := require.New(t)
 
 	// Test that Config(1) returns single validator params
-	params := Config(1)
+	params := consensus.Config(1)
 
 	// Verify it matches SingleValidatorParams
 	expectedParams := config.SingleValidatorParams()
@@ -77,7 +78,7 @@ func TestConfigNodeCounts(t *testing.T) {
 		t.Run(tt.expectedType, func(t *testing.T) {
 			require := require.New(t)
 
-			params := Config(tt.nodes)
+			params := consensus.Config(tt.nodes)
 
 			// Verify params are valid
 			err := params.Valid()

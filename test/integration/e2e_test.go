@@ -1,4 +1,4 @@
-package consensus_test
+package integration
 
 import (
 	"bytes"
