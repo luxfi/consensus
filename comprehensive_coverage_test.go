@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	consensusctx "github.com/luxfi/consensus/context"
 	"github.com/luxfi/ids"
 	"github.com/stretchr/testify/require"
 )
@@ -53,19 +54,16 @@ func TestConfigDefaultCase(t *testing.T) {
 
 // TestQuantumNetworkIDWithQuantumContext tests QuantumNetworkID with actual quantum IDs
 func TestQuantumNetworkIDWithQuantumContext(t *testing.T) {
-	ctx := context.Background()
+	ctx := &consensusctx.Context{}
 
-	// The current implementation checks GetQuantumIDs
-	// Since GetQuantumIDs returns nil in our implementation,
-	// we just verify the function doesn't panic
+	// Test with empty context
 	networkID := QuantumNetworkID(ctx)
 	require.Equal(t, uint32(0), networkID)
 
-	// Test with a context that might have values
-	// (though our current implementation doesn't use context values)
-	ctx = context.WithValue(ctx, "test", "value")
+	// Test with quantum ID set
+	ctx.QuantumID = 54321
 	networkID = QuantumNetworkID(ctx)
-	require.Equal(t, uint32(0), networkID)
+	require.Equal(t, uint32(54321), networkID)
 }
 
 // TestContextualizable tests the Contextualizable interface

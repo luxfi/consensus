@@ -1,4 +1,4 @@
-// Copyright (C) 2025, Lux Partners Limited All rights reserved.
+// Copyright (C) 2025, Lux Industries Inc All rights reserved.
 // AI for Blockchain - Rob Pike Style: Simple, Practical, No Bullshit
 
 package ai
