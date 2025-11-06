@@ -15,7 +15,7 @@ import (
 	simplex "github.com/luxfi/bft"
 	"github.com/stretchr/testify/require"
 
-	"github.com/luxfi/consensus/choices"
+	"github.com/luxfi/consensus/core/choices"
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/consensus/engine/chain/chaintest"
 	"github.com/luxfi/ids"

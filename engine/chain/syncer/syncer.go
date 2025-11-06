@@ -4,7 +4,7 @@ package syncer
 import (
 	"context"
 
-	"github.com/luxfi/consensus/types"
+	"github.com/luxfi/consensus/core/types"
 )
 
 // Config holds syncer configuration

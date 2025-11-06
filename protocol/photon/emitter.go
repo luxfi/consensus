@@ -1,6 +1,6 @@
 package photon
 
-import "github.com/luxfi/consensus/types"
+import "github.com/luxfi/consensus/core/types"
 
 // Emitter emits consensus messages
 type Emitter interface {

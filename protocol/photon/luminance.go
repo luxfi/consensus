@@ -1,7 +1,7 @@
 package photon
 
 import (
-	"github.com/luxfi/consensus/types"
+	"github.com/luxfi/consensus/core/types"
 )
 
 // Luminance tracks node brightness based on consensus participation.

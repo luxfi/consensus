@@ -3,7 +3,7 @@ package ray
 import (
 	"context"
 
-	"github.com/luxfi/consensus/types"
+	"github.com/luxfi/consensus/core/types"
 )
 
 // Nova implements the Nova consensus protocol

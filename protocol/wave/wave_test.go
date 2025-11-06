@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luxfi/consensus/core/types"
 	"github.com/luxfi/consensus/protocol/prism"
-	"github.com/luxfi/consensus/types"
 	"github.com/stretchr/testify/require"
 )
 
