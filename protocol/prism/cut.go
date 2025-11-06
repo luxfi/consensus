@@ -1,6 +1,6 @@
 package prism
 
-import "github.com/luxfi/consensus/types"
+import "github.com/luxfi/consensus/core/types"
 
 // Cut provides random cutting of peers for consensus voting (like a prism cuts light)
 type Cut[T comparable] interface {

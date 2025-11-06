@@ -4,7 +4,7 @@ package sendertest
 import (
 	"context"
 
-	"github.com/luxfi/consensus/types"
+	"github.com/luxfi/consensus/core/types"
 )
 
 // TestSender provides a test implementation for message senders

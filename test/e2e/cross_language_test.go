@@ -9,7 +9,6 @@ import (
 	"github.com/luxfi/consensus/utils/ids"
 )
 
-
 // TestCrossLanguageConsensus is the ultimate E2E test:
 // All languages (Go, C, C++, Rust, Python) validate the same network
 func TestCrossLanguageConsensus(t *testing.T) {
@@ -187,4 +186,3 @@ func getNodeLanguages(nodes map[string]NodeRunner) []string {
 	}
 	return languages
 }
-

@@ -3,7 +3,7 @@ package vertex
 import (
 	"context"
 
-	"github.com/luxfi/consensus/choices"
+	"github.com/luxfi/consensus/core/choices"
 	"github.com/luxfi/ids"
 )
 

@@ -8,8 +8,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/luxfi/consensus/choices"
-	"github.com/luxfi/consensus/consensustest"
+	"github.com/luxfi/consensus/core/choices"
+	"github.com/luxfi/consensus/test/helpers"
 	"github.com/luxfi/ids"
 )
 
