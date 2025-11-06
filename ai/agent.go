@@ -424,9 +424,13 @@ func (a *Agent[T]) aggregateModelStates() map[string]interface{} {
 type BlockData struct {
 	Height       uint64    `json:"height"`
 	Hash         string    `json:"hash"`
+	ParentHash   string    `json:"parent_hash"`
 	Transactions []string  `json:"transactions"`
+	TxCount      int       `json:"tx_count"`
 	Timestamp    time.Time `json:"timestamp"`
 	Validator    string    `json:"validator"`
+	Size         uint64    `json:"size"`
+	GasUsed      uint64    `json:"gas_used"`
 }
 
 type TransactionData struct {
@@ -435,6 +439,9 @@ type TransactionData struct {
 	To        string                 `json:"to"`
 	Amount    uint64                 `json:"amount"`
 	Fee       uint64                 `json:"fee"`
+	GasPrice  uint64                 `json:"gas_price"`
+	GasLimit  uint64                 `json:"gas_limit"`
+	Nonce     uint64                 `json:"nonce"`
 	Data      map[string]interface{} `json:"data"`
 	Timestamp time.Time              `json:"timestamp"`
 }
