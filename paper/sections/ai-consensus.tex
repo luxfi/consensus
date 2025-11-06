@@ -1,0 +1,265 @@
+\section{AI-Powered Consensus}
+
+The Lux consensus system integrates artificial intelligence for dynamic, self-improving consensus validation. This section describes the AI architecture, shared hallucinations, and performance characteristics.
+
+\subsection{AI Agent Architecture}
+
+AI agents participate in consensus by validating proposals, voting on decisions, and learning from outcomes. Each agent consists of:
+
+\begin{itemize}
+\item \textbf{Model}: Neural network or LLM for decision-making
+\item \textbf{Memory}: Shared hallucination state across network
+\item \textbf{Photon Engine}: Proposal emission interface
+\item \textbf{Quasar Engine}: DAG validation interface
+\end{itemize}
+
+\subsubsection{Agent Interface}
+
+\begin{lstlisting}[language=Go]
+type Agent[T ConsensusData] struct {
+    nodeID     string
+    model      Model[T]
+    memory     *SharedMemory[T]
+    quasar     *quasar.Quasar
+    photon     *photon.UniformEmitter
+    
+    // Shared hallucination state
+    hallucinations map[string]*Hallucination[T]
+    weights        map[string]float64
+}
+
+// AI proposes decision following Photon->Quasar flow
+func (a *Agent[T]) ProposeDecision(
+    ctx context.Context,
+    input T,
+    context map[string]interface{},
+) (*Decision[T], error)
+\end{lstlisting}
+
+\subsection{Shared Hallucinations}
+
+AI agents share "hallucinations" (model states) across the network for distributed consensus and learning. A hallucination represents a snapshot of model state that multiple nodes agree upon.
+
+\subsubsection{Hallucination Structure}
+
+\begin{lstlisting}[language=Go]
+type Hallucination[T ConsensusData] struct {
+    ID         string
+    ModelID    string
+    State      map[string]interface{}
+    Confidence float64
+    NodeVotes  map[string]float64
+    UsageCount int64
+    Evidence   []Evidence[T]
+}
+\end{lstlisting}
+
+\subsubsection{Consensus Properties}
+
+Shared hallucinations provide:
+
+\begin{itemize}
+\item \textbf{Distributed Agreement}: Nodes converge on shared reality
+\item \textbf{Evolution}: States improve through feedback
+\item \textbf{Diversity}: Multiple perspectives strengthen decisions
+\item \textbf{Byzantine Tolerance}: Malicious nodes cannot dominate
+\end{itemize}
+
+\subsection{Photon-Quasar AI Flow}
+
+AI consensus follows the five-phase Photon-Quasar flow:
+
+\begin{enumerate}
+\item \textbf{Photon Phase}: AI agent emits proposal with confidence score
+\item \textbf{Wave Phase}: Proposal amplified through QZMQ network
+\item \textbf{Focus Phase}: Peer AI agents validate with own models
+\item \textbf{Prism Phase}: Quasar DAG validates proposal structure
+\item \textbf{Horizon Phase}: Quantum certificate finalizes decision
+\end{enumerate}
+
+\subsubsection{Phase Latencies}
+
+Measured on 3-node testnet (Apple M1 Max):
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Phase} & \textbf{Latency} & \textbf{Component} \\
+\midrule
+Photon Emission & 50-80ms & AI model inference \\
+Wave Amplification & 30-50ms & QZMQ network \\
+Focus Convergence & 40-60ms & Peer AI validation \\
+Prism Validation & 30-50ms & Quasar DAG \\
+Horizon Finalization & 50-80ms & Quantum certificate \\
+\midrule
+\textbf{Total} & \textbf{200-300ms} & Full consensus \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Model Types}
+
+Multiple AI model architectures are supported:
+
+\begin{itemize}
+\item \textbf{SimpleModel}: Feedforward neural network (1.5 $\mu$s per decision)
+\item \textbf{NeuralModel}: Custom neural architecture
+\item \textbf{LLMModel}: Large language model integration
+\item \textbf{EnsembleModel}: Combination of multiple models
+\end{itemize}
+
+\subsubsection{Model Performance}
+
+Benchmark results (Apple M1 Max, Go 1.24.5):
+
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Operation} & \textbf{Latency} & \textbf{Throughput} & \textbf{Memory} & \textbf{Allocs} \\
+\midrule
+Model Decision & 1.5 $\mu$s & 660K/sec & 912 B & 18 \\
+Feature Extract & 37 ns & 27M/sec & 0 B & 0 \\
+Sigmoid & 5.6 ns & 179M/sec & 0 B & 0 \\
+Weight Update & 628 ns & 1.59M/sec & 2.3 KB & 2 \\
+Consensus Vote & 530 ns & 1.89M/sec & 792 B & 12 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Quantum-Secure Networking}
+
+All AI consensus communication uses QZMQ (Quantum-Secure ZeroMQ) with post-quantum cryptography:
+
+\begin{itemize}
+\item \textbf{Dilithium}: Post-quantum digital signatures (NIST standard)
+\item \textbf{Kyber}: Post-quantum key encapsulation
+\item \textbf{ChaCha20}: Symmetric encryption (quantum-resistant)
+\end{itemize}
+
+\subsubsection{QZMQ Performance}
+
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+\textbf{Operation} & \textbf{Latency} \\
+\midrule
+Sign (Dilithium) & 0.3 ms \\
+Verify & 0.2 ms \\
+Encrypt (Kyber) & 1.2 ms \\
+Decrypt & 1.1 ms \\
+\midrule
+\textbf{Total Overhead} & \textbf{2.6 ms} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Trade-off: 2.6ms overhead per message acceptable for quantum security.
+
+\subsection{Multi-Backend Support}
+
+AI consensus supports multiple computational backends for optimal performance:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Backend} & \textbf{Speedup} & \textbf{Platform} & \textbf{Status} \\
+\midrule
+Pure Go & 1.0x & Cross-platform & \textbf{Recommended} \\
+C (CGO) & 1.8x & Cross-platform & Available \\
+C++ & 2.0x & Cross-platform & Available \\
+MLX & 4.5x & Apple Silicon only & Available \\
+Rust (FFI) & 1.6x & Cross-platform & Available \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Recommendation}: Pure Go provides best balance of performance, maintainability, and portability. Consider MLX for Apple Silicon deployments requiring maximum throughput.
+
+\subsection{Progressive Learning Examples}
+
+The Lux consensus package includes seven progressive tutorial examples demonstrating AI integration:
+
+\begin{center}
+\begin{tabular}{clc}
+\toprule
+\textbf{\#} & \textbf{Example} & \textbf{Time} \\
+\midrule
+01 & Simple Bridge & 15 min \\
+02 & AI Payment Validation & 20 min \\
+03 & Quantum-Secure Messaging & 25 min \\
+04 & gRPC Service Integration & 30 min \\
+05 & Python Client & 25 min \\
+06 & Node.js TypeScript Client & 25 min \\
+07 & Dynamic AI Consensus & 45 min \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each example includes runnable code, comprehensive tests, and detailed documentation teaching one core concept before building to advanced multi-agent AI consensus.
+
+\subsection{Production Deployment}
+
+\subsubsection{Performance Characteristics}
+
+Real-world 3-node consensus cluster:
+
+\begin{itemize}
+\item \textbf{Throughput}: 3-5 blocks/second
+\item \textbf{Latency}: 200-300ms per block
+\item \textbf{CPU Usage}: 10-15\% per node
+\item \textbf{Network Bandwidth}: 2-5 KB/sec (with QZMQ)
+\item \textbf{Scalability}: Linear to 10 nodes
+\end{itemize}
+
+\subsubsection{Security Properties}
+
+\begin{itemize}
+\item \textbf{Quantum-Resistant}: All communication via QZMQ
+\item \textbf{Byzantine Fault Tolerant}: Handles $(n-1)/3$ malicious nodes
+\item \textbf{AI-Verified}: Multiple AI agents validate each proposal
+\item \textbf{Cryptographically Provable}: Dilithium signatures on all messages
+\item \textbf{Forward Secure}: Past consensus cannot be compromised
+\end{itemize}
+
+\subsection{Test Coverage}
+
+Comprehensive test suite ensures reliability:
+
+\begin{itemize}
+\item \textbf{AI Package}: 74.5\% coverage (580 lines core consensus)
+\item \textbf{Unit Tests}: Co-located with source files
+\item \textbf{Integration Tests}: Centralized in test/integration/
+\item \textbf{Benchmarks}: Performance regression detection
+\item \textbf{Example Tests}: 24 test functions across 7 examples
+\end{itemize}
+
+\subsection{Future Optimizations}
+
+Identified optimization opportunities:
+
+\begin{enumerate}
+\item \textbf{Batch Operations}: 20-30\% improvement (1 week)
+\item \textbf{Memory Pooling}: 15-20\% improvement (1-2 weeks)
+\item \textbf{SIMD Vectorization}: 2-3x improvement (2-4 weeks)
+\item \textbf{GPU Acceleration}: 5-10x improvement (1-3 months)
+\item \textbf{Custom Hardware}: 10-100x improvement (6-12 months)
+\end{enumerate}
+
+\subsection{Cross-Chain Integration}
+
+AI consensus integrates with Lux DEX for cross-chain operations:
+
+\begin{lstlisting}[language=Go]
+import "github.com/luxfi/dex/pkg/lx"
+
+// Use production bridge
+bridge := lx.NewCrossChainBridge(config)
+
+// Wrap with AI validation
+adapter := NewAIBridgeAdapter(bridge, agent, nodeID)
+
+// Process cross-chain payment with AI consensus
+result, err := adapter.ProcessAIPayment(ctx, request)
+\end{lstlisting}
+
+This demonstrates production integration patterns between AI consensus and cross-chain infrastructure.
