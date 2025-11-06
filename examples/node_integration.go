@@ -20,31 +20,31 @@ type ExampleBlock struct {
 	data      []byte
 }
 
-func (b *ExampleBlock) ID() ids.ID          { return b.id }
-func (b *ExampleBlock) ParentID() ids.ID    { return b.parentID }
-func (b *ExampleBlock) Height() uint64      { return b.height }
-func (b *ExampleBlock) Timestamp() int64    { return b.timestamp }
-func (b *ExampleBlock) Bytes() []byte       { return b.data }
-func (b *ExampleBlock) Verify(context.Context) error  { return nil }
-func (b *ExampleBlock) Accept(context.Context) error  { 
+func (b *ExampleBlock) ID() ids.ID                   { return b.id }
+func (b *ExampleBlock) ParentID() ids.ID             { return b.parentID }
+func (b *ExampleBlock) Height() uint64               { return b.height }
+func (b *ExampleBlock) Timestamp() int64             { return b.timestamp }
+func (b *ExampleBlock) Bytes() []byte                { return b.data }
+func (b *ExampleBlock) Verify(context.Context) error { return nil }
+func (b *ExampleBlock) Accept(context.Context) error {
 	fmt.Printf("Block %s accepted at height %d\n", b.id, b.height)
-	return nil 
+	return nil
 }
-func (b *ExampleBlock) Reject(context.Context) error  { 
+func (b *ExampleBlock) Reject(context.Context) error {
 	fmt.Printf("Block %s rejected\n", b.id)
-	return nil 
+	return nil
 }
 
 func RunNodeIntegrationExample() {
 	// Configure consensus parameters for fast finality
 	params := core.ConsensusParams{
 		K:                     20,
-		AlphaPreference:      15,
-		AlphaConfidence:      15,
-		Beta:                 20,
-		ConcurrentPolls:      10,
-		OptimalProcessing:    10,
-		MaxOutstandingItems:  1000,
+		AlphaPreference:       15,
+		AlphaConfidence:       15,
+		Beta:                  20,
+		ConcurrentPolls:       10,
+		OptimalProcessing:     10,
+		MaxOutstandingItems:   1000,
 		MaxItemProcessingTime: 30 * time.Second,
 	}
 
@@ -55,7 +55,7 @@ func RunNodeIntegrationExample() {
 	}
 
 	fmt.Println("✅ Consensus engine initialized")
-	fmt.Printf("Parameters: K=%d, Alpha=%d, Beta=%d\n", 
+	fmt.Printf("Parameters: K=%d, Alpha=%d, Beta=%d\n",
 		params.K, params.AlphaPreference, params.Beta)
 
 	// Create a sample block
@@ -81,7 +81,7 @@ func RunNodeIntegrationExample() {
 			log.Printf("Failed to record vote %d: %v", i, err)
 			continue
 		}
-		
+
 		// Check if consensus achieved
 		if consensus.IsAccepted(block.ID()) {
 			fmt.Printf("✅ Consensus achieved after %d votes!\n", i+1)

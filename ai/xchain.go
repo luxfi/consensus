@@ -16,9 +16,9 @@ type ComputeMarketplace struct {
 	mu sync.RWMutex
 
 	// Market state
-	nodeID          string
+	nodeID           string
 	availableCompute *big.Int // Available compute units
-	pricePerUnit    *big.Int // Price per compute unit in base currency
+	pricePerUnit     *big.Int // Price per compute unit in base currency
 
 	// Cross-chain integration
 	xchainBridge    XChainBridge
@@ -29,8 +29,8 @@ type ComputeMarketplace struct {
 	reservedCompute map[string]*big.Int // nodeID -> reserved units
 
 	// Billing and payments
-	earnings        map[string]*big.Int // chainID -> total earnings
-	lastSettlement  time.Time
+	earnings       map[string]*big.Int // chainID -> total earnings
+	lastSettlement time.Time
 
 	logger Logger
 }
@@ -52,43 +52,43 @@ type XChainBridge interface {
 
 // ChainConfig defines supported chain parameters
 type ChainConfig struct {
-	ChainID         string   `json:"chain_id"`
-	Name            string   `json:"name"`
-	NativeCurrency  string   `json:"native_currency"`
-	BridgeContract  string   `json:"bridge_contract"`
-	MinPayment      *big.Int `json:"min_payment"`
-	GasMultiplier   float64  `json:"gas_multiplier"`
-	Enabled         bool     `json:"enabled"`
+	ChainID        string   `json:"chain_id"`
+	Name           string   `json:"name"`
+	NativeCurrency string   `json:"native_currency"`
+	BridgeContract string   `json:"bridge_contract"`
+	MinPayment     *big.Int `json:"min_payment"`
+	GasMultiplier  float64  `json:"gas_multiplier"`
+	Enabled        bool     `json:"enabled"`
 }
 
 // ComputeJob represents a paid AI computation task
 type ComputeJob struct {
-	ID              string                 `json:"id"`
-	SourceChain     string                 `json:"source_chain"`
-	Requester       string                 `json:"requester"`
-	JobType         string                 `json:"job_type"` // "inference", "training", "consensus"
-	Data            map[string]interface{} `json:"data"`
-	ComputeUnits    *big.Int              `json:"compute_units"`
-	PaymentAmount   *big.Int              `json:"payment_amount"`
-	PaymentTxHash   string                `json:"payment_tx_hash"`
-	Status          JobStatus             `json:"status"`
-	CreatedAt       time.Time             `json:"created_at"`
-	StartedAt       time.Time             `json:"started_at,omitempty"`
-	CompletedAt     time.Time             `json:"completed_at,omitempty"`
-	Result          []byte                `json:"result,omitempty"`
-	ErrorMessage    string                `json:"error_message,omitempty"`
+	ID            string                 `json:"id"`
+	SourceChain   string                 `json:"source_chain"`
+	Requester     string                 `json:"requester"`
+	JobType       string                 `json:"job_type"` // "inference", "training", "consensus"
+	Data          map[string]interface{} `json:"data"`
+	ComputeUnits  *big.Int               `json:"compute_units"`
+	PaymentAmount *big.Int               `json:"payment_amount"`
+	PaymentTxHash string                 `json:"payment_tx_hash"`
+	Status        JobStatus              `json:"status"`
+	CreatedAt     time.Time              `json:"created_at"`
+	StartedAt     time.Time              `json:"started_at,omitempty"`
+	CompletedAt   time.Time              `json:"completed_at,omitempty"`
+	Result        []byte                 `json:"result,omitempty"`
+	ErrorMessage  string                 `json:"error_message,omitempty"`
 }
 
 // JobStatus represents the state of a compute job
 type JobStatus string
 
 const (
-	JobPending    JobStatus = "pending"
-	JobPaid       JobStatus = "paid"
-	JobRunning    JobStatus = "running"
-	JobCompleted  JobStatus = "completed"
-	JobFailed     JobStatus = "failed"
-	JobCancelled  JobStatus = "cancelled"
+	JobPending   JobStatus = "pending"
+	JobPaid      JobStatus = "paid"
+	JobRunning   JobStatus = "running"
+	JobCompleted JobStatus = "completed"
+	JobFailed    JobStatus = "failed"
+	JobCancelled JobStatus = "cancelled"
 )
 
 // PaymentProof contains verification of cross-chain payment
@@ -107,16 +107,16 @@ type PaymentProof struct {
 // NewComputeMarketplace creates a new cross-chain compute marketplace
 func NewComputeMarketplace(nodeID string, bridge XChainBridge, logger Logger) *ComputeMarketplace {
 	return &ComputeMarketplace{
-		nodeID:          nodeID,
+		nodeID:           nodeID,
 		availableCompute: big.NewInt(1000000), // 1M compute units initially
-		pricePerUnit:    big.NewInt(1000),     // Base price: 1000 units
-		xchainBridge:    bridge,
-		supportedChains: make(map[string]*ChainConfig),
-		activeJobs:      make(map[string]*ComputeJob),
-		reservedCompute: make(map[string]*big.Int),
-		earnings:        make(map[string]*big.Int),
-		lastSettlement:  time.Now(),
-		logger:          logger,
+		pricePerUnit:     big.NewInt(1000),    // Base price: 1000 units
+		xchainBridge:     bridge,
+		supportedChains:  make(map[string]*ChainConfig),
+		activeJobs:       make(map[string]*ComputeJob),
+		reservedCompute:  make(map[string]*big.Int),
+		earnings:         make(map[string]*big.Int),
+		lastSettlement:   time.Now(),
+		logger:           logger,
 	}
 }
 
@@ -306,7 +306,7 @@ type ComputeRequest struct {
 	Requester   string                 `json:"requester"`
 	JobType     string                 `json:"job_type"`
 	Data        map[string]interface{} `json:"data"`
-	MaxPayment  *big.Int              `json:"max_payment"`
+	MaxPayment  *big.Int               `json:"max_payment"`
 }
 
 // estimateComputeUnits calculates required compute for a job
@@ -333,9 +333,9 @@ func (cm *ComputeMarketplace) executeInference(ctx context.Context, job *Compute
 
 	// Placeholder: serialize a simple result
 	result := map[string]interface{}{
-		"job_id": job.ID,
-		"type":   "inference_result",
-		"data":   "inference completed successfully",
+		"job_id":     job.ID,
+		"type":       "inference_result",
+		"data":       "inference completed successfully",
 		"confidence": 0.95,
 	}
 
@@ -369,9 +369,9 @@ func (cm *ComputeMarketplace) executeConsensus(ctx context.Context, job *Compute
 	// This would integrate with the agentic consensus system
 
 	result := map[string]interface{}{
-		"job_id": job.ID,
-		"type":   "consensus_result",
-		"action": "approve",
+		"job_id":     job.ID,
+		"type":       "consensus_result",
+		"action":     "approve",
 		"confidence": 0.88,
 	}
 
