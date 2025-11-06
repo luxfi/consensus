@@ -28,6 +28,7 @@ type NodeRunner interface {
 // checkBuild attempts to run a build command and returns true if successful
 func checkBuild(t *testing.T, lang string, buildCmd []string) bool {
 	t.Logf("Building %s implementation: %v", lang, buildCmd)
+	//nolint:gosec // buildCmd is from test configuration, not user input
 	cmd := exec.Command(buildCmd[0], buildCmd[1:]...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Logf("⚠️  %s build failed: %v\n%s", lang, err, output)
