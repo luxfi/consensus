@@ -1,41 +1,48 @@
 package consensus
 
 import (
-	"context"
 	"testing"
 
+	consensusctx "github.com/luxfi/consensus/context"
 	"github.com/stretchr/testify/require"
 )
 
 func TestXAssetID(t *testing.T) {
-	ctx := context.Background()
+	ctx := &consensusctx.Context{}
 
-	// Test that XAssetID returns something (nil in this implementation)
+	// Test that XAssetID returns the XAssetID from context
 	assetID := XAssetID(ctx)
-	require.Nil(t, assetID) // Current implementation returns nil
+	require.NotNil(t, assetID) // Returns ctx.XAssetID
 
 	// Test that it returns the same value each time (should be deterministic)
 	assetID2 := XAssetID(ctx)
 	require.Equal(t, assetID, assetID2)
+
+	// Test with nil context
+	assetIDNil := XAssetID(nil)
+	require.Nil(t, assetIDNil)
 }
 
 func TestQuantumNetworkID(t *testing.T) {
-	ctx := context.Background()
+	ctx := &consensusctx.Context{}
 
 	// Test with context that doesn't have quantum IDs
 	networkID := QuantumNetworkID(ctx)
 	require.Equal(t, uint32(0), networkID)
 
-	// Additional test could add quantum IDs to context and test
-	// but that would require implementing GetQuantumIDs properly
+	// Test with quantum ID set
+	ctx.QuantumID = 12345
+	networkID = QuantumNetworkID(ctx)
+	require.Equal(t, uint32(12345), networkID)
 }
 
 func TestGetQuantumIDs(t *testing.T) {
-	ctx := context.Background()
+	ctx := &consensusctx.Context{}
 
 	// Test that GetQuantumIDs returns something
 	qIDs := GetQuantumIDs(ctx)
 
-	// In current implementation, it returns nil if not set in context
-	require.Nil(t, qIDs)
+	// Should return a QuantumIDs struct with values from ctx
+	require.NotNil(t, qIDs)
+	require.Equal(t, ctx.QuantumID, qIDs.QuantumID)
 }
