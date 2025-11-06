@@ -14,11 +14,11 @@ import (
 
 // Mock HealthCheckable implementation
 type mockHealthCheckable struct {
-	health      interface{}
-	healthErr   error
-	checkCount  atomic.Int32
-	mu          sync.RWMutex
-	checkDelay  time.Duration
+	health     interface{}
+	healthErr  error
+	checkCount atomic.Int32
+	mu         sync.RWMutex
+	checkDelay time.Duration
 }
 
 func (m *mockHealthCheckable) HealthCheck(ctx context.Context) (interface{}, error) {
@@ -297,11 +297,11 @@ func TestHealthCheckable_ComplexHealthData(t *testing.T) {
 	ctx := context.Background()
 
 	type HealthData struct {
-		Status      HealthStatus
-		Components  map[string]HealthStatus
-		Timestamp   time.Time
-		Metrics     map[string]float64
-		Messages    []string
+		Status     HealthStatus
+		Components map[string]HealthStatus
+		Timestamp  time.Time
+		Metrics    map[string]float64
+		Messages   []string
 	}
 
 	healthData := &HealthData{
