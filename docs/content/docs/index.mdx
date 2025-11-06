@@ -1,0 +1,55 @@
+---
+title: Introduction
+description: Multi-language consensus engine for blockchain systems
+---
+
+# Lux Consensus
+
+A high-performance, multi-language consensus engine supporting Chain, DAG, and Post-Quantum consensus algorithms.
+
+## Features
+
+- **Multi-Language SDKs**: Native implementations in Go, C, Rust, Python, and C++
+- **Quantum-Resistant**: Post-quantum cryptography with Dilithium and Kyber
+- **AI-Powered**: Neural network and LLM-based consensus validation
+- **High Performance**: Microsecond latency, million ops/sec throughput
+- **Production Ready**: 74.5% test coverage, comprehensive benchmarks
+
+## Quick Start
+
+```go
+package main
+
+import (
+    "github.com/luxfi/consensus/engine/core"
+)
+
+func main() {
+    engine := core.NewChain(core.DefaultConfig())
+    // Start building consensus!
+}
+```
+
+## Architecture
+
+Lux Consensus implements multiple consensus families:
+
+- **Chain**: Linear blockchain consensus for ordered blocks
+- **DAG**: Directed acyclic graph for parallel processing  
+- **PQ (Post-Quantum)**: Quantum-resistant consensus with lattice cryptography
+
+## Performance
+
+| Implementation | Latency | Throughput | Memory |
+|----------------|---------|------------|--------|
+| Go             | 1.5 μs  | 660K/sec   | 912 B  |
+| C              | < 1 ms  | 1M+/sec    | < 10 MB |
+| Rust           | 607 ns  | -          | -      |
+
+## Next Steps
+
+<Cards>
+  <Card title="SDK Documentation" href="/docs/sdk" />
+  <Card title="Benchmarks" href="/docs/benchmarks" />
+  <Card title="Examples" href="/docs/examples" />
+</Cards>

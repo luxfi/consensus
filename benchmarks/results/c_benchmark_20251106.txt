@@ -1,0 +1,64 @@
+[1;33m=====================================[0m
+[1;33m=== LUX CONSENSUS C TEST SUITE ===[0m
+[1;33m=====================================[0m
+
+
+[1;33m=== INITIALIZATION: Library Lifecycle ===[0m
+[0;32m[PASS][0m Initialize library cycle 0
+[0;32m[PASS][0m Cleanup library cycle 0
+[0;32m[PASS][0m Initialize library cycle 1
+[0;32m[PASS][0m Cleanup library cycle 1
+[0;32m[PASS][0m Initialize library cycle 2
+[0;32m[PASS][0m Cleanup library cycle 2
+[0;32m[PASS][0m Error string for SUCCESS
+[0;32m[PASS][0m Error string for INVALID_PARAMS
+
+[1;33m=== ENGINE: Creation and Configuration ===[0m
+[0;32m[PASS][0m Create engine with config 0
+[0;32m[PASS][0m Create engine with config 1
+[0;32m[PASS][0m Create engine with config 2
+
+[1;33m=== BLOCKS: Add, Query, and Hierarchy ===[0m
+[0;32m[PASS][0m Add block 1
+[0;32m[PASS][0m Add block 2
+[0;32m[PASS][0m Add duplicate block (idempotent)
+[0;32m[PASS][0m Add block with data
+
+[1;33m=== VOTING: Preference and Confidence ===[0m
+[0;32m[PASS][0m Process preference vote 0
+[0;32m[PASS][0m Process preference vote 1
+[0;32m[PASS][0m Process preference vote 2
+[0;32m[PASS][0m Process confidence vote 3
+[0;32m[PASS][0m Process confidence vote 4
+[0;32m[PASS][0m Process confidence vote 5
+[0;32m[PASS][0m Vote count tracking
+
+[1;33m=== ACCEPTANCE: Decision Thresholds ===[0m
+[0;32m[PASS][0m Block A accepted after threshold
+[0;32m[PASS][0m Block B not accepted
+
+[1;33m=== PREFERENCE: Preferred Block Selection ===[0m
+[0;32m[PASS][0m Initial preference is genesis
+[0;32m[PASS][0m Preference updated to accepted block
+
+[1;33m=== ENGINE TYPES: Chain, DAG, PQ ===[0m
+[0;32m[PASS][0m Create Chain engine
+[0;32m[PASS][0m Engine type string for Chain
+[0;32m[PASS][0m Create DAG engine
+[0;32m[PASS][0m Engine type string for DAG
+[0;32m[PASS][0m Create PQ engine
+[0;32m[PASS][0m Engine type string for PQ
+
+[1;33m=== PERFORMANCE: Throughput and Latency ===[0m
+[0;32m[PASS][0m Add 1000 blocks in < 1 second (took 0.000s)
+  Time: 0.000 seconds
+
+[1;33m=====================================[0m
+[1;33m=== TEST SUMMARY ===[0m
+[1;33m=====================================[0m
+Total Tests: 33
+[0;32mPassed: 33[0m
+[0;31mFailed: 0[0m
+[1;33mSkipped: 0[0m
+
+[0;32m🎉 ALL TESTS PASSED! 100% SUCCESS RATE[0m
