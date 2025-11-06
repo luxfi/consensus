@@ -16,29 +16,29 @@ type Context struct {
 	// NetworkID is an alias for QuantumID for backward compatibility
 	NetworkID uint32 `json:"networkID"`
 	// NetID identifies the specific network/subnet within the quantum network
-	NetID ids.ID `json:"netID"`
-	SubnetID    ids.ID `json:"subnetID"` // Alias for NetID
+	NetID    ids.ID `json:"netID"`
+	SubnetID ids.ID `json:"subnetID"` // Alias for NetID
 	// ChainID identifies the specific chain within the network
-	ChainID     ids.ID     `json:"chainID"`
-	NodeID      ids.NodeID `json:"nodeID"`
-	PublicKey   []byte     `json:"publicKey"`
-	XChainID    ids.ID     `json:"xChainID"`
-	CChainID    ids.ID     `json:"cChainID"`
-	XAssetID ids.ID     `json:"xAssetID"`
+	ChainID      ids.ID     `json:"chainID"`
+	NodeID       ids.NodeID `json:"nodeID"`
+	PublicKey    []byte     `json:"publicKey"`
+	XChainID     ids.ID     `json:"xChainID"`
+	CChainID     ids.ID     `json:"cChainID"`
+	XAssetID     ids.ID     `json:"xAssetID"`
 	LUXAssetID   ids.ID     `json:"luxAssetID"`
 	ChainDataDir string     `json:"chainDataDir"`
 
 	// Timing
 	StartTime time.Time `json:"startTime"`
 
-	ValidatorState interface{}
-	Keystore       Keystore
-	Metrics        interface{}
+	ValidatorState  interface{}
+	Keystore        Keystore
+	Metrics         interface{}
 	Log             interface{} // logging.Logger
 	SharedMemory    interface{} // atomic.SharedMemory
 	WarpSigner      interface{} // warp.Signer
 	NetworkUpgrades interface{} // upgrade.Config
-	
+
 	// Lock for thread-safe access to context
 	Lock sync.RWMutex
 }
@@ -119,7 +119,7 @@ func GetNetworkID(ctx context.Context) uint32 {
 // GetValidatorState gets the validator state from context
 func GetValidatorState(ctx context.Context) ValidatorState {
 	if c, ok := ctx.Value(contextKey).(*Context); ok {
-	return c.ValidatorState.(ValidatorState)
+		return c.ValidatorState.(ValidatorState)
 	}
 	return nil
 }
@@ -158,9 +158,9 @@ type IDs struct {
 	NodeID    ids.NodeID
 	PublicKey []byte
 	// XAssetID is the asset ID for the X-Chain native asset
-	XAssetID ids.ID
-	LUXAssetID   ids.ID     `json:"luxAssetID"`
-	ChainDataDir string     `json:"chainDataDir"`
+	XAssetID     ids.ID
+	LUXAssetID   ids.ID `json:"luxAssetID"`
+	ChainDataDir string `json:"chainDataDir"`
 }
 
 // WithIDs adds IDs to the context
@@ -194,8 +194,8 @@ var contextKey = contextKeyType{}
 // Logger provides logging functionality
 type Logger interface {
 	Debug(msg string, fields ...interface{}) // zap.Field
-	Info(msg string, fields ...interface{}) // zap.Field
-	Warn(msg string, fields ...interface{}) // zap.Field
+	Info(msg string, fields ...interface{})  // zap.Field
+	Warn(msg string, fields ...interface{})  // zap.Field
 	Error(msg string, fields ...interface{}) // zap.Field
 	Fatal(msg string, fields ...interface{}) // zap.Field
 }

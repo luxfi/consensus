@@ -22,14 +22,14 @@ type mockBlock struct {
 	rejectErr error
 }
 
-func (m *mockBlock) ID() ids.ID                      { return m.id }
-func (m *mockBlock) ParentID() ids.ID                { return m.parentID }
-func (m *mockBlock) Height() uint64                  { return m.height }
-func (m *mockBlock) Timestamp() int64                { return m.timestamp }
-func (m *mockBlock) Bytes() []byte                   { return m.bytes }
-func (m *mockBlock) Verify(context.Context) error    { return m.verifyErr }
-func (m *mockBlock) Accept(context.Context) error    { return m.acceptErr }
-func (m *mockBlock) Reject(context.Context) error    { return m.rejectErr }
+func (m *mockBlock) ID() ids.ID                   { return m.id }
+func (m *mockBlock) ParentID() ids.ID             { return m.parentID }
+func (m *mockBlock) Height() uint64               { return m.height }
+func (m *mockBlock) Timestamp() int64             { return m.timestamp }
+func (m *mockBlock) Bytes() []byte                { return m.bytes }
+func (m *mockBlock) Verify(context.Context) error { return m.verifyErr }
+func (m *mockBlock) Accept(context.Context) error { return m.acceptErr }
+func (m *mockBlock) Reject(context.Context) error { return m.rejectErr }
 
 type mockState struct {
 	blocks       map[ids.ID]Block
@@ -99,11 +99,11 @@ type mockUTXO struct {
 	spent       bool
 }
 
-func (m *mockUTXO) ID() ids.ID            { return m.id }
-func (m *mockUTXO) TxID() ids.ID          { return m.txID }
-func (m *mockUTXO) OutputIndex() uint32   { return m.outputIndex }
-func (m *mockUTXO) Amount() uint64        { return m.amount }
-func (m *mockUTXO) IsSpent() bool         { return m.spent }
+func (m *mockUTXO) ID() ids.ID          { return m.id }
+func (m *mockUTXO) TxID() ids.ID        { return m.txID }
+func (m *mockUTXO) OutputIndex() uint32 { return m.outputIndex }
+func (m *mockUTXO) Amount() uint64      { return m.amount }
+func (m *mockUTXO) IsSpent() bool       { return m.spent }
 
 // Tests
 

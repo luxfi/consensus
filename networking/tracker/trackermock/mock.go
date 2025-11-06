@@ -14,12 +14,12 @@ type MockTracker struct {
 
 // ConnectionInfo holds connection information
 type ConnectionInfo struct {
-	NodeID        ids.NodeID
-	Connected     bool
-	ConnectedAt   time.Time
+	NodeID         ids.NodeID
+	Connected      bool
+	ConnectedAt    time.Time
 	DisconnectedAt time.Time
-	BytesSent     uint64
-	BytesReceived uint64
+	BytesSent      uint64
+	BytesReceived  uint64
 }
 
 // NewMockTracker creates a new mock tracker

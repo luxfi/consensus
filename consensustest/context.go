@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	PChainID   = ids.GenerateTestID()
-	XChainID   = ids.GenerateTestID()
-	CChainID   = ids.GenerateTestID()
+	PChainID = ids.GenerateTestID()
+	XChainID = ids.GenerateTestID()
+	CChainID = ids.GenerateTestID()
 	XAssetID = ids.GenerateTestID()
 )
 
