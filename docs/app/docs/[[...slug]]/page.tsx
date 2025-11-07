@@ -1,31 +1,23 @@
-import { loader, getAllDocParams } from '@/collections';
+import { source } from '@/collections';
 import { DocsPage, DocsBody } from 'fumadocs-ui/page';
 import { notFound } from 'next/navigation';
 import defaultMdxComponents from 'fumadocs-ui/mdx';
 
-// Force static generation
-export const dynamic = 'force-static';
-export const revalidate = false;
-export const dynamicParams = false;
+// Skip SSG entirely - use SSR to avoid build-time bundling issues
+export const dynamic = 'force-dynamic';
 
-export function generateStaticParams() {
-  // Non-async keeps Next from pulling in extra server graph
-  return getAllDocParams();
-}
-
-export default async function Page({
-  params,
-}: {
+export default async function Page(props: {
   params: Promise<{ slug?: string[] }>;
 }) {
-  const { slug } = await params;
-  const page = loader.getPage(slug);
+  const params = await props.params;
+  const page = source.getPage(params.slug);
 
   if (!page) {
     notFound();
   }
 
-  const MDX = page.data.body;
+  // With async mode, load the MDX component dynamically
+  const MDX = await page.data.load();
 
   return (
     <DocsPage
@@ -43,13 +35,11 @@ export default async function Page({
   );
 }
 
-export async function generateMetadata({
-  params,
-}: {
+export async function generateMetadata(props: {
   params: Promise<{ slug?: string[] }>;
 }) {
-  const { slug } = await params;
-  const page = loader.getPage(slug);
+  const params = await props.params;
+  const page = source.getPage(params.slug);
 
   if (!page) {
     return {};
