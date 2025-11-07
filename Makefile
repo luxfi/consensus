@@ -337,6 +337,25 @@ paper-watch: check-latex check-entr ## Watch and rebuild paper on changes
 	@echo "👀 Watching for paper changes..."
 	@find paper -name "*.tex" -o -name "*.bib" | entr -s 'make paper'
 
+# === DOCUMENTATION TARGETS ===
+
+# Build documentation site
+docs: ## Build documentation site
+	@echo "📚 Building documentation..."
+	@cd docs && pnpm install && pnpm build
+	@echo "✅ Documentation built in docs/out/"
+
+# Run documentation dev server
+docs-dev: ## Run documentation dev server
+	@echo "📚 Starting documentation dev server..."
+	@cd docs && pnpm dev
+
+# Clean documentation build artifacts
+docs-clean: ## Clean documentation build artifacts
+	@echo "🧹 Cleaning documentation..."
+	@cd docs && rm -rf .next out node_modules
+	@echo "✅ Documentation cleaned"
+
 # === UTILITY TARGETS ===
 
 # Run params tool
