@@ -78,3 +78,4 @@ temp/
 
 node_modules
 pkg/rust/target
+.dev*
