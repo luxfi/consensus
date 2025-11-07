@@ -1,25 +1,38 @@
-import { docs } from "@/.source"
-import { DocsPage, DocsBody } from "fumadocs-ui/page"
-import { notFound } from "next/navigation"
-import defaultMdxComponents from "fumadocs-ui/mdx"
+import { loader, getAllDocParams } from '@/collections';
+import { DocsPage, DocsBody } from 'fumadocs-ui/page';
+import { notFound } from 'next/navigation';
+import defaultMdxComponents from 'fumadocs-ui/mdx';
+
+// Force static generation
+export const dynamic = 'force-static';
+export const revalidate = false;
+export const dynamicParams = false;
+
+export function generateStaticParams() {
+  // Non-async keeps Next from pulling in extra server graph
+  return getAllDocParams();
+}
 
 export default async function Page({
   params,
 }: {
-  params: Promise<{ slug?: string[] }>
+  params: Promise<{ slug?: string[] }>;
 }) {
-  const { slug } = await params
-  const page = docs.getPage(slug)
-  if (!page) notFound()
+  const { slug } = await params;
+  const page = loader.getPage(slug);
 
-  const MDX = page.data.body
+  if (!page) {
+    notFound();
+  }
+
+  const MDX = page.data.body;
 
   return (
     <DocsPage
       toc={page.data.toc}
       full={page.data.full}
       tableOfContent={{
-        style: "clerk",
+        style: 'clerk',
       }}
     >
       <DocsBody>
@@ -27,26 +40,23 @@ export default async function Page({
         <MDX components={{ ...defaultMdxComponents }} />
       </DocsBody>
     </DocsPage>
-  )
-}
-
-export async function generateStaticParams() {
-  return docs.getPages().map((page) => ({
-    slug: page.slugs,
-  }))
+  );
 }
 
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ slug?: string[] }>
+  params: Promise<{ slug?: string[] }>;
 }) {
-  const { slug } = await params
-  const page = docs.getPage(slug)
-  if (!page) notFound()
+  const { slug } = await params;
+  const page = loader.getPage(slug);
+
+  if (!page) {
+    return {};
+  }
 
   return {
     title: `${page.data.title} | Lux Consensus`,
     description: page.data.description,
-  }
+  };
 }
