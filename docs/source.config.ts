@@ -24,4 +24,5 @@ export default defineConfig({
 
 export const docs = defineDocs({
   dir: "content/docs",
+  docs: { async: true },  // Enable async mode to avoid bundling MDX at build
 })

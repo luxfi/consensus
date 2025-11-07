@@ -1,18 +1,10 @@
-// Server-only collections loader
-// IMPORTANT: this file must NOT be imported by any app/* files
-import 'server-only';
 import { docs } from '@/.source';
-import { loader as createLoader } from 'fumadocs-core/source';
+import { loader } from 'fumadocs-core/source';
+import type { InferPageType } from 'fumadocs-core/source';
 
-// Create loader with proper configuration
-export const loader = createLoader({
+export const source = loader({
   baseUrl: '/docs',
   source: docs,
 });
 
-// Precompute all slugs for SSG
-export const getAllDocParams = () => {
-  return loader.getPages().map((page) => ({
-    slug: page.slugs,
-  }));
-};
+export type Page = InferPageType<typeof source>;
