@@ -215,16 +215,16 @@ Real benchmark results from `test/unit/benchmark_test.go`:
 
 ## MLX GPU Acceleration
 
-### M1 Max Performance (Go Projected + Python Measured)
+### M1 Max Performance (Python MLX - Measured Only)
 
-| Batch Size | Go CPU | Go GPU* | Python CPU | Python GPU | Speedup |
-|-----------|--------|---------|------------|------------|---------|
-| 10 votes | - | - | 50 μs | 10 μs | 0.2x (overhead) |
-| 100 votes | 1.67 μs | ~250 ns* | 50 μs | 8 μs | **6.25x** |
-| 1,000 votes | 25.7 μs | ~1.0 μs* | 480 μs | 35 μs | **13.7x** |
-| 10,000 votes | 310 μs | ~10-12 μs* | 4.8 ms | 190 μs | **25-30x** |
+| Batch Size | Python CPU | Python GPU (MLX) | Speedup |
+|-----------|------------|------------------|---------|
+| 10 votes | 50 μs | 10 μs | 0.2x (overhead) |
+| 100 votes | 50 μs | 8 μs | **6.25x** |
+| 1,000 votes | 480 μs | 35 μs | **13.7x** |
+| 10,000 votes | 4.8 ms | 190 μs | **25-30x** |
 
-\* *Go GPU numbers are projected based on Python MLX's measured 25-30x speedup, applied to Go's faster CPU baseline.*
+**Note**: Go MLX bindings crash (segfault), cannot verify GPU performance.
 
 ### M3 Max Performance (Expected)
 

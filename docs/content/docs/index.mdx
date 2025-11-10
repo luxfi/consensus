@@ -41,34 +41,44 @@ Lux Consensus implements multiple consensus families:
 
 ## Performance
 
-### Consensus Throughput (Batch Vote Processing)
+### CPU Consensus (Measured)
 
-**Tested on Apple M1 Max (10-core CPU, 32-core GPU)**
+**Tested on Apple M1 Max (10-core CPU)**
 
-| Implementation | Batch Size | CPU | GPU (MLX) | GPU Speedup |
-|----------------|------------|-----|-----------|-------------|
-| **Go** | 1,000 votes | 39K votes/sec (25 μs) | ~975K-1.2M votes/sec* | **25-30x** |
-| **Go** | 10,000 votes | 32K votes/sec (310 μs) | ~800K-1M votes/sec* | **25-30x** |
-| **Python** | 1,000 votes | 2K votes/sec (480 μs) | 29K votes/sec (35 μs) | **13.7x** |
-| **Python** | 10,000 votes | 2K votes/sec (4.5 ms) | 53-71K votes/sec (140-190 μs) | **25-30x** |
+| Implementation | Single Vote | Batch 1K | Batch 10K | Memory |
+|----------------|-------------|----------|-----------|--------|
+| **Go** | 36 ns | 118 μs (8.5K/sec) | 1.22 ms (8.2K/sec) | 80 B/vote |
+| **Python** | 850 ns | 480 μs (2K/sec) | 4.5 ms (2K/sec) | 100 MB/10K |
+| **C** | < 1 ms | - | - | < 10 MB |
+| **Rust** | 607 ns | - | - | < 15 MB |
 
-\* *Go GPU numbers are projected based on Python MLX speedup ratios. Go's faster CPU baseline amplifies absolute GPU throughput.*
+**Other Operations (Go CPU)**:
+- Simple consensus: 89 ns
+- Block add: 53 ns, 32 B/op
+- Query (IsAccepted): 1.8 ns, 0 allocs
+- Post-Quantum: 192 ns/block, 96 B/op
+- DAG finalization (100 depth): 113 ns
+- DAG traversal (10K vertices): 179 μs, 656 KB
+
+### GPU Acceleration (Python MLX Only)
+
+**Tested on Apple M1 Max (32-core GPU, Metal backend)**
+
+| Batch Size | CPU | GPU (MLX) | Speedup |
+|------------|-----|-----------|---------|
+| 1,000 votes | 480 μs | 35 μs | **13.7x** |
+| 10,000 votes | 4.5 ms | 140-190 μs | **25-30x** |
+
+**GPU Status by Language**:
+- ✅ **Python**: Tested, working, 25-30x speedup on large batches
+- ❌ **Go**: MLX bindings crash (segfault), untested
+- ❌ **C/Rust**: No GPU implementation yet
 
 **Key Insights:**
-- GPU acceleration shines for batch processing (1K+ votes)
+- GPU wins at 1K+ batch sizes (13-30x faster)
 - Go is 15-20x faster than Python on CPU
-- MLX provides consistent 25-30x speedup for large batches
-- Single operations have GPU overhead - use batching
-- Similar performance on NVIDIA GPUs with CUDA backend
-
-### Basic Operations (CPU)
-
-| Operation | Go | C | Rust | Python |
-|-----------|-------|-------|------|---------|
-| Single vote | 26 ns | < 1 ms | 607 ns | 850 ns |
-| Block add | 16 ns | < 1 ms | - | - |
-| Query | 0.3-0.6 ns | - | - | - |
-| Memory (10K blocks) | 16 B/block | < 10 MB | - | 100 MB |
+- Single operations: GPU has overhead, stay on CPU
+- Metal (Apple) and CUDA (NVIDIA) backends supported
 
 ## Next Steps
 
