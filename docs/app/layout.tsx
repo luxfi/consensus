@@ -1,14 +1,37 @@
 import "./global.css"
-import { RootProvider } from "fumadocs-ui/provider"
+import { RootProvider } from "fumadocs-ui/provider/next"
 import { Inter } from "next/font/google"
 import type { ReactNode } from "react"
 
-const inter = Inter({ subsets: ["latin"] })
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-geist-sans",
+  display: "swap",
+})
+
+const interMono = Inter({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+  display: "swap",
+})
+
+export const metadata = {
+  title: {
+    default: "Lux Consensus Documentation",
+    template: "%s | Lux Consensus",
+  },
+  description:
+    "High-performance, multi-language consensus engine supporting Chain, DAG, and Post-Quantum consensus algorithms.",
+}
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={inter.className} suppressHydrationWarning>
-      <body className="flex min-h-screen flex-col">
+    <html
+      lang="en"
+      className={`${inter.variable} ${interMono.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="min-h-svh bg-background font-sans antialiased">
         <RootProvider
           search={{
             enabled: true,
@@ -18,7 +41,9 @@ export default function Layout({ children }: { children: ReactNode }) {
             defaultTheme: "dark",
           }}
         >
-          {children}
+          <div className="relative flex min-h-svh flex-col bg-background">
+            {children}
+          </div>
         </RootProvider>
       </body>
     </html>
