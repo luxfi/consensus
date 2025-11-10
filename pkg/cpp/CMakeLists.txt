@@ -25,6 +25,11 @@ set(SOURCES
     src/vote_processor.cpp
 )
 
+# MLX sources (conditional)
+if(MLX_FOUND)
+    list(APPEND SOURCES src/mlx_consensus.cpp)
+endif()
+
 # Create library
 add_library(lux_consensus STATIC ${SOURCES})
 
