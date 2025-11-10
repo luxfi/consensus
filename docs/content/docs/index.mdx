@@ -10,7 +10,7 @@ A high-performance, multi-language consensus engine supporting Chain, DAG, and P
 ## Features
 
 - **Multi-Language SDKs**: Native implementations in Go, C, Rust, Python, and C++
-- **GPU Acceleration**: MLX-powered GPU support for 25-30x speedup on Apple Silicon
+- **GPU Acceleration**: MLX-powered GPU support for Apple Silicon (Metal) and NVIDIA (CUDA) with 25-30x speedup
 - **Quantum-Resistant**: Post-quantum cryptography with Dilithium and Kyber
 - **AI-Powered**: Neural network and LLM-based consensus validation
 - **High Performance**: Nanosecond latency, million ops/sec throughput
@@ -49,10 +49,10 @@ Lux Consensus implements multiple consensus families:
 | Rust           | 607 ns  | -          | -      | -           |
 | Python + MLX   | 16 μs   | 60K votes/sec | 250 MB | **359x**  |
 
-*GPU benchmarks on Apple M1 Max (10-core CPU, 32-core GPU)*
+*GPU benchmarks on Apple M1 Max (10-core CPU, 32-core GPU). Similar performance on NVIDIA GPUs with CUDA backend.*
 
 ## Next Steps
 
 - [SDK Documentation](/docs/sdk) - Go, Python, Rust, C++, C
-- [MLX GPU Acceleration](/docs/sdk/mlx) - 25-30x speedup on Apple Silicon
+- [MLX GPU Acceleration](/docs/sdk/mlx) - Metal (Apple Silicon) & CUDA (NVIDIA) support
 - [Benchmarks](/docs/benchmarks) - Detailed performance analysis
