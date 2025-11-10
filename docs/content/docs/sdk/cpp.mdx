@@ -228,7 +228,7 @@ Block block {/* ... */};
 engine->add_block(block);
 ```
 
-**process_vote(const Vote& vote)**
+**`process_vote(const Vote& vote)`**
 
 Process a single vote:
 
@@ -237,7 +237,7 @@ Vote vote {/* ... */};
 engine->process_vote(vote);
 ```
 
-**process_votes_batch(std::span<const Vote> votes)**
+**`process_votes_batch(std::span<const Vote> votes)`**
 
 Process multiple votes efficiently:
 
@@ -246,7 +246,7 @@ std::vector<Vote> votes = {/* ... */};
 engine->process_votes_batch(votes);
 ```
 
-**is_accepted(uint16_t block_id) -> bool**
+**`is_accepted(uint16_t block_id) -> bool`**
 
 Check if a block is accepted:
 
@@ -256,7 +256,7 @@ if (engine->is_accepted(block_id)) {
 }
 ```
 
-**get_preference() -> std::optional<uint16_t>**
+**`get_preference() -> std::optional<uint16_t>`**
 
 Get currently preferred block ID:
 
