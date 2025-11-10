@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/core/choices"
-	consensustest "github.com/luxfi/consensus/test/helpers"
 	"github.com/luxfi/ids"
 )
 
@@ -67,14 +66,14 @@ func (b *TestBlock) Status() uint8 {
 
 // Accept accepts the block
 func (b *TestBlock) Accept(ctx context.Context) error {
-	b.status = consensustest.Accepted
+	b.status = 2 // Accepted
 	b.Decidable.Status = choices.Accepted
 	return nil
 }
 
 // Reject rejects the block
 func (b *TestBlock) Reject(ctx context.Context) error {
-	b.status = consensustest.Rejected
+	b.status = 3 // Rejected
 	b.Decidable.Status = choices.Rejected
 	return nil
 }
@@ -90,7 +89,7 @@ var Genesis = &TestBlock{
 	parentID:  ids.Empty,
 	height:    0,
 	bytes:     []byte("genesis"),
-	status:    consensustest.Accepted,
+	status:    2, // Accepted
 	timestamp: time.Now(),
 	BytesV:    []byte("genesis"),
 	ParentV:   ids.Empty,
@@ -107,7 +106,7 @@ func BuildChild(parent *TestBlock) *TestBlock {
 		parentID:  parent.ID(),
 		height:    parent.Height() + 1,
 		bytes:     childBytes,
-		status:    consensustest.Processing,
+		status:    1, // Processing
 		timestamp: time.Now(),
 		BytesV:    childBytes,
 		ParentV:   parent.ID(),
@@ -125,7 +124,7 @@ func BuildChildWithTime(parent *TestBlock, timestamp time.Time) *TestBlock {
 		parentID:  parent.ID(),
 		height:    parent.Height() + 1,
 		bytes:     childBytes,
-		status:    consensustest.Processing,
+		status:    1, // Processing
 		timestamp: timestamp,
 		BytesV:    childBytes,
 		ParentV:   parent.ID(),
