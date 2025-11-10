@@ -33,8 +33,28 @@ const pageTree = {
         },
         {
           type: 'page',
+          name: 'Python SDK',
+          url: '/docs/sdk/python',
+        },
+        {
+          type: 'page',
+          name: 'Rust SDK',
+          url: '/docs/sdk/rust',
+        },
+        {
+          type: 'page',
+          name: 'C++ SDK',
+          url: '/docs/sdk/cpp',
+        },
+        {
+          type: 'page',
           name: 'C SDK',
           url: '/docs/sdk/c',
+        },
+        {
+          type: 'page',
+          name: 'MLX GPU',
+          url: '/docs/sdk/mlx',
         },
       ],
     },
