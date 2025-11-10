@@ -1,6 +1,7 @@
 import { DocsLayout } from "fumadocs-ui/layouts/docs"
 import type { ReactNode } from "react"
-import { BookOpen, Code, Cpu, Zap } from "lucide-react"
+import { BookOpen, Code, Cpu } from "lucide-react"
+import { Logo } from "@luxfi/logo"
 
 // Static page tree to avoid circular dependencies
 const pageTree = {
@@ -47,7 +48,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       nav={{
         title: (
           <div className="flex items-center gap-2">
-            <Zap className="size-6 text-lux-400" />
+            <Logo size={24} variant="white" />
             <span className="font-bold">Lux Consensus</span>
           </div>
         ),
