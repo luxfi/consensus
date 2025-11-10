@@ -19,7 +19,8 @@
       "Read(//Users/z/work/hanzo/hips/**)",
       "Read(//Users/z/work/zoo/zips/**)",
       "Bash(go doc:*)",
-      "Read(//Users/z/work/lux/**)"
+      "Read(//Users/z/work/lux/**)",
+      "Bash(pnpm build:*)"
     ],
     "deny": [],
     "ask": [],
