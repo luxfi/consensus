@@ -1,0 +1,635 @@
+---
+title: Rust SDK
+description: Rust SDK for Lux Consensus - Safe, fast, and idiomatic Rust bindings
+---
+
+# Rust SDK
+
+The Rust SDK provides safe, idiomatic Rust bindings to the Lux Consensus C library, with zero-cost abstractions and full memory safety guarantees.
+
+## Installation
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+lux-consensus = { git = "https://github.com/luxfi/consensus", branch = "main" }
+```
+
+Or for local development:
+
+```toml
+[dependencies]
+lux-consensus = { path = "../consensus/pkg/rust" }
+```
+
+## Quick Start
+
+```rust
+use lux_consensus::*;
+
+fn main() -> Result<(), LuxError> {
+    // Initialize the consensus library
+    ConsensusEngine::init()?;
+
+    // Create configuration
+    let config = LuxConsensusConfig {
+        k: 20,
+        alpha_preference: 15,
+        alpha_confidence: 15,
+        beta: 20,
+        concurrent_polls: 1,
+        optimal_processing: 1,
+        max_outstanding_items: 1024,
+        max_item_processing_time_ns: 2_000_000_000,
+        engine_type: LuxEngineType::DAG,
+    };
+
+    // Create consensus engine
+    let mut engine = ConsensusEngine::new(&config)?;
+
+    // Create and add a block
+    let block = LuxBlock {
+        id: [1u8; 32],
+        parent_id: [0u8; 32],
+        height: 1,
+        timestamp: 1234567890,
+        data: std::ptr::null_mut(),
+        data_size: 0,
+    };
+
+    engine.add_block(&block)?;
+
+    // Create and process a vote
+    let vote = LuxVote {
+        voter_id: [2u8; 32],
+        block_id: block.id,
+        is_preference: false,
+    };
+
+    engine.process_vote(&vote)?;
+
+    // Check if block is accepted
+    let is_accepted = engine.is_accepted(&block.id)?;
+    println!("Block accepted: {}", is_accepted);
+
+    // Get statistics
+    let stats = engine.get_stats()?;
+    println!("Stats: {:?}", stats);
+
+    // Cleanup
+    ConsensusEngine::cleanup()?;
+
+    Ok(())
+}
+```
+
+## Engine Types
+
+```rust
+pub enum LuxEngineType {
+    Chain = 0,  // Linear blockchain consensus
+    DAG = 1,    // DAG-based consensus (default)
+    PQ = 2,     // Post-quantum consensus
+}
+```
+
+## API Reference
+
+### LuxConsensusConfig
+
+Consensus engine configuration:
+
+```rust
+pub struct LuxConsensusConfig {
+    pub k: u32,                             // Consecutive successes for finality
+    pub alpha_preference: u32,             // Quorum size for preference
+    pub alpha_confidence: u32,             // Quorum size for confidence
+    pub beta: u32,                         // Decision threshold
+    pub concurrent_polls: u32,             // Max concurrent polls
+    pub optimal_processing: u32,           // Optimal processing flag
+    pub max_outstanding_items: u32,        // Max outstanding items
+    pub max_item_processing_time_ns: u64,  // Timeout in nanoseconds
+    pub engine_type: LuxEngineType,        // Engine type
+}
+```
+
+### LuxBlock
+
+Block structure:
+
+```rust
+pub struct LuxBlock {
+    pub id: [u8; 32],           // Block identifier
+    pub parent_id: [u8; 32],    // Parent block ID
+    pub height: u64,            // Block height
+    pub timestamp: u64,         // Unix timestamp
+    pub data: *mut c_void,      // Block data pointer
+    pub data_size: size_t,      // Data size
+}
+```
+
+### LuxVote
+
+Vote structure:
+
+```rust
+pub struct LuxVote {
+    pub voter_id: [u8; 32],      // Voter identifier
+    pub block_id: [u8; 32],      // Block being voted on
+    pub is_preference: bool,     // Preference vs confidence vote
+}
+```
+
+### LuxConsensusStats
+
+Consensus statistics:
+
+```rust
+#[derive(Debug, Default)]
+pub struct LuxConsensusStats {
+    pub blocks_accepted: u64,
+    pub blocks_rejected: u64,
+    pub polls_completed: u64,
+    pub votes_processed: u64,
+    pub average_decision_time_ms: f64,
+}
+```
+
+### ConsensusEngine
+
+Main consensus engine with safe Rust API:
+
+#### Methods
+
+**init() -> Result<(), LuxError>**
+
+Initialize the consensus library (call once per process):
+
+```rust
+ConsensusEngine::init()?;
+```
+
+**cleanup() -> Result<(), LuxError>**
+
+Cleanup the consensus library (call before exit):
+
+```rust
+ConsensusEngine::cleanup()?;
+```
+
+**new(config: &LuxConsensusConfig) -> Result<Self, LuxError>**
+
+Create a new consensus engine:
+
+```rust
+let config = LuxConsensusConfig {
+    k: 20,
+    alpha_preference: 15,
+    // ...
+};
+let mut engine = ConsensusEngine::new(&config)?;
+```
+
+**add_block(&mut self, block: &LuxBlock) -> Result<(), LuxError>**
+
+Add a block to the consensus engine:
+
+```rust
+let block = LuxBlock {
+    id: [1; 32],
+    parent_id: [0; 32],
+    height: 1,
+    timestamp: unix_timestamp(),
+    data: std::ptr::null_mut(),
+    data_size: 0,
+};
+engine.add_block(&block)?;
+```
+
+**process_vote(&mut self, vote: &LuxVote) -> Result<(), LuxError>**
+
+Process a vote:
+
+```rust
+let vote = LuxVote {
+    voter_id: [2; 32],
+    block_id: block.id,
+    is_preference: false,
+};
+engine.process_vote(&vote)?;
+```
+
+**is_accepted(&self, block_id: &[u8; 32]) -> Result<bool, LuxError>**
+
+Check if a block is accepted:
+
+```rust
+if engine.is_accepted(&block.id)? {
+    println!("Block finalized!");
+}
+```
+
+**get_preference(&self) -> Result<[u8; 32], LuxError>**
+
+Get the currently preferred block ID:
+
+```rust
+let preferred = engine.get_preference()?;
+println!("Preferred block: {:?}", preferred);
+```
+
+**poll(&mut self, validator_ids: &[[u8; 32]]) -> Result<(), LuxError>**
+
+Poll a set of validators:
+
+```rust
+let validators = vec![
+    [1u8; 32],
+    [2u8; 32],
+    [3u8; 32],
+];
+engine.poll(&validators)?;
+```
+
+**get_stats(&self) -> Result<LuxConsensusStats, LuxError>**
+
+Get consensus statistics:
+
+```rust
+let stats = engine.get_stats()?;
+println!("Blocks accepted: {}", stats.blocks_accepted);
+println!("Average latency: {:.2}ms", stats.average_decision_time_ms);
+```
+
+## Error Handling
+
+```rust
+use lux_consensus::{ConsensusEngine, LuxError};
+
+match ConsensusEngine::init() {
+    Ok(_) => println!("Initialized"),
+    Err(LuxError::InvalidParams) => eprintln!("Invalid parameters"),
+    Err(LuxError::OutOfMemory) => eprintln!("Out of memory"),
+    Err(LuxError::InvalidState) => eprintln!("Invalid state"),
+    Err(LuxError::ConsensusFailed) => eprintln!("Consensus failed"),
+    Err(LuxError::NotImplemented) => eprintln!("Not implemented"),
+    Err(LuxError::Success) => unreachable!(),
+}
+```
+
+The `LuxError` enum implements `std::error::Error` and `Display`:
+
+```rust
+pub enum LuxError {
+    Success = 0,
+    InvalidParams = -1,
+    OutOfMemory = -2,
+    InvalidState = -3,
+    ConsensusFailed = -4,
+    NotImplemented = -5,
+}
+
+impl std::error::Error for LuxError {}
+impl Display for LuxError { /* ... */ }
+```
+
+## Examples
+
+### Simple Consensus Network
+
+```rust
+use lux_consensus::*;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ConsensusEngine::init()?;
+
+    // Create 5 validators
+    let config = LuxConsensusConfig {
+        k: 20,
+        alpha_preference: 3,
+        alpha_confidence: 3,
+        beta: 5,
+        concurrent_polls: 1,
+        optimal_processing: 1,
+        max_outstanding_items: 1024,
+        max_item_processing_time_ns: 2_000_000_000,
+        engine_type: LuxEngineType::DAG,
+    };
+
+    let mut validators = Vec::new();
+    for _ in 0..5 {
+        validators.push(ConsensusEngine::new(&config)?);
+    }
+
+    // Propose a block
+    let block = LuxBlock {
+        id: [42; 32],
+        parent_id: [0; 32],
+        height: 1,
+        timestamp: 1234567890,
+        data: std::ptr::null_mut(),
+        data_size: 0,
+    };
+
+    // All validators add the block
+    for validator in &mut validators {
+        validator.add_block(&block)?;
+    }
+
+    // Simulate voting
+    for (i, validator) in validators.iter_mut().enumerate() {
+        let vote = LuxVote {
+            voter_id: [i as u8; 32],
+            block_id: block.id,
+            is_preference: false,
+        };
+        validator.process_vote(&vote)?;
+    }
+
+    // Check consensus
+    let accepted_count = validators
+        .iter()
+        .filter(|v| v.is_accepted(&block.id).unwrap_or(false))
+        .count();
+
+    println!("{}/5 validators accepted the block", accepted_count);
+
+    ConsensusEngine::cleanup()?;
+    Ok(())
+}
+```
+
+### Async Consensus with Tokio
+
+```rust
+use lux_consensus::*;
+use tokio::task;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ConsensusEngine::init()?;
+
+    let config = LuxConsensusConfig {
+        k: 20,
+        alpha_preference: 15,
+        alpha_confidence: 15,
+        beta: 20,
+        concurrent_polls: 1,
+        optimal_processing: 1,
+        max_outstanding_items: 1024,
+        max_item_processing_time_ns: 2_000_000_000,
+        engine_type: LuxEngineType::DAG,
+    };
+
+    // Spawn consensus engine in blocking thread pool
+    let handle = task::spawn_blocking(move || {
+        let mut engine = ConsensusEngine::new(&config)?;
+
+        // Process blocks
+        for i in 0..1000 {
+            let block = LuxBlock {
+                id: id_from_u64(i),
+                parent_id: if i > 0 { id_from_u64(i - 1) } else { [0; 32] },
+                height: i,
+                timestamp: 1234567890 + i,
+                data: std::ptr::null_mut(),
+                data_size: 0,
+            };
+            engine.add_block(&block)?;
+        }
+
+        engine.get_stats()
+    });
+
+    let stats = handle.await??;
+    println!("Processed {} blocks", stats.blocks_accepted);
+
+    ConsensusEngine::cleanup()?;
+    Ok(())
+}
+
+fn id_from_u64(n: u64) -> [u8; 32] {
+    let mut id = [0u8; 32];
+    id[..8].copy_from_slice(&n.to_be_bytes());
+    id
+}
+```
+
+### Custom Block Data
+
+```rust
+use lux_consensus::*;
+use std::mem;
+
+#[repr(C)]
+struct TransactionData {
+    from: [u8; 32],
+    to: [u8; 32],
+    amount: u64,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ConsensusEngine::init()?;
+
+    let config = LuxConsensusConfig {
+        // ... config
+        engine_type: LuxEngineType::DAG,
+        ..Default::default()
+    };
+
+    let mut engine = ConsensusEngine::new(&config)?;
+
+    // Create transaction data
+    let tx_data = TransactionData {
+        from: [1; 32],
+        to: [2; 32],
+        amount: 1000,
+    };
+
+    // Create block with custom data
+    let block = LuxBlock {
+        id: [42; 32],
+        parent_id: [0; 32],
+        height: 1,
+        timestamp: 1234567890,
+        data: &tx_data as *const _ as *mut _,
+        data_size: mem::size_of::<TransactionData>(),
+    };
+
+    engine.add_block(&block)?;
+
+    ConsensusEngine::cleanup()?;
+    Ok(())
+}
+```
+
+## Performance Benchmarks
+
+The Rust SDK is built on top of the C library and provides near-zero overhead:
+
+```bash
+cd pkg/rust
+cargo bench
+```
+
+**Typical Results (M1 Max):**
+
+```
+Block Addition:       607 ns/op
+Vote Processing:      < 1 μs/op
+Decision Latency:     < 2 μs average
+Memory Overhead:      0 bytes (zero-cost abstraction)
+```
+
+## Testing
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Run specific test
+cargo test test_block_operations
+
+# Run with backtrace
+RUST_BACKTRACE=1 cargo test
+
+# Run comprehensive tests
+cargo test --test comprehensive_tests
+```
+
+## Thread Safety
+
+`ConsensusEngine` is `Send + Sync`, allowing safe usage across threads:
+
+```rust
+use std::thread;
+use lux_consensus::*;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ConsensusEngine::init()?;
+
+    let config = LuxConsensusConfig {
+        // ... config
+        engine_type: LuxEngineType::DAG,
+        ..Default::default()
+    };
+
+    // Spawn multiple worker threads
+    let handles: Vec<_> = (0..4)
+        .map(|thread_id| {
+            let config = config.clone();
+            thread::spawn(move || {
+                let mut engine = ConsensusEngine::new(&config).unwrap();
+
+                for i in 0..100 {
+                    let block = LuxBlock {
+                        id: id_from_thread_and_index(thread_id, i),
+                        parent_id: [0; 32],
+                        height: i as u64,
+                        timestamp: 1234567890,
+                        data: std::ptr::null_mut(),
+                        data_size: 0,
+                    };
+                    engine.add_block(&block).unwrap();
+                }
+
+                engine.get_stats().unwrap()
+            })
+        })
+        .collect();
+
+    // Wait for all threads
+    for handle in handles {
+        let stats = handle.join().unwrap();
+        println!("Thread stats: {:?}", stats);
+    }
+
+    ConsensusEngine::cleanup()?;
+    Ok(())
+}
+
+fn id_from_thread_and_index(thread_id: usize, index: usize) -> [u8; 32] {
+    let mut id = [0u8; 32];
+    id[0] = thread_id as u8;
+    id[8..16].copy_from_slice(&index.to_be_bytes());
+    id
+}
+```
+
+## Memory Management
+
+The Rust SDK provides automatic memory management via RAII:
+
+```rust
+{
+    let mut engine = ConsensusEngine::new(&config)?;
+    // Use engine...
+} // Engine automatically destroyed here via Drop trait
+```
+
+Manual cleanup is also available:
+
+```rust
+impl Drop for ConsensusEngine {
+    fn drop(&mut self) {
+        unsafe {
+            lux_consensus_engine_destroy(self.engine);
+        }
+    }
+}
+```
+
+## Cargo Features
+
+```toml
+[dependencies]
+lux-consensus = { version = "1.17", features = ["benchmarks"] }
+```
+
+Available features:
+- `benchmarks` - Enable criterion benchmarks
+- `serde` - Add Serde serialization support (future)
+- `async` - Async/await support (future)
+
+## Build Configuration
+
+```toml
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+```
+
+For maximum performance:
+
+```bash
+RUSTFLAGS="-C target-cpu=native" cargo build --release
+```
+
+## Troubleshooting
+
+**Linker error: cannot find -lluxconsensus**
+
+Build and install the C library first:
+```bash
+cd pkg/c && make && make install
+```
+
+**Error: LuxError::InvalidState**
+
+Ensure you call `ConsensusEngine::init()` before creating engines.
+
+**Segmentation fault**
+
+Check that block IDs are exactly 32 bytes and data pointers are valid.
+
+## See Also
+
+- [C SDK](/docs/sdk/c) - Underlying C library
+- [Go SDK](/docs/sdk/go) - Go implementation with AI features
+- [Python SDK](/docs/sdk/python) - Python Cython bindings
+- [Rust Book](https://doc.rust-lang.org/book/) - Learn Rust
