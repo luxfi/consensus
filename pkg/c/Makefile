@@ -21,6 +21,7 @@ OBJECTS = $(SOURCES:.c=.o)
 # Target files
 STATIC_LIB = lib/libluxconsensus.a
 SHARED_LIB = lib/libluxconsensus.$(DYLIB_EXT)
+BENCHMARK_BIN = benchmark
 
 # Build targets
 all: $(STATIC_LIB) $(SHARED_LIB)
@@ -73,4 +74,16 @@ test: $(SHARED_LIB)
 		LD_LIBRARY_PATH=./lib ./test/bin/test_consensus; \
 	fi
 
-.PHONY: all clean install test
+$(BENCHMARK_BIN): benchmark.c $(SHARED_LIB)
+	@echo "Building benchmark..."
+	$(CC) $(CFLAGS) -O3 -o $@ $< -L./lib -lluxconsensus -pthread
+
+run-benchmark: $(BENCHMARK_BIN)
+	@echo "Running benchmarks..."
+	@if [ "$(UNAME_S)" = "Darwin" ]; then \
+		DYLD_LIBRARY_PATH=./lib ./$(BENCHMARK_BIN); \
+	else \
+		LD_LIBRARY_PATH=./lib ./$(BENCHMARK_BIN); \
+	fi
+
+.PHONY: all clean install test run-benchmark
