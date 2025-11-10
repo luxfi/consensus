@@ -51,9 +51,10 @@ jobs:
           cd docs
           pnpm build
 
-      - name: Add .nojekyll file
+      - name: Add .nojekyll and CNAME files
         run: |
           touch docs/out/.nojekyll
+          echo "consensus.lux.network" > docs/out/CNAME
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
