@@ -8,7 +8,11 @@ const staticPages = [
   { slug: ['benchmarks'], path: '@/content/docs/benchmarks.mdx' },
   { slug: ['sdk'], path: '@/content/docs/sdk/index.mdx' },
   { slug: ['sdk', 'go'], path: '@/content/docs/sdk/go.mdx' },
+  { slug: ['sdk', 'python'], path: '@/content/docs/sdk/python.mdx' },
+  { slug: ['sdk', 'rust'], path: '@/content/docs/sdk/rust.mdx' },
+  { slug: ['sdk', 'cpp'], path: '@/content/docs/sdk/cpp.mdx' },
   { slug: ['sdk', 'c'], path: '@/content/docs/sdk/c.mdx' },
+  { slug: ['sdk', 'mlx'], path: '@/content/docs/sdk/mlx.mdx' },
 ];
 
 // Generate static params for all pages
@@ -29,8 +33,16 @@ async function getContent(slug: string[]) {
       return import('@/content/docs/sdk/index.mdx');
     case 'sdk/go':
       return import('@/content/docs/sdk/go.mdx');
+    case 'sdk/python':
+      return import('@/content/docs/sdk/python.mdx');
+    case 'sdk/rust':
+      return import('@/content/docs/sdk/rust.mdx');
+    case 'sdk/cpp':
+      return import('@/content/docs/sdk/cpp.mdx');
     case 'sdk/c':
       return import('@/content/docs/sdk/c.mdx');
+    case 'sdk/mlx':
+      return import('@/content/docs/sdk/mlx.mdx');
     default:
       return null;
   }
