@@ -36,10 +36,23 @@ extensions = [
 
 setup(
     name="lux-consensus",
-    version="0.1.0",
-    description="Python bindings for Lux Consensus C library",
+    version="1.21.0",
+    description="Python bindings for Lux Consensus C library with optional MLX GPU acceleration",
     author="Lux Industries Inc.",
+    packages=["lux_consensus"],
     ext_modules=cythonize(extensions, language_level="3"),
+    install_requires=[
+        "numpy>=1.20.0",
+    ],
+    extras_require={
+        "mlx": [
+            "mlx>=0.0.1",  # Apple Silicon GPU acceleration
+        ],
+        "dev": [
+            "pytest>=7.0.0",
+            "pytest-benchmark>=4.0.0",
+        ],
+    },
     zip_safe=False,
-    python_requires=">=3.7",
+    python_requires=">=3.8",
 )
