@@ -12,6 +12,7 @@ require (
 	github.com/luxfi/geth v1.16.39
 	github.com/luxfi/ids v1.1.2
 	github.com/luxfi/math v0.1.2
+	github.com/luxfi/mlx v0.2.0
 	github.com/luxfi/node v1.20.1
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0

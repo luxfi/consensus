@@ -162,7 +162,7 @@ Main consensus engine with safe Rust API:
 
 #### Methods
 
-**init() -> Result<(), LuxError>**
+**`init() -> Result<(), LuxError>`**
 
 Initialize the consensus library (call once per process):
 
@@ -170,7 +170,7 @@ Initialize the consensus library (call once per process):
 ConsensusEngine::init()?;
 ```
 
-**cleanup() -> Result<(), LuxError>**
+**`cleanup() -> Result<(), LuxError>`**
 
 Cleanup the consensus library (call before exit):
 
@@ -178,7 +178,7 @@ Cleanup the consensus library (call before exit):
 ConsensusEngine::cleanup()?;
 ```
 
-**new(config: &LuxConsensusConfig) -> Result<Self, LuxError>**
+**`new(config: &LuxConsensusConfig) -> Result<Self, LuxError>`**
 
 Create a new consensus engine:
 
@@ -191,7 +191,7 @@ let config = LuxConsensusConfig {
 let mut engine = ConsensusEngine::new(&config)?;
 ```
 
-**add_block(&mut self, block: &LuxBlock) -> Result<(), LuxError>**
+**`add_block(&mut self, block: &LuxBlock) -> Result<(), LuxError>`**
 
 Add a block to the consensus engine:
 
@@ -207,7 +207,7 @@ let block = LuxBlock {
 engine.add_block(&block)?;
 ```
 
-**process_vote(&mut self, vote: &LuxVote) -> Result<(), LuxError>**
+**`process_vote(&mut self, vote: &LuxVote) -> Result<(), LuxError>`**
 
 Process a vote:
 
@@ -220,7 +220,7 @@ let vote = LuxVote {
 engine.process_vote(&vote)?;
 ```
 
-**is_accepted(&self, block_id: &[u8; 32]) -> Result<bool, LuxError>**
+**`is_accepted(&self, block_id: &[u8; 32]) -> Result<bool, LuxError>`**
 
 Check if a block is accepted:
 
@@ -230,7 +230,7 @@ if engine.is_accepted(&block.id)? {
 }
 ```
 
-**get_preference(&self) -> Result<[u8; 32], LuxError>**
+**`get_preference(&self) -> Result<[u8; 32], LuxError>`**
 
 Get the currently preferred block ID:
 
@@ -239,7 +239,7 @@ let preferred = engine.get_preference()?;
 println!("Preferred block: {:?}", preferred);
 ```
 
-**poll(&mut self, validator_ids: &[[u8; 32]]) -> Result<(), LuxError>**
+**`poll(&mut self, validator_ids: &[[u8; 32]]) -> Result<(), LuxError>`**
 
 Poll a set of validators:
 
@@ -252,7 +252,7 @@ let validators = vec![
 engine.poll(&validators)?;
 ```
 
-**get_stats(&self) -> Result<LuxConsensusStats, LuxError>**
+**`get_stats(&self) -> Result<LuxConsensusStats, LuxError>`**
 
 Get consensus statistics:
 
