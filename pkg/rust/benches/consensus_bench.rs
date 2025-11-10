@@ -77,8 +77,8 @@ fn bench_batch_block_add(c: &mut Criterion) {
             b.iter_batched(
                 || {
                     let engine = ConsensusEngine::new(&config).expect("Failed to create engine");
-                    let blocks: Vec<LuxBlock> = (0..size as u8)
-                        .map(|i| create_block(i, if i == 0 { 0 } else { i - 1 }, i as u64))
+                    let blocks: Vec<LuxBlock> = (0..size)
+                        .map(|i| create_block((i % 256) as u8, if i == 0 { 0 } else { (i - 1) % 256 } as u8, i as u64))
                         .collect();
                     (engine, blocks)
                 },
@@ -139,8 +139,8 @@ fn bench_batch_vote(c: &mut Criterion) {
                     let block = create_block(1, 0, 1);
                     engine.add_block(&block).expect("Failed to add block");
 
-                    let votes: Vec<LuxVote> = (0..size as u8)
-                        .map(|i| create_vote(i, block.id, i % 2 == 0))
+                    let votes: Vec<LuxVote> = (0..size)
+                        .map(|i| create_vote((i % 256) as u8, block.id, i % 2 == 0))
                         .collect();
                     (engine, votes)
                 },
