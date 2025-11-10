@@ -116,7 +116,7 @@ func (b *MLXBackend) flush() {
 	activated := mlx.Maximum(layer1, mlx.Zeros(layer1.Shape(), mlx.Float32))
 
 	// Layer 2: Reduce to single output per vote
-	output := mlx.Mean(activated, 1, false)
+	output := mlx.Mean(activated, 1)
 
 	// Force evaluation on GPU
 	mlx.Eval(output)
@@ -165,7 +165,7 @@ func (b *MLXBackend) ProcessVotesBatch(votes []Vote) (int, error) {
 	weights := mlx.Random([]int{64, 128}, mlx.Float32)
 	layer1 := mlx.MatMul(input, weights)
 	activated := mlx.Maximum(layer1, mlx.Zeros(layer1.Shape(), mlx.Float32))
-	output := mlx.Mean(activated, 1, false)
+	output := mlx.Mean(activated, 1)
 
 	mlx.Eval(output)
 	mlx.Synchronize()
