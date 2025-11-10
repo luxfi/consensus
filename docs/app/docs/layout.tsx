@@ -1,12 +1,49 @@
-import { docs } from "@/.source"
 import { DocsLayout } from "fumadocs-ui/layouts/docs"
 import type { ReactNode } from "react"
 import { BookOpen, Code, Cpu, Zap } from "lucide-react"
 
+// Static page tree to avoid circular dependencies
+const pageTree = {
+  name: 'Docs',
+  children: [
+    {
+      type: 'page',
+      name: 'Introduction',
+      url: '/docs',
+    },
+    {
+      type: 'page',
+      name: 'Benchmarks',
+      url: '/docs/benchmarks',
+    },
+    {
+      type: 'folder',
+      name: 'SDK',
+      children: [
+        {
+          type: 'page',
+          name: 'Overview',
+          url: '/docs/sdk',
+        },
+        {
+          type: 'page',
+          name: 'Go SDK',
+          url: '/docs/sdk/go',
+        },
+        {
+          type: 'page',
+          name: 'C SDK',
+          url: '/docs/sdk/c',
+        },
+      ],
+    },
+  ],
+};
+
 export default function Layout({ children }: { children: ReactNode }) {
   return (
     <DocsLayout
-      tree={docs.pageTree}
+      tree={pageTree}
       nav={{
         title: (
           <div className="flex items-center gap-2">
