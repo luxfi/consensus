@@ -294,25 +294,6 @@ make
 ./benchmarks/mlx_benchmarks --compare
 ```
 
-## Benchmark History
-
-Track performance improvements over releases:
-
-| Version | Go | C | Rust | Python | C++ | MLX GPU | Coverage |
-|---------|----|----|------|--------|-----|---------|----------|
-| v1.21.0 | 1.70 μs | 1M+/s | 607 ns | 10K/s | 500 ns | 25x faster | 74.5% |
-| v1.17.0 | 1.50 μs | 9M+/s | - | - | - | - | - |
-| v1.3.2 | - | - | - | - | - | - | - |
-
-### Performance Evolution
-
-**Key Improvements in v1.21.0:**
-- ✅ Added Python SDK with Cython bindings (10K ops/sec)
-- ✅ Added Rust SDK with zero-cost abstractions (607 ns latency)
-- ✅ Added C++ SDK with modern C++20 features (500 ns latency)
-- ✅ Added MLX GPU acceleration (25x speedup on Apple Silicon)
-- ✅ Improved Go AI consensus (74.5% test coverage)
-
 ## Continuous Benchmarking
 
 Benchmarks run on every commit via GitHub Actions:
