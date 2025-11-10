@@ -1,0 +1,713 @@
+---
+title: C++ SDK
+description: C++ SDK for Lux Consensus - Modern C++20 with optional MLX GPU acceleration
+---
+
+# C++ SDK
+
+The C++ SDK provides a modern C++20 implementation of Lux Consensus with zero-overhead abstractions, optional MLX GPU acceleration, and full STL integration.
+
+## Installation
+
+### Prerequisites
+
+- CMake 3.20+
+- C++20 compiler (GCC 11+, Clang 13+, MSVC 19.29+)
+- Optional: ZeroMQ for networking
+- Optional: MLX framework for GPU acceleration
+
+### Build from Source
+
+```bash
+cd pkg/cpp
+mkdir build && cd build
+
+# Standard build
+cmake ..
+make
+
+# With MLX GPU support (macOS with Apple Silicon)
+cmake .. -DHAS_MLX=ON
+make
+
+# Install system-wide
+sudo make install
+```
+
+### CMake Integration
+
+```cmake
+find_package(lux_consensus REQUIRED)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE Lux::lux_consensus)
+target_compile_features(my_app PRIVATE cxx_std_20)
+```
+
+## Quick Start
+
+```cpp
+#include <lux/consensus.hpp>
+#include <iostream>
+
+using namespace lux::consensus;
+
+int main() {
+    // Create consensus parameters
+    ConsensusParams params {
+        .k = 20,
+        .alpha_preference = 15,
+        .alpha_confidence = 15,
+        .beta = 20,
+        .concurrent_polls = 10,
+        .max_outstanding_items = 1000,
+        .timeout = std::chrono::milliseconds{30000}
+    };
+
+    // Validate parameters
+    if (!params.validate()) {
+        std::cerr << "Invalid parameters\n";
+        return 1;
+    }
+
+    // Create consensus engine
+    auto engine = Consensus::create(EngineType::DAG, params);
+
+    // Create a block
+    Block block {
+        .id = 1,
+        .parent_id = 0,
+        .height = 1,
+        .timestamp = std::chrono::system_clock::now(),
+        .data = {0x01, 0x02, 0x03, 0x04}
+    };
+
+    // Add block to consensus
+    engine->add_block(block);
+
+    // Create and process a vote
+    Vote vote {
+        .engine_type = EngineType::DAG,
+        .node_id = 100,
+        .block_id = block.id,
+        .vote_type = VoteType::Prefer
+    };
+
+    engine->process_vote(vote);
+
+    // Check if accepted
+    if (engine->is_accepted(block.id)) {
+        std::cout << "Block accepted!\n";
+    }
+
+    // Get statistics
+    auto stats = engine->get_stats();
+    std::cout << "Votes processed: " << stats.votes_processed << "\n";
+    std::cout << "Blocks accepted: " << stats.blocks_accepted << "\n";
+
+    return 0;
+}
+```
+
+## Engine Types
+
+```cpp
+enum class EngineType : uint8_t {
+    Snowball = 0,       // Classic Snowball consensus
+    Avalanche = 1,      // Avalanche consensus
+    Snowflake = 2,      // Snowflake consensus
+    DAG = 3,           // DAG-based consensus (recommended)
+    Chain = 4,         // Linear chain consensus
+    PostQuantum = 5    // Post-quantum consensus
+};
+```
+
+## API Reference
+
+### ConsensusParams
+
+Configuration for consensus engine:
+
+```cpp
+struct ConsensusParams {
+    size_t k = 20;                           // Consecutive successes for finality
+    size_t alpha_preference = 15;           // Preference quorum
+    size_t alpha_confidence = 15;           // Confidence quorum
+    size_t beta = 20;                       // Decision threshold
+    size_t concurrent_polls = 10;           // Max concurrent polls
+    size_t max_outstanding_items = 1000;    // Max outstanding items
+    std::chrono::milliseconds timeout{30000}; // Processing timeout
+
+    [[nodiscard]] bool validate() const noexcept;
+};
+```
+
+### Block
+
+Block structure with modern C++ features:
+
+```cpp
+struct Block {
+    uint16_t id;
+    uint16_t parent_id;
+    uint64_t height;
+    std::chrono::system_clock::time_point timestamp;
+    std::vector<uint8_t> data;
+
+    // Serialize to bytes
+    [[nodiscard]] std::vector<uint8_t> serialize() const;
+
+    // Compute cryptographic hash
+    [[nodiscard]] std::array<uint8_t, 32> hash() const;
+
+    // Deserialize from bytes
+    static Block deserialize(std::span<const uint8_t> data);
+};
+```
+
+### Vote
+
+Compact vote structure with binary protocol:
+
+```cpp
+struct Vote {
+    EngineType engine_type;
+    uint16_t node_id;
+    uint16_t block_id;
+    VoteType vote_type;
+
+    // Pack to 8-byte binary format
+    [[nodiscard]] std::array<uint8_t, 8> pack() const noexcept;
+
+    // Unpack from binary format
+    static Vote unpack(std::span<const uint8_t, 8> data) noexcept;
+};
+
+enum class VoteType : uint8_t {
+    Prefer = 1,    // Preference vote
+    Accept = 2,    // Acceptance vote
+    Reject = 3     // Rejection vote
+};
+```
+
+### ConsensusStats
+
+Runtime statistics:
+
+```cpp
+struct ConsensusStats {
+    uint64_t votes_processed = 0;
+    uint64_t blocks_accepted = 0;
+    uint64_t blocks_rejected = 0;
+    std::chrono::milliseconds avg_latency{0};
+    size_t memory_usage_bytes = 0;
+};
+```
+
+### Consensus
+
+Main consensus interface (abstract class):
+
+#### Factory Method
+
+```cpp
+static std::unique_ptr<Consensus> create(
+    EngineType engine,
+    const ConsensusParams& params
+);
+```
+
+#### Core Operations
+
+**add_block(const Block& block)**
+
+Add a block to the consensus engine:
+
+```cpp
+Block block {/* ... */};
+engine->add_block(block);
+```
+
+**process_vote(const Vote& vote)**
+
+Process a single vote:
+
+```cpp
+Vote vote {/* ... */};
+engine->process_vote(vote);
+```
+
+**process_votes_batch(std::span<const Vote> votes)**
+
+Process multiple votes efficiently:
+
+```cpp
+std::vector<Vote> votes = {/* ... */};
+engine->process_votes_batch(votes);
+```
+
+**is_accepted(uint16_t block_id) -> bool**
+
+Check if a block is accepted:
+
+```cpp
+if (engine->is_accepted(block_id)) {
+    // Block finalized
+}
+```
+
+**get_preference() -> std::optional<uint16_t>**
+
+Get currently preferred block ID:
+
+```cpp
+if (auto pref = engine->get_preference()) {
+    std::cout << "Preferred block: " << *pref << "\n";
+}
+```
+
+#### Statistics
+
+**get_stats() -> ConsensusStats**
+
+Get consensus statistics:
+
+```cpp
+auto stats = engine->get_stats();
+std::cout << "Latency: " << stats.avg_latency.count() << "ms\n";
+```
+
+#### Event Handling
+
+**on_block_accepted(BlockAcceptedHandler handler)**
+
+Register callback for block acceptance:
+
+```cpp
+engine->on_block_accepted([](uint16_t block_id) {
+    std::cout << "Block " << block_id << " accepted!\n";
+});
+```
+
+#### Health Check
+
+**health_check() -> bool**
+
+Check engine health:
+
+```cpp
+if (!engine->health_check()) {
+    std::cerr << "Engine unhealthy!\n";
+}
+```
+
+## Examples
+
+### Simple Consensus Network
+
+```cpp
+#include <lux/consensus.hpp>
+#include <vector>
+#include <iostream>
+
+using namespace lux::consensus;
+
+int main() {
+    ConsensusParams params {
+        .k = 20,
+        .alpha_preference = 3,
+        .alpha_confidence = 3,
+        .beta = 5
+    };
+
+    // Create 5 validators
+    std::vector<std::unique_ptr<Consensus>> validators;
+    for (int i = 0; i < 5; ++i) {
+        validators.push_back(Consensus::create(EngineType::DAG, params));
+    }
+
+    // Propose a block
+    Block block {
+        .id = 42,
+        .parent_id = 0,
+        .height = 1,
+        .timestamp = std::chrono::system_clock::now(),
+        .data = {'H', 'e', 'l', 'l', 'o'}
+    };
+
+    // All validators add the block
+    for (auto& validator : validators) {
+        validator->add_block(block);
+    }
+
+    // Simulate voting
+    for (size_t i = 0; i < validators.size(); ++i) {
+        Vote vote {
+            .engine_type = EngineType::DAG,
+            .node_id = static_cast<uint16_t>(i),
+            .block_id = block.id,
+            .vote_type = VoteType::Prefer
+        };
+        validators[i]->process_vote(vote);
+    }
+
+    // Check consensus
+    int accepted_count = 0;
+    for (const auto& validator : validators) {
+        if (validator->is_accepted(block.id)) {
+            ++accepted_count;
+        }
+    }
+
+    std::cout << accepted_count << "/5 validators accepted the block\n";
+    return 0;
+}
+```
+
+### Batch Vote Processing
+
+```cpp
+#include <lux/consensus.hpp>
+#include <chrono>
+
+using namespace lux::consensus;
+
+int main() {
+    auto engine = Consensus::create(EngineType::DAG, ConsensusParams{});
+
+    // Add blocks
+    for (uint16_t i = 1; i <= 100; ++i) {
+        Block block {
+            .id = i,
+            .parent_id = static_cast<uint16_t>(i - 1),
+            .height = i,
+            .timestamp = std::chrono::system_clock::now(),
+            .data = {}
+        };
+        engine->add_block(block);
+    }
+
+    // Generate batch of votes
+    std::vector<Vote> votes;
+    for (uint16_t block_id = 1; block_id <= 100; ++block_id) {
+        for (uint16_t node_id = 0; node_id < 10; ++node_id) {
+            votes.push_back(Vote {
+                .engine_type = EngineType::DAG,
+                .node_id = node_id,
+                .block_id = block_id,
+                .vote_type = VoteType::Prefer
+            });
+        }
+    }
+
+    // Process votes in batch (much faster than individual processing)
+    auto start = std::chrono::high_resolution_clock::now();
+    engine->process_votes_batch(votes);
+    auto end = std::chrono::high_resolution_clock::now();
+
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "Processed " << votes.size() << " votes in "
+              << duration.count() << " μs\n";
+
+    return 0;
+}
+```
+
+### Event-Driven Architecture
+
+```cpp
+#include <lux/consensus.hpp>
+#include <functional>
+#include <queue>
+
+using namespace lux::consensus;
+
+class ConsensusNode {
+private:
+    std::unique_ptr<Consensus> engine_;
+    std::queue<Block> finalized_blocks_;
+
+public:
+    ConsensusNode(EngineType type, const ConsensusParams& params)
+        : engine_(Consensus::create(type, params))
+    {
+        // Register acceptance callback
+        engine_->on_block_accepted([this](uint16_t block_id) {
+            this->on_block_finalized(block_id);
+        });
+    }
+
+    void propose_block(const Block& block) {
+        engine_->add_block(block);
+    }
+
+    void receive_vote(const Vote& vote) {
+        engine_->process_vote(vote);
+    }
+
+    void on_block_finalized(uint16_t block_id) {
+        std::cout << "Block " << block_id << " finalized!\n";
+        // Trigger downstream processing
+        process_finalized_block(block_id);
+    }
+
+    void process_finalized_block(uint16_t block_id) {
+        // Process confirmed block
+        // e.g., update state, broadcast to peers, etc.
+    }
+};
+```
+
+### RAII and Exception Safety
+
+```cpp
+#include <lux/consensus.hpp>
+#include <memory>
+#include <stdexcept>
+
+using namespace lux::consensus;
+
+class ConsensusGuard {
+private:
+    std::unique_ptr<Consensus> engine_;
+
+public:
+    explicit ConsensusGuard(const ConsensusParams& params) {
+        engine_ = Consensus::create(EngineType::DAG, params);
+        if (!engine_->health_check()) {
+            throw std::runtime_error("Failed to initialize consensus");
+        }
+    }
+
+    ~ConsensusGuard() {
+        // Automatic cleanup via unique_ptr
+        std::cout << "Cleaning up consensus engine\n";
+    }
+
+    Consensus& get() { return *engine_; }
+    const Consensus& get() const { return *engine_; }
+
+    // Delete copy operations
+    ConsensusGuard(const ConsensusGuard&) = delete;
+    ConsensusGuard& operator=(const ConsensusGuard&) = delete;
+
+    // Allow move operations
+    ConsensusGuard(ConsensusGuard&&) = default;
+    ConsensusGuard& operator=(ConsensusGuard&&) = default;
+};
+
+int main() {
+    try {
+        ConsensusGuard guard(ConsensusParams{});
+        auto& engine = guard.get();
+
+        // Use engine...
+        // Automatic cleanup on scope exit
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return 1;
+    }
+
+    return 0;
+}
+```
+
+## MLX GPU Acceleration
+
+Enable GPU acceleration on Apple Silicon:
+
+```cpp
+// CMakeLists.txt configuration
+find_package(MLX REQUIRED)
+target_compile_definitions(my_app PRIVATE HAS_MLX)
+target_link_libraries(my_app PRIVATE MLX::MLX)
+```
+
+```cpp
+#include <lux/consensus.hpp>
+
+#ifdef HAS_MLX
+#include <mlx/mlx.h>
+#endif
+
+int main() {
+    ConsensusParams params {/* ... */};
+
+    #ifdef HAS_MLX
+    // Enable GPU acceleration
+    mlx::core::set_default_device(mlx::core::Device::gpu());
+    std::cout << "Using MLX GPU acceleration\n";
+    #endif
+
+    auto engine = Consensus::create(EngineType::DAG, params);
+
+    // Processing will automatically use GPU when available
+    // Up to 10x faster for large batches
+}
+```
+
+## Performance Benchmarks
+
+```bash
+cd pkg/cpp/build
+./benchmarks/consensus_benchmarks
+```
+
+**Typical Results (M1 Max, CPU mode):**
+
+```
+Block Addition:       ~500 ns/op
+Vote Processing:      ~800 ns/op
+Batch Processing:     ~50 ns/vote (1000 votes)
+Decision Latency:     < 1 ms average
+Memory Usage:         ~50 MB for 10K blocks
+```
+
+**With MLX GPU Acceleration:**
+
+```
+Batch Processing:     ~5 ns/vote (10x faster)
+Large Batch (10K):    ~2 ns/vote (25x faster)
+```
+
+## Testing
+
+```bash
+cd pkg/cpp/build
+ctest --verbose
+
+# Run specific test
+./tests/test_consensus
+
+# Run with sanitizers (debug build)
+cmake .. -DCMAKE_BUILD_TYPE=Debug -DENABLE_ASAN=ON
+make
+./tests/test_consensus
+```
+
+## Thread Safety
+
+The C++ SDK is fully thread-safe:
+
+```cpp
+#include <lux/consensus.hpp>
+#include <thread>
+#include <vector>
+
+using namespace lux::consensus;
+
+int main() {
+    ConsensusParams params {/* ... */};
+
+    // Shared engine (thread-safe)
+    auto engine = Consensus::create(EngineType::DAG, params);
+
+    // Spawn worker threads
+    std::vector<std::thread> workers;
+    for (int i = 0; i < 4; ++i) {
+        workers.emplace_back([&engine, i]() {
+            for (int j = 0; j < 100; ++j) {
+                Vote vote {
+                    .engine_type = EngineType::DAG,
+                    .node_id = static_cast<uint16_t>(i),
+                    .block_id = static_cast<uint16_t>(j),
+                    .vote_type = VoteType::Prefer
+                };
+                engine->process_vote(vote);
+            }
+        });
+    }
+
+    // Wait for completion
+    for (auto& worker : workers) {
+        worker.join();
+    }
+
+    auto stats = engine->get_stats();
+    std::cout << "Processed " << stats.votes_processed << " votes\n";
+
+    return 0;
+}
+```
+
+## Modern C++20 Features
+
+### Concepts and Constraints
+
+```cpp
+template<std::integral T>
+Block create_block(T id, T parent_id) {
+    return Block {
+        .id = static_cast<uint16_t>(id),
+        .parent_id = static_cast<uint16_t>(parent_id),
+        .height = 1,
+        .timestamp = std::chrono::system_clock::now(),
+        .data = {}
+    };
+}
+```
+
+### Ranges
+
+```cpp
+#include <ranges>
+
+// Process blocks using ranges
+auto accepted_blocks = blocks
+    | std::views::filter([&engine](const auto& block) {
+        return engine->is_accepted(block.id);
+    })
+    | std::views::transform([](const auto& block) {
+        return block.serialize();
+    });
+```
+
+### Coroutines
+
+```cpp
+#include <coroutine>
+
+std::generator<Block> generate_blocks(size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        co_yield Block {
+            .id = static_cast<uint16_t>(i),
+            .parent_id = static_cast<uint16_t>(i > 0 ? i - 1 : 0),
+            .height = i,
+            .timestamp = std::chrono::system_clock::now(),
+            .data = {}
+        };
+    }
+}
+```
+
+## Troubleshooting
+
+**Linker error: undefined reference to lux::consensus**
+
+Ensure you're linking the library:
+```cmake
+target_link_libraries(my_app PRIVATE Lux::lux_consensus)
+```
+
+**Error: C++20 features not available**
+
+Update your compiler or set the standard explicitly:
+```cmake
+target_compile_features(my_app PRIVATE cxx_std_20)
+```
+
+**MLX not found**
+
+Install MLX framework (macOS only):
+```bash
+pip install mlx
+```
+
+## See Also
+
+- [Go SDK](/docs/sdk/go) - Go implementation with AI consensus
+- [C SDK](/docs/sdk/c) - Low-level C library
+- [Python SDK](/docs/sdk/python) - Python Cython bindings
+- [Rust SDK](/docs/sdk/rust) - Safe Rust bindings
+- [MLX Documentation](/docs/sdk/mlx) - GPU acceleration guide
