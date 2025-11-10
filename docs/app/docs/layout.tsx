@@ -1,7 +1,7 @@
 import { DocsLayout } from "fumadocs-ui/layouts/docs"
 import type { ReactNode } from "react"
 import { BookOpen, Code, Cpu } from "lucide-react"
-import { Logo } from "@luxfi/logo"
+import { Logo } from "../../components/logo"
 
 // Static page tree to avoid circular dependencies
 const pageTree = {

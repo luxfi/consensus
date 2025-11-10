@@ -11,7 +11,6 @@
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
-    "@luxfi/logo": "file:~/work/lux/logo",
     "fumadocs-core": "^15.8.5",
     "fumadocs-mdx": "^12.0.3",
     "fumadocs-ui": "^15.8.5",
