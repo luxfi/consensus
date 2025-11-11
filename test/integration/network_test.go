@@ -97,7 +97,7 @@ type Consensus interface {
 	Add(block *TestBlock) error
 
 	// RecordPoll records poll results
-	RecordPoll(ctx context.Context, votes *bag.Bag) error
+	RecordPoll(ctx context.Context, votes *bag.Bag[ids.ID]) error
 
 	// NumProcessing returns the number of processing blocks
 	NumProcessing() int
@@ -201,7 +201,7 @@ func (c *ChainConsensus) Add(block *TestBlock) error {
 }
 
 // RecordPoll records poll results
-func (c *ChainConsensus) RecordPoll(ctx context.Context, votes *bag.Bag) error {
+func (c *ChainConsensus) RecordPoll(ctx context.Context, votes *bag.Bag[ids.ID]) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -561,7 +561,7 @@ func (n *SimulationNetwork) Round() error {
 		}
 
 		// Sample K nodes for voting
-		votes := bag.New()
+		votes := bag.New[ids.ID]()
 
 		if allAgree {
 			// If all nodes agree, give strong signal
@@ -586,7 +586,7 @@ func (n *SimulationNetwork) Round() error {
 
 		// Record the poll for this node
 		ctx := context.Background()
-		if err := node.RecordPoll(ctx, votes); err != nil {
+		if err := node.RecordPoll(ctx, &votes); err != nil {
 			return err
 		}
 
