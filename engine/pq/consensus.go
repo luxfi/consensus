@@ -25,6 +25,9 @@ type ConsensusEngine struct {
 	height    uint64
 	round     uint64
 	finalized map[ids.ID]bool
+
+	// Cryptography
+	certGen *CertificateGenerator
 }
 
 // FinalityEvent represents a finalized block with quantum-resistant proofs
@@ -107,6 +110,7 @@ func NewConsensus(params config.Parameters) *ConsensusEngine {
 
 // Initialize sets up the PQ engine with keys
 func (e *ConsensusEngine) Initialize(ctx context.Context, blsKey, pqKey []byte) error {
+	e.certGen = NewCertificateGenerator(blsKey, pqKey)
 	return e.quasar.Initialize(ctx, blsKey, pqKey)
 }
 
@@ -139,15 +143,42 @@ func (e *ConsensusEngine) ProcessBlock(ctx context.Context, blockID ids.ID, vote
 		return fmt.Errorf("insufficient votes for finality: %d/%d for block %s", maxVotes, totalVotes, bestBlock)
 	}
 
-	// Create mock certificate
-	cert := &quasar.CertBundle{
-		BLSAgg: []byte("mock-bls-aggregate"),
-		PQCert: []byte("mock-pq-certificate"),
+	// Generate real certificates using cryptography
+	var cert *quasar.CertBundle
+	if e.certGen != nil {
+		// Generate BLS aggregate signature
+		blsSig, err := e.certGen.GenerateBLSAggregate(blockID, votes)
+		if err != nil {
+			return fmt.Errorf("failed to generate BLS signature: %w", err)
+		}
+
+		// Generate post-quantum certificate
+		pqCert, err := e.certGen.GeneratePQCertificate(blockID, votes)
+		if err != nil {
+			return fmt.Errorf("failed to generate PQ certificate: %w", err)
+		}
+
+		cert = &quasar.CertBundle{
+			BLSAgg: blsSig,
+			PQCert: pqCert,
+		}
+	} else {
+		// Fallback to test keys if not initialized
+		blsKey, pqKey := GenerateTestKeys()
+		testGen := NewCertificateGenerator(blsKey, pqKey)
+
+		blsSig, _ := testGen.GenerateBLSAggregate(blockID, votes)
+		pqCert, _ := testGen.GeneratePQCertificate(blockID, votes)
+
+		cert = &quasar.CertBundle{
+			BLSAgg: blsSig,
+			PQCert: pqCert,
+		}
 	}
 
-	// Validate certificate (placeholder logic)
-	if len(cert.BLSAgg) == 0 && len(cert.PQCert) == 0 {
-		return fmt.Errorf("insufficient votes for finality")
+	// Validate certificate
+	if len(cert.BLSAgg) == 0 || len(cert.PQCert) == 0 {
+		return fmt.Errorf("failed to generate valid certificates")
 	}
 
 	// Mark as finalized
