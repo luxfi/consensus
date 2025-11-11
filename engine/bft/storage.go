@@ -197,7 +197,7 @@ func finalizationKey(seq uint64) []byte {
 
 // getGenesisBlock returns the genesis block wrapped as a Block instance.
 func getGenesisBlock(ctx context.Context, config *Config, blockTracker *blockTracker) (*Block, error) {
-	snowmanGenesis, err := getBlock(ctx, config.VM, 0)
+	luxGenesisBlock, err := getBlock(ctx, config.VM, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func getGenesisBlock(ctx context.Context, config *Config, blockTracker *blockTra
 	genesis := &Block{
 		metadata:     genesisMetadata,
 		blockTracker: blockTracker,
-		vmBlock:      snowmanGenesis,
+		vmBlock:      luxGenesisBlock,
 	}
 
 	// set the digest
