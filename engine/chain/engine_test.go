@@ -57,11 +57,17 @@ func TestHealthCheck(t *testing.T) {
 		t.Error("HealthCheck returned nil")
 	}
 
-	// Check it returns a map with healthy status
+	// Check it returns a map with consensus stats
 	if m, ok := health.(map[string]interface{}); ok {
-		if v, exists := m["healthy"]; !exists || v != true {
-			t.Error("Engine should report healthy")
+		// Real consensus returns detailed stats
+		if _, exists := m["total_blocks"]; !exists {
+			t.Error("HealthCheck should include total_blocks stat")
 		}
+		if _, exists := m["bootstrapped"]; !exists {
+			t.Error("HealthCheck should include bootstrapped stat")
+		}
+	} else {
+		t.Error("HealthCheck should return a map[string]interface{}")
 	}
 }
 
