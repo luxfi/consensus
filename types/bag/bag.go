@@ -1,9 +1,9 @@
 // Copyright (C) 2019-2025, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// Package bag provides utilities for vote collection and counting.
-// This is the canonical bag implementation for Lux consensus.
-// Other packages should import from github.com/luxfi/consensus/utils/bag
+// Package bag provides multiset data structures for vote collection and counting.
+// This is the canonical bag implementation for all Lux packages.
+// Import from: github.com/luxfi/consensus/types/bag
 package bag
 
 import (
