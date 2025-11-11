@@ -1,95 +1,205 @@
-// Package bag provides utilities for vote collection and counting
+// Copyright (C) 2019-2025, Lux Industries, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+// Package bag provides utilities for vote collection and counting.
+// This is the canonical bag implementation for Lux consensus.
+// Other packages should import from github.com/luxfi/consensus/utils/bag
 package bag
 
-// Bag tracks counts of IDs (votes)
+import (
+	"fmt"
+	"strings"
+
+	"golang.org/x/exp/maps"
+
+	"github.com/luxfi/math/set"
+)
+
+const minBagSize = 16
+
+// Bag is a multiset for tracking votes and consensus state.
+// It provides threshold tracking for consensus algorithms.
 type Bag[T comparable] struct {
 	counts map[T]int
 	size   int
+
+	// Threshold tracking for consensus
+	threshold    int
+	metThreshold set.Set[T]
 }
 
-// Of creates a bag from elements
-func Of[T comparable](elements ...T) Bag[T] {
-	b := Bag[T]{
-		counts: make(map[T]int),
-	}
-	for _, e := range elements {
-		b.Add(e)
-	}
+// Of returns a Bag initialized with [elts]
+func Of[T comparable](elts ...T) Bag[T] {
+	var b Bag[T]
+	b.Add(elts...)
 	return b
 }
 
 // New creates an empty bag
 func New[T comparable]() Bag[T] {
 	return Bag[T]{
-		counts: make(map[T]int),
+		counts: make(map[T]int, minBagSize),
 	}
 }
 
-// Add increments the count for an element
-func (b *Bag[T]) Add(element T) {
-	b.counts[element]++
-	b.size++
+func (b *Bag[T]) init() {
+	if b.counts == nil {
+		b.counts = make(map[T]int, minBagSize)
+	}
+	if b.metThreshold == nil {
+		b.metThreshold = make(set.Set[T])
+	}
 }
 
-// AddCount adds multiple counts for an element
-func (b *Bag[T]) AddCount(element T, count int) {
+// SetThreshold sets the number of times an element must be added to be contained in
+// the threshold set. This is critical for consensus voting algorithms.
+func (b *Bag[_]) SetThreshold(threshold int) {
+	if b.threshold == threshold {
+		return
+	}
+
+	b.threshold = threshold
+	b.metThreshold.Clear()
+	for vote, count := range b.counts {
+		if count >= threshold {
+			b.metThreshold.Add(vote)
+		}
+	}
+}
+
+// Threshold returns the elements that have been seen at least threshold times.
+// Used by consensus algorithms to determine which blocks/votes have sufficient support.
+func (b *Bag[T]) Threshold() set.Set[T] {
+	return b.metThreshold
+}
+
+// Add increases the number of times each element has been seen by one.
+func (b *Bag[T]) Add(elts ...T) {
+	for _, elt := range elts {
+		b.AddCount(elt, 1)
+	}
+}
+
+// AddCount increases the number of times the element has been seen by [count].
+// If [count] <= 0 this is a no-op.
+func (b *Bag[T]) AddCount(elt T, count int) {
 	if count <= 0 {
 		return
 	}
-	b.counts[element] += count
+
+	b.init()
+
+	totalCount := b.counts[elt] + count
+	b.counts[elt] = totalCount
 	b.size += count
+
+	if totalCount >= b.threshold {
+		b.metThreshold.Add(elt)
+	}
 }
 
-// Count returns the count for an element
-func (b *Bag[T]) Count(element T) int {
-	return b.counts[element]
+// Count returns the number of [elt] in the bag.
+func (b *Bag[T]) Count(elt T) int {
+	return b.counts[elt]
 }
 
-// Len returns total number of elements (with duplicates)
-func (b *Bag[T]) Len() int {
+// Len returns the number of elements in the bag.
+func (b *Bag[_]) Len() int {
 	return b.size
 }
 
-// Mode returns the element with highest count and its count
-func (b *Bag[T]) Mode() (mode T, count int) {
-	for element, elementCount := range b.counts {
-		if elementCount > count {
-			mode = element
-			count = elementCount
-		}
-	}
-	return mode, count
-}
-
-// List returns all unique elements
+// List returns a list of unique elements that have been added.
+// The returned list doesn't have duplicates.
 func (b *Bag[T]) List() []T {
-	list := make([]T, 0, len(b.counts))
-	for element := range b.counts {
-		list = append(list, element)
-	}
-	return list
+	return maps.Keys(b.counts)
 }
 
-// Filter returns a new bag with only elements passing the filter
-func (b *Bag[T]) Filter(filter func(T) bool) Bag[T] {
-	result := New[T]()
-	for element, count := range b.counts {
-		if filter(element) {
-			result.AddCount(element, count)
-		}
-	}
-	return result
-}
-
-// Equals checks if two bags have the same contents
+// Equals returns true if the bags contain the same elements
 func (b *Bag[T]) Equals(other Bag[T]) bool {
-	if b.size != other.size || len(b.counts) != len(other.counts) {
-		return false
-	}
-	for element, count := range b.counts {
-		if other.counts[element] != count {
-			return false
+	return b.size == other.size && maps.Equal(b.counts, other.counts)
+}
+
+// Mode returns the most common element in the bag and the count of that element.
+// If there's a tie, any of the tied element may be returned.
+func (b *Bag[T]) Mode() (T, int) {
+	var (
+		mode     T
+		modeFreq int
+	)
+	for elt, count := range b.counts {
+		if count > modeFreq {
+			mode = elt
+			modeFreq = count
 		}
 	}
-	return true
+
+	return mode, modeFreq
+}
+
+// Filter returns a bag with the elements of this bag that return true for [filterFunc],
+// along with their counts.
+// For example, if X is in this bag with count 5, and filterFunc(X) returns true,
+// then the returned bag contains X with count 5.
+func (b *Bag[T]) Filter(filterFunc func(T) bool) Bag[T] {
+	newBag := Bag[T]{}
+	for vote, count := range b.counts {
+		if filterFunc(vote) {
+			newBag.AddCount(vote, count)
+		}
+	}
+	return newBag
+}
+
+// Split returns:
+// 1. A bag containing the elements of this bag that return false for [splitFunc].
+// 2. A bag containing the elements of this bag that return true for [splitFunc].
+// Counts are preserved in the returned bags.
+// For example, if X is in this bag with count 5, and splitFunc(X) is false,
+// then the first returned bag has X in it with count 5.
+func (b *Bag[T]) Split(splitFunc func(T) bool) [2]Bag[T] {
+	splitVotes := [2]Bag[T]{}
+	for vote, count := range b.counts {
+		if splitFunc(vote) {
+			splitVotes[1].AddCount(vote, count)
+		} else {
+			splitVotes[0].AddCount(vote, count)
+		}
+	}
+	return splitVotes
+}
+
+// Remove all instances of [elt] from the bag.
+func (b *Bag[T]) Remove(elt T) {
+	count := b.counts[elt]
+	delete(b.counts, elt)
+	b.size -= count
+	b.metThreshold.Remove(elt)
+}
+
+// PrefixedString returns a string representation with a prefix on each line
+func (b *Bag[T]) PrefixedString(prefix string) string {
+	sb := strings.Builder{}
+
+	var zero T
+	sb.WriteString(fmt.Sprintf("Bag[%T]: (Size = %d)", zero, b.Len()))
+	for elt, count := range b.counts {
+		sb.WriteString(fmt.Sprintf("\n%s    %v: %d", prefix, elt, count))
+	}
+
+	return sb.String()
+}
+
+// String returns a string representation of the bag
+func (b *Bag[_]) String() string {
+	return b.PrefixedString("")
+}
+
+// Clone returns a deep copy of the bag
+func (b *Bag[T]) Clone() Bag[T] {
+	var clone Bag[T]
+	clone.threshold = b.threshold
+	for id, count := range b.counts {
+		clone.AddCount(id, count)
+	}
+	return clone
 }
