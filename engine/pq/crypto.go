@@ -46,6 +46,7 @@ func (cg *CertificateGenerator) GenerateBLSAggregate(blockID ids.ID, votes map[s
 		if count < 0 {
 			count = 0
 		}
+		// #nosec G115 -- count is guaranteed >= 0 after check above
 		binary.LittleEndian.PutUint64(countBytes, uint64(count))
 		h.Write(countBytes)
 	}
@@ -84,6 +85,7 @@ func (cg *CertificateGenerator) GeneratePQCertificate(blockID ids.ID, votes map[
 		if count < 0 {
 			count = 0
 		}
+		// #nosec G115 -- count is guaranteed >= 0 after check above
 		binary.LittleEndian.PutUint64(countBytes, uint64(count))
 		h.Write(countBytes)
 	}
