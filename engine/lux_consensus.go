@@ -26,10 +26,10 @@ type LuxConsensus struct {
 	beta  uint32  // Confidence threshold
 
 	// Protocol components
-	wave       *wave.Wave[ids.ID]
-	focus      *focus.Confidence[ids.ID]
-	prismCut   prism.Cut[ids.ID]
-	transport  wave.Transport[ids.ID]
+	wave      *wave.Wave[ids.ID]
+	focus     *focus.Confidence[ids.ID]
+	prismCut  prism.Cut[ids.ID]
+	transport wave.Transport[ids.ID]
 
 	// State tracking
 	preference ids.ID
@@ -44,6 +44,12 @@ type LuxConsensus struct {
 func NewLuxConsensus(k int, alpha int, beta int) *LuxConsensus {
 	alphaRatio := float64(alpha) / float64(k)
 
+	// Ensure beta is non-negative for uint32 conversion
+	if beta < 0 {
+		beta = 0
+	}
+	betaU32 := uint32(beta)
+
 	// Create a simple cut implementation for sampling
 	cut := &SimpleCut{k: k}
 
@@ -54,7 +60,7 @@ func NewLuxConsensus(k int, alpha int, beta int) *LuxConsensus {
 	waveCfg := wave.Config{
 		K:       k,
 		Alpha:   alphaRatio,
-		Beta:    uint32(beta),
+		Beta:    betaU32,
 		RoundTO: 1 * time.Second,
 	}
 
@@ -65,13 +71,13 @@ func NewLuxConsensus(k int, alpha int, beta int) *LuxConsensus {
 	return &LuxConsensus{
 		k:                    k,
 		alpha:                alphaRatio,
-		beta:                 uint32(beta),
+		beta:                 betaU32,
 		wave:                 &w,
 		focus:                f,
-		prismCut:            cut,
-		transport:           transport,
+		prismCut:             cut,
+		transport:            transport,
 		decided:              make(map[ids.ID]bool),
-		decisions:           make(map[ids.ID]types.Decision),
+		decisions:            make(map[ids.ID]types.Decision),
 		consecutiveSuccesses: make(map[ids.ID]uint32),
 	}
 }

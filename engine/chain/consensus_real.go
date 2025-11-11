@@ -202,11 +202,11 @@ func (c *ChainConsensus) Stats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"total_blocks": len(c.blocks),
-		"accepted":     accepted,
-		"rejected":     rejected,
-		"pending":      pending,
-		"tips":         len(c.tips),
+		"total_blocks":  len(c.blocks),
+		"accepted":      accepted,
+		"rejected":      rejected,
+		"pending":       pending,
+		"tips":          len(c.tips),
 		"finalized_tip": c.finalizedTip.String(),
 	}
 }

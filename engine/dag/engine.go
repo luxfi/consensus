@@ -63,7 +63,7 @@ func New() Engine {
 // NewWithParams creates an engine with specific parameters
 func NewWithParams(params config.Parameters) Engine {
 	return &dagEngine{
-		consensus:    NewDAGConsensus(int(params.K), int(params.AlphaPreference), int(params.Beta)),
+		consensus:    NewDAGConsensus(params.K, params.AlphaPreference, int(params.Beta)),
 		params:       params,
 		bootstrapped: false,
 		pendingData:  make([][]byte, 0),
