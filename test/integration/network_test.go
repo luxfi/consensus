@@ -6,6 +6,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 
@@ -464,18 +465,16 @@ func NewSimulationNetwork(params Parameters, numColors int, rngSeed uint64) *Sim
 	}
 	n.colors = []*TestBlock{genesis}
 
-	// Create additional blocks forming a chain
+	// Create conflicting blocks - all at the same height building on genesis
+	// This creates proper consensus scenario where nodes must choose between siblings
 	for i := 1; i < numColors; i++ {
-		// Create a chain, each block builds on the previous
-		parent := n.colors[i-1]
-
 		block := &TestBlock{
 			Decidable: consensustest.Decidable{
 				IDV:     ids.Empty.Prefix(n.nextRandom()),
 				StatusV: choices.Processing,
 			},
-			ParentV:    parent.IDV,
-			HeightV:    parent.HeightV + 1,
+			ParentV:    genesis.IDV,  // All blocks build on genesis (siblings, not chain)
+			HeightV:    1,             // All at same height (conflicting choices)
 			TimestampV: int64(i),
 		}
 		n.colors = append(n.colors, block)
@@ -957,37 +956,82 @@ func TestNetworkResilience(t *testing.T) {
 	t.Logf("Network reached consensus despite %d failures in %d rounds", len(failedNodes), rounds)
 }
 
+// adaptiveConsensusParams calculates optimal consensus parameters based on network size and colors
+// Based on Avalanche consensus paper and network convergence theory:
+// - K scales with network size (sample ~80% of network for robust convergence)
+// - Alpha maintains supermajority threshold (~65-70% of K for Byzantine tolerance)
+// - Beta scales logarithmically with colors (more rounds for more competing values)
+func adaptiveConsensusParams(numNodes, numColors int) (k, alpha, beta, maxRounds int) {
+	// K: Sample size should be large fraction of network
+	// For small networks use all nodes, for large use ~80%
+	k = numNodes
+	if numNodes > 5 {
+		k = int(float64(numNodes) * 0.8)
+		if k > numNodes-1 {
+			k = numNodes - 1
+		}
+	}
+
+	// Ensure minimum k
+	if k < 3 {
+		k = 3
+	}
+
+	// Alpha: Supermajority threshold (65-70% of k)
+	// Byzantine tolerance requires > 2/3 agreement
+	alpha = int(float64(k) * 0.67)
+	if alpha < 2 {
+		alpha = 2
+	}
+
+	// Beta: Decision threshold scales with log(colors)
+	// More competing values require more confirmation rounds
+	beta = 3 + int(math.Log2(float64(numColors)))
+	if beta > 20 {
+		beta = 20 // Cap at reasonable maximum
+	}
+
+	// MaxRounds: Scales with network size and colors
+	// Larger networks and more colors need exponentially more rounds
+	maxRounds = 10000 * (1 + numColors/5) * (1 + numNodes/10)
+	if maxRounds > 200000 {
+		maxRounds = 200000 // Cap to prevent infinite loops
+	}
+
+	return k, alpha, beta, maxRounds
+}
+
 // BenchmarkNetworkConsensus benchmarks network consensus performance
-// Note: Large networks (20+ nodes) with many colors don't converge with current
-// consensus parameters. This may require algorithm improvements or different parameters.
+// Uses adaptive parameters scaled to network size and number of competing values
 func BenchmarkNetworkConsensus(b *testing.B) {
 	benchmarks := []struct {
 		name      string
 		numNodes  int
 		numColors int
-		k         int
-		alpha     int
-		beta      int
-		maxRounds int
 	}{
-		{"Small-5-3", 5, 3, 5, 3, 3, 10000},
-		{"Medium-10-5", 10, 5, 8, 5, 5, 20000},
-		// TODO: Large/XLarge networks don't converge - needs investigation
-		// {"Large-20-10", 20, 10, 15, 10, 10, 50000},
-		// {"XLarge-50-20", 50, 20, 30, 20, 15, 100000},
+		{"Small-5-3", 5, 3},
+		{"Medium-10-5", 10, 5},
+		{"Large-20-10", 20, 10},
+		{"XLarge-50-20", 50, 20},
 	}
 
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
+			// Calculate adaptive parameters for this network configuration
+			k, alpha, beta, maxRounds := adaptiveConsensusParams(bm.numNodes, bm.numColors)
+
+			b.Logf("Network: %d nodes, %d colors | Params: K=%d, Alpha=%d, Beta=%d, MaxRounds=%d",
+				bm.numNodes, bm.numColors, k, alpha, beta, maxRounds)
+
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				// Create network with size-appropriate parameters
+				// Create network with adaptive parameters
 				params := DefaultParameters()
-				params.K = bm.k
-				params.AlphaPreference = bm.alpha
-				params.AlphaConfidence = bm.alpha
-				params.Beta = bm.beta
+				params.K = k
+				params.AlphaPreference = alpha
+				params.AlphaConfidence = alpha
+				params.Beta = beta
 				network := NewSimulationNetwork(params, bm.numColors, uint64(i*12345))
 
 				// Add nodes
@@ -1000,7 +1044,6 @@ func BenchmarkNetworkConsensus(b *testing.B) {
 
 				// Run until finalized
 				rounds := 0
-				maxRounds := bm.maxRounds
 				for !network.Finalized() && rounds < maxRounds {
 					if err := network.Round(); err != nil {
 						b.Fatal(err)
