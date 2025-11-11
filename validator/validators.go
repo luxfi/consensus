@@ -15,6 +15,14 @@ type State interface {
 	GetValidatorSet(ctx context.Context, height uint64, netID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
 	GetCurrentValidators(ctx context.Context, height uint64, netID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
 	GetCurrentHeight(ctx context.Context) (uint64, error)
+
+	// GetWarpValidatorSets returns Warp validator sets for the requested heights and netIDs.
+	// Returns a map of netID -> height -> WarpSet containing BLS-enabled validators.
+	GetWarpValidatorSets(ctx context.Context, heights []uint64, netIDs []ids.ID) (map[ids.ID]map[uint64]*WarpSet, error)
+
+	// GetWarpValidatorSet returns the Warp validator set for a specific height and netID.
+	// Returns a WarpSet containing validators with BLS public keys for Warp signing.
+	GetWarpValidatorSet(ctx context.Context, height uint64, netID ids.ID) (*WarpSet, error)
 }
 
 // GetValidatorOutput provides validator information
@@ -24,6 +32,19 @@ type GetValidatorOutput struct {
 	Light     uint64
 	Weight    uint64 // Alias for Light for backward compatibility
 	TxID      ids.ID // Transaction ID that added this validator
+}
+
+// WarpValidator represents a Warp validator with BLS key
+type WarpValidator struct {
+	NodeID    ids.NodeID
+	PublicKey []byte // BLS public key for Warp signing
+	Weight    uint64
+}
+
+// WarpSet represents a set of Warp validators at a specific height
+type WarpSet struct {
+	Height     uint64
+	Validators map[ids.NodeID]*WarpValidator
 }
 
 // Set represents a set of validators
