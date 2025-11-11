@@ -15,8 +15,8 @@ import (
 
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/consensus/engine/chain/chaintest"
+	"github.com/luxfi/consensus/utils/bag"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/node/utils/bag"
 )
 
 var (
