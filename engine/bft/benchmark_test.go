@@ -37,18 +37,14 @@ func BenchmarkVoteAggregation(b *testing.B) {
 			validators, signer, verifier := setupValidators(b, bench.validators)
 			message := generateRandomMessage(defaultMessageSize)
 
-			// Generate individual signatures
+			// Generate individual signatures using raw signature method
 			signatures := make([]*bls.Signature, len(validators))
 			for i, nodeID := range validators {
-				sig, err := signer[nodeID].Sign(message)
+				sig, err := signer[nodeID].SignRaw(message)
 				if err != nil {
 					b.Fatalf("failed to sign: %v", err)
 				}
-				blsSig, err := bls.SignatureFromBytes(sig)
-				if err != nil {
-					b.Fatalf("failed to parse signature: %v", err)
-				}
-				signatures[i] = blsSig
+				signatures[i] = sig
 			}
 
 			b.ResetTimer()
@@ -99,15 +95,10 @@ func BenchmarkSignatureVerification(b *testing.B) {
 			nodeID := validators[0]
 			message := generateRandomMessage(bench.messageSize)
 
-			// Sign message
-			sig, err := signer[nodeID].Sign(message)
+			// Sign message using raw signature method
+			blsSig, err := signer[nodeID].SignRaw(message)
 			if err != nil {
 				b.Fatalf("failed to sign: %v", err)
-			}
-
-			blsSig, err := bls.SignatureFromBytes(sig)
-			if err != nil {
-				b.Fatalf("failed to parse signature: %v", err)
 			}
 
 			pk := verifier.nodeID2PK[nodeID]
@@ -149,7 +140,7 @@ func BenchmarkByzantineFaultDetection(b *testing.B) {
 			invalidMessage := generateRandomMessage(defaultMessageSize)
 
 			// Generate mixed signatures (some valid, some Byzantine)
-			signatures := make(map[ids.NodeID][]byte, bench.totalValidators)
+			signatures := make(map[ids.NodeID]*bls.Signature, bench.totalValidators)
 			for i, nodeID := range validators {
 				var msg []byte
 				if i < byzantineCount {
@@ -160,7 +151,7 @@ func BenchmarkByzantineFaultDetection(b *testing.B) {
 					msg = validMessage
 				}
 
-				sig, err := signer[nodeID].Sign(msg)
+				sig, err := signer[nodeID].SignRaw(msg)
 				if err != nil {
 					b.Fatalf("failed to sign: %v", err)
 				}
@@ -236,15 +227,11 @@ func BenchmarkQuorumCertificateCreation(b *testing.B) {
 
 			for i := 0; i < quorum; i++ {
 				nodeID := validators[i]
-				sig, err := signer[nodeID].Sign(message)
+				sig, err := signer[nodeID].SignRaw(message)
 				if err != nil {
 					b.Fatalf("failed to sign: %v", err)
 				}
-				blsSig, err := bls.SignatureFromBytes(sig)
-				if err != nil {
-					b.Fatalf("failed to parse signature: %v", err)
-				}
-				signatures = append(signatures, blsSig)
+				signatures = append(signatures, sig)
 				signers = append(signers, nodeID)
 			}
 
@@ -328,7 +315,7 @@ func setupValidators(b *testing.B, count int) ([]ids.NodeID, map[ids.NodeID]*BLS
 		nodeID := ids.GenerateTestNodeID()
 		validators[i] = nodeID
 
-		// Create signer wrapper
+		// Create signer wrapper that returns raw signatures
 		signers[nodeID] = &BLSSigner{
 			chainID:   chainID,
 			networkID: networkID,
@@ -359,16 +346,10 @@ func generateRandomMessage(size int) []byte {
 	return msg
 }
 
-func detectByzantineNodes(verifier *BLSVerifier, signatures map[ids.NodeID][]byte, correctMessage []byte) []ids.NodeID {
+func detectByzantineNodes(verifier *BLSVerifier, signatures map[ids.NodeID]*bls.Signature, correctMessage []byte) []ids.NodeID {
 	byzantineNodes := make([]ids.NodeID, 0)
 
-	for nodeID, sigBytes := range signatures {
-		sig, err := bls.SignatureFromBytes(sigBytes)
-		if err != nil {
-			byzantineNodes = append(byzantineNodes, nodeID)
-			continue
-		}
-
+	for nodeID, sig := range signatures {
 		pk, exists := verifier.nodeID2PK[nodeID]
 		if !exists {
 			byzantineNodes = append(byzantineNodes, nodeID)
@@ -398,19 +379,14 @@ func simulateConsensusRound(validators []ids.NodeID, signers map[ids.NodeID]*BLS
 	votes := 0
 	for i := 0; i < quorum && i < len(validators); i++ {
 		nodeID := validators[i]
-		sig, err := signers[nodeID].Sign(blockData)
+		sig, err := signers[nodeID].SignRaw(blockData)
 		if err != nil {
 			continue
 		}
 
 		// Verify vote
-		blsSig, err := bls.SignatureFromBytes(sig)
-		if err != nil {
-			continue
-		}
-
 		pk := verifier.nodeID2PK[nodeID]
-		if bls.Verify(pk, blsSig, blockData) {
+		if bls.Verify(pk, sig, blockData) {
 			votes++
 		}
 	}
@@ -518,9 +494,9 @@ func BenchmarkParallelSignatureVerification(b *testing.B) {
 			message := generateRandomMessage(defaultMessageSize)
 
 			// Prepare signatures
-			signatures := make(map[ids.NodeID][]byte, bench.validators)
+			signatures := make(map[ids.NodeID]*bls.Signature, bench.validators)
 			for _, nodeID := range validators {
-				sig, _ := signer[nodeID].Sign(message)
+				sig, _ := signer[nodeID].SignRaw(message)
 				signatures[nodeID] = sig
 			}
 
@@ -534,7 +510,7 @@ func BenchmarkParallelSignatureVerification(b *testing.B) {
 	}
 }
 
-func verifyParallel(verifier *BLSVerifier, signatures map[ids.NodeID][]byte, message []byte, parallel int) int {
+func verifyParallel(verifier *BLSVerifier, signatures map[ids.NodeID]*bls.Signature, message []byte, parallel int) int {
 	type result struct {
 		nodeID ids.NodeID
 		valid  bool
@@ -543,16 +519,10 @@ func verifyParallel(verifier *BLSVerifier, signatures map[ids.NodeID][]byte, mes
 	ch := make(chan result, len(signatures))
 	sem := make(chan struct{}, parallel)
 
-	for nodeID, sigBytes := range signatures {
+	for nodeID, sig := range signatures {
 		sem <- struct{}{}
-		go func(nID ids.NodeID, sb []byte) {
+		go func(nID ids.NodeID, s *bls.Signature) {
 			defer func() { <-sem }()
-
-			sig, err := bls.SignatureFromBytes(sb)
-			if err != nil {
-				ch <- result{nodeID: nID, valid: false}
-				return
-			}
 
 			pk, exists := verifier.nodeID2PK[nID]
 			if !exists {
@@ -560,9 +530,9 @@ func verifyParallel(verifier *BLSVerifier, signatures map[ids.NodeID][]byte, mes
 				return
 			}
 
-			valid := bls.Verify(pk, sig, message)
+			valid := bls.Verify(pk, s, message)
 			ch <- result{nodeID: nID, valid: valid}
-		}(nodeID, sigBytes)
+		}(nodeID, sig)
 	}
 
 	validCount := 0
@@ -626,6 +596,11 @@ func (s *BLSSigner) Sign(message []byte) ([]byte, error) {
 		return nil, err
 	}
 	return bls.SignatureToBytes(sig), nil
+}
+
+// SignRaw returns the raw signature object without serialization for benchmarks
+func (s *BLSSigner) SignRaw(message []byte) (*bls.Signature, error) {
+	return s.signBLS(message)
 }
 
 type BLSVerifier struct {
