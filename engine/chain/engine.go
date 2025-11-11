@@ -51,7 +51,7 @@ func New() *Transitive {
 // NewWithParams creates an engine with specific parameters
 func NewWithParams(params config.Parameters) *Transitive {
 	return &Transitive{
-		consensus:    NewChainConsensus(int(params.K), int(params.AlphaPreference), int(params.Beta)),
+		consensus:    NewChainConsensus(params.K, params.AlphaPreference, int(params.Beta)),
 		params:       params,
 		bootstrapped: false,
 	}
