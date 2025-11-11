@@ -19,6 +19,10 @@ QWEN.md
 *.so
 *.dylib
 
+# Compiled object files and static libraries
+*.o
+*.a
+
 # Go workspace file
 go.work
 go.work.sum
