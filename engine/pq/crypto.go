@@ -42,6 +42,10 @@ func (cg *CertificateGenerator) GenerateBLSAggregate(blockID ids.ID, votes map[s
 	for validator, count := range votes {
 		h.Write([]byte(validator))
 		countBytes := make([]byte, 8)
+		// Clamp negative values to 0 to avoid overflow
+		if count < 0 {
+			count = 0
+		}
 		binary.LittleEndian.PutUint64(countBytes, uint64(count))
 		h.Write(countBytes)
 	}
@@ -76,6 +80,10 @@ func (cg *CertificateGenerator) GeneratePQCertificate(blockID ids.ID, votes map[
 	for validator, count := range votes {
 		h.Write([]byte(validator))
 		countBytes := make([]byte, 8)
+		// Clamp negative values to 0 to avoid overflow
+		if count < 0 {
+			count = 0
+		}
 		binary.LittleEndian.PutUint64(countBytes, uint64(count))
 		h.Write(countBytes)
 	}
