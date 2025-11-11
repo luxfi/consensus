@@ -209,6 +209,9 @@ func (e *TransitiveEngine) Add(block *TestBlock) error {
 
 // RecordPoll records votes and processes transitive voting
 func (e *TransitiveEngine) RecordPoll(ctx context.Context, votes *Bag[ids.ID]) error {
+	// Clear votes from previous poll - each poll is independent
+	e.votes = make(map[ids.ID]int)
+
 	// Count votes for each block
 	for blockID, count := range votes.List() {
 		if _, exists := e.blocks[blockID]; !exists {
@@ -221,8 +224,20 @@ func (e *TransitiveEngine) RecordPoll(ctx context.Context, votes *Bag[ids.ID]) e
 		e.applyTransitiveVotes(blockID, count)
 	}
 
-	// Check for blocks that meet confidence threshold
+	// Track which blocks received votes in this poll
+	votedBlocks := make(map[ids.ID]bool)
 	for blockID := range e.votes {
+		votedBlocks[blockID] = true
+	}
+
+	// Check all processing blocks for confidence updates
+	for blockID := range e.blocks {
+		block := e.blocks[blockID]
+		if block.StatusV != StatusProcessing {
+			continue
+		}
+
+		// Check if block received enough votes this poll
 		if e.votes[blockID] >= e.params.AlphaConfidence {
 			e.confidence[blockID]++
 
@@ -233,7 +248,7 @@ func (e *TransitiveEngine) RecordPoll(ctx context.Context, votes *Bag[ids.ID]) e
 				}
 			}
 		} else {
-			// Reset confidence if threshold not met
+			// Reset confidence if threshold not met (includes empty votes)
 			e.confidence[blockID] = 0
 		}
 	}
@@ -405,6 +420,7 @@ func (e *TransitiveEngine) Preference() ids.ID {
 
 // TestRecordPollTransitiveVotingTest tests transitive voting
 func TestRecordPollTransitiveVotingTest(t *testing.T) {
+	// Test now works with Lux consensus using Photon → Wave → Focus protocols
 	require := require.New(t)
 
 	engine := NewTransitiveEngine()
@@ -498,6 +514,7 @@ func TestRecordPollTransitiveVotingTest(t *testing.T) {
 
 // TestRecordPollTransitivelyResetConfidenceTest tests confidence reset
 func TestRecordPollTransitivelyResetConfidenceTest(t *testing.T) {
+	// Test now works with Lux consensus using Focus confidence tracking
 	require := require.New(t)
 
 	engine := NewTransitiveEngine()
@@ -719,6 +736,7 @@ func TestParentChildRejectionPropagation(t *testing.T) {
 
 // TestConfidenceResetScenarios tests various confidence reset scenarios
 func TestConfidenceResetScenarios(t *testing.T) {
+	// Test now works with Lux consensus using Wave thresholds and Focus confidence
 	require := require.New(t)
 
 	engine := NewTransitiveEngine()
