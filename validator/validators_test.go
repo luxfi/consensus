@@ -54,6 +54,51 @@ func (m *mockState) GetCurrentHeight(ctx context.Context) (uint64, error) {
 	return m.currentHeight, nil
 }
 
+func (m *mockState) GetWarpValidatorSets(ctx context.Context, heights []uint64, netIDs []ids.ID) (map[ids.ID]map[uint64]*WarpSet, error) {
+	if m.getValidatorErr != nil {
+		return nil, m.getValidatorErr
+	}
+	// Convert validators to WarpValidators
+	result := make(map[ids.ID]map[uint64]*WarpSet)
+	for _, netID := range netIDs {
+		result[netID] = make(map[uint64]*WarpSet)
+		for _, height := range heights {
+			warpVals := make(map[ids.NodeID]*WarpValidator)
+			for nodeID, v := range m.validators {
+				warpVals[nodeID] = &WarpValidator{
+					NodeID:    v.NodeID,
+					PublicKey: v.PublicKey,
+					Weight:    v.Weight,
+				}
+			}
+			result[netID][height] = &WarpSet{
+				Height:     height,
+				Validators: warpVals,
+			}
+		}
+	}
+	return result, nil
+}
+
+func (m *mockState) GetWarpValidatorSet(ctx context.Context, height uint64, netID ids.ID) (*WarpSet, error) {
+	if m.getValidatorErr != nil {
+		return nil, m.getValidatorErr
+	}
+	// Convert validators to WarpValidators
+	warpVals := make(map[ids.NodeID]*WarpValidator)
+	for nodeID, v := range m.validators {
+		warpVals[nodeID] = &WarpValidator{
+			NodeID:    v.NodeID,
+			PublicKey: v.PublicKey,
+			Weight:    v.Weight,
+		}
+	}
+	return &WarpSet{
+		Height:     height,
+		Validators: warpVals,
+	}, nil
+}
+
 // Mock Set implementation
 type mockSet struct {
 	validators map[ids.NodeID]Validator
