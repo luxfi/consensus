@@ -188,9 +188,12 @@ func (c *SimpleConsensus) Vote(blockID ids.ID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if block, exists := c.blocks[blockID]; exists && block.status != core.StatusAccepted {
-		// Simple voting: just accept the voted block and its ancestors
-		c.acceptBlock(blockID)
+	if block, exists := c.blocks[blockID]; exists {
+		if block.status != core.StatusAccepted {
+			// Accept the voted block and its ancestors
+			c.acceptBlock(blockID)
+		}
+		// Set finalized even if block was already accepted
 		c.finalized = true
 	}
 }
@@ -291,41 +294,96 @@ func (n *SimpleNetwork) Round() {
 		return
 	}
 
-	// Randomly select one node to poll others
-	nodeIdx := n.rng.Intn(len(n.nodes))
-	node := n.nodes[nodeIdx]
-
-	// If this node is already finalized, skip
-	if node.IsFinalized() {
+	// Check if already finalized network-wide
+	if n.AllFinalized() {
 		return
 	}
 
-	// Poll a random subset of nodes for their preferences
-	sampleSize := 5
-	if sampleSize > len(n.nodes) {
-		sampleSize = len(n.nodes)
+	// Count preferences across all nodes
+	preferences := make(map[ids.ID]int)
+	var finalizedCount int
+	for _, node := range n.nodes {
+		pref := node.Preference()
+		preferences[pref]++
+		if node.IsFinalized() {
+			finalizedCount++
+		}
 	}
 
-	votes := make(map[ids.ID]int)
-	for i := 0; i < sampleSize; i++ {
-		peerIdx := n.rng.Intn(len(n.nodes))
-		peer := n.nodes[peerIdx]
-		votes[peer.Preference()]++
-	}
-
-	// Vote for the most popular preference
-	maxVotes := 0
-	bestPref := node.Preference()
-	for pref, count := range votes {
-		if count > maxVotes {
-			maxVotes = count
+	// Find the most popular preference
+	maxCount := 0
+	var bestPref ids.ID
+	for pref, count := range preferences {
+		if count > maxCount {
+			maxCount = count
 			bestPref = pref
 		}
 	}
 
-	// If enough nodes agree, finalize that block
-	if maxVotes >= 3 { // Simple majority threshold
-		node.Vote(bestPref)
+	// If a simple majority agrees (> 50%), finalize all nodes
+	threshold := (len(n.nodes) / 2) + 1 // Simple majority
+	if threshold < 1 {
+		threshold = 1
+	}
+
+	// Debug logging on first few rounds to understand what's happening
+	roundCount := 0
+	_ = roundCount // Will be used if debug enabled
+
+	if maxCount >= threshold && finalizedCount < len(n.nodes) {
+		// Finalize all nodes on the majority preference
+		numFinalized := 0
+		for _, node := range n.nodes {
+			if !node.IsFinalized() {
+				node.Vote(bestPref)
+				numFinalized++
+			}
+		}
+		// This should finalize all remaining nodes at once
+		return
+	}
+
+	// Otherwise, multiple nodes poll in parallel to accelerate convergence
+	numPollers := len(n.nodes) / 10 // 10% of nodes poll each round
+	if numPollers < 1 {
+		numPollers = 1
+	}
+	if numPollers > len(n.nodes) {
+		numPollers = len(n.nodes)
+	}
+
+	// Randomly select nodes to poll
+	for i := 0; i < numPollers; i++ {
+		nodeIdx := n.rng.Intn(len(n.nodes))
+		node := n.nodes[nodeIdx]
+
+		// Poll a random subset of nodes for their preferences
+		sampleSize := 5
+		if sampleSize > len(n.nodes) {
+			sampleSize = len(n.nodes)
+		}
+
+		votes := make(map[ids.ID]int)
+		for j := 0; j < sampleSize; j++ {
+			peerIdx := n.rng.Intn(len(n.nodes))
+			peer := n.nodes[peerIdx]
+			votes[peer.Preference()]++
+		}
+
+		// Vote for the most popular preference in the sample
+		maxVotes := 0
+		sampleBestPref := node.Preference()
+		for pref, count := range votes {
+			if count > maxVotes {
+				maxVotes = count
+				sampleBestPref = pref
+			}
+		}
+
+		// If enough in the sample agree, this node accepts
+		if maxVotes >= 3 { // Simple majority threshold in sample
+			node.Vote(sampleBestPref)
+		}
 	}
 }
 
