@@ -6,6 +6,7 @@ import (
 
 	"github.com/luxfi/consensus/core/types"
 	"github.com/luxfi/consensus/protocol/prism"
+	"github.com/luxfi/consensus/protocol/wave/fpc"
 )
 
 // Photon represents a vote message in the consensus protocol
@@ -24,10 +25,13 @@ type Transport[T comparable] interface {
 
 // Config holds configuration for wave consensus
 type Config struct {
-	K       int           // Sample size
-	Alpha   float64       // Threshold ratio
-	Beta    uint32        // Confidence threshold
-	RoundTO time.Duration // Round timeout
+	K         int           // Sample size
+	Alpha     float64       // Threshold ratio (used when FPC disabled)
+	Beta      uint32        // Confidence threshold
+	RoundTO   time.Duration // Round timeout
+	EnableFPC bool          // Enable Fast Probabilistic Consensus
+	ThetaMin  float64       // FPC minimum threshold (default: 0.5)
+	ThetaMax  float64       // FPC maximum threshold (default: 0.8)
 }
 
 // WaveState represents the state of an item in wave consensus
@@ -43,6 +47,10 @@ type Wave[T comparable] struct {
 	cut prism.Cut[T]
 	tx  Transport[T]
 
+	// FPC support
+	fpcSelector *fpc.Selector
+	phase       uint64 // Current phase for FPC threshold selection
+
 	// State tracking
 	states map[T]*WaveState
 	prefs  map[T]bool // current preferences
@@ -50,12 +58,28 @@ type Wave[T comparable] struct {
 
 // New creates a new Wave instance
 func New[T comparable](cfg Config, cut prism.Cut[T], tx Transport[T]) Wave[T] {
+	// Initialize FPC selector if enabled
+	var fpcSel *fpc.Selector
+	if cfg.EnableFPC {
+		thetaMin := cfg.ThetaMin
+		if thetaMin == 0 {
+			thetaMin = 0.5 // Default
+		}
+		thetaMax := cfg.ThetaMax
+		if thetaMax == 0 {
+			thetaMax = 0.8 // Default
+		}
+		fpcSel = fpc.NewSelector(thetaMin, thetaMax, nil)
+	}
+
 	return Wave[T]{
-		cfg:    cfg,
-		cut:    cut,
-		tx:     tx,
-		states: make(map[T]*WaveState),
-		prefs:  make(map[T]bool),
+		cfg:         cfg,
+		cut:         cut,
+		tx:          tx,
+		fpcSelector: fpcSel,
+		phase:       0,
+		states:      make(map[T]*WaveState),
+		prefs:       make(map[T]bool),
 	}
 }
 
@@ -106,8 +130,17 @@ countVotes:
 		return
 	}
 
-	// Check threshold
-	threshold := int(float64(w.cfg.K) * w.cfg.Alpha)
+	// Increment phase for FPC
+	w.phase++
+
+	// Calculate threshold using FPC or fixed Alpha
+	var threshold int
+	if w.fpcSelector != nil {
+		threshold = w.fpcSelector.SelectThreshold(w.phase, w.cfg.K)
+	} else {
+		threshold = int(float64(w.cfg.K) * w.cfg.Alpha)
+	}
+
 	currentPref := w.prefs[item]
 
 	if yesVotes >= threshold {
