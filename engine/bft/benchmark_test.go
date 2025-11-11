@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/node/utils/crypto/bls"
-	"github.com/luxfi/node/utils/crypto/bls/signer/localsigner"
 	"github.com/luxfi/node/utils/set"
 )
 
@@ -37,7 +36,7 @@ func BenchmarkVoteAggregation(b *testing.B) {
 			validators, signer, verifier := setupValidators(b, bench.validators)
 			message := generateRandomMessage(defaultMessageSize)
 
-			// Generate individual signatures using raw signature method
+			// Generate individual signatures
 			signatures := make([]*bls.Signature, len(validators))
 			for i, nodeID := range validators {
 				sig, err := signer[nodeID].SignRaw(message)
@@ -95,7 +94,7 @@ func BenchmarkSignatureVerification(b *testing.B) {
 			nodeID := validators[0]
 			message := generateRandomMessage(bench.messageSize)
 
-			// Sign message using raw signature method
+			// Sign message
 			blsSig, err := signer[nodeID].SignRaw(message)
 			if err != nil {
 				b.Fatalf("failed to sign: %v", err)
@@ -304,22 +303,22 @@ func setupValidators(b *testing.B, count int) ([]ids.NodeID, map[ids.NodeID]*BLS
 	networkID := uint32(1)
 
 	for i := 0; i < count; i++ {
-		// Generate BLS key pair using localsigner
-		signer, err := localsigner.New()
+		// Generate BLS key pair using luxfi/crypto
+		sk, err := bls.NewSecretKey()
 		if err != nil {
-			b.Fatalf("failed to generate signer: %v", err)
+			b.Fatalf("failed to generate secret key: %v", err)
 		}
-		pk := signer.PublicKey()
+		pk := sk.PublicKey()
 
 		// Generate node ID
 		nodeID := ids.GenerateTestNodeID()
 		validators[i] = nodeID
 
-		// Create signer wrapper that returns raw signatures
+		// Create signer wrapper
 		signers[nodeID] = &BLSSigner{
 			chainID:   chainID,
 			networkID: networkID,
-			signBLS:   signer.Sign,
+			sk:        sk,
 		}
 
 		nodeID2PK[nodeID] = pk
@@ -587,11 +586,11 @@ func (qc *QC) Verify(msg []byte) error {
 type BLSSigner struct {
 	chainID   ids.ID
 	networkID uint32
-	signBLS   func(msg []byte) (*bls.Signature, error)
+	sk        *bls.SecretKey
 }
 
 func (s *BLSSigner) Sign(message []byte) ([]byte, error) {
-	sig, err := s.signBLS(message)
+	sig, err := s.sk.Sign(message)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +599,7 @@ func (s *BLSSigner) Sign(message []byte) ([]byte, error) {
 
 // SignRaw returns the raw signature object without serialization for benchmarks
 func (s *BLSSigner) SignRaw(message []byte) (*bls.Signature, error) {
-	return s.signBLS(message)
+	return s.sk.Sign(message)
 }
 
 type BLSVerifier struct {
