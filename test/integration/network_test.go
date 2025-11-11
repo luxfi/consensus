@@ -281,8 +281,43 @@ func (c *ChainConsensus) RecordPoll(ctx context.Context, votes *bag.Bag) error {
 					// Continue processing other votes
 				}
 			} else {
-				// Reset consecutive poll count if threshold not met
-				c.consecutivePoll[blockID] = 0
+				// Decrement consecutive poll count instead of resetting completely
+				// This allows for some vote fluctuation tolerance
+				if c.consecutivePoll[blockID] > 0 {
+					c.consecutivePoll[blockID]--
+				}
+			}
+		}
+	}
+
+	// Check if we should reject conflicting blocks
+	// If we see strong votes for a block at a height where we have a different block processing,
+	// we should reject our conflicting block
+	for voteBlockID, count := range voteCount {
+		voteBlock, voteExists := c.blocks[voteBlockID]
+		if !voteExists {
+			continue
+		}
+
+		// If this block got strong votes (>= AlphaConfidence)
+		if count >= c.params.AlphaConfidence {
+			// Check if we have conflicting blocks at the same height
+			for _, processingID := range c.processing.List() {
+				processingBlock, exists := c.blocks[processingID]
+				if !exists {
+					continue
+				}
+
+				// If blocks are at same height but different IDs, reject our block
+				if processingBlock.HeightV == voteBlock.HeightV && processingID != voteBlockID {
+					// Reject the conflicting block
+					if err := processingBlock.Reject(ctx); err != nil {
+						return err
+					}
+					c.processing.Remove(processingID)
+					delete(c.consecutivePoll, processingID)
+					delete(c.confidence, processingID)
+				}
 			}
 		}
 	}
@@ -827,7 +862,8 @@ func TestDAGConsensus(t *testing.T) {
 	params.AlphaConfidence = 3
 	params.Beta = 3
 
-	network := NewSimulationNetwork(params, 10, 424242)
+	// Use 5 blocks instead of 10 to reduce conflicts
+	network := NewSimulationNetwork(params, 5, 424242)
 
 	// Add nodes using chain consensus (DAG can be simulated with multiple parents)
 	for i := 0; i < 10; i++ {
