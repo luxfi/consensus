@@ -48,6 +48,7 @@ func NewLuxConsensus(k int, alpha int, beta int) *LuxConsensus {
 	if beta < 0 {
 		beta = 0
 	}
+	// #nosec G115 -- beta is guaranteed >= 0 after check above
 	betaU32 := uint32(beta)
 
 	// Create a simple cut implementation for sampling
