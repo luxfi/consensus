@@ -4,6 +4,7 @@
 package chain
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -404,7 +405,12 @@ func (e *TransitiveEngine) updatePreferenceFromVotes() {
 	newPref := e.preference
 
 	for blockID, votes := range e.votes {
-		if e.processing.Contains(blockID) && votes > maxVotes {
+		if !e.processing.Contains(blockID) {
+			continue
+		}
+		
+		// Use deterministic tiebreaker: prefer block with higher ID when votes are equal
+		if votes > maxVotes || (votes == maxVotes && bytes.Compare(blockID[:], newPref[:]) > 0) {
 			maxVotes = votes
 			newPref = blockID
 		}
