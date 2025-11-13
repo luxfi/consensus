@@ -45,8 +45,8 @@ typedef struct hash_entry {
     struct hash_entry* next;
 } hash_entry_t;
 
-struct lux_consensus_engine {
-    lux_consensus_config_t config;
+struct lux_chain {
+    lux_config_t config;
     
     // Block storage
     hash_entry_t* block_table[HASH_TABLE_SIZE];
@@ -82,7 +82,7 @@ static uint32_t hash_block_id(const uint8_t* block_id) {
 }
 
 // Find block in hash table
-static block_node_t* find_block(lux_consensus_engine_t* engine, const uint8_t* block_id) {
+static block_node_t* find_block(lux_chain_t* engine, const uint8_t* block_id) {
     uint32_t index = hash_block_id(block_id);
     hash_entry_t* entry = engine->block_table[index];
     
@@ -96,7 +96,7 @@ static block_node_t* find_block(lux_consensus_engine_t* engine, const uint8_t* b
 }
 
 // Add block to hash table
-static lux_error_t add_block_to_table(lux_consensus_engine_t* engine, block_node_t* node) {
+static lux_error_t add_block_to_table(lux_chain_t* engine, block_node_t* node) {
     uint32_t index = hash_block_id(node->block.id);
     
     hash_entry_t* new_entry = (hash_entry_t*)calloc(1, sizeof(hash_entry_t));
@@ -111,20 +111,20 @@ static lux_error_t add_block_to_table(lux_consensus_engine_t* engine, block_node
 }
 
 // Lux Consensus algorithm implementation
-static bool check_confidence(lux_consensus_engine_t* engine, block_node_t* node) {
-    return node->confidence_count >= engine->config.alpha_confidence;
+static bool check_confidence(lux_chain_t* engine, block_node_t* node) {
+    return node->confidence_count >= engine->config.alpha;
 }
 
-static bool check_preference(lux_consensus_engine_t* engine, block_node_t* node) {
-    return node->preference_count >= engine->config.alpha_preference;
+static bool check_preference(lux_chain_t* engine, block_node_t* node) {
+    return node->preference_count >= engine->config.alpha;
 }
 
-static bool check_decision_threshold(lux_consensus_engine_t* engine, block_node_t* node) {
+static bool check_decision_threshold(lux_chain_t* engine, block_node_t* node) {
     return node->confidence_count >= engine->config.beta;
 }
 
 // Process consensus decision
-static void process_decision(lux_consensus_engine_t* engine, block_node_t* node) {
+static void process_decision(lux_chain_t* engine, block_node_t* node) {
     if (node->is_accepted || node->is_rejected) {
         return;
     }
@@ -165,20 +165,20 @@ lux_error_t lux_consensus_cleanup(void) {
 
 // Engine creation and destruction
 lux_error_t lux_consensus_engine_create(
-    lux_consensus_engine_t** engine_ptr,
-    const lux_consensus_config_t* config
+    lux_chain_t** engine_ptr,
+    const lux_config_t* config
 ) {
     if (!engine_ptr || !config) {
         return LUX_ERROR_INVALID_PARAMS;
     }
     
-    lux_consensus_engine_t* engine = (lux_consensus_engine_t*)calloc(1, sizeof(lux_consensus_engine_t));
+    lux_chain_t* engine = (lux_chain_t*)calloc(1, sizeof(lux_chain_t));
     if (!engine) {
         return LUX_ERROR_OUT_OF_MEMORY;
     }
     
     // Copy configuration
-    memcpy(&engine->config, config, sizeof(lux_consensus_config_t));
+    memcpy(&engine->config, config, sizeof(lux_config_t));
     
     // Initialize synchronization
     pthread_mutex_init(&engine->mutex, NULL);
@@ -202,7 +202,7 @@ lux_error_t lux_consensus_engine_create(
     return LUX_SUCCESS;
 }
 
-lux_error_t lux_consensus_engine_destroy(lux_consensus_engine_t* engine) {
+lux_error_t lux_consensus_engine_destroy(lux_chain_t* engine) {
     if (!engine) {
         return LUX_ERROR_INVALID_PARAMS;
     }
@@ -237,7 +237,7 @@ lux_error_t lux_consensus_engine_destroy(lux_consensus_engine_t* engine) {
 
 // Block operations
 lux_error_t lux_consensus_add_block(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     const lux_block_t* block
 ) {
     if (!engine || !block) {
@@ -319,7 +319,7 @@ lux_error_t lux_consensus_add_block(
 
 // Vote processing
 lux_error_t lux_consensus_process_vote(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     const lux_vote_t* vote
 ) {
     if (!engine || !vote) {
@@ -376,7 +376,7 @@ lux_error_t lux_consensus_process_vote(
 
 // Query operations
 lux_error_t lux_consensus_is_accepted(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     const uint8_t* block_id,
     bool* is_accepted
 ) {
@@ -399,7 +399,7 @@ lux_error_t lux_consensus_is_accepted(
 }
 
 lux_error_t lux_consensus_get_preference(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     uint8_t* block_id
 ) {
     if (!engine || !block_id) {
@@ -420,7 +420,7 @@ lux_error_t lux_consensus_get_preference(
 
 // Polling
 lux_error_t lux_consensus_poll(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     uint32_t num_validators,
     const uint8_t** validator_ids
 ) {
@@ -440,7 +440,7 @@ lux_error_t lux_consensus_poll(
 
 // Callback registration
 lux_error_t lux_consensus_register_decision_callback(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     lux_callback_decision callback,
     void* user_data
 ) {
@@ -457,7 +457,7 @@ lux_error_t lux_consensus_register_decision_callback(
 }
 
 lux_error_t lux_consensus_register_verify_callback(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     lux_callback_verify callback,
     void* user_data
 ) {
@@ -474,7 +474,7 @@ lux_error_t lux_consensus_register_verify_callback(
 }
 
 lux_error_t lux_consensus_register_notify_callback(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     lux_callback_notify callback,
     void* user_data
 ) {
@@ -492,7 +492,7 @@ lux_error_t lux_consensus_register_notify_callback(
 
 // Statistics
 lux_error_t lux_consensus_get_stats(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     lux_consensus_stats_t* stats
 ) {
     if (!engine || !stats) {
