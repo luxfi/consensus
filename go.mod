@@ -1,6 +1,6 @@
 module github.com/luxfi/consensus
 
-go 1.24.5
+go 1.25.1
 
 exclude github.com/ethereum/go-ethereum v1.10.26
 
@@ -18,7 +18,6 @@ require (
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b
-	gonum.org/v1/gonum v0.16.0
 )
 
 require (
@@ -79,6 +78,7 @@ require (
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
+	gonum.org/v1/gonum v0.16.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
