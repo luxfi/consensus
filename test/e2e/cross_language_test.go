@@ -12,10 +12,6 @@ import (
 // TestCrossLanguageConsensus is the ultimate E2E test:
 // All languages (Go, C, C++, Rust, Python) validate the same network
 func TestCrossLanguageConsensus(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping E2E cross-language test in short mode")
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
