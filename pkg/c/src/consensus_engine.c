@@ -526,11 +526,132 @@ const char* lux_error_string(lux_error_t error) {
     }
 }
 
-const char* lux_engine_type_string(lux_engine_type_t type) {
-    switch (type) {
-        case LUX_ENGINE_CHAIN: return "Chain";
-        case LUX_ENGINE_DAG: return "DAG";
-        case LUX_ENGINE_PQ: return "PQ";
-        default: return "Unknown";
+// New v1.22.0 simplified API functions
+
+lux_chain_t* lux_chain_new_default(void) {
+    lux_config_t config = {
+        .node_count = 1,
+        .k = 1,
+        .alpha = 1,
+        .beta = 1
+    };
+    return lux_chain_new(&config);
+}
+
+lux_chain_t* lux_chain_new(const lux_config_t* config) {
+    if (!config) {
+        return NULL;
     }
+    
+    lux_chain_t* chain = (lux_chain_t*)calloc(1, sizeof(lux_chain_t));
+    if (!chain) {
+        return NULL;
+    }
+    
+    // Copy config and set auto-calculated parameters
+    chain->config.node_count = config->node_count;
+    chain->config.k = config->k > 0 ? config->k : (config->node_count > 1 ? config->node_count / 2 : 1);
+    chain->config.alpha = config->alpha > 0 ? config->alpha : (config->node_count > 1 ? (config->node_count * 2) / 3 : 1);
+    chain->config.beta = config->beta > 0 ? config->beta : (config->node_count > 2 ? config->node_count - 2 : 1);
+    
+    // Initialize mutexes
+    pthread_mutex_init(&chain->mutex, NULL);
+    pthread_rwlock_init(&chain->rwlock, NULL);
+    
+    chain->start_time = (uint64_t)time(NULL);
+    
+    // Note: block_table is already a static array in the struct, not allocated
+    
+    return chain;
+}
+
+void lux_chain_destroy(lux_chain_t* chain) {
+    if (!chain) {
+        return;
+    }
+    
+    // Free blocks in table
+    for (size_t i = 0; i < HASH_TABLE_SIZE; i++) {
+        hash_entry_t* entry = chain->block_table[i];
+        while (entry) {
+            hash_entry_t* next = entry->next;
+            if (entry->node) {
+                free(entry->node->children);
+                free(entry->node);
+            }
+            free(entry);
+            entry = next;
+        }
+    }
+    
+    // Free vote cache
+    vote_cache_t* vote = chain->vote_cache;
+    while (vote) {
+        vote_cache_t* next = vote->next;
+        free(vote);
+        vote = next;
+    }
+    
+    // Destroy mutexes
+    pthread_mutex_destroy(&chain->mutex);
+    pthread_rwlock_destroy(&chain->rwlock);
+    
+    free(chain);
+}
+
+lux_error_t lux_chain_start(lux_chain_t* chain) {
+    if (!chain) {
+        return LUX_ERROR_INVALID_PARAMS;
+    }
+    
+    // Mark as started (chain is always "running" in simple mode)
+    chain->start_time = (uint64_t)time(NULL);
+    
+    return LUX_SUCCESS;
+}
+
+void lux_chain_stop(lux_chain_t* chain) {
+    // No-op in simple implementation
+    // Chain can be stopped by destroying it
+    (void)chain;
+}
+
+lux_error_t lux_chain_add_block(lux_chain_t* chain, const lux_block_t* block) {
+    if (!chain || !block) {
+        return LUX_ERROR_INVALID_PARAMS;
+    }
+    
+    // Create block node
+    block_node_t* node = (block_node_t*)calloc(1, sizeof(block_node_t));
+    if (!node) {
+        return LUX_ERROR_OUT_OF_MEMORY;
+    }
+    
+    // Copy block data
+    memcpy(&node->block, block, sizeof(lux_block_t));
+    node->is_processing = true;
+    
+    // Add to hash table
+    lux_error_t err = add_block_to_table(chain, node);
+    if (err != LUX_SUCCESS) {
+        free(node);
+        return err;
+    }
+    
+    // Update stats
+    pthread_rwlock_wrlock(&chain->rwlock);
+    chain->stats.votes_processed++;
+    chain->stats.blocks_accepted++;
+    pthread_rwlock_unlock(&chain->rwlock);
+    
+    // Mark as accepted (simplified consensus)
+    node->is_accepted = true;
+    node->is_processing = false;
+    
+    // Trigger callback if set
+    if (chain->decision_callback) {
+        chain->decision_callback(block->id, chain->callback_user_data);
+    }
+    
+    return LUX_SUCCESS;
 }
