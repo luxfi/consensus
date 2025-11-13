@@ -3,7 +3,7 @@
 [![CI Status](https://github.com/luxfi/consensus/actions/workflows/ci.yml/badge.svg)](https://github.com/luxfi/consensus/actions)
 [![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)](https://github.com/luxfi/consensus)
 [![Go Version](https://img.shields.io/badge/go-1.24.5-blue)](https://go.dev)
-[![Release](https://img.shields.io/badge/release-v1.17.0-green)](https://github.com/luxfi/consensus/releases/tag/v1.17.0)
+[![Release](https://img.shields.io/badge/release-v1.22.0-green)](https://github.com/luxfi/consensus/releases/tag/v1.22.0)
 
 ## Lux Quasar: Post Quantum Consensus Engine with Photonic Selection
 
@@ -27,7 +27,14 @@ Quasar solves all these with **"One engine to rule them all"**:
 - **Zero Leaders**: Fully decentralized, leaderless, highly secure
 - **Sub-Second Performance**: <1s finality with quantum security
 
-## 🚀 Recent Updates (v1.17.0 - January 2025)
+## 🚀 Recent Updates (v1.22.0 - January 2025)
+
+### Simplified Single-Import API 🚀
+- **NEW**: Complete package restructure with shallow, obvious paths
+- **NEW**: Single-import convenience for all SDKs (Go, Python, Rust)
+- **NEW**: Unified `consensus.Chain` API replacing complex factory patterns
+- **NEW**: Type aliases for zero-friction development
+- **BREAKING**: Migrated from deep nested paths to clean root exports
 
 ### Multi-Language SDK with 100% Test Parity 🎉
 - **NEW**: Complete C implementation with optimized hash tables (9M+ blocks/sec)
@@ -52,7 +59,7 @@ Quasar solves all these with **"One engine to rule them all"**:
 
 #### Go (Default)
 ```bash
-go get github.com/luxfi/consensus@v1.17.0
+go get github.com/luxfi/consensus@v1.22.0
 ```
 
 #### C Library (High Performance)
@@ -66,7 +73,7 @@ make && sudo make install
 ```bash
 # Add to Cargo.toml
 [dependencies]
-lux-consensus = "1.17.0"
+lux-consensus = "1.22.0"
 ```
 
 #### Python
@@ -78,21 +85,28 @@ python3 setup.py install
 
 ### Basic Usage
 ```go
-import (
-    "github.com/luxfi/consensus/photon"
-    "github.com/luxfi/consensus/core/wave"
-    "github.com/luxfi/consensus/config"
-)
+import "github.com/luxfi/consensus" // Single clean import!
 
-// Create photon emitter for peer selection
-emitter := photon.NewUniformEmitter(peers, photon.DefaultEmitterOptions())
+// Create chain with default config
+chain := consensus.NewChain(consensus.DefaultConfig())
 
-// Initialize wave consensus
-cfg := config.DefaultParams()
-engine := wave.New(cfg, emitter, transport)
+// Start the chain
+ctx := context.Background()
+if err := chain.Start(ctx); err != nil {
+    panic(err)
+}
+defer chain.Stop()
 
-// Start consensus
-engine.Start(ctx, blockID)
+// Add a block
+block := &consensus.Block{
+    ID:       consensus.NewID(),
+    ParentID: consensus.GenesisID,
+    Height:   1,
+    Payload:  []byte("Hello, Lux!"),
+}
+if err := chain.Add(ctx, block); err != nil {
+    panic(err)
+}
 ```
 
 ### Running Tests

@@ -36,7 +36,7 @@ extensions = [
 
 setup(
     name="lux-consensus",
-    version="1.21.0",
+    version="1.22.0",
     description="Python bindings for Lux Consensus C library with optional MLX GPU acceleration",
     author="Lux Industries Inc.",
     packages=["lux_consensus"],
