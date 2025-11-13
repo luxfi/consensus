@@ -97,11 +97,13 @@ func testEngine(engineType, network string) {
 	var engine consensus.Engine
 	switch engineType {
 	case "chain":
-		engine = consensus.NewChainEngine()
+		engine = consensus.NewChain(consensus.DefaultConfig())
 	case "dag":
-		engine = consensus.NewDAGEngine()
+		fmt.Println("DAG engine not yet implemented in new API")
+		os.Exit(0)
 	case "pq":
-		engine = consensus.NewPQEngine()
+		fmt.Println("PQ engine not yet implemented in new API")
+		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown engine: %s\n", engineType)
 		os.Exit(1)
@@ -127,11 +129,13 @@ func checkHealth(engineType string) {
 	var engine consensus.Engine
 	switch engineType {
 	case "chain":
-		engine = consensus.NewChainEngine()
+		engine = consensus.NewChain(consensus.DefaultConfig())
 	case "dag":
-		engine = consensus.NewDAGEngine()
+		fmt.Println("DAG engine not yet implemented in new API")
+		os.Exit(0)
 	case "pq":
-		engine = consensus.NewPQEngine()
+		fmt.Println("PQ engine not yet implemented in new API")
+		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown engine: %s\n", engineType)
 		os.Exit(1)

@@ -106,7 +106,7 @@ func main() {
 // Example of using QuickStart for even simpler initialization
 func quickStartExample() {
 	ctx := context.Background()
-	
+
 	// One-liner to start consensus
 	chain, err := consensus.QuickStart(ctx)
 	if err != nil {
@@ -121,10 +121,10 @@ func quickStartExample() {
 		1,
 		[]byte("Quick start block"),
 	)
-	
+
 	if err := chain.Add(ctx, block); err != nil {
 		panic(err)
 	}
-	
+
 	fmt.Println("QuickStart example complete!")
 }
