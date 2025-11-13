@@ -44,15 +44,15 @@ type Store[V VID] interface {
 func ComputeSafePrefix[V VID](store Store[V], frontier []V) []V {
 	// Compute vertices that are ancestors of all frontier vertices
 	// These vertices have achieved finality and can be safely committed
-	
+
 	if len(frontier) == 0 {
 		return []V{}
 	}
-	
+
 	// Find common ancestors of all frontier vertices
 	var safeVertices []V
 	head := store.Head()
-	
+
 	for _, v := range head {
 		// Check if this vertex is an ancestor of all frontier vertices
 		isAncestorOfAll := true
@@ -62,12 +62,12 @@ func ComputeSafePrefix[V VID](store Store[V], frontier []V) []V {
 				break
 			}
 		}
-		
+
 		if isAncestorOfAll {
 			safeVertices = append(safeVertices, v)
 		}
 	}
-	
+
 	return safeVertices
 }
 
@@ -77,25 +77,25 @@ func ChooseFrontier[V VID](frontier []V) []V {
 	// For Byzantine tolerance with f faults, we need 2f+1 vertices
 	// Assuming f = (n-1)/3 for optimal Byzantine tolerance
 	// We'll choose min(2f+1, all) vertices
-	
+
 	if len(frontier) == 0 {
 		return []V{}
 	}
-	
+
 	// For small frontiers, reference all vertices
 	if len(frontier) <= 3 {
 		return frontier
 	}
-	
+
 	// For larger frontiers, choose 2f+1 where f = (len-1)/3
 	// This ensures Byzantine fault tolerance
 	f := (len(frontier) - 1) / 3
 	required := 2*f + 1
-	
+
 	if required >= len(frontier) {
 		return frontier
 	}
-	
+
 	// Select the most recent vertices (assuming they're ordered)
 	return frontier[:required]
 }
@@ -106,15 +106,15 @@ func IsReachable[V VID](store Store[V], from, to V) bool {
 	if from == to {
 		return true
 	}
-	
+
 	visited := make(map[V]bool)
 	queue := []V{from}
 	visited[from] = true
-	
+
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		
+
 		// Check children (forward edges in DAG)
 		for _, child := range store.Children(current) {
 			if child == to {
@@ -126,7 +126,7 @@ func IsReachable[V VID](store Store[V], from, to V) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -136,20 +136,20 @@ func LCA[V VID](store Store[V], a, b V) V {
 	ancestorsA := make(map[V]uint64) // vertex -> height
 	queue := []V{a}
 	visited := make(map[V]bool)
-	
+
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		
+
 		if visited[current] {
 			continue
 		}
 		visited[current] = true
-		
+
 		// Store with height for finding lowest
 		if block, ok := store.Get(current); ok {
 			ancestorsA[current] = block.Round()
-			
+
 			// Traverse parents (backward edges in DAG)
 			for _, parent := range block.Parents() {
 				if !visited[parent] {
@@ -158,22 +158,22 @@ func LCA[V VID](store Store[V], a, b V) V {
 			}
 		}
 	}
-	
+
 	// Find first common ancestor of b
 	queue = []V{b}
 	visited = make(map[V]bool)
 	var lca V
 	var lcaHeight uint64 = ^uint64(0) // Max uint64
-	
+
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		
+
 		if visited[current] {
 			continue
 		}
 		visited[current] = true
-		
+
 		// Check if this is a common ancestor
 		if height, isAncestor := ancestorsA[current]; isAncestor {
 			// Found a common ancestor - keep track of the lowest (highest height)
@@ -182,7 +182,7 @@ func LCA[V VID](store Store[V], a, b V) V {
 				lca = current
 			}
 		}
-		
+
 		// Continue traversing parents
 		if block, ok := store.Get(current); ok {
 			for _, parent := range block.Parents() {
@@ -192,7 +192,7 @@ func LCA[V VID](store Store[V], a, b V) V {
 			}
 		}
 	}
-	
+
 	return lca
 }
 
@@ -200,34 +200,34 @@ func LCA[V VID](store Store[V], a, b V) V {
 func Antichain[V VID](store Store[V], vertices []V) []V {
 	// An antichain is a set of vertices where no vertex can reach another
 	// This represents concurrent vertices in the DAG
-	
+
 	if len(vertices) <= 1 {
 		return vertices
 	}
-	
+
 	var antichain []V
-	
+
 	for i, v1 := range vertices {
 		isInAntichain := true
-		
+
 		// Check if v1 is mutually unreachable with all other vertices
 		for j, v2 := range vertices {
 			if i == j {
 				continue
 			}
-			
+
 			// If v1 can reach v2 or v2 can reach v1, they're not in antichain
 			if IsReachable(store, v1, v2) || IsReachable(store, v2, v1) {
 				isInAntichain = false
 				break
 			}
 		}
-		
+
 		if isInAntichain {
 			antichain = append(antichain, v1)
 		}
 	}
-	
+
 	return antichain
 }
 
@@ -252,31 +252,31 @@ func Horizon[V VID](store Store[V], checkpoints []EventHorizon[V]) EventHorizon[
 	// 1. Reachability from latest checkpoints
 	// 2. Vertices that have achieved post-quantum finality
 	// 3. New event horizon boundary
-	
+
 	if len(checkpoints) == 0 {
 		var zero EventHorizon[V]
 		return zero
 	}
-	
+
 	// Start with the latest checkpoint
 	latest := checkpoints[len(checkpoints)-1]
-	
+
 	// Find all vertices reachable from the latest checkpoint
 	// These vertices are candidates for being beyond the new horizon
 	reachable := make(map[V]bool)
 	queue := []V{latest.Checkpoint}
 	visited := make(map[V]bool)
-	
+
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		
+
 		if visited[current] {
 			continue
 		}
 		visited[current] = true
 		reachable[current] = true
-		
+
 		// Traverse children to find newer vertices
 		children := store.Children(current)
 		for _, child := range children {
@@ -285,13 +285,13 @@ func Horizon[V VID](store Store[V], checkpoints []EventHorizon[V]) EventHorizon[
 			}
 		}
 	}
-	
+
 	// Find the most recent vertex that is:
 	// 1. Reachable from the checkpoint
 	// 2. Has sufficient validator signatures (post-quantum finality)
 	var newCheckpoint V
 	var maxHeight uint64 = 0
-	
+
 	for vertex := range reachable {
 		if block, ok := store.Get(vertex); ok {
 			height := block.Round()
@@ -301,7 +301,7 @@ func Horizon[V VID](store Store[V], checkpoints []EventHorizon[V]) EventHorizon[
 			}
 		}
 	}
-	
+
 	// Create new event horizon
 	// In a real implementation, we'd verify post-quantum signatures
 	// For now, we establish the horizon at the highest reachable vertex
@@ -311,7 +311,7 @@ func Horizon[V VID](store Store[V], checkpoints []EventHorizon[V]) EventHorizon[
 		Validators: latest.Validators, // Inherit validators from previous
 		Signature:  latest.Signature,  // In real impl, create new aggregate signature
 	}
-	
+
 	return newHorizon
 }
 
@@ -326,26 +326,26 @@ func BeyondHorizon[V VID](store Store[V], vertex V, horizon EventHorizon[V]) boo
 func ComputeHorizonOrder[V VID](store Store[V], horizon EventHorizon[V]) []V {
 	// Implement topological ordering for vertices beyond the horizon
 	// This provides deterministic ordering for P-Chain state transitions
-	
+
 	if horizon.Height == 0 {
 		return []V{}
 	}
-	
+
 	// Collect all vertices reachable from the horizon checkpoint
 	var beyondHorizon []V
 	visited := make(map[V]bool)
 	queue := []V{horizon.Checkpoint}
-	
+
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		
+
 		if visited[current] {
 			continue
 		}
 		visited[current] = true
 		beyondHorizon = append(beyondHorizon, current)
-		
+
 		// Add children to queue for BFS traversal
 		for _, child := range store.Children(current) {
 			if !visited[child] {
@@ -353,6 +353,6 @@ func ComputeHorizonOrder[V VID](store Store[V], horizon EventHorizon[V]) []V {
 			}
 		}
 	}
-	
+
 	return beyondHorizon
 }
