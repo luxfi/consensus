@@ -14,7 +14,7 @@ extern "C" {
 
 // Version information
 #define LUX_CONSENSUS_VERSION_MAJOR 1
-#define LUX_CONSENSUS_VERSION_MINOR 0
+#define LUX_CONSENSUS_VERSION_MINOR 22
 #define LUX_CONSENSUS_VERSION_PATCH 0
 
 // Error codes
@@ -35,22 +35,17 @@ typedef enum {
 } lux_engine_type_t;
 
 // Forward declarations
-typedef struct lux_consensus_config lux_consensus_config_t;
-typedef struct lux_consensus_engine lux_consensus_engine_t;
+typedef struct lux_chain lux_chain_t;
+typedef struct lux_config lux_config_t;
 typedef struct lux_vote lux_vote_t;
 typedef struct lux_block lux_block_t;
 
-// Consensus configuration
-struct lux_consensus_config {
-    uint32_t k;                      // Sample size
-    uint32_t alpha_preference;       // Preference quorum size
-    uint32_t alpha_confidence;       // Confidence quorum size
-    uint32_t beta;                   // Decision threshold
-    uint32_t concurrent_polls;       // Number of concurrent polls
-    uint32_t optimal_processing;     // Optimal processing
-    uint32_t max_outstanding_items;  // Max outstanding items
-    uint64_t max_item_processing_time_ns; // Max processing time in nanoseconds
-    lux_engine_type_t engine_type;   // Engine type
+// Simplified configuration
+struct lux_config {
+    uint32_t node_count;             // Number of nodes in network
+    uint32_t k;                      // Sample size (optional, 0 for default)
+    uint32_t alpha;                  // Quorum size (optional, 0 for default)
+    uint32_t beta;                   // Decision threshold (optional, 0 for default)
 };
 
 // Block structure
@@ -83,18 +78,24 @@ lux_error_t lux_consensus_init(void);
 // Cleanup the consensus library
 lux_error_t lux_consensus_cleanup(void);
 
-// Create a new consensus engine
-lux_error_t lux_consensus_engine_create(
-    lux_consensus_engine_t** engine,
-    const lux_consensus_config_t* config
-);
+// Create a new chain with default config
+lux_chain_t* lux_chain_new_default(void);
 
-// Destroy a consensus engine
-lux_error_t lux_consensus_engine_destroy(lux_consensus_engine_t* engine);
+// Create a new chain with custom config
+lux_chain_t* lux_chain_new(const lux_config_t* config);
 
-// Add a new block to the consensus engine
-lux_error_t lux_consensus_add_block(
-    lux_consensus_engine_t* engine,
+// Destroy a chain
+void lux_chain_destroy(lux_chain_t* chain);
+
+// Start the chain
+lux_error_t lux_chain_start(lux_chain_t* chain);
+
+// Stop the chain
+void lux_chain_stop(lux_chain_t* chain);
+
+// Add a new block to the chain
+lux_error_t lux_chain_add_block(
+    lux_chain_t* chain,
     const lux_block_t* block
 );
 
