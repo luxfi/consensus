@@ -12,8 +12,8 @@ import (
 func TestK1ConsensusIntegration(t *testing.T) {
 	require := require.New(t)
 
-	// Test that Config(1) returns single validator params
-	params := consensus.Config(1)
+	// Test that GetConfig(1) returns single validator params
+	params := consensus.GetConfig(1)
 
 	// Verify it matches SingleValidatorParams
 	expectedParams := config.SingleValidatorParams()
@@ -78,7 +78,7 @@ func TestConfigNodeCounts(t *testing.T) {
 		t.Run(tt.expectedType, func(t *testing.T) {
 			require := require.New(t)
 
-			params := consensus.Config(tt.nodes)
+			params := consensus.GetConfig(tt.nodes)
 
 			// Verify params are valid
 			err := params.Valid()
