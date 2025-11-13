@@ -16,7 +16,7 @@ import (
 	"github.com/luxfi/node/message"
 	"github.com/luxfi/node/network"
 	"github.com/luxfi/node/proto/pb/p2p"
-	"github.com/luxfi/node/utils/set"
+	"github.com/luxfi/consensus/utils/set"
 )
 
 var (

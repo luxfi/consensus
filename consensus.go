@@ -8,6 +8,8 @@ package consensus
 import (
 	"context"
 
+	"github.com/luxfi/consensus/config"
+	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/consensus/types"
 )
@@ -18,6 +20,9 @@ type (
 	Engine = engine.Engine
 	Chain  = engine.Chain
 	Config = types.Config
+	
+	// Context type
+	Context = consensuscontext.Context
 
 	// Core types
 	Block       = types.Block
@@ -76,16 +81,31 @@ func NewChain(cfg Config) *Chain {
 	return engine.NewChain(cfg)
 }
 
+// NewChainEngine creates a new chain consensus engine with default config
+func NewChainEngine() Engine {
+	return NewChain(DefaultConfig())
+}
+
 // NewDAG creates a new DAG consensus engine (placeholder for future)
 func NewDAG(cfg Config) Engine {
 	// TODO: Implement DAG engine
 	return engine.NewChain(cfg)
 }
 
+// NewDAGEngine creates a new DAG consensus engine with default config
+func NewDAGEngine() Engine {
+	return NewDAG(DefaultConfig())
+}
+
 // NewPQ creates a new post-quantum consensus engine (placeholder for future)
 func NewPQ(cfg Config) Engine {
 	// TODO: Implement PQ engine
 	return engine.NewChain(cfg)
+}
+
+// NewPQEngine creates a new PQ consensus engine with default config
+func NewPQEngine() Engine {
+	return NewPQ(DefaultConfig())
 }
 
 // Helper functions
@@ -118,3 +138,39 @@ func QuickStart(ctx context.Context) (*Chain, error) {
 	}
 	return chain, nil
 }
+
+// GetConfig returns consensus parameters based on the number of nodes
+func GetConfig(nodeCount int) config.Parameters {
+	switch {
+	case nodeCount == 1:
+		return config.SingleValidatorParams()
+	case nodeCount <= 5:
+		return config.LocalParams()
+	case nodeCount <= 11:
+		return config.TestnetParams()
+	case nodeCount <= 21:
+		return config.MainnetParams()
+	default:
+		// For larger networks, create custom params with K = nodeCount
+		params := config.MainnetParams()
+		params.K = nodeCount
+		// Alpha is already set to 0.69 from MainnetParams
+		// Adjust other parameters proportionally for 69% threshold
+		params.AlphaPreference = int(float64(nodeCount) * 0.69)
+		params.AlphaConfidence = int(float64(nodeCount) * 0.69)
+		params.BetaVirtuous = int(float64(nodeCount) * 0.69)
+		params.BetaRogue = nodeCount // Set to max for safety
+		params.Beta = uint32(int(float64(nodeCount) * 0.69))
+		return params
+	}
+}
+
+// Parameter presets for convenience
+var (
+	SingleValidatorParams = config.SingleValidatorParams
+	LocalParams          = config.LocalParams
+	TestnetParams        = config.TestnetParams
+	MainnetParams        = config.MainnetParams
+	DefaultParams        = config.DefaultParams
+	XChainParams         = config.XChainParams
+)

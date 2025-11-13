@@ -8,7 +8,7 @@ import (
 
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/node/utils/set"
+	"github.com/luxfi/consensus/utils/set"
 )
 
 // Benchmark constants
