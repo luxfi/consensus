@@ -1,0 +1,231 @@
+---
+title: Quasar Protocol
+description: Quantum-resistant consensus with photonic selection
+---
+
+# Quasar Protocol
+
+Quasar is Lux's flagship post-quantum consensus protocol that unifies all chain types (DAG, linear, EVM, MPC) under a single quantum-resistant engine.
+
+## Overview
+
+Quasar achieves **2-round finality** with both classical and quantum security through:
+- **Round 1**: BLS signature aggregation for classical consensus
+- **Round 2**: Lattice-based signatures for quantum resistance
+- **Photonic Selection**: Light-based peer selection using luminance tracking
+- **Zero Leaders**: Fully decentralized, leaderless operation
+
+## Key Features
+
+### Quantum Finality
+Every block requires post-quantum certificates using lattice-based cryptography:
+
+```go
+type QuantumCertificate struct {
+    BlockID       ids.ID
+    BLSSignature  []byte  // Classical consensus
+    LatticeProof  []byte  // Quantum resistance
+    Luminance     uint32  // Node performance score
+}
+```
+
+### Photonic Selection
+
+Nodes are selected based on their "luminance" - a performance metric ranging from 10-1000 lux:
+
+```go
+emitter := photon.NewEmitter(peers, photon.Options{
+    MinLuminance: 10,   // Minimum performance
+    MaxLuminance: 1000, // Maximum performance
+    EmitRate:     100,  // Emissions per second
+})
+```
+
+### Performance Metrics
+
+| Metric | Value |
+|--------|-------|
+| Finality Time | < 1 second |
+| Throughput | 10,000+ TPS |
+| Quantum Security | NIST Level 5 |
+| Network Overhead | < 5% |
+
+## Implementation
+
+### Basic Usage
+
+```go
+import (
+    "github.com/luxfi/consensus/protocol/quasar"
+    "github.com/luxfi/consensus/photon"
+)
+
+// Initialize Quasar
+cfg := quasar.DefaultConfig()
+engine := quasar.New(cfg, network, validator)
+
+// Start consensus
+ctx := context.Background()
+engine.Start(ctx, genesis)
+
+// Process quantum certificates
+cert := engine.CreateQuantumCertificate(block)
+verified := engine.VerifyQuantumCertificate(cert)
+```
+
+### Configuration
+
+```go
+type Config struct {
+    // Classical consensus
+    BLSThreshold      float64 // Default: 0.67
+    
+    // Quantum parameters
+    LatticeSecurityLevel int    // NIST Level (1-5)
+    RingDimension       int     // Lattice dimension
+    
+    // Photonic selection
+    MinLuminance        uint32  // Min node performance
+    MaxLuminance        uint32  // Max node performance
+    EmissionRate        uint32  // Photons per second
+    
+    // Performance
+    MaxBlockSize        int     // Maximum block size
+    TargetBlockTime     time.Duration
+}
+```
+
+## Quantum Security
+
+### Lattice-Based Cryptography
+
+Quasar uses structured lattices for post-quantum security:
+
+```go
+// Kyber-1024 parameters (NIST Level 5)
+const (
+    N = 256        // Ring dimension
+    Q = 3329       // Modulus
+    K = 4          // Module rank
+    ETA1 = 2       // Noise parameter 1
+    ETA2 = 2       // Noise parameter 2
+)
+```
+
+### Security Levels
+
+| Level | Classical Security | Quantum Security | Use Case |
+|-------|-------------------|------------------|----------|
+| 1 | 128-bit | 64-bit | Testing |
+| 3 | 192-bit | 96-bit | Production |
+| 5 | 256-bit | 128-bit | High Security |
+
+## Network Integration
+
+### Q-Chain (DAG)
+```go
+// DAG-specific Quasar configuration
+cfg := quasar.Config{
+    ConsensusType: quasar.DAG,
+    Parallelism:   100,
+    ConflictSetSize: 10,
+}
+```
+
+### C-Chain (EVM)
+```go
+// EVM-specific Quasar configuration
+cfg := quasar.Config{
+    ConsensusType: quasar.Linear,
+    BlockGasLimit: 15_000_000,
+    StateSync:     true,
+}
+```
+
+### X-Chain (UTXO)
+```go
+// UTXO-specific Quasar configuration
+cfg := quasar.Config{
+    ConsensusType: quasar.DAG,
+    UTXOSetSize:   1_000_000,
+    Pruning:       true,
+}
+```
+
+## Performance Optimization
+
+### Parallel Verification
+```go
+// Enable parallel quantum certificate verification
+engine.EnableParallelVerification(runtime.NumCPU())
+```
+
+### Batch Processing
+```go
+// Process multiple certificates in batch
+certs := []QuantumCertificate{cert1, cert2, cert3}
+results := engine.BatchVerify(certs)
+```
+
+### Memory Pool Management
+```go
+// Configure mempool for optimal performance
+engine.SetMempoolSize(10000)
+engine.SetMempoolExpiry(30 * time.Second)
+```
+
+## Monitoring
+
+### Metrics
+```go
+metrics := engine.GetMetrics()
+fmt.Printf("Finality: %v\n", metrics.AverageFinality)
+fmt.Printf("Throughput: %v TPS\n", metrics.TPS)
+fmt.Printf("Quantum Security: Level %d\n", metrics.SecurityLevel)
+```
+
+### Health Checks
+```go
+health := engine.HealthCheck()
+if !health.IsHealthy {
+    log.Warn("Consensus unhealthy: %v", health.Issues)
+}
+```
+
+## Advanced Features
+
+### Hybrid Mode
+Run classical and quantum consensus simultaneously:
+
+```go
+engine.EnableHybridMode(quasar.HybridConfig{
+    ClassicalWeight: 0.3,
+    QuantumWeight:   0.7,
+    Threshold:       0.8,
+})
+```
+
+### Verkle Trees
+Enable Verkle tree witnesses for efficient state proofs:
+
+```go
+engine.EnableVerkleWitness(quasar.VerkleConfig{
+    TreeDepth:     256,
+    ProofSize:     1024,
+    Compression:   true,
+})
+```
+
+## Security Considerations
+
+1. **Key Rotation**: Rotate quantum keys every 1M blocks
+2. **Side Channels**: Use constant-time implementations
+3. **Network Attacks**: Enable DDoS protection
+4. **Quantum Threats**: Monitor NIST recommendations
+
+## See Also
+
+- [Photon Selection](/docs/protocols/photon)
+- [Wave Protocol](/docs/protocols/wave)
+- [Benchmarks](/docs/benchmarks)
+- [SDK Reference](/docs/sdk)
