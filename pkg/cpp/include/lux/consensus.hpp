@@ -12,16 +12,15 @@
 namespace lux::consensus {
 
 // Forward declarations
-class ConsensusImpl;
+class Chain;
+class ChainImpl;
 
-// Engine types
-enum class EngineType : uint8_t {
-    Snowball = 0,
-    Avalanche = 1,
-    Snowflake = 2,
-    DAG = 3,
-    Chain = 4,
-    PostQuantum = 5
+// Block status
+enum class Status : uint8_t {
+    Unknown = 0,
+    Processing = 1,
+    Accepted = 2,
+    Rejected = 3
 };
 
 // Vote types
@@ -31,34 +30,35 @@ enum class VoteType : uint8_t {
     Reject = 3
 };
 
-// Block status
-enum class BlockStatus : uint8_t {
+// Decision
+enum class Decision : uint8_t {
     Unknown = 0,
-    Processing = 1,
-    Accepted = 2,
-    Rejected = 3
+    Accept = 1,
+    Reject = 2
 };
 
-// Consensus parameters
-struct ConsensusParams {
-    size_t k = 20;                          // Consecutive successes
-    size_t alpha_preference = 15;           // Preference quorum
-    size_t alpha_confidence = 15;           // Confidence quorum
-    size_t beta = 20;                      // Confidence threshold
-    size_t concurrent_polls = 10;          // Max concurrent polls
-    size_t max_outstanding_items = 1000;   // Max outstanding items
-    std::chrono::milliseconds timeout{30000}; // Processing timeout
+// Simple configuration
+struct Config {
+    size_t node_count = 1;           // Number of nodes in network
+    size_t k = 0;                    // Sample size (0 for auto)
+    size_t alpha = 0;                // Quorum size (0 for auto)
+    size_t beta = 0;                 // Decision threshold (0 for auto)
     
-    [[nodiscard]] bool validate() const noexcept;
+    // Factory methods for common configurations
+    [[nodiscard]] static Config single_validator() noexcept;
+    [[nodiscard]] static Config local_network() noexcept;
+    [[nodiscard]] static Config testnet() noexcept;
+    [[nodiscard]] static Config mainnet() noexcept;
+    [[nodiscard]] static Config custom(size_t nodes) noexcept;
 };
 
 // Block structure
 struct Block {
-    uint16_t id;
-    uint16_t parent_id;
+    std::array<uint8_t, 32> id;
+    std::array<uint8_t, 32> parent_id;
     uint64_t height;
     std::chrono::system_clock::time_point timestamp;
-    std::vector<uint8_t> data;
+    std::vector<uint8_t> payload;
     
     [[nodiscard]] std::vector<uint8_t> serialize() const;
     [[nodiscard]] std::array<uint8_t, 32> hash() const;
@@ -68,66 +68,108 @@ struct Block {
 
 // Vote structure
 struct Vote {
-    EngineType engine_type;
-    uint16_t node_id;
-    uint16_t block_id;
-    VoteType vote_type;
+    std::array<uint8_t, 32> node_id;
+    std::array<uint8_t, 32> block_id;
+    VoteType type;
     
-    // Binary protocol (8 bytes)
+    // Binary protocol (8 bytes compact)
     [[nodiscard]] std::array<uint8_t, 8> pack() const noexcept;
     static Vote unpack(std::span<const uint8_t, 8> data) noexcept;
 };
 
-// Consensus statistics
-struct ConsensusStats {
-    uint64_t votes_processed = 0;
-    uint64_t blocks_accepted = 0;
-    uint64_t blocks_rejected = 0;
-    std::chrono::milliseconds avg_latency{0};
-    size_t memory_usage_bytes = 0;
+// Context for consensus operations
+struct Context {
+    std::array<uint8_t, 32> node_id;
+    uint32_t network_id;
+    std::chrono::milliseconds timeout{30000};
 };
 
-// Main consensus class
-class Consensus {
+// Main Chain class - simplified single-import API
+class Chain {
 public:
-    // Factory method
-    static std::unique_ptr<Consensus> create(
-        EngineType engine,
-        const ConsensusParams& params
-    );
+    // Constructors
+    Chain() : Chain(Config::single_validator()) {}
+    explicit Chain(const Config& config);
+    ~Chain();
     
-    // Destructor
-    virtual ~Consensus() = default;
+    // Non-copyable, movable
+    Chain(const Chain&) = delete;
+    Chain& operator=(const Chain&) = delete;
+    Chain(Chain&&) noexcept;
+    Chain& operator=(Chain&&) noexcept;
     
-    // Core operations
-    virtual void add_block(const Block& block) = 0;
-    virtual void process_vote(const Vote& vote) = 0;
-    virtual bool is_accepted(uint16_t block_id) const = 0;
-    virtual std::optional<uint16_t> get_preference() const = 0;
+    // Lifecycle
+    [[nodiscard]] bool start();
+    void stop();
+    [[nodiscard]] bool is_running() const noexcept;
     
-    // Batch operations
-    virtual void process_votes_batch(std::span<const Vote> votes) = 0;
+    // Block operations
+    [[nodiscard]] bool add(const Block& block);
+    [[nodiscard]] Status get_status(const std::array<uint8_t, 32>& block_id) const;
+    [[nodiscard]] std::optional<Block> get_block(const std::array<uint8_t, 32>& block_id) const;
+    
+    // Voting
+    [[nodiscard]] bool record_vote(const Vote& vote);
+    [[nodiscard]] Decision get_decision(const std::array<uint8_t, 32>& block_id) const;
     
     // Statistics
-    virtual ConsensusStats get_stats() const = 0;
+    [[nodiscard]] uint64_t blocks_accepted() const noexcept;
+    [[nodiscard]] uint64_t blocks_rejected() const noexcept;
+    [[nodiscard]] uint64_t votes_processed() const noexcept;
     
-    // Event handling
-    using BlockAcceptedHandler = std::function<void(uint16_t)>;
-    virtual void on_block_accepted(BlockAcceptedHandler handler) = 0;
+    // Callbacks (optional)
+    using DecisionCallback = std::function<void(const std::array<uint8_t, 32>&, Decision)>;
+    void set_decision_callback(DecisionCallback cb);
     
-    // Health check
-    virtual bool health_check() const = 0;
+private:
+    std::unique_ptr<ChainImpl> impl;
 };
 
-// Engine trait for custom implementations
-class Engine {
-public:
-    virtual ~Engine() = default;
-    
-    virtual void process_vote(const Vote& vote) = 0;
-    virtual bool is_accepted(uint16_t block_id) const = 0;
-    virtual std::optional<uint16_t> get_preference() const = 0;
-    virtual std::vector<Vote> poll(uint16_t block_id) = 0;
-};
+// Helper functions
+[[nodiscard]] inline Config default_config() {
+    return Config::single_validator();
+}
+
+[[nodiscard]] inline std::unique_ptr<Chain> new_chain(const Config& config = default_config()) {
+    return std::make_unique<Chain>(config);
+}
+
+// Implementation of Config factory methods
+inline Config Config::single_validator() noexcept {
+    return Config{1, 1, 1, 1};
+}
+
+inline Config Config::local_network() noexcept {
+    return Config{5, 3, 3, 4};
+}
+
+inline Config Config::testnet() noexcept {
+    return Config{20, 10, 14, 20};
+}
+
+inline Config Config::mainnet() noexcept {
+    return Config{100, 20, 15, 20};
+}
+
+inline Config Config::custom(size_t nodes) noexcept {
+    Config cfg{nodes};
+    // Auto-calculate optimal parameters based on network size
+    if (nodes == 1) {
+        cfg.k = cfg.alpha = cfg.beta = 1;
+    } else if (nodes <= 5) {
+        cfg.k = 3;
+        cfg.alpha = 3;
+        cfg.beta = 4;
+    } else if (nodes <= 20) {
+        cfg.k = nodes / 2;
+        cfg.alpha = (nodes * 2) / 3;
+        cfg.beta = nodes - 2;
+    } else {
+        cfg.k = 20;
+        cfg.alpha = 15;
+        cfg.beta = 20;
+    }
+    return cfg;
+}
 
 } // namespace lux::consensus
