@@ -55,6 +55,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
+	github.com/luxfi/bft v0.1.0 // indirect
 	github.com/luxfi/log v1.1.22 // indirect
 	github.com/luxfi/metric v1.4.5 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
