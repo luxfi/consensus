@@ -1,0 +1,17 @@
+{
+  "title": "Lux Consensus",
+  "pages": [
+    "index",
+    "introduction",
+    "architecture",
+    "getting-started",
+    "concepts",
+    "research/index",
+    "ai/index",
+    "protocols/quasar",
+    "protocols/wave",
+    "protocols/photon",
+    "sdk",
+    "benchmarks"
+  ]
+}
