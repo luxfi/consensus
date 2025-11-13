@@ -187,9 +187,9 @@ func TestRecordPollInvalidVote(t *testing.T) {
 	unknownBlock2 := ids.GenerateTestID()
 
 	votes := NewBag[ids.ID]()
-	votes.Add(unknownBlock1)           // Invalid - should be ignored
-	votes.Add(unknownBlock2)           // Invalid - should be ignored
-	votes.AddCount(block1.ID(), 2)     // Valid - should be processed
+	votes.Add(unknownBlock1)       // Invalid - should be ignored
+	votes.Add(unknownBlock2)       // Invalid - should be ignored
+	votes.AddCount(block1.ID(), 2) // Valid - should be processed
 
 	// Record poll with mixed valid/invalid votes
 	err := engine.RecordPoll(ctx, votes)

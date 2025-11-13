@@ -16,12 +16,12 @@ import (
 // BenchmarkEngine encapsulates the chain engine with additional tracking for benchmarks
 type BenchmarkEngine struct {
 	*Transitive
-	blocks     map[ids.ID]*chaintest.TestBlock
+	blocks         map[ids.ID]*chaintest.TestBlock
 	blocksByHeight map[uint64][]*chaintest.TestBlock
-	votes      map[ids.ID]map[ids.NodeID]bool
-	finalized  map[ids.ID]bool
-	preferred  ids.ID
-	mu         sync.RWMutex
+	votes          map[ids.ID]map[ids.NodeID]bool
+	finalized      map[ids.ID]bool
+	preferred      ids.ID
+	mu             sync.RWMutex
 }
 
 // NewBenchmarkEngine creates a new benchmark engine

@@ -20,7 +20,7 @@ type (
 	Engine = engine.Engine
 	Chain  = engine.Chain
 	Config = types.Config
-	
+
 	// Context type
 	Context = consensuscontext.Context
 
@@ -168,9 +168,9 @@ func GetConfig(nodeCount int) config.Parameters {
 // Parameter presets for convenience
 var (
 	SingleValidatorParams = config.SingleValidatorParams
-	LocalParams          = config.LocalParams
-	TestnetParams        = config.TestnetParams
-	MainnetParams        = config.MainnetParams
-	DefaultParams        = config.DefaultParams
-	XChainParams         = config.XChainParams
+	LocalParams           = config.LocalParams
+	TestnetParams         = config.TestnetParams
+	MainnetParams         = config.MainnetParams
+	DefaultParams         = config.DefaultParams
+	XChainParams          = config.XChainParams
 )

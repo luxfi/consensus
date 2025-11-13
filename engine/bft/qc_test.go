@@ -11,9 +11,9 @@ import (
 	simplex "github.com/luxfi/bft"
 	"github.com/stretchr/testify/require"
 
+	"github.com/luxfi/consensus/utils/set"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/utils/crypto/bls"
-	"github.com/luxfi/consensus/utils/set"
 )
 
 // TestQCDuplicateSigners tests verification fails if the
