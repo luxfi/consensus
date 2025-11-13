@@ -101,45 +101,45 @@ lux_error_t lux_chain_add_block(
 
 // Process a vote
 lux_error_t lux_consensus_process_vote(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     const lux_vote_t* vote
 );
 
 // Check if a block is accepted
 lux_error_t lux_consensus_is_accepted(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     const uint8_t* block_id,
     bool* is_accepted
 );
 
 // Get preference
 lux_error_t lux_consensus_get_preference(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     uint8_t* block_id
 );
 
 // Poll for consensus
 lux_error_t lux_consensus_poll(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     uint32_t num_validators,
     const uint8_t** validator_ids
 );
 
 // Register callbacks
 lux_error_t lux_consensus_register_decision_callback(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     lux_callback_decision callback,
     void* user_data
 );
 
 lux_error_t lux_consensus_register_verify_callback(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     lux_callback_verify callback,
     void* user_data
 );
 
 lux_error_t lux_consensus_register_notify_callback(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     lux_callback_notify callback,
     void* user_data
 );
@@ -154,7 +154,7 @@ typedef struct {
 } lux_consensus_stats_t;
 
 lux_error_t lux_consensus_get_stats(
-    lux_consensus_engine_t* engine,
+    lux_chain_t* engine,
     lux_consensus_stats_t* stats
 );
 
