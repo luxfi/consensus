@@ -12,11 +12,11 @@ import (
 	simplex "github.com/luxfi/bft"
 	"go.uber.org/zap"
 
+	"github.com/luxfi/consensus/utils/set"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/message"
 	"github.com/luxfi/node/network"
 	"github.com/luxfi/node/proto/pb/p2p"
-	"github.com/luxfi/consensus/utils/set"
 )
 
 var (

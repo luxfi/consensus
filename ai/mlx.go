@@ -87,16 +87,16 @@ type MLXMatrix struct {
 
 // MLXBackend provides GPU-accelerated consensus using Metal
 type MLXBackend struct {
-	mu            sync.RWMutex
-	enabled       bool
-	device        string
-	batchSize     int
-	voteBuffer    []Vote
-	throughput    float64
-	peakMemory    uint64
-	initialized   bool
-	weights1      *MLXMatrix
-	weights2      *MLXMatrix
+	mu          sync.RWMutex
+	enabled     bool
+	device      string
+	batchSize   int
+	voteBuffer  []Vote
+	throughput  float64
+	peakMemory  uint64
+	initialized bool
+	weights1    *MLXMatrix
+	weights2    *MLXMatrix
 }
 
 // Vote represents a consensus vote for MLX processing
@@ -151,7 +151,7 @@ func (m *MLXMatrix) randomize() {
 	count := int(m.ptr.rows * m.ptr.cols)
 	for i := 0; i < count; i++ {
 		// Simple pseudo-random for deterministic testing
-		val := float32((i%100) - 50) / 100.0
+		val := float32((i%100)-50) / 100.0
 		*(*C.float)(unsafe.Pointer(uintptr(unsafe.Pointer(m.ptr.data)) + uintptr(i*4))) = C.float(val)
 	}
 }

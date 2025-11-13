@@ -114,16 +114,16 @@ type Consensus interface {
 
 // ChainConsensus implements chain-based consensus for testing
 type ChainConsensus struct {
-	params           Parameters
-	blocks           map[ids.ID]*TestBlock
-	processing       set.Set[ids.ID]
-	preference       ids.ID
-	lastAccepted     ids.ID
-	votes            map[ids.ID]int
-	confidence       map[ids.ID]int
-	consecutivePoll  map[ids.ID]int // Track consecutive successful polls
-	finalized        bool
-	mu               sync.RWMutex
+	params          Parameters
+	blocks          map[ids.ID]*TestBlock
+	processing      set.Set[ids.ID]
+	preference      ids.ID
+	lastAccepted    ids.ID
+	votes           map[ids.ID]int
+	confidence      map[ids.ID]int
+	consecutivePoll map[ids.ID]int // Track consecutive successful polls
+	finalized       bool
+	mu              sync.RWMutex
 }
 
 // NewChainConsensus creates a new chain consensus instance
@@ -473,8 +473,8 @@ func NewSimulationNetwork(params Parameters, numColors int, rngSeed uint64) *Sim
 				IDV:     ids.Empty.Prefix(n.nextRandom()),
 				StatusV: choices.Processing,
 			},
-			ParentV:    genesis.IDV,  // All blocks build on genesis (siblings, not chain)
-			HeightV:    1,             // All at same height (conflicting choices)
+			ParentV:    genesis.IDV, // All blocks build on genesis (siblings, not chain)
+			HeightV:    1,           // All at same height (conflicting choices)
 			TimestampV: int64(i),
 		}
 		n.colors = append(n.colors, block)
@@ -814,10 +814,10 @@ func TestNetworkScalability(t *testing.T) {
 
 	params := DefaultParameters()
 	// Adjust for better scalability
-	params.K = 10 // Smaller sample size for large network
-	params.AlphaPreference = 6  // Lower threshold for large network
-	params.AlphaConfidence = 6  // Lower threshold for large network
-	params.Beta = 5 // Lower beta for faster convergence
+	params.K = 10              // Smaller sample size for large network
+	params.AlphaPreference = 6 // Lower threshold for large network
+	params.AlphaConfidence = 6 // Lower threshold for large network
+	params.Beta = 5            // Lower beta for faster convergence
 
 	// Create large network
 	network := NewSimulationNetwork(params, 5, 777777) // Even fewer blocks for faster convergence
@@ -889,10 +889,10 @@ func TestNetworkResilience(t *testing.T) {
 	require := require.New(t)
 
 	params := DefaultParameters()
-	params.K = 5 // Smaller K for resilience with failures
+	params.K = 5               // Smaller K for resilience with failures
 	params.AlphaPreference = 3 // Lower threshold for resilience
 	params.AlphaConfidence = 3 // Lower threshold for resilience
-	params.Beta = 3 // Lower beta for faster recovery
+	params.Beta = 3            // Lower beta for faster recovery
 
 	network := NewSimulationNetwork(params, 2, 161616) // Minimal blocks for simplicity
 

@@ -18,32 +18,32 @@ import (
 
 // mockVertex implements vertex.Vertex for benchmarking
 type mockVertex struct {
-	id       ids.ID
-	parents  []ids.ID
-	height   uint64
-	epoch    uint32
-	txs      []ids.ID
-	status   choices.Status
-	bytes    []byte
+	id      ids.ID
+	parents []ids.ID
+	height  uint64
+	epoch   uint32
+	txs     []ids.ID
+	status  choices.Status
+	bytes   []byte
 }
 
-func (v *mockVertex) ID() ids.ID                      { return v.id }
-func (v *mockVertex) Bytes() []byte                   { return v.bytes }
-func (v *mockVertex) Height() uint64                  { return v.height }
-func (v *mockVertex) Epoch() uint32                   { return v.epoch }
-func (v *mockVertex) Parents() []ids.ID               { return v.parents }
-func (v *mockVertex) Txs() []ids.ID                   { return v.txs }
-func (v *mockVertex) Status() choices.Status          { return v.status }
-func (v *mockVertex) Accept(context.Context) error    { return nil }
-func (v *mockVertex) Reject(context.Context) error    { return nil }
-func (v *mockVertex) Verify(context.Context) error    { return nil }
+func (v *mockVertex) ID() ids.ID                   { return v.id }
+func (v *mockVertex) Bytes() []byte                { return v.bytes }
+func (v *mockVertex) Height() uint64               { return v.height }
+func (v *mockVertex) Epoch() uint32                { return v.epoch }
+func (v *mockVertex) Parents() []ids.ID            { return v.parents }
+func (v *mockVertex) Txs() []ids.ID                { return v.txs }
+func (v *mockVertex) Status() choices.Status       { return v.status }
+func (v *mockVertex) Accept(context.Context) error { return nil }
+func (v *mockVertex) Reject(context.Context) error { return nil }
+func (v *mockVertex) Verify(context.Context) error { return nil }
 
 // mockStateVertex implements state.Vertex for benchmarking
 type mockStateVertex struct {
-	id       ids.ID
-	parents  []ids.ID
-	height   uint64
-	bytes    []byte
+	id      ids.ID
+	parents []ids.ID
+	height  uint64
+	bytes   []byte
 }
 
 func (v *mockStateVertex) ID() ids.ID          { return v.id }
@@ -54,13 +54,13 @@ func (v *mockStateVertex) Bytes() []byte       { return v.bytes }
 // generateVertex creates a mock vertex with random data
 func generateVertex(height uint64, numParents int, numTxs int) *mockVertex {
 	vtx := &mockVertex{
-		id:       ids.GenerateTestID(),
-		height:   height,
-		epoch:    uint32(height / 100),
-		status:   choices.Processing,
-		parents:  make([]ids.ID, numParents),
-		txs:      make([]ids.ID, numTxs),
-		bytes:    make([]byte, 1024), // 1KB vertex size
+		id:      ids.GenerateTestID(),
+		height:  height,
+		epoch:   uint32(height / 100),
+		status:  choices.Processing,
+		parents: make([]ids.ID, numParents),
+		txs:     make([]ids.ID, numTxs),
+		bytes:   make([]byte, 1024), // 1KB vertex size
 	}
 
 	// Generate random parent IDs
@@ -619,7 +619,7 @@ func min(a, b int) int {
 // BenchmarkLatencySimulation simulates network latency effects on DAG consensus
 func BenchmarkLatencySimulation(b *testing.B) {
 	latencies := []time.Duration{
-		0,                    // No latency
+		0,                      // No latency
 		10 * time.Microsecond,  // Low latency
 		100 * time.Microsecond, // Medium latency
 		1 * time.Millisecond,   // High latency
