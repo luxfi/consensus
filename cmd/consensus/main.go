@@ -94,30 +94,25 @@ func testEngine(engineType, network string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var engine consensus.Engine
 	switch engineType {
 	case "chain":
-		engine = consensus.NewChain(consensus.DefaultConfig())
+		engine := consensus.NewChain(consensus.DefaultConfig())
+		// Start engine
+		if err := engine.Start(ctx); err != nil {
+			fmt.Printf("✗ Failed to start: %v\n", err)
+			os.Exit(1)
+		}
+		defer func() { _ = engine.Stop() }()
+		fmt.Println("✓ Engine test passed")
+		fmt.Printf("  Engine started successfully\n")
 	case "dag":
 		fmt.Println("DAG engine not yet implemented in new API")
-		os.Exit(0)
 	case "pq":
 		fmt.Println("PQ engine not yet implemented in new API")
-		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown engine: %s\n", engineType)
 		os.Exit(1)
 	}
-
-	// Start engine
-	if err := engine.Start(ctx); err != nil {
-		fmt.Printf("✗ Failed to start: %v\n", err)
-		os.Exit(1)
-	}
-	defer func() { _ = engine.Stop() }()
-
-	fmt.Println("✓ Engine test passed")
-	fmt.Printf("  Engine started successfully\n")
 }
 
 func checkHealth(engineType string) {
@@ -126,30 +121,25 @@ func checkHealth(engineType string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	var engine consensus.Engine
 	switch engineType {
 	case "chain":
-		engine = consensus.NewChain(consensus.DefaultConfig())
+		engine := consensus.NewChain(consensus.DefaultConfig())
+		// Start engine
+		if err := engine.Start(ctx); err != nil {
+			fmt.Printf("✗ Failed to start: %v\n", err)
+			os.Exit(1)
+		}
+		defer func() { _ = engine.Stop() }()
+		fmt.Println("✓ Healthy")
+		fmt.Printf("  Engine started successfully\n")
 	case "dag":
 		fmt.Println("DAG engine not yet implemented in new API")
-		os.Exit(0)
 	case "pq":
 		fmt.Println("PQ engine not yet implemented in new API")
-		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown engine: %s\n", engineType)
 		os.Exit(1)
 	}
-
-	// Start engine
-	if err := engine.Start(ctx); err != nil {
-		fmt.Printf("✗ Failed to start: %v\n", err)
-		os.Exit(1)
-	}
-	defer func() { _ = engine.Stop() }()
-
-	fmt.Println("✓ Healthy")
-	fmt.Printf("  Engine started successfully\n")
 }
 
 func getNetworkParams(network string) config.Parameters {

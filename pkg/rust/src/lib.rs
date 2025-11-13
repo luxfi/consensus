@@ -20,7 +20,7 @@
 //!     // Create and add a block
 //!     let block = Block::new(
 //!         ID::from([1, 2, 3]),
-//!         GENESIS_ID,
+//!         ID::from([0; 32]),  // Genesis parent
 //!         1,
 //!         b"Hello, Lux!".to_vec(),
 //!     );
