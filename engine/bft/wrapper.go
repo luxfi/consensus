@@ -36,7 +36,7 @@ func New(cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &Engine{
 		simplex: epoch,
 		config:  cfg,
