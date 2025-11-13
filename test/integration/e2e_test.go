@@ -54,10 +54,6 @@ func TestE2EConsensusEngine(t *testing.T) {
 
 // TestE2EConsensusServer tests the HTTP server endpoints
 func TestE2EConsensusServer(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping E2E server test in short mode")
-	}
-
 	serverURL := "http://localhost:9090"
 
 	// Test health endpoint
