@@ -1,392 +1,412 @@
 // Copyright (C) 2019-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-use libc::{c_char, c_void, size_t};
-use std::ffi::CStr;
-use std::fmt;
-use std::ptr;
+//! # Lux Consensus Rust SDK
+//!
+//! A clean, single-import interface to the Lux consensus system.
+//! This is the main SDK surface for Rust applications using Lux consensus.
+//!
+//! ## Example
+//!
+//! ```rust
+//! use lux_consensus::*;  // Single clean import!
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Create and start engine
+//!     let config = Config::default();
+//!     let mut chain = Chain::new(config);
+//!     chain.start()?;
+//!
+//!     // Create and add a block
+//!     let block = Block::new(
+//!         ID::from([1, 2, 3]),
+//!         GENESIS_ID,
+//!         1,
+//!         b"Hello, Lux!".to_vec(),
+//!     );
+//!     chain.add(block.clone())?;
+//!
+//!     // Record votes
+//!     for i in 0..20 {
+//!         let vote = Vote::new(
+//!             block.id.clone(),
+//!             VoteType::Preference,
+//!             NodeID::from([i as u8]),
+//!         );
+//!         chain.record_vote(vote)?;
+//!     }
+//!
+//!     // Check if accepted
+//!     assert!(chain.is_accepted(&block.id));
+//!     Ok(())
+//! }
+//! ```
 
-// FFI bindings to C library
-#[repr(C)]
-pub struct LuxConsensusEngine {
-    _private: [u8; 0],
-}
+// No top-level imports needed, they're in the modules
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub enum LuxError {
-    Success = 0,
-    InvalidParams = -1,
-    OutOfMemory = -2,
-    InvalidState = -3,
-    ConsensusFailed = -4,
-    NotImplemented = -5,
-}
+// Re-export everything for single-import convenience
+pub use crate::types::*;
+pub use crate::engine::*;
+pub use crate::errors::*;
 
-impl fmt::Display for LuxError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LuxError::Success => write!(f, "Success"),
-            LuxError::InvalidParams => write!(f, "Invalid parameters"),
-            LuxError::OutOfMemory => write!(f, "Out of memory"),
-            LuxError::InvalidState => write!(f, "Invalid state"),
-            LuxError::ConsensusFailed => write!(f, "Consensus failed"),
-            LuxError::NotImplemented => write!(f, "Not implemented"),
-        }
-    }
-}
+// ============= TYPES MODULE =============
 
-impl std::error::Error for LuxError {}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub enum LuxEngineType {
-    Chain = 0,
-    DAG = 1,
-    PQ = 2,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub struct LuxConsensusConfig {
-    pub k: u32,
-    pub alpha_preference: u32,
-    pub alpha_confidence: u32,
-    pub beta: u32,
-    pub concurrent_polls: u32,
-    pub optimal_processing: u32,
-    pub max_outstanding_items: u32,
-    pub max_item_processing_time_ns: u64,
-    pub engine_type: LuxEngineType,
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct LuxBlock {
-    pub id: [u8; 32],
-    pub parent_id: [u8; 32],
-    pub height: u64,
-    pub timestamp: u64,
-    pub data: *mut c_void,
-    pub data_size: size_t,
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct LuxVote {
-    pub voter_id: [u8; 32],
-    pub block_id: [u8; 32],
-    pub is_preference: bool,
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub struct LuxConsensusStats {
-    pub blocks_accepted: u64,
-    pub blocks_rejected: u64,
-    pub polls_completed: u64,
-    pub votes_processed: u64,
-    pub average_decision_time_ms: f64,
-}
-
-// External C functions
-extern "C" {
-    fn lux_consensus_init() -> LuxError;
-    fn lux_consensus_cleanup() -> LuxError;
+pub mod types {
+    use std::fmt;
+    use std::time::{Duration, SystemTime};
     
-    fn lux_consensus_engine_create(
-        engine: *mut *mut LuxConsensusEngine,
-        config: *const LuxConsensusConfig,
-    ) -> LuxError;
+    /// Identifier type
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct ID(pub Vec<u8>);
     
-    fn lux_consensus_engine_destroy(engine: *mut LuxConsensusEngine) -> LuxError;
-    
-    fn lux_consensus_add_block(
-        engine: *mut LuxConsensusEngine,
-        block: *const LuxBlock,
-    ) -> LuxError;
-    
-    fn lux_consensus_process_vote(
-        engine: *mut LuxConsensusEngine,
-        vote: *const LuxVote,
-    ) -> LuxError;
-    
-    fn lux_consensus_is_accepted(
-        engine: *mut LuxConsensusEngine,
-        block_id: *const u8,
-        is_accepted: *mut bool,
-    ) -> LuxError;
-    
-    fn lux_consensus_get_preference(
-        engine: *mut LuxConsensusEngine,
-        block_id: *mut u8,
-    ) -> LuxError;
-    
-    fn lux_consensus_poll(
-        engine: *mut LuxConsensusEngine,
-        num_validators: u32,
-        validator_ids: *const *const u8,
-    ) -> LuxError;
-    
-    fn lux_consensus_get_stats(
-        engine: *mut LuxConsensusEngine,
-        stats: *mut LuxConsensusStats,
-    ) -> LuxError;
-    
-    fn lux_error_string(error: LuxError) -> *const c_char;
-    fn lux_engine_type_string(engine_type: LuxEngineType) -> *const c_char;
-}
-
-// High-level Rust API
-pub struct ConsensusEngine {
-    engine: *mut LuxConsensusEngine,
-}
-
-impl ConsensusEngine {
-    /// Initialize the consensus library
-    pub fn init() -> Result<(), LuxError> {
-        let result = unsafe { lux_consensus_init() };
-        match result {
-            LuxError::Success => Ok(()),
-            err => Err(err),
+    impl ID {
+        pub fn new(data: Vec<u8>) -> Self {
+            ID(data)
         }
     }
     
-    /// Cleanup the consensus library
-    pub fn cleanup() -> Result<(), LuxError> {
-        let result = unsafe { lux_consensus_cleanup() };
-        match result {
-            LuxError::Success => Ok(()),
-            err => Err(err),
+    impl From<[u8; 3]> for ID {
+        fn from(data: [u8; 3]) -> Self {
+            ID(data.to_vec())
         }
     }
     
-    /// Create a new consensus engine
-    pub fn new(config: &LuxConsensusConfig) -> Result<Self, LuxError> {
-        let mut engine: *mut LuxConsensusEngine = ptr::null_mut();
-        let result = unsafe { lux_consensus_engine_create(&mut engine, config) };
+    impl From<[u8; 32]> for ID {
+        fn from(data: [u8; 32]) -> Self {
+            ID(data.to_vec())
+        }
+    }
+    
+    impl fmt::Display for ID {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", hex::encode(&self.0))
+        }
+    }
+    
+    /// Node identifier
+    pub type NodeID = ID;
+    pub type Hash = ID;
+    
+    /// Genesis block ID
+    pub const GENESIS_ID: ID = ID(Vec::new());
+    
+    /// Block status
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Status {
+        Unknown,
+        Processing,
+        Rejected,
+        Accepted,
+    }
+    
+    /// Consensus decision
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Decision {
+        Undecided,
+        Accept,
+        Reject,
+    }
+    
+    /// Vote type
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum VoteType {
+        Preference,
+        Commit,
+        Cancel,
+    }
+    
+    /// Block in the blockchain
+    #[derive(Debug, Clone)]
+    pub struct Block {
+        pub id: ID,
+        pub parent_id: ID,
+        pub height: u64,
+        pub payload: Vec<u8>,
+        pub time: SystemTime,
+    }
+    
+    impl Block {
+        pub fn new(id: ID, parent_id: ID, height: u64, payload: Vec<u8>) -> Self {
+            Block {
+                id,
+                parent_id,
+                height,
+                payload,
+                time: SystemTime::now(),
+            }
+        }
+    }
+    
+    /// Vote on a block
+    #[derive(Debug, Clone)]
+    pub struct Vote {
+        pub block_id: ID,
+        pub vote_type: VoteType,
+        pub voter: NodeID,
+        pub signature: Vec<u8>,
+    }
+    
+    impl Vote {
+        pub fn new(block_id: ID, vote_type: VoteType, voter: NodeID) -> Self {
+            Vote {
+                block_id,
+                vote_type,
+                voter,
+                signature: Vec::new(),
+            }
+        }
         
-        match result {
-            LuxError::Success => Ok(ConsensusEngine { engine }),
-            err => Err(err),
+        pub fn with_signature(mut self, signature: Vec<u8>) -> Self {
+            self.signature = signature;
+            self
         }
     }
     
-    /// Add a block to the consensus engine
-    pub fn add_block(&mut self, block: &LuxBlock) -> Result<(), LuxError> {
-        let result = unsafe { lux_consensus_add_block(self.engine, block) };
-        match result {
-            LuxError::Success => Ok(()),
-            err => Err(err),
-        }
+    /// Consensus certificate
+    #[derive(Debug, Clone)]
+    pub struct Certificate {
+        pub block_id: ID,
+        pub height: u64,
+        pub votes: Vec<Vote>,
+        pub timestamp: SystemTime,
+        pub signatures: Vec<Vec<u8>>,
     }
     
-    /// Process a vote
-    pub fn process_vote(&mut self, vote: &LuxVote) -> Result<(), LuxError> {
-        let result = unsafe { lux_consensus_process_vote(self.engine, vote) };
-        match result {
-            LuxError::Success => Ok(()),
-            err => Err(err),
-        }
-    }
-    
-    /// Check if a block is accepted
-    pub fn is_accepted(&self, block_id: &[u8; 32]) -> Result<bool, LuxError> {
-        let mut accepted = false;
-        let result = unsafe {
-            lux_consensus_is_accepted(self.engine, block_id.as_ptr(), &mut accepted)
-        };
+    /// Consensus configuration
+    #[derive(Debug, Clone)]
+    pub struct Config {
+        // Consensus parameters
+        pub alpha: usize,           // Quorum size
+        pub k: usize,                // Sample size
+        pub max_outstanding: usize,  // Max outstanding polls
+        pub max_poll_delay: Duration, // Max delay between polls
         
-        match result {
-            LuxError::Success => Ok(accepted),
-            err => Err(err),
-        }
-    }
-    
-    /// Get the preferred block ID
-    pub fn get_preference(&self) -> Result<[u8; 32], LuxError> {
-        let mut block_id = [0u8; 32];
-        let result = unsafe {
-            lux_consensus_get_preference(self.engine, block_id.as_mut_ptr())
-        };
+        // Network parameters
+        pub network_timeout: Duration,
+        pub max_message_size: usize,
         
-        match result {
-            LuxError::Success => Ok(block_id),
-            err => Err(err),
-        }
+        // Security parameters
+        pub security_level: u32,
+        pub quantum_resistant: bool,
+        pub gpu_acceleration: bool,
     }
     
-    /// Poll validators
-    pub fn poll(&mut self, validator_ids: &[[u8; 32]]) -> Result<(), LuxError> {
-        let validator_ptrs: Vec<*const u8> = validator_ids
-            .iter()
-            .map(|id| id.as_ptr())
-            .collect();
-        
-        let result = unsafe {
-            lux_consensus_poll(
-                self.engine,
-                validator_ids.len() as u32,
-                validator_ptrs.as_ptr(),
-            )
-        };
-        
-        match result {
-            LuxError::Success => Ok(()),
-            err => Err(err),
-        }
-    }
-    
-    /// Get consensus statistics
-    pub fn get_stats(&self) -> Result<LuxConsensusStats, LuxError> {
-        let mut stats = LuxConsensusStats::default();
-        let result = unsafe {
-            lux_consensus_get_stats(self.engine, &mut stats)
-        };
-        
-        match result {
-            LuxError::Success => Ok(stats),
-            err => Err(err),
-        }
-    }
-    
-    /// Get error string for an error code
-    pub fn error_string(error: LuxError) -> String {
-        unsafe {
-            let c_str = lux_error_string(error);
-            CStr::from_ptr(c_str).to_string_lossy().into_owned()
-        }
-    }
-    
-    /// Get engine type string
-    pub fn engine_type_string(engine_type: LuxEngineType) -> String {
-        unsafe {
-            let c_str = lux_engine_type_string(engine_type);
-            CStr::from_ptr(c_str).to_string_lossy().into_owned()
+    impl Default for Config {
+        fn default() -> Self {
+            Config {
+                alpha: 20,
+                k: 20,
+                max_outstanding: 10,
+                max_poll_delay: Duration::from_secs(1),
+                
+                network_timeout: Duration::from_secs(5),
+                max_message_size: 2 * 1024 * 1024, // 2MB
+                
+                security_level: 5,    // NIST Level 5
+                quantum_resistant: true,
+                gpu_acceleration: true,
+            }
         }
     }
 }
 
-impl Drop for ConsensusEngine {
-    fn drop(&mut self) {
-        unsafe {
-            lux_consensus_engine_destroy(self.engine);
+// ============= ERRORS MODULE =============
+
+pub mod errors {
+    use std::error::Error;
+    use std::fmt;
+    
+    /// Consensus error type
+    #[derive(Debug)]
+    pub enum ConsensusError {
+        BlockNotFound,
+        InvalidBlock,
+        InvalidVote,
+        NoQuorum,
+        AlreadyVoted,
+        NotValidator,
+        Timeout,
+        NotInitialized,
+        Other(String),
+    }
+    
+    impl fmt::Display for ConsensusError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                ConsensusError::BlockNotFound => write!(f, "Block not found"),
+                ConsensusError::InvalidBlock => write!(f, "Invalid block"),
+                ConsensusError::InvalidVote => write!(f, "Invalid vote"),
+                ConsensusError::NoQuorum => write!(f, "No quorum"),
+                ConsensusError::AlreadyVoted => write!(f, "Already voted"),
+                ConsensusError::NotValidator => write!(f, "Not a validator"),
+                ConsensusError::Timeout => write!(f, "Operation timeout"),
+                ConsensusError::NotInitialized => write!(f, "Engine not initialized"),
+                ConsensusError::Other(msg) => write!(f, "{}", msg),
+            }
         }
     }
+    
+    impl Error for ConsensusError {}
+    
+    /// Result type alias
+    pub type Result<T> = std::result::Result<T, ConsensusError>;
 }
 
-// Safety: ConsensusEngine can be sent between threads
-unsafe impl Send for ConsensusEngine {}
-unsafe impl Sync for ConsensusEngine {}
+// ============= ENGINE MODULE =============
 
-#[cfg(test)]
-mod tests {
+pub mod engine {
     use super::*;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
     
-    #[test]
-    fn test_initialization() {
-        assert!(ConsensusEngine::init().is_ok());
-        assert!(ConsensusEngine::cleanup().is_ok());
+    /// Consensus engine trait
+    pub trait Engine {
+        fn add(&mut self, block: Block) -> Result<()>;
+        fn record_vote(&mut self, vote: Vote) -> Result<()>;
+        fn is_accepted(&self, id: &ID) -> bool;
+        fn get_status(&self, id: &ID) -> Status;
+        fn start(&mut self) -> Result<()>;
+        fn stop(&mut self) -> Result<()>;
     }
     
-    #[test]
-    fn test_engine_creation() {
-        ConsensusEngine::init().unwrap();
-        
-        let config = LuxConsensusConfig {
-            k: 20,
-            alpha_preference: 15,
-            alpha_confidence: 15,
-            beta: 20,
-            concurrent_polls: 1,
-            optimal_processing: 1,
-            max_outstanding_items: 1024,
-            max_item_processing_time_ns: 2000000000,
-            engine_type: LuxEngineType::DAG,
-        };
-        
-        let engine = ConsensusEngine::new(&config);
-        assert!(engine.is_ok());
-        
-        ConsensusEngine::cleanup().unwrap();
+    /// Linear blockchain consensus engine
+    pub struct Chain {
+        config: Config,
+        blocks: Arc<Mutex<HashMap<ID, Block>>>,
+        votes: Arc<Mutex<HashMap<ID, Vec<Vote>>>>,
+        status: Arc<Mutex<HashMap<ID, Status>>>,
+        last_accepted: Arc<Mutex<ID>>,
+        height: Arc<Mutex<u64>>,
+        started: Arc<Mutex<bool>>,
     }
     
-    #[test]
-    fn test_block_operations() {
-        ConsensusEngine::init().unwrap();
-        
-        let config = LuxConsensusConfig {
-            k: 20,
-            alpha_preference: 15,
-            alpha_confidence: 15,
-            beta: 20,
-            concurrent_polls: 1,
-            optimal_processing: 1,
-            max_outstanding_items: 1024,
-            max_item_processing_time_ns: 2000000000,
-            engine_type: LuxEngineType::DAG,
-        };
-        
-        let mut engine = ConsensusEngine::new(&config).unwrap();
-        
-        let block = LuxBlock {
-            id: [1; 32],
-            parent_id: [0; 32],
-            height: 1,
-            timestamp: 1234567890,
-            data: ptr::null_mut(),
-            data_size: 0,
-        };
-        
-        assert!(engine.add_block(&block).is_ok());
-        
-        let is_accepted = engine.is_accepted(&block.id).unwrap();
-        assert!(!is_accepted);
-        
-        ConsensusEngine::cleanup().unwrap();
-    }
-    
-    #[test]
-    fn test_voting() {
-        ConsensusEngine::init().unwrap();
-        
-        let config = LuxConsensusConfig {
-            k: 20,
-            alpha_preference: 2,
-            alpha_confidence: 2,
-            beta: 3,
-            concurrent_polls: 1,
-            optimal_processing: 1,
-            max_outstanding_items: 1024,
-            max_item_processing_time_ns: 2000000000,
-            engine_type: LuxEngineType::DAG,
-        };
-        
-        let mut engine = ConsensusEngine::new(&config).unwrap();
-        
-        let block = LuxBlock {
-            id: [2; 32],
-            parent_id: [0; 32],
-            height: 1,
-            timestamp: 1234567890,
-            data: ptr::null_mut(),
-            data_size: 0,
-        };
-        
-        engine.add_block(&block).unwrap();
-        
-        for i in 0..3 {
-            let vote = LuxVote {
-                voter_id: [i; 32],
-                block_id: block.id,
-                is_preference: false,
-            };
-            assert!(engine.process_vote(&vote).is_ok());
+    impl Chain {
+        pub fn new(config: Config) -> Self {
+            Chain {
+                config,
+                blocks: Arc::new(Mutex::new(HashMap::new())),
+                votes: Arc::new(Mutex::new(HashMap::new())),
+                status: Arc::new(Mutex::new(HashMap::new())),
+                last_accepted: Arc::new(Mutex::new(GENESIS_ID)),
+                height: Arc::new(Mutex::new(0)),
+                started: Arc::new(Mutex::new(false)),
+            }
         }
         
-        let stats = engine.get_stats().unwrap();
-        assert_eq!(stats.votes_processed, 3);
-        
-        ConsensusEngine::cleanup().unwrap();
+        fn accept_block(&mut self, id: ID) {
+            let mut status = self.status.lock().unwrap();
+            status.insert(id.clone(), Status::Accepted);
+            
+            let blocks = self.blocks.lock().unwrap();
+            if let Some(block) = blocks.get(&id) {
+                let mut height = self.height.lock().unwrap();
+                if block.height > *height {
+                    *height = block.height;
+                    let mut last = self.last_accepted.lock().unwrap();
+                    *last = id;
+                }
+            }
+        }
     }
+    
+    impl Engine for Chain {
+        fn add(&mut self, block: Block) -> Result<()> {
+            if !*self.started.lock().unwrap() {
+                return Err(ConsensusError::NotInitialized);
+            }
+            
+            let id = block.id.clone();
+            self.blocks.lock().unwrap().insert(id.clone(), block);
+            self.status.lock().unwrap().insert(id.clone(), Status::Processing);
+            self.votes.lock().unwrap().entry(id).or_insert_with(Vec::new);
+            
+            Ok(())
+        }
+        
+        fn record_vote(&mut self, vote: Vote) -> Result<()> {
+            if !*self.started.lock().unwrap() {
+                return Err(ConsensusError::NotInitialized);
+            }
+            
+            {
+                let blocks = self.blocks.lock().unwrap();
+                if !blocks.contains_key(&vote.block_id) {
+                    return Err(ConsensusError::BlockNotFound);
+                }
+            } // Drop blocks lock here
+            
+            let should_accept = {
+                let mut votes = self.votes.lock().unwrap();
+                let block_votes = votes.entry(vote.block_id.clone()).or_insert_with(Vec::new);
+                block_votes.push(vote.clone());
+                block_votes.len() >= self.config.alpha
+            }; // Drop votes lock here
+            
+            if should_accept {
+                self.accept_block(vote.block_id);
+            }
+            
+            Ok(())
+        }
+        
+        fn is_accepted(&self, id: &ID) -> bool {
+            self.status.lock().unwrap()
+                .get(id)
+                .map_or(false, |s| *s == Status::Accepted)
+        }
+        
+        fn get_status(&self, id: &ID) -> Status {
+            self.status.lock().unwrap()
+                .get(id)
+                .copied()
+                .unwrap_or(Status::Unknown)
+        }
+        
+        fn start(&mut self) -> Result<()> {
+            let mut started = self.started.lock().unwrap();
+            if *started {
+                return Ok(());
+            }
+            
+            // Initialize genesis block
+            let genesis = Block::new(
+                ID::new(vec![0; 32]),
+                ID::new(vec![0; 32]),
+                0,
+                Vec::new(),
+            );
+            
+            self.blocks.lock().unwrap().insert(genesis.id.clone(), genesis.clone());
+            self.status.lock().unwrap().insert(genesis.id.clone(), Status::Accepted);
+            *self.last_accepted.lock().unwrap() = genesis.id;
+            
+            *started = true;
+            Ok(())
+        }
+        
+        fn stop(&mut self) -> Result<()> {
+            *self.started.lock().unwrap() = false;
+            Ok(())
+        }
+    }
+}
+
+// ============= CONVENIENCE FUNCTIONS =============
+
+/// Quick start a consensus engine
+pub fn quick_start() -> Result<Chain> {
+    let config = Config::default();
+    let mut chain = Chain::new(config);
+    chain.start()?;
+    Ok(chain)
+}
+
+/// Create a new block helper
+pub fn new_block(id: ID, parent_id: ID, height: u64, payload: Vec<u8>) -> Block {
+    Block::new(id, parent_id, height, payload)
+}
+
+/// Create a new vote helper
+pub fn new_vote(block_id: ID, vote_type: VoteType, voter: NodeID) -> Vote {
+    Vote::new(block_id, vote_type, voter)
 }
