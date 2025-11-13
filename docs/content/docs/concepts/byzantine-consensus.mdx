@@ -69,10 +69,10 @@ Lux Quasar uses a **dual-phase** approach:
 ### Phase 1: Nova (Classical BFT)
 
 **Wave Protocol** - Metastable convergence:
-1. Sample k random validators
-2. Check if ≥α prefer this block
-3. Increase confidence if yes
-4. Repeat until β consecutive successes
+*Sample k random validators
+*Check if ≥α prefer this block
+*Increase confidence if yes
+*Repeat until β consecutive successes
 
 **FPC** - Prevents stuck states:
 - Dynamically varies threshold α each round
@@ -123,12 +123,12 @@ Quantum computers threaten current cryptography:
 ### Lux's Approach
 
 **Dual Certificate System**:
-1. **BLS Signatures** (classical)
+***BLS Signatures** (classical)
    - Fast and efficient
    - Small size (~48 bytes)
    - Proven security in classical setting
 
-2. **Ringtail Signatures** (post-quantum)
+***Ringtail Signatures** (post-quantum)
    - Lattice-based cryptography
    - Resistant to Shor's algorithm
    - Based on hard lattice problems
@@ -169,11 +169,11 @@ Quantum computers threaten current cryptography:
 
 ### Lux Innovations
 
-1. **Unified Protocol**: Same engine for DAG, linear, EVM chains
-2. **Quantum Finality**: First blockchain with PQ finality by default
-3. **2-Round Total**: BLS (Round 1) + Ringtail (Round 2)
-4. **FPC Integration**: Dynamic thresholds prevent stuck states
-5. **Horizon/Flare**: Efficient DAG finality detection
+***Unified Protocol**: Same engine for DAG, linear, EVM chains
+***Quantum Finality**: First blockchain with PQ finality by default
+***2-Round Total**: BLS (Round 1) + Ringtail (Round 2)
+***FPC Integration**: Dynamic thresholds prevent stuck states
+***Horizon/Flare**: Efficient DAG finality detection
 
 ## Key Concepts
 
