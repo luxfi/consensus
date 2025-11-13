@@ -9,6 +9,7 @@ import (
 
 	"github.com/luxfi/consensus"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/log"
 )
 
 var (
@@ -62,14 +63,22 @@ func Context(tb testing.TB, chainID ids.ID) *consensus.Context {
 	tb.Helper()
 
 	ctx := &consensus.Context{
-		QuantumID: 1,
-		ChainID:   chainID,
-		NodeID:    ids.GenerateTestNodeID(),
-		NetID:     ids.Empty,
+		QuantumID:  1,
+		NetworkID:  1,
+		ChainID:    chainID,
+		NodeID:     ids.GenerateTestNodeID(),
+		NetID:      ids.Empty,
+		XChainID:   XChainID,
+		CChainID:   CChainID,
+		XAssetID:   XAssetID,
+		LUXAssetID: XAssetID, // Use XAssetID as default LUX asset
 	}
 
 	// Set up a simple validator state
 	ctx.ValidatorState = &SimpleValidatorState{}
+
+	// Set up a no-op logger for tests
+	ctx.Log = log.NoLog{}
 
 	return ctx
 }
