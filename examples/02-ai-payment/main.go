@@ -57,7 +57,7 @@ func main() {
 	}
 
 	fmt.Println("=== Validating Payments ===\n")
-	
+
 	ctx := context.Background()
 	for _, payment := range testPayments {
 		validatePayment(ctx, agent, payment)
@@ -81,17 +81,17 @@ type PaymentRequest struct {
 func createAIAgent() *ai.Agent[ai.TransactionData] {
 	// Create simple model for payment validation
 	model := ai.NewSimpleModel("payment-validator")
-	
+
 	// Create agent (photon and quasar are nil for this example)
 	agent := ai.New("node-001", model, nil, nil)
-	
+
 	return agent
 }
 
 func trainAgent(agent *ai.Agent[ai.TransactionData]) {
 	// Train with historical transactions
 	// In production, this would load from database
-	
+
 	// Normal successful payments (positive training)
 	for i := 0; i < 70; i++ {
 		amount := uint64(500 + i*10) // 500-1200 range
@@ -110,7 +110,7 @@ func trainAgent(agent *ai.Agent[ai.TransactionData]) {
 		}
 		agent.AddTrainingData(example)
 	}
-	
+
 	// Fraudulent payments (negative training)
 	for i := 0; i < 20; i++ {
 		amount := uint64(50000 + i*1000) // Very large amounts
@@ -129,7 +129,7 @@ func trainAgent(agent *ai.Agent[ai.TransactionData]) {
 		}
 		agent.AddTrainingData(example)
 	}
-	
+
 	// Borderline cases (mixed)
 	for i := 0; i < 10; i++ {
 		amount := uint64(2000 + i*100) // Medium amounts
@@ -184,7 +184,7 @@ func validatePayment(ctx context.Context, agent *ai.Agent[ai.TransactionData], p
 	// Display AI analysis
 	fmt.Println("AI Analysis:")
 	fmt.Printf("  Confidence:  %.2f ", decision.Confidence)
-	
+
 	// Show confidence level
 	if decision.Confidence >= 0.8 {
 		fmt.Println("(HIGH)")
@@ -193,11 +193,11 @@ func validatePayment(ctx context.Context, agent *ai.Agent[ai.TransactionData], p
 	} else {
 		fmt.Println("(LOW)")
 	}
-	
+
 	// Show risk assessment
 	risk := assessRisk(payment.Amount)
 	fmt.Printf("  Risk Level:  %s\n", risk)
-	
+
 	// Show decision
 	if decision.Confidence >= 0.7 {
 		fmt.Println("  ✓ Decision:  APPROVE")
@@ -206,9 +206,9 @@ func validatePayment(ctx context.Context, agent *ai.Agent[ai.TransactionData], p
 	} else {
 		fmt.Println("  ✗ Decision:  REJECT")
 	}
-	
+
 	fmt.Printf("  Reasoning:   %s\n", decision.Reasoning)
-	
+
 	// Record outcome for learning
 	feedback := 1.0
 	if decision.Confidence < 0.5 {
@@ -216,7 +216,7 @@ func validatePayment(ctx context.Context, agent *ai.Agent[ai.TransactionData], p
 	} else if decision.Confidence < 0.7 {
 		feedback = 0.5
 	}
-	
+
 	example := ai.TrainingExample[ai.TransactionData]{
 		Input:    txData,
 		Output:   *decision,
@@ -236,12 +236,12 @@ func assessRisk(amount *big.Int) string {
 	if amount.Cmp(threshold) > 0 {
 		return "HIGH"
 	}
-	
+
 	mediumThreshold := big.NewInt(2000)
 	if amount.Cmp(mediumThreshold) > 0 {
 		return "MEDIUM"
 	}
-	
+
 	return "LOW"
 }
 

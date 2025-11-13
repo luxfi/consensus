@@ -314,12 +314,12 @@ func (b *ErrorBlock) Verify(ctx context.Context) error {
 
 // Consensus represents the chain consensus engine with error handling
 type Consensus struct {
-	ctx        context.Context
-	params     *Parameters
-	blocks     map[ids.ID]block.Block
-	processing map[ids.ID]bool
+	ctx          context.Context
+	params       *Parameters
+	blocks       map[ids.ID]block.Block
+	processing   map[ids.ID]bool
 	lastAccepted ids.ID
-	metrics    *consensusMetrics
+	metrics      *consensusMetrics
 }
 
 // Parameters holds consensus parameters
