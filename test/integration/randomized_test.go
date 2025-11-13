@@ -603,10 +603,6 @@ func TestParameterSensitivity(t *testing.T) {
 // ==================== Scale Tests ====================
 
 func TestConsensusAtScale(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping scale test in short mode")
-	}
-
 	scales := []struct {
 		nodes  int
 		blocks int

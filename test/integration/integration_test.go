@@ -148,7 +148,6 @@ func TestAIConsensusIntegration(t *testing.T) {
 		// if marketplace == nil {
 		// 	t.Fatal("Failed to create compute marketplace")
 		// }
-		t.Skip("AI marketplace integration WIP")
 	})
 
 	t.Run("Node Integration", func(t *testing.T) {
@@ -173,7 +172,6 @@ func TestAIConsensusIntegration(t *testing.T) {
 		//
 		// Test integration exists (Start/Stop might not be exported)
 		// Just verify creation was successful
-		t.Skip("AI node integration WIP")
 	})
 
 	t.Run("AI Engine and Builder", func(t *testing.T) {
