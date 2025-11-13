@@ -124,6 +124,8 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/leanovate/gopter v0.2.11 h1:vRjThO1EKPb/1NsDXuDrzldR28RLkBflWYcU9CvzWu4=
 github.com/leanovate/gopter v0.2.11/go.mod h1:aK3tzZP/C+p1m3SPRE4SYZFGP7jjkuSI4f7Xvpt0S9c=
+github.com/luxfi/bft v0.1.0 h1:7PuGqoDSFTVwxT3MF0VU+c/QeC/HVerKJtpNL+4Bp0M=
+github.com/luxfi/bft v0.1.0/go.mod h1:IUT167Erk2h8z36197Yrmu/3CBIsZku5WlEG8O2NMp4=
 github.com/luxfi/crypto v1.17.4 h1:JcFaMC9EHjx/47XypQjl2woAysztl7a9kMsDY+pQh8I=
 github.com/luxfi/crypto v1.17.4/go.mod h1:Y+TkHDuHXe2vlwNlwkdI5TYds6C2d4OZcvmXjcMRZCQ=
 github.com/luxfi/database v1.2.7 h1:FpPfvl6C4/DqeP9OrV5LbeUAFxmDyBgHP8CcvSO2D1c=
