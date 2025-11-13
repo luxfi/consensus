@@ -30,7 +30,7 @@ func main() {
 	// Step 3: Test a transfer
 	fmt.Println("=== Testing Transfer ===")
 	ctx := context.Background()
-	
+
 	transferID, err := initiateTransfer(ctx, bridge)
 	if err != nil {
 		panic(err)
@@ -63,15 +63,15 @@ func createBridge() *lx.CrossChainBridge {
 func setupAssets(bridge *lx.CrossChainBridge) error {
 	// Add ETH as supported asset
 	eth := &lx.BridgeAsset{
-		Symbol:   "ETH",
-		Name:     "Ethereum",
-		Decimals: 18,
-		SourceContract:  "0x...eth",
+		Symbol:         "ETH",
+		Name:           "Ethereum",
+		Decimals:       18,
+		SourceContract: "0x...eth",
 		WrappedContract: map[string]string{
 			"lux": "0x...lux",
 		},
-		MinTransfer: big.NewInt(10000000000000000), // 0.01 ETH
-		MaxTransfer: big.NewInt(1000000000000000000), // 1 ETH
+		MinTransfer: big.NewInt(10000000000000000),    // 0.01 ETH
+		MaxTransfer: big.NewInt(1000000000000000000),  // 1 ETH
 		DailyLimit:  big.NewInt(10000000000000000000), // 10 ETH
 		DailyVolume: big.NewInt(0),
 		LastReset:   time.Now(),
@@ -80,17 +80,17 @@ func setupAssets(bridge *lx.CrossChainBridge) error {
 
 	bridge.SupportedAssets["ETH"] = eth
 
-	// Add LUX as supported asset  
+	// Add LUX as supported asset
 	lux := &lx.BridgeAsset{
-		Symbol:   "LUX",
-		Name:     "Lux",
-		Decimals: 18,
-		SourceContract:  "0x...lux",
+		Symbol:         "LUX",
+		Name:           "Lux",
+		Decimals:       18,
+		SourceContract: "0x...lux",
 		WrappedContract: map[string]string{
 			"ethereum": "0x...eth",
 		},
-		MinTransfer: big.NewInt(1000000000000000000), // 1 LUX
-		MaxTransfer: big.NewInt(1000000000000000000000), // 1000 LUX
+		MinTransfer: big.NewInt(1000000000000000000),      // 1 LUX
+		MaxTransfer: big.NewInt(1000000000000000000000),   // 1000 LUX
 		DailyLimit:  big.NewInt(100000000000000000000000), // 100k LUX
 		DailyVolume: big.NewInt(0),
 		LastReset:   time.Now(),
@@ -107,7 +107,7 @@ func initiateTransfer(ctx context.Context, bridge *lx.CrossChainBridge) (string,
 	amount := big.NewInt(1500000000000000000) // 1.5 ETH
 	fee := big.NewInt(1500000000000000)       // 0.0015 ETH
 
-	fmt.Printf("→ Transferring %s ETH from Ethereum to Lux\n", 
+	fmt.Printf("→ Transferring %s ETH from Ethereum to Lux\n",
 		new(big.Float).Quo(
 			new(big.Float).SetInt(amount),
 			new(big.Float).SetInt(big.NewInt(1000000000000000000)),
@@ -142,7 +142,7 @@ func initiateTransfer(ctx context.Context, bridge *lx.CrossChainBridge) (string,
 
 func monitorTransfer(ctx context.Context, bridge *lx.CrossChainBridge, transferID string) error {
 	fmt.Println("→ Monitoring transfer status...")
-	
+
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -164,7 +164,7 @@ func monitorTransfer(ctx context.Context, bridge *lx.CrossChainBridge, transferI
 			if transfer, exists := bridge.CompletedTransfers[transferID]; exists {
 				elapsed := transfer.CompletedAt.Sub(transfer.InitiatedAt)
 				fmt.Printf("✓ Transfer completed in %.1fs\n", elapsed.Seconds())
-				
+
 				fmt.Printf("\nTransfer Details:\n")
 				fmt.Printf("  ID:        %s\n", transfer.ID)
 				fmt.Printf("  Amount:    %s %s\n", formatAmount(transfer.Amount), transfer.Asset)
@@ -173,7 +173,7 @@ func monitorTransfer(ctx context.Context, bridge *lx.CrossChainBridge, transferI
 				fmt.Printf("  To:        %s (%s)\n", transfer.DestChain, transfer.DestAddress)
 				fmt.Printf("  Src Hash:  %s\n", transfer.SourceTxHash)
 				fmt.Printf("  Dest Hash: %s\n", transfer.DestTxHash)
-				
+
 				return nil
 			}
 
@@ -190,7 +190,7 @@ func simulateTransfer(bridge *lx.CrossChainBridge, transfer *lx.BridgeTransfer) 
 	for i := 0; i < transfer.RequiredConfirms; i++ {
 		time.Sleep(400 * time.Millisecond)
 		transfer.Confirmations = i + 1
-		
+
 		if i == 2 {
 			transfer.Status = lx.BridgeStatusValidating
 		}

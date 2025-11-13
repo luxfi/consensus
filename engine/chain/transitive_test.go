@@ -39,13 +39,13 @@ const (
 	StatusRejected   uint8 = 3
 )
 
-func (b *TestBlock) ID() ids.ID               { return b.IDV }
-func (b *TestBlock) Height() uint64           { return b.HeightV }
-func (b *TestBlock) Parent() ids.ID           { return b.ParentV }
-func (b *TestBlock) ParentID() ids.ID         { return b.ParentV }
-func (b *TestBlock) Timestamp() time.Time     { return b.TimestampV }
-func (b *TestBlock) Status() uint8            { return b.StatusV }
-func (b *TestBlock) Bytes() []byte            { return nil }
+func (b *TestBlock) ID() ids.ID           { return b.IDV }
+func (b *TestBlock) Height() uint64       { return b.HeightV }
+func (b *TestBlock) Parent() ids.ID       { return b.ParentV }
+func (b *TestBlock) ParentID() ids.ID     { return b.ParentV }
+func (b *TestBlock) Timestamp() time.Time { return b.TimestampV }
+func (b *TestBlock) Status() uint8        { return b.StatusV }
+func (b *TestBlock) Bytes() []byte        { return nil }
 func (b *TestBlock) Verify(context.Context) error {
 	return b.VerifyV
 }
@@ -408,7 +408,7 @@ func (e *TransitiveEngine) updatePreferenceFromVotes() {
 		if !e.processing.Contains(blockID) {
 			continue
 		}
-		
+
 		// Use deterministic tiebreaker: prefer block with higher ID when votes are equal
 		if votes > maxVotes || (votes == maxVotes && bytes.Compare(blockID[:], newPref[:]) > 0) {
 			maxVotes = votes
@@ -465,7 +465,7 @@ func TestRecordPollTransitiveVotingTest(t *testing.T) {
 		TimestampV: genesisTime.Add(2 * time.Second),
 	}
 	block2 := &TestBlock{
-		IDV:        ids.ID{0x03},  // Lower ID = preferred when votes are equal
+		IDV:        ids.ID{0x03}, // Lower ID = preferred when votes are equal
 		HeightV:    3,
 		ParentV:    block1.ID(),
 		TimestampV: genesisTime.Add(3 * time.Second),
@@ -477,7 +477,7 @@ func TestRecordPollTransitiveVotingTest(t *testing.T) {
 		TimestampV: genesisTime.Add(2 * time.Second),
 	}
 	block4 := &TestBlock{
-		IDV:        ids.ID{0x05},  // Higher ID
+		IDV:        ids.ID{0x05}, // Higher ID
 		HeightV:    3,
 		ParentV:    block3.ID(),
 		TimestampV: genesisTime.Add(3 * time.Second),
