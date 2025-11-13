@@ -1,0 +1,225 @@
+---
+title: BFT (Simplex) Consensus
+description: Byzantine Fault Tolerant consensus using the Simplex protocol
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# BFT (Simplex) Consensus
+
+Lux integrates **Simplex BFT**, a state-of-the-art Byzantine Fault Tolerant consensus protocol, as an external dependency.
+
+## Overview
+
+Simplex is a peer-reviewed BFT consensus protocol with unique properties:
+
+- **No view changes**: Simpler than traditional BFT
+- **Censorship-resistant**: Leader rotation instead of timeouts
+- **Peer-reviewed**: Published in TCC 2023
+- **Production-ready**: Full implementation
+
+<Callout type="info">
+**External Package**: Simplex BFT is maintained as a separate MPL-licensed package at [`github.com/luxfi/bft`](https://github.com/luxfi/bft)
+</Callout>
+
+## Why Simplex?
+
+From the scientific literature, Simplex was chosen for:
+
+1. **Simplicity**: No complex view change sub-protocol
+2. **Peer-reviewed**: Academic validation (TCC 2023)
+3. **Censorship-resistance**: Leader rotation prevents censorship
+4. **Production-ready**: Full implementation with tests
+
+### Paper
+
+[Simplex Consensus (IACR ePrint 2023/463)](https://eprint.iacr.org/2023/463)
+
+## Architecture
+
+```
+Lux Consensus
+    └── engine/bft/ (thin wrapper)
+         └── github.com/luxfi/bft (Simplex BFT)
+              └── Full BFT implementation
+```
+
+**Design**: Keep BFT as external MPL dependency with minimal glue code.
+
+## Usage
+
+### Basic Integration
+
+```go
+import (
+    "github.com/luxfi/consensus/engine/bft"
+    luxbft "github.com/luxfi/bft"
+)
+
+// Create BFT engine
+cfg := bft.Config{
+    NodeID:      "node-1",
+    Validators:  []string{"node-1", "node-2", "node-3", "node-4"},
+    EpochLength: 100,
+    EpochConfig: luxbft.EpochConfig{
+        // Full Simplex configuration
+        MaxProposalWait: 5 * time.Second,
+        // See github.com/luxfi/bft for all options
+    },
+}
+
+engine, err := bft.New(cfg)
+if err != nil {
+    panic(err)
+}
+
+// Access underlying Simplex
+simplex := engine.GetSimplex()
+```
+
+### Direct Simplex Usage
+
+For full control, use Simplex directly:
+
+```go
+import luxbft "github.com/luxfi/bft"
+
+cfg := luxbft.EpochConfig{
+    MaxProposalWait:     5 * time.Second,
+    MaxRebroadcastWait:  2 * time.Second,
+    ID:                  nodeID,
+    Signer:              signer,
+    Verifier:            verifier,
+    BlockDeserializer:   deserializer,
+    SignatureAggregator: aggregator,
+    Comm:                comm,
+    Storage:             storage,
+    WAL:                 wal,
+    BlockBuilder:        builder,
+    Logger:              logger,
+}
+
+epoch, err := luxbft.NewEpoch(cfg)
+```
+
+## Byzantine Fault Tolerance
+
+Simplex provides BFT with:
+
+- **Safety**: No conflicting decisions even with f Byzantine nodes
+- **Liveness**: Progress guaranteed with ≥2f+1 honest nodes
+- **Requirement**: n > 3f (e.g., 4 nodes tolerate 1 fault)
+
+### Quorum Requirements
+
+For n validators and f faults:
+- **Quorum size**: 2f+1
+- **Example**: 4 validators, 1 fault → need 3 votes
+
+## Features
+
+### Leader Rotation
+
+Instead of timeout-based view changes:
+- Deterministic leader rotation
+- Prevents censorship attacks
+- Simpler protocol
+
+### Epoch-Based
+
+Simplex organizes consensus into epochs:
+- Fixed validator set per epoch
+- Clean state transitions
+- Efficient reconfiguration
+
+### Signature Aggregation
+
+Built-in BLS signature aggregation:
+- Compact proofs
+- Fast verification
+- Reduces message overhead
+
+## Integration Points
+
+### Engine Interface
+
+The wrapper implements the standard engine interface:
+
+```go
+type Engine interface {
+    Start(context.Context, uint32) error
+    Stop(context.Context) error
+    IsBootstrapped() bool
+    HealthCheck(context.Context) (interface{}, error)
+}
+```
+
+### Direct Access
+
+For advanced features, access Simplex directly:
+
+```go
+simplex := engine.GetSimplex()
+
+// Propose block
+simplex.ProposeBlock(block)
+
+// Handle message
+simplex.HandleMessage(msg, fromNode)
+
+// Query state
+round := simplex.Round()
+```
+
+## Documentation
+
+<Callout>
+**Full Simplex Documentation**: Visit the [BFT package docs](https://bft.lux.network) for complete API reference, examples, and advanced usage.
+</Callout>
+
+### Quick Links
+
+- [BFT Package Repository](https://github.com/luxfi/bft)
+- [BFT Documentation Site](https://bft.lux.network)
+- [Simplex Paper (TCC 2023)](https://eprint.iacr.org/2023/463)
+- [Configuration Guide](https://bft.lux.network/docs/configuration)
+- [API Reference](https://bft.lux.network/docs/api)
+
+## Why External Package?
+
+The BFT implementation is maintained externally because:
+
+1. **License**: MPL license (different from consensus package)
+2. **Maintenance**: Active development as standalone project
+3. **Size**: Complete BFT implementation (~87KB epoch.go)
+4. **Reuse**: Can be used by other projects
+
+The consensus package provides a **thin wrapper** (85 lines) for integration.
+
+## Testing
+
+```bash
+# Test wrapper
+cd consensus
+go test ./engine/bft
+
+# Test full Simplex
+cd ~/work/lux/bft
+go test .
+```
+
+## Performance
+
+From BFT package benchmarks:
+- **Signature aggregation**: ~2.5ms
+- **Block verification**: Fast with BLS
+- **Parallel speedup**: 6.5x with concurrent processing
+
+See [BFT Benchmarks](https://bft.lux.network/docs/benchmarks) for detailed performance data.
+
+## Learn More
+
+- [Getting Started with BFT](https://bft.lux.network/docs)
+- [Byzantine Consensus Basics](/docs/concepts/byzantine-consensus)
+- [Lux Consensus Overview](/docs/introduction)
+- [All Consensus Protocols](/docs/protocols)
