@@ -1,94 +1,48 @@
-import { DocsPage, DocsBody } from 'fumadocs-ui/page';
-import { notFound } from 'next/navigation';
-import defaultMdxComponents from 'fumadocs-ui/mdx';
+import { source } from '@/lib/source'
+import { DocsPage, DocsBody, DocsTitle, DocsDescription } from 'fumadocs-ui/page'
+import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
+import { MDXProvider } from '@mdx-js/react'
 
-// Static list of all doc pages
-const staticPages = [
-  { slug: [], path: '@/content/docs/index.mdx' },
-  { slug: ['benchmarks'], path: '@/content/docs/benchmarks.mdx' },
-  { slug: ['sdk'], path: '@/content/docs/sdk/index.mdx' },
-  { slug: ['sdk', 'go'], path: '@/content/docs/sdk/go.mdx' },
-  { slug: ['sdk', 'python'], path: '@/content/docs/sdk/python.mdx' },
-  { slug: ['sdk', 'rust'], path: '@/content/docs/sdk/rust.mdx' },
-  { slug: ['sdk', 'cpp'], path: '@/content/docs/sdk/cpp.mdx' },
-  { slug: ['sdk', 'c'], path: '@/content/docs/sdk/c.mdx' },
-  { slug: ['sdk', 'mlx'], path: '@/content/docs/sdk/mlx.mdx' },
-];
-
-// Generate static params for all pages
-export function generateStaticParams() {
-  return staticPages.map(page => ({ slug: page.slug }));
+interface PageProps {
+  params: Promise<{ slug?: string[] }>
 }
 
-// Map of slugs to dynamic imports
-async function getContent(slug: string[]) {
-  const slugKey = slug.join('/');
+export async function generateStaticParams() {
+  return source.getPages().map((page) => ({
+    slug: page.slug.split('/'),
+  }))
+}
 
-  switch (slugKey) {
-    case '':
-      return import('@/content/docs/index.mdx');
-    case 'benchmarks':
-      return import('@/content/docs/benchmarks.mdx');
-    case 'sdk':
-      return import('@/content/docs/sdk/index.mdx');
-    case 'sdk/go':
-      return import('@/content/docs/sdk/go.mdx');
-    case 'sdk/python':
-      return import('@/content/docs/sdk/python.mdx');
-    case 'sdk/rust':
-      return import('@/content/docs/sdk/rust.mdx');
-    case 'sdk/cpp':
-      return import('@/content/docs/sdk/cpp.mdx');
-    case 'sdk/c':
-      return import('@/content/docs/sdk/c.mdx');
-    case 'sdk/mlx':
-      return import('@/content/docs/sdk/mlx.mdx');
-    default:
-      return null;
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const page = source.getPage(resolvedParams.slug)
+  
+  if (!page) notFound()
+  
+  return {
+    title: page.data.title,
+    description: page.data.description,
   }
 }
 
-export default async function Page(props: {
-  params: Promise<{ slug?: string[] }>;
-}) {
-  const params = await props.params;
-  const slug = params.slug || [];
+export default async function Page({ params }: PageProps) {
+  const resolvedParams = await params
+  const page = source.getPage(resolvedParams.slug)
+  
+  if (!page) notFound()
 
-  const content = await getContent(slug);
-
-  if (!content) {
-    notFound();
-  }
-
-  const MDX = content.default;
-  const { title, toc, full } = content as any;
+  const MDX = page.data.default || (() => null)
 
   return (
-    <DocsPage toc={toc} full={full}>
+    <DocsPage>
+      <DocsTitle>{page.data.title}</DocsTitle>
+      {page.data.description && (
+        <DocsDescription>{page.data.description}</DocsDescription>
+      )}
       <DocsBody>
-        <h1>{title || 'Documentation'}</h1>
-        <MDX components={{ ...defaultMdxComponents }} />
+        <MDX />
       </DocsBody>
     </DocsPage>
-  );
-}
-
-export async function generateMetadata(props: {
-  params: Promise<{ slug?: string[] }>;
-}) {
-  const params = await props.params;
-  const slug = params.slug || [];
-
-  const content = await getContent(slug);
-
-  if (!content) {
-    return {};
-  }
-
-  const { title, description } = content as any;
-
-  return {
-    title: title ? `${title} | Lux Consensus` : 'Lux Consensus',
-    description,
-  };
+  )
 }

@@ -1,0 +1,289 @@
+---
+title: Wave Protocol
+description: Fast Probabilistic Consensus with FPC integration
+---
+
+# Wave Protocol
+
+Wave implements Fast Probabilistic Consensus (FPC) for rapid agreement in the Lux network. It uses voting rounds with exponentially decreasing randomness to achieve consensus.
+
+## Overview
+
+Wave consensus operates through iterative voting rounds where nodes:
+1. Sample random peers for opinions
+2. Update their own opinion based on majority
+3. Add controlled randomness that decreases over time
+4. Achieve consensus when opinions converge
+
+## Key Concepts
+
+### Fast Probabilistic Consensus (FPC)
+
+FPC achieves consensus through probabilistic sampling:
+
+```go
+type FPCRound struct {
+    Round       int
+    Opinion     bool
+    Confidence  float64
+    Randomness  float64
+}
+```
+
+### Wave States
+
+```go
+type State int
+
+const (
+    StateInitial State = iota
+    StateQuerying
+    StateVoting
+    StateDecided
+    StateAborted
+)
+```
+
+## Implementation
+
+### Basic Usage
+
+```go
+import (
+    "github.com/luxfi/consensus/protocol/wave"
+    "github.com/luxfi/consensus/config"
+)
+
+// Initialize Wave
+cfg := wave.DefaultConfig()
+w := wave.New(cfg, network, sampler)
+
+// Start consensus on a value
+ctx := context.Background()
+result := w.Decide(ctx, blockID)
+
+if result.Decided {
+    fmt.Printf("Consensus reached: %v\n", result.Opinion)
+}
+```
+
+### Configuration
+
+```go
+type Config struct {
+    // Sampling parameters
+    K              int     // Sample size (default: 20)
+    Alpha          float64 // Majority threshold (default: 0.8)
+    Beta           float64 // Termination threshold (default: 20)
+    
+    // Timing
+    RoundDuration  time.Duration // Time per round
+    MaxRounds      int          // Maximum rounds
+    
+    // Randomness
+    InitialRandom  float64      // Initial randomness
+    CoolingRate    float64      // Randomness decay
+}
+```
+
+## FPC Algorithm
+
+### Voting Process
+
+```go
+func (w *Wave) VotingRound(round int) Opinion {
+    // Sample k random peers
+    peers := w.sampler.Sample(w.config.K)
+    
+    // Query their opinions
+    opinions := w.QueryPeers(peers)
+    
+    // Calculate majority
+    yesVotes := CountYes(opinions)
+    majority := float64(yesVotes) / float64(len(opinions))
+    
+    // Update opinion with randomness
+    randomness := w.GetRandomness(round)
+    
+    if majority >= w.config.Alpha {
+        return OpinionYes
+    } else if majority <= (1 - w.config.Alpha) {
+        return OpinionNo
+    } else {
+        // Use randomness for tie-breaking
+        return w.RandomOpinion(randomness)
+    }
+}
+```
+
+### Convergence Detection
+
+```go
+func (w *Wave) HasConverged() bool {
+    // Check consecutive rounds with same opinion
+    if w.consecutiveSame >= w.config.Beta {
+        return true
+    }
+    
+    // Check maximum rounds
+    if w.currentRound >= w.config.MaxRounds {
+        return true
+    }
+    
+    return false
+}
+```
+
+## Advanced Features
+
+### Multi-Value Consensus
+
+Achieve consensus on multiple values simultaneously:
+
+```go
+type MultiWave struct {
+    waves map[ids.ID]*Wave
+}
+
+func (m *MultiWave) DecideMultiple(values []ids.ID) map[ids.ID]bool {
+    results := make(map[ids.ID]bool)
+    
+    var wg sync.WaitGroup
+    for _, value := range values {
+        wg.Add(1)
+        go func(v ids.ID) {
+            defer wg.Done()
+            result := m.waves[v].Decide(ctx, v)
+            results[v] = result.Opinion
+        }(value)
+    }
+    wg.Wait()
+    
+    return results
+}
+```
+
+### Adaptive Parameters
+
+Dynamically adjust parameters based on network conditions:
+
+```go
+func (w *Wave) AdaptParameters(networkSize int, latency time.Duration) {
+    // Adjust sample size
+    w.config.K = int(math.Log(float64(networkSize)) * 3)
+    
+    // Adjust round duration
+    w.config.RoundDuration = latency * 3
+    
+    // Adjust cooling rate
+    if latency > 100*time.Millisecond {
+        w.config.CoolingRate = 0.95 // Slower cooling
+    } else {
+        w.config.CoolingRate = 0.90 // Faster cooling
+    }
+}
+```
+
+## Performance Characteristics
+
+### Time Complexity
+
+| Operation | Complexity |
+|-----------|------------|
+| Single Round | O(k) |
+| Full Consensus | O(k × log n) |
+| Message Complexity | O(k × rounds) |
+
+### Expected Rounds
+
+| Network Size | Expected Rounds | Time to Finality |
+|--------------|-----------------|------------------|
+| 100 nodes | 3-5 rounds | 150-250ms |
+| 1,000 nodes | 5-7 rounds | 250-350ms |
+| 10,000 nodes | 7-10 rounds | 350-500ms |
+
+## Integration Examples
+
+### With Quasar
+
+```go
+// Use Wave for initial consensus, Quasar for finality
+wave := wave.New(waveCfg, network, sampler)
+quasar := quasar.New(quasarCfg, network, validator)
+
+// Wave for fast preliminary consensus
+preliminary := wave.Decide(ctx, blockID)
+
+// Quasar for quantum finality
+if preliminary.Decided && preliminary.Opinion {
+    cert := quasar.Finalize(blockID)
+}
+```
+
+### With Photon Selection
+
+```go
+// Use Photon for peer selection in Wave
+emitter := photon.NewEmitter(peers, photonCfg)
+wave := wave.New(waveCfg, network, emitter)
+
+// Photon selects high-performance peers for sampling
+wave.SetSampler(emitter)
+```
+
+## Monitoring and Debugging
+
+### Metrics
+
+```go
+type Metrics struct {
+    RoundsToConsensus   int
+    MessagesSent        int
+    MessagesReceived    int
+    ConvergenceTime     time.Duration
+    FinalOpinion        bool
+    ParticipationRate   float64
+}
+
+metrics := wave.GetMetrics()
+fmt.Printf("Converged in %d rounds (%v)\n", 
+    metrics.RoundsToConsensus, 
+    metrics.ConvergenceTime)
+```
+
+### Debug Mode
+
+```go
+// Enable detailed logging
+wave.EnableDebugMode()
+
+// Set custom logger
+wave.SetLogger(customLogger)
+
+// Trace individual rounds
+wave.OnRound(func(round int, opinion bool, confidence float64) {
+    log.Debug("Round %d: opinion=%v, confidence=%.2f", 
+        round, opinion, confidence)
+})
+```
+
+## Security Considerations
+
+1. **Sybil Resistance**: Requires stake-weighted sampling
+2. **Network Partitions**: May not converge under partition
+3. **Adaptive Adversaries**: Use cryptographic randomness
+4. **Message Authentication**: All messages must be signed
+
+## Best Practices
+
+1. **Parameter Tuning**: Adjust K based on network size
+2. **Timeout Handling**: Set appropriate round timeouts
+3. **Error Recovery**: Implement retry logic for failed rounds
+4. **Resource Management**: Limit concurrent consensus instances
+
+## See Also
+
+- [FPC Research Paper](https://arxiv.org/abs/1905.10895)
+- [Quasar Protocol](/docs/protocols/quasar)
+- [Photon Selection](/docs/protocols/photon)
+- [Configuration Guide](/docs/configuration)
