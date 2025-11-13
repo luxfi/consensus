@@ -1,4 +1,4 @@
-package bft
+package simplex
 
 import (
 	"crypto/rand"
