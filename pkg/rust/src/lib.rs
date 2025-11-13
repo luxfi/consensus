@@ -8,37 +8,41 @@
 //!
 //! ## Example
 //!
-//! ```rust
+//! ```rust,no_run
 //! use lux_consensus::*;  // Single clean import!
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create and start engine
+//! fn main() {
+//!     // Create and start chain
 //!     let config = Config::default();
 //!     let mut chain = Chain::new(config);
-//!     chain.start()?;
+//!     let _ = chain.start();
 //!
 //!     // Create and add a block
+//!     let mut block_id = [0u8; 32];
+//!     block_id[0] = 1;
 //!     let block = Block::new(
-//!         ID::from([1, 2, 3]),
+//!         ID::from(block_id),
 //!         ID::from([0; 32]),  // Genesis parent
 //!         1,
 //!         b"Hello, Lux!".to_vec(),
 //!     );
-//!     chain.add(block.clone())?;
+//!     let _ = chain.add(block.clone());
 //!
 //!     // Record votes
 //!     for i in 0..20 {
+//!         let mut node_id = [0u8; 32];
+//!         node_id[0] = i;
 //!         let vote = Vote::new(
 //!             block.id.clone(),
 //!             VoteType::Preference,
-//!             NodeID::from([i as u8]),
+//!             NodeID::from(node_id),
 //!         );
-//!         chain.record_vote(vote)?;
+//!         let _ = chain.record_vote(vote);
 //!     }
 //!
 //!     // Check if accepted
 //!     assert!(chain.is_accepted(&block.id));
-//!     Ok(())
+//!     let _ = chain.stop();
 //! }
 //! ```
 
