@@ -42,7 +42,7 @@ func TestMLXBackendProcessVotes(t *testing.T) {
 	for i := range votes {
 		votes[i] = Vote{
 			VoterID:      [32]byte{byte(i), byte(i + 1)},
-			BlockID:      [32]byte{byte(i * 2), byte(i * 2 + 1)},
+			BlockID:      [32]byte{byte(i * 2), byte(i*2 + 1)},
 			IsPreference: i%2 == 0,
 		}
 	}

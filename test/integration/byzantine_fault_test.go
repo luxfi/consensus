@@ -72,14 +72,14 @@ type HonestNode struct {
 
 // ByzantineTestNetwork manages the test network for Byzantine tests
 type ByzantineTestNetwork struct {
-	nodes      []ConsensusNode
-	byzantine  []*ByzantineNode
-	honest     []*HonestNode
-	blocks     map[ids.ID]*ByzantineTestBlock
-	finalized  ids.ID
-	round      int
-	mu         sync.RWMutex
-	source     *rand.Rand
+	nodes     []ConsensusNode
+	byzantine []*ByzantineNode
+	honest    []*HonestNode
+	blocks    map[ids.ID]*ByzantineTestBlock
+	finalized ids.ID
+	round     int
+	mu        sync.RWMutex
+	source    *rand.Rand
 }
 
 // ConsensusNode interface for all node types
@@ -241,8 +241,8 @@ func TestVoteManipulation(t *testing.T) {
 // TestMinorityAttackerResilience tests resilience against minority attackers
 func TestMinorityAttackerResilience(t *testing.T) {
 	tests := []struct {
-		name         string
-		honestCount  int
+		name           string
+		honestCount    int
 		byzantineCount int
 		shouldFinalize bool
 	}{
@@ -335,7 +335,7 @@ func TestMinorityAttackerResilience(t *testing.T) {
 // TestNetworkPartitionRecovery tests recovery from network partitions
 func TestNetworkPartitionRecovery(t *testing.T) {
 	const (
-		numNodes = 100
+		numNodes     = 100
 		numByzantine = 20
 	)
 
@@ -417,8 +417,8 @@ func NewByzantineTestNetworkWithStrategy(honestCount, byzantineCount int, strate
 	// Create honest nodes
 	for i := 0; i < honestCount; i++ {
 		node := &HonestNode{
-			id:     fmt.Sprintf("honest_%d", i),
-			votes:  make(map[ids.ID]float64),
+			id:    fmt.Sprintf("honest_%d", i),
+			votes: make(map[ids.ID]float64),
 			// Simplified AI agent initialization
 			agent: &ai.Agent[ai.BlockData]{
 				// Basic initialization for testing

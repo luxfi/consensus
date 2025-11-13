@@ -56,10 +56,10 @@ type Chain struct {
 // NewChain creates a new chain consensus engine
 func NewChain(config types.Config) *Chain {
 	return &Chain{
-		config: config,
-		blocks: make(map[types.ID]*types.Block),
-		votes:  make(map[types.ID][]types.Vote),
-		status: make(map[types.ID]types.Status),
+		config:       config,
+		blocks:       make(map[types.ID]*types.Block),
+		votes:        make(map[types.ID][]types.Vote),
+		status:       make(map[types.ID]types.Status),
 		lastAccepted: types.GenesisID,
 	}
 }
@@ -72,7 +72,7 @@ func (c *Chain) Add(ctx context.Context, block *types.Block) error {
 	// Store the block
 	c.blocks[block.ID] = block
 	c.status[block.ID] = types.StatusProcessing
-	
+
 	// Initialize vote tracking
 	if c.votes[block.ID] == nil {
 		c.votes[block.ID] = []types.Vote{}
@@ -131,7 +131,7 @@ func (c *Chain) Start(ctx context.Context) error {
 		Height:   0,
 		Time:     time.Now(),
 	}
-	
+
 	c.mu.Lock()
 	c.blocks[genesis.ID] = genesis
 	c.status[genesis.ID] = types.StatusAccepted
@@ -150,7 +150,7 @@ func (c *Chain) Stop() error {
 // acceptBlock marks a block as accepted
 func (c *Chain) acceptBlock(id types.ID) {
 	c.status[id] = types.StatusAccepted
-	
+
 	if block, exists := c.blocks[id]; exists {
 		if block.Height > c.height {
 			c.height = block.Height

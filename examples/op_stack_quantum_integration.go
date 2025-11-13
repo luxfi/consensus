@@ -17,10 +17,10 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/luxfi/consensus/engine/core"
 	"github.com/luxfi/geth/common"
 	"github.com/luxfi/geth/core/types"
 	"github.com/luxfi/geth/crypto"
-	"github.com/luxfi/consensus/engine/core"
 	"github.com/luxfi/ids"
 )
 

@@ -54,7 +54,7 @@ func BenchmarkMLXBatchProcessing100(b *testing.B) {
 	for i := range votes {
 		votes[i] = Vote{
 			VoterID:      [32]byte{byte(i), byte(i + 1)},
-			BlockID:      [32]byte{byte(i * 2), byte(i * 2 + 1)},
+			BlockID:      [32]byte{byte(i * 2), byte(i*2 + 1)},
 			IsPreference: i%2 == 0,
 		}
 	}
@@ -172,9 +172,9 @@ func BenchmarkMLXMemoryUsage(b *testing.B) {
 
 			b.StopTimer()
 			// Report memory metrics
-			b.ReportMetric(float64(size*64*4), "input-bytes") // 64 floats per vote * 4 bytes per float
+			b.ReportMetric(float64(size*64*4), "input-bytes")   // 64 floats per vote * 4 bytes per float
 			b.ReportMetric(float64(size*128*4), "hidden-bytes") // hidden layer size
-			b.ReportMetric(float64(size*1*4), "output-bytes") // output layer size
+			b.ReportMetric(float64(size*1*4), "output-bytes")   // output layer size
 		})
 	}
 }

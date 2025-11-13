@@ -14,9 +14,9 @@ import (
 
 	simplex "github.com/luxfi/bft"
 
+	"github.com/luxfi/consensus/utils/set"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/node/utils/crypto/bls"
-	"github.com/luxfi/consensus/utils/set"
 )
 
 var (

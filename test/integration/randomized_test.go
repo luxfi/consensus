@@ -120,11 +120,11 @@ type RandomizedBlock struct {
 	rejectErr error
 }
 
-func (b *RandomizedBlock) ID() ids.ID                  { return b.id }
-func (b *RandomizedBlock) ParentID() ids.ID            { return b.parentID }
-func (b *RandomizedBlock) Height() uint64              { return b.height }
-func (b *RandomizedBlock) Timestamp() int64            { return b.timestamp }
-func (b *RandomizedBlock) Bytes() []byte               { return b.bytes }
+func (b *RandomizedBlock) ID() ids.ID                   { return b.id }
+func (b *RandomizedBlock) ParentID() ids.ID             { return b.parentID }
+func (b *RandomizedBlock) Height() uint64               { return b.height }
+func (b *RandomizedBlock) Timestamp() int64             { return b.timestamp }
+func (b *RandomizedBlock) Bytes() []byte                { return b.bytes }
 func (b *RandomizedBlock) Verify(context.Context) error { return nil }
 func (b *RandomizedBlock) Accept(context.Context) error {
 	b.status = core.StatusAccepted
@@ -664,8 +664,8 @@ func TestAIConsensusRandomized(t *testing.T) {
 	engine := ai.NewEngine()
 
 	inferenceModule := &mockModule{
-		id:   "inference",
-		typ:  ai.ModuleInference,
+		id:  "inference",
+		typ: ai.ModuleInference,
 		proc: func(ctx context.Context, input ai.Input) (ai.Output, error) {
 			confidence := rng.Float64()
 			return ai.Output{
@@ -818,11 +818,11 @@ type mockModule struct {
 	proc func(context.Context, ai.Input) (ai.Output, error)
 }
 
-func (m *mockModule) ID() string                                   { return m.id }
-func (m *mockModule) Type() ai.ModuleType                          { return m.typ }
+func (m *mockModule) ID() string                                          { return m.id }
+func (m *mockModule) Type() ai.ModuleType                                 { return m.typ }
 func (m *mockModule) Initialize(ctx context.Context, cfg ai.Config) error { return nil }
-func (m *mockModule) Start(context.Context) error                  { return nil }
-func (m *mockModule) Stop(context.Context) error                   { return nil }
+func (m *mockModule) Start(context.Context) error                         { return nil }
+func (m *mockModule) Stop(context.Context) error                          { return nil }
 func (m *mockModule) Process(ctx context.Context, input ai.Input) (ai.Output, error) {
 	return m.proc(ctx, input)
 }
