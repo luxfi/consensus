@@ -63,8 +63,8 @@ func Context(tb testing.TB, chainID ids.ID) *consensus.Context {
 	tb.Helper()
 
 	ctx := &consensus.Context{
-		QuantumID:  1,
-		NetworkID:  1,
+		QuantumID:  369, // Use UnitTestID for quantum/network ID
+		NetworkID:  369, // Use UnitTestID for unit tests
 		ChainID:    chainID,
 		NodeID:     ids.GenerateTestNodeID(),
 		NetID:      ids.Empty,
