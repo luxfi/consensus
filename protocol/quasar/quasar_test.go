@@ -49,7 +49,7 @@ func (s *mockStore) Children(id VertexID) []VertexID {
 
 func TestNew(t *testing.T) {
 	cfg := config.DefaultParams()
-	q := New(cfg, newMockStore())
+	q := NewPChainQuasar(cfg, newMockStore())
 
 	if q == nil {
 		t.Fatal("New() returned nil")
@@ -68,7 +68,7 @@ func TestNew(t *testing.T) {
 
 func TestInitialize(t *testing.T) {
 	cfg := config.DefaultParams()
-	q := New(cfg, newMockStore())
+	q := NewPChainQuasar(cfg, newMockStore())
 
 	ctx := context.Background()
 	blsKey := []byte("test-bls-key")
@@ -90,7 +90,7 @@ func TestInitialize(t *testing.T) {
 
 func TestPhaseI_Propose(t *testing.T) {
 	cfg := config.DefaultParams()
-	q := New(cfg, newMockStore())
+	q := NewPChainQuasar(cfg, newMockStore())
 
 	ctx := context.Background()
 	if err := q.Initialize(ctx, []byte("bls"), []byte("pq")); err != nil {
@@ -122,7 +122,7 @@ func TestPhaseI_Propose(t *testing.T) {
 
 func TestPhaseII_Commit(t *testing.T) {
 	cfg := config.DefaultParams()
-	q := New(cfg, newMockStore())
+	q := NewPChainQuasar(cfg, newMockStore())
 
 	ctx := context.Background()
 	if err := q.Initialize(ctx, []byte("bls"), []byte("pq")); err != nil {
@@ -242,7 +242,7 @@ func TestQBlock(t *testing.T) {
 
 func TestSetFinalizedCallback(t *testing.T) {
 	cfg := config.DefaultParams()
-	q := New(cfg, newMockStore())
+	q := NewPChainQuasar(cfg, newMockStore())
 
 	called := false
 	q.SetFinalizedCallback(func(block QBlock) {
@@ -264,7 +264,7 @@ func TestSetFinalizedCallback(t *testing.T) {
 
 func TestQuantumFinality_Integration(t *testing.T) {
 	cfg := config.XChainParams() // Ultra-fast 1ms blocks
-	q := New(cfg, newMockStore())
+	q := NewPChainQuasar(cfg, newMockStore())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -330,7 +330,7 @@ func TestQuantumFinality_Integration(t *testing.T) {
 
 func BenchmarkPhaseI(b *testing.B) {
 	cfg := config.XChainParams()
-	q := New(cfg, newMockStore())
+	q := NewPChainQuasar(cfg, newMockStore())
 	if err := q.Initialize(context.Background(), []byte("bls"), []byte("pq")); err != nil {
 		b.Fatalf("Initialize failed: %v", err)
 	}
@@ -345,7 +345,7 @@ func BenchmarkPhaseI(b *testing.B) {
 
 func BenchmarkPhaseII(b *testing.B) {
 	cfg := config.XChainParams()
-	q := New(cfg, newMockStore())
+	q := NewPChainQuasar(cfg, newMockStore())
 	if err := q.Initialize(context.Background(), []byte("bls"), []byte("pq")); err != nil {
 		b.Fatalf("Initialize failed: %v", err)
 	}

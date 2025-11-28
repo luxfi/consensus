@@ -51,8 +51,8 @@ type Client interface {
 // VertexID represents a P-Chain vertex identifier
 type VertexID [32]byte
 
-// Quasar implements P-Chain post-quantum consensus with event horizon finality
-type Quasar struct {
+// PChainQuasar implements P-Chain post-quantum consensus with event horizon finality
+type PChainQuasar struct {
 	// Configuration
 	K     int
 	Alpha float64
@@ -70,9 +70,9 @@ type Quasar struct {
 	finalizedCb func(QBlock)
 }
 
-// New creates a new Quasar P-Chain instance
-func New(cfg config.Parameters, store dag.Store[VertexID]) *Quasar {
-	return &Quasar{
+// NewPChainQuasar creates a new PChainQuasar P-Chain instance
+func NewPChainQuasar(cfg config.Parameters, store dag.Store[VertexID]) *PChainQuasar {
+	return &PChainQuasar{
 		K:        cfg.K,
 		Alpha:    cfg.Alpha,
 		Beta:     cfg.Beta,
@@ -82,19 +82,19 @@ func New(cfg config.Parameters, store dag.Store[VertexID]) *Quasar {
 }
 
 // Initialize sets up keys for Quasar
-func (q *Quasar) Initialize(_ context.Context, blsKey, pqKey []byte) error {
+func (q *PChainQuasar) Initialize(_ context.Context, blsKey, pqKey []byte) error {
 	q.blsKey = blsKey
 	q.pqKey = pqKey
 	return nil
 }
 
 // SetFinalizedCallback sets the callback for finalized blocks
-func (q *Quasar) SetFinalizedCallback(cb func(QBlock)) {
+func (q *PChainQuasar) SetFinalizedCallback(cb func(QBlock)) {
 	q.finalizedCb = cb
 }
 
 // generateBLSAggregate generates a BLS aggregate signature
-func (q *Quasar) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte {
+func (q *PChainQuasar) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte {
 	if len(q.blsKey) == 0 {
 		// Return empty if no key
 		return []byte{}
@@ -120,7 +120,7 @@ func (q *Quasar) generateBLSAggregate(blockID ids.ID, votes map[string]int) []by
 }
 
 // generatePQCertificate generates a post-quantum certificate
-func (q *Quasar) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte {
+func (q *PChainQuasar) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte {
 	if len(q.pqKey) == 0 {
 		// Return empty if no key
 		return []byte{}
@@ -150,7 +150,7 @@ func (q *Quasar) generatePQCertificate(blockID ids.ID, votes map[string]int) []b
 }
 
 // phaseI proposes a block from the DAG frontier
-func (q *Quasar) phaseI(frontier []string) string {
+func (q *PChainQuasar) phaseI(frontier []string) string {
 	// Select highest confidence block
 	// Placeholder: return first block
 	if len(frontier) > 0 {
@@ -160,7 +160,7 @@ func (q *Quasar) phaseI(frontier []string) string {
 }
 
 // phaseII creates certificates if threshold is met
-func (q *Quasar) phaseII(votes map[string]int, proposal string) *CertBundle {
+func (q *PChainQuasar) phaseII(votes map[string]int, proposal string) *CertBundle {
 	total := 0
 	support := 0
 
@@ -198,7 +198,7 @@ func (q *Quasar) phaseII(votes map[string]int, proposal string) *CertBundle {
 }
 
 // EstablishHorizon creates a new event horizon for P-Chain finality
-func (q *Quasar) EstablishHorizon(ctx context.Context, checkpoint VertexID, validators []string) (*dag.EventHorizon[VertexID], error) {
+func (q *PChainQuasar) EstablishHorizon(ctx context.Context, checkpoint VertexID, validators []string) (*dag.EventHorizon[VertexID], error) {
 	// Compute new event horizon using Ringtail + BLS signatures
 	horizon := dag.EventHorizon[VertexID]{
 		Checkpoint: checkpoint,
@@ -212,7 +212,7 @@ func (q *Quasar) EstablishHorizon(ctx context.Context, checkpoint VertexID, vali
 }
 
 // IsBeyondHorizon checks if a vertex is beyond the event horizon (finalized)
-func (q *Quasar) IsBeyondHorizon(vertex VertexID) bool {
+func (q *PChainQuasar) IsBeyondHorizon(vertex VertexID) bool {
 	if len(q.horizons) == 0 {
 		return false
 	}
@@ -222,7 +222,7 @@ func (q *Quasar) IsBeyondHorizon(vertex VertexID) bool {
 }
 
 // ComputeCanonicalOrder returns the canonical order of finalized vertices
-func (q *Quasar) ComputeCanonicalOrder() []VertexID {
+func (q *PChainQuasar) ComputeCanonicalOrder() []VertexID {
 	if len(q.horizons) == 0 {
 		return []VertexID{}
 	}
@@ -232,7 +232,7 @@ func (q *Quasar) ComputeCanonicalOrder() []VertexID {
 }
 
 // GetLatestHorizon returns the most recent event horizon
-func (q *Quasar) GetLatestHorizon() *dag.EventHorizon[VertexID] {
+func (q *PChainQuasar) GetLatestHorizon() *dag.EventHorizon[VertexID] {
 	if len(q.horizons) == 0 {
 		return nil
 	}
@@ -240,7 +240,7 @@ func (q *Quasar) GetLatestHorizon() *dag.EventHorizon[VertexID] {
 }
 
 // createHorizonSignature creates a Ringtail + BLS signature for the event horizon
-func (q *Quasar) createHorizonSignature(checkpoint VertexID, validators []string) []byte {
+func (q *PChainQuasar) createHorizonSignature(checkpoint VertexID, validators []string) []byte {
 	// TODO: Implement Ringtail + BLS fusion signature
 	// This should combine:
 	// 1. BLS aggregate signature for efficiency
