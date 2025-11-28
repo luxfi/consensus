@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestQuasar(t *testing.T) {
+func TestQuasarCore(t *testing.T) {
 	// Create quantum aggregator with threshold of 1 validator
 	qa, err := NewQuasarCore(1)
 	if err != nil {
