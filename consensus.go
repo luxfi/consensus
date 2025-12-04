@@ -71,6 +71,20 @@ var (
 	ErrNotInitialized = types.ErrNotInitialized
 )
 
+// Context accessor functions re-exported from context package
+var (
+	// GetNetworkID gets the network ID from context
+	GetNetworkID = consensuscontext.GetNetworkID
+	// GetSubnetID gets the subnet ID from context (deprecated, use GetNetID)
+	GetSubnetID = consensuscontext.GetSubnetID
+	// GetValidatorState gets the validator state from context
+	GetValidatorState = consensuscontext.GetValidatorState
+	// WithContext adds consensus context to a context
+	WithContext = consensuscontext.WithContext
+	// FromContext extracts consensus context from a context
+	FromContext = consensuscontext.FromContext
+)
+
 // DefaultConfig returns the default consensus configuration
 func DefaultConfig() Config {
 	return types.DefaultConfig()

@@ -37,3 +37,27 @@ func (NoOpCalculator) CalculateUptimePercentFrom(ids.NodeID, ids.ID, time.Time) 
 func (NoOpCalculator) SetCalculator(ids.ID, Calculator) error {
 	return nil
 }
+
+// ZeroUptimeCalculator is an implementation of Calculator that always returns 0% uptime.
+// This is useful for testing scenarios where validators have "never connected".
+type ZeroUptimeCalculator struct{}
+
+// CalculateUptime always returns 0% uptime
+func (ZeroUptimeCalculator) CalculateUptime(ids.NodeID, ids.ID) (time.Duration, time.Duration, error) {
+	return 0, 1, nil // 0 uptime out of 1 total (0%)
+}
+
+// CalculateUptimePercent always returns 0% uptime
+func (ZeroUptimeCalculator) CalculateUptimePercent(ids.NodeID, ids.ID) (float64, error) {
+	return 0.0, nil
+}
+
+// CalculateUptimePercentFrom always returns 0% uptime
+func (ZeroUptimeCalculator) CalculateUptimePercentFrom(ids.NodeID, ids.ID, time.Time) (float64, error) {
+	return 0.0, nil
+}
+
+// SetCalculator is a no-op
+func (ZeroUptimeCalculator) SetCalculator(ids.ID, Calculator) error {
+	return nil
+}
