@@ -2,10 +2,23 @@
 name = "lux-consensus"
 version = "1.22.0"
 edition = "2021"
+description = "Lux Consensus SDK - Pure Rust BFT consensus with GPU acceleration"
+license = "MIT"
+repository = "https://github.com/luxfi/consensus"
 
 [dependencies]
 hex = "0.4"
 libc = "0.2"
+
+# Optional GPU acceleration dependencies
+# MLX (Apple Silicon) - via C++ bindings
+mlx-sys = { version = "0.1", optional = true }
+
+# BLAKE3 for fast hashing (SIMD optimized)
+blake3 = { version = "1.5", optional = true }
+
+# Parallel processing
+rayon = { version = "1.10", optional = true }
 
 [build-dependencies]
 cc = "1.0"
@@ -13,6 +26,18 @@ cc = "1.0"
 [lib]
 name = "lux_consensus"
 path = "src/lib.rs"
+crate-type = ["rlib"]
+
+[features]
+default = []
+# CPU-optimized with SIMD (no GPU)
+simd = ["blake3", "rayon"]
+# Apple Silicon GPU acceleration via MLX
+mlx = ["mlx-sys", "simd"]
+# NVIDIA GPU acceleration via CUDA (future)
+cuda = ["simd"]
+# Full GPU acceleration (MLX on macOS, CUDA on Linux/Windows)
+gpu = ["mlx", "cuda"]
 
 # [[example]]
 # name = "basic_usage"
