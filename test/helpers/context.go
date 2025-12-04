@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/luxfi/consensus"
+	validators "github.com/luxfi/consensus/validator"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
 )
@@ -16,34 +17,39 @@ var (
 	PChainID = ids.GenerateTestID()
 	XChainID = ids.GenerateTestID()
 	CChainID = ids.GenerateTestID()
-	XAssetID = ids.GenerateTestID()
+	// Use fixed asset ID to match genesistest.LUXAssetID for UTXO consistency
+	XAssetID = ids.ID{'l', 'u', 'x', ' ', 'a', 's', 's', 'e', 't', ' ', 'i', 'd'}
 )
 
 // SimpleValidatorState is a minimal validator state for testing
 type SimpleValidatorState struct{}
 
-func (s *SimpleValidatorState) GetChainID(chainID ids.ID) (ids.ID, error) {
-	return chainID, nil
+// GetValidatorSet returns an empty validator set for testing
+func (s *SimpleValidatorState) GetValidatorSet(ctx context.Context, height uint64, netID ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error) {
+	return map[ids.NodeID]*validators.GetValidatorOutput{}, nil
 }
 
-func (s *SimpleValidatorState) GetNetID(chainID ids.ID) (ids.ID, error) {
-	return ids.Empty, nil
+// GetCurrentValidators returns an empty validator set for testing
+func (s *SimpleValidatorState) GetCurrentValidators(ctx context.Context, height uint64, netID ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error) {
+	return map[ids.NodeID]*validators.GetValidatorOutput{}, nil
 }
 
-func (s *SimpleValidatorState) GetSubnetID(chainID ids.ID) (ids.ID, error) {
-	return ids.Empty, nil
-}
-
-func (s *SimpleValidatorState) GetValidatorSet(height uint64, subnetID ids.ID) (map[ids.NodeID]uint64, error) {
-	return map[ids.NodeID]uint64{}, nil
-}
-
-func (s *SimpleValidatorState) GetCurrentHeight() (uint64, error) {
+// GetCurrentHeight returns height 0 for testing
+func (s *SimpleValidatorState) GetCurrentHeight(ctx context.Context) (uint64, error) {
 	return 0, nil
 }
 
-func (s *SimpleValidatorState) GetMinimumHeight(ctx context.Context) (uint64, error) {
-	return 0, nil
+// GetWarpValidatorSets returns empty warp validator sets for testing
+func (s *SimpleValidatorState) GetWarpValidatorSets(ctx context.Context, heights []uint64, netIDs []ids.ID) (map[ids.ID]map[uint64]*validators.WarpSet, error) {
+	return map[ids.ID]map[uint64]*validators.WarpSet{}, nil
+}
+
+// GetWarpValidatorSet returns an empty warp validator set for testing
+func (s *SimpleValidatorState) GetWarpValidatorSet(ctx context.Context, height uint64, netID ids.ID) (*validators.WarpSet, error) {
+	return &validators.WarpSet{
+		Height:     height,
+		Validators: map[ids.NodeID]*validators.WarpValidator{},
+	}, nil
 }
 
 // ConsensusContext updates a consensus context with default test values
