@@ -8,12 +8,12 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// Block status constants
+// Block status constants (must match choices.Status enum)
 const (
 	Unknown    uint8 = 0
 	Processing uint8 = 1
-	Accepted   uint8 = 2
-	Rejected   uint8 = 3
+	Rejected   uint8 = 2
+	Accepted   uint8 = 3
 )
 
 // Decidable is an embedded struct for test blocks
