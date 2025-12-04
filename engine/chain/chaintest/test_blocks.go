@@ -66,14 +66,14 @@ func (b *TestBlock) Status() uint8 {
 
 // Accept accepts the block
 func (b *TestBlock) Accept(ctx context.Context) error {
-	b.status = 2 // Accepted
+	b.status = uint8(choices.Accepted) // 3
 	b.Decidable.Status = choices.Accepted
 	return nil
 }
 
 // Reject rejects the block
 func (b *TestBlock) Reject(ctx context.Context) error {
-	b.status = 3 // Rejected
+	b.status = uint8(choices.Rejected) // 2
 	b.Decidable.Status = choices.Rejected
 	return nil
 }
@@ -89,7 +89,7 @@ var Genesis = &TestBlock{
 	parentID:  ids.Empty,
 	height:    0,
 	bytes:     []byte("genesis"),
-	status:    2, // Accepted
+	status:    uint8(choices.Accepted), // 3
 	timestamp: time.Now(),
 	BytesV:    []byte("genesis"),
 	ParentV:   ids.Empty,

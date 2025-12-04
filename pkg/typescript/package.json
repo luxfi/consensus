@@ -1,0 +1,61 @@
+{
+  "name": "@luxfi/consensus",
+  "version": "1.22.0",
+  "description": "Lux Consensus SDK for TypeScript/Node.js - Native performance with type safety",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luxfi/consensus"
+  },
+  "license": "MIT",
+  "keywords": [
+    "lux",
+    "consensus",
+    "blockchain",
+    "bft",
+    "byzantine",
+    "napi-rs",
+    "native"
+  ],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ],
+  "napi": {
+    "name": "lux-consensus",
+    "triples": {
+      "defaults": true,
+      "additional": [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-unknown-linux-gnu",
+        "x86_64-pc-windows-msvc"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">= 18"
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "node --test test/*.test.js",
+    "universal": "napi universal",
+    "version": "napi version"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  },
+  "optionalDependencies": {
+    "@luxfi/consensus-darwin-arm64": "1.22.0",
+    "@luxfi/consensus-darwin-x64": "1.22.0",
+    "@luxfi/consensus-linux-arm64-gnu": "1.22.0",
+    "@luxfi/consensus-linux-x64-gnu": "1.22.0",
+    "@luxfi/consensus-win32-x64-msvc": "1.22.0"
+  }
+}

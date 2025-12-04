@@ -124,6 +124,14 @@ func GetValidatorState(ctx context.Context) ValidatorState {
 	return nil
 }
 
+// GetWarpSigner gets the warp signer from context
+func GetWarpSigner(ctx context.Context) interface{} {
+	if c, ok := ctx.Value(contextKey).(*Context); ok {
+		return c.WarpSigner
+	}
+	return nil
+}
+
 // WithContext adds consensus context to a context
 func WithContext(ctx context.Context, cc *Context) context.Context {
 	return context.WithValue(ctx, contextKey, cc)

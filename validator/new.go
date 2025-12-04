@@ -12,12 +12,14 @@ func NewManager() *manager {
 	return &manager{
 		validators: make(map[ids.ID]map[ids.NodeID]*GetValidatorOutput),
 		mu:         &sync.RWMutex{},
+		listeners:  make([]ManagerCallbackListener, 0),
 	}
 }
 
 type manager struct {
 	validators map[ids.ID]map[ids.NodeID]*GetValidatorOutput
 	mu         *sync.RWMutex
+	listeners  []ManagerCallbackListener
 }
 
 // AddStaker adds a validator to the set
@@ -35,6 +37,11 @@ func (m *manager) AddStaker(netID ids.ID, nodeID ids.NodeID, publicKey []byte, t
 		Light:     light,
 		Weight:    light,
 		TxID:      txID,
+	}
+
+	// Notify all listeners
+	for _, listener := range m.listeners {
+		listener.OnValidatorAdded(netID, nodeID, light)
 	}
 	return nil
 }
@@ -279,9 +286,19 @@ func (m *manager) GetMap(netID ids.ID) map[ids.NodeID]*GetValidatorOutput {
 	return make(map[ids.NodeID]*GetValidatorOutput)
 }
 
-// RegisterCallbackListener registers a callback listener (no-op for now)
+// RegisterCallbackListener registers a callback listener
 func (m *manager) RegisterCallbackListener(listener ManagerCallbackListener) {
-	// No-op for now - can be implemented later if needed
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.listeners = append(m.listeners, listener)
+
+	// Notify listener of all existing validators
+	for netID, validators := range m.validators {
+		for nodeID, val := range validators {
+			listener.OnValidatorAdded(netID, nodeID, val.Light)
+		}
+	}
 }
 
 // RegisterSetCallbackListener registers a set callback listener (no-op for now)

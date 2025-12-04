@@ -91,3 +91,4 @@ pkg/python/.venv/
 pkg/python/__pycache__/
 pkg/python/*.so
 pkg/python/build/
+pkg/typescript/target/
