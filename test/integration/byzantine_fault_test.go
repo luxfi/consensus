@@ -62,7 +62,7 @@ const (
 type HonestNode struct {
 	id          string
 	agent       *ai.Agent[ai.BlockData]
-	quasar      *quasar.Quasar
+	quasar      *quasar.QuasarCore
 	photon      *photon.UniformEmitter
 	votes       map[ids.ID]float64
 	preference  ids.ID
