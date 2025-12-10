@@ -188,3 +188,12 @@ var (
 	DefaultParams         = config.DefaultParams
 	XChainParams          = config.XChainParams
 )
+
+// Context helper functions re-exported for convenience
+var (
+	GetValidatorState = consensuscontext.GetValidatorState
+	GetChainID        = consensuscontext.GetChainID
+	GetNetID          = consensuscontext.GetNetID
+	WithContext       = consensuscontext.WithContext
+	FromContext       = consensuscontext.FromContext
+)
