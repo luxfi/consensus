@@ -30,7 +30,7 @@ func TestQuasarCore(t *testing.T) {
 	pBlock := &ChainBlock{
 		ChainID:   [32]byte{1},
 		ChainName: "P-Chain",
-		BlockID:   [32]byte{0x01, 0x02, 0x03},
+		ID:   [32]byte{0x01, 0x02, 0x03},
 		Height:    100,
 		Timestamp: time.Now(),
 		Data:      []byte("P-Chain block data"),
@@ -40,7 +40,7 @@ func TestQuasarCore(t *testing.T) {
 	xBlock := &ChainBlock{
 		ChainID:   [32]byte{2},
 		ChainName: "X-Chain",
-		BlockID:   [32]byte{0x04, 0x05, 0x06},
+		ID:   [32]byte{0x04, 0x05, 0x06},
 		Height:    200,
 		Timestamp: time.Now(),
 		Data:      []byte("X-Chain block data"),
@@ -50,7 +50,7 @@ func TestQuasarCore(t *testing.T) {
 	cBlock := &ChainBlock{
 		ChainID:   [32]byte{3},
 		ChainName: "C-Chain",
-		BlockID:   [32]byte{0x07, 0x08, 0x09},
+		ID:   [32]byte{0x07, 0x08, 0x09},
 		Height:    300,
 		Timestamp: time.Now(),
 		Data:      []byte("C-Chain block data"),
@@ -137,7 +137,7 @@ func TestQuantumEpochFinalization(t *testing.T) {
 		block := &ChainBlock{
 			ChainID:   [32]byte{byte(i)},
 			ChainName: "P-Chain",
-			BlockID:   [32]byte{byte(i * 10)},
+			ID:   [32]byte{byte(i * 10)},
 			Height:    uint64(100 + i),
 			Timestamp: time.Now(),
 			Data:      []byte("Block data"),

@@ -71,7 +71,7 @@ func TestAutoRegisterNewSubnet(t *testing.T) {
 	bridgeBlock := &ChainBlock{
 		ChainID:   [32]byte{0xFF},
 		ChainName: "Bridge-Net",
-		BlockID:   [32]byte{0xAA, 0xBB, 0xCC},
+		ID:   [32]byte{0xAA, 0xBB, 0xCC},
 		Height:    1,
 		Timestamp: time.Now(),
 		Data:      []byte("Bridge transaction data"),
@@ -135,7 +135,7 @@ func TestMultipleExternalChains(t *testing.T) {
 		block := &ChainBlock{
 			ChainID:   [32]byte{byte(i + 10)},
 			ChainName: chainName,
-			BlockID:   [32]byte{byte(i * 100)},
+			ID:   [32]byte{byte(i * 100)},
 			Height:    uint64(i + 1),
 			Timestamp: time.Now(),
 			Data:      []byte(chainName + " block data"),
@@ -188,7 +188,7 @@ func TestQuantumSecurityForAllChains(t *testing.T) {
 	bridgeBlock := &ChainBlock{
 		ChainID:   [32]byte{0xFF},
 		ChainName: "Bridge-Net",
-		BlockID:   [32]byte{0xDD, 0xEE, 0xFF},
+		ID:   [32]byte{0xDD, 0xEE, 0xFF},
 		Height:    1,
 		Timestamp: time.Now(),
 		Data:      []byte("Bridge cross-chain transaction"),

@@ -216,27 +216,27 @@ func TestCertBundle_Verify(t *testing.T) {
 	}
 }
 
-func TestQBlock(t *testing.T) {
-	qb := &QBlock{
+func TestBlock(t *testing.T) {
+	block := &Block{
 		Height:    100,
 		Hash:      "0xabc123",
 		Timestamp: time.Now(),
-		Cert: &CertBundle{
-			BLSAgg: []byte("bls"),
-			PQCert: []byte("pq"),
+		Cert: &BlockCert{
+			BLS: []byte("bls"),
+			PQ:  []byte("pq"),
 		},
 	}
 
-	if qb.Height != 100 {
-		t.Errorf("Height mismatch: got %d, want 100", qb.Height)
+	if block.Height != 100 {
+		t.Errorf("Height mismatch: got %d, want 100", block.Height)
 	}
 
-	if qb.Hash != "0xabc123" {
-		t.Errorf("Hash mismatch: got %s, want 0xabc123", qb.Hash)
+	if block.Hash != "0xabc123" {
+		t.Errorf("Hash mismatch: got %s, want 0xabc123", block.Hash)
 	}
 
-	if qb.Cert == nil {
-		t.Error("QBlock missing certificate")
+	if block.Cert == nil {
+		t.Error("Block missing certificate")
 	}
 }
 
@@ -245,7 +245,7 @@ func TestSetFinalizedCallback(t *testing.T) {
 	q := NewPChainQuasar(cfg, newMockStore())
 
 	called := false
-	q.SetFinalizedCallback(func(block QBlock) {
+	q.SetFinalizedCallback(func(block *Block) {
 		called = true
 		if block.Height != 42 {
 			t.Errorf("callback got wrong height: %d", block.Height)
@@ -254,7 +254,7 @@ func TestSetFinalizedCallback(t *testing.T) {
 
 	// Trigger callback
 	if q.finalizedCb != nil {
-		q.finalizedCb(QBlock{Height: 42})
+		q.finalizedCb(&Block{Height: 42})
 	}
 
 	if !called {
@@ -276,8 +276,8 @@ func TestQuantumFinality_Integration(t *testing.T) {
 	}
 
 	// Set callback
-	finalized := make(chan QBlock, 1)
-	q.SetFinalizedCallback(func(block QBlock) {
+	finalized := make(chan *Block, 1)
+	q.SetFinalizedCallback(func(block *Block) {
 		select {
 		case finalized <- block:
 		default:
@@ -299,11 +299,14 @@ func TestQuantumFinality_Integration(t *testing.T) {
 	}
 
 	// Create finalized block
-	qBlock := QBlock{
+	qBlock := &Block{
 		Height:    1,
 		Hash:      proposal,
 		Timestamp: time.Now(),
-		Cert:      cert,
+		Cert: &BlockCert{
+			BLS: cert.BLSAgg,
+			PQ:  cert.PQCert,
+		},
 	}
 
 	// Trigger finalization
@@ -319,7 +322,7 @@ func TestQuantumFinality_Integration(t *testing.T) {
 		}
 
 		// Verify timing for 1ms blocks
-		elapsed := time.Since(qBlock.Timestamp)
+		elapsed := time.Since(fb.Timestamp)
 		if elapsed > 10*time.Millisecond {
 			t.Errorf("finalization too slow for 1ms blocks: %v", elapsed)
 		}
