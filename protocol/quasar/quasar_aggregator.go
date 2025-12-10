@@ -42,25 +42,19 @@ type QuasarCore struct {
 	registeredChains map[string]bool // chainName -> active
 }
 
-// ChainBlock represents a block from any chain
-type ChainBlock struct {
-	ChainID   [32]byte
-	ChainName string // "P-Chain", "X-Chain", "C-Chain"
-	BlockID   [32]byte
-	Height    uint64
-	Timestamp time.Time
-	Data      []byte
-}
+// ChainBlock is an alias for Block for backward compatibility.
+// Deprecated: Use Block instead.
+type ChainBlock = Block
 
-// QuantumBlock represents a quantum-finalized block
+// QuantumBlock represents a quantum-finalized aggregate block.
 type QuantumBlock struct {
-	Height          uint64
-	SourceBlocks    []*ChainBlock
-	QuantumHash     string
-	BLSSignature    []byte
-	RingtailProof   []byte // ML-DSA signature
-	Timestamp       time.Time
-	ValidatorSigs   map[string]*HybridSignature
+	Height        uint64
+	SourceBlocks  []*Block
+	QuantumHash   string
+	BLSSignature  []byte
+	RingtailProof []byte // ML-DSA signature
+	Timestamp     time.Time
+	ValidatorSigs map[string]*HybridSignature
 }
 
 // NewQuasar creates the supermassive black hole at the center of the blockchain galaxy
@@ -251,11 +245,11 @@ func (q *QuasarCore) finalizeQuantumEpoch() {
 }
 
 // computeQuantumHash creates a quantum-resistant hash
-func (q *QuasarCore) computeQuantumHash(block *ChainBlock) string {
+func (q *QuasarCore) computeQuantumHash(block *Block) string {
 	// Combine block data with quantum parameters
 	data := fmt.Sprintf("%s:%x:%d:%d",
 		block.ChainName,
-		block.BlockID[:],
+		block.ID[:],
 		block.Height,
 		block.Timestamp.Unix())
 

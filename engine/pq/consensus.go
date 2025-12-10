@@ -224,14 +224,19 @@ func (e *ConsensusEngine) Height() uint64 {
 
 // SetFinalizedCallback sets a callback for finalized blocks
 func (e *ConsensusEngine) SetFinalizedCallback(cb func(FinalityEvent)) {
-	e.quasar.SetFinalizedCallback(func(qb quasar.QBlock) {
-		blockID, _ := ids.FromString(qb.Hash)
+	e.quasar.SetFinalizedCallback(func(block *quasar.Block) {
+		blockID, _ := ids.FromString(block.Hash)
+		var pqProof, blsProof []byte
+		if block.Cert != nil {
+			pqProof = block.Cert.PQ
+			blsProof = block.Cert.BLS
+		}
 		cb(FinalityEvent{
-			Height:    uint64(qb.Height),
+			Height:    block.Height,
 			BlockID:   blockID,
-			Timestamp: qb.Timestamp,
-			PQProof:   qb.Cert.PQCert,
-			BLSProof:  qb.Cert.BLSAgg,
+			Timestamp: block.Timestamp,
+			PQProof:   pqProof,
+			BLSProof:  blsProof,
 		})
 	})
 }

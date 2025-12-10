@@ -9,8 +9,8 @@ import (
 	"fmt"
 )
 
-// computeBlockHash creates a quantum-resistant block hash
-func computeBlockHash(block *QBlock) string {
+// computeBlockHash creates a quantum-resistant block hash.
+func computeBlockHash(block *Block) string {
 	data := fmt.Sprintf("%s:%d:%d",
 		block.Hash,
 		block.Height,

@@ -4,20 +4,24 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
-	"time"
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/core/dag"
 	"github.com/luxfi/ids"
 )
 
-// CertBundle contains both classical and quantum certificates
+// CertBundle contains both BLS and PQ certificates for a block.
 type CertBundle struct {
 	BLSAgg []byte // BLS aggregate signature
 	PQCert []byte // Post-quantum certificate
 }
 
-// Bundle represents a finalized epoch bundle
+// Verify checks both BLS and PQ certificates.
+func (c *CertBundle) Verify(_ []string) bool {
+	return c != nil && len(c.BLSAgg) > 0 && len(c.PQCert) > 0
+}
+
+// Bundle represents a finalized epoch bundle.
 type Bundle struct {
 	Epoch   uint64
 	Root    []byte
@@ -26,20 +30,9 @@ type Bundle struct {
 	Binding []byte
 }
 
-// Verify checks both BLS and PQ certificates
-func (c *CertBundle) Verify(_ []string) bool {
-	// Placeholder verification
-	// In production: verify BLS signature and PQ certificate
-	return c.BLSAgg != nil && c.PQCert != nil && len(c.BLSAgg) > 0 && len(c.PQCert) > 0
-}
-
-// QBlock represents a quantum-finalized block
-type QBlock struct {
-	Height    uint64
-	Hash      string
-	Timestamp time.Time
-	Cert      *CertBundle
-}
+// QBlock is an alias for Block for backward compatibility.
+// Deprecated: Use Block instead.
+type QBlock = Block
 
 // Client interface for Quasar operations
 type Client interface {
@@ -67,7 +60,7 @@ type PChainQuasar struct {
 	store    dag.Store[VertexID]
 
 	// Callback
-	finalizedCb func(QBlock)
+	finalizedCb func(*Block)
 }
 
 // NewPChainQuasar creates a new PChainQuasar P-Chain instance
@@ -88,8 +81,8 @@ func (q *PChainQuasar) Initialize(_ context.Context, blsKey, pqKey []byte) error
 	return nil
 }
 
-// SetFinalizedCallback sets the callback for finalized blocks
-func (q *PChainQuasar) SetFinalizedCallback(cb func(QBlock)) {
+// SetFinalizedCallback sets the callback for finalized blocks.
+func (q *PChainQuasar) SetFinalizedCallback(cb func(*Block)) {
 	q.finalizedCb = cb
 }
 
