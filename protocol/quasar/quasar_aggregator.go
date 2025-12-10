@@ -75,10 +75,10 @@ func NewQuasarCore(threshold int) (*QuasarCore, error) {
 		registeredChains: make(map[string]bool),
 	}
 
-	// Auto-register primary chains
-	core.RegisterChain("P-Chain")
-	core.RegisterChain("X-Chain")
-	core.RegisterChain("C-Chain")
+	// Auto-register primary chains (errors ignored as these are guaranteed to succeed on init)
+	_ = core.RegisterChain("P-Chain")
+	_ = core.RegisterChain("X-Chain")
+	_ = core.RegisterChain("C-Chain")
 
 	return core, nil
 }
