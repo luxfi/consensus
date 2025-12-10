@@ -11,14 +11,14 @@ import (
 // Block represents a finalized block in the Quasar consensus.
 // This is the primary block type used throughout the system.
 type Block struct {
-	ID        [32]byte      // Unique block identifier
-	ChainID   [32]byte      // Chain this block belongs to
-	ChainName string        // Human-readable chain name (e.g., "P-Chain", "X-Chain", "C-Chain")
-	Height    uint64        // Block height
-	Hash      string        // Block hash
-	Timestamp time.Time     // Block timestamp
-	Data      []byte        // Block payload data
-	Cert      *BlockCert    // Quantum certificate (nil if not finalized)
+	ID        [32]byte   // Unique block identifier
+	ChainID   [32]byte   // Chain this block belongs to
+	ChainName string     // Human-readable chain name (e.g., "P-Chain", "X-Chain", "C-Chain")
+	Height    uint64     // Block height
+	Hash      string     // Block hash
+	Timestamp time.Time  // Block timestamp
+	Data      []byte     // Block payload data
+	Cert      *BlockCert // Quantum certificate (nil if not finalized)
 }
 
 // BlockCert contains cryptographic certificates for quantum finality.
