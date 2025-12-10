@@ -10,7 +10,7 @@ import (
 
 func main() {
 	vmPath := "/home/z/.lux-cli/mainnet/chainData/network-96369/4aYc2FXx3EDKf98wqmxaRkkLERa7QSbbNnKRL7awjHqVqGgxj/db/vm"
-	
+
 	// The actual canonical tip from the database
 	tipHashStr := "899b9fe03408bf9110e9ebddf136f8749cf9fbd58e45ca345b99976826718083"
 	tipHashBytes, _ := hex.DecodeString(tipHashStr)
