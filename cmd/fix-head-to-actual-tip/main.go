@@ -10,7 +10,7 @@ import (
 
 func main() {
 	dbPath := "/home/z/.lux-cli/mainnet/chainData/network-96369/4aYc2FXx3EDKf98wqmxaRkkLERa7QSbbNnKRL7awjHqVqGgxj/db/ethdb"
-	
+
 	db, err := badger.Open(badger.DefaultOptions(dbPath).WithLogger(nil))
 	if err != nil {
 		panic(err)
@@ -18,7 +18,7 @@ func main() {
 	defer db.Close()
 
 	tipHeight := uint64(1082780)
-	
+
 	// First, read the canonical hash at tip height
 	var actualTipHash common.Hash
 	err = db.View(func(txn *badger.Txn) error {
