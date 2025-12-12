@@ -39,9 +39,7 @@ jobs:
       - name: Install Python SDK
         run: |
           cd pkg/python
-          pip install cython  # Must be installed before setup.py runs
-          pip install -e .
-          pip install pytest pytest-cov
+          pip install -e ".[dev]"
 
       - name: Run comprehensive tests
         run: |
