@@ -8,6 +8,7 @@ import (
 	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/database/manager"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/warp"
 )
 
 var (
@@ -56,15 +57,8 @@ type Fx struct {
 	Fx interface{}
 }
 
-// AppSender sends application-level messages to other nodes.
-type AppSender interface {
-	// SendAppRequest sends an application-level request to the given nodes.
-	SendAppRequest(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, appRequestBytes []byte) error
-	// SendAppResponse sends an application-level response to the given node.
-	SendAppResponse(ctx context.Context, nodeID ids.NodeID, requestID uint32, appResponseBytes []byte) error
-	// SendAppGossip sends an application-level gossip message.
-	SendAppGossip(ctx context.Context, nodeIDs []ids.NodeID, appGossipBytes []byte) error
-	// SendAppError sends an application error to the given node.
-	SendAppError(ctx context.Context, nodeID ids.NodeID, requestID uint32, errorCode int32, errorMessage string) error
-}
+// Sender is an alias for warp.Sender
+type Sender = warp.Sender
 
+// Handler is an alias for warp.Handler
+type Handler = warp.Handler
