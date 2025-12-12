@@ -1,9 +1,9 @@
 package core
 
 import (
-	consensus_core "github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/engine/core/common"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/warp"
 )
 
 // Fx represents a feature extension
@@ -12,11 +12,11 @@ type Fx struct {
 	Fx interface{}
 }
 
-// AppError represents an application error
-type AppError = consensus_core.AppError
+// Error represents a warp error.
+type Error = warp.Error
 
-// AppHandler handles application messages
-type AppHandler = consensus_core.AppHandler
+// Handler handles warp messages.
+type Handler = warp.Handler
 
 // MessageType represents the type of message
 type MessageType = common.MessageType
