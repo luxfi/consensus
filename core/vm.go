@@ -5,6 +5,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	consensuscontext "github.com/luxfi/consensus/context"
@@ -156,4 +157,18 @@ const (
 type Fx struct {
 	ID ids.ID
 	Fx interface{}
+}
+
+// AppError represents an application-level error for peer messaging
+type AppError struct {
+	Code    int32
+	Message string
+}
+
+// Error implements the error interface
+func (e *AppError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("app error %d: %s", e.Code, e.Message)
 }
