@@ -40,6 +40,9 @@ type QuasarCore struct {
 
 	// Chain registry - track all registered chains
 	registeredChains map[string]bool // chainName -> active
+
+	// Context for starting chain processors
+	ctx context.Context
 }
 
 // ChainBlock is an alias for Block for backward compatibility.
@@ -85,6 +88,11 @@ func NewQuasarCore(threshold int) (*QuasarCore, error) {
 
 // Start begins drawing blocks into the Quasar's gravitational pull
 func (q *QuasarCore) Start(ctx context.Context) error {
+	// Store context for dynamic chain registration
+	q.mu.Lock()
+	q.ctx = ctx
+	q.mu.Unlock()
+
 	// Start block processors for legacy chains
 	go q.processPChain(ctx)
 	go q.processXChain(ctx)
@@ -297,15 +305,24 @@ func (q *QuasarCore) VerifyQuantumFinality(blockHash string) bool {
 // All new subnets are automatically protected by the event horizon
 func (q *QuasarCore) RegisterChain(chainName string) error {
 	q.mu.Lock()
-	defer q.mu.Unlock()
 
 	if q.registeredChains[chainName] {
+		q.mu.Unlock()
 		return nil // Already registered
 	}
 
 	// Create buffer for this chain
 	q.chainBuffers[chainName] = make(chan *ChainBlock, 100)
 	q.registeredChains[chainName] = true
+
+	// Get context for starting processor
+	ctx := q.ctx
+	q.mu.Unlock()
+
+	// Start processor for this chain if we have a context (i.e., Start was called)
+	if ctx != nil {
+		go q.processChain(ctx, chainName)
+	}
 
 	fmt.Printf("[QUASAR] Chain '%s' pulled into event horizon - quantum security active\n", chainName)
 	return nil
