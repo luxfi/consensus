@@ -8,7 +8,7 @@ import (
 
 func TestDynamicChainRegistration(t *testing.T) {
 	// Create Quasar core
-	q, err := NewQuasarCore(1)
+	q, err := NewQuasar(1)
 	if err != nil {
 		t.Fatalf("Failed to create Quasar core: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestDynamicChainRegistration(t *testing.T) {
 
 func TestAutoRegisterNewSubnet(t *testing.T) {
 	// Create Quasar core
-	q, err := NewQuasarCore(1)
+	q, err := NewQuasar(1)
 	if err != nil {
 		t.Fatalf("Failed to create Quasar core: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestAutoRegisterNewSubnet(t *testing.T) {
 
 func TestMultipleExternalChains(t *testing.T) {
 	// Create Quasar core
-	q, err := NewQuasarCore(1)
+	q, err := NewQuasar(1)
 	if err != nil {
 		t.Fatalf("Failed to create Quasar core: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestMultipleExternalChains(t *testing.T) {
 
 func TestQuantumSecurityForAllChains(t *testing.T) {
 	// Create Quasar core
-	q, err := NewQuasarCore(1)
+	q, err := NewQuasar(1)
 	if err != nil {
 		t.Fatalf("Failed to create Quasar core: %v", err)
 	}
