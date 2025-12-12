@@ -1,9 +1,9 @@
 package core
 
 import (
-	consensus_core "github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/engine/core/common"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/warp"
 )
 
 // Fx represents a feature extension
@@ -12,17 +12,17 @@ type Fx struct {
 	Fx interface{}
 }
 
-// AppError represents an application error
-type AppError = consensus_core.AppError
+// Sender sends warp messages with RingTail post-quantum signatures.
+type Sender = warp.Sender
 
-// AppSender sends application messages
-type AppSender = consensus_core.AppSender
+// Handler handles incoming warp messages.
+type Handler = warp.Handler
 
-// AppHandler handles application messages
-type AppHandler = consensus_core.AppHandler
+// Error represents a warp error.
+type Error = warp.Error
 
-// SendConfig configures message sending.
-type SendConfig = consensus_core.SendConfig
+// SendConfig configures message sending parameters.
+type SendConfig = warp.SendConfig
 
 // MessageType represents the type of message
 type MessageType = common.MessageType
