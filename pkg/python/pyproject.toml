@@ -7,13 +7,11 @@ name = "lux-consensus"
 version = "1.22.0"
 description = "Python bindings for Lux Consensus C library with optional MLX GPU acceleration"
 authors = [{name = "Lux Industries Inc."}]
-readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
