@@ -1,8 +1,8 @@
 package common
 
 import (
+	consensus_core "github.com/luxfi/consensus/core"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/warp"
 )
 
 // Fx represents a feature extension
@@ -11,8 +11,5 @@ type Fx struct {
 	Fx interface{}
 }
 
-// Sender is the warp Sender for cross-VM messaging.
-type Sender = warp.Sender
-
-// Handler handles warp messages.
-type Handler = warp.Handler
+// AppSender sends application-level messages
+type AppSender = consensus_core.AppSender
