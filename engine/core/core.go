@@ -21,6 +21,9 @@ type AppSender = consensus_core.AppSender
 // AppHandler handles application messages
 type AppHandler = consensus_core.AppHandler
 
+// SendConfig configures message sending.
+type SendConfig = consensus_core.SendConfig
+
 // MessageType represents the type of message
 type MessageType = common.MessageType
 
