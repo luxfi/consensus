@@ -19,9 +19,3 @@ type Handler = warp.Handler
 
 // SendConfig configures message sending.
 type SendConfig = warp.SendConfig
-
-// AppSender sends application-level messages between nodes.
-type AppSender = warp.AppSender
-
-// AppError represents an application-level error.
-type AppError = warp.AppError
