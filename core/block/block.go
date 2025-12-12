@@ -9,6 +9,7 @@ import (
 	"github.com/luxfi/consensus/version"
 	"github.com/luxfi/database"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/warp"
 )
 
 // Status represents the status of a block
@@ -52,7 +53,7 @@ type ChainVM interface {
 		configBytes []byte,
 		toEngine chan<- Message,
 		fxs []*Fx,
-		appSender AppSender,
+		sender warp.Sender,
 	) error
 
 	// BuildBlock builds a new block
@@ -126,14 +127,3 @@ type Fx struct {
 	Name string
 }
 
-// AppSender sends application messages
-type AppSender interface {
-	// SendAppRequest sends an app request
-	SendAppRequest(context.Context, ids.NodeID, uint32, []byte) error
-
-	// SendAppResponse sends an app response
-	SendAppResponse(context.Context, ids.NodeID, uint32, []byte) error
-
-	// SendAppGossip sends app gossip
-	SendAppGossip(context.Context, []byte) error
-}
