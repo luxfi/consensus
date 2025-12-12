@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/consensus/engine/core/common"
+	"github.com/luxfi/consensus/engine/core"
 	"github.com/luxfi/log"
 )
 
@@ -90,7 +90,7 @@ func (b *BlockBuilder) waitForPendingBlock(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if msg == common.PendingTxs {
+		if msg == core.PendingTxs {
 			return nil
 		}
 		b.log.Warn("Received unexpected message", log.String("message", fmt.Sprintf("%v", msg)))
