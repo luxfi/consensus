@@ -3,36 +3,28 @@
 #include <mutex>
 #include <atomic>
 #include <cstring>
+#include <algorithm>
 
 namespace lux::consensus {
-
-// Parameter validation
-bool ConsensusParams::validate() const noexcept {
-    if (alpha_preference > k) return false;
-    if (alpha_confidence > k) return false;
-    if (beta < 1) return false;
-    if (concurrent_polls < 1) return false;
-    if (max_outstanding_items < 1) return false;
-    return true;
-}
 
 // Block serialization
 std::vector<uint8_t> Block::serialize() const {
     std::vector<uint8_t> result;
-    result.reserve(sizeof(id) + sizeof(parent_id) + sizeof(height) + data.size());
-    
-    // Add fields
-    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&id);
-    result.insert(result.end(), ptr, ptr + sizeof(id));
-    
-    ptr = reinterpret_cast<const uint8_t*>(&parent_id);
-    result.insert(result.end(), ptr, ptr + sizeof(parent_id));
-    
-    ptr = reinterpret_cast<const uint8_t*>(&height);
+    result.reserve(sizeof(id) + sizeof(parent_id) + sizeof(height) + payload.size());
+
+    // Add id
+    result.insert(result.end(), id.begin(), id.end());
+
+    // Add parent_id
+    result.insert(result.end(), parent_id.begin(), parent_id.end());
+
+    // Add height
+    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&height);
     result.insert(result.end(), ptr, ptr + sizeof(height));
-    
-    result.insert(result.end(), data.begin(), data.end());
-    
+
+    // Add payload
+    result.insert(result.end(), payload.begin(), payload.end());
+
     return result;
 }
 
@@ -40,194 +32,277 @@ std::vector<uint8_t> Block::serialize() const {
 std::array<uint8_t, 32> Block::hash() const {
     std::array<uint8_t, 32> result{};
     auto serialized = serialize();
-    
+
     // Simple hash (should use proper crypto hash in production)
     for (size_t i = 0; i < serialized.size(); ++i) {
         result[i % 32] ^= serialized[i];
     }
-    
+
     return result;
 }
 
-// Vote packing
+// Block deserialization
+Block Block::deserialize(std::span<const uint8_t> data) {
+    Block block;
+
+    if (data.size() < 72) { // minimum: 32 + 32 + 8
+        return block;
+    }
+
+    // Read id
+    std::copy_n(data.begin(), 32, block.id.begin());
+
+    // Read parent_id
+    std::copy_n(data.begin() + 32, 32, block.parent_id.begin());
+
+    // Read height
+    std::memcpy(&block.height, data.data() + 64, sizeof(block.height));
+
+    // Read payload
+    if (data.size() > 72) {
+        block.payload.assign(data.begin() + 72, data.end());
+    }
+
+    return block;
+}
+
+// Vote packing - compact 8-byte representation
 std::array<uint8_t, 8> Vote::pack() const noexcept {
     std::array<uint8_t, 8> result{};
-    
-    result[0] = static_cast<uint8_t>(engine_type);
-    result[1] = static_cast<uint8_t>(node_id >> 8);
-    result[2] = static_cast<uint8_t>(node_id & 0xFF);
-    result[3] = static_cast<uint8_t>(block_id >> 8);
-    result[4] = static_cast<uint8_t>(block_id & 0xFF);
-    result[5] = static_cast<uint8_t>(vote_type);
-    result[6] = 0; // Reserved
-    result[7] = 0; // Reserved
-    
+
+    // First 3 bytes: hash of node_id
+    result[0] = node_id[0];
+    result[1] = node_id[1];
+    result[2] = node_id[2];
+
+    // Next 3 bytes: hash of block_id
+    result[3] = block_id[0];
+    result[4] = block_id[1];
+    result[5] = block_id[2];
+
+    // Vote type
+    result[6] = static_cast<uint8_t>(type);
+
+    // Reserved
+    result[7] = 0;
+
     return result;
 }
 
 // Vote unpacking
 Vote Vote::unpack(std::span<const uint8_t, 8> data) noexcept {
-    Vote vote;
-    vote.engine_type = static_cast<EngineType>(data[0]);
-    vote.node_id = (static_cast<uint16_t>(data[1]) << 8) | data[2];
-    vote.block_id = (static_cast<uint16_t>(data[3]) << 8) | data[4];
-    vote.vote_type = static_cast<VoteType>(data[5]);
+    Vote vote{};
+
+    // Restore partial node_id
+    vote.node_id[0] = data[0];
+    vote.node_id[1] = data[1];
+    vote.node_id[2] = data[2];
+
+    // Restore partial block_id
+    vote.block_id[0] = data[3];
+    vote.block_id[1] = data[4];
+    vote.block_id[2] = data[5];
+
+    // Vote type
+    vote.type = static_cast<VoteType>(data[6]);
+
     return vote;
 }
 
-// Base consensus implementation
-class ConsensusImpl : public Consensus {
-protected:
-    ConsensusParams params_;
+// Chain implementation
+class ChainImpl {
+private:
+    Config config_;
     mutable std::mutex mutex_;
-    std::unordered_map<uint16_t, Block> blocks_;
-    std::unordered_map<uint16_t, BlockStatus> block_status_;
-    std::atomic<uint16_t> preference_{0};
-    std::atomic<uint64_t> votes_processed_{0};
+    std::unordered_map<std::string, Block> blocks_;
+    std::unordered_map<std::string, Status> block_status_;
+    std::unordered_map<std::string, std::vector<Vote>> votes_;
+    std::atomic<bool> running_{false};
     std::atomic<uint64_t> blocks_accepted_{0};
     std::atomic<uint64_t> blocks_rejected_{0};
-    BlockAcceptedHandler accepted_handler_;
-    
+    std::atomic<uint64_t> votes_processed_{0};
+    Chain::DecisionCallback decision_callback_;
+
+    static std::string to_key(const std::array<uint8_t, 32>& arr) {
+        return std::string(reinterpret_cast<const char*>(arr.data()), arr.size());
+    }
+
+    void check_decision(const std::string& key) {
+        auto it = votes_.find(key);
+        if (it == votes_.end()) return;
+
+        size_t prefer_count = 0;
+        size_t reject_count = 0;
+
+        for (const auto& vote : it->second) {
+            if (vote.type == VoteType::Prefer || vote.type == VoteType::Accept) {
+                prefer_count++;
+            } else if (vote.type == VoteType::Reject) {
+                reject_count++;
+            }
+        }
+
+        // Check against alpha threshold
+        if (prefer_count >= config_.alpha) {
+            block_status_[key] = Status::Accepted;
+            blocks_accepted_.fetch_add(1, std::memory_order_relaxed);
+
+            if (decision_callback_) {
+                std::array<uint8_t, 32> block_id;
+                std::copy(key.begin(), key.end(), block_id.begin());
+                decision_callback_(block_id, Decision::Accept);
+            }
+        } else if (reject_count >= config_.alpha) {
+            block_status_[key] = Status::Rejected;
+            blocks_rejected_.fetch_add(1, std::memory_order_relaxed);
+
+            if (decision_callback_) {
+                std::array<uint8_t, 32> block_id;
+                std::copy(key.begin(), key.end(), block_id.begin());
+                decision_callback_(block_id, Decision::Reject);
+            }
+        }
+    }
+
 public:
-    explicit ConsensusImpl(const ConsensusParams& params)
-        : params_(params) {}
-    
-    void add_block(const Block& block) override {
-        std::lock_guard lock(mutex_);
-        blocks_[block.id] = block;
-        block_status_[block.id] = BlockStatus::Processing;
-    }
-    
-    void process_vote(const Vote& vote) override {
-        votes_processed_.fetch_add(1, std::memory_order_relaxed);
-        
-        // Process based on vote type
-        if (vote.vote_type == VoteType::Prefer) {
-            preference_.store(vote.block_id, std::memory_order_relaxed);
-        } else if (vote.vote_type == VoteType::Accept) {
-            std::lock_guard lock(mutex_);
-            if (block_status_[vote.block_id] == BlockStatus::Processing) {
-                block_status_[vote.block_id] = BlockStatus::Accepted;
-                blocks_accepted_.fetch_add(1, std::memory_order_relaxed);
-                
-                if (accepted_handler_) {
-                    accepted_handler_(vote.block_id);
-                }
-            }
-        } else if (vote.vote_type == VoteType::Reject) {
-            std::lock_guard lock(mutex_);
-            if (block_status_[vote.block_id] == BlockStatus::Processing) {
-                block_status_[vote.block_id] = BlockStatus::Rejected;
-                blocks_rejected_.fetch_add(1, std::memory_order_relaxed);
-            }
-        }
-    }
-    
-    bool is_accepted(uint16_t block_id) const override {
-        std::lock_guard lock(mutex_);
-        auto it = block_status_.find(block_id);
-        return it != block_status_.end() && it->second == BlockStatus::Accepted;
-    }
-    
-    std::optional<uint16_t> get_preference() const override {
-        auto pref = preference_.load(std::memory_order_relaxed);
-        return pref > 0 ? std::optional<uint16_t>(pref) : std::nullopt;
-    }
-    
-    void process_votes_batch(std::span<const Vote> votes) override {
-        for (const auto& vote : votes) {
-            process_vote(vote);
-        }
-    }
-    
-    ConsensusStats get_stats() const override {
-        return {
-            .votes_processed = votes_processed_.load(std::memory_order_relaxed),
-            .blocks_accepted = blocks_accepted_.load(std::memory_order_relaxed),
-            .blocks_rejected = blocks_rejected_.load(std::memory_order_relaxed),
-            .avg_latency = std::chrono::milliseconds(10), // Mock value
-            .memory_usage_bytes = blocks_.size() * sizeof(Block)
-        };
-    }
-    
-    void on_block_accepted(BlockAcceptedHandler handler) override {
-        accepted_handler_ = std::move(handler);
-    }
-    
-    bool health_check() const override {
+    explicit ChainImpl(const Config& config) : config_(config) {}
+
+    bool start() {
+        running_.store(true, std::memory_order_release);
         return true;
     }
-};
 
-// Snowball engine implementation
-class SnowballConsensus : public ConsensusImpl {
-private:
-    std::unordered_map<uint16_t, size_t> confidence_;
-    std::unordered_map<uint16_t, size_t> consecutive_successes_;
-    
-public:
-    explicit SnowballConsensus(const ConsensusParams& params)
-        : ConsensusImpl(params) {}
-    
-    void process_vote(const Vote& vote) override {
-        ConsensusImpl::process_vote(vote);
-        
-        if (vote.vote_type == VoteType::Prefer) {
-            std::lock_guard lock(mutex_);
-            
-            // Increment confidence
-            confidence_[vote.block_id]++;
-            
-            // Check for consecutive successes
-            if (confidence_[vote.block_id] >= params_.alpha_preference) {
-                consecutive_successes_[vote.block_id]++;
-                
-                // Check for acceptance
-                if (consecutive_successes_[vote.block_id] >= params_.k) {
-                    if (block_status_[vote.block_id] == BlockStatus::Processing) {
-                        block_status_[vote.block_id] = BlockStatus::Accepted;
-                        blocks_accepted_.fetch_add(1, std::memory_order_relaxed);
-                        
-                        if (accepted_handler_) {
-                            accepted_handler_(vote.block_id);
-                        }
-                    }
-                }
-            }
+    void stop() {
+        running_.store(false, std::memory_order_release);
+    }
+
+    bool is_running() const noexcept {
+        return running_.load(std::memory_order_acquire);
+    }
+
+    bool add(const Block& block) {
+        std::lock_guard lock(mutex_);
+        auto key = to_key(block.id);
+
+        if (blocks_.find(key) != blocks_.end()) {
+            return false; // Already exists
+        }
+
+        blocks_[key] = block;
+        block_status_[key] = Status::Processing;
+        return true;
+    }
+
+    Status get_status(const std::array<uint8_t, 32>& block_id) const {
+        std::lock_guard lock(mutex_);
+        auto key = to_key(block_id);
+        auto it = block_status_.find(key);
+        return it != block_status_.end() ? it->second : Status::Unknown;
+    }
+
+    std::optional<Block> get_block(const std::array<uint8_t, 32>& block_id) const {
+        std::lock_guard lock(mutex_);
+        auto key = to_key(block_id);
+        auto it = blocks_.find(key);
+        return it != blocks_.end() ? std::optional<Block>(it->second) : std::nullopt;
+    }
+
+    bool record_vote(const Vote& vote) {
+        std::lock_guard lock(mutex_);
+        auto key = to_key(vote.block_id);
+
+        // Check if block exists
+        if (blocks_.find(key) == blocks_.end()) {
+            return false;
+        }
+
+        votes_[key].push_back(vote);
+        votes_processed_.fetch_add(1, std::memory_order_relaxed);
+
+        check_decision(key);
+        return true;
+    }
+
+    Decision get_decision(const std::array<uint8_t, 32>& block_id) const {
+        auto status = get_status(block_id);
+        switch (status) {
+            case Status::Accepted: return Decision::Accept;
+            case Status::Rejected: return Decision::Reject;
+            default: return Decision::Unknown;
         }
     }
+
+    uint64_t blocks_accepted() const noexcept {
+        return blocks_accepted_.load(std::memory_order_relaxed);
+    }
+
+    uint64_t blocks_rejected() const noexcept {
+        return blocks_rejected_.load(std::memory_order_relaxed);
+    }
+
+    uint64_t votes_processed() const noexcept {
+        return votes_processed_.load(std::memory_order_relaxed);
+    }
+
+    void set_decision_callback(Chain::DecisionCallback cb) {
+        decision_callback_ = std::move(cb);
+    }
 };
 
-// Factory method implementation
-std::unique_ptr<Consensus> Consensus::create(
-    EngineType engine,
-    const ConsensusParams& params) {
-    
-    if (!params.validate()) {
-        return nullptr;
-    }
-    
-    switch (engine) {
-        case EngineType::Snowball:
-            return std::make_unique<SnowballConsensus>(params);
-        case EngineType::Avalanche:
-            // TODO: Implement Avalanche
-            return std::make_unique<ConsensusImpl>(params);
-        case EngineType::Snowflake:
-            // TODO: Implement Snowflake
-            return std::make_unique<ConsensusImpl>(params);
-        case EngineType::DAG:
-            // TODO: Implement DAG
-            return std::make_unique<ConsensusImpl>(params);
-        case EngineType::Chain:
-            // TODO: Implement Chain
-            return std::make_unique<ConsensusImpl>(params);
-        case EngineType::PostQuantum:
-            // TODO: Implement PostQuantum
-            return std::make_unique<ConsensusImpl>(params);
-        default:
-            return nullptr;
-    }
+// Chain class implementation
+Chain::Chain(const Config& config) : impl(std::make_unique<ChainImpl>(config)) {}
+
+Chain::~Chain() = default;
+
+Chain::Chain(Chain&&) noexcept = default;
+Chain& Chain::operator=(Chain&&) noexcept = default;
+
+bool Chain::start() {
+    return impl->start();
+}
+
+void Chain::stop() {
+    impl->stop();
+}
+
+bool Chain::is_running() const noexcept {
+    return impl->is_running();
+}
+
+bool Chain::add(const Block& block) {
+    return impl->add(block);
+}
+
+Status Chain::get_status(const std::array<uint8_t, 32>& block_id) const {
+    return impl->get_status(block_id);
+}
+
+std::optional<Block> Chain::get_block(const std::array<uint8_t, 32>& block_id) const {
+    return impl->get_block(block_id);
+}
+
+bool Chain::record_vote(const Vote& vote) {
+    return impl->record_vote(vote);
+}
+
+Decision Chain::get_decision(const std::array<uint8_t, 32>& block_id) const {
+    return impl->get_decision(block_id);
+}
+
+uint64_t Chain::blocks_accepted() const noexcept {
+    return impl->blocks_accepted();
+}
+
+uint64_t Chain::blocks_rejected() const noexcept {
+    return impl->blocks_rejected();
+}
+
+uint64_t Chain::votes_processed() const noexcept {
+    return impl->votes_processed();
+}
+
+void Chain::set_decision_callback(DecisionCallback cb) {
+    impl->set_decision_callback(std::move(cb));
 }
 
 } // namespace lux::consensus
