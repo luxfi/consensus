@@ -62,3 +62,15 @@ type Sender = warp.Sender
 
 // Handler is an alias for warp.Handler
 type Handler = warp.Handler
+
+// Error represents a warp error.
+type Error = warp.Error
+
+// AppSender sends application-level messages between nodes.
+type AppSender = warp.AppSender
+
+// AppError represents an application-level error.
+type AppError = warp.AppError
+
+// AppHandler handles application-level messages.
+type AppHandler = warp.AppHandler
