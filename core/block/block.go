@@ -126,4 +126,3 @@ type Fx struct {
 	ID   ids.ID
 	Name string
 }
-

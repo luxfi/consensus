@@ -52,13 +52,13 @@ func (t *TestEngine) SetHeight(height uint64) {
 
 // Sender is a test implementation of warp.Sender for testing
 type Sender struct {
-	SendRequestF              func(context.Context, set.Set[ids.NodeID], uint32, []byte) error
-	SendResponseF             func(context.Context, ids.NodeID, uint32, []byte) error
-	SendErrorF                func(context.Context, ids.NodeID, uint32, int32, string) error
-	SendGossipF               func(context.Context, warp.SendConfig, []byte) error
-	SendCrossChainRequestF    func(context.Context, ids.ID, uint32, []byte) error
-	SendCrossChainResponseF   func(context.Context, ids.ID, uint32, []byte) error
-	SendCrossChainErrorF      func(context.Context, ids.ID, uint32, int32, string) error
+	SendRequestF            func(context.Context, set.Set[ids.NodeID], uint32, []byte) error
+	SendResponseF           func(context.Context, ids.NodeID, uint32, []byte) error
+	SendErrorF              func(context.Context, ids.NodeID, uint32, int32, string) error
+	SendGossipF             func(context.Context, warp.SendConfig, []byte) error
+	SendCrossChainRequestF  func(context.Context, ids.ID, uint32, []byte) error
+	SendCrossChainResponseF func(context.Context, ids.ID, uint32, []byte) error
+	SendCrossChainErrorF    func(context.Context, ids.ID, uint32, int32, string) error
 }
 
 func (s *Sender) SendRequest(ctx context.Context, nodeIDs set.Set[ids.NodeID], requestID uint32, request []byte) error {
