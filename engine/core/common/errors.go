@@ -1,19 +1,15 @@
 package common
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/luxfi/warp"
+)
 
 // Common errors
 var (
 	ErrUndefined = errors.New("undefined error")
 )
 
-// AppError represents an application error
-type AppError struct {
-	Code    int32
-	Message string
-}
-
-// Error returns the error message
-func (e *AppError) Error() string {
-	return e.Message
-}
+// Error is an alias for warp.Error
+type Error = warp.Error
