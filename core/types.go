@@ -6,6 +6,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/math/set"
@@ -45,7 +46,19 @@ type AppSender interface {
 	// SendAppResponse sends an application-level response to the given node.
 	SendAppResponse(ctx context.Context, nodeID ids.NodeID, requestID uint32, appResponseBytes []byte) error
 	// SendAppGossip sends an application-level gossip message.
-	SendAppGossip(ctx context.Context, config SendConfig, appGossipBytes []byte) error
+	SendAppGossip(ctx context.Context, nodeIDs set.Set[ids.NodeID], appGossipBytes []byte) error
 	// SendAppError sends an application error to the given node.
 	SendAppError(ctx context.Context, nodeID ids.NodeID, requestID uint32, errorCode int32, errorMessage string) error
+}
+
+// AppHandler handles application-level messages from other nodes.
+type AppHandler interface {
+	// AppRequest is called when an application request is received.
+	AppRequest(ctx context.Context, nodeID ids.NodeID, requestID uint32, deadline time.Time, request []byte) error
+	// AppResponse is called when an application response is received.
+	AppResponse(ctx context.Context, nodeID ids.NodeID, requestID uint32, response []byte) error
+	// AppGossip is called when application gossip is received.
+	AppGossip(ctx context.Context, nodeID ids.NodeID, msg []byte) error
+	// AppRequestFailed is called when an application request fails.
+	AppRequestFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32, appErr *AppError) error
 }
