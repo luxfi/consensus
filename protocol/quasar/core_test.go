@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-func TestQuasarCore(t *testing.T) {
+func TestQuasar(t *testing.T) {
 	// Create quantum aggregator with threshold of 1 validator
-	qa, err := NewQuasarCore(1)
+	qa, err := NewQuasar(1)
 	if err != nil {
 		t.Fatalf("Failed to create quantum aggregator: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestQuasarCore(t *testing.T) {
 
 func TestQuantumFinalityWithRingtail(t *testing.T) {
 	// Test that Ringtail and BLS signatures work in parallel
-	qa, err := NewQuasarCore(1)
+	qa, err := NewQuasar(1)
 	if err != nil {
 		t.Fatalf("Failed to create quantum aggregator: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestQuantumFinalityWithRingtail(t *testing.T) {
 }
 
 func TestQuantumEpochFinalization(t *testing.T) {
-	qa, err := NewQuasarCore(1)
+	qa, err := NewQuasar(1)
 	if err != nil {
 		t.Fatalf("Failed to create quantum aggregator: %v", err)
 	}
