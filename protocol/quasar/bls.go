@@ -4,11 +4,20 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"sync"
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/core/dag"
 	"github.com/luxfi/ids"
 )
+
+// uint64BufPool pools 8-byte buffers for binary.LittleEndian encoding in hot paths
+var uint64BufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 8)
+		return &buf
+	},
+}
 
 // CertBundle contains both BLS and PQ certificates for a block.
 type CertBundle struct {
@@ -97,10 +106,14 @@ func (q *BLS) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte 
 	h := sha256.New()
 	h.Write(blockID[:])
 
+	// Get pooled buffer for uint64 encoding
+	bufPtr := uint64BufPool.Get().(*[]byte)
+	countBytes := *bufPtr
+	defer uint64BufPool.Put(bufPtr)
+
 	// Add votes to hash
 	for validator, count := range votes {
 		h.Write([]byte(validator))
-		countBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(countBytes, uint64(count))
 		h.Write(countBytes)
 	}
@@ -123,10 +136,14 @@ func (q *BLS) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte
 	h := sha256.New()
 	h.Write(blockID[:])
 
+	// Get pooled buffer for uint64 encoding
+	bufPtr := uint64BufPool.Get().(*[]byte)
+	countBytes := *bufPtr
+	defer uint64BufPool.Put(bufPtr)
+
 	// Add votes to message
 	for validator, count := range votes {
 		h.Write([]byte(validator))
-		countBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(countBytes, uint64(count))
 		h.Write(countBytes)
 	}

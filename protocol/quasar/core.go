@@ -178,10 +178,26 @@ func (q *Quasar) processCChain(ctx context.Context) {
 	}
 }
 
-// processBlock applies quantum consensus to a single block
+// processBlock applies quantum consensus to a single block.
+// Uses background context; for context-aware processing use processBlockWithContext.
 func (q *Quasar) processBlock(block *ChainBlock) {
+	q.processBlockWithContext(context.Background(), block)
+}
+
+// processBlockWithContext applies quantum consensus to a single block, respecting context cancellation.
+func (q *Quasar) processBlockWithContext(ctx context.Context, block *ChainBlock) {
+	// Check context before acquiring lock
+	if ctx.Err() != nil {
+		return
+	}
+
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	// Check context after acquiring lock
+	if ctx.Err() != nil {
+		return
+	}
 
 	// Create quantum hash combining block data
 	quantumHash := q.computeQuantumHash(block)
@@ -191,9 +207,14 @@ func (q *Quasar) processBlock(block *ChainBlock) {
 
 	// In production, this would collect from actual validators
 	// For now, simulate with local validator
-	sig, err := q.hybridConsensus.SignMessage("validator1", []byte(quantumHash))
+	sig, err := q.hybridConsensus.SignMessageWithContext(ctx, "validator1", []byte(quantumHash))
 	if err == nil {
 		signatures["validator1"] = sig
+	}
+
+	// Check context after signing
+	if ctx.Err() != nil {
+		return
 	}
 
 	// Create quantum block
@@ -280,10 +301,26 @@ func (q *Quasar) GetMetrics() (processedBlocks, quantumProofs uint64) {
 	return q.processedBlocks, q.quantumProofs
 }
 
-// VerifyQuantumFinality checks if a block has quantum finality
+// VerifyQuantumFinality checks if a block has quantum finality.
+// For context-aware verification, use VerifyQuantumFinalityWithContext.
 func (q *Quasar) VerifyQuantumFinality(blockHash string) bool {
+	return q.VerifyQuantumFinalityWithContext(context.Background(), blockHash)
+}
+
+// VerifyQuantumFinalityWithContext checks if a block has quantum finality, respecting context cancellation.
+func (q *Quasar) VerifyQuantumFinalityWithContext(ctx context.Context, blockHash string) bool {
+	// Check context before acquiring lock
+	if ctx.Err() != nil {
+		return false
+	}
+
 	q.mu.RLock()
 	defer q.mu.RUnlock()
+
+	// Check context after acquiring lock
+	if ctx.Err() != nil {
+		return false
+	}
 
 	qBlock, exists := q.finalizedBlocks[blockHash]
 	if !exists {
@@ -292,7 +329,11 @@ func (q *Quasar) VerifyQuantumFinality(blockHash string) bool {
 
 	// Verify both BLS and Ringtail signatures
 	for validatorID, sig := range qBlock.ValidatorSigs {
-		if !q.hybridConsensus.VerifyHybridSignature([]byte(blockHash), sig) {
+		// Check context periodically during loop
+		if ctx.Err() != nil {
+			return false
+		}
+		if !q.hybridConsensus.VerifyHybridSignatureWithContext(ctx, []byte(blockHash), sig) {
 			fmt.Printf("[QUANTUM] Invalid signature from validator %s\n", validatorID)
 			return false
 		}

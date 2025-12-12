@@ -4,6 +4,7 @@
 package quasar
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -11,6 +12,43 @@ import (
 
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
+)
+
+// Buffer pools for hot paths - reduces GC pressure during signing/verification
+var (
+	// hybridSigPool pools HybridSignature structs for SignMessage
+	hybridSigPool = sync.Pool{
+		New: func() any {
+			return &HybridSignature{
+				BLS:      make([]byte, 0, 96),  // BLS sig size
+				Ringtail: make([]byte, 0, 3309), // ML-DSA-65 sig size
+			}
+		},
+	}
+
+	// blsSigSlicePool pools slices for BLS signature aggregation
+	blsSigSlicePool = sync.Pool{
+		New: func() any {
+			s := make([]*bls.Signature, 0, 128)
+			return &s
+		},
+	}
+
+	// ringtailSigSlicePool pools slices for Ringtail signature collection
+	ringtailSigSlicePool = sync.Pool{
+		New: func() any {
+			s := make([]RingtailSignature, 0, 128)
+			return &s
+		},
+	}
+
+	// pubKeySlicePool pools slices for public key aggregation
+	pubKeySlicePool = sync.Pool{
+		New: func() any {
+			s := make([]*bls.PublicKey, 0, 128)
+			return &s
+		},
+	}
 )
 
 // Hybrid implements parallel BLS+Ringtail for PQ-safe consensus
@@ -119,10 +157,26 @@ func (q *Hybrid) AddValidator(id string, weight uint64) error {
 	return nil
 }
 
-// SignMessage signs a message with both BLS and Ringtail
+// SignMessage signs a message with both BLS and Ringtail.
+// For long-running operations, use SignMessageWithContext.
 func (q *Hybrid) SignMessage(validatorID string, message []byte) (*HybridSignature, error) {
+	return q.SignMessageWithContext(context.Background(), validatorID, message)
+}
+
+// SignMessageWithContext signs a message with both BLS and Ringtail, respecting context cancellation.
+func (q *Hybrid) SignMessageWithContext(ctx context.Context, validatorID string, message []byte) (*HybridSignature, error) {
+	// Check context before acquiring lock
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	q.mu.RLock()
 	defer q.mu.RUnlock()
+
+	// Check context after acquiring lock
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	// Get keys
 	blsSK, exists := q.blsKeys[validatorID]
@@ -141,23 +195,57 @@ func (q *Hybrid) SignMessage(validatorID string, message []byte) (*HybridSignatu
 		return nil, fmt.Errorf("BLS sign failed: %w", err)
 	}
 
+	// Check context between crypto operations
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Create Ringtail (ML-DSA) signature
 	ringtailSig, err := ringtailKP.PrivateKey.Sign(rand.Reader, message, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Ringtail sign failed: %w", err)
 	}
 
-	return &HybridSignature{
-		BLS:         bls.SignatureToBytes(blsSig),
-		Ringtail:    ringtailSig,
-		ValidatorID: validatorID,
-	}, nil
+	// Get pooled signature struct to reduce allocations
+	sig := hybridSigPool.Get().(*HybridSignature)
+	blsBytes := bls.SignatureToBytes(blsSig)
+	sig.BLS = append(sig.BLS[:0], blsBytes...)
+	sig.Ringtail = append(sig.Ringtail[:0], ringtailSig...)
+	sig.ValidatorID = validatorID
+
+	return sig, nil
 }
 
-// VerifyHybridSignature verifies both BLS and Ringtail signatures
+// ReleaseHybridSignature returns a HybridSignature to the pool.
+// Call this when done with signatures from SignMessage/SignMessageWithContext.
+func ReleaseHybridSignature(sig *HybridSignature) {
+	if sig == nil {
+		return
+	}
+	sig.ValidatorID = ""
+	hybridSigPool.Put(sig)
+}
+
+// VerifyHybridSignature verifies both BLS and Ringtail signatures.
+// For long-running operations, use VerifyHybridSignatureWithContext.
 func (q *Hybrid) VerifyHybridSignature(message []byte, sig *HybridSignature) bool {
+	return q.VerifyHybridSignatureWithContext(context.Background(), message, sig)
+}
+
+// VerifyHybridSignatureWithContext verifies both BLS and Ringtail signatures, respecting context cancellation.
+func (q *Hybrid) VerifyHybridSignatureWithContext(ctx context.Context, message []byte, sig *HybridSignature) bool {
+	// Check context before acquiring lock
+	if ctx.Err() != nil {
+		return false
+	}
+
 	q.mu.RLock()
 	defer q.mu.RUnlock()
+
+	// Check context after acquiring lock
+	if ctx.Err() != nil {
+		return false
+	}
 
 	validator, exists := q.validators[sig.ValidatorID]
 	if !exists {
@@ -175,6 +263,11 @@ func (q *Hybrid) VerifyHybridSignature(message []byte, sig *HybridSignature) boo
 		return false
 	}
 
+	// Check context between crypto operations
+	if ctx.Err() != nil {
+		return false
+	}
+
 	// Verify Ringtail (ML-DSA) signature
 	if !validator.RingtailPub.Verify(message, sig.Ringtail, nil) {
 		return false
@@ -183,18 +276,44 @@ func (q *Hybrid) VerifyHybridSignature(message []byte, sig *HybridSignature) boo
 	return true
 }
 
-// AggregateSignatures aggregates signatures for a message
+// AggregateSignatures aggregates signatures for a message.
+// For long-running operations, use AggregateSignaturesWithContext.
 func (q *Hybrid) AggregateSignatures(message []byte, signatures []*HybridSignature) (*AggregatedSignature, error) {
+	return q.AggregateSignaturesWithContext(context.Background(), message, signatures)
+}
+
+// AggregateSignaturesWithContext aggregates signatures for a message, respecting context cancellation.
+func (q *Hybrid) AggregateSignaturesWithContext(ctx context.Context, message []byte, signatures []*HybridSignature) (*AggregatedSignature, error) {
+	// Check context before acquiring lock
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	// Check context after acquiring lock
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	if len(signatures) < q.threshold {
 		return nil, fmt.Errorf("insufficient signatures: %d < %d", len(signatures), q.threshold)
 	}
 
-	// Aggregate BLS signatures
-	blsSigs := make([]*bls.Signature, 0, len(signatures))
+	// Get pooled BLS signature slice
+	blsSigsPtr := blsSigSlicePool.Get().(*[]*bls.Signature)
+	blsSigs := (*blsSigsPtr)[:0]
+	defer func() {
+		*blsSigsPtr = blsSigs[:0]
+		blsSigSlicePool.Put(blsSigsPtr)
+	}()
+
 	for _, sig := range signatures {
+		// Check context periodically during loop
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		blsSig, err := bls.SignatureFromBytes(sig.BLS)
 		if err != nil {
 			return nil, fmt.Errorf("invalid BLS signature: %w", err)
@@ -207,8 +326,10 @@ func (q *Hybrid) AggregateSignatures(message []byte, signatures []*HybridSignatu
 		return nil, fmt.Errorf("BLS aggregation failed: %w", err)
 	}
 
-	// Collect Ringtail signatures (can't aggregate, but verify threshold)
-	ringtailSigs := make([]RingtailSignature, 0, len(signatures))
+	// Get pooled Ringtail signature slice
+	ringtailSigsPtr := ringtailSigSlicePool.Get().(*[]RingtailSignature)
+	ringtailSigs := (*ringtailSigsPtr)[:0]
+
 	for _, sig := range signatures {
 		ringtailSigs = append(ringtailSigs, RingtailSignature{
 			Signature:   sig.Ringtail,
@@ -216,17 +337,41 @@ func (q *Hybrid) AggregateSignatures(message []byte, signatures []*HybridSignatu
 		})
 	}
 
+	// Copy to result (caller owns the slice)
+	resultSigs := make([]RingtailSignature, len(ringtailSigs))
+	copy(resultSigs, ringtailSigs)
+
+	// Return pooled slice
+	*ringtailSigsPtr = ringtailSigs[:0]
+	ringtailSigSlicePool.Put(ringtailSigsPtr)
+
 	return &AggregatedSignature{
 		BLSAggregated: bls.SignatureToBytes(aggregatedBLS),
-		RingtailSigs:  ringtailSigs,
+		RingtailSigs:  resultSigs,
 		SignerCount:   len(signatures),
 	}, nil
 }
 
-// VerifyAggregatedSignature verifies an aggregated signature
+// VerifyAggregatedSignature verifies an aggregated signature.
+// For long-running operations, use VerifyAggregatedSignatureWithContext.
 func (q *Hybrid) VerifyAggregatedSignature(message []byte, aggSig *AggregatedSignature) bool {
+	return q.VerifyAggregatedSignatureWithContext(context.Background(), message, aggSig)
+}
+
+// VerifyAggregatedSignatureWithContext verifies an aggregated signature, respecting context cancellation.
+func (q *Hybrid) VerifyAggregatedSignatureWithContext(ctx context.Context, message []byte, aggSig *AggregatedSignature) bool {
+	// Check context before acquiring lock
+	if ctx.Err() != nil {
+		return false
+	}
+
 	q.mu.RLock()
 	defer q.mu.RUnlock()
+
+	// Check context after acquiring lock
+	if ctx.Err() != nil {
+		return false
+	}
 
 	// Check threshold
 	if aggSig.SignerCount < q.threshold {
@@ -239,9 +384,19 @@ func (q *Hybrid) VerifyAggregatedSignature(message []byte, aggSig *AggregatedSig
 		return false
 	}
 
-	// Collect public keys for BLS verification
-	pubKeys := make([]*bls.PublicKey, 0, len(aggSig.RingtailSigs))
+	// Get pooled public key slice
+	pubKeysPtr := pubKeySlicePool.Get().(*[]*bls.PublicKey)
+	pubKeys := (*pubKeysPtr)[:0]
+	defer func() {
+		*pubKeysPtr = pubKeys[:0]
+		pubKeySlicePool.Put(pubKeysPtr)
+	}()
+
 	for _, ringtailSig := range aggSig.RingtailSigs {
+		// Check context periodically during loop
+		if ctx.Err() != nil {
+			return false
+		}
 		validator, exists := q.validators[ringtailSig.ValidatorID]
 		if !exists || !validator.Active {
 			return false
@@ -258,8 +413,17 @@ func (q *Hybrid) VerifyAggregatedSignature(message []byte, aggSig *AggregatedSig
 		return false
 	}
 
+	// Check context before Ringtail verification
+	if ctx.Err() != nil {
+		return false
+	}
+
 	// Verify each Ringtail signature
 	for _, ringtailSig := range aggSig.RingtailSigs {
+		// Check context periodically during loop
+		if ctx.Err() != nil {
+			return false
+		}
 		validator, exists := q.validators[ringtailSig.ValidatorID]
 		if !exists {
 			return false
