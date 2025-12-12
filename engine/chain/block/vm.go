@@ -56,10 +56,3 @@ type Fx struct {
 	Fx interface{}
 }
 
-// AppSender sends application messages
-type AppSender interface {
-	SendAppRequest(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, appRequestBytes []byte) error
-	SendAppResponse(ctx context.Context, nodeID ids.NodeID, requestID uint32, appResponseBytes []byte) error
-	SendAppError(ctx context.Context, nodeID ids.NodeID, requestID uint32, errorCode int32, errorMessage string) error
-	SendAppGossip(ctx context.Context, nodeIDs []ids.NodeID, appGossipBytes []byte) error
-}
