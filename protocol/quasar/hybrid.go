@@ -13,8 +13,8 @@ import (
 	"github.com/luxfi/crypto/mldsa"
 )
 
-// QuasarHybridConsensus implements parallel BLS+Ringtail for PQ-safe consensus
-type QuasarHybridConsensus struct {
+// Hybrid implements parallel BLS+Ringtail for PQ-safe consensus
+type Hybrid struct {
 	mu sync.RWMutex
 
 	// BLS for classical threshold signatures
@@ -62,13 +62,13 @@ type Validator struct {
 	Active      bool
 }
 
-// NewQuasarHybridConsensus creates a new hybrid consensus engine
-func NewQuasarHybridConsensus(threshold int) (*QuasarHybridConsensus, error) {
+// NewHybrid creates a new hybrid consensus engine
+func NewHybrid(threshold int) (*Hybrid, error) {
 	if threshold < 1 {
 		return nil, errors.New("threshold must be at least 1")
 	}
 
-	return &QuasarHybridConsensus{
+	return &Hybrid{
 		blsThreshold:    threshold,
 		blsKeys:         make(map[string]*bls.SecretKey),
 		blsPubKeys:      make(map[string]*bls.PublicKey),
@@ -82,7 +82,7 @@ func NewQuasarHybridConsensus(threshold int) (*QuasarHybridConsensus, error) {
 }
 
 // AddValidator adds a validator to the consensus
-func (q *QuasarHybridConsensus) AddValidator(id string, weight uint64) error {
+func (q *Hybrid) AddValidator(id string, weight uint64) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -120,7 +120,7 @@ func (q *QuasarHybridConsensus) AddValidator(id string, weight uint64) error {
 }
 
 // SignMessage signs a message with both BLS and Ringtail
-func (q *QuasarHybridConsensus) SignMessage(validatorID string, message []byte) (*HybridSignature, error) {
+func (q *Hybrid) SignMessage(validatorID string, message []byte) (*HybridSignature, error) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
@@ -155,7 +155,7 @@ func (q *QuasarHybridConsensus) SignMessage(validatorID string, message []byte) 
 }
 
 // VerifyHybridSignature verifies both BLS and Ringtail signatures
-func (q *QuasarHybridConsensus) VerifyHybridSignature(message []byte, sig *HybridSignature) bool {
+func (q *Hybrid) VerifyHybridSignature(message []byte, sig *HybridSignature) bool {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
@@ -184,7 +184,7 @@ func (q *QuasarHybridConsensus) VerifyHybridSignature(message []byte, sig *Hybri
 }
 
 // AggregateSignatures aggregates signatures for a message
-func (q *QuasarHybridConsensus) AggregateSignatures(message []byte, signatures []*HybridSignature) (*AggregatedSignature, error) {
+func (q *Hybrid) AggregateSignatures(message []byte, signatures []*HybridSignature) (*AggregatedSignature, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -224,7 +224,7 @@ func (q *QuasarHybridConsensus) AggregateSignatures(message []byte, signatures [
 }
 
 // VerifyAggregatedSignature verifies an aggregated signature
-func (q *QuasarHybridConsensus) VerifyAggregatedSignature(message []byte, aggSig *AggregatedSignature) bool {
+func (q *Hybrid) VerifyAggregatedSignature(message []byte, aggSig *AggregatedSignature) bool {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
@@ -288,7 +288,7 @@ type AggregatedSignature struct {
 }
 
 // GetActiveValidatorCount returns the number of active validators
-func (q *QuasarHybridConsensus) GetActiveValidatorCount() int {
+func (q *Hybrid) GetActiveValidatorCount() int {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
@@ -302,6 +302,6 @@ func (q *QuasarHybridConsensus) GetActiveValidatorCount() int {
 }
 
 // GetThreshold returns the consensus threshold
-func (q *QuasarHybridConsensus) GetThreshold() int {
+func (q *Hybrid) GetThreshold() int {
 	return q.threshold
 }

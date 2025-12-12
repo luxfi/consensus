@@ -71,4 +71,24 @@ type Stats struct {
 
 // Core is an alias for the aggregator implementation.
 // Use NewCore() to create a new instance.
-type Core = QuasarCore
+type Core = Quasar
+
+// QuasarCore is a deprecated alias for backward compatibility.
+// Deprecated: Use Quasar or Core instead.
+type QuasarCore = Quasar
+
+// PChain is a deprecated alias for backward compatibility.
+// Deprecated: Use BLS instead.
+type PChain = BLS
+
+// NewPChain is a deprecated alias for backward compatibility.
+// Deprecated: Use NewBLS instead.
+var NewPChain = NewBLS
+
+// QuasarHybridConsensus is a deprecated alias for backward compatibility.
+// Deprecated: Use Hybrid instead.
+type QuasarHybridConsensus = Hybrid
+
+// NewQuasarHybridConsensus is a deprecated alias for backward compatibility.
+// Deprecated: Use NewHybrid instead.
+var NewQuasarHybridConsensus = NewHybrid
