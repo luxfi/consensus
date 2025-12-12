@@ -17,7 +17,7 @@ import (
 // ConsensusEngine implements post-quantum consensus combining classical and quantum-resistant security
 type ConsensusEngine struct {
 	params   config.Parameters
-	quasar   *quasar.PChainQuasar
+	quasar   *quasar.BLS
 	finality chan FinalityEvent
 	mu       sync.RWMutex
 
@@ -102,7 +102,7 @@ func NewConsensus(params config.Parameters) *ConsensusEngine {
 
 	return &ConsensusEngine{
 		params:    params,
-		quasar:    quasar.NewPChainQuasar(params, store),
+		quasar:    quasar.NewBLS(params, store),
 		finality:  make(chan FinalityEvent, 100),
 		finalized: make(map[ids.ID]bool),
 	}
