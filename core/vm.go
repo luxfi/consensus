@@ -11,6 +11,7 @@ import (
 	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/database/manager"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/warp"
 )
 
 // VMState represents the state of a VM
@@ -172,3 +173,15 @@ func (e *AppError) Error() string {
 	}
 	return fmt.Sprintf("app error %d: %s", e.Code, e.Message)
 }
+
+// SendConfig is an alias for warp.SendConfig for backwards compatibility
+type SendConfig = warp.SendConfig
+
+// Sender is an alias for warp.Sender for backwards compatibility
+type Sender = warp.Sender
+
+// Handler is an alias for warp.Handler for backwards compatibility
+type Handler = warp.Handler
+
+// Error is an alias for warp.Error for backwards compatibility
+type Error = warp.Error
