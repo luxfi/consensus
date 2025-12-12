@@ -1,22 +1,25 @@
+// Copyright (C) 2025, Lux Partners Limited All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package core
 
 import (
-	consensus_core "github.com/luxfi/consensus/core"
+	"github.com/luxfi/warp"
 )
 
-// WarpSender is a type alias for the core WarpSender
-type WarpSender = consensus_core.WarpSender
+// Sender is the warp Sender interface.
+type Sender = warp.Sender
 
-// FakeSender is a type alias for the core FakeSender
-type FakeSender = consensus_core.FakeSender
+// FakeSender is the warp FakeSender for testing.
+type FakeSender = warp.FakeSender
 
-// SenderTest is a test implementation of WarpSender
+// SenderTest is a test implementation of Sender.
 type SenderTest struct {
 	FakeSender
 }
 
-// SendConfig is a type alias for the core SendConfig
-type SendConfig = consensus_core.SendConfig
+// Deprecated: Use Sender instead.
+type WarpSender = warp.Sender
 
-// Deprecated: Use WarpSender instead
-type AppSender = consensus_core.WarpSender
+// Deprecated: Use Sender instead.
+type AppSender = warp.Sender

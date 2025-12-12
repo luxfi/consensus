@@ -7,25 +7,34 @@ import (
 	"github.com/luxfi/warp"
 )
 
-// WarpSender is the primary interface for warp messaging
+// Sender is the warp Sender interface.
+type Sender = warp.Sender
+
+// Handler handles warp messages.
+type Handler = warp.Handler
+
+// Error represents a warp error.
+type Error = warp.Error
+
+// Deprecated: Use Sender instead.
 type WarpSender = warp.Sender
 
-// WarpHandler handles warp messages
+// Deprecated: Use Handler instead.
 type WarpHandler = warp.Handler
 
-// WarpError represents a warp error
+// Deprecated: Use Error instead.
 type WarpError = warp.Error
 
-// Deprecated: Use WarpSender instead
+// Deprecated: Use Sender instead.
 type AppSender = warp.Sender
 
-// Deprecated: Use WarpHandler instead
+// Deprecated: Use Handler instead.
 type AppHandler = warp.Handler
 
-// Deprecated: Use WarpError instead
+// Deprecated: Use Error instead.
 type AppError = warp.Error
 
-// SendConfig configures message sending
+// SendConfig configures message sending.
 type SendConfig struct {
 	NodeIDs       []interface{}
 	Validators    int
