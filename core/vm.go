@@ -152,15 +152,6 @@ const (
 	WarpGossip
 )
 
-// Deprecated: Use WarpRequest instead
-const AppRequest = WarpRequest
-
-// Deprecated: Use WarpResponse instead
-const AppResponse = WarpResponse
-
-// Deprecated: Use WarpGossip instead
-const AppGossip = WarpGossip
-
 // Fx defines a feature extension
 type Fx struct {
 	ID ids.ID
