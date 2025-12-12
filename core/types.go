@@ -21,3 +21,9 @@ type SendConfig = warp.SendConfig
 
 // FakeSender is a no-op sender for testing.
 type FakeSender = warp.FakeSender
+
+// AppSender sends application-level messages between nodes.
+type AppSender = warp.AppSender
+
+// AppError represents an application-level error.
+type AppError = warp.AppError
