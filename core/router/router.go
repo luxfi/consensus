@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/warp"
 )
 
 // Message represents a network message
@@ -37,9 +36,6 @@ type ExternalHandler interface {
 	Disconnected(nodeID ids.NodeID)
 	HandleInbound(context.Context, Message) error
 }
-
-// Error is an alias for warp.Error
-type Error = warp.Error
 
 // HealthConfig configures health checks
 type HealthConfig struct {

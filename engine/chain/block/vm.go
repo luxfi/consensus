@@ -8,7 +8,6 @@ import (
 	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/database/manager"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/warp"
 )
 
 var (
@@ -56,15 +55,3 @@ type Fx struct {
 	ID ids.ID
 	Fx interface{}
 }
-
-// Sender is an alias for warp.Sender
-type Sender = warp.Sender
-
-// Handler is an alias for warp.Handler
-type Handler = warp.Handler
-
-// Error represents a warp error.
-type Error = warp.Error
-
-// SendConfig configures message sending.
-type SendConfig = warp.SendConfig
