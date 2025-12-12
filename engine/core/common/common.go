@@ -8,6 +8,7 @@ package common
 import (
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/consensus/engine/core"
+	"github.com/luxfi/warp"
 )
 
 // Message represents a message to the VM
@@ -39,3 +40,15 @@ const (
 	WarpResponse            = core.WarpResponse
 	WarpGossip              = core.WarpGossip
 )
+
+// SendConfig is an alias for warp.SendConfig for backwards compatibility
+type SendConfig = warp.SendConfig
+
+// Sender is an alias for warp.Sender for backwards compatibility
+type Sender = warp.Sender
+
+// Handler is an alias for warp.Handler for backwards compatibility
+type Handler = warp.Handler
+
+// Error is an alias for warp.Error for backwards compatibility
+type Error = warp.Error
