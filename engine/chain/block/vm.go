@@ -44,9 +44,12 @@ type ChainContext struct {
 // DBManager manages databases
 type DBManager = manager.Manager
 
+// MessageType defines the type of a message
+type MessageType = uint32
+
 // Message represents a message to the VM
 type Message struct {
-	Type uint32
+	Type MessageType
 	Data []byte
 }
 
