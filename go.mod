@@ -1,6 +1,6 @@
 module github.com/luxfi/consensus
 
-go 1.25.1
+go 1.25.5
 
 exclude github.com/ethereum/go-ethereum v1.10.26
 
@@ -9,13 +9,14 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 require (
 	github.com/dgraph-io/badger/v4 v4.8.0
 	github.com/luxfi/bft v0.1.0
-	github.com/luxfi/crypto v1.17.4
+	github.com/luxfi/crypto v1.17.18
 	github.com/luxfi/database v1.2.7
 	github.com/luxfi/geth v1.16.39
 	github.com/luxfi/ids v1.1.2
 	github.com/luxfi/log v1.1.22
 	github.com/luxfi/math v0.1.4
-	github.com/luxfi/node v1.20.1
+	github.com/luxfi/node v1.20.3
+	github.com/luxfi/warp v1.16.16
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
@@ -29,7 +30,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cloudflare/circl v1.6.2-0.20251027185721-da1faa40b98c // indirect
+	github.com/cloudflare/circl v1.6.2-0.20251204010831-23491bd573cf // indirect
 	github.com/cockroachdb/errors v1.12.0 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240816210425-c5d0cb0b6fc0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20241215232642-bb51bb14a506 // indirect
@@ -58,15 +59,14 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/luxfi/metric v1.4.5 // indirect
+	github.com/luxfi/mock v0.1.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/onsi/gomega v1.38.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.17.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
-	github.com/sanity-io/litter v1.5.5 // indirect
 	github.com/supranational/blst v0.3.16-0.20250831170142-f48500c1fdbe // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20220614013038-64ee5596c38a // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
@@ -90,3 +90,5 @@ require (
 exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 
 exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
+
+replace github.com/luxfi/warp => ../warp

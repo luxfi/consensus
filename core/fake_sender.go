@@ -4,8 +4,8 @@
 package core
 
 import (
-	"github.com/luxfi/consensus/core/appsender"
+	"github.com/luxfi/warp"
 )
 
 // FakeSender is a type alias for compatibility
-type FakeSender = appsender.FakeSender
+type FakeSender = warp.FakeSender
