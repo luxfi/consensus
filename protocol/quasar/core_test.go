@@ -156,3 +156,163 @@ func TestQuantumEpochFinalization(t *testing.T) {
 
 	t.Logf("Quantum epoch finalization test passed with %d blocks", 5)
 }
+
+func TestContextCancellation(t *testing.T) {
+	t.Run("SignMessageWithContext_cancelled", func(t *testing.T) {
+		hybrid, err := NewHybrid(1)
+		if err != nil {
+			t.Fatalf("Failed to create hybrid: %v", err)
+		}
+
+		err = hybrid.AddValidator("validator1", 100)
+		if err != nil {
+			t.Fatalf("Failed to add validator: %v", err)
+		}
+
+		// Create cancelled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		// Attempt to sign with cancelled context
+		_, err = hybrid.SignMessageWithContext(ctx, "validator1", []byte("test"))
+		if err == nil {
+			t.Error("Expected error from cancelled context, got nil")
+		}
+		if err != context.Canceled {
+			t.Errorf("Expected context.Canceled, got %v", err)
+		}
+	})
+
+	t.Run("VerifyHybridSignatureWithContext_cancelled", func(t *testing.T) {
+		hybrid, err := NewHybrid(1)
+		if err != nil {
+			t.Fatalf("Failed to create hybrid: %v", err)
+		}
+
+		err = hybrid.AddValidator("validator1", 100)
+		if err != nil {
+			t.Fatalf("Failed to add validator: %v", err)
+		}
+
+		// Sign with valid context
+		msg := []byte("test message")
+		sig, err := hybrid.SignMessage("validator1", msg)
+		if err != nil {
+			t.Fatalf("Failed to sign: %v", err)
+		}
+
+		// Verify with cancelled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		result := hybrid.VerifyHybridSignatureWithContext(ctx, msg, sig)
+		if result {
+			t.Error("Expected false from cancelled context verification")
+		}
+	})
+
+	t.Run("AggregateSignaturesWithContext_cancelled", func(t *testing.T) {
+		hybrid, err := NewHybrid(1)
+		if err != nil {
+			t.Fatalf("Failed to create hybrid: %v", err)
+		}
+
+		err = hybrid.AddValidator("validator1", 100)
+		if err != nil {
+			t.Fatalf("Failed to add validator: %v", err)
+		}
+
+		// Create signature
+		msg := []byte("test message")
+		sig, err := hybrid.SignMessage("validator1", msg)
+		if err != nil {
+			t.Fatalf("Failed to sign: %v", err)
+		}
+
+		// Aggregate with cancelled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err = hybrid.AggregateSignaturesWithContext(ctx, msg, []*HybridSignature{sig})
+		if err == nil {
+			t.Error("Expected error from cancelled context, got nil")
+		}
+		if err != context.Canceled {
+			t.Errorf("Expected context.Canceled, got %v", err)
+		}
+	})
+
+	t.Run("VerifyQuantumFinalityWithContext_cancelled", func(t *testing.T) {
+		qa, err := NewQuasar(1)
+		if err != nil {
+			t.Fatalf("Failed to create quasar: %v", err)
+		}
+
+		err = qa.hybridConsensus.AddValidator("validator1", 100)
+		if err != nil {
+			t.Fatalf("Failed to add validator: %v", err)
+		}
+
+		// Process a block to create finality
+		block := &ChainBlock{
+			ChainID:   [32]byte{1},
+			ChainName: "P-Chain",
+			ID:        [32]byte{0x01},
+			Height:    100,
+			Timestamp: time.Now(),
+			Data:      []byte("test"),
+		}
+		qa.processBlock(block)
+
+		blockHash := qa.computeQuantumHash(block)
+
+		// Verify with cancelled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		result := qa.VerifyQuantumFinalityWithContext(ctx, blockHash)
+		if result {
+			t.Error("Expected false from cancelled context verification")
+		}
+	})
+
+	t.Run("WithContext_valid_context_works", func(t *testing.T) {
+		hybrid, err := NewHybrid(1)
+		if err != nil {
+			t.Fatalf("Failed to create hybrid: %v", err)
+		}
+
+		err = hybrid.AddValidator("validator1", 100)
+		if err != nil {
+			t.Fatalf("Failed to add validator: %v", err)
+		}
+
+		// Use valid context with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		msg := []byte("test message")
+
+		// Sign should succeed
+		sig, err := hybrid.SignMessageWithContext(ctx, "validator1", msg)
+		if err != nil {
+			t.Fatalf("SignMessageWithContext failed: %v", err)
+		}
+
+		// Verify should succeed
+		if !hybrid.VerifyHybridSignatureWithContext(ctx, msg, sig) {
+			t.Error("VerifyHybridSignatureWithContext returned false for valid signature")
+		}
+
+		// Aggregate should succeed
+		aggSig, err := hybrid.AggregateSignaturesWithContext(ctx, msg, []*HybridSignature{sig})
+		if err != nil {
+			t.Fatalf("AggregateSignaturesWithContext failed: %v", err)
+		}
+
+		// Verify aggregated should succeed
+		if !hybrid.VerifyAggregatedSignatureWithContext(ctx, msg, aggSig) {
+			t.Error("VerifyAggregatedSignatureWithContext returned false for valid signature")
+		}
+	})
+}
