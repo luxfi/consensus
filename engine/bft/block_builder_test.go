@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/luxfi/consensus/engine/chain/block"
-	"github.com/luxfi/consensus/engine/core/common"
+	"github.com/luxfi/consensus/engine/core"
 	"github.com/luxfi/log"
 )
 
@@ -71,7 +71,7 @@ func TestBlockBuilder(t *testing.T) {
 
 			vm.WaitForEventF = func(_ context.Context) (interface{}, error) {
 				count++
-				return common.PendingTxs, nil
+				return core.PendingTxs, nil
 			}
 			vm.BuildBlockF = tt.vmBlockBuildF
 
