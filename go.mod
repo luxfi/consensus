@@ -16,7 +16,7 @@ require (
 	github.com/luxfi/log v1.1.22
 	github.com/luxfi/math v0.1.4
 	github.com/luxfi/node v1.20.3
-	github.com/luxfi/warp v1.16.30
+	github.com/luxfi/warp v1.16.31
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
