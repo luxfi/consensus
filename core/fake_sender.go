@@ -7,5 +7,5 @@ import (
 	"github.com/luxfi/warp"
 )
 
-// FakeSender is a type alias for compatibility
+// FakeSender is the warp FakeSender for testing.
 type FakeSender = warp.FakeSender
