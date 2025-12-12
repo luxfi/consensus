@@ -4,9 +4,9 @@ package enginetest
 import (
 	"context"
 
-	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/math/set"
+	"github.com/luxfi/warp"
 )
 
 // TestEngine provides a test implementation for consensus engines
@@ -50,70 +50,62 @@ func (t *TestEngine) SetHeight(height uint64) {
 	t.height = height
 }
 
-// Sender is a test implementation of core.Sender for testing
+// Sender is a test implementation of warp.Sender for testing
 type Sender struct {
-	SendAppRequestF            func(context.Context, set.Set[ids.NodeID], uint32, []byte) error
-	SendAppResponseF           func(context.Context, ids.NodeID, uint32, []byte) error
-	SendAppErrorF              func(context.Context, ids.NodeID, uint32, int32, string) error
-	SendAppGossipF             func(context.Context, core.SendConfig, []byte) error
-	SendAppGossipSpecificF     func(context.Context, core.SendConfig, []byte) error
-	SendCrossChainAppRequestF  func(context.Context, ids.ID, uint32, []byte) error
-	SendCrossChainAppResponseF func(context.Context, ids.ID, uint32, []byte) error
-	SendCrossChainAppErrorF    func(context.Context, ids.ID, uint32, int32, string) error
+	SendRequestF              func(context.Context, set.Set[ids.NodeID], uint32, []byte) error
+	SendResponseF             func(context.Context, ids.NodeID, uint32, []byte) error
+	SendErrorF                func(context.Context, ids.NodeID, uint32, int32, string) error
+	SendGossipF               func(context.Context, warp.SendConfig, []byte) error
+	SendCrossChainRequestF    func(context.Context, ids.ID, uint32, []byte) error
+	SendCrossChainResponseF   func(context.Context, ids.ID, uint32, []byte) error
+	SendCrossChainErrorF      func(context.Context, ids.ID, uint32, int32, string) error
 }
 
-func (s *Sender) SendAppRequest(ctx context.Context, nodeIDs set.Set[ids.NodeID], requestID uint32, request []byte) error {
-	if s.SendAppRequestF != nil {
-		return s.SendAppRequestF(ctx, nodeIDs, requestID, request)
+func (s *Sender) SendRequest(ctx context.Context, nodeIDs set.Set[ids.NodeID], requestID uint32, request []byte) error {
+	if s.SendRequestF != nil {
+		return s.SendRequestF(ctx, nodeIDs, requestID, request)
 	}
 	return nil
 }
 
-func (s *Sender) SendAppResponse(ctx context.Context, nodeID ids.NodeID, requestID uint32, response []byte) error {
-	if s.SendAppResponseF != nil {
-		return s.SendAppResponseF(ctx, nodeID, requestID, response)
+func (s *Sender) SendResponse(ctx context.Context, nodeID ids.NodeID, requestID uint32, response []byte) error {
+	if s.SendResponseF != nil {
+		return s.SendResponseF(ctx, nodeID, requestID, response)
 	}
 	return nil
 }
 
-func (s *Sender) SendAppError(ctx context.Context, nodeID ids.NodeID, requestID uint32, errorCode int32, errorMessage string) error {
-	if s.SendAppErrorF != nil {
-		return s.SendAppErrorF(ctx, nodeID, requestID, errorCode, errorMessage)
+func (s *Sender) SendError(ctx context.Context, nodeID ids.NodeID, requestID uint32, errorCode int32, errorMessage string) error {
+	if s.SendErrorF != nil {
+		return s.SendErrorF(ctx, nodeID, requestID, errorCode, errorMessage)
 	}
 	return nil
 }
 
-func (s *Sender) SendAppGossip(ctx context.Context, config core.SendConfig, gossip []byte) error {
-	if s.SendAppGossipF != nil {
-		return s.SendAppGossipF(ctx, config, gossip)
+func (s *Sender) SendGossip(ctx context.Context, config warp.SendConfig, gossip []byte) error {
+	if s.SendGossipF != nil {
+		return s.SendGossipF(ctx, config, gossip)
 	}
 	return nil
 }
 
-func (s *Sender) SendAppGossipSpecific(ctx context.Context, config core.SendConfig, gossip []byte) error {
-	if s.SendAppGossipSpecificF != nil {
-		return s.SendAppGossipSpecificF(ctx, config, gossip)
+func (s *Sender) SendCrossChainRequest(ctx context.Context, chainID ids.ID, requestID uint32, request []byte) error {
+	if s.SendCrossChainRequestF != nil {
+		return s.SendCrossChainRequestF(ctx, chainID, requestID, request)
 	}
 	return nil
 }
 
-func (s *Sender) SendCrossChainAppRequest(ctx context.Context, chainID ids.ID, requestID uint32, request []byte) error {
-	if s.SendCrossChainAppRequestF != nil {
-		return s.SendCrossChainAppRequestF(ctx, chainID, requestID, request)
+func (s *Sender) SendCrossChainResponse(ctx context.Context, chainID ids.ID, requestID uint32, response []byte) error {
+	if s.SendCrossChainResponseF != nil {
+		return s.SendCrossChainResponseF(ctx, chainID, requestID, response)
 	}
 	return nil
 }
 
-func (s *Sender) SendCrossChainAppResponse(ctx context.Context, chainID ids.ID, requestID uint32, response []byte) error {
-	if s.SendCrossChainAppResponseF != nil {
-		return s.SendCrossChainAppResponseF(ctx, chainID, requestID, response)
-	}
-	return nil
-}
-
-func (s *Sender) SendCrossChainAppError(ctx context.Context, chainID ids.ID, requestID uint32, errorCode int32, errorMessage string) error {
-	if s.SendCrossChainAppErrorF != nil {
-		return s.SendCrossChainAppErrorF(ctx, chainID, requestID, errorCode, errorMessage)
+func (s *Sender) SendCrossChainError(ctx context.Context, chainID ids.ID, requestID uint32, errorCode int32, errorMessage string) error {
+	if s.SendCrossChainErrorF != nil {
+		return s.SendCrossChainErrorF(ctx, chainID, requestID, errorCode, errorMessage)
 	}
 	return nil
 }
