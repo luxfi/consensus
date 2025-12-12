@@ -46,12 +46,12 @@ func (m MessageType) String() string {
 		return "AcceptedFrontier"
 	case GetAcceptedFrontierFailed:
 		return "GetAcceptedFrontierFailed"
-	case AppRequest:
-		return "AppRequest"
-	case AppResponse:
-		return "AppResponse"
-	case AppGossip:
-		return "AppGossip"
+	case WarpRequest:
+		return "WarpRequest"
+	case WarpResponse:
+		return "WarpResponse"
+	case WarpGossip:
+		return "WarpGossip"
 	default:
 		return "Unknown"
 	}
@@ -86,10 +86,10 @@ const (
 	AcceptedFrontier
 	// GetAcceptedFrontierFailed indicates a failed frontier request
 	GetAcceptedFrontierFailed
-	// AppRequest indicates an app request
-	AppRequest
-	// AppResponse indicates an app response
-	AppResponse
-	// AppGossip indicates app gossip
-	AppGossip
+	// WarpRequest indicates a warp request
+	WarpRequest
+	// WarpResponse indicates a warp response
+	WarpResponse
+	// WarpGossip indicates warp gossip
+	WarpGossip
 )

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/luxfi/ids"
+	"github.com/luxfi/warp"
 )
 
 // Message represents a network message
@@ -37,11 +38,8 @@ type ExternalHandler interface {
 	HandleInbound(context.Context, Message) error
 }
 
-// AppError represents an application-level error
-type AppError struct {
-	Code    int32
-	Message string
-}
+// Error is an alias for warp.Error
+type Error = warp.Error
 
 // HealthConfig configures health checks
 type HealthConfig struct {
