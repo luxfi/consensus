@@ -7,19 +7,8 @@ import (
 	"github.com/luxfi/warp"
 )
 
-// Sender is the warp Sender interface.
+// Sender is the warp Sender for cross-VM messaging.
 type Sender = warp.Sender
 
 // FakeSender is the warp FakeSender for testing.
 type FakeSender = warp.FakeSender
-
-// SenderTest is a test implementation of Sender.
-type SenderTest struct {
-	FakeSender
-}
-
-// Deprecated: Use Sender instead.
-type WarpSender = warp.Sender
-
-// Deprecated: Use Sender instead.
-type AppSender = warp.Sender
