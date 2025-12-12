@@ -13,10 +13,10 @@ import (
 	"time"
 )
 
-// QuasarCore is the supermassive black hole at the center of the blockchain galaxy
+// Quasar is the supermassive black hole at the center of the blockchain galaxy
 // It collects blocks from ALL chains (P, X, C, + any new subnets) and applies quantum consensus
 // External systems (bridges, contracts) can use RPC to add blocks to the event horizon
-type QuasarCore struct {
+type Quasar struct {
 	mu sync.RWMutex
 
 	// Dynamic chain registration - automatically includes new subnets/chains
@@ -28,7 +28,7 @@ type QuasarCore struct {
 	cChainBlocks chan *ChainBlock
 
 	// Quantum consensus engine - the event horizon
-	hybridConsensus *QuasarHybridConsensus
+	hybridConsensus *Hybrid
 
 	// Quantum finality state - the singularity
 	finalizedBlocks map[string]*QuantumBlock // blockHash -> finalized block
@@ -61,13 +61,13 @@ type QuantumBlock struct {
 }
 
 // NewQuasar creates the supermassive black hole at the center of the blockchain galaxy
-func NewQuasarCore(threshold int) (*QuasarCore, error) {
-	hybrid, err := NewQuasarHybridConsensus(threshold)
+func NewQuasar(threshold int) (*Quasar, error) {
+	hybrid, err := NewHybrid(threshold)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create hybrid consensus: %w", err)
 	}
 
-	core := &QuasarCore{
+	core := &Quasar{
 		pChainBlocks:     make(chan *ChainBlock, 100),
 		xChainBlocks:     make(chan *ChainBlock, 100),
 		cChainBlocks:     make(chan *ChainBlock, 100),
@@ -87,7 +87,7 @@ func NewQuasarCore(threshold int) (*QuasarCore, error) {
 }
 
 // Start begins drawing blocks into the Quasar's gravitational pull
-func (q *QuasarCore) Start(ctx context.Context) error {
+func (q *Quasar) Start(ctx context.Context) error {
 	// Store context for dynamic chain registration
 	q.mu.Lock()
 	q.ctx = ctx
@@ -109,7 +109,7 @@ func (q *QuasarCore) Start(ctx context.Context) error {
 }
 
 // SubmitPChainBlock submits a P-Chain block for quantum consensus
-func (q *QuasarCore) SubmitPChainBlock(block *ChainBlock) {
+func (q *Quasar) SubmitPChainBlock(block *ChainBlock) {
 	block.ChainName = "P-Chain"
 	select {
 	case q.pChainBlocks <- block:
@@ -121,7 +121,7 @@ func (q *QuasarCore) SubmitPChainBlock(block *ChainBlock) {
 }
 
 // SubmitXChainBlock submits an X-Chain block for quantum consensus
-func (q *QuasarCore) SubmitXChainBlock(block *ChainBlock) {
+func (q *Quasar) SubmitXChainBlock(block *ChainBlock) {
 	block.ChainName = "X-Chain"
 	select {
 	case q.xChainBlocks <- block:
@@ -132,7 +132,7 @@ func (q *QuasarCore) SubmitXChainBlock(block *ChainBlock) {
 }
 
 // SubmitCChainBlock submits a C-Chain block for quantum consensus
-func (q *QuasarCore) SubmitCChainBlock(block *ChainBlock) {
+func (q *Quasar) SubmitCChainBlock(block *ChainBlock) {
 	block.ChainName = "C-Chain"
 	select {
 	case q.cChainBlocks <- block:
@@ -143,7 +143,7 @@ func (q *QuasarCore) SubmitCChainBlock(block *ChainBlock) {
 }
 
 // processPChain handles P-Chain blocks
-func (q *QuasarCore) processPChain(ctx context.Context) {
+func (q *Quasar) processPChain(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -155,7 +155,7 @@ func (q *QuasarCore) processPChain(ctx context.Context) {
 }
 
 // processXChain handles X-Chain blocks
-func (q *QuasarCore) processXChain(ctx context.Context) {
+func (q *Quasar) processXChain(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -167,7 +167,7 @@ func (q *QuasarCore) processXChain(ctx context.Context) {
 }
 
 // processCChain handles C-Chain blocks
-func (q *QuasarCore) processCChain(ctx context.Context) {
+func (q *Quasar) processCChain(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -179,7 +179,7 @@ func (q *QuasarCore) processCChain(ctx context.Context) {
 }
 
 // processBlock applies quantum consensus to a single block
-func (q *QuasarCore) processBlock(block *ChainBlock) {
+func (q *Quasar) processBlock(block *ChainBlock) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -212,7 +212,7 @@ func (q *QuasarCore) processBlock(block *ChainBlock) {
 }
 
 // quantumFinalizer runs the quantum finalization process
-func (q *QuasarCore) quantumFinalizer(ctx context.Context) {
+func (q *Quasar) quantumFinalizer(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
@@ -227,7 +227,7 @@ func (q *QuasarCore) quantumFinalizer(ctx context.Context) {
 }
 
 // finalizeQuantumEpoch creates a quantum proof for the current epoch
-func (q *QuasarCore) finalizeQuantumEpoch() {
+func (q *Quasar) finalizeQuantumEpoch() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -253,7 +253,7 @@ func (q *QuasarCore) finalizeQuantumEpoch() {
 }
 
 // computeQuantumHash creates a quantum-resistant hash
-func (q *QuasarCore) computeQuantumHash(block *Block) string {
+func (q *Quasar) computeQuantumHash(block *Block) string {
 	// Combine block data with quantum parameters
 	data := fmt.Sprintf("%s:%x:%d:%d",
 		block.ChainName,
@@ -267,21 +267,21 @@ func (q *QuasarCore) computeQuantumHash(block *Block) string {
 }
 
 // GetQuantumHeight returns the current quantum finalized height
-func (q *QuasarCore) GetQuantumHeight() uint64 {
+func (q *Quasar) GetQuantumHeight() uint64 {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 	return q.quantumHeight
 }
 
 // GetMetrics returns aggregator metrics
-func (q *QuasarCore) GetMetrics() (processedBlocks, quantumProofs uint64) {
+func (q *Quasar) GetMetrics() (processedBlocks, quantumProofs uint64) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 	return q.processedBlocks, q.quantumProofs
 }
 
 // VerifyQuantumFinality checks if a block has quantum finality
-func (q *QuasarCore) VerifyQuantumFinality(blockHash string) bool {
+func (q *Quasar) VerifyQuantumFinality(blockHash string) bool {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
@@ -303,7 +303,7 @@ func (q *QuasarCore) VerifyQuantumFinality(blockHash string) bool {
 
 // RegisterChain dynamically registers a new chain/subnet for automatic quantum security
 // All new subnets are automatically protected by the event horizon
-func (q *QuasarCore) RegisterChain(chainName string) error {
+func (q *Quasar) RegisterChain(chainName string) error {
 	q.mu.Lock()
 
 	if q.registeredChains[chainName] {
@@ -330,7 +330,7 @@ func (q *QuasarCore) RegisterChain(chainName string) error {
 
 // SubmitBlock is the universal RPC endpoint for ANY chain/contract to add blocks
 // External systems (bridge, contracts) use this to enter the event horizon
-func (q *QuasarCore) SubmitBlock(block *ChainBlock) error {
+func (q *Quasar) SubmitBlock(block *ChainBlock) error {
 	q.mu.RLock()
 	// Auto-register chain if not yet registered
 	if !q.registeredChains[block.ChainName] {
@@ -362,7 +362,7 @@ func (q *QuasarCore) SubmitBlock(block *ChainBlock) error {
 
 // ProcessDynamicChains starts processors for all dynamically registered chains
 // This runs alongside the legacy P/X/C chain processors
-func (q *QuasarCore) ProcessDynamicChains(ctx context.Context) {
+func (q *Quasar) ProcessDynamicChains(ctx context.Context) {
 	q.mu.RLock()
 	chains := make([]string, 0, len(q.chainBuffers))
 	for chain := range q.chainBuffers {
@@ -377,7 +377,7 @@ func (q *QuasarCore) ProcessDynamicChains(ctx context.Context) {
 }
 
 // processChain handles blocks from any dynamically registered chain
-func (q *QuasarCore) processChain(ctx context.Context, chainName string) {
+func (q *Quasar) processChain(ctx context.Context, chainName string) {
 	q.mu.RLock()
 	buffer := q.chainBuffers[chainName]
 	q.mu.RUnlock()
@@ -393,7 +393,7 @@ func (q *QuasarCore) processChain(ctx context.Context, chainName string) {
 }
 
 // GetRegisteredChains returns all chains currently in the event horizon
-func (q *QuasarCore) GetRegisteredChains() []string {
+func (q *Quasar) GetRegisteredChains() []string {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 

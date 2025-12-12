@@ -34,7 +34,7 @@ type Config struct {
 	ThetaMax  float64       // FPC maximum threshold (default: 0.8)
 }
 
-// WaveState represents the state of an item in wave consensus
+// WaveState represents the polling state of an item in wave consensus
 type WaveState struct {
 	Decided bool
 	Result  types.Decision
@@ -179,7 +179,7 @@ countVotes:
 	}
 }
 
-// State returns the current state of an item
+// State returns the current polling state of an item
 func (w *Wave[T]) State(item T) (*WaveState, bool) {
 	state, exists := w.states[item]
 	return state, exists
