@@ -38,7 +38,7 @@ type VM interface {
 		configBytes []byte,
 		toEngine chan<- Message,
 		fxs []*Fx,
-		appSender interface{}, // AppSender interface from appsender package
+		warpSender interface{}, // WarpSender interface from warp package
 	) error
 
 	// SetState sets the state of the VM
@@ -104,12 +104,12 @@ func (m MessageType) String() string {
 		return "AcceptedFrontier"
 	case GetAcceptedFrontierFailed:
 		return "GetAcceptedFrontierFailed"
-	case AppRequest:
-		return "AppRequest"
-	case AppResponse:
-		return "AppResponse"
-	case AppGossip:
-		return "AppGossip"
+	case WarpRequest:
+		return "WarpRequest"
+	case WarpResponse:
+		return "WarpResponse"
+	case WarpGossip:
+		return "WarpGossip"
 	default:
 		return "Unknown"
 	}
@@ -144,13 +144,22 @@ const (
 	AcceptedFrontier
 	// GetAcceptedFrontierFailed indicates a failed frontier request
 	GetAcceptedFrontierFailed
-	// AppRequest indicates an app request
-	AppRequest
-	// AppResponse indicates an app response
-	AppResponse
-	// AppGossip indicates app gossip
-	AppGossip
+	// WarpRequest indicates a warp request
+	WarpRequest
+	// WarpResponse indicates a warp response
+	WarpResponse
+	// WarpGossip indicates warp gossip
+	WarpGossip
 )
+
+// Deprecated: Use WarpRequest instead
+const AppRequest = WarpRequest
+
+// Deprecated: Use WarpResponse instead
+const AppResponse = WarpResponse
+
+// Deprecated: Use WarpGossip instead
+const AppGossip = WarpGossip
 
 // Fx defines a feature extension
 type Fx struct {
