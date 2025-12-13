@@ -5,8 +5,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/luxfi/consensus/core/choices"
 	consensuscontext "github.com/luxfi/consensus/context"
+	"github.com/luxfi/consensus/core/choices"
 	"github.com/luxfi/consensus/version"
 	"github.com/luxfi/database"
 	"github.com/luxfi/ids"

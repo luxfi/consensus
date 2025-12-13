@@ -20,7 +20,7 @@ var (
 	hybridSigPool = sync.Pool{
 		New: func() any {
 			return &HybridSignature{
-				BLS:      make([]byte, 0, 96),  // BLS sig size
+				BLS:      make([]byte, 0, 96),   // BLS sig size
 				Ringtail: make([]byte, 0, 3309), // ML-DSA-65 sig size
 			}
 		},
