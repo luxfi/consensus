@@ -31,9 +31,9 @@ type Context struct {
 	// Timing
 	StartTime time.Time `json:"startTime"`
 
-	ValidatorState  interface{}
+	ValidatorState  interface{} // validators.State or ValidatorState interface
 	Keystore        Keystore
-	Metrics         interface{}
+	Metrics         interface{} // metrics.MultiGatherer or Metrics interface
 	Log             interface{} // logging.Logger
 	SharedMemory    interface{} // atomic.SharedMemory
 	BCLookup        BCLookup    // Blockchain alias lookup
@@ -52,6 +52,7 @@ type BCLookup interface {
 }
 
 // ValidatorState provides validator information
+// This is kept as a minimal interface for compatibility with node package
 type ValidatorState interface {
 	GetChainID(ids.ID) (ids.ID, error)
 	GetNetID(ids.ID) (ids.ID, error)
@@ -105,7 +106,6 @@ func GetNetID(ctx context.Context) ids.ID {
 
 // Deprecated: GetSubnetID is deprecated, use GetNetID instead
 func GetSubnetID(ctx context.Context) ids.ID {
-	// Direct implementation to avoid calling deprecated functions
 	if c, ok := ctx.Value(contextKey).(*Context); ok {
 		return c.NetID
 	}
@@ -121,9 +121,9 @@ func GetNetworkID(ctx context.Context) uint32 {
 }
 
 // GetValidatorState gets the validator state from context
-func GetValidatorState(ctx context.Context) ValidatorState {
+func GetValidatorState(ctx context.Context) interface{} {
 	if c, ok := ctx.Value(contextKey).(*Context); ok {
-		return c.ValidatorState.(ValidatorState)
+		return c.ValidatorState
 	}
 	return nil
 }
@@ -159,17 +159,12 @@ func GetNodeID(ctx context.Context) ids.NodeID {
 
 // IDs holds the IDs for consensus context
 type IDs struct {
-	// NetworkID is the network identifier
-	NetworkID uint32
-	// QuantumID is the root quantum network identifier
-	QuantumID uint32
-	// NetID identifies the network within the quantum network
-	NetID ids.ID
-	// ChainID identifies the chain within the network
-	ChainID   ids.ID
-	NodeID    ids.NodeID
-	PublicKey []byte
-	// XAssetID is the asset ID for the X-Chain native asset
+	NetworkID    uint32
+	QuantumID    uint32
+	NetID        ids.ID
+	ChainID      ids.ID
+	NodeID       ids.NodeID
+	PublicKey    []byte
 	XAssetID     ids.ID
 	LUXAssetID   ids.ID `json:"luxAssetID"`
 	ChainDataDir string `json:"chainDataDir"`
@@ -190,7 +185,7 @@ func WithIDs(ctx context.Context, ids IDs) context.Context {
 }
 
 // WithValidatorState adds validator state to the context
-func WithValidatorState(ctx context.Context, vs ValidatorState) context.Context {
+func WithValidatorState(ctx context.Context, vs interface{}) context.Context {
 	c := FromContext(ctx)
 	if c == nil {
 		c = &Context{}
@@ -205,11 +200,11 @@ var contextKey = contextKeyType{}
 
 // Logger provides logging functionality
 type Logger interface {
-	Debug(msg string, fields ...interface{}) // zap.Field
-	Info(msg string, fields ...interface{})  // zap.Field
-	Warn(msg string, fields ...interface{})  // zap.Field
-	Error(msg string, fields ...interface{}) // zap.Field
-	Fatal(msg string, fields ...interface{}) // zap.Field
+	Debug(msg string, fields ...interface{})
+	Info(msg string, fields ...interface{})
+	Warn(msg string, fields ...interface{})
+	Error(msg string, fields ...interface{})
+	Fatal(msg string, fields ...interface{})
 }
 
 // SharedMemory provides cross-chain shared memory
@@ -221,14 +216,45 @@ type SharedMemory interface {
 		startTrait, startKey []byte,
 		limit int,
 	) (values [][]byte, lastTrait, lastKey []byte, err error)
+	// Apply applies atomic requests to shared memory
+	Apply(requests map[ids.ID]*AtomicRequests, batch interface{}) error
+}
+
+// AtomicRequests contains atomic operations for a chain
+type AtomicRequests struct {
+	RemoveRequests [][]byte            // Keys to remove
+	PutRequests    []*AtomicPutRequest // Key-value pairs to put
+}
+
+// AtomicPutRequest represents a put operation in shared memory
+type AtomicPutRequest struct {
+	Key    []byte   // The key to store
+	Value  []byte   // The value to store
+	Traits [][]byte // Traits for indexing
 }
 
 // WarpSigner provides BLS signing for Warp messages
 type WarpSigner interface {
+	// Sign signs the given message and returns the signature
 	Sign(msg interface{}) ([]byte, error)
+	// PublicKey returns the BLS public key bytes
+	PublicKey() []byte
+	// NodeID returns the node ID associated with this signer
+	NodeID() ids.NodeID
 }
 
 // NetworkUpgrades contains network upgrade activation times
 type NetworkUpgrades interface {
-	// Methods to query upgrade times
+	// IsApricotPhase3Activated returns true if the Apricot Phase 3 upgrade is activated
+	IsApricotPhase3Activated(timestamp time.Time) bool
+	// IsApricotPhase5Activated returns true if the Apricot Phase 5 upgrade is activated
+	IsApricotPhase5Activated(timestamp time.Time) bool
+	// IsBanffActivated returns true if the Banff upgrade is activated
+	IsBanffActivated(timestamp time.Time) bool
+	// IsCortinaActivated returns true if the Cortina upgrade is activated
+	IsCortinaActivated(timestamp time.Time) bool
+	// IsDurangoActivated returns true if the Durango upgrade is activated
+	IsDurangoActivated(timestamp time.Time) bool
+	// IsEtnaActivated returns true if the Etna upgrade is activated
+	IsEtnaActivated(timestamp time.Time) bool
 }

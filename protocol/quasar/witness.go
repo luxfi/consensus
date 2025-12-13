@@ -16,6 +16,7 @@ import (
 // VerkleWitness provides hyper-efficient state verification
 // Assumes every block is PQ-final via BLS+Ringtail threshold
 type VerkleWitness struct {
+	// RWMutex for cache operations
 	mu sync.RWMutex
 
 	// Verkle tree commitment
@@ -61,9 +62,6 @@ func NewVerkleWitness(threshold int) *VerkleWitness {
 // VerifyStateTransition verifies state transition with minimal overhead
 // Assumes PQ finality via BLS+Ringtail threshold already met
 func (v *VerkleWitness) VerifyStateTransition(witness *WitnessProof) error {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
-
 	// Fast path: If PQ final, skip heavy verification
 	if v.assumePQFinal && v.checkPQFinality(witness) {
 		// Just verify the Verkle commitment
@@ -127,9 +125,6 @@ func (v *VerkleWitness) CreateWitness(
 	ringtailSigners []bool,
 	height uint64,
 ) (*WitnessProof, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
 	// Create Verkle commitment
 	commitment := createVerkleCommitment(stateRoot)
 
@@ -256,6 +251,9 @@ func timeNow() int64 {
 }
 
 func (v *VerkleWitness) cacheWitness(witness *WitnessProof) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
 	key := string(witness.StateRoot)
 	v.witnessCache[key] = witness
 
