@@ -39,7 +39,7 @@ func (n *PythonNode) Start(ctx context.Context, port int) error {
 	if _, err := os.Stat(pythonSetupPath); os.IsNotExist(err) {
 		n.t.Log("⚠️  Python package not found, skipping Python node")
 		n.healthy = false
-		return fmt.Errorf("Python package not available")
+		return fmt.Errorf("python package not available")
 	}
 
 	// Try to import the Python module
@@ -47,7 +47,7 @@ func (n *PythonNode) Start(ctx context.Context, port int) error {
 	if err := testCmd.Run(); err != nil {
 		n.t.Log("⚠️  Python package not installed, skipping Python node")
 		n.healthy = false
-		return fmt.Errorf("Python package not installed")
+		return fmt.Errorf("python package not installed")
 	}
 
 	n.healthy = true
@@ -78,7 +78,7 @@ func (n *PythonNode) ProposeBlock(testBlock *Block) error {
 	defer n.mu.Unlock()
 
 	if !n.healthy {
-		return fmt.Errorf("Python node not healthy")
+		return fmt.Errorf("python node not healthy")
 	}
 
 	n.t.Logf("Python node: proposing block %s (height %d)", testBlock.ID, testBlock.Height)

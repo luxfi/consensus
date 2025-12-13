@@ -6,7 +6,7 @@
 
 package core
 
-// cgoAvailable returns false when CGO is disabled
-func cgoAvailable() bool {
+// CgoAvailable returns false when CGO is disabled
+func CgoAvailable() bool {
 	return false
 }

@@ -103,8 +103,8 @@ func main() {
 	fmt.Printf("Block 2 accepted: %v\n", chain.IsAccepted(block2.ID))
 }
 
-// Example of using QuickStart for even simpler initialization
-func quickStartExample() {
+// QuickStartExample demonstrates using QuickStart for even simpler initialization
+func QuickStartExample() {
 	ctx := context.Background()
 
 	// One-liner to start consensus

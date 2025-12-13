@@ -11,7 +11,7 @@ type Fx struct {
 	Fx interface{}
 }
 
-// Message represents a network message
+// Message represents a VM-to-engine message
 type Message struct {
 	Type    MessageType
 	NodeID  ids.NodeID
@@ -58,6 +58,8 @@ func (m MessageType) String() string {
 		return "WarpResponse"
 	case WarpGossip:
 		return "WarpGossip"
+	case StateSyncDone:
+		return "StateSyncDone"
 	default:
 		return "Unknown"
 	}
@@ -98,4 +100,6 @@ const (
 	WarpResponse
 	// WarpGossip indicates warp gossip
 	WarpGossip
+	// StateSyncDone indicates state sync has completed
+	StateSyncDone
 )

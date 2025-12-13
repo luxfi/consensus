@@ -46,6 +46,7 @@ func BenchmarkBlockOperations(b *testing.B) {
 			block[1] = byte(i & 0xFF)
 			blocks = append(blocks, block)
 		}
+		_ = blocks
 	})
 
 	b.Run("BatchBlocks_100", func(b *testing.B) {
@@ -89,6 +90,7 @@ func BenchmarkVoteProcessing(b *testing.B) {
 			vote[1] = byte(i & 0xFF)
 			votes = append(votes, vote)
 		}
+		_ = votes
 	})
 
 	b.Run("BatchVotes_1000", func(b *testing.B) {
