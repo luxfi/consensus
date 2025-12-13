@@ -113,7 +113,7 @@ func (v *VerkleWitness) fullVerification(witness *WitnessProof) error {
 
 	// Verify Corona threshold
 	if !v.verifyCoronaThreshold(witness.CoronaBits) {
-		return errors.New("Corona threshold not met")
+		return errors.New("corona threshold not met")
 	}
 
 	// Verify Verkle commitment

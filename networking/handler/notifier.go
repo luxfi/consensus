@@ -8,23 +8,21 @@ import (
 	"sync"
 	"time"
 
+	"github.com/luxfi/consensus/engine/core"
 	"github.com/luxfi/log"
 )
 
-// MessageType represents the type of VM notification message
-type MessageType uint32
-
-const (
-	// PendingTxs indicates the VM has pending transactions ready for block building
-	PendingTxs MessageType = iota
-	// StateSyncDone indicates state sync has completed
-	StateSyncDone
+// Re-export core types for convenience
+type (
+	MessageType = core.MessageType
+	VMMessage   = core.Message
 )
 
-// VMMessage represents a message from the VM to the consensus engine
-type VMMessage struct {
-	Type MessageType
-}
+// Message type constants
+const (
+	PendingTxs    = core.PendingTxs
+	StateSyncDone = core.StateSyncDone
+)
 
 // Notifier is the interface for receiving VM notifications
 type Notifier interface {

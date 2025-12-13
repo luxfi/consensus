@@ -203,7 +203,7 @@ func (q *Hybrid) SignMessageWithContext(ctx context.Context, validatorID string,
 	// Create Corona (ML-DSA) signature
 	coronaSig, err := coronaKP.PrivateKey.Sign(rand.Reader, message, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Corona sign failed: %w", err)
+		return nil, fmt.Errorf("corona sign failed: %w", err)
 	}
 
 	// Get pooled signature struct to reduce allocations
