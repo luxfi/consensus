@@ -323,3 +323,92 @@ func TestFindPath(t *testing.T) {
 		t.Log("FindPath placeholder returns path if both vertices exist")
 	}
 }
+
+func TestFindPathFromNonExistent(t *testing.T) {
+	g := NewTestGraph()
+
+	// Add some vertices
+	g.AddEdge("A", "B")
+
+	// Test when 'from' vertex doesn't exist
+	path, found := FindPath(g, "X", "A")
+	if found {
+		t.Errorf("Should not find path from non-existent vertex X, got path: %v", path)
+	}
+	if path != nil {
+		t.Errorf("Path should be nil when from vertex doesn't exist, got: %v", path)
+	}
+}
+
+func TestFindPathToNonExistent(t *testing.T) {
+	g := NewTestGraph()
+
+	// Add some vertices
+	g.AddEdge("A", "B")
+
+	// Test when 'to' vertex doesn't exist
+	path, found := FindPath(g, "A", "X")
+	if found {
+		t.Errorf("Should not find path to non-existent vertex X, got path: %v", path)
+	}
+	if path != nil {
+		t.Errorf("Path should be nil when to vertex doesn't exist, got: %v", path)
+	}
+}
+
+func TestBuildSkipListWithNonExistentVertex(t *testing.T) {
+	g := NewTestGraph()
+
+	// Add some vertices
+	g.AddEdge("A", "B")
+
+	// Try to build skip list with a mix of existing and non-existing vertices
+	sl := BuildSkipList(g, []string{"B", "X", "Y"})
+
+	// Skip list should be built
+	if sl == nil {
+		t.Fatal("Skip list should not be nil")
+	}
+	if sl.Levels == nil {
+		t.Fatal("Skip list levels should not be nil")
+	}
+
+	// B exists and should have entry (parent A)
+	if levels, ok := sl.Levels["B"]; ok {
+		if len(levels) != 1 || levels[0] != "A" {
+			t.Errorf("B should skip to A, got: %v", levels)
+		}
+	} else {
+		t.Error("B should have an entry in skip list")
+	}
+
+	// X and Y don't exist so they shouldn't have entries
+	if _, ok := sl.Levels["X"]; ok {
+		t.Error("X should not have entry in skip list (doesn't exist)")
+	}
+	if _, ok := sl.Levels["Y"]; ok {
+		t.Error("Y should not have entry in skip list (doesn't exist)")
+	}
+}
+
+func TestBuildSkipListWithNoParents(t *testing.T) {
+	g := NewTestGraph()
+
+	// Create a vertex with no parents (root)
+	g.blocks["root"] = &TestBlockView{id: "root", parents: []string{}, author: "test", round: 0}
+
+	sl := BuildSkipList(g, []string{"root"})
+
+	if sl == nil {
+		t.Fatal("Skip list should not be nil")
+	}
+
+	// Root has no parents, so should have empty skip list entry
+	if levels, ok := sl.Levels["root"]; ok {
+		if len(levels) != 0 {
+			t.Errorf("Root should have empty skip list, got: %v", levels)
+		}
+	} else {
+		t.Error("Root should have an entry in skip list")
+	}
+}

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	consensuscontext "github.com/luxfi/consensus/context"
-	"github.com/luxfi/consensus/engine/core"
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/database/manager"
 	"github.com/luxfi/ids"
 )

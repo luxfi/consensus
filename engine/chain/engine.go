@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/engine/core"
+	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/ids"
 )
 
