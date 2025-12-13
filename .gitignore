@@ -37,6 +37,11 @@ go.work.sum
 # Build artifacts
 build/
 dist/
+consensus
+bench
+checker
+params
+sim
 
 # Coverage
 coverage.html
