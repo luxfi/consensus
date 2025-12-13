@@ -17,7 +17,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/luxfi/consensus/engine/core"
+	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/geth/common"
 	"github.com/luxfi/geth/core/types"
 	"github.com/luxfi/geth/crypto"
@@ -26,7 +26,7 @@ import (
 
 // QuantumFinalityEngine wraps Lux consensus for OP Stack integration
 type QuantumFinalityEngine struct {
-	consensus    core.Consensus
+	consensus    engine.Consensus
 	quantumProof *QuantumProof
 	opBatcher    *OPBatcher
 }
@@ -72,7 +72,7 @@ type L2Block struct {
 // NewQuantumFinalityEngine creates a new quantum-resistant finality engine
 func NewQuantumFinalityEngine(opStackConfig *OPStackConfig) (*QuantumFinalityEngine, error) {
 	// Initialize Lux consensus with post-quantum parameters
-	consensusParams := core.Parameters{
+	consensusParams := engine.Parameters{
 		K:                     30, // Increased for quantum resistance
 		AlphaPreference:       22, // 73% threshold
 		AlphaConfidence:       22,
@@ -84,7 +84,7 @@ func NewQuantumFinalityEngine(opStackConfig *OPStackConfig) (*QuantumFinalityEng
 	}
 
 	// Use C implementation for performance
-	factory := core.NewConsensusFactory()
+	factory := engine.NewConsensusFactory()
 	consensus, err := factory.CreateConsensus(consensusParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create consensus: %w", err)
@@ -412,7 +412,7 @@ type FinalityStatus struct {
 	PreferredBlock   string
 	QuantumSecure    bool
 	FinalityHeight   uint64
-	ConsensusMetrics core.Stats
+	ConsensusMetrics engine.Stats
 }
 
 // Example usage

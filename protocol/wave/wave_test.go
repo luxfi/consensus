@@ -371,3 +371,275 @@ func TestWaveHighThroughput(t *testing.T) {
 		require.True(exists)
 	}
 }
+
+// TestWaveFPCWithCustomThresholds tests wave consensus with FPC enabled and custom thresholds
+func TestWaveFPCWithCustomThresholds(t *testing.T) {
+	require := require.New(t)
+
+	cfg := Config{
+		K:         5,
+		Alpha:     0.8, // Ignored when FPC is enabled
+		Beta:      3,
+		RoundTO:   100 * time.Millisecond,
+		EnableFPC: true,
+		ThetaMin:  0.6,
+		ThetaMax:  0.9,
+	}
+
+	cut := newMockCut[string](10)
+	tx := newMockTransport[string]()
+	wave := New[string](cfg, cut, tx)
+
+	// Add unanimous votes
+	for i := 0; i < 5; i++ {
+		tx.AddVote("tx1", true)
+	}
+
+	ctx := context.Background()
+
+	// Run Beta rounds
+	for i := uint32(0); i < cfg.Beta; i++ {
+		wave.Tick(ctx, "tx1")
+	}
+
+	// Should reach decision with FPC
+	state, exists := wave.State("tx1")
+	require.True(exists)
+	require.True(state.Decided)
+	require.Equal(types.DecideAccept, state.Result)
+}
+
+// TestWaveFPCZeroThresholds tests FPC with zero thresholds (defaults applied)
+func TestWaveFPCZeroThresholds(t *testing.T) {
+	require := require.New(t)
+
+	// ThetaMin and ThetaMax are 0, so defaults should be used
+	cfg := Config{
+		K:         5,
+		Alpha:     0.8,
+		Beta:      3,
+		RoundTO:   100 * time.Millisecond,
+		EnableFPC: true,
+		ThetaMin:  0, // Should default to 0.5
+		ThetaMax:  0, // Should default to 0.8
+	}
+
+	cut := newMockCut[string](10)
+	tx := newMockTransport[string]()
+	wave := New[string](cfg, cut, tx)
+
+	// Add unanimous votes
+	for i := 0; i < 5; i++ {
+		tx.AddVote("tx1", true)
+	}
+
+	ctx := context.Background()
+	wave.Tick(ctx, "tx1")
+
+	// Check state after one round
+	state, exists := wave.State("tx1")
+	require.True(exists)
+	require.Equal(uint32(1), state.Count)
+}
+
+// TestWaveContextCancellation tests handling of context cancellation
+func TestWaveContextCancellation(t *testing.T) {
+	require := require.New(t)
+
+	cfg := Config{
+		K:       5,
+		Alpha:   0.8,
+		Beta:    3,
+		RoundTO: 5 * time.Second, // Very long timeout (never reached)
+	}
+
+	cut := newMockCut[string](10)
+	// Use slow transport that never sends votes
+	tx := newSlowMockTransport[string](10 * time.Second)
+
+	wave := New[string](cfg, cut, tx)
+
+	// Cancel context quickly to trigger ctx.Done() path
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Cancel context very quickly
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		cancel()
+	}()
+
+	wave.Tick(ctx, "tx1")
+
+	// State should exist but not be decided (early return from ctx.Done)
+	state, exists := wave.State("tx1")
+	require.True(exists)
+	require.False(state.Decided)
+}
+
+// TestWaveRejectDecision tests reaching a reject decision
+func TestWaveRejectDecision(t *testing.T) {
+	require := require.New(t)
+
+	cfg := Config{
+		K:       5,
+		Alpha:   0.8,
+		Beta:    3,
+		RoundTO: 100 * time.Millisecond,
+	}
+
+	cut := newMockCut[string](10)
+	tx := newMockTransport[string]()
+	wave := New[string](cfg, cut, tx)
+
+	// Add unanimous NO votes
+	for i := 0; i < 5; i++ {
+		tx.AddVote("tx1", false)
+	}
+
+	ctx := context.Background()
+
+	// Run Beta rounds
+	for i := uint32(0); i < cfg.Beta; i++ {
+		wave.Tick(ctx, "tx1")
+	}
+
+	// Should reach reject decision
+	state, exists := wave.State("tx1")
+	require.True(exists)
+	require.True(state.Decided)
+	require.Equal(types.DecideReject, state.Result)
+	require.False(wave.Preference("tx1"))
+}
+
+// TestWaveNoVotesTimeout tests handling when channel closes with no votes
+func TestWaveNoVotesTimeout(t *testing.T) {
+	require := require.New(t)
+
+	cfg := Config{
+		K:       5,
+		Alpha:   0.8,
+		Beta:    3,
+		RoundTO: 10 * time.Millisecond, // Very short timeout
+	}
+
+	cut := newMockCut[string](10)
+	tx := newMockTransport[string]()
+	wave := New[string](cfg, cut, tx)
+
+	// No votes added - the mock returns an empty closed channel
+	// which times out, resulting in totalVotes=0 and early return
+	ctx := context.Background()
+	wave.Tick(ctx, "tx1")
+
+	// State should exist
+	state, exists := wave.State("tx1")
+	require.True(exists)
+	require.False(state.Decided)
+}
+
+// slowMockTransport delays sending votes to trigger timeout
+type slowMockTransport[T comparable] struct {
+	delay time.Duration
+	votes []Photon[T]
+}
+
+func newSlowMockTransport[T comparable](delay time.Duration) *slowMockTransport[T] {
+	return &slowMockTransport[T]{
+		delay: delay,
+		votes: make([]Photon[T], 0),
+	}
+}
+
+func (m *slowMockTransport[T]) RequestVotes(ctx context.Context, peers []types.NodeID, item T) <-chan Photon[T] {
+	ch := make(chan Photon[T], len(m.votes))
+	go func() {
+		defer close(ch)
+		// Delay before sending any votes - may timeout first
+		time.Sleep(m.delay)
+		for _, vote := range m.votes {
+			select {
+			case ch <- vote:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch
+}
+
+func (m *slowMockTransport[T]) MakeLocalPhoton(item T, prefer bool) Photon[T] {
+	nodeID := [20]byte{1}
+	return Photon[T]{
+		Item:      item,
+		Prefer:    prefer,
+		Sender:    nodeID,
+		Timestamp: time.Now(),
+	}
+}
+
+// TestWaveTimeoutPath tests the timeout path in vote collection
+func TestWaveTimeoutPath(t *testing.T) {
+	require := require.New(t)
+
+	cfg := Config{
+		K:       5,
+		Alpha:   0.8,
+		Beta:    3,
+		RoundTO: 10 * time.Millisecond, // Short timeout
+	}
+
+	cut := newMockCut[string](10)
+	// Use slow transport that delays 50ms (longer than 10ms timeout)
+	tx := newSlowMockTransport[string](50 * time.Millisecond)
+
+	wave := New[string](cfg, cut, tx)
+
+	ctx := context.Background()
+	wave.Tick(ctx, "tx1")
+
+	// State should exist but no progress (timeout with 0 votes)
+	state, exists := wave.State("tx1")
+	require.True(exists)
+	require.False(state.Decided)
+}
+
+// TestWaveStateNotExists tests State for non-existent item
+func TestWaveStateNotExists(t *testing.T) {
+	require := require.New(t)
+
+	cfg := Config{
+		K:       5,
+		Alpha:   0.8,
+		Beta:    3,
+		RoundTO: 100 * time.Millisecond,
+	}
+
+	cut := newMockCut[string](10)
+	tx := newMockTransport[string]()
+	wave := New[string](cfg, cut, tx)
+
+	// Query state for item that was never processed
+	state, exists := wave.State("nonexistent")
+	require.False(exists)
+	require.Nil(state)
+}
+
+// TestWavePreferenceNotExists tests Preference for non-existent item
+func TestWavePreferenceNotExists(t *testing.T) {
+	require := require.New(t)
+
+	cfg := Config{
+		K:       5,
+		Alpha:   0.8,
+		Beta:    3,
+		RoundTO: 100 * time.Millisecond,
+	}
+
+	cut := newMockCut[string](10)
+	tx := newMockTransport[string]()
+	wave := New[string](cfg, cut, tx)
+
+	// Query preference for item that was never processed
+	pref := wave.Preference("nonexistent")
+	require.False(pref) // Default value for bool
+}

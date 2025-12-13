@@ -2,6 +2,7 @@ package wave
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/luxfi/consensus/core/types"
@@ -52,6 +53,7 @@ type Wave[T comparable] struct {
 	phase       uint64 // Current phase for FPC threshold selection
 
 	// State tracking
+	mu     sync.RWMutex
 	states map[T]*WaveState
 	prefs  map[T]bool // current preferences
 }
@@ -86,6 +88,7 @@ func New[T comparable](cfg Config, cut prism.Cut[T], tx Transport[T]) Wave[T] {
 // Tick performs one round of sampling and threshold checking for an item
 func (w *Wave[T]) Tick(ctx context.Context, item T) {
 	// Get current state or create new one
+	w.mu.Lock()
 	state, exists := w.states[item]
 	if !exists {
 		state = &WaveState{Decided: false, Result: types.DecideUndecided, Count: 0}
@@ -94,8 +97,10 @@ func (w *Wave[T]) Tick(ctx context.Context, item T) {
 
 	// Skip if already decided
 	if state.Decided {
+		w.mu.Unlock()
 		return
 	}
+	w.mu.Unlock()
 
 	// Cut light rays (sample peers) and request votes
 	peers := w.cut.Sample(w.cfg.K)
@@ -129,6 +134,9 @@ countVotes:
 	if totalVotes == 0 {
 		return
 	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
 	// Increment phase for FPC
 	w.phase++
@@ -181,11 +189,15 @@ countVotes:
 
 // State returns the current polling state of an item
 func (w *Wave[T]) State(item T) (*WaveState, bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
 	state, exists := w.states[item]
 	return state, exists
 }
 
 // Preference returns the current preference for an item
 func (w *Wave[T]) Preference(item T) bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
 	return w.prefs[item]
 }

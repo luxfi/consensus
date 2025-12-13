@@ -10,11 +10,11 @@ require (
 	github.com/luxfi/bft v0.1.0
 	github.com/luxfi/crypto v1.17.18
 	github.com/luxfi/database v1.2.7
-	github.com/luxfi/geth v1.16.39
-	github.com/luxfi/ids v1.1.2
+	github.com/luxfi/geth v1.16.40
+	github.com/luxfi/ids v1.2.2
 	github.com/luxfi/log v1.1.24
-	github.com/luxfi/math v0.1.5
-	github.com/luxfi/node v1.20.3
+	github.com/luxfi/math v1.0.0
+	github.com/luxfi/node v1.21.6
 	github.com/luxfi/p2p v1.4.4
 	github.com/luxfi/warp v1.16.31
 	github.com/prometheus/client_golang v1.23.2
@@ -53,7 +53,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
-	github.com/google/renameio/v2 v2.0.0 // indirect
 	github.com/gorilla/rpc v1.2.1 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
@@ -61,6 +60,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/luxfi/metric v1.4.5 // indirect
 	github.com/luxfi/mock v0.1.0 // indirect
+	github.com/luxfi/utils v1.0.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
