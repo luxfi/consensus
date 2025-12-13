@@ -36,11 +36,19 @@ type Context struct {
 	Metrics         interface{}
 	Log             interface{} // logging.Logger
 	SharedMemory    interface{} // atomic.SharedMemory
+	BCLookup        BCLookup    // Blockchain alias lookup
 	WarpSigner      interface{} // warp.Signer
 	NetworkUpgrades interface{} // upgrade.Config
 
 	// Lock for thread-safe access to context
 	Lock sync.RWMutex
+}
+
+// BCLookup provides blockchain alias lookup
+type BCLookup interface {
+	Lookup(alias string) (ids.ID, error)
+	PrimaryAlias(id ids.ID) (string, error)
+	Aliases(id ids.ID) ([]string, error)
 }
 
 // ValidatorState provides validator information
@@ -66,12 +74,8 @@ type Keystore interface {
 	NewAccount(username, password string) error
 }
 
-// BlockchainIDLookup provides blockchain ID lookup
-type BlockchainIDLookup interface {
-	Lookup(alias string) (ids.ID, error)
-	PrimaryAlias(id ids.ID) (string, error)
-	Aliases(id ids.ID) ([]string, error)
-}
+// BlockchainIDLookup is an alias for BCLookup for backward compatibility
+type BlockchainIDLookup = BCLookup
 
 // Metrics provides metrics tracking
 type Metrics interface {
