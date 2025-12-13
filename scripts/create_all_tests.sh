@@ -141,20 +141,6 @@ func TestConsensusTest(t *testing.T) {
 EOF
 
 # Create test for core subpackages
-cat > core/appsender/appsender_test.go << 'EOF'
-package appsender
-
-import (
-	"testing"
-	"github.com/stretchr/testify/require"
-)
-
-func TestAppSender(t *testing.T) {
-	// Test placeholder for appsender package
-	require.True(t, true)
-}
-EOF
-
 cat > core/dag/dag_test.go << 'EOF'
 package dag
 
