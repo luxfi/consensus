@@ -91,3 +91,13 @@ require (
 exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 
 exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
+
+replace github.com/luxfi/consensus => /home/z/work/lux/consensus
+
+replace github.com/luxfi/crypto => /home/z/work/lux/crypto
+
+replace github.com/luxfi/warp => /home/z/work/lux/warp
+
+replace github.com/luxfi/p2p => /home/z/work/lux/p2p
+
+replace github.com/luxfi/genesis => /home/z/work/lux/genesis
