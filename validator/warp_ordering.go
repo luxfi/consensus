@@ -7,15 +7,20 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 
 	"golang.org/x/exp/maps"
 
+	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/math/math"
 	"github.com/luxfi/math/set"
-	"github.com/luxfi/node/utils"
-	"github.com/luxfi/node/utils/crypto/bls"
-	"github.com/luxfi/node/utils/math"
 )
+
+// Sortable is a type that can be compared to another element of the same type.
+type Sortable[T any] interface {
+	Compare(T) int
+}
 
 var (
 	ErrUnknownValidator = errors.New("unknown validator")
@@ -43,7 +48,7 @@ func (v *CanonicalValidator) Compare(o *CanonicalValidator) int {
 	return bytes.Compare(v.PublicKeyBytes, o.PublicKeyBytes)
 }
 
-var _ utils.Sortable[*CanonicalValidator] = (*CanonicalValidator)(nil)
+var _ Sortable[*CanonicalValidator] = (*CanonicalValidator)(nil)
 
 // FlattenValidatorSet converts the provided [vdrSet] into a canonical ordering.
 // Also returns the total weight of the validator set.
@@ -55,7 +60,7 @@ func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalVa
 		err           error
 	)
 	for _, vdr := range vdrSet {
-		totalWeight, err = math.Add(totalWeight, vdr.Weight)
+		totalWeight, err = math.Add64(totalWeight, vdr.Weight)
 		if err != nil {
 			return CanonicalValidatorSet{}, fmt.Errorf("%w: %w", ErrWeightOverflow, err)
 		}
@@ -78,7 +83,7 @@ func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalVa
 		// Check if we already have a validator with this public key
 		if existingVdr, exists := pkToValidator[pkKey]; exists {
 			// Merge validators with duplicate public keys
-			existingVdr.Weight, err = math.Add(existingVdr.Weight, vdr.Weight)
+			existingVdr.Weight, err = math.Add64(existingVdr.Weight, vdr.Weight)
 			if err != nil {
 				return CanonicalValidatorSet{}, fmt.Errorf("%w: %w", ErrWeightOverflow, err)
 			}
@@ -97,7 +102,7 @@ func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalVa
 
 	// Sort validators by public key
 	vdrList := maps.Values(pkToValidator)
-	utils.Sort(vdrList)
+	slices.SortFunc(vdrList, (*CanonicalValidator).Compare)
 	return CanonicalValidatorSet{Validators: vdrList, TotalWeight: totalWeight}, nil
 }
 
@@ -137,7 +142,7 @@ func SumWeight(vdrs []*CanonicalValidator) (uint64, error) {
 		err    error
 	)
 	for _, vdr := range vdrs {
-		weight, err = math.Add(weight, vdr.Weight)
+		weight, err = math.Add64(weight, vdr.Weight)
 		if err != nil {
 			return 0, fmt.Errorf("%w: %w", ErrWeightOverflow, err)
 		}
