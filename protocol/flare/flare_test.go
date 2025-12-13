@@ -161,3 +161,31 @@ func TestFlareClassify(t *testing.T) {
 		t.Error("expected commit with certificate")
 	}
 }
+
+func TestFlareClassifySkip(t *testing.T) {
+	f := NewFlare(dag.Params{N: 4, F: 1})
+	v := newTestView()
+
+	proposer := &testVertex{
+		id:     dag.VertexID{1},
+		author: "A",
+		round:  0,
+	}
+	v.add(proposer)
+
+	// Add 3 vertices at round 1 that do NOT support the proposer (no parents)
+	// This triggers the skip condition
+	for i := 0; i < 3; i++ {
+		v.add(&testVertex{
+			id:      dag.VertexID{byte(i + 2)},
+			author:  string(rune('B' + i)),
+			round:   1,
+			parents: []dag.VertexID{}, // No parents = not supporting proposer
+		})
+	}
+
+	decision := f.Classify(v, proposer)
+	if decision != DecideSkip {
+		t.Errorf("expected DecideSkip with 3 non-supporters, got %v", decision)
+	}
+}

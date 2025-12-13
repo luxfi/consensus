@@ -22,6 +22,27 @@ type Message interface {
 // Op represents a message operation type
 type Op byte
 
+const (
+	// GetAcceptedFrontier gets accepted frontier
+	GetAcceptedFrontier Op = iota
+	// AcceptedFrontier is accepted frontier response
+	AcceptedFrontier
+	// GetAccepted gets accepted
+	GetAccepted
+	// Accepted is accepted response
+	Accepted
+	// Get gets an item
+	Get
+	// Put puts an item
+	Put
+	// PushQuery pushes a query
+	PushQuery
+	// PullQuery pulls a query
+	PullQuery
+	// Chits is chits response
+	Chits
+)
+
 // Field represents a message field
 type Field byte
 

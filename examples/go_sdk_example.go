@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/luxfi/consensus/engine/core"
+	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/ids"
 )
 
@@ -45,10 +45,10 @@ func main() {
 	fmt.Println()
 
 	// Create consensus factory
-	factory := core.NewConsensusFactory()
+	factory := engine.NewConsensusFactory()
 
 	// Set up consensus parameters
-	params := core.Parameters{
+	params := engine.Parameters{
 		K:                     20,
 		AlphaPreference:       15,
 		AlphaConfidence:       15,
@@ -180,7 +180,7 @@ func main() {
 
 	// Cleanup
 	fmt.Println("Cleaning up...")
-	if cgoConsensus, ok := consensus.(*core.CGOConsensus); ok {
+	if cgoConsensus, ok := consensus.(*engine.CGOConsensus); ok {
 		if err := cgoConsensus.Destroy(); err != nil {
 			log.Printf("Warning: Failed to destroy consensus engine: %v", err)
 		}

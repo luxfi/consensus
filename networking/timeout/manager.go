@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/luxfi/consensus/core/router"
 	"github.com/luxfi/ids"
 )
 
@@ -22,28 +23,20 @@ type Manager interface {
 	TimeoutDuration() time.Duration
 }
 
-// Op represents an operation
-type Op byte
+// Op re-exports from core/router for consistency
+type Op = router.Op
 
+// Op constants re-exported from core/router
 const (
-	// GetAcceptedFrontier gets accepted frontier
-	GetAcceptedFrontier Op = iota
-	// AcceptedFrontier is accepted frontier response
-	AcceptedFrontier
-	// GetAccepted gets accepted
-	GetAccepted
-	// Accepted is accepted response
-	Accepted
-	// Get gets an item
-	Get
-	// Put puts an item
-	Put
-	// PushQuery pushes a query
-	PushQuery
-	// PullQuery pulls a query
-	PullQuery
-	// Chits is chits response
-	Chits
+	GetAcceptedFrontier = router.GetAcceptedFrontier
+	AcceptedFrontier    = router.AcceptedFrontier
+	GetAccepted         = router.GetAccepted
+	Accepted            = router.Accepted
+	Get                 = router.Get
+	Put                 = router.Put
+	PushQuery           = router.PushQuery
+	PullQuery           = router.PullQuery
+	Chits               = router.Chits
 )
 
 // manager implementation
