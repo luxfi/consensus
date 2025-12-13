@@ -7,15 +7,15 @@ exclude github.com/ethereum/go-ethereum v1.10.26
 exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
-	github.com/luxfi/crypto v1.17.18
-	github.com/luxfi/database v1.2.7
-	github.com/luxfi/geth v1.16.39
-	github.com/luxfi/ids v1.2.2
-	github.com/luxfi/log v1.1.24
-	github.com/luxfi/math v1.0.0
-	github.com/luxfi/node v1.20.3
-	github.com/luxfi/p2p v1.4.4
-	github.com/luxfi/warp v1.16.31
+	github.com/luxfi/crypto v1.17.23
+	github.com/luxfi/database v1.2.12
+	github.com/luxfi/geth v1.16.53
+	github.com/luxfi/ids v1.2.4
+	github.com/luxfi/log v1.1.26
+	github.com/luxfi/math v1.0.2
+	github.com/luxfi/node v1.22.14
+	github.com/luxfi/p2p v1.4.6
+	github.com/luxfi/warp v1.16.36
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
