@@ -222,22 +222,27 @@ func (e *ConsensusEngine) Height() uint64 {
 	return e.height
 }
 
+// blockToFinalityEvent converts a quasar.Block to a FinalityEvent
+func blockToFinalityEvent(block *quasar.Block) FinalityEvent {
+	blockID, _ := ids.FromString(block.Hash)
+	var pqProof, blsProof []byte
+	if block.Cert != nil {
+		pqProof = block.Cert.PQ
+		blsProof = block.Cert.BLS
+	}
+	return FinalityEvent{
+		Height:    block.Height,
+		BlockID:   blockID,
+		Timestamp: block.Timestamp,
+		PQProof:   pqProof,
+		BLSProof:  blsProof,
+	}
+}
+
 // SetFinalizedCallback sets a callback for finalized blocks
 func (e *ConsensusEngine) SetFinalizedCallback(cb func(FinalityEvent)) {
 	e.quasar.SetFinalizedCallback(func(block *quasar.Block) {
-		blockID, _ := ids.FromString(block.Hash)
-		var pqProof, blsProof []byte
-		if block.Cert != nil {
-			pqProof = block.Cert.PQ
-			blsProof = block.Cert.BLS
-		}
-		cb(FinalityEvent{
-			Height:    block.Height,
-			BlockID:   blockID,
-			Timestamp: block.Timestamp,
-			PQProof:   pqProof,
-			BLSProof:  blsProof,
-		})
+		cb(blockToFinalityEvent(block))
 	})
 }
 
