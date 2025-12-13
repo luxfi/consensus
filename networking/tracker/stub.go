@@ -1,10 +1,5 @@
 // Package tracker is DEPRECATED.
-// Resource tracking belongs in the node's network layer.
-//
-// Migration:
-//
-//	OLD: import "github.com/luxfi/consensus/networking/tracker"
-//	NEW: import "github.com/luxfi/node/network/tracker"
+// Resource tracking belongs in the node's network layer (github.com/luxfi/p2p/tracker).
 package tracker
 
 import (
@@ -14,7 +9,7 @@ import (
 	"github.com/luxfi/ids"
 )
 
-var ErrDeprecated = errors.New("tracker package should be in github.com/luxfi/node/network/tracker")
+var ErrDeprecated = errors.New("tracker package is deprecated - use github.com/luxfi/p2p/tracker")
 
 type ResourceTracker interface {
 	StartProcessing(nodeID ids.NodeID, time time.Time)
