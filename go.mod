@@ -14,7 +14,6 @@ require (
 	github.com/luxfi/ids v1.2.2
 	github.com/luxfi/log v1.1.24
 	github.com/luxfi/math v1.0.0
-	github.com/luxfi/node v1.20.3
 	github.com/luxfi/p2p v1.4.4
 	github.com/luxfi/warp v1.16.31
 	github.com/prometheus/client_golang v1.23.2
