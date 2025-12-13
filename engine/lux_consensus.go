@@ -57,12 +57,15 @@ func NewLuxConsensus(k int, alpha int, beta int) *LuxConsensus {
 	// Create a simple transport implementation
 	transport := &SimpleTransport{}
 
-	// Create Wave configuration
+	// Create Wave configuration with FPC enabled for dynamic thresholds
 	waveCfg := wave.Config{
-		K:       k,
-		Alpha:   alphaRatio,
-		Beta:    betaU32,
-		RoundTO: 1 * time.Second,
+		K:         k,
+		Alpha:     alphaRatio,
+		Beta:      betaU32,
+		RoundTO:   1 * time.Second,
+		EnableFPC: true,  // Enable Fast Probabilistic Consensus
+		ThetaMin:  0.5,   // FPC minimum threshold
+		ThetaMax:  0.8,   // FPC maximum threshold
 	}
 
 	// Create consensus components

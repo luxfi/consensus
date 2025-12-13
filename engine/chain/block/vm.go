@@ -6,6 +6,7 @@ import (
 	"time"
 
 	consensuscontext "github.com/luxfi/consensus/context"
+	"github.com/luxfi/consensus/engine/core"
 	"github.com/luxfi/database/manager"
 	"github.com/luxfi/ids"
 )
@@ -44,17 +45,15 @@ type ChainContext struct {
 // DBManager manages databases
 type DBManager = manager.Manager
 
-// MessageType defines the type of a message
-type MessageType = uint32
+// Re-export core types for backwards compatibility
+type (
+	MessageType = core.MessageType
+	Message     = core.Message
+	Fx          = core.Fx
+)
 
-// Message represents a message to the VM
-type Message struct {
-	Type MessageType
-	Data []byte
-}
-
-// Fx represents a feature extension
-type Fx struct {
-	ID ids.ID
-	Fx interface{}
-}
+// Message type constants re-exported from core
+const (
+	PendingTxs    = core.PendingTxs
+	StateSyncDone = core.StateSyncDone
+)

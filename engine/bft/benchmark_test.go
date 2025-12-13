@@ -427,11 +427,7 @@ func validateBlockStructure(blockData []byte) bool {
 
 	// Validate block size is reasonable for tx count
 	minSize := 4 + (txCount * 32) // Minimum 32 bytes per tx
-	if len(blockData) < minSize {
-		return false
-	}
-
-	return true
+	return len(blockData) >= minSize
 }
 
 // BenchmarkSignatureAggregator specifically tests SignatureAggregator performance
