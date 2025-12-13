@@ -7,9 +7,11 @@ package consensus
 
 import (
 	"context"
+	"errors"
 
 	"github.com/luxfi/consensus/config"
 	consensuscontext "github.com/luxfi/consensus/context"
+	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/consensus/types"
 )
@@ -34,6 +36,9 @@ type (
 	Status      = types.Status
 	Decision    = types.Decision
 	VoteType    = types.VoteType
+
+	// State represents VM state for consensus operations
+	State = interfaces.StateEnum
 )
 
 // Constants re-exported for convenience
@@ -53,6 +58,11 @@ const (
 	StatusProcessing = types.StatusProcessing
 	StatusRejected   = types.StatusRejected
 	StatusAccepted   = types.StatusAccepted
+
+	// VM state constants
+	StateSyncing  = interfaces.StateSyncing
+	Bootstrapping = interfaces.Bootstrapping
+	NormalOp      = interfaces.NormalOp
 )
 
 // Variables re-exported for convenience
@@ -69,6 +79,7 @@ var (
 	ErrNotValidator   = types.ErrNotValidator
 	ErrTimeout        = types.ErrTimeout
 	ErrNotInitialized = types.ErrNotInitialized
+	ErrUnknownState   = errors.New("unknown state")
 )
 
 // Context accessor functions re-exported from context package
