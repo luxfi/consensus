@@ -112,6 +112,8 @@ func (m MessageType) String() string {
 		return "WarpResponse"
 	case WarpGossip:
 		return "WarpGossip"
+	case StateSyncDone:
+		return "StateSyncDone"
 	default:
 		return "Unknown"
 	}
@@ -152,6 +154,8 @@ const (
 	WarpResponse
 	// WarpGossip indicates warp gossip
 	WarpGossip
+	// StateSyncDone indicates state sync completed
+	StateSyncDone
 )
 
 // Fx defines a feature extension

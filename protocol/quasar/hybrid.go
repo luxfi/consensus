@@ -203,7 +203,7 @@ func (q *Hybrid) SignMessageWithContext(ctx context.Context, validatorID string,
 	// Create Ringtail (ML-DSA) signature
 	ringtailSig, err := ringtailKP.PrivateKey.Sign(rand.Reader, message, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Ringtail sign failed: %w", err)
+		return nil, fmt.Errorf("ringtail sign failed: %w", err)
 	}
 
 	// Get pooled signature struct to reduce allocations

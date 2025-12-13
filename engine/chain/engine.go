@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/luxfi/consensus/config"
+	"github.com/luxfi/consensus/engine/core"
 	"github.com/luxfi/ids"
 )
 
@@ -23,20 +24,17 @@ type Engine interface {
 	IsBootstrapped() bool
 }
 
-// MessageType represents the type of VM notification message
-type MessageType uint32
-
-const (
-	// PendingTxs indicates the VM has pending transactions ready for block building
-	PendingTxs MessageType = iota
-	// StateSyncDone indicates state sync has completed
-	StateSyncDone
+// Re-export core message types
+type (
+	MessageType = core.MessageType
+	Message     = core.Message
 )
 
-// VMMessage represents a message from the VM to the consensus engine
-type VMMessage struct {
-	Type MessageType
-}
+// Message type constants
+const (
+	PendingTxs    = core.PendingTxs
+	StateSyncDone = core.StateSyncDone
+)
 
 // BlockBuilder is the interface for VMs that can build blocks
 type BlockBuilder interface {
@@ -165,7 +163,7 @@ func (t *Transitive) SetVM(vm BlockBuilder) {
 }
 
 // Notify handles VM notifications (e.g., pending transactions)
-func (t *Transitive) Notify(ctx context.Context, msg VMMessage) error {
+func (t *Transitive) Notify(ctx context.Context, msg Message) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

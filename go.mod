@@ -1,21 +1,21 @@
 module github.com/luxfi/consensus
 
-go 1.25.1
+go 1.25.5
 
 exclude github.com/ethereum/go-ethereum v1.10.26
 
 exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
-	github.com/dgraph-io/badger/v4 v4.8.0
 	github.com/luxfi/bft v0.1.0
 	github.com/luxfi/crypto v1.17.18
 	github.com/luxfi/database v1.2.7
 	github.com/luxfi/geth v1.16.39
 	github.com/luxfi/ids v1.1.2
-	github.com/luxfi/log v1.1.22
-	github.com/luxfi/math v0.1.4
+	github.com/luxfi/log v1.1.24
+	github.com/luxfi/math v0.1.5
 	github.com/luxfi/node v1.20.3
+	github.com/luxfi/p2p v1.4.4
 	github.com/luxfi/warp v1.16.31
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
@@ -42,6 +42,7 @@ require (
 	github.com/crate-crypto/go-ipa v0.0.0-20240724233137-53bbb0ceb27a // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
+	github.com/dgraph-io/badger/v4 v4.8.0 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.5 // indirect

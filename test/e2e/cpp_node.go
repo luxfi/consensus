@@ -36,7 +36,7 @@ func (n *CppNode) Start(ctx context.Context, port int) error {
 	if !checkBuild(n.t, "C++", []string{"cmake", "--build", "pkg/cpp/build"}) {
 		n.t.Log("⚠️  C++ binary not built, skipping C++ node")
 		n.healthy = false
-		return fmt.Errorf("C++ binary not available")
+		return fmt.Errorf("c++ binary not available")
 	}
 
 	// For now, just mark as healthy - actual IPC would be implemented here
@@ -68,7 +68,7 @@ func (n *CppNode) ProposeBlock(testBlock *Block) error {
 	defer n.mu.Unlock()
 
 	if !n.healthy {
-		return fmt.Errorf("C++ node not healthy")
+		return fmt.Errorf("c++ node not healthy")
 	}
 
 	n.t.Logf("C++ node: proposing block %s (height %d)", testBlock.ID, testBlock.Height)
