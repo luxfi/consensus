@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/luxfi/consensus/core/choices"
 	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/consensus/version"
 	"github.com/luxfi/database"
@@ -12,20 +13,15 @@ import (
 	"github.com/luxfi/warp"
 )
 
-// Status represents the status of a block
-type Status uint8
+// Status re-exports from choices for consistency
+type Status = choices.Status
 
+// Status constants re-exported from choices
 const (
-	// Unknown status
-	Unknown Status = iota
-	// Processing status
-	Processing
-	// Rejected status
-	Rejected
-	// Accepted status
-	Accepted
-	// Verified status
-	Verified
+	Unknown    = choices.Unknown
+	Processing = choices.Processing
+	Rejected   = choices.Rejected
+	Accepted   = choices.Accepted
 )
 
 // Block is a block in the chain
@@ -51,8 +47,8 @@ type ChainVM interface {
 		genesisBytes []byte,
 		upgradeBytes []byte,
 		configBytes []byte,
-		toEngine chan<- Message,
-		fxs []*Fx,
+		toEngine chan<- BlockMessage,
+		fxs []*BlockFx,
 		sender warp.Sender,
 	) error
 
@@ -115,14 +111,14 @@ type ChainContext struct {
 	Ctx *consensuscontext.Context
 }
 
-// Message represents a consensus message
-type Message interface {
+// BlockMessage represents a block-specific consensus message
+type BlockMessage interface {
 	// Get returns the message bytes
 	Get() []byte
 }
 
-// Fx represents a feature extension
-type Fx struct {
+// BlockFx represents a block-specific feature extension
+type BlockFx struct {
 	ID   ids.ID
 	Name string
 }

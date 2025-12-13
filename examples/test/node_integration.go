@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/luxfi/consensus/engine/core"
+	enginecore "github.com/luxfi/consensus/engine"
 	"github.com/luxfi/ids"
 )
 
@@ -37,7 +37,7 @@ func (b *ExampleBlock) Reject(context.Context) error {
 
 func RunNodeIntegrationExample() {
 	// Configure consensus parameters for fast finality
-	params := core.ConsensusParams{
+	params := enginecore.ConsensusParams{
 		K:                     20,
 		AlphaPreference:       15,
 		AlphaConfidence:       15,
@@ -49,7 +49,7 @@ func RunNodeIntegrationExample() {
 	}
 
 	// Create consensus engine
-	consensus, err := core.NewCGOConsensus(params)
+	consensus, err := enginecore.NewCGOConsensus(params)
 	if err != nil {
 		log.Fatalf("Failed to create consensus: %v", err)
 	}
