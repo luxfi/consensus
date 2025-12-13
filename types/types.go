@@ -6,6 +6,8 @@ package types
 import (
 	"time"
 
+	"github.com/luxfi/consensus/core/choices"
+	coretypes "github.com/luxfi/consensus/core/types"
 	"github.com/luxfi/ids"
 )
 
@@ -22,13 +24,14 @@ type (
 	PrivateKey []byte
 )
 
-// Decision represents a consensus decision outcome
-type Decision int
+// Decision re-exports from core/types for consistency
+type Decision = coretypes.Decision
 
+// Decision constants re-exported from core/types
 const (
-	DecideUndecided Decision = iota
-	DecideAccept
-	DecideReject
+	DecideUndecided = coretypes.DecideUndecided
+	DecideAccept    = coretypes.DecideAccept
+	DecideReject    = coretypes.DecideReject
 )
 
 // VoteType represents the type of vote
@@ -69,14 +72,15 @@ type Certificate struct {
 	Signatures [][]byte  `json:"signatures"`
 }
 
-// Status represents the status of a block
-type Status int
+// Status re-exports from choices for consistency
+type Status = choices.Status
 
+// Status constants re-exported from choices
 const (
-	StatusUnknown Status = iota
-	StatusProcessing
-	StatusRejected
-	StatusAccepted
+	StatusUnknown    = choices.Unknown
+	StatusProcessing = choices.Processing
+	StatusRejected   = choices.Rejected
+	StatusAccepted   = choices.Accepted
 )
 
 // Config represents consensus configuration
