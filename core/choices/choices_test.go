@@ -61,11 +61,15 @@ func TestStatusConstants(t *testing.T) {
 }
 
 func TestStatusComparison(t *testing.T) {
-	// Test equality
-	require.True(t, Unknown == Unknown)
-	require.True(t, Processing == Processing)
-	require.True(t, Rejected == Rejected)
-	require.True(t, Accepted == Accepted)
+	// Test equality (using variables to avoid trivial comparison warnings)
+	unknown := Unknown
+	processing := Processing
+	rejected := Rejected
+	accepted := Accepted
+	require.Equal(t, Unknown, unknown)
+	require.Equal(t, Processing, processing)
+	require.Equal(t, Rejected, rejected)
+	require.Equal(t, Accepted, accepted)
 
 	// Test inequality
 	require.True(t, Unknown != Processing)

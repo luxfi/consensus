@@ -6,7 +6,7 @@
 
 package core
 
-// cgoAvailable returns true when CGO is enabled (but ZMQ is not required)
-func cgoAvailable() bool {
+// CgoAvailable returns true when CGO is enabled (but ZMQ is not required)
+func CgoAvailable() bool {
 	return true
 }

@@ -276,21 +276,6 @@ func TestGetter(t *testing.T) {
 }
 EOF
 
-mkdir -p engine/core/common
-cat > engine/core/common/common_test.go << 'EOF'
-package common
-
-import (
-	"testing"
-	"github.com/stretchr/testify/require"
-)
-
-func TestCommon(t *testing.T) {
-	// Test placeholder for common package
-	require.True(t, true)
-}
-EOF
-
 mkdir -p engine/core/tracker
 cat > engine/core/tracker/tracker_test.go << 'EOF'
 package tracker

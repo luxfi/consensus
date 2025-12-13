@@ -103,10 +103,13 @@ func TestHealthStatus_Values(t *testing.T) {
 }
 
 func TestHealthStatus_Comparison(t *testing.T) {
-	// Test equality
-	require.True(t, HealthHealthy == HealthHealthy)
-	require.True(t, HealthUnhealthy == HealthUnhealthy)
-	require.True(t, HealthUnknown == HealthUnknown)
+	// Test equality (using variables to avoid trivial comparison warnings)
+	healthy := HealthHealthy
+	unhealthy := HealthUnhealthy
+	unknown := HealthUnknown
+	require.Equal(t, HealthHealthy, healthy)
+	require.Equal(t, HealthUnhealthy, unhealthy)
+	require.Equal(t, HealthUnknown, unknown)
 
 	// Test inequality
 	require.True(t, HealthHealthy != HealthUnhealthy)

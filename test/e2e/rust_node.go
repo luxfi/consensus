@@ -36,7 +36,7 @@ func (n *RustNode) Start(ctx context.Context, port int) error {
 	if !checkBuild(n.t, "Rust", []string{"cargo", "build", "--manifest-path", "pkg/rust/Cargo.toml", "--release"}) {
 		n.t.Log("⚠️  Rust library not built, skipping Rust node")
 		n.healthy = false
-		return fmt.Errorf("Rust library not available")
+		return fmt.Errorf("rust library not available")
 	}
 
 	n.healthy = true
@@ -67,7 +67,7 @@ func (n *RustNode) ProposeBlock(testBlock *Block) error {
 	defer n.mu.Unlock()
 
 	if !n.healthy {
-		return fmt.Errorf("Rust node not healthy")
+		return fmt.Errorf("rust node not healthy")
 	}
 
 	n.t.Logf("Rust node: proposing block %s (height %d)", testBlock.ID, testBlock.Height)
