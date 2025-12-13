@@ -113,7 +113,7 @@ func (v *VerkleWitness) fullVerification(witness *WitnessProof) error {
 
 	// Verify Ringtail threshold
 	if !v.verifyRingtailThreshold(witness.RingtailBits) {
-		return errors.New("Ringtail threshold not met")
+		return errors.New("ringtail threshold not met")
 	}
 
 	// Verify Verkle commitment

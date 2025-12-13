@@ -62,7 +62,7 @@ func (n *CNode) ProposeBlock(testBlock *Block) error {
 	defer n.mu.Unlock()
 
 	if !n.healthy {
-		return fmt.Errorf("C node not healthy")
+		return fmt.Errorf("c node not healthy")
 	}
 
 	n.t.Logf("C node: proposing block %s (height %d)", testBlock.ID, testBlock.Height)
