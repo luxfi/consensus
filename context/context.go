@@ -121,9 +121,11 @@ func GetNetworkID(ctx context.Context) uint32 {
 }
 
 // GetValidatorState gets the validator state from context
-func GetValidatorState(ctx context.Context) interface{} {
+func GetValidatorState(ctx context.Context) ValidatorState {
 	if c, ok := ctx.Value(contextKey).(*Context); ok {
-		return c.ValidatorState
+		if vs, ok := c.ValidatorState.(ValidatorState); ok {
+			return vs
+		}
 	}
 	return nil
 }
