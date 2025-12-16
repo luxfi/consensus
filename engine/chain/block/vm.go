@@ -57,3 +57,21 @@ const (
 	PendingTxs    = core.PendingTxs
 	StateSyncDone = core.StateSyncDone
 )
+
+// AppSender sends application-level messages
+type AppSender interface {
+	// SendAppRequest sends an application-level request to the given nodes
+	SendAppRequest(ctx context.Context, nodeIDs []ids.NodeID, requestID uint32, appRequestBytes []byte) error
+
+	// SendAppResponse sends an application-level response to the given node
+	SendAppResponse(ctx context.Context, nodeID ids.NodeID, requestID uint32, appResponseBytes []byte) error
+
+	// SendAppError sends an application-level error to the given node
+	SendAppError(ctx context.Context, nodeID ids.NodeID, requestID uint32, errorCode int32, errorMessage string) error
+
+	// SendAppGossip sends an application-level gossip to peers
+	SendAppGossip(ctx context.Context, nodeIDs []ids.NodeID, appGossipBytes []byte) error
+
+	// SendAppGossipSpecific sends an application-level gossip to specific peers
+	SendAppGossipSpecific(ctx context.Context, nodeIDs []ids.NodeID, appGossipBytes []byte) error
+}
