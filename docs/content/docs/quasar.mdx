@@ -1,0 +1,231 @@
+---
+title: Quasar Protocol
+description: Post-quantum consensus with dual-certificate finality
+---
+
+# Quasar Protocol
+
+Quasar is the quantum finality layer of Lux consensus. It combines classical BLS signature aggregation with lattice-based post-quantum cryptography to provide finality guarantees that survive quantum computing attacks.
+
+## Overview
+
+Every block in Lux requires two certificates for finality:
+
+```go
+type CertBundle struct {
+    BLSAgg  []byte  // 96B BLS aggregate signature
+    PQCert  []byte  // ~3KB lattice certificate
+}
+
+// Block is only final when BOTH certificates are valid
+isFinal := verifyBLS(blsAgg, quorum) && verifyPQ(pqCert, quorum)
+```
+
+## Two-Round Finality
+
+### Phase I: Propose
+
+1. Sample the DAG frontier for highest-confidence vertices
+2. Propose the candidate block to validators
+3. Collect BLS signatures from responding validators
+4. Aggregate signatures once quorum (alpha-c) is reached
+
+### Phase II: Commit
+
+1. Broadcast aggregated BLS signature
+2. Validators verify and add lattice signatures
+3. Aggregate lattice signatures once quorum is reached
+4. Block achieves quantum finality
+
+```go
+func (q *Quasar) ProcessPhaseI(ctx context.Context, block *Block) error {
+    // Collect BLS signatures
+    sigs := make([]bls.Signature, 0, q.config.AlphaConfidence)
+
+    for _, validator := range q.sampleValidators() {
+        sig, err := validator.SignBLS(block.Hash())
+        if err != nil {
+            continue
+        }
+        sigs = append(sigs, sig)
+    }
+
+    if len(sigs) < q.config.AlphaConfidence {
+        return ErrInsufficientQuorum
+    }
+
+    block.BLSAgg = bls.AggregateSignatures(sigs)
+    return nil
+}
+
+func (q *Quasar) ProcessPhaseII(ctx context.Context, block *Block) error {
+    // Collect lattice signatures
+    pqSigs := make([][]byte, 0, q.config.AlphaConfidence)
+
+    for _, validator := range q.validators {
+        sig, err := validator.SignLattice(block.Hash())
+        if err != nil {
+            continue
+        }
+        pqSigs = append(pqSigs, sig)
+    }
+
+    if len(pqSigs) < q.config.AlphaConfidence {
+        return ErrInsufficientQuorum
+    }
+
+    block.PQCert = aggregateLatticeSigs(pqSigs)
+    return nil
+}
+```
+
+## Key Hierarchy
+
+| Layer | Key Type | Purpose | Storage |
+|-------|----------|---------|---------|
+| Node-ID | ed25519 | P2P transport auth | `$HOME/.lux/node.key` |
+| Validator-BLS | bls12-381 | Fast finality votes | `$HOME/.lux/bls.key` |
+| Validator-PQ | lattice | PQ finality shares | `$HOME/.lux/rt.key` |
+| Wallet (EVM) | secp256k1 or Lamport | User tx signatures | In wallet |
+| Wallet (X-Chain) | secp256k1 or Dilithium | UTXO locking | In wallet |
+
+The same `rt.key` registered on Q-Chain is reused by all chains.
+
+## Configuration
+
+```go
+type QuasarConfig struct {
+    // Number of validators to sample per round
+    K int
+
+    // Preference threshold (early decision)
+    AlphaPreference int
+
+    // Confidence threshold (final decision)
+    AlphaConfidence int
+
+    // Number of rounds for finalization
+    Beta int
+
+    // Number of quantum rounds
+    QRounds int
+}
+
+// Default mainnet configuration
+func DefaultQuasarConfig() QuasarConfig {
+    return QuasarConfig{
+        K:               21,
+        AlphaPreference: 15,
+        AlphaConfidence: 18,
+        Beta:            8,
+        QRounds:         2,
+    }
+}
+```
+
+## Security Analysis
+
+### Pre-Quantum Security
+
+- Standard Byzantine fault tolerance
+- Requires 1/3+ honest stake
+- BLS signatures provide fast aggregation
+
+### Quantum Transition
+
+When quantum computers can break BLS:
+
+1. BLS certificates become forgeable
+2. Lattice certificates remain secure
+3. Consensus rejects blocks with invalid PQ certificates
+4. Network halts rather than accepting unsafe forks
+
+### Post-Quantum Security
+
+- Lattice-based signatures resist quantum attacks
+- Security based on Shortest Vector Problem (SVP)
+- 2^160 operations required for attack
+- NIST PQC standardized algorithms
+
+## Chain Integration
+
+| Chain | Integration | Rule |
+|-------|-------------|------|
+| Q-Chain | Q-blocks as internal txs | All chains read Q-blocks |
+| C-Chain | Every block has CertBundle | Invalid without quantum certs |
+| X-Chain | Vertex metadata references Q-block | Epoch sealed by quantum cert |
+| M-Chain | MPC rounds reference Q-block height | Custody requires PQ proof |
+
+## Performance
+
+### Certificate Generation
+
+| Operation | Time | Size |
+|-----------|------|------|
+| BLS Sign | 1.2ms | 96B |
+| BLS Aggregate (100) | 0.5ms | 96B |
+| Lattice Sign | 2.5ms | 2.4KB |
+| Lattice Aggregate (100) | 8ms | ~3KB |
+| Total Phase I | 15ms | - |
+| Total Phase II | 25ms | - |
+
+### Network Overhead
+
+- Additional 3KB per block for PQ certificate
+- Negligible impact on block propagation
+- Certificate verification parallelizes well
+
+## Example: Complete Quasar Flow
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/luxfi/consensus/config"
+    "github.com/luxfi/consensus/engine/quasar"
+    "github.com/luxfi/ids"
+)
+
+func main() {
+    // 1. Configure Quasar parameters
+    cfg := config.Parameters{
+        K:               21,
+        AlphaPreference: 15,
+        AlphaConfidence: 18,
+        Beta:            8,
+        QRounds:         2,
+    }
+
+    // 2. Create Quasar engine
+    nodeID := ids.GenerateNodeID()
+    engine := quasar.NewQuasar(cfg, nodeID)
+
+    // 3. Initialize with both BLS and PQ keys
+    ctx := context.Background()
+    engine.Initialize(ctx, blsKey, pqKey)
+
+    // 4. Process vertices/blocks
+    engine.AddVertex(ctx, vertex)
+
+    // 5. Dual-certificate finality callback
+    engine.SetFinalizedCallback(func(qBlock QBlock) {
+        log.Printf("Q-block %d finalized with quantum certificates\n", qBlock.Height)
+    })
+}
+```
+
+## Testing
+
+```bash
+# Unit tests with quantum scenarios
+go test ./engine/quasar/...
+
+# Benchmark dual-certificate performance
+go test -bench=QuantumCert ./lattice/
+
+# Fuzz test certificate aggregation
+go test -fuzz=Certificate ./testing/
+```
