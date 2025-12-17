@@ -1,5 +1,5 @@
 import type { MDXComponents } from "mdx/types"
-import defaultMdxComponents from "@hanzo/ui/docs/mdx"
+import { defaultMdxComponents } from "@hanzo/ui"
 
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
