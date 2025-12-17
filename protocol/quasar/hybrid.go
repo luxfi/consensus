@@ -12,6 +12,8 @@ import (
 
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
+	"github.com/luxfi/crypto/threshold"
+	_ "github.com/luxfi/crypto/threshold/bls" // Register BLS threshold scheme
 )
 
 // Buffer pools for hot paths - reduces GC pressure during signing/verification
@@ -71,6 +73,14 @@ type Hybrid struct {
 	// Consensus state
 	validators map[string]*Validator
 	threshold  int // Number of validators needed for consensus
+
+	// Threshold scheme support (optional, for new consensus modes)
+	thresholdScheme    threshold.Scheme
+	thresholdGroupKey  threshold.PublicKey
+	thresholdSigners   map[string]threshold.Signer
+	thresholdAggregator threshold.Aggregator
+	thresholdVerifier  threshold.Verifier
+	useThreshold       bool
 }
 
 // RingtailPQ provides real post-quantum signatures using ML-DSA
@@ -468,4 +478,205 @@ func (q *Hybrid) GetActiveValidatorCount() int {
 // GetThreshold returns the consensus threshold
 func (q *Hybrid) GetThreshold() int {
 	return q.threshold
+}
+
+// ThresholdConfig contains configuration for threshold signing mode.
+type ThresholdConfig struct {
+	// Scheme is the threshold scheme to use (SchemeBLS, SchemeRingtail, etc.)
+	SchemeID threshold.SchemeID
+
+	// Threshold is the minimum signers required (t in t+1-of-n)
+	Threshold int
+
+	// TotalParties is the total number of validators
+	TotalParties int
+
+	// KeyShares are the pre-generated key shares for each validator.
+	// Map keys are validator IDs.
+	KeyShares map[string]threshold.KeyShare
+
+	// GroupKey is the group public key.
+	GroupKey threshold.PublicKey
+}
+
+// NewHybridWithThreshold creates a hybrid consensus engine with threshold signing support.
+func NewHybridWithThreshold(config ThresholdConfig) (*Hybrid, error) {
+	if config.Threshold < 1 {
+		return nil, errors.New("threshold must be at least 1")
+	}
+
+	// Get the threshold scheme
+	scheme, err := threshold.GetScheme(config.SchemeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get threshold scheme: %w", err)
+	}
+
+	// Create aggregator and verifier for the group key
+	aggregator, err := scheme.NewAggregator(config.GroupKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create aggregator: %w", err)
+	}
+
+	verifier, err := scheme.NewVerifier(config.GroupKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create verifier: %w", err)
+	}
+
+	// Create signers for each key share
+	signers := make(map[string]threshold.Signer)
+	for id, share := range config.KeyShares {
+		signer, err := scheme.NewSigner(share)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create signer for %s: %w", id, err)
+		}
+		signers[id] = signer
+	}
+
+	h := &Hybrid{
+		blsThreshold:    config.Threshold,
+		blsKeys:         make(map[string]*bls.SecretKey),
+		blsPubKeys:      make(map[string]*bls.PublicKey),
+		ringtailEngine:  RingtailPQ{mode: mldsa.MLDSA65},
+		ringtailKeys:    make(map[string]*RingtailKeyPair),
+		pendingBLS:      make(map[string][]*bls.Signature),
+		pendingRingtail: make(map[string][]RingtailSignature),
+		validators:      make(map[string]*Validator),
+		threshold:       config.Threshold,
+
+		// Threshold mode
+		thresholdScheme:    scheme,
+		thresholdGroupKey:  config.GroupKey,
+		thresholdSigners:   signers,
+		thresholdAggregator: aggregator,
+		thresholdVerifier:  verifier,
+		useThreshold:       true,
+	}
+
+	return h, nil
+}
+
+// IsThresholdMode returns true if threshold signing is enabled.
+func (q *Hybrid) IsThresholdMode() bool {
+	return q.useThreshold
+}
+
+// ThresholdScheme returns the threshold scheme if threshold mode is enabled.
+func (q *Hybrid) ThresholdScheme() threshold.Scheme {
+	return q.thresholdScheme
+}
+
+// ThresholdGroupKey returns the group public key if threshold mode is enabled.
+func (q *Hybrid) ThresholdGroupKey() threshold.PublicKey {
+	return q.thresholdGroupKey
+}
+
+// SignMessageThreshold signs a message using threshold signing.
+// Returns a signature share that must be combined with other shares.
+func (q *Hybrid) SignMessageThreshold(ctx context.Context, validatorID string, message []byte) (threshold.SignatureShare, error) {
+	if !q.useThreshold {
+		return nil, errors.New("threshold mode not enabled")
+	}
+
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	signer, exists := q.thresholdSigners[validatorID]
+	if !exists {
+		return nil, fmt.Errorf("validator %s not found in threshold signers", validatorID)
+	}
+
+	// Get list of all signer indices
+	signerIndices := make([]int, 0, len(q.thresholdSigners))
+	for _, s := range q.thresholdSigners {
+		signerIndices = append(signerIndices, s.Index())
+	}
+
+	return signer.SignShare(ctx, message, signerIndices, nil)
+}
+
+// AggregateThresholdSignatures aggregates threshold signature shares.
+func (q *Hybrid) AggregateThresholdSignatures(ctx context.Context, message []byte, shares []threshold.SignatureShare) (threshold.Signature, error) {
+	if !q.useThreshold {
+		return nil, errors.New("threshold mode not enabled")
+	}
+
+	if len(shares) <= q.threshold {
+		return nil, fmt.Errorf("insufficient shares: need at least %d, got %d", q.threshold+1, len(shares))
+	}
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	return q.thresholdAggregator.Aggregate(ctx, message, shares, nil)
+}
+
+// VerifyThresholdSignature verifies a threshold signature.
+func (q *Hybrid) VerifyThresholdSignature(message []byte, sig threshold.Signature) bool {
+	if !q.useThreshold {
+		return false
+	}
+
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	return q.thresholdVerifier.Verify(message, sig)
+}
+
+// VerifyThresholdSignatureBytes verifies a serialized threshold signature.
+func (q *Hybrid) VerifyThresholdSignatureBytes(message, sig []byte) bool {
+	if !q.useThreshold {
+		return false
+	}
+
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	return q.thresholdVerifier.VerifyBytes(message, sig)
+}
+
+// AddValidatorThreshold adds a validator with a threshold key share.
+func (q *Hybrid) AddValidatorThreshold(id string, keyShare threshold.KeyShare, weight uint64) error {
+	if !q.useThreshold {
+		return errors.New("threshold mode not enabled")
+	}
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Create signer from key share
+	signer, err := q.thresholdScheme.NewSigner(keyShare)
+	if err != nil {
+		return fmt.Errorf("failed to create signer: %w", err)
+	}
+
+	q.thresholdSigners[id] = signer
+
+	// Also add to validators map for tracking
+	q.validators[id] = &Validator{
+		ID:     id,
+		Weight: weight,
+		Active: true,
+	}
+
+	return nil
+}
+
+// GenerateThresholdKeys generates threshold key shares using a trusted dealer.
+// This is a convenience method for testing and development.
+// In production, use distributed key generation (DKG) instead.
+func GenerateThresholdKeys(schemeID threshold.SchemeID, t, n int) ([]threshold.KeyShare, threshold.PublicKey, error) {
+	scheme, err := threshold.GetScheme(schemeID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get scheme: %w", err)
+	}
+
+	dealer, err := scheme.NewTrustedDealer(threshold.DealerConfig{
+		Threshold:    t,
+		TotalParties: n,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create dealer: %w", err)
+	}
+
+	return dealer.GenerateShares(context.Background())
 }
