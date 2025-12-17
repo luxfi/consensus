@@ -1,0 +1,417 @@
+---
+title: API Reference
+description: Complete API documentation for Lux consensus
+---
+
+# API Reference
+
+Complete API documentation for the Lux consensus package.
+
+## Core Package
+
+### Chain
+
+The main entry point for consensus operations.
+
+```go
+// NewChain creates a new consensus chain
+func NewChain(config Config) *Chain
+
+// Start initializes and starts the consensus engine
+func (c *Chain) Start(ctx context.Context) error
+
+// Stop gracefully shuts down the consensus engine
+func (c *Chain) Stop() error
+
+// Add adds a block to the consensus
+func (c *Chain) Add(ctx context.Context, block *Block) error
+
+// Status returns the current consensus status
+func (c *Chain) Status() Status
+
+// IsFinalized returns whether a block is finalized
+func (c *Chain) IsFinalized(id ids.ID) bool
+```
+
+### Block
+
+Block structure for consensus:
+
+```go
+type Block struct {
+    // ID is the unique block identifier
+    ID ids.ID
+
+    // ParentID is the parent block identifier
+    ParentID ids.ID
+
+    // Height is the block height
+    Height uint64
+
+    // Timestamp is when the block was created
+    Timestamp time.Time
+
+    // Payload is the block data
+    Payload []byte
+
+    // BLSAgg is the aggregated BLS signature
+    BLSAgg []byte
+
+    // PQCert is the post-quantum certificate
+    PQCert []byte
+}
+
+// Hash returns the block hash
+func (b *Block) Hash() []byte
+
+// Verify verifies the block structure
+func (b *Block) Verify() error
+
+// IsFinal returns whether the block has quantum finality
+func (b *Block) IsFinal() bool
+```
+
+### Status
+
+Consensus status:
+
+```go
+type Status int
+
+const (
+    // StatusUnknown indicates unknown status
+    StatusUnknown Status = iota
+
+    // StatusProcessing indicates the block is being processed
+    StatusProcessing
+
+    // StatusAccepted indicates the block is accepted
+    StatusAccepted
+
+    // StatusRejected indicates the block is rejected
+    StatusRejected
+)
+```
+
+## Wave Package
+
+### Engine
+
+Wave consensus engine:
+
+```go
+// NewEngine creates a new wave consensus engine
+func NewEngine(config Config) *Engine
+
+// Poll performs a single voting round
+func (e *Engine) Poll(ctx context.Context, peers []Peer) error
+
+// Preference returns the current preference
+func (e *Engine) Preference() ids.ID
+
+// Confidence returns the current confidence level
+func (e *Engine) Confidence() int
+
+// IsFinalized returns whether consensus is reached
+func (e *Engine) IsFinalized() bool
+```
+
+### Config
+
+Wave configuration:
+
+```go
+type Config struct {
+    K               int
+    AlphaPreference int
+    AlphaConfidence int
+    Beta            int
+}
+```
+
+## Photon Package
+
+### Emitter
+
+Committee selection emitter:
+
+```go
+// NewEmitter creates a new photon emitter
+func NewEmitter(config EmitterConfig) *Emitter
+
+// Emit selects k validators weighted by luminance
+func (e *Emitter) Emit(k int) []ids.NodeID
+
+// AddValidator registers a validator
+func (e *Emitter) AddValidator(id ids.NodeID, stake uint64) error
+
+// RemoveValidator unregisters a validator
+func (e *Emitter) RemoveValidator(id ids.NodeID) error
+
+// UpdateLuminance updates a validator's luminance
+func (e *Emitter) UpdateLuminance(id ids.NodeID, result PollResult) error
+
+// GetLuminance returns a validator's current luminance
+func (e *Emitter) GetLuminance(id ids.NodeID) (float64, error)
+```
+
+### Luminance
+
+Node brightness tracking:
+
+```go
+// NewLuminance creates a new luminance tracker
+func NewLuminance(config LuminanceConfig) *Luminance
+
+// Update updates luminance based on success/failure
+func (l *Luminance) Update(success bool)
+
+// Value returns the current luminance value
+func (l *Luminance) Value() float64
+
+// Reset resets luminance to initial value
+func (l *Luminance) Reset()
+```
+
+### PollResult
+
+Poll response result:
+
+```go
+type PollResult struct {
+    // Responded indicates whether the node responded
+    Responded bool
+
+    // Latency is the response latency
+    Latency time.Duration
+
+    // Vote is the node's vote
+    Vote ids.ID
+}
+```
+
+## Quasar Package
+
+### Quasar
+
+Quantum finality engine:
+
+```go
+// NewQuasar creates a new quasar engine
+func NewQuasar(config QuasarConfig, nodeID ids.NodeID) *Quasar
+
+// Initialize initializes with BLS and PQ keys
+func (q *Quasar) Initialize(ctx context.Context, blsKey *bls.PrivateKey, pqKey *pq.PrivateKey) error
+
+// ProcessPhaseI executes Phase I (BLS aggregation)
+func (q *Quasar) ProcessPhaseI(ctx context.Context, block *Block) error
+
+// ProcessPhaseII executes Phase II (lattice certificates)
+func (q *Quasar) ProcessPhaseII(ctx context.Context, block *Block) error
+
+// SetFinalizedCallback sets the finality callback
+func (q *Quasar) SetFinalizedCallback(cb func(QBlock))
+```
+
+### QBlock
+
+Quantum-finalized block:
+
+```go
+type QBlock struct {
+    Block
+    // QuantumCert is the combined quantum certificate
+    QuantumCert CertBundle
+}
+
+type CertBundle struct {
+    // BLSAgg is the aggregated BLS signature
+    BLSAgg []byte
+
+    // PQCert is the post-quantum certificate
+    PQCert []byte
+
+    // Signers is the list of signing validators
+    Signers []ids.NodeID
+}
+```
+
+## IDs Package
+
+### ID
+
+Unique identifier:
+
+```go
+// NewID generates a new random ID
+func NewID() ID
+
+// FromBytes creates an ID from bytes
+func FromBytes(b []byte) (ID, error)
+
+// GenesisID is the genesis block ID
+var GenesisID = ID{}
+
+// Bytes returns the ID as bytes
+func (id ID) Bytes() []byte
+
+// String returns the ID as a string
+func (id ID) String() string
+
+// Compare compares two IDs
+func (id ID) Compare(other ID) int
+```
+
+### NodeID
+
+Node identifier:
+
+```go
+// GenerateNodeID generates a new node ID
+func GenerateNodeID() NodeID
+
+// NodeIDFromBytes creates a NodeID from bytes
+func NodeIDFromBytes(b []byte) (NodeID, error)
+
+// Bytes returns the NodeID as bytes
+func (id NodeID) Bytes() []byte
+
+// String returns the NodeID as a string
+func (id NodeID) String() string
+```
+
+## Validator Package
+
+### Validator
+
+Validator representation:
+
+```go
+type Validator struct {
+    // ID is the validator's node ID
+    ID ids.NodeID
+
+    // Stake is the validator's stake
+    Stake uint64
+
+    // PublicKey is the BLS public key
+    PublicKey *bls.PublicKey
+
+    // PQPublicKey is the post-quantum public key
+    PQPublicKey *pq.PublicKey
+}
+
+// NewValidator creates a new validator
+func NewValidator(id ids.NodeID, stake uint64) *Validator
+
+// Sign signs a message with BLS
+func (v *Validator) Sign(msg []byte) ([]byte, error)
+
+// SignPQ signs a message with PQ key
+func (v *Validator) SignPQ(msg []byte) ([]byte, error)
+
+// Verify verifies a BLS signature
+func (v *Validator) Verify(msg, sig []byte) bool
+
+// VerifyPQ verifies a PQ signature
+func (v *Validator) VerifyPQ(msg, sig []byte) bool
+```
+
+### Set
+
+Validator set:
+
+```go
+// NewSet creates a new validator set
+func NewSet() *Set
+
+// Add adds a validator to the set
+func (s *Set) Add(v *Validator) error
+
+// Remove removes a validator from the set
+func (s *Set) Remove(id ids.NodeID) error
+
+// Get returns a validator by ID
+func (s *Set) Get(id ids.NodeID) (*Validator, bool)
+
+// List returns all validators
+func (s *Set) List() []*Validator
+
+// TotalStake returns total stake in the set
+func (s *Set) TotalStake() uint64
+
+// Sample samples k validators weighted by stake
+func (s *Set) Sample(k int) []*Validator
+```
+
+## Engine Package
+
+### Consensus
+
+Consensus interface:
+
+```go
+type Consensus interface {
+    // Start starts the consensus engine
+    Start(ctx context.Context) error
+
+    // Stop stops the consensus engine
+    Stop() error
+
+    // Add adds a decidable item
+    Add(ctx context.Context, item Decidable) error
+
+    // Status returns the status of an item
+    Status(id ids.ID) Status
+
+    // Health returns the engine health
+    Health() Health
+}
+```
+
+### Decidable
+
+Decidable item interface:
+
+```go
+type Decidable interface {
+    // ID returns the item's unique identifier
+    ID() ids.ID
+
+    // Accept marks the item as accepted
+    Accept(ctx context.Context) error
+
+    // Reject marks the item as rejected
+    Reject(ctx context.Context) error
+
+    // Status returns the item's current status
+    Status() Status
+
+    // Bytes returns the item's serialized form
+    Bytes() []byte
+}
+```
+
+## Error Types
+
+```go
+var (
+    // ErrInsufficientQuorum indicates quorum not reached
+    ErrInsufficientQuorum = errors.New("insufficient quorum")
+
+    // ErrAlreadyExists indicates item already exists
+    ErrAlreadyExists = errors.New("already exists")
+
+    // ErrNotFound indicates item not found
+    ErrNotFound = errors.New("not found")
+
+    // ErrInvalidSignature indicates invalid signature
+    ErrInvalidSignature = errors.New("invalid signature")
+
+    // ErrTimeout indicates operation timed out
+    ErrTimeout = errors.New("timeout")
+
+    // ErrClosed indicates engine is closed
+    ErrClosed = errors.New("closed")
+)
+```

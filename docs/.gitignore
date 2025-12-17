@@ -1,10 +1,34 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Next.js
 .next/
+out/
 .turbo/
-.source/
+
+# Build
 dist/
 build/
-*.tsbuildinfo
-.env.local
+
+# Environment
 .env
-out/
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Fumadocs
+.source/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
