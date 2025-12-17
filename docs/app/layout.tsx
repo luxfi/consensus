@@ -1,5 +1,5 @@
 import "./global.css"
-import { RootProvider } from "fumadocs-ui/provider/next"
+import { RootProvider } from "@hanzo/docs-ui/provider/next"
 import { Inter } from "next/font/google"
 import type { ReactNode } from "react"
 
@@ -20,8 +20,7 @@ export const metadata = {
     default: "Lux Consensus Documentation",
     template: "%s | Lux Consensus",
   },
-  description:
-    "High-performance, multi-language consensus engine supporting Chain, DAG, and Post-Quantum consensus algorithms.",
+  description: "Quasar consensus engine with post-quantum finality for Lux blockchain",
 }
 
 export default function Layout({ children }: { children: ReactNode }) {

@@ -1,181 +1,30 @@
 ---
-title: Lux Consensus Documentation
-description: Complete guide to Lux's quantum-resistant consensus protocols
+title: Introduction
+description: Quasar consensus engine with post-quantum finality for Lux blockchain
 ---
 
 # Lux Consensus
 
-Welcome to the official documentation for Lux Consensus - a quantum-resistant, multi-protocol consensus framework powering the Lux blockchain network.
+Quasar is the unified consensus engine for the Lux blockchain, combining classical BLS signature aggregation with post-quantum lattice cryptography to deliver 2-round finality with both classical and quantum security.
 
-## 🚀 Quick Start
+## Features
 
-Get started with Lux Consensus in minutes:
+- **Unified Protocol**: Same engine for DAG, linear, EVM, and MPC chains
+- **Quantum Finality**: Every block requires post-quantum certificates
+- **2-Round Finality**: BLS signatures + lattice signatures = quantum finality
+- **Zero Leaders**: Fully decentralized, leaderless consensus
+- **Sub-Second Performance**: Less than 1 second finality with quantum security
+- **Multi-Language SDKs**: Go, C, Rust, and Python implementations
 
-```bash
-# Go SDK
-go get github.com/luxfi/consensus@latest
-
-# Or use language of choice
-pip install lux-consensus      # Python
-cargo add lux-consensus         # Rust
-npm install @luxfi/consensus    # JavaScript
-```
-
-## 📚 Documentation Structure
-
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-  <Card href="/docs/protocols/quasar">
-    <CardTitle>Quasar Protocol</CardTitle>
-    <CardDescription>
-      Quantum-resistant consensus with 2-round finality
-    </CardDescription>
-  </Card>
-  
-  <Card href="/docs/protocols/wave">
-    <CardTitle>Wave Protocol</CardTitle>
-    <CardDescription>
-      Fast Probabilistic Consensus (FPC) implementation
-    </CardDescription>
-  </Card>
-  
-  <Card href="/docs/protocols/photon">
-    <CardTitle>Photon Selection</CardTitle>
-    <CardDescription>
-      Performance-based peer selection with luminance tracking
-    </CardDescription>
-  </Card>
-  
-  <Card href="/docs/sdk">
-    <CardTitle>SDK Reference</CardTitle>
-    <CardDescription>
-      Multi-language SDKs: Go, C, Rust, Python, C++
-    </CardDescription>
-  </Card>
-</div>
-
-## 🌟 Key Features
-
-### Quantum Finality
-Every block achieves post-quantum security through lattice-based cryptography, ensuring your blockchain remains secure against future quantum computers.
-
-### Unified Engine
-One consensus engine powers all chain types:
-- **DAG chains** (X-Chain)
-- **Linear chains** (C-Chain)
-- **EVM chains** (C-Chain)
-- **MPC chains** (Future)
-
-### Sub-Second Performance
-- **< 1 second** finality
-- **10,000+ TPS** throughput
-- **< 5%** network overhead
-
-### Multi-Language Support
-Native SDKs with 100% test parity:
-- **Go**: 8.3M blocks/sec
-- **C**: 9.2M blocks/sec  
-- **Rust**: 7.1M blocks/sec
-- **Python**: 6.7M blocks/sec
-- **C++**: 12.5M blocks/sec (with MLX)
-
-## 🏗️ Architecture Overview
-
-```mermaid
-graph TD
-    A[Application Layer] --> B[Consensus Engine]
-    B --> C[Quasar Protocol]
-    C --> D[Photon Selection]
-    C --> E[Wave FPC]
-    D --> F[Network Layer]
-    E --> F
-    
-    G[Quantum Module] --> C
-    H[BLS Signatures] --> C
-    I[Lattice Crypto] --> G
-```
-
-## 🔬 Consensus Protocols
-
-### [Quasar](/docs/protocols/quasar)
-The flagship protocol combining:
-- BLS signature aggregation (Round 1)
-- Lattice-based signatures (Round 2)
-- Zero-leader architecture
-- NIST Level 5 quantum security
-
-### [Wave](/docs/protocols/wave)
-Fast Probabilistic Consensus featuring:
-- Rapid opinion convergence
-- Exponentially decreasing randomness
-- Adaptive parameters
-- Sub-second finality
-
-### [Photon](/docs/protocols/photon)
-Light-based peer selection with:
-- Luminance tracking (10-1000 lux)
-- Performance-weighted sampling
-- Dynamic brightness adjustment
-- Network health monitoring
-
-### Additional Protocols
-
-- **[Flare](/docs/protocols/flare)**: Conflict resolution for DAG
-- **[Horizon](/docs/protocols/horizon)**: Long-range attack prevention
-- **[Nova](/docs/protocols/nova)**: Next-generation experimental
-- **[Prism](/docs/protocols/prism)**: State sharding protocol
-
-## 💻 Development
+## Quick Start
 
 ### Installation
 
-Choose your preferred language:
-
-<Tabs>
-<TabsList>
-  <TabsTrigger value="go">Go</TabsTrigger>
-  <TabsTrigger value="rust">Rust</TabsTrigger>
-  <TabsTrigger value="python">Python</TabsTrigger>
-  <TabsTrigger value="c">C</TabsTrigger>
-</TabsList>
-
-<TabsContent value="go">
 ```go
-import "github.com/luxfi/consensus"
-
-engine := consensus.New(config)
-engine.Start(ctx, genesis)
+go get github.com/luxfi/consensus@latest
 ```
-</TabsContent>
 
-<TabsContent value="rust">
-```rust
-use lux_consensus::Engine;
-
-let engine = Engine::new(config);
-engine.start(genesis).await?;
-```
-</TabsContent>
-
-<TabsContent value="python">
-```python
-from lux_consensus import Engine
-
-engine = Engine(config)
-engine.start(genesis)
-```
-</TabsContent>
-
-<TabsContent value="c">
-```c
-#include <lux/consensus.h>
-
-lux_engine_t* engine = lux_engine_new(config);
-lux_engine_start(engine, genesis);
-```
-</TabsContent>
-</Tabs>
-
-### Basic Example
+### Basic Usage
 
 ```go
 package main
@@ -183,84 +32,114 @@ package main
 import (
     "context"
     "github.com/luxfi/consensus"
-    "github.com/luxfi/consensus/config"
 )
 
 func main() {
-    // Configure consensus
-    cfg := config.DefaultParams()
-    cfg.QuantumSecurity = true
-    cfg.SecurityLevel = 5 // NIST Level 5
-    
-    // Create engine
-    engine := consensus.New(cfg, network, validator)
-    
-    // Start consensus
+    // Create chain with default config
+    chain := consensus.NewChain(consensus.DefaultConfig())
+
+    // Start the chain
     ctx := context.Background()
-    if err := engine.Start(ctx, genesis); err != nil {
+    if err := chain.Start(ctx); err != nil {
         panic(err)
     }
-    
-    // Process blocks
-    for block := range blockStream {
-        cert := engine.Process(block)
-        if cert.IsQuantumFinal() {
-            commit(block)
-        }
+    defer chain.Stop()
+
+    // Add a block
+    block := &consensus.Block{
+        ID:       consensus.NewID(),
+        ParentID: consensus.GenesisID,
+        Height:   1,
+        Payload:  []byte("Hello, Lux!"),
+    }
+    if err := chain.Add(ctx, block); err != nil {
+        panic(err)
     }
 }
 ```
 
-## 📊 Performance
+## Architecture
 
-Latest benchmark results on Apple M1 Max:
+### Core Components
 
-| Implementation | Throughput | Latency | Memory |
-|---------------|------------|---------|---------|
-| C++ (MLX) | 12.5M blocks/s | 0.08μs | 45 MB |
-| C | 9.2M blocks/s | 0.11μs | 38 MB |
-| Go | 8.3M blocks/s | 0.12μs | 52 MB |
-| Rust | 7.1M blocks/s | 0.14μs | 41 MB |
-| Python | 6.7M blocks/s | 0.15μs | 68 MB |
+```text
+consensus/
+├── photon/                # K-of-N committee selection
+│   ├── emitter.go        # Light emission-based peer selection
+│   └── luminance.go      # Node brightness tracking (lux units)
+│
+├── core/
+│   ├── wave/             # Wave consensus mechanism
+│   │   └── engine.go     # Threshold voting
+│   ├── dag/              # DAG structure & ordering
+│   │   ├── flare/        # Certificate generation
+│   │   └── horizon/      # Frontier management
+│   └── focus/            # Confidence tracking
+│
+├── protocol/
+│   ├── quasar/           # Post-quantum security
+│   │   └── ringtail.go   # Quantum-resistant signatures
+│   ├── nebula/           # State sync protocol
+│   └── nova/             # Parallel chain support
+│
+├── qzmq/                 # Post-quantum transport
+│   ├── session.go        # Hybrid key exchange
+│   └── messages.go       # Wire protocol
+│
+└── engine/               # Consensus engines
+    ├── chain/            # Linear blockchain
+    └── dag/              # DAG-based chains
+```
 
-## 🛠️ Tools & Utilities
+### Quasar Consensus
 
-- **[Consensus CLI](/docs/tools/cli)**: Command-line interface
-- **[Simulator](/docs/tools/simulator)**: Network simulation
-- **[Benchmarker](/docs/tools/benchmark)**: Performance testing
-- **[Validator](/docs/tools/validator)**: Node validation tools
+Quasar is built on two core components that provide both classical and quantum finality:
 
-## 📖 Guides
+#### Nova DAG (Classical Finality)
+- **Sampling**: k-peer sampling for vote collection
+- **Confidence**: Build confidence through repeated sampling
+- **Thresholds**: Beta-1 for early preference, Beta-2 for decision
+- **Time**: 600-700ms to classical finality
 
-- [Getting Started](/docs/guides/getting-started)
-- [Running a Validator](/docs/guides/validator)
-- [Protocol Configuration](/docs/guides/configuration)
-- [Performance Tuning](/docs/guides/tuning)
-- [Security Best Practices](/docs/guides/security)
+#### Quasar (Quantum Finality)
+- **Phase I - Propose**: Sample DAG frontier, propose highest confidence
+- **Phase II - Commit**: Aggregate threshold signatures if quorum agrees
+- **Certificates**: Lattice-based post-quantum certificates
+- **Time**: 200-300ms additional for quantum finality
 
-## 🔗 Resources
+## Performance
 
-- [GitHub Repository](https://github.com/luxfi/consensus)
-- [Research Papers](/docs/research)
-- [API Reference](/docs/api)
-- [Change Log](/docs/changelog)
-- [Contributing Guide](/docs/contributing)
+### Consensus Metrics
 
-## 🤝 Community
+| Network | Validators | Finality | Block Time |
+|---------|-----------|----------|------------|
+| Mainnet | 21 | 9.63s | 200ms |
+| Testnet | 11 | 6.3s | 100ms |
+| Local | 5 | 3.69s | 10ms |
+| X-Chain | 5 | 5ms | 1ms |
 
-- [Discord](https://discord.gg/luxfi)
-- [Twitter](https://twitter.com/luxfi)
-- [Forum](https://forum.lux.network)
-- [Stack Overflow](https://stackoverflow.com/questions/tagged/lux-consensus)
+### Benchmark Results
 
-## 📄 License
+| Component | Operation | Time/Op | Memory |
+|-----------|-----------|---------|--------|
+| Wave Consensus | Vote Round | 3.38us | 2.3KB |
+| Photon Emitter | K-of-N Selection | 3.03us | 3.0KB |
+| Luminance | Brightness Update | 72ns | 0B |
+| Quasar Phase I | Propose | 0.33ns | 0B |
+| Quasar Phase II | Commit | 40.7ns | 0B |
 
-Lux Consensus is open source under the [BSD-3-Clause License](https://github.com/luxfi/consensus/blob/main/LICENSE).
+## Security Model
 
----
+1. **Pre-quantum**: Attacker must corrupt at least 1/3 stake to fork
+2. **Q-day (BLS broken)**: Attacker can forge BLS but not lattice - block fails quantum check
+3. **Post-quantum**: Security rests on lattice SVP (2^160 operations)
 
-<div className="mt-8 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
-  <p className="text-sm">
-    **Need help?** Join our [Discord](https://discord.gg/luxfi) or check out the [FAQ](/docs/faq).
-  </p>
-</div>
+Attack window is limited to PQ round time (50ms on mainnet).
+
+## Next Steps
+
+- [Quasar Protocol](/docs/quasar) - Deep dive into quantum finality
+- [Wave Consensus](/docs/wave) - Classical consensus mechanism
+- [Photon Selection](/docs/photon) - Committee selection algorithm
+- [Configuration](/docs/configuration) - Parameter tuning guide
+- [API Reference](/docs/api) - Complete API documentation

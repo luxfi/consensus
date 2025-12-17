@@ -1,0 +1,383 @@
+---
+title: Configuration
+description: Parameter tuning and configuration guide
+---
+
+# Configuration
+
+This guide covers all configurable parameters in Lux consensus and provides recommendations for different deployment scenarios.
+
+## Parameter Overview
+
+### Consensus Parameters
+
+```go
+type Parameters struct {
+    // K: Number of validators to sample per round
+    K int `json:"k"`
+
+    // AlphaPreference: Minimum votes to update preference
+    AlphaPreference int `json:"alphaPreference"`
+
+    // AlphaConfidence: Minimum votes for confidence increase
+    AlphaConfidence int `json:"alphaConfidence"`
+
+    // Beta: Consecutive rounds for finality
+    Beta int `json:"beta"`
+
+    // QRounds: Number of quantum finality rounds
+    QRounds int `json:"qRounds"`
+
+    // MaxOutstandingItems: Maximum pending items
+    MaxOutstandingItems int `json:"maxOutstandingItems"`
+
+    // ConcurrentPolls: Maximum parallel poll operations
+    ConcurrentPolls int `json:"concurrentPolls"`
+}
+```
+
+## Preset Configurations
+
+### Mainnet
+
+Production configuration with strong security guarantees:
+
+```go
+func MainnetConfig() Parameters {
+    return Parameters{
+        K:                   21,
+        AlphaPreference:     15,
+        AlphaConfidence:     18,
+        Beta:                8,
+        QRounds:             2,
+        MaxOutstandingItems: 1024,
+        ConcurrentPolls:     4,
+    }
+}
+```
+
+### Testnet
+
+Faster finality for testing environments:
+
+```go
+func TestnetConfig() Parameters {
+    return Parameters{
+        K:                   11,
+        AlphaPreference:     8,
+        AlphaConfidence:     9,
+        Beta:                5,
+        QRounds:             2,
+        MaxOutstandingItems: 512,
+        ConcurrentPolls:     2,
+    }
+}
+```
+
+### Local Development
+
+Minimal configuration for local testing:
+
+```go
+func LocalConfig() Parameters {
+    return Parameters{
+        K:                   5,
+        AlphaPreference:     4,
+        AlphaConfidence:     4,
+        Beta:                3,
+        QRounds:             1,
+        MaxOutstandingItems: 256,
+        ConcurrentPolls:     1,
+    }
+}
+```
+
+## Parameter Tuning
+
+### Sample Size (K)
+
+The number of validators sampled per round affects both security and latency.
+
+| K | Security | Latency | Use Case |
+|---|----------|---------|----------|
+| 5 | Low | 10ms | Local dev |
+| 11 | Medium | 30ms | Testnet |
+| 21 | High | 60ms | Mainnet |
+| 31 | Very High | 100ms | High-value |
+
+**Recommendation**: K should be odd and at least 5. For production, use K >= 21.
+
+### Threshold Parameters
+
+Alpha parameters control when preferences update and confidence increases:
+
+```go
+// AlphaPreference should be > K/2 for liveness
+// Typical: 70% of K
+AlphaPreference := (K * 7) / 10
+
+// AlphaConfidence should be > 2K/3 for safety
+// Typical: 85% of K
+AlphaConfidence := (K * 85) / 100
+```
+
+### Finality Depth (Beta)
+
+Beta determines how many consecutive confident rounds are needed:
+
+| Beta | Finality Time | Safety Margin |
+|------|--------------|---------------|
+| 3 | 180ms | Low |
+| 5 | 300ms | Medium |
+| 8 | 480ms | High |
+| 12 | 720ms | Very High |
+
+**Recommendation**: Beta >= 5 for testnet, Beta >= 8 for mainnet.
+
+## Network Configuration
+
+### Timeouts
+
+```go
+type NetworkConfig struct {
+    // PollTimeout: Maximum time to wait for poll responses
+    PollTimeout time.Duration `json:"pollTimeout"`
+
+    // GossipInterval: Interval between gossip messages
+    GossipInterval time.Duration `json:"gossipInterval"`
+
+    // RequestTimeout: Timeout for individual requests
+    RequestTimeout time.Duration `json:"requestTimeout"`
+
+    // MaxRetries: Maximum retry attempts
+    MaxRetries int `json:"maxRetries"`
+}
+
+func DefaultNetworkConfig() NetworkConfig {
+    return NetworkConfig{
+        PollTimeout:    500 * time.Millisecond,
+        GossipInterval: 100 * time.Millisecond,
+        RequestTimeout: 200 * time.Millisecond,
+        MaxRetries:     3,
+    }
+}
+```
+
+### Connection Limits
+
+```go
+type ConnectionConfig struct {
+    // MaxInbound: Maximum inbound connections
+    MaxInbound int `json:"maxInbound"`
+
+    // MaxOutbound: Maximum outbound connections
+    MaxOutbound int `json:"maxOutbound"`
+
+    // TargetPeers: Target number of connected peers
+    TargetPeers int `json:"targetPeers"`
+}
+
+func DefaultConnectionConfig() ConnectionConfig {
+    return ConnectionConfig{
+        MaxInbound:  128,
+        MaxOutbound: 64,
+        TargetPeers: 50,
+    }
+}
+```
+
+## Photon Configuration
+
+### Luminance Settings
+
+```go
+type LuminanceConfig struct {
+    // MinLuminance: Minimum node brightness
+    MinLuminance float64 `json:"minLuminance"`
+
+    // MaxLuminance: Maximum node brightness
+    MaxLuminance float64 `json:"maxLuminance"`
+
+    // InitialLuminance: Starting brightness
+    InitialLuminance float64 `json:"initialLuminance"`
+
+    // DecayRate: Decay on failure (0-1)
+    DecayRate float64 `json:"decayRate"`
+
+    // BoostRate: Boost on success (>1)
+    BoostRate float64 `json:"boostRate"`
+}
+
+func DefaultLuminanceConfig() LuminanceConfig {
+    return LuminanceConfig{
+        MinLuminance:     10,
+        MaxLuminance:     1000,
+        InitialLuminance: 500,
+        DecayRate:        0.99,
+        BoostRate:        1.05,
+    }
+}
+```
+
+## Quasar Configuration
+
+### Post-Quantum Settings
+
+```go
+type QuasarConfig struct {
+    // QRounds: Number of quantum rounds
+    QRounds int `json:"qRounds"`
+
+    // PQAlgorithm: Post-quantum algorithm
+    PQAlgorithm string `json:"pqAlgorithm"`
+
+    // CertificateTimeout: Timeout for certificate collection
+    CertificateTimeout time.Duration `json:"certificateTimeout"`
+}
+
+func DefaultQuasarConfig() QuasarConfig {
+    return QuasarConfig{
+        QRounds:            2,
+        PQAlgorithm:        "dilithium3",
+        CertificateTimeout: 200 * time.Millisecond,
+    }
+}
+```
+
+## Environment Variables
+
+```bash
+# Consensus parameters
+LUX_CONSENSUS_K=21
+LUX_CONSENSUS_ALPHA_PREFERENCE=15
+LUX_CONSENSUS_ALPHA_CONFIDENCE=18
+LUX_CONSENSUS_BETA=8
+
+# Network configuration
+LUX_NETWORK_POLL_TIMEOUT=500ms
+LUX_NETWORK_REQUEST_TIMEOUT=200ms
+
+# Photon configuration
+LUX_PHOTON_MIN_LUMINANCE=10
+LUX_PHOTON_MAX_LUMINANCE=1000
+
+# Quasar configuration
+LUX_QUASAR_ROUNDS=2
+LUX_QUASAR_ALGORITHM=dilithium3
+```
+
+## Configuration File
+
+YAML configuration file format:
+
+```yaml
+# consensus.yaml
+consensus:
+  k: 21
+  alphaPreference: 15
+  alphaConfidence: 18
+  beta: 8
+  qRounds: 2
+
+network:
+  pollTimeout: 500ms
+  gossipInterval: 100ms
+  requestTimeout: 200ms
+  maxRetries: 3
+
+photon:
+  minLuminance: 10
+  maxLuminance: 1000
+  initialLuminance: 500
+  decayRate: 0.99
+  boostRate: 1.05
+
+quasar:
+  algorithm: dilithium3
+  certificateTimeout: 200ms
+```
+
+### Loading Configuration
+
+```go
+func LoadConfig(path string) (*Config, error) {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return nil, err
+    }
+
+    var cfg Config
+    if err := yaml.Unmarshal(data, &cfg); err != nil {
+        return nil, err
+    }
+
+    return &cfg, nil
+}
+```
+
+## Performance Tuning
+
+### High Throughput
+
+For maximum throughput:
+
+```go
+cfg := Parameters{
+    K:                   11,
+    AlphaPreference:     8,
+    AlphaConfidence:     9,
+    Beta:                3,
+    MaxOutstandingItems: 4096,
+    ConcurrentPolls:     8,
+}
+```
+
+### Low Latency
+
+For minimum latency:
+
+```go
+cfg := Parameters{
+    K:                   5,
+    AlphaPreference:     4,
+    AlphaConfidence:     4,
+    Beta:                2,
+    MaxOutstandingItems: 512,
+    ConcurrentPolls:     4,
+}
+```
+
+### High Security
+
+For maximum security:
+
+```go
+cfg := Parameters{
+    K:                   31,
+    AlphaPreference:     22,
+    AlphaConfidence:     26,
+    Beta:                12,
+    MaxOutstandingItems: 512,
+    ConcurrentPolls:     2,
+}
+```
+
+## Validation
+
+```go
+func (p *Parameters) Validate() error {
+    if p.K < 5 {
+        return errors.New("K must be at least 5")
+    }
+    if p.AlphaPreference <= p.K/2 {
+        return errors.New("AlphaPreference must be > K/2")
+    }
+    if p.AlphaConfidence <= (2*p.K)/3 {
+        return errors.New("AlphaConfidence must be > 2K/3")
+    }
+    if p.Beta < 2 {
+        return errors.New("Beta must be at least 2")
+    }
+    return nil
+}
+```
