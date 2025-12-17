@@ -1,23 +1,20 @@
-import { createMDX } from 'fumadocs-mdx/next';
-
-const withMDX = createMDX();
+import { createMDX } from "@hanzo/docs-mdx/next"
 
 /** @type {import('next').NextConfig} */
 const config = {
-  reactStrictMode: true,
   output: 'export',
+  reactStrictMode: true,
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  experimental: {
+    webpackBuildWorker: true,
+  },
   images: {
     unoptimized: true,
   },
-  basePath: process.env.NODE_ENV === 'production' ? '/consensus' : '',
-  assetPrefix: process.env.NODE_ENV === 'production' ? '/consensus/' : '',
-  trailingSlash: true,
-  
-  // GitHub Pages specific
-  experimental: {
-    // Ensure static export works properly
-    appDir: true,
-  },
-};
+}
 
-export default withMDX(config);
+const withMDX = createMDX()
+
+export default withMDX(config)

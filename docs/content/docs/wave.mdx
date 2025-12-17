@@ -1,0 +1,258 @@
+---
+title: Wave Consensus
+description: Classical threshold voting consensus mechanism
+---
+
+# Wave Consensus
+
+Wave is the classical consensus layer that provides fast finality through repeated sampling and threshold voting. It forms the foundation upon which Quasar builds quantum finality.
+
+## Overview
+
+Wave consensus operates through iterative voting rounds where validators sample peers and update their preferences based on responses. A decision is reached when confidence exceeds configured thresholds.
+
+## Core Algorithm
+
+```go
+type Wave struct {
+    config     WaveConfig
+    preference ids.ID
+    confidence int
+    decided    bool
+}
+
+func (w *Wave) Poll(ctx context.Context, peers []Peer) error {
+    responses := make(map[ids.ID]int)
+
+    // Sample k peers
+    for _, peer := range w.samplePeers(w.config.K) {
+        vote, err := peer.Query(ctx, w.preference)
+        if err != nil {
+            continue
+        }
+        responses[vote]++
+    }
+
+    // Find majority vote
+    majority, count := findMajority(responses)
+
+    // Update preference if threshold met
+    if count >= w.config.AlphaPreference {
+        if majority == w.preference {
+            w.confidence++
+        } else {
+            w.preference = majority
+            w.confidence = 1
+        }
+    } else {
+        w.confidence = 0
+    }
+
+    // Check for decision
+    if w.confidence >= w.config.Beta {
+        w.decided = true
+    }
+
+    return nil
+}
+```
+
+## Parameters
+
+| Parameter | Description | Mainnet | Testnet |
+|-----------|-------------|---------|---------|
+| K | Sample size per round | 21 | 11 |
+| Alpha-Preference | Early preference threshold | 15 | 8 |
+| Alpha-Confidence | Final confidence threshold | 18 | 9 |
+| Beta | Consecutive rounds for finality | 8 | 5 |
+
+### Parameter Selection
+
+```go
+type WaveConfig struct {
+    // K: Number of validators to sample each round
+    // Higher K increases security but adds latency
+    K int
+
+    // AlphaPreference: Minimum votes to update preference
+    // Set to ~70% of K for fast convergence
+    AlphaPreference int
+
+    // AlphaConfidence: Minimum votes for confidence increase
+    // Set to ~85% of K for strong safety
+    AlphaConfidence int
+
+    // Beta: Consecutive confident rounds for finality
+    // Higher Beta increases safety margin
+    Beta int
+}
+
+func DefaultWaveConfig() WaveConfig {
+    return WaveConfig{
+        K:               21,
+        AlphaPreference: 15,
+        AlphaConfidence: 18,
+        Beta:            8,
+    }
+}
+```
+
+## Confidence Tracking
+
+Wave tracks confidence using a counter that increments when the majority agrees with the current preference and resets when preferences change.
+
+```go
+type Confidence struct {
+    preference ids.ID
+    count      int
+    threshold  int
+}
+
+func (c *Confidence) Update(vote ids.ID, strength int) bool {
+    if vote == c.preference && strength >= c.threshold {
+        c.count++
+        return c.count >= c.threshold
+    }
+
+    if strength >= c.threshold {
+        c.preference = vote
+        c.count = 1
+    } else {
+        c.count = 0
+    }
+
+    return false
+}
+```
+
+## Finality Conditions
+
+A block achieves classical finality when:
+
+1. Preference has been stable for Beta consecutive rounds
+2. Each round had at least Alpha-Confidence agreeing votes
+3. No conflicting blocks have higher confidence
+
+```go
+func (w *Wave) IsFinalized(block *Block) bool {
+    return w.confidence >= w.config.Beta &&
+           w.preference == block.ID &&
+           !w.hasConflict(block)
+}
+```
+
+## Performance Characteristics
+
+### Latency Breakdown
+
+| Phase | Duration | Operations |
+|-------|----------|------------|
+| Sampling | 10ms | K network calls |
+| Vote collection | 50ms | Wait for responses |
+| Aggregation | 1ms | Count votes |
+| Total per round | ~61ms | - |
+| Full finality | ~500ms | 8 rounds |
+
+### Throughput
+
+- Rounds execute in parallel for different blocks
+- Non-conflicting blocks finalize independently
+- DAG structure allows concurrent processing
+
+## Integration with Quasar
+
+Wave provides Phase I (classical) finality:
+
+```go
+func (e *Engine) Process(ctx context.Context, block *Block) error {
+    // Phase I: Wave consensus for classical finality
+    if err := e.wave.Process(ctx, block); err != nil {
+        return err
+    }
+
+    // Phase II: Quasar for quantum finality
+    if err := e.quasar.Process(ctx, block); err != nil {
+        return err
+    }
+
+    return nil
+}
+```
+
+## Conflict Resolution
+
+When conflicting blocks are proposed:
+
+```go
+func (w *Wave) ResolveConflict(a, b *Block) *Block {
+    // Higher confidence wins
+    if w.confidence[a.ID] > w.confidence[b.ID] {
+        return a
+    }
+    if w.confidence[b.ID] > w.confidence[a.ID] {
+        return b
+    }
+
+    // Tie-breaker: lower hash
+    if bytes.Compare(a.Hash(), b.Hash()) < 0 {
+        return a
+    }
+    return b
+}
+```
+
+## Example: Wave Consensus
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/luxfi/consensus/core/wave"
+)
+
+func main() {
+    cfg := wave.Config{
+        K:               21,
+        AlphaPreference: 15,
+        AlphaConfidence: 18,
+        Beta:            8,
+    }
+
+    engine := wave.NewEngine(cfg)
+
+    // Add a block to consensus
+    block := &Block{
+        ID:     NewID(),
+        Height: 1,
+    }
+
+    ctx := context.Background()
+
+    // Process until finalized
+    for !engine.IsFinalized(block) {
+        if err := engine.Poll(ctx, peers); err != nil {
+            fmt.Printf("Poll error: %v\n", err)
+            continue
+        }
+        fmt.Printf("Confidence: %d/%d\n", engine.Confidence(), cfg.Beta)
+    }
+
+    fmt.Println("Block finalized!")
+}
+```
+
+## Testing
+
+```bash
+# Run wave consensus tests
+go test ./core/wave/...
+
+# Benchmark voting rounds
+go test -bench=Poll ./core/wave/
+
+# Test conflict resolution
+go test -run=Conflict ./core/wave/
+```

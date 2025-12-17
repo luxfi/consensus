@@ -1,28 +1,26 @@
-import Link from 'next/link';
-import { redirect } from 'next/navigation';
+import Link from "next/link"
 
 export default function HomePage() {
-  // For static export, we need to provide actual content
-  // Uncomment redirect for server-side rendering
-  // redirect('/docs');
-
   return (
-    <>
-      <meta httpEquiv="refresh" content="0;url=/docs" />
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold mb-4">Lux Consensus</h1>
-          <p className="text-muted-foreground mb-6">
-            Multi-language consensus engine for blockchain systems
+    <main className="flex flex-1 flex-col items-center justify-center px-4">
+      <div className="container flex flex-col items-center gap-12 py-24 sm:gap-16 sm:py-32">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">
+            Lux Consensus
+          </h1>
+          <p className="max-w-2xl text-lg text-muted-foreground">
+            Quasar consensus engine with post-quantum finality
           </p>
+        </div>
+        <div className="flex gap-4">
           <Link
             href="/docs"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-8 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90"
           >
-            View Documentation →
+            Get Started
           </Link>
         </div>
       </div>
-    </>
-  );
+    </main>
+  )
 }
