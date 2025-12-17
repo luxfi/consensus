@@ -7,7 +7,7 @@ exclude github.com/ethereum/go-ethereum v1.10.26
 exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
-	github.com/luxfi/crypto v1.17.23
+	github.com/luxfi/crypto v1.17.24
 	github.com/luxfi/database v1.2.12
 	github.com/luxfi/geth v1.16.53
 	github.com/luxfi/ids v1.2.4
@@ -57,6 +57,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
+	github.com/luxfi/cache v1.0.0 // indirect
 	github.com/luxfi/metric v1.4.8 // indirect
 	github.com/luxfi/mock v0.1.0 // indirect
 	github.com/luxfi/utils v1.0.0 // indirect
