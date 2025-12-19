@@ -6,7 +6,7 @@ import (
 	"time"
 
 	consensuscontext "github.com/luxfi/consensus/context"
-	"github.com/luxfi/consensus/core"
+	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/database/manager"
 	"github.com/luxfi/ids"
 )
@@ -45,17 +45,17 @@ type ChainContext struct {
 // DBManager manages databases
 type DBManager = manager.Manager
 
-// Re-export core types for backwards compatibility
+// Re-export engine types
 type (
-	MessageType = core.MessageType
-	Message     = core.Message
-	Fx          = core.Fx
+	MessageType = engine.MessageType
+	Message     = engine.Message
+	Fx          = engine.Fx
 )
 
-// Message type constants re-exported from core
+// Message type constants
 const (
-	PendingTxs    = core.PendingTxs
-	StateSyncDone = core.StateSyncDone
+	PendingTxs    = engine.PendingTxs
+	StateSyncDone = engine.StateSyncDone
 )
 
 // AppSender sends application-level messages
