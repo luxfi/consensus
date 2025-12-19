@@ -15,6 +15,7 @@ require (
 	github.com/luxfi/math v1.0.2
 	github.com/luxfi/node v1.22.14
 	github.com/luxfi/p2p v1.4.7
+	github.com/luxfi/vm v1.0.0
 	github.com/luxfi/warp v1.16.37
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
