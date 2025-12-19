@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/core"
+	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/ids"
 )
 
@@ -24,16 +24,15 @@ type Engine interface {
 	IsBootstrapped() bool
 }
 
-// Re-export core message types
+// Re-export message types for convenience
 type (
-	MessageType = core.MessageType
-	Message     = core.Message
+	MessageType = engine.MessageType
+	Message     = engine.Message
 )
 
-// Message type constants
 const (
-	PendingTxs    = core.PendingTxs
-	StateSyncDone = core.StateSyncDone
+	PendingTxs    = engine.PendingTxs
+	StateSyncDone = engine.StateSyncDone
 )
 
 // BlockBuilder is the interface for VMs that can build blocks
