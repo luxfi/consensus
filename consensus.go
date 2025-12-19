@@ -3,6 +3,8 @@
 
 // Package consensus provides a clean, single-import interface to the Lux consensus system.
 // This is the main SDK surface for applications using Lux consensus.
+//
+// For VM-related types (State, Message, Fx), use github.com/luxfi/vm
 package consensus
 
 import (
@@ -11,7 +13,6 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	consensuscontext "github.com/luxfi/consensus/context"
-	"github.com/luxfi/consensus/core/interfaces"
 	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/consensus/types"
 )
@@ -36,9 +37,6 @@ type (
 	Status      = types.Status
 	Decision    = types.Decision
 	VoteType    = types.VoteType
-
-	// State represents VM state for consensus operations
-	State = interfaces.StateEnum
 )
 
 // Constants re-exported for convenience
@@ -58,11 +56,6 @@ const (
 	StatusProcessing = types.StatusProcessing
 	StatusRejected   = types.StatusRejected
 	StatusAccepted   = types.StatusAccepted
-
-	// VM state constants
-	StateSyncing  = interfaces.StateSyncing
-	Bootstrapping = interfaces.Bootstrapping
-	NormalOp      = interfaces.NormalOp
 )
 
 // Variables re-exported for convenience
@@ -84,16 +77,11 @@ var (
 
 // Context accessor functions re-exported from context package
 var (
-	// GetNetworkID gets the network ID from context
-	GetNetworkID = consensuscontext.GetNetworkID
-	// GetSubnetID gets the subnet ID from context (deprecated, use GetNetID)
-	GetSubnetID = consensuscontext.GetSubnetID
-	// GetValidatorState gets the validator state from context
+	GetNetworkID      = consensuscontext.GetNetworkID
+	GetSubnetID       = consensuscontext.GetSubnetID
 	GetValidatorState = consensuscontext.GetValidatorState
-	// WithContext adds consensus context to a context
-	WithContext = consensuscontext.WithContext
-	// FromContext extracts consensus context from a context
-	FromContext = consensuscontext.FromContext
+	WithContext       = consensuscontext.WithContext
+	FromContext       = consensuscontext.FromContext
 )
 
 // DefaultConfig returns the default consensus configuration
@@ -113,7 +101,6 @@ func NewChainEngine() Engine {
 
 // NewDAG creates a new DAG consensus engine (placeholder for future)
 func NewDAG(cfg Config) Engine {
-	// TODO: Implement DAG engine
 	return engine.NewChain(cfg)
 }
 
@@ -124,7 +111,6 @@ func NewDAGEngine() Engine {
 
 // NewPQ creates a new post-quantum consensus engine (placeholder for future)
 func NewPQ(cfg Config) Engine {
-	// TODO: Implement PQ engine
 	return engine.NewChain(cfg)
 }
 
@@ -132,8 +118,6 @@ func NewPQ(cfg Config) Engine {
 func NewPQEngine() Engine {
 	return NewPQ(DefaultConfig())
 }
-
-// Helper functions
 
 // NewBlock creates a new block with default values
 func NewBlock(id ID, parentID ID, height uint64, payload []byte) *Block {
@@ -176,15 +160,12 @@ func GetConfig(nodeCount int) config.Parameters {
 	case nodeCount <= 21:
 		return config.MainnetParams()
 	default:
-		// For larger networks, create custom params with K = nodeCount
 		params := config.MainnetParams()
 		params.K = nodeCount
-		// Alpha is already set to 0.69 from MainnetParams
-		// Adjust other parameters proportionally for 69% threshold
 		params.AlphaPreference = int(float64(nodeCount) * 0.69)
 		params.AlphaConfidence = int(float64(nodeCount) * 0.69)
 		params.BetaVirtuous = int(float64(nodeCount) * 0.69)
-		params.BetaRogue = nodeCount // Set to max for safety
+		params.BetaRogue = nodeCount
 		params.Beta = uint32(int(float64(nodeCount) * 0.69))
 		return params
 	}

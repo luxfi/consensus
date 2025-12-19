@@ -8,21 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luxfi/consensus/core"
+	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/log"
 )
 
-// Re-export core types for convenience
-type (
-	MessageType = core.MessageType
-	VMMessage   = core.Message
-)
-
-// Message type constants
-const (
-	PendingTxs    = core.PendingTxs
-	StateSyncDone = core.StateSyncDone
-)
+// VMMessage is an alias for engine.Message
+type VMMessage = engine.Message
 
 // Notifier is the interface for receiving VM notifications
 type Notifier interface {
