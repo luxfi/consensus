@@ -6,14 +6,14 @@ package vertex
 import (
 	"context"
 
-	"github.com/luxfi/consensus/core"
 	"github.com/luxfi/consensus/engine/dag"
+	"github.com/luxfi/consensus/engine/interfaces"
 	"github.com/luxfi/ids"
 )
 
 // DAGVM defines the interface for a DAG-based VM
 type DAGVM interface {
-	core.VM
+	interfaces.VM
 
 	// PendingTxs returns transactions that are pending
 	PendingTxs(context.Context) []dag.Transaction
