@@ -331,7 +331,7 @@ func TestStateWithMultipleBlocks(t *testing.T) {
 
 func TestInterfaceCompliance(t *testing.T) {
 	// Verify mock implementations satisfy interfaces
-	var _ State = (*mockState)(nil)
+	var _ BlockState = (*mockState)(nil)
 	var _ Block = (*mockBlock)(nil)
 	var _ Tx = (*mockTx)(nil)
 	var _ UTXO = (*mockUTXO)(nil)
