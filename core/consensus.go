@@ -10,8 +10,8 @@ import (
 	"github.com/luxfi/vm"
 )
 
-// State represents consensus state
-type State interface {
+// BlockState represents block storage for consensus
+type BlockState interface {
 	// GetBlock gets a block
 	GetBlock(ids.ID) (Block, error)
 
@@ -53,10 +53,12 @@ type UTXO interface {
 	Amount() uint64
 }
 
-// Message and MessageType aliases to vm package for backwards compatibility
+// Type aliases to vm package
 type (
 	Message     = vm.Message
 	MessageType = vm.MessageType
+	Fx          = vm.Fx
+	FxLifecycle = vm.FxLifecycle
 )
 
 // Constants re-exported from vm package
@@ -77,14 +79,25 @@ type AppError struct {
 
 func (e AppError) Error() string { return e.Message }
 
-// VMState represents the state of the VM
-type VMState uint32
+// State is the VM lifecycle state, re-exported from vm.State
+type State = vm.State
 
+// VMState is an alias for State (for compatibility with older code)
+type VMState = vm.State
+
+// Re-export state constants from vm package
 const (
-	// VMInitializing means the VM is still initializing
-	VMInitializing VMState = iota
-	// VMBootstrapping means the VM is bootstrapping
-	VMBootstrapping
-	// VMNormalOp means the VM is in normal operation
-	VMNormalOp
+	Unknown       = vm.Unknown
+	Starting      = vm.Starting
+	Syncing       = vm.Syncing
+	Bootstrapping = vm.Bootstrapping
+	Ready         = vm.Ready
+	Degraded      = vm.Degraded
+	Stopping      = vm.Stopping
+	Stopped       = vm.Stopped
+
+	// Legacy aliases for VMState constants (old naming convention)
+	VMStateSyncing   = vm.Syncing
+	VMBootstrapping  = vm.Bootstrapping
+	VMNormalOp       = vm.Ready
 )
