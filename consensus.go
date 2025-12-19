@@ -14,6 +14,7 @@ import (
 	"github.com/luxfi/consensus/config"
 	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/consensus/engine"
+	"github.com/luxfi/consensus/engine/interfaces"
 	"github.com/luxfi/consensus/types"
 )
 
@@ -26,6 +27,9 @@ type (
 
 	// Context type
 	Context = consensuscontext.Context
+
+	// VM State type
+	State = interfaces.State
 
 	// Core types
 	Block       = types.Block
@@ -56,6 +60,16 @@ const (
 	StatusProcessing = types.StatusProcessing
 	StatusRejected   = types.StatusRejected
 	StatusAccepted   = types.StatusAccepted
+
+	// VM states
+	Unknown       = interfaces.Unknown
+	Starting      = interfaces.Starting
+	Syncing       = interfaces.Syncing
+	Bootstrapping = interfaces.Bootstrapping
+	Ready         = interfaces.Ready
+	Degraded      = interfaces.Degraded
+	Stopping      = interfaces.Stopping
+	Stopped       = interfaces.Stopped
 )
 
 // Variables re-exported for convenience

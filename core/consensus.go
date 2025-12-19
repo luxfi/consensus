@@ -5,7 +5,9 @@ package core
 import (
 	"context"
 
+	"github.com/luxfi/consensus/engine/interfaces"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/vm"
 )
 
 // State represents consensus state
@@ -50,3 +52,39 @@ type UTXO interface {
 	OutputIndex() uint32
 	Amount() uint64
 }
+
+// Message and MessageType aliases to vm package for backwards compatibility
+type (
+	Message     = vm.Message
+	MessageType = vm.MessageType
+)
+
+// Constants re-exported from vm package
+const (
+	PendingTxs    = vm.PendingTxs
+	StateSyncDone = vm.StateSyncDone
+)
+
+// VM is an alias to engine/interfaces.VM for backwards compatibility
+// Import from github.com/luxfi/consensus/engine/interfaces for the full VM interface
+type VM = interfaces.VM
+
+// AppError represents an application-level error
+type AppError struct {
+	Code    int
+	Message string
+}
+
+func (e AppError) Error() string { return e.Message }
+
+// VMState represents the state of the VM
+type VMState uint32
+
+const (
+	// VMInitializing means the VM is still initializing
+	VMInitializing VMState = iota
+	// VMBootstrapping means the VM is bootstrapping
+	VMBootstrapping
+	// VMNormalOp means the VM is in normal operation
+	VMNormalOp
+)
