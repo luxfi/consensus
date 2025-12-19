@@ -19,7 +19,12 @@ type (
 const (
 	PendingTxs    = vm.PendingTxs
 	StateSyncDone = vm.StateSyncDone
+	Unknown       = vm.Unknown
+	Starting      = vm.Starting
 	Syncing       = vm.Syncing
 	Bootstrapping = vm.Bootstrapping
-	NormalOp      = vm.NormalOp
+	Ready         = vm.Ready
+	Degraded      = vm.Degraded
+	Stopping      = vm.Stopping
+	Stopped       = vm.Stopped
 )
