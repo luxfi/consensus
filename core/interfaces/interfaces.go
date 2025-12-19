@@ -8,10 +8,26 @@ import (
 	"context"
 
 	"github.com/luxfi/ids"
+	"github.com/luxfi/vm"
 )
 
-// State represents the state of the consensus
-type State interface {
+// State is the VM lifecycle state, aliased from vm.State
+type State = vm.State
+
+// Re-export State constants from vm package
+const (
+	Unknown       = vm.Unknown
+	Starting      = vm.Starting
+	Syncing       = vm.Syncing
+	Bootstrapping = vm.Bootstrapping
+	Ready         = vm.Ready
+	Degraded      = vm.Degraded
+	Stopping      = vm.Stopping
+	Stopped       = vm.Stopped
+)
+
+// ChainState represents the state of the consensus chain
+type ChainState interface {
 	// GetBlock retrieves a block by its ID
 	GetBlock(ctx context.Context, blockID ids.ID) (Block, error)
 
@@ -44,4 +60,10 @@ type Block interface {
 
 	// Reject marks the block as rejected
 	Reject(context.Context) error
+}
+
+// VM defines the common VM interface for consensus engines
+type VM interface {
+	// Shutdown is called when the node is shutting down
+	Shutdown(context.Context) error
 }
