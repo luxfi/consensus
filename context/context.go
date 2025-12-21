@@ -14,16 +14,13 @@ type Context struct {
 	// NetworkID is the numeric network identifier (1=mainnet, 2=testnet)
 	// EVM chain IDs are derived: mainnet=96369, testnet=96368
 	NetworkID uint32 `json:"networkID"`
-	// PrimaryNetworkID identifies if chain is in primary network (ids.Empty = primary)
-	PrimaryNetworkID ids.ID `json:"primaryNetworkID"`
 	// ChainID identifies the specific chain within the network
 	ChainID      ids.ID     `json:"chainID"`
 	NodeID       ids.NodeID `json:"nodeID"`
 	PublicKey    []byte     `json:"publicKey"`
 	XChainID     ids.ID     `json:"xChainID"`
 	CChainID     ids.ID     `json:"cChainID"`
-	XAssetID     ids.ID     `json:"xAssetID"`
-	LUXAssetID   ids.ID     `json:"luxAssetID"`
+	XAssetID     ids.ID     `json:"xAssetID"` // Primary asset ID (X-chain native)
 	ChainDataDir string     `json:"chainDataDir"`
 
 	// Timing
@@ -101,12 +98,12 @@ func GetNetworkID(ctx context.Context) uint32 {
 	return 0
 }
 
-// GetPrimaryNetworkID gets the primary network ID (ids.Empty = primary network)
-func GetPrimaryNetworkID(ctx context.Context) ids.ID {
+// IsPrimaryNetwork checks if the network is the primary network (NetworkID == 1)
+func IsPrimaryNetwork(ctx context.Context) bool {
 	if c, ok := ctx.Value(contextKey).(*Context); ok {
-		return c.PrimaryNetworkID
+		return c.NetworkID == 1 // Mainnet is the primary network
 	}
-	return ids.Empty
+	return false
 }
 
 // GetValidatorState gets the validator state from context
@@ -150,14 +147,12 @@ func GetNodeID(ctx context.Context) ids.NodeID {
 
 // IDs holds the IDs for consensus context
 type IDs struct {
-	NetworkID        uint32
-	PrimaryNetworkID ids.ID
-	ChainID          ids.ID
-	NodeID           ids.NodeID
-	PublicKey        []byte
-	XAssetID         ids.ID
-	LUXAssetID       ids.ID `json:"luxAssetID"`
-	ChainDataDir     string `json:"chainDataDir"`
+	NetworkID    uint32     // 1=mainnet, 2=testnet
+	ChainID      ids.ID
+	NodeID       ids.NodeID
+	PublicKey    []byte
+	XAssetID     ids.ID // Primary asset ID (X-chain native)
+	ChainDataDir string `json:"chainDataDir"`
 }
 
 // WithIDs adds IDs to the context
@@ -167,7 +162,6 @@ func WithIDs(ctx context.Context, ids IDs) context.Context {
 		c = &Context{}
 	}
 	c.NetworkID = ids.NetworkID
-	c.PrimaryNetworkID = ids.PrimaryNetworkID
 	c.ChainID = ids.ChainID
 	c.NodeID = ids.NodeID
 	c.PublicKey = ids.PublicKey
