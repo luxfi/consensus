@@ -22,7 +22,7 @@ func TestStart(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	err := engine.Start(ctx, 1)
+	err := engine.Start(ctx, true)
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestStop(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	err := engine.Stop(ctx)
 	if err != nil {
@@ -91,7 +91,7 @@ func TestChainWorkflow(t *testing.T) {
 	ctx := context.Background()
 
 	// Start engine
-	err := engine.Start(ctx, 1)
+	err := engine.Start(ctx, true)
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
