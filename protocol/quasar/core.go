@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -29,6 +30,10 @@ type Quasar struct {
 
 	// Quantum consensus engine - the event horizon
 	hybridConsensus *Hybrid
+
+	// Epoch-based Ringtail key management
+	// Keys rotate when validator set changes (max 1x per hour)
+	epochManager *EpochManager
 
 	// Quantum finality state - the singularity
 	finalizedBlocks map[string]*QuantumBlock // blockHash -> finalized block
@@ -73,6 +78,7 @@ func NewQuasar(threshold int) (*Quasar, error) {
 		cChainBlocks:     make(chan *ChainBlock, 100),
 		chainBuffers:     make(map[string]chan *ChainBlock),
 		hybridConsensus:  hybrid,
+		epochManager:     NewEpochManager(threshold, 3), // Keep 3 epochs in history
 		finalizedBlocks:  make(map[string]*QuantumBlock),
 		quantumHeight:    0,
 		registeredChains: make(map[string]bool),
@@ -443,4 +449,212 @@ func (q *Quasar) GetRegisteredChains() []string {
 		chains = append(chains, chain)
 	}
 	return chains
+}
+
+// ============================================================================
+// Epoch-Based Validator Management
+// BLS and Ringtail validator sets are kept synchronized.
+// Ringtail keys rotate at most once per hour when validator set changes.
+// ============================================================================
+
+// InitializeValidators sets up the initial validator set with both BLS and Ringtail keys.
+// This should be called once at genesis or node startup.
+func (q *Quasar) InitializeValidators(validatorIDs []string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if len(validatorIDs) < 2 {
+		return fmt.Errorf("need at least 2 validators")
+	}
+
+	// Add validators to hybrid consensus (BLS)
+	for _, id := range validatorIDs {
+		if err := q.hybridConsensus.AddValidator(id, 1); err != nil {
+			return fmt.Errorf("failed to add validator %s to BLS: %w", id, err)
+		}
+	}
+
+	// Initialize Ringtail epoch with same validator set
+	_, err := q.epochManager.InitializeEpoch(validatorIDs)
+	if err != nil {
+		return fmt.Errorf("failed to initialize Ringtail epoch: %w", err)
+	}
+
+	fmt.Printf("[QUASAR] Initialized %d validators with BLS + Ringtail (epoch 0)\n", len(validatorIDs))
+	return nil
+}
+
+// UpdateValidatorSet updates the validator set, rotating Ringtail keys if needed.
+// Returns true if Ringtail keys were rotated.
+// Rate-limited to at most 1 rotation per hour.
+func (q *Quasar) UpdateValidatorSet(validatorIDs []string) (rotated bool, err error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Update BLS validators
+	// First, track current validators
+	currentBLS := make(map[string]bool)
+	for id, v := range q.hybridConsensus.validators {
+		if v.Active {
+			currentBLS[id] = true
+		}
+	}
+
+	// Add new validators
+	newIDs := make(map[string]bool)
+	for _, id := range validatorIDs {
+		newIDs[id] = true
+		if !currentBLS[id] {
+			if err := q.hybridConsensus.AddValidator(id, 1); err != nil {
+				return false, fmt.Errorf("failed to add validator %s: %w", id, err)
+			}
+		}
+	}
+
+	// Deactivate removed validators
+	for id := range currentBLS {
+		if !newIDs[id] {
+			if v, exists := q.hybridConsensus.validators[id]; exists {
+				v.Active = false
+			}
+		}
+	}
+
+	// Attempt to rotate Ringtail keys (will fail if rate-limited or unchanged)
+	_, err = q.epochManager.RotateEpoch(validatorIDs, false)
+	if err == nil {
+		rotated = true
+		fmt.Printf("[QUASAR] Rotated Ringtail keys to epoch %d for %d validators\n",
+			q.epochManager.GetCurrentEpoch(), len(validatorIDs))
+	} else if errors.Is(err, ErrEpochRateLimited) || errors.Is(err, ErrNoValidatorChange) {
+		// Not an error - just rate limited or no change
+		rotated = false
+		err = nil
+	}
+
+	return rotated, err
+}
+
+// AddValidator adds a single validator, triggering key rotation if rate limit allows.
+func (q *Quasar) AddValidator(validatorID string, weight uint64) (rotated bool, err error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Add to BLS
+	if err := q.hybridConsensus.AddValidator(validatorID, weight); err != nil {
+		return false, err
+	}
+
+	// Get current validator list and add new one
+	validators := q.getActiveValidatorIDsLocked()
+	if !contains(validators, validatorID) {
+		validators = append(validators, validatorID)
+	}
+
+	// Attempt Ringtail rotation
+	_, err = q.epochManager.RotateEpoch(validators, false)
+	if err == nil {
+		rotated = true
+		fmt.Printf("[QUASAR] Added validator %s, rotated to epoch %d\n",
+			validatorID, q.epochManager.GetCurrentEpoch())
+	} else if errors.Is(err, ErrEpochRateLimited) || errors.Is(err, ErrNoValidatorChange) {
+		// Rate limited or no change - validator added to BLS but RT keys not rotated yet
+		rotated = false
+		err = nil
+		fmt.Printf("[QUASAR] Added validator %s to BLS (RT rotation rate-limited)\n", validatorID)
+	}
+
+	return rotated, err
+}
+
+// RemoveValidator removes a validator, triggering key rotation if rate limit allows.
+func (q *Quasar) RemoveValidator(validatorID string) (rotated bool, err error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Deactivate in BLS
+	if v, exists := q.hybridConsensus.validators[validatorID]; exists {
+		v.Active = false
+	}
+
+	// Get remaining validators
+	validators := q.getActiveValidatorIDsLocked()
+
+	// Attempt Ringtail rotation
+	_, err = q.epochManager.RotateEpoch(validators, false)
+	if err == nil {
+		rotated = true
+		fmt.Printf("[QUASAR] Removed validator %s, rotated to epoch %d\n",
+			validatorID, q.epochManager.GetCurrentEpoch())
+	} else if errors.Is(err, ErrEpochRateLimited) || errors.Is(err, ErrNoValidatorChange) {
+		rotated = false
+		err = nil
+		fmt.Printf("[QUASAR] Removed validator %s from BLS (RT rotation rate-limited)\n", validatorID)
+	}
+
+	return rotated, err
+}
+
+// ForceEpochRotation forces Ringtail key rotation if minimum time has passed.
+// Use this for periodic security refreshes even without validator changes.
+func (q *Quasar) ForceEpochRotation() (rotated bool, err error) {
+	q.mu.Lock()
+	validators := q.getActiveValidatorIDsLocked()
+	q.mu.Unlock()
+
+	keys, rotated, err := q.epochManager.ForceRotateIfExpired()
+	if err != nil {
+		return false, err
+	}
+	if rotated {
+		fmt.Printf("[QUASAR] Force-rotated Ringtail keys to epoch %d\n", keys.Epoch)
+	}
+
+	// Also attempt rotation if rate limit allows
+	if !rotated {
+		_, err = q.epochManager.RotateEpoch(validators, true)
+		if err == nil {
+			rotated = true
+		} else if errors.Is(err, ErrEpochRateLimited) {
+			err = nil
+		}
+	}
+
+	return rotated, err
+}
+
+// GetEpochStats returns current epoch statistics.
+func (q *Quasar) GetEpochStats() EpochStats {
+	return q.epochManager.Stats()
+}
+
+// GetCurrentEpoch returns the current Ringtail epoch number.
+func (q *Quasar) GetCurrentEpoch() uint64 {
+	return q.epochManager.GetCurrentEpoch()
+}
+
+// GetEpochManager returns the epoch manager for advanced operations.
+func (q *Quasar) GetEpochManager() *EpochManager {
+	return q.epochManager
+}
+
+// Internal helpers
+
+func (q *Quasar) getActiveValidatorIDsLocked() []string {
+	ids := make([]string, 0, len(q.hybridConsensus.validators))
+	for id, v := range q.hybridConsensus.validators {
+		if v.Active {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
