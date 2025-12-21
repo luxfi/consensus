@@ -421,7 +421,7 @@ func TestTransitiveAddBlock(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Create a block
 	blockID := ids.GenerateTestID()
@@ -443,7 +443,7 @@ func TestTransitiveProcessVote(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Add a block first
 	blockID := ids.GenerateTestID()
@@ -466,7 +466,7 @@ func TestTransitivePoll(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Add a block first
 	blockID := ids.GenerateTestID()
@@ -492,7 +492,7 @@ func TestTransitiveIsAccepted(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Unknown block should not be accepted
 	unknownID := ids.GenerateTestID()
@@ -505,7 +505,7 @@ func TestTransitivePreference(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Initially should return empty preference
 	pref := engine.Preference()
@@ -538,7 +538,7 @@ func TestTransitiveNotifyPendingTxs(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Initially no pending builds
 	require.Zero(engine.PendingBuildBlocks())
@@ -558,7 +558,7 @@ func TestTransitiveNotifyPendingTxsWithVM(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Set a mock VM that succeeds
 	mockVM := &mockBlockBuilder{
@@ -583,7 +583,7 @@ func TestTransitiveNotifyPendingTxsWithVMError(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Set a mock VM that returns error
 	mockVM := &mockBlockBuilder{
@@ -608,7 +608,7 @@ func TestTransitiveNotifyStateSyncDone(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Send StateSyncDone notification
 	msg := Message{Type: StateSyncDone}
@@ -622,7 +622,7 @@ func TestTransitiveNotifyUnknownType(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Send unknown notification type
 	msg := Message{Type: 999}
@@ -840,7 +840,7 @@ func TestTransitiveConcurrentNotify(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Set a simple VM
 	engine.SetVM(&mockBlockBuilder{
@@ -909,7 +909,7 @@ func TestTransitiveStartStop(t *testing.T) {
 
 	// Multiple start/stop cycles
 	for i := 0; i < 5; i++ {
-		err := engine.Start(ctx, uint32(i))
+		err := engine.Start(ctx, true)
 		require.NoError(err)
 		require.True(engine.IsBootstrapped())
 
@@ -954,7 +954,7 @@ func TestTransitiveHealthCheckAfterStart(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	health, err := engine.HealthCheck(ctx)
 	require.NoError(err)
@@ -1033,7 +1033,7 @@ func TestFullConsensusFlow(t *testing.T) {
 		Beta:            1,
 	}
 	engine := NewWithParams(params)
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Add genesis block
 	genesisID := ids.GenerateTestID()
@@ -1129,7 +1129,7 @@ func TestNotifyMultiplePendingTxs(t *testing.T) {
 	ctx := context.Background()
 
 	engine := New()
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	buildCount := 0
 	mockVM := &mockBlockBuilder{
