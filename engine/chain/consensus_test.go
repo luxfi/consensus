@@ -18,7 +18,7 @@ func TestConsensusVoting(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 	require.True(engine.IsBootstrapped())
 
 	// Verify health
@@ -36,7 +36,7 @@ func TestConflictResolution(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Create conflicting block IDs
 	block1 := ids.GenerateTestID()
@@ -56,7 +56,7 @@ func TestMultipleBlocks(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Process multiple blocks
 	for i := 0; i < 10; i++ {
@@ -82,7 +82,7 @@ func TestChainReorg(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Simulate a chain reorg by requesting different blocks at same height
 	height := uint32(10)
@@ -105,7 +105,7 @@ func TestConcurrentRequests(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Launch multiple concurrent requests
 	done := make(chan bool, 10)
@@ -135,7 +135,7 @@ func TestFinality(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 	require.True(engine.IsBootstrapped())
 
 	// After bootstrap, blocks should be finalized
@@ -157,12 +157,12 @@ func TestRestartPreservesState(t *testing.T) {
 	ctx := context.Background()
 
 	// First session
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 	require.True(engine.IsBootstrapped())
 	require.NoError(engine.Stop(ctx))
 
 	// Restart
-	require.NoError(engine.Start(ctx, 2))
+	require.NoError(engine.Start(ctx, true))
 	require.True(engine.IsBootstrapped())
 
 	health, err := engine.HealthCheck(ctx)
@@ -179,7 +179,7 @@ func TestInvalidBlockHandling(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Request block with invalid/empty IDs
 	require.NoError(engine.GetBlock(ctx, ids.EmptyNodeID, 0, ids.Empty))
@@ -199,7 +199,7 @@ func TestHighLoadScenario(t *testing.T) {
 	engine := New()
 	ctx := context.Background()
 
-	require.NoError(engine.Start(ctx, 1))
+	require.NoError(engine.Start(ctx, true))
 
 	// Process many blocks quickly
 	for i := 0; i < 1000; i++ {

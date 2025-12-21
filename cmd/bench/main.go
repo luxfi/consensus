@@ -101,7 +101,7 @@ func benchmarkChain(ctx context.Context, params config.Parameters, blocks int, p
 	engine := chain.New()
 
 	start := time.Now()
-	if err := engine.Start(ctx, 1); err != nil {
+	if err := engine.Start(ctx, true); err != nil {
 		fmt.Printf("Failed to start chain engine: %v\n", err)
 		return
 	}
