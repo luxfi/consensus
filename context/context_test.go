@@ -39,34 +39,6 @@ func TestGetChainID(t *testing.T) {
 	require.Equal(t, chainID, result)
 }
 
-func TestGetNetID(t *testing.T) {
-	// Test with nil context
-	ctx := context.Background()
-	result := GetNetID(ctx)
-	require.Equal(t, ids.Empty, result)
-
-	// Test with valid context
-	netID := ids.GenerateTestID()
-	cc := &Context{NetID: netID}
-	ctx = WithContext(ctx, cc)
-	result = GetNetID(ctx)
-	require.Equal(t, netID, result)
-}
-
-func TestGetSubnetID(t *testing.T) {
-	// Test with nil context
-	ctx := context.Background()
-	result := GetSubnetID(ctx)
-	require.Equal(t, ids.Empty, result)
-
-	// Test with valid context - should return NetID
-	netID := ids.GenerateTestID()
-	cc := &Context{NetID: netID}
-	ctx = WithContext(ctx, cc)
-	result = GetSubnetID(ctx)
-	require.Equal(t, netID, result)
-}
-
 func TestGetNetworkID(t *testing.T) {
 	// Test with nil context
 	ctx := context.Background()
@@ -74,18 +46,31 @@ func TestGetNetworkID(t *testing.T) {
 	require.Equal(t, uint32(0), result)
 
 	// Test with valid context
-	cc := &Context{QuantumID: 12345}
+	cc := &Context{NetworkID: 1}
 	ctx = WithContext(ctx, cc)
 	result = GetNetworkID(ctx)
-	require.Equal(t, uint32(12345), result)
+	require.Equal(t, uint32(1), result)
+}
+
+func TestGetPrimaryNetworkID(t *testing.T) {
+	// Test with nil context
+	ctx := context.Background()
+	result := GetPrimaryNetworkID(ctx)
+	require.Equal(t, ids.Empty, result)
+
+	// Test with valid context
+	primaryNetID := ids.GenerateTestID()
+	cc := &Context{PrimaryNetworkID: primaryNetID}
+	ctx = WithContext(ctx, cc)
+	result = GetPrimaryNetworkID(ctx)
+	require.Equal(t, primaryNetID, result)
 }
 
 // mockValidatorState implements ValidatorState for testing
 type mockValidatorState struct{}
 
-func (m *mockValidatorState) GetChainID(ids.ID) (ids.ID, error)                { return ids.Empty, nil }
-func (m *mockValidatorState) GetNetID(ids.ID) (ids.ID, error)                  { return ids.Empty, nil }
-func (m *mockValidatorState) GetSubnetID(chainID ids.ID) (ids.ID, error)       { return ids.Empty, nil }
+func (m *mockValidatorState) GetChainID(ids.ID) (ids.ID, error)     { return ids.Empty, nil }
+func (m *mockValidatorState) GetNetworkID(ids.ID) (ids.ID, error)   { return ids.Empty, nil }
 func (m *mockValidatorState) GetValidatorSet(uint64, ids.ID) (map[ids.NodeID]uint64, error) {
 	return nil, nil
 }
@@ -123,9 +108,9 @@ func TestGetWarpSigner(t *testing.T) {
 func TestWithContext_FromContext(t *testing.T) {
 	// Test round-trip
 	cc := &Context{
-		QuantumID: 1,
-		ChainID:   ids.GenerateTestID(),
-		NetID:     ids.GenerateTestID(),
+		NetworkID:        1,
+		PrimaryNetworkID: ids.GenerateTestID(),
+		ChainID:          ids.GenerateTestID(),
 	}
 
 	ctx := context.Background()
@@ -133,9 +118,9 @@ func TestWithContext_FromContext(t *testing.T) {
 
 	result := FromContext(ctx)
 	require.Equal(t, cc, result)
-	require.Equal(t, cc.QuantumID, result.QuantumID)
+	require.Equal(t, cc.NetworkID, result.NetworkID)
+	require.Equal(t, cc.PrimaryNetworkID, result.PrimaryNetworkID)
 	require.Equal(t, cc.ChainID, result.ChainID)
-	require.Equal(t, cc.NetID, result.NetID)
 }
 
 func TestFromContext_Nil(t *testing.T) {
@@ -165,18 +150,18 @@ func TestWithIDs_ExistingContext(t *testing.T) {
 	ctx := WithContext(context.Background(), cc)
 
 	newIDs := IDs{
-		QuantumID: 42,
-		NetID:     ids.GenerateTestID(),
-		ChainID:   ids.GenerateTestID(),
-		NodeID:    ids.GenerateTestNodeID(),
-		PublicKey: []byte("test-public-key"),
+		NetworkID:        2,
+		PrimaryNetworkID: ids.GenerateTestID(),
+		ChainID:          ids.GenerateTestID(),
+		NodeID:           ids.GenerateTestNodeID(),
+		PublicKey:        []byte("test-public-key"),
 	}
 
 	ctx = WithIDs(ctx, newIDs)
 	result := FromContext(ctx)
 
-	require.Equal(t, newIDs.QuantumID, result.QuantumID)
-	require.Equal(t, newIDs.NetID, result.NetID)
+	require.Equal(t, newIDs.NetworkID, result.NetworkID)
+	require.Equal(t, newIDs.PrimaryNetworkID, result.PrimaryNetworkID)
 	require.Equal(t, newIDs.ChainID, result.ChainID)
 	require.Equal(t, newIDs.NodeID, result.NodeID)
 	require.Equal(t, newIDs.PublicKey, result.PublicKey)
@@ -187,19 +172,19 @@ func TestWithIDs_NewContext(t *testing.T) {
 	ctx := context.Background()
 
 	newIDs := IDs{
-		QuantumID: 99,
-		NetID:     ids.GenerateTestID(),
-		ChainID:   ids.GenerateTestID(),
-		NodeID:    ids.GenerateTestNodeID(),
-		PublicKey: []byte("another-key"),
+		NetworkID:        1,
+		PrimaryNetworkID: ids.GenerateTestID(),
+		ChainID:          ids.GenerateTestID(),
+		NodeID:           ids.GenerateTestNodeID(),
+		PublicKey:        []byte("another-key"),
 	}
 
 	ctx = WithIDs(ctx, newIDs)
 	result := FromContext(ctx)
 
 	require.NotNil(t, result)
-	require.Equal(t, newIDs.QuantumID, result.QuantumID)
-	require.Equal(t, newIDs.NetID, result.NetID)
+	require.Equal(t, newIDs.NetworkID, result.NetworkID)
+	require.Equal(t, newIDs.PrimaryNetworkID, result.PrimaryNetworkID)
 	require.Equal(t, newIDs.ChainID, result.ChainID)
 	require.Equal(t, newIDs.NodeID, result.NodeID)
 	require.Equal(t, newIDs.PublicKey, result.PublicKey)
@@ -207,7 +192,7 @@ func TestWithIDs_NewContext(t *testing.T) {
 
 func TestWithValidatorState_ExistingContext(t *testing.T) {
 	// Test with existing context
-	cc := &Context{QuantumID: 1}
+	cc := &Context{NetworkID: 1}
 	ctx := WithContext(context.Background(), cc)
 
 	vs := &mockValidatorState{}
@@ -215,7 +200,7 @@ func TestWithValidatorState_ExistingContext(t *testing.T) {
 	result := FromContext(ctx)
 
 	require.Equal(t, vs, result.ValidatorState)
-	require.Equal(t, uint32(1), result.QuantumID) // Original value preserved
+	require.Equal(t, uint32(1), result.NetworkID) // Original value preserved
 }
 
 func TestWithValidatorState_NewContext(t *testing.T) {
@@ -235,18 +220,18 @@ func TestContextLock(t *testing.T) {
 
 	// Test that lock works
 	cc.Lock.Lock()
-	cc.QuantumID = 123
+	cc.NetworkID = 123
 	cc.Lock.Unlock()
 
 	cc.Lock.RLock()
-	require.Equal(t, uint32(123), cc.QuantumID)
+	require.Equal(t, uint32(123), cc.NetworkID)
 	cc.Lock.RUnlock()
 }
 
 func TestContextFields(t *testing.T) {
 	now := time.Now()
 	chainID := ids.GenerateTestID()
-	netID := ids.GenerateTestID()
+	primaryNetworkID := ids.GenerateTestID()
 	nodeID := ids.GenerateTestNodeID()
 	xChainID := ids.GenerateTestID()
 	cChainID := ids.GenerateTestID()
@@ -254,25 +239,21 @@ func TestContextFields(t *testing.T) {
 	luxAssetID := ids.GenerateTestID()
 
 	cc := &Context{
-		QuantumID:    1,
-		NetworkID:    1,
-		NetID:        netID,
-		SubnetID:     netID,
-		ChainID:      chainID,
-		NodeID:       nodeID,
-		PublicKey:    []byte("test-key"),
-		XChainID:     xChainID,
-		CChainID:     cChainID,
-		XAssetID:     xAssetID,
-		LUXAssetID:   luxAssetID,
-		ChainDataDir: "/data/chain",
-		StartTime:    now,
+		NetworkID:        1,
+		PrimaryNetworkID: primaryNetworkID,
+		ChainID:          chainID,
+		NodeID:           nodeID,
+		PublicKey:        []byte("test-key"),
+		XChainID:         xChainID,
+		CChainID:         cChainID,
+		XAssetID:         xAssetID,
+		LUXAssetID:       luxAssetID,
+		ChainDataDir:     "/data/chain",
+		StartTime:        now,
 	}
 
-	require.Equal(t, uint32(1), cc.QuantumID)
 	require.Equal(t, uint32(1), cc.NetworkID)
-	require.Equal(t, netID, cc.NetID)
-	require.Equal(t, netID, cc.SubnetID)
+	require.Equal(t, primaryNetworkID, cc.PrimaryNetworkID)
 	require.Equal(t, chainID, cc.ChainID)
 	require.Equal(t, nodeID, cc.NodeID)
 	require.Equal(t, []byte("test-key"), cc.PublicKey)
@@ -285,27 +266,25 @@ func TestContextFields(t *testing.T) {
 }
 
 func TestIDsStruct(t *testing.T) {
-	netID := ids.GenerateTestID()
+	primaryNetworkID := ids.GenerateTestID()
 	chainID := ids.GenerateTestID()
 	nodeID := ids.GenerateTestNodeID()
 	xAssetID := ids.GenerateTestID()
 	luxAssetID := ids.GenerateTestID()
 
 	i := IDs{
-		NetworkID:    1,
-		QuantumID:    2,
-		NetID:        netID,
-		ChainID:      chainID,
-		NodeID:       nodeID,
-		PublicKey:    []byte("key"),
-		XAssetID:     xAssetID,
-		LUXAssetID:   luxAssetID,
-		ChainDataDir: "/data",
+		NetworkID:        1,
+		PrimaryNetworkID: primaryNetworkID,
+		ChainID:          chainID,
+		NodeID:           nodeID,
+		PublicKey:        []byte("key"),
+		XAssetID:         xAssetID,
+		LUXAssetID:       luxAssetID,
+		ChainDataDir:     "/data",
 	}
 
 	require.Equal(t, uint32(1), i.NetworkID)
-	require.Equal(t, uint32(2), i.QuantumID)
-	require.Equal(t, netID, i.NetID)
+	require.Equal(t, primaryNetworkID, i.PrimaryNetworkID)
 	require.Equal(t, chainID, i.ChainID)
 	require.Equal(t, nodeID, i.NodeID)
 	require.Equal(t, []byte("key"), i.PublicKey)
