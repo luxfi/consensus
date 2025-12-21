@@ -69,15 +69,14 @@ func Context(tb testing.TB, chainID ids.ID) *consensus.Context {
 	tb.Helper()
 
 	ctx := &consensus.Context{
-		QuantumID:  369, // Use UnitTestID for quantum/network ID
-		NetworkID:  369, // Use UnitTestID for unit tests
-		ChainID:    chainID,
-		NodeID:     ids.GenerateTestNodeID(),
-		NetID:      ids.Empty,
-		XChainID:   XChainID,
-		CChainID:   CChainID,
-		XAssetID:   XAssetID,
-		LUXAssetID: XAssetID, // Use XAssetID as default LUX asset
+		NetworkID:        1, // Mainnet
+		PrimaryNetworkID: ids.Empty, // Primary network
+		ChainID:          chainID,
+		NodeID:           ids.GenerateTestNodeID(),
+		XChainID:         XChainID,
+		CChainID:         CChainID,
+		XAssetID:         XAssetID,
+		LUXAssetID:       XAssetID, // Use XAssetID as default LUX asset
 	}
 
 	// Set up a simple validator state
