@@ -9,12 +9,13 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 require (
 	github.com/luxfi/crypto v1.17.24
 	github.com/luxfi/database v1.2.12
-	github.com/luxfi/geth v1.16.53
+	github.com/luxfi/geth v1.16.56
 	github.com/luxfi/ids v1.2.4
 	github.com/luxfi/log v1.1.26
 	github.com/luxfi/math v1.0.2
 	github.com/luxfi/node v1.22.14
 	github.com/luxfi/p2p v1.4.7
+	github.com/luxfi/ringtail v0.1.1
 	github.com/luxfi/vm v1.0.0
 	github.com/luxfi/warp v1.16.37
 	github.com/prometheus/client_golang v1.23.2
@@ -25,6 +26,7 @@ require (
 )
 
 require (
+	github.com/ALTree/bigfloat v0.2.0 // indirect
 	github.com/DataDog/zstd v1.5.7 // indirect
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -53,15 +55,19 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gorilla/rpc v1.2.1 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/luxfi/cache v1.0.0 // indirect
+	github.com/luxfi/lattice/v6 v6.1.1 // indirect
 	github.com/luxfi/metric v1.4.8 // indirect
 	github.com/luxfi/mock v0.1.0 // indirect
 	github.com/luxfi/utils v1.0.0 // indirect
+	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -71,6 +77,7 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/supranational/blst v0.3.16 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20220614013038-64ee5596c38a // indirect
+	github.com/zeebo/blake3 v0.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel v1.37.0 // indirect
 	go.opentelemetry.io/otel/metric v1.37.0 // indirect
