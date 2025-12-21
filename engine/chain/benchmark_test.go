@@ -119,7 +119,7 @@ func (e *BenchmarkEngine) Reset() {
 func BenchmarkAddSingleBlock(b *testing.B) {
 	engine := NewBenchmarkEngine()
 	ctx := context.Background()
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	parent := chaintest.Genesis
 
@@ -149,7 +149,7 @@ func BenchmarkAddBlockBatch10000(b *testing.B) {
 func benchmarkAddBlockBatch(b *testing.B, batchSize int) {
 	engine := NewBenchmarkEngine()
 	ctx := context.Background()
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	// Pre-generate blocks
 	blocks := make([]*chaintest.TestBlock, batchSize)
@@ -164,7 +164,7 @@ func benchmarkAddBlockBatch(b *testing.B, batchSize int) {
 
 	for i := 0; i < b.N; i++ {
 		engine.Reset()
-		_ = engine.Start(ctx, 1)
+		_ = engine.Start(ctx, true)
 
 		for _, block := range blocks {
 			_ = engine.AddBlock(block)
@@ -176,7 +176,7 @@ func benchmarkAddBlockBatch(b *testing.B, batchSize int) {
 func BenchmarkProcessSingleVote(b *testing.B) {
 	engine := NewBenchmarkEngine()
 	ctx := context.Background()
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	block := chaintest.BuildChild(chaintest.Genesis)
 	_ = engine.AddBlock(block)
@@ -202,7 +202,7 @@ func BenchmarkProcessVoteBatch1000(b *testing.B) {
 func benchmarkProcessVoteBatch(b *testing.B, voteCount int) {
 	engine := NewBenchmarkEngine()
 	ctx := context.Background()
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	// Create multiple blocks
 	blocks := make([]*chaintest.TestBlock, 10)
@@ -252,7 +252,7 @@ func BenchmarkChainReorgVeryDeep(b *testing.B) {
 func benchmarkChainReorg(b *testing.B, chainLength int, reorgDepth int) {
 	engine := NewBenchmarkEngine()
 	ctx := context.Background()
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	// Build main chain
 	mainChain := make([]*chaintest.TestBlock, chainLength)
@@ -294,7 +294,7 @@ func benchmarkChainReorg(b *testing.B, chainLength int, reorgDepth int) {
 func BenchmarkFinalizationCheck(b *testing.B) {
 	engine := NewBenchmarkEngine()
 	ctx := context.Background()
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	// Create blocks with varying finalization status
 	blocks := make([]*chaintest.TestBlock, 1000)
@@ -324,7 +324,7 @@ func BenchmarkFinalizationCheck(b *testing.B) {
 func BenchmarkConcurrentBlockOperations(b *testing.B) {
 	engine := NewBenchmarkEngine()
 	ctx := context.Background()
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	// Number of concurrent goroutines
 	concurrency := 10
@@ -359,7 +359,7 @@ func BenchmarkConcurrentBlockOperations(b *testing.B) {
 
 		wg.Wait()
 		engine.Reset()
-		_ = engine.Start(ctx, 1)
+		_ = engine.Start(ctx, true)
 	}
 }
 
@@ -367,7 +367,7 @@ func BenchmarkConcurrentBlockOperations(b *testing.B) {
 func BenchmarkMixedOperations(b *testing.B) {
 	engine := NewBenchmarkEngine()
 	ctx := context.Background()
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	// Pre-generate data
 	blocks := make([]*chaintest.TestBlock, 100)
@@ -387,7 +387,7 @@ func BenchmarkMixedOperations(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		engine.Reset()
-		_ = engine.Start(ctx, 1)
+		_ = engine.Start(ctx, true)
 
 		// Simulate realistic consensus workflow
 		for j, block := range blocks {
@@ -422,7 +422,7 @@ func BenchmarkEngineStartStop(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		engine := NewBenchmarkEngine()
-		_ = engine.Start(ctx, uint32(i))
+		_ = engine.Start(ctx, true)
 
 		// Add some blocks to make it realistic
 		parent := chaintest.Genesis
@@ -440,7 +440,7 @@ func BenchmarkEngineStartStop(b *testing.B) {
 func BenchmarkHealthCheck(b *testing.B) {
 	engine := NewBenchmarkEngine()
 	ctx := context.Background()
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	// Add some state
 	parent := chaintest.Genesis
@@ -512,7 +512,7 @@ func BenchmarkMemoryUsageLargeChain(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		engine := NewBenchmarkEngine()
 		ctx := context.Background()
-		_ = engine.Start(ctx, 1)
+		_ = engine.Start(ctx, true)
 
 		// Build a large chain
 		parent := chaintest.Genesis
@@ -548,7 +548,7 @@ func BenchmarkBlockAdditionTable(b *testing.B) {
 func BenchmarkGetBlock(b *testing.B) {
 	engine := New()
 	ctx := context.Background()
-	_ = engine.Start(ctx, 1)
+	_ = engine.Start(ctx, true)
 
 	// Pre-generate block IDs
 	blockIDs := make([]ids.ID, 1000)
@@ -579,7 +579,7 @@ func BenchmarkBootstrapping(b *testing.B) {
 		ctx := context.Background()
 
 		// Start triggers bootstrapping
-		_ = engine.Start(ctx, uint32(i))
+		_ = engine.Start(ctx, true)
 
 		// Verify bootstrapped
 		if !engine.IsBootstrapped() {
