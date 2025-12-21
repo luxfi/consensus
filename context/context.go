@@ -11,13 +11,11 @@ import (
 
 // Context provides consensus context for VMs
 type Context struct {
-	// QuantumID is the root quantum network identifier
-	QuantumID uint32 `json:"quantumID"`
-	// NetworkID is an alias for QuantumID for backward compatibility
+	// NetworkID is the numeric network identifier (1=mainnet, 2=testnet)
+	// EVM chain IDs are derived: mainnet=96369, testnet=96368
 	NetworkID uint32 `json:"networkID"`
-	// NetID identifies the specific network/subnet within the quantum network
-	NetID    ids.ID `json:"netID"`
-	SubnetID ids.ID `json:"subnetID"` // Alias for NetID
+	// PrimaryNetworkID identifies if chain is in primary network (ids.Empty = primary)
+	PrimaryNetworkID ids.ID `json:"primaryNetworkID"`
 	// ChainID identifies the specific chain within the network
 	ChainID      ids.ID     `json:"chainID"`
 	NodeID       ids.NodeID `json:"nodeID"`
@@ -55,8 +53,7 @@ type BCLookup interface {
 // This is kept as a minimal interface for compatibility with node package
 type ValidatorState interface {
 	GetChainID(ids.ID) (ids.ID, error)
-	GetNetID(ids.ID) (ids.ID, error)
-	GetSubnetID(chainID ids.ID) (ids.ID, error)
+	GetNetworkID(ids.ID) (ids.ID, error)
 	GetValidatorSet(uint64, ids.ID) (map[ids.NodeID]uint64, error)
 	GetCurrentHeight(context.Context) (uint64, error)
 	GetMinimumHeight(context.Context) (uint64, error)
@@ -96,28 +93,20 @@ func GetChainID(ctx context.Context) ids.ID {
 	return ids.Empty
 }
 
-// GetNetID gets the network ID from context
-func GetNetID(ctx context.Context) ids.ID {
-	if c, ok := ctx.Value(contextKey).(*Context); ok {
-		return c.NetID
-	}
-	return ids.Empty
-}
-
-// Deprecated: GetSubnetID is deprecated, use GetNetID instead
-func GetSubnetID(ctx context.Context) ids.ID {
-	if c, ok := ctx.Value(contextKey).(*Context); ok {
-		return c.NetID
-	}
-	return ids.Empty
-}
-
-// GetNetworkID gets the network ID from context
+// GetNetworkID gets the numeric network ID from context (1=mainnet, 2=testnet)
 func GetNetworkID(ctx context.Context) uint32 {
 	if c, ok := ctx.Value(contextKey).(*Context); ok {
-		return c.QuantumID
+		return c.NetworkID
 	}
 	return 0
+}
+
+// GetPrimaryNetworkID gets the primary network ID (ids.Empty = primary network)
+func GetPrimaryNetworkID(ctx context.Context) ids.ID {
+	if c, ok := ctx.Value(contextKey).(*Context); ok {
+		return c.PrimaryNetworkID
+	}
+	return ids.Empty
 }
 
 // GetValidatorState gets the validator state from context
@@ -161,15 +150,14 @@ func GetNodeID(ctx context.Context) ids.NodeID {
 
 // IDs holds the IDs for consensus context
 type IDs struct {
-	NetworkID    uint32
-	QuantumID    uint32
-	NetID        ids.ID
-	ChainID      ids.ID
-	NodeID       ids.NodeID
-	PublicKey    []byte
-	XAssetID     ids.ID
-	LUXAssetID   ids.ID `json:"luxAssetID"`
-	ChainDataDir string `json:"chainDataDir"`
+	NetworkID        uint32
+	PrimaryNetworkID ids.ID
+	ChainID          ids.ID
+	NodeID           ids.NodeID
+	PublicKey        []byte
+	XAssetID         ids.ID
+	LUXAssetID       ids.ID `json:"luxAssetID"`
+	ChainDataDir     string `json:"chainDataDir"`
 }
 
 // WithIDs adds IDs to the context
@@ -178,8 +166,8 @@ func WithIDs(ctx context.Context, ids IDs) context.Context {
 	if c == nil {
 		c = &Context{}
 	}
-	c.QuantumID = ids.QuantumID
-	c.NetID = ids.NetID
+	c.NetworkID = ids.NetworkID
+	c.PrimaryNetworkID = ids.PrimaryNetworkID
 	c.ChainID = ids.ChainID
 	c.NodeID = ids.NodeID
 	c.PublicKey = ids.PublicKey
