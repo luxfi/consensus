@@ -708,8 +708,8 @@ func TestHybrid_AggregateSignatures_Success(t *testing.T) {
 		t.Error("expected non-empty BLS aggregate")
 	}
 
-	if len(aggSig.RingtailSigs) != 2 {
-		t.Errorf("expected 2 ringtail sigs, got %d", len(aggSig.RingtailSigs))
+	if len(aggSig.ValidatorIDs) != 2 {
+		t.Errorf("expected 2 validator IDs, got %d", len(aggSig.ValidatorIDs))
 	}
 }
 
@@ -740,7 +740,7 @@ func TestHybrid_VerifyAggregatedSignature_InsufficientSigners(t *testing.T) {
 	// Create aggregated sig with only 2 signers
 	aggSig := &AggregatedSignature{
 		BLSAggregated: []byte{1, 2, 3},
-		RingtailSigs:  []RingtailSignature{{}, {}},
+		ValidatorIDs:  []string{"v1", "v2"},
 		SignerCount:   2, // Below threshold
 	}
 
@@ -756,7 +756,7 @@ func TestHybrid_VerifyAggregatedSignature_InvalidBLS(t *testing.T) {
 
 	aggSig := &AggregatedSignature{
 		BLSAggregated: []byte{1, 2, 3}, // Invalid BLS bytes
-		RingtailSigs:  []RingtailSignature{{ValidatorID: "v1"}},
+		ValidatorIDs:  []string{"v1"},
 		SignerCount:   1,
 	}
 
@@ -778,7 +778,7 @@ func TestHybrid_VerifyAggregatedSignature_InactiveValidator(t *testing.T) {
 	sig, _ := h.SignMessage("v1", []byte("test"))
 	aggSig := &AggregatedSignature{
 		BLSAggregated: sig.BLS,
-		RingtailSigs:  []RingtailSignature{{ValidatorID: "v1", Signature: sig.Ringtail}},
+		ValidatorIDs:  []string{"v1"},
 		SignerCount:   1,
 	}
 
@@ -2132,24 +2132,24 @@ func TestEngine_FinalizedChannel_BufferFull(t *testing.T) {
 	// Just ensure no panic occurred
 }
 
-func TestHybrid_SignMessageWithContext_RingtailKeysNotFound(t *testing.T) {
+func TestHybrid_SignMessageWithContext_ValidatorNotFound(t *testing.T) {
 	h, err := NewHybrid(1)
 	if err != nil {
 		t.Fatalf("NewHybrid failed: %v", err)
 	}
 
-	// Add validator but then remove ringtail keys manually
+	// Add validator but then remove it manually
 	_ = h.AddValidator("v1", 100)
 
-	// Remove ringtail keys
+	// Remove validator keys
 	h.mu.Lock()
-	delete(h.ringtailKeys, "v1")
+	delete(h.blsKeys, "v1")
 	h.mu.Unlock()
 
-	// Try to sign - should fail due to missing ringtail keys
+	// Try to sign - should fail due to missing keys
 	_, err = h.SignMessage("v1", []byte("test"))
 	if err == nil {
-		t.Error("expected error for missing ringtail keys")
+		t.Error("expected error for missing validator keys")
 	}
 }
 
@@ -2221,13 +2221,11 @@ func TestHybrid_VerifyAggregatedSignatureWithContext_AllErrorPaths(t *testing.T)
 		t.Error("expected false for cancelled context")
 	}
 
-	// Test with validator that doesn't exist in RingtailSigs
+	// Test with validator that doesn't exist
 	aggSig2 := &AggregatedSignature{
 		BLSAggregated: sig.BLS,
-		RingtailSigs: []RingtailSignature{
-			{ValidatorID: "nonexistent", Signature: sig.Ringtail},
-		},
-		SignerCount: 1,
+		ValidatorIDs:  []string{"nonexistent"},
+		SignerCount:   1,
 	}
 
 	result = h.VerifyAggregatedSignature(msg, aggSig2)
@@ -2499,15 +2497,13 @@ func TestHybrid_VerifyAggregatedSignature_PublicKeyAggregationError(t *testing.T
 	// This should fail at public key lookup
 	aggSig := &AggregatedSignature{
 		BLSAggregated: sig.BLS,
-		RingtailSigs: []RingtailSignature{
-			{ValidatorID: "nonexistent", Signature: sig.Ringtail},
-		},
-		SignerCount: 1,
+		ValidatorIDs:  []string{"nonexistent"},
+		SignerCount:   1,
 	}
 
 	result := h.VerifyAggregatedSignature(msg, aggSig)
 	if result {
-		t.Error("expected false for nonexistent validator in RingtailSigs")
+		t.Error("expected false for nonexistent validator")
 	}
 }
 
@@ -2531,7 +2527,7 @@ func TestHybrid_VerifyAggregatedSignature_BLSVerifyFail(t *testing.T) {
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignature_RingtailVerifyFail(t *testing.T) {
+func TestHybrid_VerifyAggregatedSignature_BLSSignatureTamperedFail(t *testing.T) {
 	h, err := NewHybrid(1)
 	if err != nil {
 		t.Fatalf("NewHybrid failed: %v", err)
@@ -2545,14 +2541,14 @@ func TestHybrid_VerifyAggregatedSignature_RingtailVerifyFail(t *testing.T) {
 	sig2, _ := h.SignMessage("v2", msg)
 	aggSig, _ := h.AggregateSignatures(msg, []*HybridSignature{sig1, sig2})
 
-	// Corrupt the ringtail signature
-	for i := range aggSig.RingtailSigs {
-		aggSig.RingtailSigs[i].Signature = []byte{0, 0, 0} // Wrong signature
+	// Corrupt the BLS signature
+	if len(aggSig.BLSAggregated) > 0 {
+		aggSig.BLSAggregated[0] ^= 0xFF // Tamper with signature
 	}
 
 	result := h.VerifyAggregatedSignature(msg, aggSig)
 	if result {
-		t.Error("expected false for corrupted ringtail signature")
+		t.Error("expected false for corrupted BLS signature")
 	}
 }
 
@@ -2894,7 +2890,7 @@ func TestHybrid_ThresholdMode_NewHybridWithThreshold(t *testing.T) {
 		GroupKey:     groupKey,
 	}
 
-	h, err := NewHybridWithThreshold(config)
+	h, err := NewHybridWithThresholdConfig(config)
 	if err != nil {
 		t.Fatalf("NewHybridWithThreshold failed: %v", err)
 	}
@@ -2937,7 +2933,7 @@ func TestHybrid_ThresholdMode_SignAndVerify(t *testing.T) {
 		GroupKey:     groupKey,
 	}
 
-	h, err := NewHybridWithThreshold(config)
+	h, err := NewHybridWithThresholdConfig(config)
 	if err != nil {
 		t.Fatalf("NewHybridWithThreshold failed: %v", err)
 	}
@@ -3009,7 +3005,7 @@ func TestHybrid_ThresholdMode_InsufficientShares(t *testing.T) {
 		GroupKey:     groupKey,
 	}
 
-	h, err := NewHybridWithThreshold(config)
+	h, err := NewHybridWithThresholdConfig(config)
 	if err != nil {
 		t.Fatalf("NewHybridWithThreshold failed: %v", err)
 	}
@@ -3080,9 +3076,9 @@ func TestHybrid_ThresholdMode_AddValidatorThreshold(t *testing.T) {
 		GroupKey:     groupKey,
 	}
 
-	h, err := NewHybridWithThreshold(config)
+	h, err := NewHybridWithThresholdConfig(config)
 	if err != nil {
-		t.Fatalf("NewHybridWithThreshold failed: %v", err)
+		t.Fatalf("NewHybridWithThresholdConfig failed: %v", err)
 	}
 
 	// Add third validator dynamically
