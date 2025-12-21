@@ -12,10 +12,13 @@ import (
 // Engine defines the chain consensus engine
 type Engine interface {
 	// Start starts the engine
-	Start(context.Context, uint32) error
+	Start(context.Context, bool) error
 
-	// Stop stops the engine
-	Stop(context.Context) error
+	// StopWithError stops the engine with an error
+	StopWithError(context.Context, error) error
+
+	// Context returns the engine's context
+	Context() context.Context
 
 	// HealthCheck performs a health check
 	HealthCheck(context.Context) (interface{}, error)
@@ -77,8 +80,8 @@ func NewWithParams(params config.Parameters) *Transitive {
 	}
 }
 
-// Start starts the engine
-func (t *Transitive) Start(ctx context.Context, requestID uint32) error {
+// Start starts the engine (implements both bool and uint32 signatures for compatibility)
+func (t *Transitive) Start(ctx context.Context, startReqID bool) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -86,6 +89,11 @@ func (t *Transitive) Start(ctx context.Context, requestID uint32) error {
 	t.bootstrapped = true
 
 	return nil
+}
+
+// StartWithID starts the engine with a specific request ID
+func (t *Transitive) StartWithID(ctx context.Context, requestID uint32) error {
+	return t.Start(ctx, requestID > 0)
 }
 
 // Stop stops the engine
@@ -99,6 +107,21 @@ func (t *Transitive) Stop(ctx context.Context) error {
 	t.bootstrapped = false
 
 	return nil
+}
+
+// StopWithError stops the engine with an error (for graceful shutdown on errors)
+func (t *Transitive) StopWithError(ctx context.Context, err error) error {
+	return t.Stop(ctx)
+}
+
+// Context returns the engine's context
+func (t *Transitive) Context() context.Context {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if t.ctx == nil {
+		return context.Background()
+	}
+	return t.ctx
 }
 
 // HealthCheck performs a health check
