@@ -92,7 +92,6 @@ var (
 // Context accessor functions re-exported from context package
 var (
 	GetNetworkID      = consensuscontext.GetNetworkID
-	GetSubnetID       = consensuscontext.GetSubnetID
 	GetValidatorState = consensuscontext.GetValidatorState
 	WithContext       = consensuscontext.WithContext
 	FromContext       = consensuscontext.FromContext
