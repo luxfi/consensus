@@ -63,7 +63,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/luxfi/cache v1.0.0 // indirect
-	github.com/luxfi/lattice/v6 v6.1.1 // indirect
+	github.com/luxfi/lattice/v6 v6.1.2 // indirect
 	github.com/luxfi/metric v1.4.8 // indirect
 	github.com/luxfi/mock v0.1.0 // indirect
 	github.com/luxfi/utils v1.0.0 // indirect
