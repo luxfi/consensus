@@ -8,15 +8,15 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
 	github.com/luxfi/crypto v1.17.25
-	github.com/luxfi/database v1.2.15
+	github.com/luxfi/database v1.2.16
 	github.com/luxfi/geth v1.16.60
 	github.com/luxfi/ids v1.2.5
 	github.com/luxfi/log v1.1.26
-	github.com/luxfi/math v1.0.5
-	github.com/luxfi/p2p v1.5.0
+	github.com/luxfi/math v1.2.0
+	github.com/luxfi/p2p v1.18.2
 	github.com/luxfi/ringtail v0.1.1
 	github.com/luxfi/vm v1.0.1
-	github.com/luxfi/warp v1.18.0
+	github.com/luxfi/warp v1.18.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
@@ -55,7 +55,6 @@ require (
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/gorilla/rpc v1.2.1 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
@@ -65,7 +64,6 @@ require (
 	github.com/luxfi/lattice/v6 v6.1.2 // indirect
 	github.com/luxfi/metric v1.4.8 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
-	github.com/luxfi/utils v1.0.3 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
