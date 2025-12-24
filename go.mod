@@ -65,7 +65,7 @@ require (
 	github.com/luxfi/lattice/v6 v6.1.2 // indirect
 	github.com/luxfi/metric v1.4.8 // indirect
 	github.com/luxfi/mock v0.1.0 // indirect
-	github.com/luxfi/node v1.22.60 // indirect
+	github.com/luxfi/node v1.22.14 // indirect
 	github.com/luxfi/utils v1.0.0 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
