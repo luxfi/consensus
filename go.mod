@@ -8,16 +8,15 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
 	github.com/luxfi/crypto v1.17.25
-	github.com/luxfi/database v1.2.12
-	github.com/luxfi/geth v1.16.56
-	github.com/luxfi/ids v1.2.4
+	github.com/luxfi/database v1.2.14
+	github.com/luxfi/geth v1.16.60
+	github.com/luxfi/ids v1.2.5
 	github.com/luxfi/log v1.1.26
-	github.com/luxfi/math v1.0.2
-	github.com/luxfi/node v1.22.14
-	github.com/luxfi/p2p v1.4.7
+	github.com/luxfi/math v1.1.1
+	github.com/luxfi/p2p v1.5.0
 	github.com/luxfi/ringtail v0.1.1
-	github.com/luxfi/vm v1.0.0
-	github.com/luxfi/warp v1.16.37
+	github.com/luxfi/vm v1.0.1
+	github.com/luxfi/warp v1.18.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
@@ -66,6 +65,7 @@ require (
 	github.com/luxfi/lattice/v6 v6.1.2 // indirect
 	github.com/luxfi/metric v1.4.8 // indirect
 	github.com/luxfi/mock v0.1.0 // indirect
+	github.com/luxfi/node v1.22.60 // indirect
 	github.com/luxfi/utils v1.0.0 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
