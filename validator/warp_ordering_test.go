@@ -9,7 +9,7 @@ import (
 
 	"github.com/luxfi/ids"
 	mathset "github.com/luxfi/math/set"
-	"github.com/luxfi/node/utils/crypto/bls"
+	"github.com/luxfi/crypto/bls"
 	"github.com/stretchr/testify/require"
 )
 
