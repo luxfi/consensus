@@ -7,7 +7,6 @@ require github.com/luxfi/dex v0.0.0
 require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	golang.org/x/net v0.48.0 // indirect
 )
 

@@ -7,9 +7,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
-
-	"golang.org/x/exp/maps"
 
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/ids"
@@ -101,7 +100,7 @@ func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalVa
 	}
 
 	// Sort validators by public key
-	vdrList := maps.Values(pkToValidator)
+	vdrList := slices.Collect(maps.Values(pkToValidator))
 	slices.SortFunc(vdrList, (*CanonicalValidator).Compare)
 	return CanonicalValidatorSet{Validators: vdrList, TotalWeight: totalWeight}, nil
 }
