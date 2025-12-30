@@ -1,10 +1,11 @@
 package types
 
-import "golang.org/x/exp/constraints"
-
-// Number represents numeric types for consensus operations
+// Number represents numeric types for consensus operations.
+// Includes all integer and floating point types.
 type Number interface {
-	constraints.Integer | constraints.Float
+	~int | ~int8 | ~int16 | ~int32 | ~int64 |
+		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr |
+		~float32 | ~float64
 }
 
 // Round represents a consensus round number
