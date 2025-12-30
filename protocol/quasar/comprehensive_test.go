@@ -244,10 +244,23 @@ func TestBLS_CreateHorizonSignature(t *testing.T) {
 		t.Error("expected non-empty signature")
 	}
 
-	// Signature should contain key material and checkpoint
-	expectedMinLen := len(q.blsKey) + len(q.pqKey) + len(checkpoint)
-	if len(sig) != expectedMinLen {
-		t.Errorf("expected signature length %d, got %d", expectedMinLen, len(sig))
+	// Fusion signature: 32-byte BLS hash + 32-byte PQ hash = 64 bytes
+	expectedLen := 64
+	if len(sig) != expectedLen {
+		t.Errorf("expected signature length %d, got %d", expectedLen, len(sig))
+	}
+
+	// Verify determinism: same inputs should produce same signature
+	sig2 := q.createHorizonSignature(checkpoint, validators)
+	if string(sig) != string(sig2) {
+		t.Error("signature should be deterministic")
+	}
+
+	// Verify different checkpoint produces different signature
+	checkpoint2 := VertexID{4, 5, 6}
+	sig3 := q.createHorizonSignature(checkpoint2, validators)
+	if string(sig) == string(sig3) {
+		t.Error("different checkpoints should produce different signatures")
 	}
 }
 
