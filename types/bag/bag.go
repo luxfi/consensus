@@ -8,9 +8,9 @@ package bag
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
-
-	"golang.org/x/exp/maps"
 
 	"github.com/luxfi/math/set"
 )
@@ -111,7 +111,7 @@ func (b *Bag[_]) Len() int {
 // List returns a list of unique elements that have been added.
 // The returned list doesn't have duplicates.
 func (b *Bag[T]) List() []T {
-	return maps.Keys(b.counts)
+	return slices.Collect(maps.Keys(b.counts))
 }
 
 // Equals returns true if the bags contain the same elements
