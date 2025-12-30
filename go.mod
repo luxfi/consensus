@@ -8,12 +8,12 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
 	github.com/luxfi/crypto v1.17.25
-	github.com/luxfi/database v1.2.16
-	github.com/luxfi/geth v1.16.60
+	github.com/luxfi/database v1.2.11
+	github.com/luxfi/geth v1.16.53
 	github.com/luxfi/ids v1.2.5
 	github.com/luxfi/log v1.1.26
 	github.com/luxfi/math v1.2.0
-	github.com/luxfi/p2p v1.18.2
+	github.com/luxfi/p2p v1.4.6
 	github.com/luxfi/ringtail v0.1.1
 	github.com/luxfi/vm v1.0.1
 	github.com/luxfi/warp v1.18.2
@@ -21,7 +21,6 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0
-	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b
 )
 
 require (
@@ -55,20 +54,20 @@ require (
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/gorilla/rpc v1.2.1 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/luxfi/cache v1.0.0 // indirect
-	github.com/luxfi/lattice/v6 v6.1.2 // indirect
+	github.com/luxfi/lattice/v6 v6.1.3 // indirect
 	github.com/luxfi/metric v1.4.8 // indirect
+	github.com/luxfi/node v1.22.14 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/onsi/gomega v1.38.0 // indirect
-	github.com/pingcap/errors v0.11.5-0.20210425183316-da1aaba5fb63 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/common v0.67.4 // indirect
@@ -81,12 +80,12 @@ require (
 	go.opentelemetry.io/otel v1.37.0 // indirect
 	go.opentelemetry.io/otel/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
-	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
+	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
@@ -99,3 +98,7 @@ require (
 exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 
 exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
+
+replace github.com/luxfi/crypto => ../crypto
+
+replace github.com/luxfi/ringtail => ../ringtail
