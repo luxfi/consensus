@@ -12,6 +12,17 @@ import (
 	"github.com/luxfi/ids"
 )
 
+// UTXO represents an unspent transaction output identifier
+type UTXO struct {
+	TxID        ids.ID // Transaction that created this output
+	OutputIndex uint32 // Index of the output in the transaction
+}
+
+// String returns a string representation of the UTXO
+func (u UTXO) String() string {
+	return fmt.Sprintf("%s:%d", u.TxID, u.OutputIndex)
+}
+
 // Vertex represents a vertex in the DAG
 type Vertex struct {
 	id        ids.ID
@@ -19,6 +30,10 @@ type Vertex struct {
 	height    uint64
 	timestamp int64
 	data      []byte
+
+	// Transaction inputs/outputs for conflict detection
+	inputs  []UTXO // UTXOs consumed by this vertex's transactions
+	outputs []UTXO // UTXOs created by this vertex's transactions
 
 	// Consensus state - using Lux consensus with Prism DAG protocol
 	mu           sync.RWMutex
@@ -40,12 +55,56 @@ func NewVertex(id ids.ID, parentIDs []ids.ID, height uint64, timestamp int64, da
 		height:     height,
 		timestamp:  timestamp,
 		data:       data,
+		inputs:     make([]UTXO, 0),
+		outputs:    make([]UTXO, 0),
 		accepted:   false,
 		rejected:   false,
 		processing: false,
 		parents:    make([]*Vertex, 0),
 		children:   make([]*Vertex, 0),
 	}
+}
+
+// NewVertexWithInputs creates a new vertex with specified inputs (UTXOs being spent)
+func NewVertexWithInputs(id ids.ID, parentIDs []ids.ID, height uint64, timestamp int64, data []byte, inputs []UTXO) *Vertex {
+	v := NewVertex(id, parentIDs, height, timestamp, data)
+	v.inputs = make([]UTXO, len(inputs))
+	copy(v.inputs, inputs)
+	return v
+}
+
+// SetInputs sets the UTXOs consumed by this vertex
+func (v *Vertex) SetInputs(inputs []UTXO) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.inputs = make([]UTXO, len(inputs))
+	copy(v.inputs, inputs)
+}
+
+// Inputs returns the UTXOs consumed by this vertex
+func (v *Vertex) Inputs() []UTXO {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	result := make([]UTXO, len(v.inputs))
+	copy(result, v.inputs)
+	return result
+}
+
+// SetOutputs sets the UTXOs created by this vertex
+func (v *Vertex) SetOutputs(outputs []UTXO) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.outputs = make([]UTXO, len(outputs))
+	copy(v.outputs, outputs)
+}
+
+// Outputs returns the UTXOs created by this vertex
+func (v *Vertex) Outputs() []UTXO {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	result := make([]UTXO, len(v.outputs))
+	copy(result, v.outputs)
+	return result
 }
 
 // ID returns the vertex ID
