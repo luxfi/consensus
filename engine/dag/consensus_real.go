@@ -6,6 +6,7 @@ package dag
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/luxfi/consensus/engine"
@@ -26,6 +27,13 @@ type DAGConsensus struct {
 	frontier   map[ids.ID]bool // Current frontier (vertices with no unprocessed children)
 	processing map[ids.ID]bool // Vertices currently being processed
 
+	// Conflict tracking - maps UTXO to vertices that spend it
+	// Key: "txID:outputIndex" string representation of UTXO
+	inputIndex map[string][]ids.ID
+
+	// Conflict sets - maps vertex ID to set of conflicting vertex IDs
+	conflictSets map[ids.ID]map[ids.ID]bool
+
 	// Consensus tracking
 	bootstrapped bool
 	lastAccepted ids.ID
@@ -34,12 +42,14 @@ type DAGConsensus struct {
 // NewDAGConsensus creates a real consensus engine for DAG
 func NewDAGConsensus(k, alpha, beta int) *DAGConsensus {
 	return &DAGConsensus{
-		k:          k,
-		alpha:      alpha,
-		beta:       beta,
-		vertices:   make(map[ids.ID]*Vertex),
-		frontier:   make(map[ids.ID]bool),
-		processing: make(map[ids.ID]bool),
+		k:            k,
+		alpha:        alpha,
+		beta:         beta,
+		vertices:     make(map[ids.ID]*Vertex),
+		frontier:     make(map[ids.ID]bool),
+		processing:   make(map[ids.ID]bool),
+		inputIndex:   make(map[string][]ids.ID),
+		conflictSets: make(map[ids.ID]map[ids.ID]bool),
 	}
 }
 
@@ -60,6 +70,30 @@ func (d *DAGConsensus) AddVertex(ctx context.Context, vertex *Vertex) error {
 
 	// Initialize Lux consensus for this vertex using Photon → Wave → Prism (DAG refraction)
 	vertex.SetLuxConsensus(engine.NewLuxConsensus(d.k, d.alpha, d.beta))
+
+	// Register inputs in the conflict graph for double-spend detection
+	vertexID := vertex.ID()
+	inputs := vertex.Inputs()
+	for _, input := range inputs {
+		inputKey := input.String()
+
+		// Get existing vertices that spend this input
+		existingSpenders := d.inputIndex[inputKey]
+
+		// Register conflicts with all existing spenders
+		for _, spenderID := range existingSpenders {
+			// Skip if the spender is already accepted (the input is spent)
+			if spender, ok := d.vertices[spenderID]; ok && spender.IsAccepted() {
+				continue
+			}
+
+			// Add bidirectional conflict
+			d.addConflict(vertexID, spenderID)
+		}
+
+		// Add this vertex to the input index
+		d.inputIndex[inputKey] = append(d.inputIndex[inputKey], vertexID)
+	}
 
 	// Add to vertices map
 	d.vertices[vertex.ID()] = vertex
@@ -87,6 +121,20 @@ func (d *DAGConsensus) AddVertex(ctx context.Context, vertex *Vertex) error {
 	d.frontier[vertex.ID()] = true
 
 	return nil
+}
+
+// addConflict registers a bidirectional conflict between two vertices
+// Must be called with d.mu held
+func (d *DAGConsensus) addConflict(v1, v2 ids.ID) {
+	if d.conflictSets[v1] == nil {
+		d.conflictSets[v1] = make(map[ids.ID]bool)
+	}
+	d.conflictSets[v1][v2] = true
+
+	if d.conflictSets[v2] == nil {
+		d.conflictSets[v2] = make(map[ids.ID]bool)
+	}
+	d.conflictSets[v2][v1] = true
 }
 
 // ProcessVote processes a vote for a vertex
@@ -227,6 +275,8 @@ func (d *DAGConsensus) GetVertex(vertexID ids.ID) (*Vertex, bool) {
 }
 
 // Frontier returns the current frontier vertices
+// CRITICAL FIX: Sort by ID to ensure deterministic tip selection
+// Non-deterministic map iteration causes consensus failures
 func (d *DAGConsensus) Frontier() []ids.ID {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -235,6 +285,13 @@ func (d *DAGConsensus) Frontier() []ids.ID {
 	for vertexID := range d.frontier {
 		result = append(result, vertexID)
 	}
+
+	// CRITICAL: Sort IDs to ensure deterministic ordering
+	// Map iteration order is non-deterministic in Go, which would cause
+	// different nodes to build blocks with different parent sets
+	slices.SortFunc(result, func(a, b ids.ID) int {
+		return a.Compare(b)
+	})
 
 	return result
 }
@@ -270,18 +327,99 @@ func (d *DAGConsensus) Stats() map[string]interface{} {
 }
 
 // GetConflicting returns vertices that conflict with the given vertex
+// A conflict occurs when two vertices attempt to spend the same UTXO (double-spend)
 func (d *DAGConsensus) GetConflicting(ctx context.Context, vertex *Vertex) []*Vertex {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	conflicting := make([]*Vertex, 0)
+	vertexID := vertex.ID()
 
-	// In a real implementation, this would check for actual conflicts
-	// (e.g., double-spends, incompatible states)
-	// For now, we return an empty list
-	// TODO: Implement conflict detection logic
+	// Check if vertex has known conflicts in the conflict set
+	conflicts, hasConflicts := d.conflictSets[vertexID]
+	if !hasConflicts || len(conflicts) == 0 {
+		return nil
+	}
 
-	return conflicting
+	// Build list of conflicting vertices
+	result := make([]*Vertex, 0, len(conflicts))
+	for conflictID := range conflicts {
+		if conflictVertex, exists := d.vertices[conflictID]; exists {
+			// Only include pending vertices (not already accepted or rejected)
+			if !conflictVertex.IsAccepted() && !conflictVertex.IsRejected() {
+				result = append(result, conflictVertex)
+			}
+		}
+	}
+
+	return result
+}
+
+// HasConflicts checks if a vertex has any conflicts
+func (d *DAGConsensus) HasConflicts(vertexID ids.ID) bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	conflicts, hasConflicts := d.conflictSets[vertexID]
+	if !hasConflicts {
+		return false
+	}
+
+	// Check if any conflict is still pending
+	for conflictID := range conflicts {
+		if v, exists := d.vertices[conflictID]; exists {
+			if !v.IsAccepted() && !v.IsRejected() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// GetConflictSet returns all vertex IDs that conflict with the given vertex
+func (d *DAGConsensus) GetConflictSet(vertexID ids.ID) []ids.ID {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	conflicts, hasConflicts := d.conflictSets[vertexID]
+	if !hasConflicts {
+		return nil
+	}
+
+	result := make([]ids.ID, 0, len(conflicts))
+	for id := range conflicts {
+		result = append(result, id)
+	}
+	return result
+}
+
+// FindDoubleSpends finds all pairs of vertices that attempt to spend the same input
+func (d *DAGConsensus) FindDoubleSpends() map[string][][]ids.ID {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	doubleSpends := make(map[string][][]ids.ID)
+
+	for inputKey, spenders := range d.inputIndex {
+		if len(spenders) <= 1 {
+			continue
+		}
+
+		// Filter to only pending vertices
+		pendingSpenders := make([]ids.ID, 0)
+		for _, spenderID := range spenders {
+			if v, exists := d.vertices[spenderID]; exists {
+				if !v.IsAccepted() && !v.IsRejected() {
+					pendingSpenders = append(pendingSpenders, spenderID)
+				}
+			}
+		}
+
+		if len(pendingSpenders) > 1 {
+			doubleSpends[inputKey] = [][]ids.ID{pendingSpenders}
+		}
+	}
+
+	return doubleSpends
 }
 
 // ResolveConflict resolves conflicts between vertices using Lux consensus with Prism DAG refraction

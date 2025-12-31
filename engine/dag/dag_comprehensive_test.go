@@ -498,6 +498,332 @@ func TestDAGConsensusGetConflicting(t *testing.T) {
 	require.Empty(conflicts)
 }
 
+// ==================== Conflict Detection Tests ====================
+
+func TestDoubleSpendDetection(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	// Create a shared UTXO that will be double-spent
+	sharedUTXO := UTXO{
+		TxID:        ids.GenerateTestID(),
+		OutputIndex: 0,
+	}
+
+	// First vertex spending the UTXO
+	id1 := ids.GenerateTestID()
+	vertex1 := NewVertexWithInputs(id1, nil, 0, 0, []byte("tx1"), []UTXO{sharedUTXO})
+	err := dc.AddVertex(ctx, vertex1)
+	require.NoError(err)
+
+	// No conflicts yet for vertex1
+	conflicts := dc.GetConflicting(ctx, vertex1)
+	require.Empty(conflicts)
+
+	// Second vertex attempting to spend the same UTXO (double-spend)
+	id2 := ids.GenerateTestID()
+	vertex2 := NewVertexWithInputs(id2, nil, 0, 0, []byte("tx2"), []UTXO{sharedUTXO})
+	err = dc.AddVertex(ctx, vertex2)
+	require.NoError(err)
+
+	// Now vertex1 should detect vertex2 as conflicting
+	conflicts = dc.GetConflicting(ctx, vertex1)
+	require.Len(conflicts, 1)
+	require.Equal(vertex2.ID(), conflicts[0].ID())
+
+	// And vertex2 should detect vertex1 as conflicting
+	conflicts = dc.GetConflicting(ctx, vertex2)
+	require.Len(conflicts, 1)
+	require.Equal(vertex1.ID(), conflicts[0].ID())
+}
+
+func TestMultipleDoubleSpends(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	// Create a shared UTXO
+	sharedUTXO := UTXO{
+		TxID:        ids.GenerateTestID(),
+		OutputIndex: 0,
+	}
+
+	// Three vertices all trying to spend the same UTXO
+	vertices := make([]*Vertex, 3)
+	for i := 0; i < 3; i++ {
+		vertices[i] = NewVertexWithInputs(
+			ids.GenerateTestID(),
+			nil,
+			uint64(i),
+			int64(i),
+			[]byte(fmt.Sprintf("tx%d", i)),
+			[]UTXO{sharedUTXO},
+		)
+		err := dc.AddVertex(ctx, vertices[i])
+		require.NoError(err)
+	}
+
+	// Each vertex should conflict with the other two
+	for i, v := range vertices {
+		conflicts := dc.GetConflicting(ctx, v)
+		require.Len(conflicts, 2, "vertex %d should have 2 conflicts", i)
+
+		conflictIDs := make(map[ids.ID]bool)
+		for _, c := range conflicts {
+			conflictIDs[c.ID()] = true
+		}
+
+		// Verify the conflicts are the other two vertices
+		for j, other := range vertices {
+			if i != j {
+				require.True(conflictIDs[other.ID()], "vertex %d should conflict with vertex %d", i, j)
+			}
+		}
+	}
+}
+
+func TestNoConflictDifferentInputs(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	// Two different UTXOs
+	utxo1 := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+	utxo2 := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+
+	// First vertex spending utxo1
+	vertex1 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, []byte("tx1"), []UTXO{utxo1})
+	err := dc.AddVertex(ctx, vertex1)
+	require.NoError(err)
+
+	// Second vertex spending utxo2 (different UTXO, no conflict)
+	vertex2 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, []byte("tx2"), []UTXO{utxo2})
+	err = dc.AddVertex(ctx, vertex2)
+	require.NoError(err)
+
+	// Neither should have conflicts
+	require.Empty(dc.GetConflicting(ctx, vertex1))
+	require.Empty(dc.GetConflicting(ctx, vertex2))
+}
+
+func TestConflictWithMultipleInputs(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	// Three UTXOs
+	utxo1 := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+	utxo2 := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+	utxo3 := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+
+	// First vertex spends utxo1 and utxo2
+	vertex1 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, []byte("tx1"), []UTXO{utxo1, utxo2})
+	err := dc.AddVertex(ctx, vertex1)
+	require.NoError(err)
+
+	// Second vertex spends utxo2 and utxo3 (overlaps on utxo2)
+	vertex2 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, []byte("tx2"), []UTXO{utxo2, utxo3})
+	err = dc.AddVertex(ctx, vertex2)
+	require.NoError(err)
+
+	// Third vertex spends utxo3 only
+	vertex3 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, []byte("tx3"), []UTXO{utxo3})
+	err = dc.AddVertex(ctx, vertex3)
+	require.NoError(err)
+
+	// vertex1 conflicts with vertex2 (both spend utxo2)
+	conflicts1 := dc.GetConflicting(ctx, vertex1)
+	require.Len(conflicts1, 1)
+	require.Equal(vertex2.ID(), conflicts1[0].ID())
+
+	// vertex2 conflicts with both vertex1 (utxo2) and vertex3 (utxo3)
+	conflicts2 := dc.GetConflicting(ctx, vertex2)
+	require.Len(conflicts2, 2)
+
+	// vertex3 conflicts only with vertex2
+	conflicts3 := dc.GetConflicting(ctx, vertex3)
+	require.Len(conflicts3, 1)
+	require.Equal(vertex2.ID(), conflicts3[0].ID())
+}
+
+func TestHasConflicts(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	sharedUTXO := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+
+	// First vertex
+	vertex1 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{sharedUTXO})
+	err := dc.AddVertex(ctx, vertex1)
+	require.NoError(err)
+	require.False(dc.HasConflicts(vertex1.ID()))
+
+	// Second vertex (double-spend)
+	vertex2 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{sharedUTXO})
+	err = dc.AddVertex(ctx, vertex2)
+	require.NoError(err)
+
+	require.True(dc.HasConflicts(vertex1.ID()))
+	require.True(dc.HasConflicts(vertex2.ID()))
+}
+
+func TestGetConflictSet(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	sharedUTXO := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+
+	vertex1 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{sharedUTXO})
+	err := dc.AddVertex(ctx, vertex1)
+	require.NoError(err)
+
+	vertex2 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{sharedUTXO})
+	err = dc.AddVertex(ctx, vertex2)
+	require.NoError(err)
+
+	conflictSet := dc.GetConflictSet(vertex1.ID())
+	require.Len(conflictSet, 1)
+	require.Equal(vertex2.ID(), conflictSet[0])
+}
+
+func TestFindDoubleSpends(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	utxo1 := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+	utxo2 := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+
+	// Two vertices spending utxo1
+	v1 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{utxo1})
+	v2 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{utxo1})
+
+	// One vertex spending utxo2 (no double-spend)
+	v3 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{utxo2})
+
+	require.NoError(dc.AddVertex(ctx, v1))
+	require.NoError(dc.AddVertex(ctx, v2))
+	require.NoError(dc.AddVertex(ctx, v3))
+
+	doubleSpends := dc.FindDoubleSpends()
+	require.Len(doubleSpends, 1) // Only utxo1 is double-spent
+
+	// The double-spend entry should contain both v1 and v2
+	for _, spenders := range doubleSpends {
+		require.Len(spenders, 1)
+		require.Len(spenders[0], 2)
+	}
+}
+
+func TestConflictIgnoresAcceptedVertices(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	sharedUTXO := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+
+	// First vertex
+	vertex1 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{sharedUTXO})
+	err := dc.AddVertex(ctx, vertex1)
+	require.NoError(err)
+
+	// Second vertex (double-spend)
+	vertex2 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{sharedUTXO})
+	err = dc.AddVertex(ctx, vertex2)
+	require.NoError(err)
+
+	// Before acceptance, both should see conflicts
+	require.Len(dc.GetConflicting(ctx, vertex1), 1)
+	require.Len(dc.GetConflicting(ctx, vertex2), 1)
+
+	// Accept vertex1
+	err = vertex1.Accept(ctx)
+	require.NoError(err)
+
+	// After acceptance, vertex2 should no longer see vertex1 as a conflict
+	// (because accepted vertices are filtered out)
+	conflicts := dc.GetConflicting(ctx, vertex2)
+	require.Empty(conflicts)
+}
+
+func TestConflictIgnoresRejectedVertices(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	sharedUTXO := UTXO{TxID: ids.GenerateTestID(), OutputIndex: 0}
+
+	vertex1 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{sharedUTXO})
+	vertex2 := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, []UTXO{sharedUTXO})
+
+	require.NoError(dc.AddVertex(ctx, vertex1))
+	require.NoError(dc.AddVertex(ctx, vertex2))
+
+	// Reject vertex1
+	require.NoError(vertex1.Reject(ctx))
+
+	// vertex2 should no longer see vertex1 as a conflict
+	conflicts := dc.GetConflicting(ctx, vertex2)
+	require.Empty(conflicts)
+
+	// HasConflicts should also return false now
+	require.False(dc.HasConflicts(vertex2.ID()))
+}
+
+func TestVertexInputsOutputs(t *testing.T) {
+	require := require.New(t)
+
+	inputs := []UTXO{
+		{TxID: ids.GenerateTestID(), OutputIndex: 0},
+		{TxID: ids.GenerateTestID(), OutputIndex: 1},
+	}
+
+	vertex := NewVertexWithInputs(ids.GenerateTestID(), nil, 0, 0, nil, inputs)
+
+	// Verify inputs are set correctly
+	gotInputs := vertex.Inputs()
+	require.Len(gotInputs, 2)
+	require.Equal(inputs[0].TxID, gotInputs[0].TxID)
+	require.Equal(inputs[0].OutputIndex, gotInputs[0].OutputIndex)
+
+	// Test SetInputs
+	newInputs := []UTXO{{TxID: ids.GenerateTestID(), OutputIndex: 5}}
+	vertex.SetInputs(newInputs)
+	gotInputs = vertex.Inputs()
+	require.Len(gotInputs, 1)
+	require.Equal(newInputs[0].OutputIndex, gotInputs[0].OutputIndex)
+
+	// Test SetOutputs and Outputs
+	outputs := []UTXO{{TxID: vertex.ID(), OutputIndex: 0}}
+	vertex.SetOutputs(outputs)
+	gotOutputs := vertex.Outputs()
+	require.Len(gotOutputs, 1)
+	require.Equal(uint32(0), gotOutputs[0].OutputIndex)
+}
+
+func TestUTXOString(t *testing.T) {
+	require := require.New(t)
+
+	txID := ids.GenerateTestID()
+	utxo := UTXO{TxID: txID, OutputIndex: 42}
+
+	str := utxo.String()
+	require.Contains(str, txID.String())
+	require.Contains(str, ":42")
+}
+
 func TestDAGConsensusResolveConflict(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
@@ -1025,4 +1351,81 @@ func TestAddVertexWithEmptyIDRejected(t *testing.T) {
 	err = dc.AddVertex(ctx, child)
 	require.Error(err)
 	require.Contains(err.Error(), "invalid parent ID")
+}
+
+// ==================== REGRESSION TESTS FOR CRITICAL BUG FIXES ====================
+
+// TestFrontierDeterminism tests that Frontier() returns IDs in deterministic order
+// REGRESSION TEST for Bug #4: Non-deterministic tip selection
+//
+// Previously, Frontier() iterated over a map without sorting, causing different
+// nodes to select different parent sets when building blocks, leading to consensus
+// failures and chain splits.
+func TestFrontierDeterminism(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	// Create multiple frontier vertices (all at same height, no parent relationship)
+	numVertices := 10
+	vertices := make([]*Vertex, numVertices)
+	for i := 0; i < numVertices; i++ {
+		id := ids.GenerateTestID()
+		vertices[i] = NewVertex(id, nil, uint64(i), 0, []byte(fmt.Sprintf("vertex-%d", i)))
+		err := dc.AddVertex(ctx, vertices[i])
+		require.NoError(err)
+	}
+
+	// Call Frontier() multiple times - should return same order every time
+	frontier1 := dc.Frontier()
+	frontier2 := dc.Frontier()
+	frontier3 := dc.Frontier()
+
+	require.Equal(frontier1, frontier2, "Frontier must return deterministic order")
+	require.Equal(frontier2, frontier3, "Frontier must return deterministic order")
+	require.Len(frontier1, numVertices, "All vertices should be in frontier")
+
+	// Verify the order is sorted by ID
+	for i := 1; i < len(frontier1); i++ {
+		cmp := frontier1[i-1].Compare(frontier1[i])
+		require.Equal(-1, cmp, "Frontier IDs must be sorted in ascending order")
+	}
+}
+
+// TestFrontierConcurrentAccess tests that concurrent Frontier() calls are safe
+// REGRESSION TEST for Bug #4: Ensures fix doesn't introduce race conditions
+func TestFrontierConcurrentAccess(t *testing.T) {
+	require := require.New(t)
+	ctx := context.Background()
+
+	dc := NewDAGConsensus(5, 3, 10)
+
+	// Add vertices to frontier
+	for i := 0; i < 5; i++ {
+		id := ids.GenerateTestID()
+		v := NewVertex(id, nil, uint64(i), 0, []byte(fmt.Sprintf("vertex-%d", i)))
+		err := dc.AddVertex(ctx, v)
+		require.NoError(err)
+	}
+
+	// Call Frontier() concurrently from multiple goroutines
+	var wg sync.WaitGroup
+	results := make([][]ids.ID, 100)
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			results[idx] = dc.Frontier()
+		}(i)
+	}
+
+	wg.Wait()
+
+	// All results should be identical
+	expected := results[0]
+	for i := 1; i < len(results); i++ {
+		require.Equal(expected, results[i],
+			"All concurrent Frontier() calls must return identical results")
+	}
 }
