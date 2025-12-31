@@ -7,14 +7,14 @@ exclude github.com/ethereum/go-ethereum v1.10.26
 exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
-	github.com/luxfi/crypto v1.17.25
+	github.com/luxfi/crypto v1.17.29
 	github.com/luxfi/database v1.2.11
 	github.com/luxfi/geth v1.16.53
 	github.com/luxfi/ids v1.2.5
 	github.com/luxfi/log v1.1.26
 	github.com/luxfi/math v1.2.0
 	github.com/luxfi/p2p v1.4.6
-	github.com/luxfi/ringtail v0.1.1
+	github.com/luxfi/ringtail v0.2.0
 	github.com/luxfi/vm v1.0.1
 	github.com/luxfi/warp v1.18.2
 	github.com/prometheus/client_golang v1.23.2
@@ -61,7 +61,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/luxfi/cache v1.0.0 // indirect
-	github.com/luxfi/lattice/v6 v6.1.3 // indirect
+	github.com/luxfi/lattice/v7 v7.0.0 // indirect
 	github.com/luxfi/metric v1.4.8 // indirect
 	github.com/luxfi/node v1.22.14 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
@@ -98,7 +98,3 @@ require (
 exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 
 exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
-
-replace github.com/luxfi/crypto => ../crypto
-
-replace github.com/luxfi/ringtail => ../ringtail
