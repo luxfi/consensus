@@ -10,6 +10,8 @@ CLAUDE.md
 GEMINI.md
 GROK.md
 QWEN.md
+.claude
+.playwright-mcp
 
 # Binaries for programs and plugins
 *.exe
