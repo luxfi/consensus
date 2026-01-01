@@ -676,9 +676,9 @@ func TestTransitiveBuildBlocksLockedMultiple(t *testing.T) {
 	// Track build calls
 	buildCount := 0
 	mockVM := &mockBlockBuilder{
-		buildFunc: func(ctx context.Context) (interface{}, error) {
+		buildFunc: func(ctx context.Context) (block.Block, error) {
 			buildCount++
-			return "block", nil
+			return &testBlock{id: ids.GenerateTestID(), height: uint64(buildCount)}, nil
 		},
 	}
 	engine.vm = mockVM
@@ -701,12 +701,12 @@ func TestTransitiveBuildBlocksLockedPartialFailure(t *testing.T) {
 	// Fail after first build
 	buildCount := 0
 	mockVM := &mockBlockBuilder{
-		buildFunc: func(ctx context.Context) (interface{}, error) {
+		buildFunc: func(ctx context.Context) (block.Block, error) {
 			buildCount++
 			if buildCount > 1 {
 				return nil, errors.New("no more transactions")
 			}
-			return "block", nil
+			return &testBlock{id: ids.GenerateTestID(), height: uint64(buildCount)}, nil
 		},
 	}
 	engine.vm = mockVM
@@ -845,8 +845,8 @@ func TestTransitiveConcurrentNotify(t *testing.T) {
 
 	// Set a simple VM
 	engine.SetVM(&mockBlockBuilder{
-		buildFunc: func(ctx context.Context) (interface{}, error) {
-			return "block", nil
+		buildFunc: func(ctx context.Context) (block.Block, error) {
+			return &testBlock{id: ids.GenerateTestID(), height: 1}, nil
 		},
 	})
 
@@ -1174,9 +1174,9 @@ func TestNotifyMultiplePendingTxs(t *testing.T) {
 
 	buildCount := 0
 	mockVM := &mockBlockBuilder{
-		buildFunc: func(ctx context.Context) (interface{}, error) {
+		buildFunc: func(ctx context.Context) (block.Block, error) {
 			buildCount++
-			return "block", nil
+			return &testBlock{id: ids.GenerateTestID(), height: uint64(buildCount)}, nil
 		},
 	}
 	engine.SetVM(mockVM)
