@@ -14,6 +14,7 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/core"
+	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/ids"
 )
 
@@ -562,8 +563,8 @@ func TestTransitiveNotifyPendingTxsWithVM(t *testing.T) {
 
 	// Set a mock VM that succeeds
 	mockVM := &mockBlockBuilder{
-		buildFunc: func(ctx context.Context) (interface{}, error) {
-			return "block", nil
+		buildFunc: func(ctx context.Context) (block.Block, error) {
+			return &testBlock{id: ids.GenerateTestID(), height: 1}, nil
 		},
 	}
 	engine.SetVM(mockVM)
@@ -587,7 +588,7 @@ func TestTransitiveNotifyPendingTxsWithVMError(t *testing.T) {
 
 	// Set a mock VM that returns error
 	mockVM := &mockBlockBuilder{
-		buildFunc: func(ctx context.Context) (interface{}, error) {
+		buildFunc: func(ctx context.Context) (block.Block, error) {
 			return nil, errors.New("no transactions")
 		},
 	}
@@ -1004,16 +1005,56 @@ func TestChainConsensusBlockWithEmptyParent(t *testing.T) {
 // Mock Types
 // =============================================================================
 
-// mockBlockBuilder implements BlockBuilder for testing
-type mockBlockBuilder struct {
-	buildFunc func(ctx context.Context) (interface{}, error)
+// testBlock implements block.Block for comprehensive testing
+type testBlock struct {
+	id        ids.ID
+	parentID  ids.ID
+	height    uint64
+	timestamp time.Time
+	status    uint8
+	bytes     []byte
 }
 
-func (m *mockBlockBuilder) BuildBlock(ctx context.Context) (interface{}, error) {
+func (b *testBlock) ID() ids.ID            { return b.id }
+func (b *testBlock) Parent() ids.ID        { return b.parentID }
+func (b *testBlock) ParentID() ids.ID      { return b.parentID }
+func (b *testBlock) Height() uint64        { return b.height }
+func (b *testBlock) Timestamp() time.Time  { return b.timestamp }
+func (b *testBlock) Status() uint8         { return b.status }
+func (b *testBlock) Verify(context.Context) error { return nil }
+func (b *testBlock) Accept(context.Context) error { return nil }
+func (b *testBlock) Reject(context.Context) error { return nil }
+func (b *testBlock) Bytes() []byte         { return b.bytes }
+
+// mockBlockBuilder implements BlockBuilder for testing
+type mockBlockBuilder struct {
+	buildFunc      func(ctx context.Context) (block.Block, error)
+	blocks         map[ids.ID]block.Block
+	lastAcceptedID ids.ID
+}
+
+func (m *mockBlockBuilder) BuildBlock(ctx context.Context) (block.Block, error) {
 	if m.buildFunc != nil {
 		return m.buildFunc(ctx)
 	}
 	return nil, nil
+}
+
+func (m *mockBlockBuilder) GetBlock(ctx context.Context, id ids.ID) (block.Block, error) {
+	if m.blocks != nil {
+		if blk, ok := m.blocks[id]; ok {
+			return blk, nil
+		}
+	}
+	return nil, errors.New("block not found")
+}
+
+func (m *mockBlockBuilder) ParseBlock(ctx context.Context, bytes []byte) (block.Block, error) {
+	return &testBlock{bytes: bytes}, nil
+}
+
+func (m *mockBlockBuilder) LastAccepted(ctx context.Context) (ids.ID, error) {
+	return m.lastAcceptedID, nil
 }
 
 // =============================================================================
