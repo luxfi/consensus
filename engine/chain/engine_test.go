@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/ids"
 )
@@ -301,5 +302,266 @@ func TestNotifyBuildBlockError(t *testing.T) {
 	// BuildBlock was still called
 	if vm.buildBlockCalls != 1 {
 		t.Errorf("Expected 1 BuildBlock call, got %d", vm.buildBlockCalls)
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Quorum-based acceptance tests
+// -----------------------------------------------------------------------------
+
+// trackingMockBlock tracks Accept/Reject calls for testing
+type trackingMockBlock struct {
+	id           ids.ID
+	parentID     ids.ID
+	height       uint64
+	timestamp    time.Time
+	bytes        []byte
+	acceptCalled int
+	rejectCalled int
+}
+
+func (b *trackingMockBlock) ID() ids.ID            { return b.id }
+func (b *trackingMockBlock) Parent() ids.ID        { return b.parentID }
+func (b *trackingMockBlock) ParentID() ids.ID      { return b.parentID }
+func (b *trackingMockBlock) Height() uint64        { return b.height }
+func (b *trackingMockBlock) Timestamp() time.Time  { return b.timestamp }
+func (b *trackingMockBlock) Status() uint8         { return 0 }
+func (b *trackingMockBlock) Verify(context.Context) error { return nil }
+func (b *trackingMockBlock) Accept(context.Context) error {
+	b.acceptCalled++
+	return nil
+}
+func (b *trackingMockBlock) Reject(context.Context) error {
+	b.rejectCalled++
+	return nil
+}
+func (b *trackingMockBlock) Bytes() []byte { return b.bytes }
+
+// trackingMockVM returns trackingMockBlocks for acceptance tracking
+type trackingMockVM struct {
+	blocks         []*trackingMockBlock
+	buildBlockIdx  int
+	lastAcceptedID ids.ID
+}
+
+func (m *trackingMockVM) BuildBlock(ctx context.Context) (block.Block, error) {
+	if m.buildBlockIdx >= len(m.blocks) {
+		return nil, errors.New("no more blocks")
+	}
+	blk := m.blocks[m.buildBlockIdx]
+	m.buildBlockIdx++
+	return blk, nil
+}
+
+func (m *trackingMockVM) GetBlock(ctx context.Context, id ids.ID) (block.Block, error) {
+	for _, blk := range m.blocks {
+		if blk.id == id {
+			return blk, nil
+		}
+	}
+	return nil, errors.New("block not found")
+}
+
+func (m *trackingMockVM) ParseBlock(ctx context.Context, bytes []byte) (block.Block, error) {
+	return &trackingMockBlock{bytes: bytes}, nil
+}
+
+func (m *trackingMockVM) LastAccepted(ctx context.Context) (ids.ID, error) {
+	return m.lastAcceptedID, nil
+}
+
+// TestEngine_DoesNotAcceptWithoutQuorum verifies blocks are NOT accepted without sufficient votes
+func TestEngine_DoesNotAcceptWithoutQuorum(t *testing.T) {
+	engine := New()
+	ctx := context.Background()
+
+	// Create a tracking block
+	blk := &trackingMockBlock{
+		id:        ids.GenerateTestID(),
+		parentID:  ids.Empty,
+		height:    1,
+		timestamp: time.Now(),
+		bytes:     []byte("block-data"),
+	}
+
+	vm := &trackingMockVM{
+		blocks: []*trackingMockBlock{blk},
+	}
+	engine.SetVM(vm)
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	// Trigger block build
+	if err := engine.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("Notify failed: %v", err)
+	}
+
+	// Verify block was added to pending
+	engine.mu.RLock()
+	pending, exists := engine.pendingBlocks[blk.id]
+	engine.mu.RUnlock()
+
+	if !exists {
+		t.Fatal("Block should be in pending blocks")
+	}
+	if pending.VMBlock == nil {
+		t.Fatal("VMBlock should be set")
+	}
+
+	// Process a single vote (below quorum - default K=20, Alpha=15)
+	// One vote is not enough for quorum
+	engine.ReceiveVote(Vote{
+		BlockID:  blk.id,
+		NodeID:   ids.GenerateTestNodeID(),
+		Accept:   true,
+		SignedAt: time.Now(),
+	})
+
+	// Give vote handler time to process
+	time.Sleep(100 * time.Millisecond)
+
+	// Block should NOT be accepted yet (insufficient votes)
+	if blk.acceptCalled > 0 {
+		t.Errorf("Block Accept() should NOT be called with insufficient votes, but was called %d times", blk.acceptCalled)
+	}
+
+	// Check consensus state - should not be accepted
+	if engine.IsAccepted(blk.id) {
+		t.Error("Block should not be marked as accepted with insufficient votes")
+	}
+}
+
+// TestEngine_AcceptsAfterQuorum verifies blocks ARE accepted after sufficient votes
+func TestEngine_AcceptsAfterQuorum(t *testing.T) {
+	// Use smaller parameters for testing (K=5, Alpha=3, Beta=2)
+	// This means we need 3 out of 5 votes for quorum
+	engine := NewWithParams(config.Parameters{
+		K:               5,
+		AlphaPreference: 3,
+		AlphaConfidence: 3,
+		Beta:            2,
+	})
+	ctx := context.Background()
+
+	// Create a tracking block
+	blk := &trackingMockBlock{
+		id:        ids.GenerateTestID(),
+		parentID:  ids.Empty,
+		height:    1,
+		timestamp: time.Now(),
+		bytes:     []byte("block-data"),
+	}
+
+	vm := &trackingMockVM{
+		blocks: []*trackingMockBlock{blk},
+	}
+	engine.SetVM(vm)
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	// Trigger block build
+	if err := engine.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("Notify failed: %v", err)
+	}
+
+	// Verify block was added
+	engine.mu.RLock()
+	_, exists := engine.pendingBlocks[blk.id]
+	engine.mu.RUnlock()
+
+	if !exists {
+		t.Fatal("Block should be in pending blocks")
+	}
+
+	// Send enough votes to reach quorum (3 votes for Alpha=3)
+	for i := 0; i < 4; i++ {
+		engine.ReceiveVote(Vote{
+			BlockID:  blk.id,
+			NodeID:   ids.GenerateTestNodeID(),
+			Accept:   true,
+			SignedAt: time.Now(),
+		})
+	}
+
+	// Give poll loop time to process the acceptance
+	// The poll loop runs every 50ms
+	time.Sleep(300 * time.Millisecond)
+
+	// Block SHOULD be accepted after quorum
+	if blk.acceptCalled != 1 {
+		t.Errorf("Block Accept() should be called exactly once after quorum, but was called %d times", blk.acceptCalled)
+	}
+
+	// Block should no longer be in pending
+	engine.mu.RLock()
+	_, stillPending := engine.pendingBlocks[blk.id]
+	engine.mu.RUnlock()
+
+	if stillPending {
+		t.Error("Block should be removed from pending after acceptance")
+	}
+}
+
+// TestEngine_RejectsWithInsufficientSupport verifies blocks can be rejected
+// TODO: This test is skipped because reject vote tracking is not yet implemented.
+// Currently the consensus only tracks accept votes via RecordVote().
+// Future enhancement: Track both accept and reject votes for proper rejection handling.
+func TestEngine_RejectsWithInsufficientSupport(t *testing.T) {
+	t.Skip("Reject vote tracking not yet implemented - only accept votes are tracked")
+
+	// Use smaller parameters (K=5, Alpha=3, Beta=2)
+	engine := NewWithParams(config.Parameters{
+		K:               5,
+		AlphaPreference: 3,
+		AlphaConfidence: 3,
+		Beta:            2,
+	})
+	ctx := context.Background()
+
+	blk := &trackingMockBlock{
+		id:        ids.GenerateTestID(),
+		parentID:  ids.Empty,
+		height:    1,
+		timestamp: time.Now(),
+		bytes:     []byte("block-data"),
+	}
+
+	vm := &trackingMockVM{
+		blocks: []*trackingMockBlock{blk},
+	}
+	engine.SetVM(vm)
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	// Trigger block build
+	if err := engine.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("Notify failed: %v", err)
+	}
+
+	// Send reject votes (Accept=false)
+	for i := 0; i < 4; i++ {
+		engine.ReceiveVote(Vote{
+			BlockID:  blk.id,
+			NodeID:   ids.GenerateTestNodeID(),
+			Accept:   false, // Reject votes
+			SignedAt: time.Now(),
+		})
+	}
+
+	// Give poll loop time to process
+	time.Sleep(300 * time.Millisecond)
+
+	// Block should NOT have Accept called
+	if blk.acceptCalled > 0 {
+		t.Errorf("Block Accept() should NOT be called for rejected block, but was called %d times", blk.acceptCalled)
 	}
 }
