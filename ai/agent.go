@@ -21,7 +21,7 @@ type Agent[T ConsensusData] struct {
 	nodeID string
 	model  Model[T]
 	memory *SharedMemory[T]
-	quasar *quasar.QuasarCore
+	quasar *quasar.Quasar
 	photon *photon.UniformEmitter
 
 	// Shared hallucination state
@@ -157,7 +157,7 @@ type Model[T ConsensusData] interface {
 func New[T ConsensusData](
 	nodeID string,
 	model Model[T],
-	quasarEngine *quasar.QuasarCore,
+	quasarEngine *quasar.Quasar,
 	photonEngine *photon.UniformEmitter,
 ) *Agent[T] {
 	return &Agent[T]{

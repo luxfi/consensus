@@ -85,10 +85,10 @@ type GPUBuffer struct {
 	capacity int
 
 	// Transaction data (CPU-side, copied to GPU)
-	txHashes    [][32]byte
-	signatures  [][]byte
-	publicKeys  [][]byte
-	sigTypes    []SignatureType
+	txHashes   [][32]byte
+	signatures [][]byte
+	publicKeys [][]byte
+	sigTypes   []SignatureType
 
 	// Results (GPU-side, copied back)
 	validFlags  []bool
@@ -217,8 +217,8 @@ type GPUMerkleTree struct {
 	gpuNodes uintptr
 
 	// Root cached on CPU after computation
-	root     [32]byte
-	rootMu   sync.RWMutex
+	root   [32]byte
+	rootMu sync.RWMutex
 
 	// Pending leaves to insert
 	pending [][32]byte
@@ -504,9 +504,9 @@ func (p *GPUBatchPipeline) swapBuffers() {
 // processBatch executes signature verification and aggregation.
 func (p *GPUBatchPipeline) processBatch(buf *GPUBuffer, batchID uint64, txs []Transaction) *BatchResult {
 	result := &BatchResult{
-		BatchID:        batchID,
-		ProcessedCount: buf.count,
-		Errors:         make([]TransactionError, 0),
+		BatchID:         batchID,
+		ProcessedCount:  buf.count,
+		Errors:          make([]TransactionError, 0),
 		SignatureProofs: make([]SignatureProof, 0, buf.count),
 	}
 
