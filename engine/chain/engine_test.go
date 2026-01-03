@@ -508,6 +508,289 @@ func TestEngine_AcceptsAfterQuorum(t *testing.T) {
 	}
 }
 
+// -----------------------------------------------------------------------------
+// Lifecycle invariant tests
+// -----------------------------------------------------------------------------
+
+// TestReceiveVote_DropsWhenNotStarted verifies votes are dropped when engine not started
+func TestReceiveVote_DropsWhenNotStarted(t *testing.T) {
+	engine := New()
+	// DO NOT start the engine
+
+	vote := Vote{
+		BlockID:  ids.GenerateTestID(),
+		NodeID:   ids.GenerateTestNodeID(),
+		Accept:   true,
+		SignedAt: time.Now(),
+	}
+
+	// ReceiveVote should return false (dropped) when not started
+	accepted := engine.ReceiveVote(vote)
+	if accepted {
+		t.Error("ReceiveVote should return false when engine not started")
+	}
+}
+
+// TestReceiveVote_AcceptsWhenStarted verifies votes are queued when engine is started
+func TestReceiveVote_AcceptsWhenStarted(t *testing.T) {
+	engine := New()
+	ctx := context.Background()
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	vote := Vote{
+		BlockID:  ids.GenerateTestID(),
+		NodeID:   ids.GenerateTestNodeID(),
+		Accept:   true,
+		SignedAt: time.Now(),
+	}
+
+	// ReceiveVote should return true (queued) when started
+	accepted := engine.ReceiveVote(vote)
+	if !accepted {
+		t.Error("ReceiveVote should return true when engine is started")
+	}
+}
+
+// TestReceiveVote_DropsAfterStop verifies votes are dropped after engine stops
+func TestReceiveVote_DropsAfterStop(t *testing.T) {
+	engine := New()
+	ctx := context.Background()
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Stop the engine
+	if err := engine.Stop(ctx); err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+
+	vote := Vote{
+		BlockID:  ids.GenerateTestID(),
+		NodeID:   ids.GenerateTestNodeID(),
+		Accept:   true,
+		SignedAt: time.Now(),
+	}
+
+	// ReceiveVote should return false after stop
+	accepted := engine.ReceiveVote(vote)
+	if accepted {
+		t.Error("ReceiveVote should return false after engine stops")
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Vote correlation tests (pendingBlocks tracking)
+// -----------------------------------------------------------------------------
+
+// TestHandleVote_IgnoresUnknownBlocks verifies votes for untracked blocks are ignored
+func TestHandleVote_IgnoresUnknownBlocks(t *testing.T) {
+	engine := New()
+	ctx := context.Background()
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	// Get initial vote count
+	initialStats := engine.Stats()
+	initialReceived := initialStats["votes_received"].(uint64)
+
+	// Send vote for block that doesn't exist in pendingBlocks
+	unknownBlockID := ids.GenerateTestID()
+	engine.ReceiveVote(Vote{
+		BlockID:  unknownBlockID,
+		NodeID:   ids.GenerateTestNodeID(),
+		Accept:   true,
+		SignedAt: time.Now(),
+	})
+
+	// Give handler time to process
+	time.Sleep(100 * time.Millisecond)
+
+	// votes_received should increment (we received it)
+	stats := engine.Stats()
+	received := stats["votes_received"].(uint64)
+	if received != initialReceived+1 {
+		t.Errorf("Expected votes_received to increment, got %d", received)
+	}
+
+	// But block should NOT appear in consensus (unknown block ignored)
+	if engine.IsAccepted(unknownBlockID) {
+		t.Error("Unknown block should not be marked as accepted")
+	}
+}
+
+// TestHandleVote_ProcessesKnownBlocks verifies votes for tracked blocks are processed
+func TestHandleVote_ProcessesKnownBlocks(t *testing.T) {
+	engine := NewWithParams(config.Parameters{
+		K:               5,
+		AlphaPreference: 3,
+		AlphaConfidence: 3,
+		Beta:            2,
+	})
+	ctx := context.Background()
+
+	blk := &trackingMockBlock{
+		id:        ids.GenerateTestID(),
+		parentID:  ids.Empty,
+		height:    1,
+		timestamp: time.Now(),
+		bytes:     []byte("test-block"),
+	}
+
+	vm := &trackingMockVM{blocks: []*trackingMockBlock{blk}}
+	engine.SetVM(vm)
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	// Build block to add it to pendingBlocks
+	if err := engine.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("Notify failed: %v", err)
+	}
+
+	// Verify block is in pendingBlocks
+	engine.mu.RLock()
+	pending, exists := engine.pendingBlocks[blk.id]
+	engine.mu.RUnlock()
+	if !exists {
+		t.Fatal("Block should be in pendingBlocks")
+	}
+	initialVoteCount := pending.VoteCount
+
+	// Send vote for known block
+	engine.ReceiveVote(Vote{
+		BlockID:  blk.id,
+		NodeID:   ids.GenerateTestNodeID(),
+		Accept:   true,
+		SignedAt: time.Now(),
+	})
+
+	// Give handler time to process
+	time.Sleep(100 * time.Millisecond)
+
+	// VoteCount should increment
+	engine.mu.RLock()
+	newVoteCount := engine.pendingBlocks[blk.id].VoteCount
+	engine.mu.RUnlock()
+
+	if newVoteCount <= initialVoteCount {
+		t.Errorf("Expected VoteCount to increment from %d, got %d", initialVoteCount, newVoteCount)
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Accept/Reject vote handling tests
+// -----------------------------------------------------------------------------
+
+// TestProcessVote_AcceptTrueIncrementsSupport verifies Accept=true votes count toward acceptance
+func TestProcessVote_AcceptTrueIncrementsSupport(t *testing.T) {
+	engine := NewWithParams(config.Parameters{
+		K:               3,
+		AlphaPreference: 2,
+		AlphaConfidence: 2,
+		Beta:            1,
+	})
+	ctx := context.Background()
+
+	blk := &trackingMockBlock{
+		id:        ids.GenerateTestID(),
+		parentID:  ids.Empty,
+		height:    1,
+		timestamp: time.Now(),
+		bytes:     []byte("test"),
+	}
+
+	vm := &trackingMockVM{blocks: []*trackingMockBlock{blk}}
+	engine.SetVM(vm)
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	// Build block
+	if err := engine.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("Notify failed: %v", err)
+	}
+
+	// Send Accept=true votes to reach quorum
+	for i := 0; i < 3; i++ {
+		engine.ReceiveVote(Vote{
+			BlockID:  blk.id,
+			NodeID:   ids.GenerateTestNodeID(),
+			Accept:   true,
+			SignedAt: time.Now(),
+		})
+	}
+
+	// Wait for acceptance
+	time.Sleep(200 * time.Millisecond)
+
+	// Block should be accepted
+	if blk.acceptCalled != 1 {
+		t.Errorf("Expected Accept() to be called once, got %d", blk.acceptCalled)
+	}
+}
+
+// TestProcessVote_AcceptFalseDoesNotAccept verifies Accept=false votes don't trigger acceptance
+func TestProcessVote_AcceptFalseDoesNotAccept(t *testing.T) {
+	engine := NewWithParams(config.Parameters{
+		K:               3,
+		AlphaPreference: 2,
+		AlphaConfidence: 2,
+		Beta:            1,
+	})
+	ctx := context.Background()
+
+	blk := &trackingMockBlock{
+		id:        ids.GenerateTestID(),
+		parentID:  ids.Empty,
+		height:    1,
+		timestamp: time.Now(),
+		bytes:     []byte("test"),
+	}
+
+	vm := &trackingMockVM{blocks: []*trackingMockBlock{blk}}
+	engine.SetVM(vm)
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	// Build block
+	if err := engine.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("Notify failed: %v", err)
+	}
+
+	// Send Accept=false votes (rejections)
+	for i := 0; i < 5; i++ {
+		engine.ReceiveVote(Vote{
+			BlockID:  blk.id,
+			NodeID:   ids.GenerateTestNodeID(),
+			Accept:   false, // Reject votes
+			SignedAt: time.Now(),
+		})
+	}
+
+	// Wait for processing
+	time.Sleep(200 * time.Millisecond)
+
+	// Block should NOT be accepted (only reject votes received)
+	if blk.acceptCalled > 0 {
+		t.Errorf("Accept() should NOT be called with only reject votes, got %d calls", blk.acceptCalled)
+	}
+}
+
 // TestEngine_RejectsWithInsufficientSupport verifies blocks can be rejected
 // TODO: This test is skipped because reject vote tracking is not yet implemented.
 // Currently the consensus only tracks accept votes via RecordVote().
