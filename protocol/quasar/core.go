@@ -29,7 +29,7 @@ type Quasar struct {
 	cChainBlocks chan *ChainBlock
 
 	// Quantum consensus engine - the event horizon
-	hybridConsensus *Hybrid
+	signer *signer
 
 	// Epoch-based Ringtail key management
 	// Keys rotate when validator set changes (max 1x per hour)
@@ -62,14 +62,14 @@ type QuantumBlock struct {
 	BLSSignature  []byte
 	RingtailProof []byte // ML-DSA signature
 	Timestamp     time.Time
-	ValidatorSigs map[string]*HybridSignature
+	ValidatorSigs map[string]*QuasarSig
 }
 
 // NewQuasar creates the supermassive black hole at the center of the blockchain galaxy
 func NewQuasar(threshold int) (*Quasar, error) {
-	hybrid, err := NewHybrid(threshold)
+	s, err := newSigner(threshold)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create hybrid consensus: %w", err)
+		return nil, fmt.Errorf("failed to create signer: %w", err)
 	}
 
 	core := &Quasar{
@@ -77,7 +77,7 @@ func NewQuasar(threshold int) (*Quasar, error) {
 		xChainBlocks:     make(chan *ChainBlock, 100),
 		cChainBlocks:     make(chan *ChainBlock, 100),
 		chainBuffers:     make(map[string]chan *ChainBlock),
-		hybridConsensus:  hybrid,
+		signer:           s,
 		epochManager:     NewEpochManager(threshold, 3), // Keep 3 epochs in history
 		finalizedBlocks:  make(map[string]*QuantumBlock),
 		quantumHeight:    0,
@@ -209,11 +209,11 @@ func (q *Quasar) processBlockWithContext(ctx context.Context, block *ChainBlock)
 	quantumHash := q.computeQuantumHash(block)
 
 	// Collect validator signatures (BLS + Ringtail parallel)
-	signatures := make(map[string]*HybridSignature)
+	signatures := make(map[string]*QuasarSig)
 
 	// In production, this would collect from actual validators
 	// For now, simulate with local validator
-	sig, err := q.hybridConsensus.SignMessageWithContext(ctx, "validator1", []byte(quantumHash))
+	sig, err := q.signer.SignMessageWithContext(ctx, "validator1", []byte(quantumHash))
 	if err == nil {
 		signatures["validator1"] = sig
 	}
@@ -339,7 +339,7 @@ func (q *Quasar) VerifyQuantumFinalityWithContext(ctx context.Context, blockHash
 		if ctx.Err() != nil {
 			return false
 		}
-		if !q.hybridConsensus.VerifyHybridSignatureWithContext(ctx, []byte(blockHash), sig) {
+		if !q.signer.VerifyQuasarSigWithContext(ctx, []byte(blockHash), sig) {
 			fmt.Printf("[QUANTUM] Invalid signature from validator %s\n", validatorID)
 			return false
 		}
@@ -467,9 +467,9 @@ func (q *Quasar) InitializeValidators(validatorIDs []string) error {
 		return fmt.Errorf("need at least 2 validators")
 	}
 
-	// Add validators to hybrid consensus (BLS)
+	// Add validators to signer (BLS)
 	for _, id := range validatorIDs {
-		if err := q.hybridConsensus.AddValidator(id, 1); err != nil {
+		if err := q.signer.AddValidator(id, 1); err != nil {
 			return fmt.Errorf("failed to add validator %s to BLS: %w", id, err)
 		}
 	}
@@ -494,7 +494,7 @@ func (q *Quasar) UpdateValidatorSet(validatorIDs []string) (rotated bool, err er
 	// Update BLS validators
 	// First, track current validators
 	currentBLS := make(map[string]bool)
-	for id, v := range q.hybridConsensus.validators {
+	for id, v := range q.signer.validators {
 		if v.Active {
 			currentBLS[id] = true
 		}
@@ -505,7 +505,7 @@ func (q *Quasar) UpdateValidatorSet(validatorIDs []string) (rotated bool, err er
 	for _, id := range validatorIDs {
 		newIDs[id] = true
 		if !currentBLS[id] {
-			if err := q.hybridConsensus.AddValidator(id, 1); err != nil {
+			if err := q.signer.AddValidator(id, 1); err != nil {
 				return false, fmt.Errorf("failed to add validator %s: %w", id, err)
 			}
 		}
@@ -514,7 +514,7 @@ func (q *Quasar) UpdateValidatorSet(validatorIDs []string) (rotated bool, err er
 	// Deactivate removed validators
 	for id := range currentBLS {
 		if !newIDs[id] {
-			if v, exists := q.hybridConsensus.validators[id]; exists {
+			if v, exists := q.signer.validators[id]; exists {
 				v.Active = false
 			}
 		}
@@ -541,7 +541,7 @@ func (q *Quasar) AddValidator(validatorID string, weight uint64) (rotated bool, 
 	defer q.mu.Unlock()
 
 	// Add to BLS
-	if err := q.hybridConsensus.AddValidator(validatorID, weight); err != nil {
+	if err := q.signer.AddValidator(validatorID, weight); err != nil {
 		return false, err
 	}
 
@@ -557,11 +557,12 @@ func (q *Quasar) AddValidator(validatorID string, weight uint64) (rotated bool, 
 		rotated = true
 		fmt.Printf("[QUASAR] Added validator %s, rotated to epoch %d\n",
 			validatorID, q.epochManager.GetCurrentEpoch())
-	} else if errors.Is(err, ErrEpochRateLimited) || errors.Is(err, ErrNoValidatorChange) {
-		// Rate limited or no change - validator added to BLS but RT keys not rotated yet
+	} else if errors.Is(err, ErrEpochRateLimited) || errors.Is(err, ErrNoValidatorChange) || errors.Is(err, ErrInvalidValidatorSet) {
+		// Rate limited, no change, or insufficient validators (e.g., first validator added)
+		// Validator added to BLS but RT keys not rotated yet
 		rotated = false
 		err = nil
-		fmt.Printf("[QUASAR] Added validator %s to BLS (RT rotation rate-limited)\n", validatorID)
+		fmt.Printf("[QUASAR] Added validator %s to BLS (RT rotation pending)\n", validatorID)
 	}
 
 	return rotated, err
@@ -573,7 +574,7 @@ func (q *Quasar) RemoveValidator(validatorID string) (rotated bool, err error) {
 	defer q.mu.Unlock()
 
 	// Deactivate in BLS
-	if v, exists := q.hybridConsensus.validators[validatorID]; exists {
+	if v, exists := q.signer.validators[validatorID]; exists {
 		v.Active = false
 	}
 
@@ -586,10 +587,10 @@ func (q *Quasar) RemoveValidator(validatorID string) (rotated bool, err error) {
 		rotated = true
 		fmt.Printf("[QUASAR] Removed validator %s, rotated to epoch %d\n",
 			validatorID, q.epochManager.GetCurrentEpoch())
-	} else if errors.Is(err, ErrEpochRateLimited) || errors.Is(err, ErrNoValidatorChange) {
+	} else if errors.Is(err, ErrEpochRateLimited) || errors.Is(err, ErrNoValidatorChange) || errors.Is(err, ErrInvalidValidatorSet) {
 		rotated = false
 		err = nil
-		fmt.Printf("[QUASAR] Removed validator %s from BLS (RT rotation rate-limited)\n", validatorID)
+		fmt.Printf("[QUASAR] Removed validator %s from BLS (RT rotation pending)\n", validatorID)
 	}
 
 	return rotated, err
@@ -638,11 +639,75 @@ func (q *Quasar) GetEpochManager() *EpochManager {
 	return q.epochManager
 }
 
+// SignMessage signs a message with the specified validator's key.
+func (q *Quasar) SignMessage(validatorID string, message []byte) (*QuasarSig, error) {
+	return q.signer.SignMessage(validatorID, message)
+}
+
+// AggregateSignatures aggregates multiple signatures into one.
+func (q *Quasar) AggregateSignatures(message []byte, signatures []*QuasarSig) (*AggregatedSignature, error) {
+	return q.signer.AggregateSignatures(message, signatures)
+}
+
+// VerifyAggregatedSignature verifies an aggregated signature.
+func (q *Quasar) VerifyAggregatedSignature(message []byte, sig *AggregatedSignature) bool {
+	return q.signer.VerifyAggregatedSignature(message, sig)
+}
+
+// SignMessageWithContext signs a message with context cancellation support.
+func (q *Quasar) SignMessageWithContext(ctx context.Context, validatorID string, message []byte) (*QuasarSig, error) {
+	return q.signer.SignMessageWithContext(ctx, validatorID, message)
+}
+
+// AggregateSignaturesWithContext aggregates multiple signatures with context support.
+func (q *Quasar) AggregateSignaturesWithContext(ctx context.Context, message []byte, signatures []*QuasarSig) (*AggregatedSignature, error) {
+	return q.signer.AggregateSignaturesWithContext(ctx, message, signatures)
+}
+
+// VerifyAggregatedSignatureWithContext verifies an aggregated signature with context support.
+func (q *Quasar) VerifyAggregatedSignatureWithContext(ctx context.Context, message []byte, sig *AggregatedSignature) bool {
+	return q.signer.VerifyAggregatedSignatureWithContext(ctx, message, sig)
+}
+
+// IsThresholdMode returns true if the signer is in threshold mode.
+func (q *Quasar) IsThresholdMode() bool {
+	return q.signer.IsThresholdMode()
+}
+
+// IsDualThresholdMode returns true if the signer is in dual threshold mode (BLS + Ringtail).
+func (q *Quasar) IsDualThresholdMode() bool {
+	return q.signer.IsDualThresholdMode()
+}
+
+// GetActiveValidatorCount returns the number of active validators.
+func (q *Quasar) GetActiveValidatorCount() int {
+	return q.signer.GetActiveValidatorCount()
+}
+
+// GetThreshold returns the consensus threshold.
+func (q *Quasar) GetThreshold() int {
+	return q.signer.GetThreshold()
+}
+
+// VerifyQuasarSig verifies a QuasarSig signature.
+func (q *Quasar) VerifyQuasarSig(message []byte, sig *QuasarSig) bool {
+	return q.signer.VerifyQuasarSig(message, sig)
+}
+
+// RingtailRound1 executes Round 1 of the Ringtail threshold signing protocol.
+func (q *Quasar) RingtailRound1(validatorID string, sessionID int, prfKey []byte) (*RingtailRound1Data, error) {
+	data, err := q.signer.RingtailRound1(validatorID, sessionID, prfKey)
+	if err != nil {
+		return nil, err
+	}
+	return &RingtailRound1Data{PartyID: data.PartyID}, nil
+}
+
 // Internal helpers
 
 func (q *Quasar) getActiveValidatorIDsLocked() []string {
-	ids := make([]string, 0, len(q.hybridConsensus.validators))
-	for id, v := range q.hybridConsensus.validators {
+	ids := make([]string, 0, len(q.signer.validators))
+	for id, v := range q.signer.validators {
 		if v.Active {
 			ids = append(ids, id)
 		}

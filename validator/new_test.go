@@ -734,6 +734,6 @@ func (l *testListener) OnValidatorLightChanged(netID ids.ID, nodeID ids.NodeID, 
 
 type testSetListener struct{}
 
-func (l *testSetListener) OnValidatorAdded(nodeID ids.NodeID, light uint64)                {}
-func (l *testSetListener) OnValidatorRemoved(nodeID ids.NodeID, light uint64)              {}
+func (l *testSetListener) OnValidatorAdded(nodeID ids.NodeID, light uint64)                     {}
+func (l *testSetListener) OnValidatorRemoved(nodeID ids.NodeID, light uint64)                   {}
 func (l *testSetListener) OnValidatorLightChanged(nodeID ids.NodeID, oldLight, newLight uint64) {}

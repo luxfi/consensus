@@ -1,5 +1,5 @@
 // Copyright (C) 2025, Lux Industries Inc All rights reserved.
-// Quasar Hybrid Consensus: BLS + Ringtail for Full Post-Quantum Security
+// Quasar: accretion-powered finality with BLS + Ringtail signatures
 
 package quasar
 
@@ -18,9 +18,9 @@ import (
 
 // Buffer pools for hot paths - reduces GC pressure during signing/verification
 var (
-	hybridSigPool = sync.Pool{
+	sigPool = sync.Pool{
 		New: func() any {
-			return &HybridSignature{
+			return &QuasarSig{
 				BLS:      make([]byte, 0, 96),
 				Ringtail: make([]byte, 0, 4096),
 			}
@@ -42,11 +42,11 @@ var (
 	}
 )
 
-// Hybrid implements parallel BLS+Ringtail threshold signing for PQ-safe consensus.
+// Signer implements parallel BLS+Ringtail threshold signing for PQ-safe consensus.
 // BLS provides fast classical threshold signatures.
 // Ringtail provides post-quantum threshold signatures based on Ring-LWE.
 // Both run in parallel to provide quantum-safe finality.
-type Hybrid struct {
+type signer struct {
 	mu sync.RWMutex
 
 	// Classical BLS threshold signing (via crypto/threshold)
@@ -79,8 +79,8 @@ type Validator struct {
 	Active      bool
 }
 
-// HybridConfig configures the dual threshold signing system.
-type HybridConfig struct {
+// SignerConfig configures the dual threshold signing system.
+type SignerConfig struct {
 	Threshold    int
 	TotalParties int
 
@@ -101,13 +101,13 @@ type RingtailRound1State struct {
 	Round1Data map[int]*ringtailThreshold.Round1Data
 }
 
-// NewHybrid creates a new hybrid consensus engine with basic BLS support.
-func NewHybrid(thresholdVal int) (*Hybrid, error) {
+// NewSigner creates a new signer engine with basic BLS support.
+func newSigner(thresholdVal int) (*signer, error) {
 	if thresholdVal < 1 {
 		return nil, errors.New("threshold must be at least 1")
 	}
 
-	return &Hybrid{
+	return &signer{
 		blsKeys:         make(map[string]*bls.SecretKey),
 		blsPubKeys:      make(map[string]*bls.PublicKey),
 		blsSigners:      make(map[string]threshold.Signer),
@@ -118,13 +118,13 @@ func NewHybrid(thresholdVal int) (*Hybrid, error) {
 	}, nil
 }
 
-// NewHybridWithDualThreshold creates a hybrid engine with full dual threshold signing.
-func NewHybridWithDualThreshold(config HybridConfig) (*Hybrid, error) {
+// NewSignerWithDualThreshold creates a signer with full dual threshold signing.
+func newSignerWithDualThreshold(config SignerConfig) (*signer, error) {
 	if config.Threshold < 1 {
 		return nil, errors.New("threshold must be at least 1")
 	}
 
-	h := &Hybrid{
+	h := &signer{
 		blsKeys:         make(map[string]*bls.SecretKey),
 		blsPubKeys:      make(map[string]*bls.PublicKey),
 		blsSigners:      make(map[string]threshold.Signer),
@@ -173,7 +173,7 @@ func NewHybridWithDualThreshold(config HybridConfig) (*Hybrid, error) {
 
 // GenerateDualKeys generates both BLS and Ringtail threshold keys for an epoch.
 // Call this when the validator set changes.
-func GenerateDualKeys(t, n int) (*HybridConfig, error) {
+func GenerateDualKeys(t, n int) (*SignerConfig, error) {
 	ctx := context.Background()
 
 	// Generate BLS threshold keys
@@ -211,7 +211,7 @@ func GenerateDualKeys(t, n int) (*HybridConfig, error) {
 		ringtailShareMap[id] = ringtailShares[i]
 	}
 
-	return &HybridConfig{
+	return &SignerConfig{
 		Threshold:        t,
 		TotalParties:     n,
 		BLSKeyShares:     blsShareMap,
@@ -227,18 +227,18 @@ func GenerateDualKeys(t, n int) (*HybridConfig, error) {
 
 // RingtailRound1 performs Round 1 of Ringtail signing for a validator.
 // Returns Round1Data to broadcast to other validators.
-func (h *Hybrid) RingtailRound1(validatorID string, sessionID int, prfKey []byte) (*ringtailThreshold.Round1Data, error) {
-	h.mu.RLock()
-	signer, exists := h.ringtailSigners[validatorID]
-	h.mu.RUnlock()
+func (s *signer) RingtailRound1(validatorID string, sessionID int, prfKey []byte) (*ringtailThreshold.Round1Data, error) {
+	s.mu.RLock()
+	signer, exists := s.ringtailSigners[validatorID]
+	s.mu.RUnlock()
 
 	if !exists {
 		return nil, fmt.Errorf("validator %s not found in Ringtail signers", validatorID)
 	}
 
 	// Get all signer indices
-	signerIDs := make([]int, 0, len(h.ringtailSigners))
-	for _, s := range h.ringtailShares {
+	signerIDs := make([]int, 0, len(s.ringtailSigners))
+	for _, s := range s.ringtailShares {
 		signerIDs = append(signerIDs, s.Index)
 	}
 
@@ -248,17 +248,17 @@ func (h *Hybrid) RingtailRound1(validatorID string, sessionID int, prfKey []byte
 // RingtailRound2 performs Round 2 of Ringtail signing for a validator.
 // Requires collected Round 1 data from all signers.
 // Returns Round2Data to broadcast.
-func (h *Hybrid) RingtailRound2(validatorID string, sessionID int, message string, prfKey []byte, round1Data map[int]*ringtailThreshold.Round1Data) (*ringtailThreshold.Round2Data, error) {
-	h.mu.RLock()
-	signer, exists := h.ringtailSigners[validatorID]
-	h.mu.RUnlock()
+func (s *signer) RingtailRound2(validatorID string, sessionID int, message string, prfKey []byte, round1Data map[int]*ringtailThreshold.Round1Data) (*ringtailThreshold.Round2Data, error) {
+	s.mu.RLock()
+	signer, exists := s.ringtailSigners[validatorID]
+	s.mu.RUnlock()
 
 	if !exists {
 		return nil, fmt.Errorf("validator %s not found in Ringtail signers", validatorID)
 	}
 
-	signerIDs := make([]int, 0, len(h.ringtailSigners))
-	for _, s := range h.ringtailShares {
+	signerIDs := make([]int, 0, len(s.ringtailSigners))
+	for _, s := range s.ringtailShares {
 		signerIDs = append(signerIDs, s.Index)
 	}
 
@@ -267,10 +267,10 @@ func (h *Hybrid) RingtailRound2(validatorID string, sessionID int, message strin
 
 // RingtailFinalize aggregates Round 2 data into the final signature.
 // Any validator can call this.
-func (h *Hybrid) RingtailFinalize(validatorID string, round2Data map[int]*ringtailThreshold.Round2Data) (*ringtailThreshold.Signature, error) {
-	h.mu.RLock()
-	signer, exists := h.ringtailSigners[validatorID]
-	h.mu.RUnlock()
+func (s *signer) RingtailFinalize(validatorID string, round2Data map[int]*ringtailThreshold.Round2Data) (*ringtailThreshold.Signature, error) {
+	s.mu.RLock()
+	signer, exists := s.ringtailSigners[validatorID]
+	s.mu.RUnlock()
 
 	if !exists {
 		return nil, fmt.Errorf("validator %s not found in Ringtail signers", validatorID)
@@ -280,11 +280,11 @@ func (h *Hybrid) RingtailFinalize(validatorID string, round2Data map[int]*ringta
 }
 
 // VerifyRingtailSignature verifies a Ringtail threshold signature.
-func (h *Hybrid) VerifyRingtailSignature(message string, sig *ringtailThreshold.Signature) bool {
-	if h.ringtailGroupKey == nil || sig == nil {
+func (s *signer) VerifyRingtailSignature(message string, sig *ringtailThreshold.Signature) bool {
+	if s.ringtailGroupKey == nil || sig == nil {
 		return false
 	}
-	return ringtailThreshold.Verify(h.ringtailGroupKey, message, sig)
+	return ringtailThreshold.Verify(s.ringtailGroupKey, message, sig)
 }
 
 // ============================================================================
@@ -294,11 +294,11 @@ func (h *Hybrid) VerifyRingtailSignature(message string, sig *ringtailThreshold.
 // DualSignRound1 performs Round 1 of both BLS and Ringtail in parallel.
 // BLS: Computes signature share (single round)
 // Ringtail: Computes D matrix + MACs (Round 1 of 2)
-func (h *Hybrid) DualSignRound1(ctx context.Context, validatorID string, message []byte, sessionID int, prfKey []byte) (*HybridSignature, *ringtailThreshold.Round1Data, error) {
-	h.mu.RLock()
-	blsSigner, hasBLS := h.blsSigners[validatorID]
-	_, hasRingtail := h.ringtailSigners[validatorID]
-	h.mu.RUnlock()
+func (s *signer) DualSignRound1(ctx context.Context, validatorID string, message []byte, sessionID int, prfKey []byte) (*QuasarSig, *ringtailThreshold.Round1Data, error) {
+	s.mu.RLock()
+	blsSigner, hasBLS := s.blsSigners[validatorID]
+	_, hasRingtail := s.ringtailSigners[validatorID]
+	s.mu.RUnlock()
 
 	if !hasBLS || !hasRingtail {
 		return nil, nil, errors.New("validator not configured for dual signing")
@@ -310,8 +310,8 @@ func (h *Hybrid) DualSignRound1(ctx context.Context, validatorID string, message
 	var round1Data *ringtailThreshold.Round1Data
 
 	// Get BLS signer indices
-	blsIndices := make([]int, 0, len(h.blsSigners))
-	for _, s := range h.blsSigners {
+	blsIndices := make([]int, 0, len(s.blsSigners))
+	for _, s := range s.blsSigners {
 		blsIndices = append(blsIndices, s.Index())
 	}
 
@@ -326,7 +326,7 @@ func (h *Hybrid) DualSignRound1(ctx context.Context, validatorID string, message
 	// Ringtail Round 1
 	go func() {
 		defer wg.Done()
-		round1Data, _ = h.RingtailRound1(validatorID, sessionID, prfKey)
+		round1Data, _ = s.RingtailRound1(validatorID, sessionID, prfKey)
 	}()
 
 	wg.Wait()
@@ -335,7 +335,7 @@ func (h *Hybrid) DualSignRound1(ctx context.Context, validatorID string, message
 		return nil, nil, fmt.Errorf("BLS signing failed: %w", blsErr)
 	}
 
-	sig := &HybridSignature{
+	sig := &QuasarSig{
 		BLS:         blsShare.Bytes(),
 		ValidatorID: validatorID,
 		IsThreshold: true,
@@ -346,8 +346,8 @@ func (h *Hybrid) DualSignRound1(ctx context.Context, validatorID string, message
 }
 
 // DualSignRound2 performs Round 2 of Ringtail (BLS is already done in Round1).
-func (h *Hybrid) DualSignRound2(validatorID string, sessionID int, message string, prfKey []byte, round1Data map[int]*ringtailThreshold.Round1Data) (*ringtailThreshold.Round2Data, error) {
-	return h.RingtailRound2(validatorID, sessionID, message, prfKey, round1Data)
+func (s *signer) DualSignRound2(validatorID string, sessionID int, message string, prfKey []byte, round1Data map[int]*ringtailThreshold.Round1Data) (*ringtailThreshold.Round2Data, error) {
+	return s.RingtailRound2(validatorID, sessionID, message, prfKey, round1Data)
 }
 
 // ============================================================================
@@ -355,9 +355,9 @@ func (h *Hybrid) DualSignRound2(validatorID string, sessionID int, message strin
 // ============================================================================
 
 // AddValidator adds a validator with legacy BLS key generation.
-func (h *Hybrid) AddValidator(id string, weight uint64) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+func (s *signer) AddValidator(id string, weight uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	blsSK, err := bls.NewSecretKey()
 	if err != nil {
@@ -365,10 +365,10 @@ func (h *Hybrid) AddValidator(id string, weight uint64) error {
 	}
 	blsPK := blsSK.PublicKey()
 
-	h.blsKeys[id] = blsSK
-	h.blsPubKeys[id] = blsPK
+	s.blsKeys[id] = blsSK
+	s.blsPubKeys[id] = blsPK
 
-	h.validators[id] = &Validator{
+	s.validators[id] = &Validator{
 		ID:        id,
 		BLSPubKey: blsPK,
 		Weight:    weight,
@@ -379,29 +379,29 @@ func (h *Hybrid) AddValidator(id string, weight uint64) error {
 }
 
 // SignMessage signs a message with BLS (legacy mode or threshold).
-func (h *Hybrid) SignMessage(validatorID string, message []byte) (*HybridSignature, error) {
-	return h.SignMessageWithContext(context.Background(), validatorID, message)
+func (s *signer) SignMessage(validatorID string, message []byte) (*QuasarSig, error) {
+	return s.SignMessageWithContext(context.Background(), validatorID, message)
 }
 
 // SignMessageWithContext signs a message.
-func (h *Hybrid) SignMessageWithContext(ctx context.Context, validatorID string, message []byte) (*HybridSignature, error) {
+func (s *signer) SignMessageWithContext(ctx context.Context, validatorID string, message []byte) (*QuasarSig, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	sig := hybridSigPool.Get().(*HybridSignature)
+	sig := sigPool.Get().(*QuasarSig)
 	sig.BLS = sig.BLS[:0]
 	sig.Ringtail = sig.Ringtail[:0]
 	sig.ValidatorID = validatorID
 
 	// Check for threshold signer
-	blsSigner, hasBLSSigner := h.blsSigners[validatorID]
+	blsSigner, hasBLSSigner := s.blsSigners[validatorID]
 	if hasBLSSigner {
-		blsIndices := make([]int, 0, len(h.blsSigners))
-		for _, s := range h.blsSigners {
+		blsIndices := make([]int, 0, len(s.blsSigners))
+		for _, s := range s.blsSigners {
 			blsIndices = append(blsIndices, s.Index())
 		}
 
@@ -417,7 +417,7 @@ func (h *Hybrid) SignMessageWithContext(ctx context.Context, validatorID string,
 	}
 
 	// Fall back to legacy BLS
-	blsSK, exists := h.blsKeys[validatorID]
+	blsSK, exists := s.blsKeys[validatorID]
 	if !exists {
 		return nil, errors.New("validator not found")
 	}
@@ -433,36 +433,36 @@ func (h *Hybrid) SignMessageWithContext(ctx context.Context, validatorID string,
 	return sig, nil
 }
 
-// ReleaseHybridSignature returns a HybridSignature to the pool.
-func ReleaseHybridSignature(sig *HybridSignature) {
+// ReleaseQuasarSig returns a QuasarSig to the pool.
+func ReleaseQuasarSig(sig *QuasarSig) {
 	if sig == nil {
 		return
 	}
 	sig.ValidatorID = ""
 	sig.IsThreshold = false
 	sig.SignerIndex = 0
-	hybridSigPool.Put(sig)
+	sigPool.Put(sig)
 }
 
-// VerifyHybridSignature verifies a signature.
-func (h *Hybrid) VerifyHybridSignature(message []byte, sig *HybridSignature) bool {
-	return h.VerifyHybridSignatureWithContext(context.Background(), message, sig)
+// VerifyQuasarSig verifies a signature.
+func (s *signer) VerifyQuasarSig(message []byte, sig *QuasarSig) bool {
+	return s.VerifyQuasarSigWithContext(context.Background(), message, sig)
 }
 
-// VerifyHybridSignatureWithContext verifies a signature.
-func (h *Hybrid) VerifyHybridSignatureWithContext(ctx context.Context, message []byte, sig *HybridSignature) bool {
+// VerifyQuasarSigWithContext verifies a signature.
+func (s *signer) VerifyQuasarSigWithContext(ctx context.Context, message []byte, sig *QuasarSig) bool {
 	if ctx.Err() != nil {
 		return false
 	}
 
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	if sig.IsThreshold {
 		return true // Shares verified during aggregation
 	}
 
-	validator, exists := h.validators[sig.ValidatorID]
+	validator, exists := s.validators[sig.ValidatorID]
 	if !exists {
 		return false
 	}
@@ -476,38 +476,38 @@ func (h *Hybrid) VerifyHybridSignatureWithContext(ctx context.Context, message [
 }
 
 // AggregateSignatures aggregates BLS threshold signature shares.
-func (h *Hybrid) AggregateSignatures(message []byte, signatures []*HybridSignature) (*AggregatedSignature, error) {
-	return h.AggregateSignaturesWithContext(context.Background(), message, signatures)
+func (s *signer) AggregateSignatures(message []byte, signatures []*QuasarSig) (*AggregatedSignature, error) {
+	return s.AggregateSignaturesWithContext(context.Background(), message, signatures)
 }
 
 // AggregateSignaturesWithContext aggregates signatures.
-func (h *Hybrid) AggregateSignaturesWithContext(ctx context.Context, message []byte, signatures []*HybridSignature) (*AggregatedSignature, error) {
+func (s *signer) AggregateSignaturesWithContext(ctx context.Context, message []byte, signatures []*QuasarSig) (*AggregatedSignature, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	if len(signatures) < h.threshold {
-		return nil, fmt.Errorf("insufficient signatures: %d < %d", len(signatures), h.threshold)
+	if len(signatures) < s.threshold {
+		return nil, fmt.Errorf("insufficient signatures: %d < %d", len(signatures), s.threshold)
 	}
 
 	// Check for threshold mode
-	if len(signatures) > 0 && signatures[0].IsThreshold && h.blsAggregator != nil {
+	if len(signatures) > 0 && signatures[0].IsThreshold && s.blsAggregator != nil {
 		blsShares := make([]threshold.SignatureShare, 0, len(signatures))
 
 		for _, sig := range signatures {
 			if len(sig.BLS) > 0 {
-				share, err := h.blsScheme.ParseSignatureShare(sig.BLS)
+				share, err := s.blsScheme.ParseSignatureShare(sig.BLS)
 				if err == nil {
 					blsShares = append(blsShares, share)
 				}
 			}
 		}
 
-		if len(blsShares) >= h.threshold {
-			blsAggSig, err := h.blsAggregator.Aggregate(ctx, message, blsShares, nil)
+		if len(blsShares) >= s.threshold {
+			blsAggSig, err := s.blsAggregator.Aggregate(ctx, message, blsShares, nil)
 			if err != nil {
 				return nil, fmt.Errorf("BLS aggregation failed: %w", err)
 			}
@@ -552,26 +552,26 @@ func (h *Hybrid) AggregateSignaturesWithContext(ctx context.Context, message []b
 }
 
 // VerifyAggregatedSignature verifies an aggregated signature.
-func (h *Hybrid) VerifyAggregatedSignature(message []byte, aggSig *AggregatedSignature) bool {
-	return h.VerifyAggregatedSignatureWithContext(context.Background(), message, aggSig)
+func (s *signer) VerifyAggregatedSignature(message []byte, aggSig *AggregatedSignature) bool {
+	return s.VerifyAggregatedSignatureWithContext(context.Background(), message, aggSig)
 }
 
 // VerifyAggregatedSignatureWithContext verifies an aggregated signature.
-func (h *Hybrid) VerifyAggregatedSignatureWithContext(ctx context.Context, message []byte, aggSig *AggregatedSignature) bool {
+func (s *signer) VerifyAggregatedSignatureWithContext(ctx context.Context, message []byte, aggSig *AggregatedSignature) bool {
 	if ctx.Err() != nil {
 		return false
 	}
 
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	if aggSig.SignerCount < h.threshold {
+	if aggSig.SignerCount < s.threshold {
 		return false
 	}
 
 	if aggSig.IsThreshold {
-		if h.blsVerifier != nil && len(aggSig.BLSAggregated) > 0 {
-			return h.blsVerifier.VerifyBytes(message, aggSig.BLSAggregated)
+		if s.blsVerifier != nil && len(aggSig.BLSAggregated) > 0 {
+			return s.blsVerifier.VerifyBytes(message, aggSig.BLSAggregated)
 		}
 		return false
 	}
@@ -590,7 +590,7 @@ func (h *Hybrid) VerifyAggregatedSignatureWithContext(ctx context.Context, messa
 	}()
 
 	for _, validatorID := range aggSig.ValidatorIDs {
-		validator, exists := h.validators[validatorID]
+		validator, exists := s.validators[validatorID]
 		if !exists || !validator.Active {
 			return false
 		}
@@ -605,8 +605,8 @@ func (h *Hybrid) VerifyAggregatedSignatureWithContext(ctx context.Context, messa
 	return bls.Verify(aggPubKey, blsSig, message)
 }
 
-// HybridSignature contains BLS and optionally Ringtail signature data.
-type HybridSignature struct {
+// QuasarSig contains BLS and optionally Ringtail signature data.
+type QuasarSig struct {
 	BLS         []byte
 	Ringtail    []byte
 	ValidatorID string
@@ -624,12 +624,12 @@ type AggregatedSignature struct {
 }
 
 // GetActiveValidatorCount returns the number of active validators.
-func (h *Hybrid) GetActiveValidatorCount() int {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+func (s *signer) GetActiveValidatorCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	count := 0
-	for _, v := range h.validators {
+	for _, v := range s.validators {
 		if v.Active {
 			count++
 		}
@@ -638,18 +638,18 @@ func (h *Hybrid) GetActiveValidatorCount() int {
 }
 
 // GetThreshold returns the consensus threshold.
-func (h *Hybrid) GetThreshold() int {
-	return h.threshold
+func (s *signer) GetThreshold() int {
+	return s.threshold
 }
 
 // IsThresholdMode returns true if BLS threshold signing is enabled.
-func (h *Hybrid) IsThresholdMode() bool {
-	return h.blsScheme != nil
+func (s *signer) IsThresholdMode() bool {
+	return s.blsScheme != nil
 }
 
 // IsDualThresholdMode returns true if both BLS and Ringtail are enabled.
-func (h *Hybrid) IsDualThresholdMode() bool {
-	return h.blsScheme != nil && h.ringtailGroupKey != nil
+func (s *signer) IsDualThresholdMode() bool {
+	return s.blsScheme != nil && s.ringtailGroupKey != nil
 }
 
 // ============================================================================
@@ -665,8 +665,8 @@ type ThresholdConfig struct {
 	GroupKey     threshold.PublicKey
 }
 
-// NewHybridWithThresholdConfig creates a hybrid engine from ThresholdConfig.
-func NewHybridWithThresholdConfig(config ThresholdConfig) (*Hybrid, error) {
+// newSignerWithThresholdConfig creates a signer from ThresholdConfig.
+func newSignerWithThresholdConfig(config ThresholdConfig) (*signer, error) {
 	if config.Threshold < 1 {
 		return nil, errors.New("threshold must be at least 1")
 	}
@@ -676,7 +676,7 @@ func NewHybridWithThresholdConfig(config ThresholdConfig) (*Hybrid, error) {
 		return nil, fmt.Errorf("failed to get threshold scheme: %w", err)
 	}
 
-	h := &Hybrid{
+	h := &signer{
 		blsKeys:         make(map[string]*bls.SecretKey),
 		blsPubKeys:      make(map[string]*bls.PublicKey),
 		blsSigners:      make(map[string]threshold.Signer),
@@ -710,9 +710,9 @@ func NewHybridWithThresholdConfig(config ThresholdConfig) (*Hybrid, error) {
 	return h, nil
 }
 
-// NewHybridWithThreshold is an alias for NewHybridWithDualThreshold.
-func NewHybridWithThreshold(config HybridConfig) (*Hybrid, error) {
-	return NewHybridWithDualThreshold(config)
+// newSignerWithThreshold is an alias for newSignerWithDualThreshold.
+func newSignerWithThreshold(config SignerConfig) (*signer, error) {
+	return newSignerWithDualThreshold(config)
 }
 
 // GenerateThresholdKeys generates threshold keys for a single scheme.
@@ -734,32 +734,32 @@ func GenerateThresholdKeys(schemeID threshold.SchemeID, t, n int) ([]threshold.K
 }
 
 // GenerateDualThresholdKeys generates both BLS and Ringtail keys (backward compat).
-func GenerateDualThresholdKeys(t, n int) (*HybridConfig, error) {
+func GenerateDualThresholdKeys(t, n int) (*SignerConfig, error) {
 	return GenerateDualKeys(t, n)
 }
 
 // ThresholdScheme returns the BLS threshold scheme.
-func (h *Hybrid) ThresholdScheme() threshold.Scheme {
-	return h.blsScheme
+func (s *signer) ThresholdScheme() threshold.Scheme {
+	return s.blsScheme
 }
 
 // ThresholdGroupKey returns the BLS group public key.
-func (h *Hybrid) ThresholdGroupKey() threshold.PublicKey {
-	return h.blsGroupKey
+func (s *signer) ThresholdGroupKey() threshold.PublicKey {
+	return s.blsGroupKey
 }
 
 // SignMessageThreshold signs using BLS threshold.
-func (h *Hybrid) SignMessageThreshold(ctx context.Context, validatorID string, message []byte) (threshold.SignatureShare, error) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+func (s *signer) SignMessageThreshold(ctx context.Context, validatorID string, message []byte) (threshold.SignatureShare, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	signer, exists := h.blsSigners[validatorID]
+	signer, exists := s.blsSigners[validatorID]
 	if !exists {
 		return nil, fmt.Errorf("validator %s not found in BLS signers", validatorID)
 	}
 
-	signerIndices := make([]int, 0, len(h.blsSigners))
-	for _, s := range h.blsSigners {
+	signerIndices := make([]int, 0, len(s.blsSigners))
+	for _, s := range s.blsSigners {
 		signerIndices = append(signerIndices, s.Index())
 	}
 
@@ -767,62 +767,62 @@ func (h *Hybrid) SignMessageThreshold(ctx context.Context, validatorID string, m
 }
 
 // AggregateThresholdSignatures aggregates BLS threshold shares.
-func (h *Hybrid) AggregateThresholdSignatures(ctx context.Context, message []byte, shares []threshold.SignatureShare) (threshold.Signature, error) {
-	if h.blsAggregator == nil {
+func (s *signer) AggregateThresholdSignatures(ctx context.Context, message []byte, shares []threshold.SignatureShare) (threshold.Signature, error) {
+	if s.blsAggregator == nil {
 		return nil, errors.New("BLS aggregator not initialized")
 	}
 
-	if len(shares) <= h.threshold {
-		return nil, fmt.Errorf("insufficient shares: need at least %d, got %d", h.threshold+1, len(shares))
+	if len(shares) <= s.threshold {
+		return nil, fmt.Errorf("insufficient shares: need at least %d, got %d", s.threshold+1, len(shares))
 	}
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	return h.blsAggregator.Aggregate(ctx, message, shares, nil)
+	return s.blsAggregator.Aggregate(ctx, message, shares, nil)
 }
 
 // VerifyThresholdSignature verifies a BLS threshold signature.
-func (h *Hybrid) VerifyThresholdSignature(message []byte, sig threshold.Signature) bool {
-	if h.blsVerifier == nil {
+func (s *signer) VerifyThresholdSignature(message []byte, sig threshold.Signature) bool {
+	if s.blsVerifier == nil {
 		return false
 	}
 
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	return h.blsVerifier.Verify(message, sig)
+	return s.blsVerifier.Verify(message, sig)
 }
 
 // VerifyThresholdSignatureBytes verifies serialized BLS threshold signature.
-func (h *Hybrid) VerifyThresholdSignatureBytes(message, sig []byte) bool {
-	if h.blsVerifier == nil {
+func (s *signer) VerifyThresholdSignatureBytes(message, sig []byte) bool {
+	if s.blsVerifier == nil {
 		return false
 	}
 
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	return h.blsVerifier.VerifyBytes(message, sig)
+	return s.blsVerifier.VerifyBytes(message, sig)
 }
 
 // AddValidatorThreshold adds a validator with BLS threshold key share.
-func (h *Hybrid) AddValidatorThreshold(id string, keyShare threshold.KeyShare, weight uint64) error {
-	if h.blsScheme == nil {
+func (s *signer) AddValidatorThreshold(id string, keyShare threshold.KeyShare, weight uint64) error {
+	if s.blsScheme == nil {
 		return errors.New("BLS threshold scheme not initialized")
 	}
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	signer, err := h.blsScheme.NewSigner(keyShare)
+	signer, err := s.blsScheme.NewSigner(keyShare)
 	if err != nil {
 		return fmt.Errorf("failed to create signer: %w", err)
 	}
 
-	h.blsSigners[id] = signer
+	s.blsSigners[id] = signer
 
-	h.validators[id] = &Validator{
+	s.validators[id] = &Validator{
 		ID:     id,
 		Weight: weight,
 		Active: true,

@@ -7,16 +7,17 @@ import (
 )
 
 func TestQuasar(t *testing.T) {
-	// Create quantum aggregator with threshold of 1 validator
-	qa, err := NewQuasar(1)
+	// Create quantum aggregator with threshold of 2 validators
+	// Need 3 validators for threshold 2 (t < n)
+	qa, err := NewQuasar(2)
 	if err != nil {
 		t.Fatalf("Failed to create quantum aggregator: %v", err)
 	}
 
-	// Add a test validator
-	err = qa.hybridConsensus.AddValidator("validator1", 100)
+	// Initialize validators (need more than threshold)
+	err = qa.InitializeValidators([]string{"validator1", "validator2", "validator3"})
 	if err != nil {
-		t.Fatalf("Failed to add validator: %v", err)
+		t.Fatalf("Failed to initialize validators: %v", err)
 	}
 
 	// Start the aggregator
@@ -30,7 +31,7 @@ func TestQuasar(t *testing.T) {
 	pBlock := &ChainBlock{
 		ChainID:   [32]byte{1},
 		ChainName: "P-Chain",
-		ID:   [32]byte{0x01, 0x02, 0x03},
+		ID:        [32]byte{0x01, 0x02, 0x03},
 		Height:    100,
 		Timestamp: time.Now(),
 		Data:      []byte("P-Chain block data"),
@@ -40,7 +41,7 @@ func TestQuasar(t *testing.T) {
 	xBlock := &ChainBlock{
 		ChainID:   [32]byte{2},
 		ChainName: "X-Chain",
-		ID:   [32]byte{0x04, 0x05, 0x06},
+		ID:        [32]byte{0x04, 0x05, 0x06},
 		Height:    200,
 		Timestamp: time.Now(),
 		Data:      []byte("X-Chain block data"),
@@ -50,7 +51,7 @@ func TestQuasar(t *testing.T) {
 	cBlock := &ChainBlock{
 		ChainID:   [32]byte{3},
 		ChainName: "C-Chain",
-		ID:   [32]byte{0x07, 0x08, 0x09},
+		ID:        [32]byte{0x07, 0x08, 0x09},
 		Height:    300,
 		Timestamp: time.Now(),
 		Data:      []byte("C-Chain block data"),
@@ -84,22 +85,22 @@ func TestQuasar(t *testing.T) {
 
 func TestQuantumFinalityWithRingtail(t *testing.T) {
 	// Test that Ringtail and BLS signatures work in parallel
-	qa, err := NewQuasar(1)
+	qa, err := NewQuasar(2)
 	if err != nil {
 		t.Fatalf("Failed to create quantum aggregator: %v", err)
 	}
 
 	// Add validator with both BLS and Ringtail keys
-	err = qa.hybridConsensus.AddValidator("validator1", 100)
+	err = qa.InitializeValidators([]string{"validator1", "validator2", "validator3"})
 	if err != nil {
-		t.Fatalf("Failed to add validator: %v", err)
+		t.Fatalf("Failed to initialize validators: %v", err)
 	}
 
 	// Create a test message
 	message := []byte("Test quantum finality message")
 
 	// Sign with hybrid (BLS + Ringtail)
-	sig, err := qa.hybridConsensus.SignMessage("validator1", message)
+	sig, err := qa.SignMessage("validator1", message)
 	if err != nil {
 		t.Fatalf("Failed to sign message: %v", err)
 	}
@@ -114,7 +115,7 @@ func TestQuantumFinalityWithRingtail(t *testing.T) {
 	}
 
 	// Verify hybrid signature
-	if !qa.hybridConsensus.VerifyHybridSignature(message, sig) {
+	if !qa.VerifyQuasarSig(message, sig) {
 		t.Error("Failed to verify hybrid signature")
 	}
 
@@ -122,15 +123,15 @@ func TestQuantumFinalityWithRingtail(t *testing.T) {
 }
 
 func TestQuantumEpochFinalization(t *testing.T) {
-	qa, err := NewQuasar(1)
+	qa, err := NewQuasar(2)
 	if err != nil {
 		t.Fatalf("Failed to create quantum aggregator: %v", err)
 	}
 
 	// Add validator
-	err = qa.hybridConsensus.AddValidator("validator1", 100)
+	err = qa.InitializeValidators([]string{"validator1", "validator2", "validator3"})
 	if err != nil {
-		t.Fatalf("Failed to add validator: %v", err)
+		t.Fatalf("Failed to initialize validators: %v", err)
 	}
 
 	// Submit multiple blocks
@@ -138,7 +139,7 @@ func TestQuantumEpochFinalization(t *testing.T) {
 		block := &ChainBlock{
 			ChainID:   [32]byte{byte(i)},
 			ChainName: "P-Chain",
-			ID:   [32]byte{byte(i * 10)},
+			ID:        [32]byte{byte(i * 10)},
 			Height:    uint64(100 + i),
 			Timestamp: time.Now(),
 			Data:      []byte("Block data"),
@@ -160,7 +161,7 @@ func TestQuantumEpochFinalization(t *testing.T) {
 
 func TestContextCancellation(t *testing.T) {
 	t.Run("SignMessageWithContext_cancelled", func(t *testing.T) {
-		hybrid, err := NewHybrid(1)
+		hybrid, err := NewSigner(1)
 		if err != nil {
 			t.Fatalf("Failed to create hybrid: %v", err)
 		}
@@ -184,8 +185,8 @@ func TestContextCancellation(t *testing.T) {
 		}
 	})
 
-	t.Run("VerifyHybridSignatureWithContext_cancelled", func(t *testing.T) {
-		hybrid, err := NewHybrid(1)
+	t.Run("VerifyQuasarSigWithContext_cancelled", func(t *testing.T) {
+		hybrid, err := NewSigner(1)
 		if err != nil {
 			t.Fatalf("Failed to create hybrid: %v", err)
 		}
@@ -206,14 +207,14 @@ func TestContextCancellation(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		result := hybrid.VerifyHybridSignatureWithContext(ctx, msg, sig)
+		result := hybrid.VerifyQuasarSigWithContext(ctx, msg, sig)
 		if result {
 			t.Error("Expected false from cancelled context verification")
 		}
 	})
 
 	t.Run("AggregateSignaturesWithContext_cancelled", func(t *testing.T) {
-		hybrid, err := NewHybrid(1)
+		hybrid, err := NewSigner(1)
 		if err != nil {
 			t.Fatalf("Failed to create hybrid: %v", err)
 		}
@@ -234,7 +235,7 @@ func TestContextCancellation(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err = hybrid.AggregateSignaturesWithContext(ctx, msg, []*HybridSignature{sig})
+		_, err = hybrid.AggregateSignaturesWithContext(ctx, msg, []*QuasarSig{sig})
 		if err == nil {
 			t.Error("Expected error from cancelled context, got nil")
 		}
@@ -244,14 +245,14 @@ func TestContextCancellation(t *testing.T) {
 	})
 
 	t.Run("VerifyQuantumFinalityWithContext_cancelled", func(t *testing.T) {
-		qa, err := NewQuasar(1)
+		qa, err := NewQuasar(2)
 		if err != nil {
 			t.Fatalf("Failed to create quasar: %v", err)
 		}
 
-		err = qa.hybridConsensus.AddValidator("validator1", 100)
+		err = qa.InitializeValidators([]string{"validator1", "validator2", "validator3"})
 		if err != nil {
-			t.Fatalf("Failed to add validator: %v", err)
+			t.Fatalf("Failed to initialize validators: %v", err)
 		}
 
 		// Process a block to create finality
@@ -278,7 +279,7 @@ func TestContextCancellation(t *testing.T) {
 	})
 
 	t.Run("WithContext_valid_context_works", func(t *testing.T) {
-		hybrid, err := NewHybrid(1)
+		hybrid, err := NewSigner(1)
 		if err != nil {
 			t.Fatalf("Failed to create hybrid: %v", err)
 		}
@@ -301,12 +302,12 @@ func TestContextCancellation(t *testing.T) {
 		}
 
 		// Verify should succeed
-		if !hybrid.VerifyHybridSignatureWithContext(ctx, msg, sig) {
-			t.Error("VerifyHybridSignatureWithContext returned false for valid signature")
+		if !hybrid.VerifyQuasarSigWithContext(ctx, msg, sig) {
+			t.Error("VerifyQuasarSigWithContext returned false for valid signature")
 		}
 
 		// Aggregate should succeed
-		aggSig, err := hybrid.AggregateSignaturesWithContext(ctx, msg, []*HybridSignature{sig})
+		aggSig, err := hybrid.AggregateSignaturesWithContext(ctx, msg, []*QuasarSig{sig})
 		if err != nil {
 			t.Fatalf("AggregateSignaturesWithContext failed: %v", err)
 		}
