@@ -540,33 +540,35 @@ func TestRecordPollTransitivelyResetConfidenceTest(t *testing.T) {
 		Beta:            2, // Requires 2 rounds
 	}
 
-	genesisID := ids.GenerateTestID()
+	// Use deterministic IDs to ensure consistent preference selection
+	// IDs are ordered: genesis < block0 < block1 < block2 < block3
+	genesisID := ids.ID{0x00}
 	genesisHeight := uint64(0)
 	genesisTime := time.Now()
 
 	require.NoError(engine.Initialize(ctx, params, genesisID, genesisHeight, genesisTime))
 
-	// Build block tree
+	// Build block tree with deterministic IDs
 	block0 := &TestBlock{
-		IDV:        ids.GenerateTestID(),
+		IDV:        ids.ID{0x10}, // Lower than block1
 		HeightV:    1,
 		ParentV:    genesisID,
 		TimestampV: genesisTime.Add(time.Second),
 	}
 	block1 := &TestBlock{
-		IDV:        ids.GenerateTestID(),
+		IDV:        ids.ID{0x20}, // Higher than block0
 		HeightV:    1,
 		ParentV:    genesisID,
 		TimestampV: genesisTime.Add(time.Second),
 	}
 	block2 := &TestBlock{
-		IDV:        ids.GenerateTestID(),
+		IDV:        ids.ID{0x30}, // Lower than block3
 		HeightV:    2,
 		ParentV:    block1.ID(),
 		TimestampV: genesisTime.Add(2 * time.Second),
 	}
 	block3 := &TestBlock{
-		IDV:        ids.GenerateTestID(),
+		IDV:        ids.ID{0x40}, // Higher than block2
 		HeightV:    2,
 		ParentV:    block1.ID(),
 		TimestampV: genesisTime.Add(2 * time.Second),

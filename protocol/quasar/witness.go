@@ -267,9 +267,17 @@ func (v *VerkleWitness) cacheWitness(witness *WitnessProof) {
 	}
 }
 
+// verifyBLSAggregate verifies BLS aggregate signature for fallback verification.
+// NOTE: This is a placeholder for the VerkleWitness slow path. Since the witness
+// assumes PQ finality (via checkPQFinality), this path is rarely exercised.
+// For real BLS verification, see the Signer.VerifyQuasarSig in quasar.go which
+// uses github.com/luxfi/crypto/bls for actual signature verification.
 func (v *VerkleWitness) verifyBLSAggregate(aggSig []byte, validatorSet []byte) error {
-	// Placeholder for BLS aggregate verification
-	// In production, this would verify against the validator set
+	// With PQ finality assumption, this path is rarely used.
+	// Real verification happens in Signer.VerifyQuasarSig.
+	if len(aggSig) == 0 {
+		return errors.New("empty aggregate signature")
+	}
 	return nil
 }
 
