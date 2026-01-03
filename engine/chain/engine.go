@@ -427,11 +427,23 @@ func (t *Transitive) Notify(ctx context.Context, msg Message) error {
 }
 
 // ReceiveVote queues a vote for processing.
-func (t *Transitive) ReceiveVote(vote Vote) {
+// Returns false if the engine is not started (vote is dropped).
+func (t *Transitive) ReceiveVote(vote Vote) bool {
+	t.mu.RLock()
+	started := t.started
+	t.mu.RUnlock()
+
+	if !started {
+		// Engine not started - drop vote to prevent state corruption
+		return false
+	}
+
 	select {
 	case t.votes <- vote:
+		return true
 	default:
 		// Channel full; vote will be resent
+		return false
 	}
 }
 
@@ -524,15 +536,19 @@ func (t *Transitive) handleVote(vote Vote) {
 
 	t.votesReceived++
 
+	// Only process votes for blocks we're tracking
+	pending, exists := t.pendingBlocks[vote.BlockID]
+	if !exists {
+		return
+	}
+
 	if err := t.consensus.ProcessVote(t.ctx, vote.BlockID, vote.Accept); err != nil {
 		return
 	}
 
-	if pending, ok := t.pendingBlocks[vote.BlockID]; ok {
-		pending.VoteCount++
-		responses := map[ids.ID]int{vote.BlockID: pending.VoteCount}
-		_ = t.consensus.Poll(t.ctx, responses)
-	}
+	pending.VoteCount++
+	responses := map[ids.ID]int{vote.BlockID: pending.VoteCount}
+	_ = t.consensus.Poll(t.ctx, responses)
 }
 
 func (t *Transitive) buildBlocksLocked(ctx context.Context) error {

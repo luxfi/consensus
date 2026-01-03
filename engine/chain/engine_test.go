@@ -21,16 +21,16 @@ type mockBlock struct {
 	bytes     []byte
 }
 
-func (b *mockBlock) ID() ids.ID            { return b.id }
-func (b *mockBlock) Parent() ids.ID        { return b.parentID }
-func (b *mockBlock) ParentID() ids.ID      { return b.parentID }
-func (b *mockBlock) Height() uint64        { return b.height }
-func (b *mockBlock) Timestamp() time.Time  { return b.timestamp }
-func (b *mockBlock) Status() uint8         { return b.status }
+func (b *mockBlock) ID() ids.ID                   { return b.id }
+func (b *mockBlock) Parent() ids.ID               { return b.parentID }
+func (b *mockBlock) ParentID() ids.ID             { return b.parentID }
+func (b *mockBlock) Height() uint64               { return b.height }
+func (b *mockBlock) Timestamp() time.Time         { return b.timestamp }
+func (b *mockBlock) Status() uint8                { return b.status }
 func (b *mockBlock) Verify(context.Context) error { return nil }
 func (b *mockBlock) Accept(context.Context) error { return nil }
 func (b *mockBlock) Reject(context.Context) error { return nil }
-func (b *mockBlock) Bytes() []byte         { return b.bytes }
+func (b *mockBlock) Bytes() []byte                { return b.bytes }
 
 func TestNew(t *testing.T) {
 	engine := New()
@@ -320,12 +320,12 @@ type trackingMockBlock struct {
 	rejectCalled int
 }
 
-func (b *trackingMockBlock) ID() ids.ID            { return b.id }
-func (b *trackingMockBlock) Parent() ids.ID        { return b.parentID }
-func (b *trackingMockBlock) ParentID() ids.ID      { return b.parentID }
-func (b *trackingMockBlock) Height() uint64        { return b.height }
-func (b *trackingMockBlock) Timestamp() time.Time  { return b.timestamp }
-func (b *trackingMockBlock) Status() uint8         { return 0 }
+func (b *trackingMockBlock) ID() ids.ID                   { return b.id }
+func (b *trackingMockBlock) Parent() ids.ID               { return b.parentID }
+func (b *trackingMockBlock) ParentID() ids.ID             { return b.parentID }
+func (b *trackingMockBlock) Height() uint64               { return b.height }
+func (b *trackingMockBlock) Timestamp() time.Time         { return b.timestamp }
+func (b *trackingMockBlock) Status() uint8                { return 0 }
 func (b *trackingMockBlock) Verify(context.Context) error { return nil }
 func (b *trackingMockBlock) Accept(context.Context) error {
 	b.acceptCalled++
