@@ -370,9 +370,9 @@ func TestBundleSigner_ChainLinkage(t *testing.T) {
 	}
 
 	// Verify chain linkage
-	require.Equal(t, [32]byte{}, bundles[0].PreviousHash)            // Genesis has no previous
-	require.Equal(t, bundles[0].Hash(), bundles[1].PreviousHash)     // Bundle 1 links to 0
-	require.Equal(t, bundles[1].Hash(), bundles[2].PreviousHash)     // Bundle 2 links to 1
+	require.Equal(t, [32]byte{}, bundles[0].PreviousHash)        // Genesis has no previous
+	require.Equal(t, bundles[0].Hash(), bundles[1].PreviousHash) // Bundle 1 links to 0
+	require.Equal(t, bundles[1].Hash(), bundles[2].PreviousHash) // Bundle 2 links to 1
 
 	// Verify sequences
 	require.Equal(t, uint64(0), bundles[0].Sequence)

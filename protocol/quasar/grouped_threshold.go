@@ -40,8 +40,8 @@ const (
 )
 
 var (
-	ErrInsufficientGroups    = errors.New("insufficient groups signed")
-	ErrGroupSignatureFailed  = errors.New("group signature failed")
+	ErrInsufficientGroups     = errors.New("insufficient groups signed")
+	ErrGroupSignatureFailed   = errors.New("group signature failed")
 	ErrInvalidGroupAssignment = errors.New("invalid group assignment")
 )
 
@@ -60,7 +60,7 @@ type GroupedEpochManager struct {
 	groupQuorum    int // Number of groups required (out of total)
 
 	// Current epoch group state
-	groups       []*ValidatorGroup
+	groups           []*ValidatorGroup
 	groupByValidator map[string]int // validator -> group index
 
 	// Epoch randomness for group assignment (VRF-based)
@@ -69,12 +69,12 @@ type GroupedEpochManager struct {
 
 // ValidatorGroup holds the Ringtail keys for a single group of validators.
 type ValidatorGroup struct {
-	Index       int
-	Validators  []string
-	Threshold   int
-	GroupKey    *ringtailThreshold.GroupKey
-	Shares      map[string]*ringtailThreshold.KeyShare
-	Signers     map[string]*ringtailThreshold.Signer
+	Index      int
+	Validators []string
+	Threshold  int
+	GroupKey   *ringtailThreshold.GroupKey
+	Shares     map[string]*ringtailThreshold.KeyShare
+	Signers    map[string]*ringtailThreshold.Signer
 }
 
 // GroupedSignature holds signatures from multiple groups.
@@ -472,7 +472,7 @@ type EpochCheckpoint struct {
 	Timestamp      int64    // Unix timestamp
 
 	// Quantum-safe signature (Ringtail grouped threshold)
-	Signature      *GroupedSignature
+	Signature *GroupedSignature
 }
 
 // CheckpointHash returns the hash of this checkpoint (for chaining).

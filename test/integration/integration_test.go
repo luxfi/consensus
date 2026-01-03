@@ -11,20 +11,15 @@ import (
 func TestAIConsensusIntegration(t *testing.T) {
 	t.Run("AI Agent with Quasar Consensus", func(t *testing.T) {
 		// Create Quasar hybrid consensus
-		consensus, err := quasar.NewQuasarHybridConsensus(2)
+		consensus, err := quasar.NewQuasar(2)
 		if err != nil {
 			t.Fatalf("Failed to create consensus: %v", err)
 		}
 
-		// Add validators
-		err = consensus.AddValidator("validator1", 100)
+		// Initialize validators (requires threshold < validator count)
+		err = consensus.InitializeValidators([]string{"validator1", "validator2", "validator3"})
 		if err != nil {
-			t.Fatalf("Failed to add validator: %v", err)
-		}
-
-		err = consensus.AddValidator("validator2", 100)
-		if err != nil {
-			t.Fatalf("Failed to add validator: %v", err)
+			t.Fatalf("Failed to initialize validators: %v", err)
 		}
 
 		// Create a simple model that implements BasicModel
@@ -96,7 +91,7 @@ func TestAIConsensusIntegration(t *testing.T) {
 		}
 
 		// Verify signature
-		if !consensus.VerifyHybridSignature(message, sig) {
+		if !consensus.VerifyQuasarSig(message, sig) {
 			t.Fatal("Signature verification failed")
 		}
 
@@ -106,7 +101,7 @@ func TestAIConsensusIntegration(t *testing.T) {
 			t.Fatalf("Failed to sign with validator2: %v", err)
 		}
 
-		sigs := []*quasar.HybridSignature{sig, sig2}
+		sigs := []*quasar.QuasarSig{sig, sig2}
 		aggSig, err := consensus.AggregateSignatures(message, sigs)
 		if err != nil {
 			t.Fatalf("Failed to aggregate signatures: %v", err)

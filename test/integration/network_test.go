@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/luxfi/consensus/core/choices"
-	"github.com/luxfi/consensus/test/helpers"
+	consensustest "github.com/luxfi/consensus/test/helpers"
 	"github.com/luxfi/consensus/types/bag"
 	"github.com/luxfi/consensus/utils/set"
 	"github.com/luxfi/ids"

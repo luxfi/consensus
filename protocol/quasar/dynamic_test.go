@@ -8,15 +8,15 @@ import (
 
 func TestDynamicChainRegistration(t *testing.T) {
 	// Create Quasar core
-	q, err := NewQuasar(1)
+	q, err := NewQuasar(2)
 	if err != nil {
 		t.Fatalf("Failed to create Quasar core: %v", err)
 	}
 
 	// Add validator
-	err = q.hybridConsensus.AddValidator("validator1", 100)
+	err = q.InitializeValidators([]string{"validator1", "validator2", "validator3"})
 	if err != nil {
-		t.Fatalf("Failed to add validator: %v", err)
+		t.Fatalf("Failed to initialize validators: %v", err)
 	}
 
 	// Start the Quasar
@@ -49,15 +49,15 @@ func TestDynamicChainRegistration(t *testing.T) {
 
 func TestAutoRegisterNewSubnet(t *testing.T) {
 	// Create Quasar core
-	q, err := NewQuasar(1)
+	q, err := NewQuasar(2)
 	if err != nil {
 		t.Fatalf("Failed to create Quasar core: %v", err)
 	}
 
 	// Add validator
-	err = q.hybridConsensus.AddValidator("validator1", 100)
+	err = q.InitializeValidators([]string{"validator1", "validator2", "validator3"})
 	if err != nil {
-		t.Fatalf("Failed to add validator: %v", err)
+		t.Fatalf("Failed to initialize validators: %v", err)
 	}
 
 	// Start the Quasar
@@ -71,7 +71,7 @@ func TestAutoRegisterNewSubnet(t *testing.T) {
 	bridgeBlock := &ChainBlock{
 		ChainID:   [32]byte{0xFF},
 		ChainName: "Bridge-Net",
-		ID:   [32]byte{0xAA, 0xBB, 0xCC},
+		ID:        [32]byte{0xAA, 0xBB, 0xCC},
 		Height:    1,
 		Timestamp: time.Now(),
 		Data:      []byte("Bridge transaction data"),
@@ -104,15 +104,15 @@ func TestAutoRegisterNewSubnet(t *testing.T) {
 
 func TestMultipleExternalChains(t *testing.T) {
 	// Create Quasar core
-	q, err := NewQuasar(1)
+	q, err := NewQuasar(2)
 	if err != nil {
 		t.Fatalf("Failed to create Quasar core: %v", err)
 	}
 
 	// Add validator
-	err = q.hybridConsensus.AddValidator("validator1", 100)
+	err = q.InitializeValidators([]string{"validator1", "validator2", "validator3"})
 	if err != nil {
-		t.Fatalf("Failed to add validator: %v", err)
+		t.Fatalf("Failed to initialize validators: %v", err)
 	}
 
 	// Start the Quasar
@@ -135,7 +135,7 @@ func TestMultipleExternalChains(t *testing.T) {
 		block := &ChainBlock{
 			ChainID:   [32]byte{byte(i + 10)},
 			ChainName: chainName,
-			ID:   [32]byte{byte(i * 100)},
+			ID:        [32]byte{byte(i * 100)},
 			Height:    uint64(i + 1),
 			Timestamp: time.Now(),
 			Data:      []byte(chainName + " block data"),
@@ -166,15 +166,15 @@ func TestMultipleExternalChains(t *testing.T) {
 
 func TestQuantumSecurityForAllChains(t *testing.T) {
 	// Create Quasar core
-	q, err := NewQuasar(1)
+	q, err := NewQuasar(2)
 	if err != nil {
 		t.Fatalf("Failed to create Quasar core: %v", err)
 	}
 
 	// Add validator
-	err = q.hybridConsensus.AddValidator("validator1", 100)
+	err = q.InitializeValidators([]string{"validator1", "validator2", "validator3"})
 	if err != nil {
-		t.Fatalf("Failed to add validator: %v", err)
+		t.Fatalf("Failed to initialize validators: %v", err)
 	}
 
 	// Start the Quasar
@@ -188,7 +188,7 @@ func TestQuantumSecurityForAllChains(t *testing.T) {
 	bridgeBlock := &ChainBlock{
 		ChainID:   [32]byte{0xFF},
 		ChainName: "Bridge-Net",
-		ID:   [32]byte{0xDD, 0xEE, 0xFF},
+		ID:        [32]byte{0xDD, 0xEE, 0xFF},
 		Height:    1,
 		Timestamp: time.Now(),
 		Data:      []byte("Bridge cross-chain transaction"),

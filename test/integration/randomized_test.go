@@ -706,16 +706,14 @@ func TestAIConsensusRandomized(t *testing.T) {
 // ==================== Hybrid Consensus Tests ====================
 
 func TestHybridConsensusRandomized(t *testing.T) {
-	quasarConsensus, err := quasar.NewQuasarHybridConsensus(3)
+	quasarConsensus, err := quasar.NewQuasar(3)
 	if err != nil {
 		t.Fatalf("Failed to create Quasar consensus: %v", err)
 	}
 
-	validators := []string{"val1", "val2", "val3"}
-	for _, v := range validators {
-		if err := quasarConsensus.AddValidator(v, 100); err != nil {
-			t.Fatalf("Failed to add validator %s: %v", v, err)
-		}
+	validators := []string{"val1", "val2", "val3", "val4"}
+	if err := quasarConsensus.InitializeValidators(validators); err != nil {
+		t.Fatalf("Failed to initialize validators: %v", err)
 	}
 
 	rng := NewMersenneTwister(123)
@@ -733,7 +731,7 @@ func TestHybridConsensusRandomized(t *testing.T) {
 			continue
 		}
 
-		if quasarConsensus.VerifyHybridSignature(message, sig) {
+		if quasarConsensus.VerifyQuasarSig(message, sig) {
 			successfulSigs++
 		} else {
 			t.Errorf("Signature verification failed for message %d", i)

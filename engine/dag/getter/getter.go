@@ -38,20 +38,20 @@ type Handler interface {
 
 // getter implementation
 type getter struct {
-	vtxManager               state.Manager
-	sender                   sender.Sender
-	log                      log.Logger
-	maxTimeGetAncestors      time.Duration
-	ancestorsMaxContainers   int
+	vtxManager             state.Manager
+	sender                 sender.Sender
+	log                    log.Logger
+	maxTimeGetAncestors    time.Duration
+	ancestorsMaxContainers int
 }
 
 // Config for creating a Handler
 type Config struct {
-	VtxManager               state.Manager
-	Sender                   sender.Sender
-	Log                      log.Logger
-	MaxTimeGetAncestors      time.Duration
-	AncestorsMaxContainers   int
+	VtxManager             state.Manager
+	Sender                 sender.Sender
+	Log                    log.Logger
+	MaxTimeGetAncestors    time.Duration
+	AncestorsMaxContainers int
 }
 
 // New creates a new getter

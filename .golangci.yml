@@ -1,54 +1,62 @@
-# golangci-lint configuration
+# golangci-lint v2 configuration
+version: "2"
+
 run:
   timeout: 10m
   tests: false
-  go: '1.21'
-  skip-dirs:
-    - vendor
-    - third_party
-    - testdata
-    - examples
-    - .git
-    - build
 
-linters:
+formatters:
   enable:
     - gofmt
+
+linters:
+  default: none
+  enable:
     - govet
     - staticcheck
     - ineffassign
     - misspell
-  disable:
-    - unused
-    - gosec  # Too many false positives
-    - revive  # Conflicts with other linters
-    - gocritic  # Too strict for now
-    - gofumpt  # Different from gofmt
-    - unconvert  # Too many false positives
-    - goimports  # Not needed with gofmt
 
-linters-settings:
-  govet:
-    check-shadowing: false  # Too many false positives
-  gofmt:
-    simplify: true
-  staticcheck:
-    checks: ["all", "-SA1019"]  # Ignore deprecation warnings
+  settings:
+    govet:
+      disable:
+        - shadow
+    staticcheck:
+      checks:
+        - "all"
+        - "-SA1019"
+        - "-QF1008"   # embedded field selector (style suggestion)
+        - "-QF1012"   # fmt.Fprintf instead of Write (style suggestion)
+        - "-ST1003"   # ALL_CAPS naming (style)
+        - "-ST1005"   # error string capitalization (style)
+        - "-ST1023"   # omit type from declaration (style)
+        - "-QF1011"   # omit type from declaration (style)
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+    paths:
+      - vendor
+      - third_party
+      - testdata
+      - examples
+      - build
+    rules:
+      - path: _test\.go
+        linters:
+          - staticcheck
+          - ineffassign
+      - path: test/
+        linters:
+          - staticcheck
+          - ineffassign
+      - path: cmd/
+        text: "Error return value of .* is not checked"
+      - text: "declaration of \"err\" shadows"
+        linters:
+          - govet
 
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - staticcheck
-        - ineffassign
-    - path: test/
-      linters:
-        - staticcheck
-        - ineffassign
-    - path: cmd/
-      text: "Error return value of .* is not checked"
-    - text: "declaration of \"err\" shadows"
-      linters:
-        - govet
   max-issues-per-linter: 50
   max-same-issues: 10

@@ -147,7 +147,7 @@ func GetNodeID(ctx context.Context) ids.NodeID {
 
 // IDs holds the IDs for consensus context
 type IDs struct {
-	NetworkID    uint32     // 1=mainnet, 2=testnet
+	NetworkID    uint32 // 1=mainnet, 2=testnet
 	ChainID      ids.ID
 	NodeID       ids.NodeID
 	PublicKey    []byte

@@ -1015,16 +1015,16 @@ type testBlock struct {
 	bytes     []byte
 }
 
-func (b *testBlock) ID() ids.ID            { return b.id }
-func (b *testBlock) Parent() ids.ID        { return b.parentID }
-func (b *testBlock) ParentID() ids.ID      { return b.parentID }
-func (b *testBlock) Height() uint64        { return b.height }
-func (b *testBlock) Timestamp() time.Time  { return b.timestamp }
-func (b *testBlock) Status() uint8         { return b.status }
+func (b *testBlock) ID() ids.ID                   { return b.id }
+func (b *testBlock) Parent() ids.ID               { return b.parentID }
+func (b *testBlock) ParentID() ids.ID             { return b.parentID }
+func (b *testBlock) Height() uint64               { return b.height }
+func (b *testBlock) Timestamp() time.Time         { return b.timestamp }
+func (b *testBlock) Status() uint8                { return b.status }
 func (b *testBlock) Verify(context.Context) error { return nil }
 func (b *testBlock) Accept(context.Context) error { return nil }
 func (b *testBlock) Reject(context.Context) error { return nil }
-func (b *testBlock) Bytes() []byte         { return b.bytes }
+func (b *testBlock) Bytes() []byte                { return b.bytes }
 
 // mockBlockBuilder implements BlockBuilder for testing
 type mockBlockBuilder struct {

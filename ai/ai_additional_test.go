@@ -776,7 +776,7 @@ func TestSecurityAgent_AutomaticSecurityResponse_AutoExecuteError(t *testing.T) 
 	}
 
 	threat := SecurityData{
-		ThreatLevel: "critical",                 // Critical triggers auto-execute
+		ThreatLevel: "critical", // Critical triggers auto-execute
 		Threats:     []string{"attack"},
 		NodeID:      "malicious-node",
 		Evidence:    []string{"evidence"},

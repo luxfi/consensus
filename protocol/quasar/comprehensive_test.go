@@ -536,9 +536,9 @@ func TestEngine_ComputeHash(t *testing.T) {
 }
 
 func TestHybridConsensus_AddRemoveValidator(t *testing.T) {
-	hc, err := newHybridConsensus(1)
+	hc, err := newCertifier(1)
 	if err != nil {
-		t.Fatalf("newHybridConsensus failed: %v", err)
+		t.Fatalf("newCertifier failed: %v", err)
 	}
 
 	hc.AddValidator("v1", 100)
@@ -560,9 +560,9 @@ func TestHybridConsensus_AddRemoveValidator(t *testing.T) {
 }
 
 func TestHybridConsensus_GenerateCert(t *testing.T) {
-	hc, err := newHybridConsensus(1)
+	hc, err := newCertifier(1)
 	if err != nil {
-		t.Fatalf("newHybridConsensus failed: %v", err)
+		t.Fatalf("newCertifier failed: %v", err)
 	}
 
 	block := &Block{
@@ -595,22 +595,22 @@ func TestHybridConsensus_GenerateCert(t *testing.T) {
 // Hybrid Tests (hybrid.go)
 // =============================================================================
 
-func TestHybrid_NewHybrid_InvalidThreshold(t *testing.T) {
-	_, err := NewHybrid(0)
+func TestSigner_NewSigner_InvalidThreshold(t *testing.T) {
+	_, err := NewSigner(0)
 	if err == nil {
 		t.Error("expected error for threshold 0")
 	}
 
-	_, err = NewHybrid(-1)
+	_, err = NewSigner(-1)
 	if err == nil {
 		t.Error("expected error for negative threshold")
 	}
 }
 
-func TestHybrid_AddValidator(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_AddValidator(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	err = h.AddValidator("v1", 100)
@@ -627,10 +627,10 @@ func TestHybrid_AddValidator(t *testing.T) {
 	}
 }
 
-func TestHybrid_SignMessage_ValidatorNotFound(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_SignMessage_ValidatorNotFound(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_, err = h.SignMessage("nonexistent", []byte("test"))
@@ -639,67 +639,67 @@ func TestHybrid_SignMessage_ValidatorNotFound(t *testing.T) {
 	}
 }
 
-func TestHybrid_ReleaseHybridSignature(t *testing.T) {
+func TestSigner_ReleaseQuasarSig(t *testing.T) {
 	// Test with nil - should not panic
-	ReleaseHybridSignature(nil)
+	ReleaseQuasarSig(nil)
 
 	// Test with valid signature
-	h, _ := NewHybrid(1)
+	h, _ := NewSigner(1)
 	_ = h.AddValidator("v1", 100)
 	sig, _ := h.SignMessage("v1", []byte("test"))
 
-	ReleaseHybridSignature(sig)
+	ReleaseQuasarSig(sig)
 	// No assertion needed - just checking it doesn't panic
 }
 
-func TestHybrid_VerifyHybridSignature_ValidatorNotFound(t *testing.T) {
-	h, _ := NewHybrid(1)
+func TestSigner_VerifyQuasarSig_ValidatorNotFound(t *testing.T) {
+	h, _ := NewSigner(1)
 	_ = h.AddValidator("v1", 100)
 
-	sig := &HybridSignature{
+	sig := &QuasarSig{
 		ValidatorID: "nonexistent",
 		BLS:         []byte{1, 2, 3},
 		Ringtail:    []byte{4, 5, 6},
 	}
 
-	result := h.VerifyHybridSignature([]byte("test"), sig)
+	result := h.VerifyQuasarSig([]byte("test"), sig)
 	if result {
 		t.Error("expected false for nonexistent validator")
 	}
 }
 
-func TestHybrid_VerifyHybridSignature_InvalidBLS(t *testing.T) {
-	h, _ := NewHybrid(1)
+func TestSigner_VerifyQuasarSig_InvalidBLS(t *testing.T) {
+	h, _ := NewSigner(1)
 	_ = h.AddValidator("v1", 100)
 
-	sig := &HybridSignature{
+	sig := &QuasarSig{
 		ValidatorID: "v1",
 		BLS:         []byte{1, 2, 3}, // Invalid BLS bytes
 		Ringtail:    []byte{4, 5, 6},
 	}
 
-	result := h.VerifyHybridSignature([]byte("test"), sig)
+	result := h.VerifyQuasarSig([]byte("test"), sig)
 	if result {
 		t.Error("expected false for invalid BLS signature")
 	}
 }
 
-func TestHybrid_AggregateSignatures_InsufficientSignatures(t *testing.T) {
-	h, _ := NewHybrid(3) // Require 3 validators
+func TestSigner_AggregateSignatures_InsufficientSignatures(t *testing.T) {
+	h, _ := NewSigner(3) // Require 3 validators
 
 	_ = h.AddValidator("v1", 100)
 
 	sig, _ := h.SignMessage("v1", []byte("test"))
 
 	// Only 1 signature, but threshold is 3
-	_, err := h.AggregateSignatures([]byte("test"), []*HybridSignature{sig})
+	_, err := h.AggregateSignatures([]byte("test"), []*QuasarSig{sig})
 	if err == nil {
 		t.Error("expected error for insufficient signatures")
 	}
 }
 
-func TestHybrid_AggregateSignatures_Success(t *testing.T) {
-	h, _ := NewHybrid(2)
+func TestSigner_AggregateSignatures_Success(t *testing.T) {
+	h, _ := NewSigner(2)
 
 	_ = h.AddValidator("v1", 100)
 	_ = h.AddValidator("v2", 100)
@@ -708,7 +708,7 @@ func TestHybrid_AggregateSignatures_Success(t *testing.T) {
 	sig1, _ := h.SignMessage("v1", msg)
 	sig2, _ := h.SignMessage("v2", msg)
 
-	aggSig, err := h.AggregateSignatures(msg, []*HybridSignature{sig1, sig2})
+	aggSig, err := h.AggregateSignatures(msg, []*QuasarSig{sig1, sig2})
 	if err != nil {
 		t.Fatalf("AggregateSignatures failed: %v", err)
 	}
@@ -726,8 +726,8 @@ func TestHybrid_AggregateSignatures_Success(t *testing.T) {
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignature(t *testing.T) {
-	h, _ := NewHybrid(2)
+func TestSigner_VerifyAggregatedSignature(t *testing.T) {
+	h, _ := NewSigner(2)
 
 	_ = h.AddValidator("v1", 100)
 	_ = h.AddValidator("v2", 100)
@@ -736,7 +736,7 @@ func TestHybrid_VerifyAggregatedSignature(t *testing.T) {
 	sig1, _ := h.SignMessage("v1", msg)
 	sig2, _ := h.SignMessage("v2", msg)
 
-	aggSig, _ := h.AggregateSignatures(msg, []*HybridSignature{sig1, sig2})
+	aggSig, _ := h.AggregateSignatures(msg, []*QuasarSig{sig1, sig2})
 
 	result := h.VerifyAggregatedSignature(msg, aggSig)
 	if !result {
@@ -744,8 +744,8 @@ func TestHybrid_VerifyAggregatedSignature(t *testing.T) {
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignature_InsufficientSigners(t *testing.T) {
-	h, _ := NewHybrid(3) // Require 3
+func TestSigner_VerifyAggregatedSignature_InsufficientSigners(t *testing.T) {
+	h, _ := NewSigner(3) // Require 3
 
 	_ = h.AddValidator("v1", 100)
 	_ = h.AddValidator("v2", 100)
@@ -763,8 +763,8 @@ func TestHybrid_VerifyAggregatedSignature_InsufficientSigners(t *testing.T) {
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignature_InvalidBLS(t *testing.T) {
-	h, _ := NewHybrid(1)
+func TestSigner_VerifyAggregatedSignature_InvalidBLS(t *testing.T) {
+	h, _ := NewSigner(1)
 	_ = h.AddValidator("v1", 100)
 
 	aggSig := &AggregatedSignature{
@@ -779,8 +779,8 @@ func TestHybrid_VerifyAggregatedSignature_InvalidBLS(t *testing.T) {
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignature_InactiveValidator(t *testing.T) {
-	h, _ := NewHybrid(1)
+func TestSigner_VerifyAggregatedSignature_InactiveValidator(t *testing.T) {
+	h, _ := NewSigner(1)
 	_ = h.AddValidator("v1", 100)
 
 	// Make validator inactive
@@ -801,8 +801,8 @@ func TestHybrid_VerifyAggregatedSignature_InactiveValidator(t *testing.T) {
 	}
 }
 
-func TestHybrid_GetActiveValidatorCount(t *testing.T) {
-	h, _ := NewHybrid(1)
+func TestSigner_GetActiveValidatorCount(t *testing.T) {
+	h, _ := NewSigner(1)
 
 	if h.GetActiveValidatorCount() != 0 {
 		t.Error("expected 0 validators initially")
@@ -826,137 +826,13 @@ func TestHybrid_GetActiveValidatorCount(t *testing.T) {
 }
 
 // =============================================================================
-// Ringtail Tests (ringtail.go)
+// Ringtail Tests
 // =============================================================================
-
-func TestRingtail_Initialize(t *testing.T) {
-	r := NewRingtail()
-
-	err := r.Initialize(SecurityLow)
-	if err != nil {
-		t.Fatalf("Initialize SecurityLow failed: %v", err)
-	}
-
-	err = r.Initialize(SecurityMedium)
-	if err != nil {
-		t.Fatalf("Initialize SecurityMedium failed: %v", err)
-	}
-
-	err = r.Initialize(SecurityHigh)
-	if err != nil {
-		t.Fatalf("Initialize SecurityHigh failed: %v", err)
-	}
-}
-
-func TestRingtail_KeyGen(t *testing.T) {
-	seed := []byte("test-seed-32-bytes-long-enough!!")
-
-	sk, pk, err := KeyGen(seed)
-	if err != nil {
-		t.Fatalf("KeyGen failed: %v", err)
-	}
-
-	if len(sk) == 0 || len(pk) == 0 {
-		t.Error("expected non-empty keys")
-	}
-}
-
-func TestRingtail_Precompute(t *testing.T) {
-	sk := make([]byte, 32)
-
-	precomp, err := Precompute(sk)
-	if err != nil {
-		t.Fatalf("Precompute failed: %v", err)
-	}
-
-	if len(precomp) == 0 {
-		t.Error("expected non-empty precomp")
-	}
-}
-
-func TestRingtail_QuickSign(t *testing.T) {
-	precomp := make([]byte, 32)
-	for i := range precomp {
-		precomp[i] = byte(i)
-	}
-
-	msg := []byte("test message")
-
-	share, err := QuickSign(precomp, msg)
-	if err != nil {
-		t.Fatalf("QuickSign failed: %v", err)
-	}
-
-	if len(share) == 0 {
-		t.Error("expected non-empty share")
-	}
-}
-
-func TestRingtail_VerifyShare(t *testing.T) {
-	pk := []byte("public-key")
-	msg := []byte("test message")
-	share := []byte("signature-share")
-
-	valid := VerifyShare(pk, msg, share)
-	if !valid {
-		t.Error("VerifyShare should return true (stub implementation)")
-	}
-}
-
-func TestRingtail_Aggregate(t *testing.T) {
-	shares := []Share{
-		[]byte("share1"),
-		[]byte("share2"),
-		[]byte("share3"),
-	}
-
-	cert, err := Aggregate(shares)
-	if err != nil {
-		t.Fatalf("Aggregate failed: %v", err)
-	}
-
-	if len(cert) == 0 {
-		t.Error("expected non-empty cert")
-	}
-}
-
-func TestRingtail_Aggregate_Empty(t *testing.T) {
-	_, err := Aggregate([]Share{})
-	if err == nil {
-		t.Error("expected error for empty shares")
-	}
-}
-
-func TestRingtail_Verify(t *testing.T) {
-	pk := []byte("public-key")
-	msg := []byte("test message")
-	cert := []byte("certificate")
-
-	valid := Verify(pk, msg, cert)
-	if !valid {
-		t.Error("Verify should return true (stub implementation)")
-	}
-}
-
-func TestRingtail_SecurityLevels(t *testing.T) {
-	tests := []struct {
-		level SecurityLevel
-		name  string
-	}{
-		{SecurityLow, "Low"},
-		{SecurityMedium, "Medium"},
-		{SecurityHigh, "High"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := NewRingtail()
-			if err := r.Initialize(tt.level); err != nil {
-				t.Errorf("Initialize %s failed: %v", tt.name, err)
-			}
-		})
-	}
-}
+//
+// NOTE: Ringtail post-quantum crypto is tested in the real ringtail package
+// at github.com/luxfi/ringtail/threshold. The quasar package uses the real
+// implementation via the Signer type in quasar.go. Tests for threshold signing
+// are in quasar_test.go and epoch_test.go.
 
 // =============================================================================
 // Types Tests (types.go)
@@ -1277,11 +1153,11 @@ func TestVerkleWitness_CheckPQFinality(t *testing.T) {
 	w := NewVerkleWitness(3)
 
 	tests := []struct {
-		name    string
-		bits    []byte
-		want    bool
+		name string
+		bits []byte
+		want bool
 	}{
-		{"sufficient bits", []byte{0x07}, true},  // 3 bits set
+		{"sufficient bits", []byte{0x07}, true},    // 3 bits set
 		{"insufficient bits", []byte{0x03}, false}, // 2 bits set
 		{"empty", []byte{}, false},
 	}
@@ -1593,7 +1469,7 @@ func TestQuasar_ProcessBlockWithContext_Cancelled(t *testing.T) {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
 
-	_ = q.hybridConsensus.AddValidator("v1", 100)
+	_, _ = q.AddValidator("v1", 100)
 
 	block := &Block{
 		ChainID:   [32]byte{1},
@@ -1622,7 +1498,7 @@ func TestQuasar_SubmitBlock_AutoRegister(t *testing.T) {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
 
-	_ = q.hybridConsensus.AddValidator("v1", 100)
+	_, _ = q.AddValidator("v1", 100)
 
 	ctx := context.Background()
 	_ = q.Start(ctx)
@@ -1758,28 +1634,24 @@ func TestHorizon_ComputeBlockHash(t *testing.T) {
 
 func TestTypeAliases(t *testing.T) {
 	// Test that type aliases work correctly
-	var _ *Core = (*Quasar)(nil)
-	var _ *QuasarCore = (*Quasar)(nil)
-	var _ *PChain = (*BLS)(nil)
-	var _ *QuasarHybridConsensus = (*Hybrid)(nil)
 	var _ *QBlock = (*Block)(nil)
 	var _ *ChainBlock = (*Block)(nil)
 
-	// NewPChain should be the same as NewBLS
+	// NewBLS creates a BLS instance
 	cfg := config.DefaultParams()
 	store := newMockStore()
-	p := NewPChain(cfg, store)
+	p := NewBLS(cfg, store)
 	if p == nil {
-		t.Error("NewPChain returned nil")
+		t.Error("NewBLS returned nil")
 	}
 
-	// NewQuasarHybridConsensus should be the same as NewHybrid
-	h, err := NewQuasarHybridConsensus(1)
+	// NewSigner creates a signer instance
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewQuasarHybridConsensus failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 	if h == nil {
-		t.Error("NewQuasarHybridConsensus returned nil")
+		t.Error("NewSigner returned nil")
 	}
 }
 
@@ -1787,17 +1659,17 @@ func TestTypeAliases(t *testing.T) {
 // Edge Cases and Error Paths
 // =============================================================================
 
-func TestHybrid_AggregateSignatures_InvalidBLS(t *testing.T) {
-	h, _ := NewHybrid(1)
+func TestSigner_AggregateSignatures_InvalidBLS(t *testing.T) {
+	h, _ := NewSigner(1)
 	_ = h.AddValidator("v1", 100)
 
-	sig := &HybridSignature{
+	sig := &QuasarSig{
 		ValidatorID: "v1",
 		BLS:         []byte{1, 2, 3}, // Invalid BLS bytes
 		Ringtail:    []byte{4, 5, 6},
 	}
 
-	_, err := h.AggregateSignatures([]byte("test"), []*HybridSignature{sig})
+	_, err := h.AggregateSignatures([]byte("test"), []*QuasarSig{sig})
 	if err == nil {
 		t.Error("expected error for invalid BLS signature")
 	}
@@ -1939,7 +1811,7 @@ func TestQuasar_ProcessBlockWithContext_ContextCancelledAfterLock(t *testing.T) 
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
 
-	_ = q.hybridConsensus.AddValidator("v1", 100)
+	_, _ = q.AddValidator("v1", 100)
 
 	block := &Block{
 		ChainID:   [32]byte{1},
@@ -1967,7 +1839,7 @@ func TestQuasar_VerifyQuantumFinalityWithContext_AllPaths(t *testing.T) {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
 
-	_ = q.hybridConsensus.AddValidator("v1", 100)
+	_, _ = q.AddValidator("v1", 100)
 
 	// Process a block first
 	block := &Block{
@@ -2145,10 +2017,10 @@ func TestEngine_FinalizedChannel_BufferFull(t *testing.T) {
 	// Just ensure no panic occurred
 }
 
-func TestHybrid_SignMessageWithContext_ValidatorNotFound(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_SignMessageWithContext_ValidatorNotFound(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	// Add validator but then remove it manually
@@ -2166,10 +2038,10 @@ func TestHybrid_SignMessageWithContext_ValidatorNotFound(t *testing.T) {
 	}
 }
 
-func TestHybrid_VerifyHybridSignatureWithContext_ContextCancelledMidVerify(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_VerifyQuasarSigWithContext_ContextCancelledMidVerify(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
@@ -2184,16 +2056,16 @@ func TestHybrid_VerifyHybridSignatureWithContext_ContextCancelledMidVerify(t *te
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	result := h.VerifyHybridSignatureWithContext(ctx, msg, sig)
+	result := h.VerifyQuasarSigWithContext(ctx, msg, sig)
 	if result {
 		t.Error("expected false for cancelled context")
 	}
 }
 
-func TestHybrid_AggregateSignaturesWithContext_ContextCancelledMid(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_AggregateSignaturesWithContext_ContextCancelledMid(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
@@ -2207,23 +2079,23 @@ func TestHybrid_AggregateSignaturesWithContext_ContextCancelledMid(t *testing.T)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err = h.AggregateSignaturesWithContext(ctx, msg, []*HybridSignature{sig1, sig2})
+	_, err = h.AggregateSignaturesWithContext(ctx, msg, []*QuasarSig{sig1, sig2})
 	if err == nil {
 		t.Error("expected error for cancelled context")
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignatureWithContext_AllErrorPaths(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_VerifyAggregatedSignatureWithContext_AllErrorPaths(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
 
 	msg := []byte("test message")
 	sig, _ := h.SignMessage("v1", msg)
-	aggSig, _ := h.AggregateSignatures(msg, []*HybridSignature{sig})
+	aggSig, _ := h.AggregateSignatures(msg, []*QuasarSig{sig})
 
 	// Test with context cancelled before RLock
 	ctx, cancel := context.WithCancel(context.Background())
@@ -2353,7 +2225,7 @@ func TestQuasar_VerifyQuantumFinalityWithContext_InvalidSignature(t *testing.T) 
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
 
-	_ = q.hybridConsensus.AddValidator("validator1", 100)
+	_, _ = q.AddValidator("validator1", 100)
 
 	// Process a block first
 	block := &Block{
@@ -2410,10 +2282,10 @@ func TestQuasar_QuantumFinalizer_TickerCase(t *testing.T) {
 	}
 }
 
-func TestHybrid_SignMessageWithContext_ContextCancelledAfterLock(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_SignMessageWithContext_ContextCancelledAfterLock(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
@@ -2431,10 +2303,10 @@ func TestHybrid_SignMessageWithContext_ContextCancelledAfterLock(t *testing.T) {
 	}
 }
 
-func TestHybrid_VerifyHybridSignatureWithContext_ContextCancelledAfterLock(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_VerifyQuasarSigWithContext_ContextCancelledAfterLock(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
@@ -2446,23 +2318,23 @@ func TestHybrid_VerifyHybridSignatureWithContext_ContextCancelledAfterLock(t *te
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	result := h.VerifyHybridSignatureWithContext(ctx, msg, sig)
+	result := h.VerifyQuasarSigWithContext(ctx, msg, sig)
 	if result {
 		t.Error("expected false for cancelled context")
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignatureWithContext_ContextCancelledAfterLock(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_VerifyAggregatedSignatureWithContext_ContextCancelledAfterLock(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
 
 	msg := []byte("test message")
 	sig, _ := h.SignMessage("v1", msg)
-	aggSig, _ := h.AggregateSignatures(msg, []*HybridSignature{sig})
+	aggSig, _ := h.AggregateSignatures(msg, []*QuasarSig{sig})
 
 	// Pre-cancel context
 	ctx, cancel := context.WithCancel(context.Background())
@@ -2474,10 +2346,10 @@ func TestHybrid_VerifyAggregatedSignatureWithContext_ContextCancelledAfterLock(t
 	}
 }
 
-func TestHybrid_AggregateSignaturesWithContext_ContextCancelledAfterLock(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_AggregateSignaturesWithContext_ContextCancelledAfterLock(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
@@ -2489,16 +2361,16 @@ func TestHybrid_AggregateSignaturesWithContext_ContextCancelledAfterLock(t *test
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err = h.AggregateSignaturesWithContext(ctx, msg, []*HybridSignature{sig})
+	_, err = h.AggregateSignaturesWithContext(ctx, msg, []*QuasarSig{sig})
 	if err == nil {
 		t.Error("expected error for cancelled context")
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignature_PublicKeyAggregationError(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_VerifyAggregatedSignature_PublicKeyAggregationError(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
@@ -2520,17 +2392,17 @@ func TestHybrid_VerifyAggregatedSignature_PublicKeyAggregationError(t *testing.T
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignature_BLSVerifyFail(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_VerifyAggregatedSignature_BLSVerifyFail(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
 
 	msg := []byte("test message")
 	sig, _ := h.SignMessage("v1", msg)
-	aggSig, _ := h.AggregateSignatures(msg, []*HybridSignature{sig})
+	aggSig, _ := h.AggregateSignatures(msg, []*QuasarSig{sig})
 
 	// Verify with different message - BLS verification should fail
 	wrongMsg := []byte("wrong message")
@@ -2540,10 +2412,10 @@ func TestHybrid_VerifyAggregatedSignature_BLSVerifyFail(t *testing.T) {
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignature_BLSSignatureTamperedFail(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_VerifyAggregatedSignature_BLSSignatureTamperedFail(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
@@ -2552,7 +2424,7 @@ func TestHybrid_VerifyAggregatedSignature_BLSSignatureTamperedFail(t *testing.T)
 	msg := []byte("test message")
 	sig1, _ := h.SignMessage("v1", msg)
 	sig2, _ := h.SignMessage("v2", msg)
-	aggSig, _ := h.AggregateSignatures(msg, []*HybridSignature{sig1, sig2})
+	aggSig, _ := h.AggregateSignatures(msg, []*QuasarSig{sig1, sig2})
 
 	// Corrupt the BLS signature
 	if len(aggSig.BLSAggregated) > 0 {
@@ -2670,9 +2542,9 @@ func TestQuasar_VerifyQuantumFinalityWithContext_LoopContextCheck(t *testing.T) 
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
 
-	_ = q.hybridConsensus.AddValidator("validator1", 100)
-	_ = q.hybridConsensus.AddValidator("validator2", 100)
-	_ = q.hybridConsensus.AddValidator("validator3", 100)
+	_, _ = q.AddValidator("validator1", 100)
+	_, _ = q.AddValidator("validator2", 100)
+	_, _ = q.AddValidator("validator3", 100)
 
 	// Process a block first
 	block := &Block{
@@ -2692,7 +2564,7 @@ func TestQuasar_VerifyQuantumFinalityWithContext_LoopContextCheck(t *testing.T) 
 	if qBlock != nil {
 		// Add signatures for all validators
 		for _, vid := range []string{"validator1", "validator2", "validator3"} {
-			sig, _ := q.hybridConsensus.SignMessage(vid, []byte(blockHash))
+			sig, _ := q.SignMessage(vid, []byte(blockHash))
 			if sig != nil {
 				qBlock.ValidatorSigs[vid] = sig
 			}
@@ -2707,10 +2579,10 @@ func TestQuasar_VerifyQuantumFinalityWithContext_LoopContextCheck(t *testing.T) 
 	}
 }
 
-func TestHybrid_VerifyAggregatedSignature_ContextCancelledInLoop(t *testing.T) {
-	h, err := NewHybrid(1)
+func TestSigner_VerifyAggregatedSignature_ContextCancelledInLoop(t *testing.T) {
+	h, err := NewSigner(1)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	// Add multiple validators
@@ -2722,7 +2594,7 @@ func TestHybrid_VerifyAggregatedSignature_ContextCancelledInLoop(t *testing.T) {
 	sig1, _ := h.SignMessage("v1", msg)
 	sig2, _ := h.SignMessage("v2", msg)
 	sig3, _ := h.SignMessage("v3", msg)
-	aggSig, _ := h.AggregateSignatures(msg, []*HybridSignature{sig1, sig2, sig3})
+	aggSig, _ := h.AggregateSignatures(msg, []*QuasarSig{sig1, sig2, sig3})
 
 	// Verify with valid context should pass
 	result := h.VerifyAggregatedSignature(msg, aggSig)
@@ -2829,10 +2701,10 @@ func TestQuasar_SubmitBlock_BufferFullDropOldest(t *testing.T) {
 	// Should not error - drops oldest when full
 }
 
-func TestHybrid_AggregateSignatures_ContextCancelledDuringLoop(t *testing.T) {
-	h, err := NewHybrid(2)
+func TestSigner_AggregateSignatures_ContextCancelledDuringLoop(t *testing.T) {
+	h, err := NewSigner(2)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	_ = h.AddValidator("v1", 100)
@@ -2844,7 +2716,7 @@ func TestHybrid_AggregateSignatures_ContextCancelledDuringLoop(t *testing.T) {
 
 	// Valid context should work
 	ctx := context.Background()
-	aggSig, err := h.AggregateSignaturesWithContext(ctx, msg, []*HybridSignature{sig1, sig2})
+	aggSig, err := h.AggregateSignaturesWithContext(ctx, msg, []*QuasarSig{sig1, sig2})
 	if err != nil {
 		t.Errorf("AggregateSignatures failed: %v", err)
 	}
@@ -2857,7 +2729,7 @@ func TestHybrid_AggregateSignatures_ContextCancelledDuringLoop(t *testing.T) {
 // Threshold Mode Tests (hybrid.go threshold integration)
 // =============================================================================
 
-func TestHybrid_ThresholdMode_GenerateKeys(t *testing.T) {
+func TestSigner_ThresholdMode_GenerateKeys(t *testing.T) {
 	// Generate threshold key shares using the helper function
 	// t=1 means need at least 2 shares to sign
 	shares, groupKey, err := GenerateThresholdKeys(threshold.SchemeBLS, 1, 3)
@@ -2881,7 +2753,7 @@ func TestHybrid_ThresholdMode_GenerateKeys(t *testing.T) {
 	}
 }
 
-func TestHybrid_ThresholdMode_NewHybridWithThreshold(t *testing.T) {
+func TestSigner_ThresholdMode_NewSignerWithThreshold(t *testing.T) {
 	// Generate threshold key shares
 	shares, groupKey, err := GenerateThresholdKeys(threshold.SchemeBLS, 1, 3)
 	if err != nil {
@@ -2903,9 +2775,9 @@ func TestHybrid_ThresholdMode_NewHybridWithThreshold(t *testing.T) {
 		GroupKey:     groupKey,
 	}
 
-	h, err := NewHybridWithThresholdConfig(config)
+	h, err := NewSignerWithThresholdConfig(config)
 	if err != nil {
-		t.Fatalf("NewHybridWithThreshold failed: %v", err)
+		t.Fatalf("NewSignerWithThreshold failed: %v", err)
 	}
 
 	// Verify threshold mode is enabled
@@ -2924,7 +2796,7 @@ func TestHybrid_ThresholdMode_NewHybridWithThreshold(t *testing.T) {
 	}
 }
 
-func TestHybrid_ThresholdMode_SignAndVerify(t *testing.T) {
+func TestSigner_ThresholdMode_SignAndVerify(t *testing.T) {
 	// Generate threshold key shares (t=1 means need 2+ shares)
 	shares, groupKey, err := GenerateThresholdKeys(threshold.SchemeBLS, 1, 3)
 	if err != nil {
@@ -2946,9 +2818,9 @@ func TestHybrid_ThresholdMode_SignAndVerify(t *testing.T) {
 		GroupKey:     groupKey,
 	}
 
-	h, err := NewHybridWithThresholdConfig(config)
+	h, err := NewSignerWithThresholdConfig(config)
 	if err != nil {
-		t.Fatalf("NewHybridWithThreshold failed: %v", err)
+		t.Fatalf("NewSignerWithThreshold failed: %v", err)
 	}
 
 	// Sign message with threshold signing
@@ -2990,13 +2862,13 @@ func TestHybrid_ThresholdMode_SignAndVerify(t *testing.T) {
 	//
 	// For now, we verify the infrastructure is correctly wired up:
 	// - Key generation works
-	// - Signing produces valid shares  
+	// - Signing produces valid shares
 	// - Aggregation produces a signature
 	// - The threshold scheme is correctly registered and usable
 	t.Log("Note: Full threshold signature verification pending BLS scalar field implementation")
 }
 
-func TestHybrid_ThresholdMode_InsufficientShares(t *testing.T) {
+func TestSigner_ThresholdMode_InsufficientShares(t *testing.T) {
 	// Generate threshold key shares (t=1 means need 2+ shares)
 	shares, groupKey, err := GenerateThresholdKeys(threshold.SchemeBLS, 1, 3)
 	if err != nil {
@@ -3018,9 +2890,9 @@ func TestHybrid_ThresholdMode_InsufficientShares(t *testing.T) {
 		GroupKey:     groupKey,
 	}
 
-	h, err := NewHybridWithThresholdConfig(config)
+	h, err := NewSignerWithThresholdConfig(config)
 	if err != nil {
-		t.Fatalf("NewHybridWithThreshold failed: %v", err)
+		t.Fatalf("NewSignerWithThreshold failed: %v", err)
 	}
 
 	// Sign message with threshold signing
@@ -3040,11 +2912,11 @@ func TestHybrid_ThresholdMode_InsufficientShares(t *testing.T) {
 	}
 }
 
-func TestHybrid_ThresholdMode_NotEnabled(t *testing.T) {
+func TestSigner_ThresholdMode_NotEnabled(t *testing.T) {
 	// Create regular hybrid engine (non-threshold mode)
-	h, err := NewHybrid(2)
+	h, err := NewSigner(2)
 	if err != nil {
-		t.Fatalf("NewHybrid failed: %v", err)
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
 	// Threshold mode should be disabled
@@ -3069,7 +2941,7 @@ func TestHybrid_ThresholdMode_NotEnabled(t *testing.T) {
 	}
 }
 
-func TestHybrid_ThresholdMode_AddValidatorThreshold(t *testing.T) {
+func TestSigner_ThresholdMode_AddValidatorThreshold(t *testing.T) {
 	// Generate threshold key shares
 	shares, groupKey, err := GenerateThresholdKeys(threshold.SchemeBLS, 1, 3)
 	if err != nil {
@@ -3089,9 +2961,9 @@ func TestHybrid_ThresholdMode_AddValidatorThreshold(t *testing.T) {
 		GroupKey:     groupKey,
 	}
 
-	h, err := NewHybridWithThresholdConfig(config)
+	h, err := NewSignerWithThresholdConfig(config)
 	if err != nil {
-		t.Fatalf("NewHybridWithThresholdConfig failed: %v", err)
+		t.Fatalf("NewSignerWithThresholdConfig failed: %v", err)
 	}
 
 	// Add third validator dynamically

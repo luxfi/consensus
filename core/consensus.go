@@ -97,7 +97,7 @@ const (
 	Stopped       = vm.Stopped
 
 	// Legacy aliases for VMState constants (old naming convention)
-	VMStateSyncing   = vm.Syncing
-	VMBootstrapping  = vm.Bootstrapping
-	VMNormalOp       = vm.Ready
+	VMStateSyncing  = vm.Syncing
+	VMBootstrapping = vm.Bootstrapping
+	VMNormalOp      = vm.Ready
 )

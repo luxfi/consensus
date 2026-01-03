@@ -2,7 +2,7 @@
 //
 // This demonstrates the complete Quasar consensus protocol showing how:
 // - FPC provides dynamic thresholds
-// - Wave achieves metastable convergence  
+// - Wave achieves metastable convergence
 // - Horizon detects DAG finality
 // - All together achieve <1s quantum finality
 //
@@ -32,7 +32,7 @@ func main() {
 	demonstrateWaveConsensus()
 	demonstrateHorizonFinality()
 	demonstrateQuasarFlow()
-	
+
 	fmt.Println("✅ Quasar protocol demonstration complete!")
 	fmt.Println()
 }
@@ -40,26 +40,26 @@ func main() {
 func demonstrateFPC() {
 	fmt.Println("━━━ Part 1: Fast Probabilistic Consensus (FPC) ━━━")
 	fmt.Println()
-	
+
 	selector := fpc.NewSelector(0.5, 0.8, nil)
 	k := 20
-	
+
 	fmt.Println("  FPC prevents stuck states with dynamic thresholds")
 	fmt.Printf("  Theta range: [0.5, 0.8] (50%%-80%% quorum)\n")
 	fmt.Printf("  Sample size: %d validators\n", k)
 	fmt.Println()
-	
+
 	fmt.Println("  Threshold selection (PRF-based):")
 	thresholdSet := make(map[int]bool)
-	
+
 	for round := uint64(0); round < 10; round++ {
 		threshold := selector.SelectThreshold(round, k)
 		thresholdSet[threshold] = true
 		theta := float64(threshold) / float64(k)
-		fmt.Printf("    Round %2d: α=%2d/%d (θ=%.3f) %s\n", 
+		fmt.Printf("    Round %2d: α=%2d/%d (θ=%.3f) %s\n",
 			round, threshold, k, theta, bar(theta, 20))
 	}
-	
+
 	fmt.Printf("\n  ✓ %d unique thresholds prevent stuck states\n", len(thresholdSet))
 	fmt.Println()
 }
@@ -67,14 +67,14 @@ func demonstrateFPC() {
 func demonstrateWaveConsensus() {
 	fmt.Println("━━━ Part 2: Wave Consensus (Block Finalization) ━━━")
 	fmt.Println()
-	
+
 	cfg := consensus.DefaultConfig()
 	chain := consensus.NewChain(cfg)
-	
+
 	ctx := context.Background()
 	chain.Start(ctx)
 	defer chain.Stop()
-	
+
 	// Create and finalize block
 	block := &consensus.Block{
 		ID:       consensus.ID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32},
@@ -83,71 +83,71 @@ func demonstrateWaveConsensus() {
 		Time:     time.Now(),
 		Payload:  []byte("Quasar block with quantum finality"),
 	}
-	
+
 	fmt.Printf("  Block: %x...\n", block.ID[:8])
-	
+
 	start := time.Now()
 	chain.Add(ctx, block)
-	
+
 	// Simulate votes
 	for i := 0; i < 20; i++ {
 		nodeID := consensus.NodeID{byte(i + 1)}
 		vote := consensus.NewVote(block.ID, consensus.VotePreference, nodeID)
 		chain.RecordVote(ctx, vote)
-		
+
 		if (i+1)%5 == 0 {
 			fmt.Printf("  Votes: %2d/20 %s\n", i+1, bar(float64(i+1)/20.0, 30))
 		}
 	}
-	
+
 	elapsed := time.Since(start)
 	status := chain.GetStatus(block.ID)
-	
+
 	fmt.Printf("\n  Status: %v\n", status)
 	fmt.Printf("  Time: %v\n", elapsed)
-	
+
 	if status == consensus.StatusAccepted {
 		fmt.Println("  ✅ Block finalized with BFT guarantees")
 	}
-	
+
 	fmt.Println()
 }
 
 func demonstrateHorizonFinality() {
 	fmt.Println("━━━ Part 3: Horizon DAG Finality Algorithms ━━━")
 	fmt.Println()
-	
+
 	genesis := ids.Empty
 	b1, _ := ids.ToID([]byte("block1_left_____________________"))
 	b2, _ := ids.ToID([]byte("block2_right____________________"))
 	b3, _ := ids.ToID([]byte("block3_merge____________________"))
-	
+
 	store := createMockDAG(genesis, b1, b2, b3)
-	
+
 	fmt.Println("  DAG Structure: Genesis → (B1, B2) → B3")
 	fmt.Println()
-	
+
 	// Test all algorithms
 	fmt.Println("  Horizon Algorithms Working:")
 	fmt.Printf("    ✓ IsReachable: %v\n", dag.IsReachable[ids.ID](store, genesis, b3))
 	fmt.Printf("    ✓ LCA: %s\n", dag.LCA[ids.ID](store, b1, b2))
 	fmt.Printf("    ✓ SafePrefix: %d finalized\n", len(dag.ComputeSafePrefix[ids.ID](store, []ids.ID{b3})))
 	fmt.Printf("    ✓ ChooseFrontier: %d selected\n", len(dag.ChooseFrontier[ids.ID]([]ids.ID{b1, b2, b3})))
-	
+
 	horizons := []dag.EventHorizon[ids.ID]{
 		{Checkpoint: genesis, Height: 0, Validators: []string{"set0"}, Signature: []byte("sig0")},
 	}
 	newH := dag.Horizon[ids.ID](store, horizons)
 	fmt.Printf("    ✓ Horizon: Height %d → %d\n", 0, newH.Height)
 	fmt.Printf("    ✓ BeyondHorizon: %v\n", dag.BeyondHorizon[ids.ID](store, b3, newH))
-	
+
 	fmt.Println()
 }
 
 func demonstrateQuasarFlow() {
 	fmt.Println("━━━ Part 4: Complete Quasar Protocol ━━━")
 	fmt.Println()
-	
+
 	fmt.Println("  Quasar 2-Round Quantum Finality:")
 	fmt.Println()
 	fmt.Println("  ┌─────────────────────────────────────────┐")
