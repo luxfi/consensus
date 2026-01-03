@@ -40,11 +40,6 @@ type Gossiper interface {
 	GossipPut(chainID ids.ID, networkID ids.ID, blockData []byte) int
 	// SendPullQuery sends a PullQuery to specific validators requesting votes.
 	SendPullQuery(chainID ids.ID, networkID ids.ID, blockID ids.ID, validators []ids.NodeID) int
-	// SendChit sends a vote response (Chit) back to the node that requested our vote.
-	// This is called after verifying a block received via PullQuery.
-	// requestID is used to correlate the response with the original request.
-	// preferredID is the block we prefer (voted for).
-	SendChit(toNodeID ids.NodeID, chainID ids.ID, requestID uint32, preferredID ids.ID) error
 }
 
 // IntegratedEngine wraps Transitive with network integration and VM notification handling.
