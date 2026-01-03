@@ -32,12 +32,12 @@ const (
 //   - confidence -> consecutive rounds at threshold
 //   - finalized -> decided
 type binarySnowball struct {
-	alphaPreference int  // minimum votes to update preference
-	alphaConfidence int  // minimum votes to increment confidence
-	beta            int  // consecutive rounds needed for finalization
-	preference      int  // current preference (0 or 1)
+	alphaPreference int    // minimum votes to update preference
+	alphaConfidence int    // minimum votes to increment confidence
+	beta            int    // consecutive rounds needed for finalization
+	preference      int    // current preference (0 or 1)
 	prefStrength    [2]int // accumulated votes per choice
-	confidence      int  // consecutive successful polls
+	confidence      int    // consecutive successful polls
 	finalized       bool
 }
 
@@ -429,9 +429,9 @@ func TestWaveSnowballDecisionPersistence(t *testing.T) {
 // TestWaveParameterValidation tests configuration constraints
 func TestWaveParameterValidation(t *testing.T) {
 	tests := []struct {
-		name    string
-		cfg     Config
-		valid   bool
+		name  string
+		cfg   Config
+		valid bool
 	}{
 		{
 			name:  "valid minimal",

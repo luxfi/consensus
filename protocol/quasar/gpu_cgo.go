@@ -355,10 +355,10 @@ func (o *GPUOrchestrator) VerifyBlock(blsSigs, blsPKs [][]byte, thresholdSig, th
 
 // GPUStats contains GPU acceleration statistics
 type GPUStats struct {
-	Enabled        bool
-	Backend        string
-	BatchSize      int
-	MaxWorkers     int
+	Enabled    bool
+	Backend    string
+	BatchSize  int
+	MaxWorkers int
 }
 
 // Stats returns current GPU orchestrator statistics

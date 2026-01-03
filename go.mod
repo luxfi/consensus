@@ -15,7 +15,7 @@ require (
 	github.com/luxfi/math v1.2.0
 	github.com/luxfi/p2p v1.4.6
 	github.com/luxfi/ringtail v0.2.0
-	github.com/luxfi/vm v1.0.1
+	github.com/luxfi/vm v1.0.2
 	github.com/luxfi/warp v1.18.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
@@ -86,7 +86,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
-	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect

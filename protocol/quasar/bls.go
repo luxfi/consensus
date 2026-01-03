@@ -1,3 +1,15 @@
+// Package quasar - BLS DAG Event Horizon Implementation
+//
+// This file implements DAG-based event horizon consensus for vertex ordering.
+// It uses SHA256 commitments for local attestations within the DAG.
+//
+// IMPORTANT: This is NOT the threshold signature implementation.
+// For real cryptographic threshold signatures (BLS + Ringtail), see:
+//   - quasar.go: Signer struct with github.com/luxfi/crypto/bls integration
+//   - epoch.go: Ringtail threshold signing via github.com/luxfi/ringtail/threshold
+//
+// The BLS struct here handles DAG vertex ordering and event horizon
+// establishment, which operates independently of block finality signatures.
 package quasar
 
 import (
@@ -95,14 +107,16 @@ func (q *BLS) SetFinalizedCallback(cb func(*Block)) {
 	q.finalizedCb = cb
 }
 
-// generateBLSAggregate generates a BLS aggregate signature
+// generateBLSAggregate generates a commitment for DAG event horizon.
+// NOTE: This uses SHA256 as a placeholder for local vertex ordering.
+// For threshold block finality with real BLS signatures, use the Signer
+// in quasar.go which integrates with github.com/luxfi/crypto/bls.
 func (q *BLS) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte {
 	if len(q.blsKey) == 0 {
-		// Return empty if no key
 		return []byte{}
 	}
 
-	// Create deterministic signature based on blockID and votes
+	// Create deterministic commitment based on blockID and votes
 	h := sha256.New()
 	h.Write(blockID[:])
 
@@ -118,21 +132,22 @@ func (q *BLS) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte 
 		h.Write(countBytes)
 	}
 
-	// Mix in BLS key
+	// Mix in key for local binding
 	h.Write(q.blsKey)
 
-	// Production: Use real BLS aggregation from github.com/luxfi/crypto/bls
 	return h.Sum(nil)
 }
 
-// generatePQCertificate generates a post-quantum certificate
+// generatePQCertificate generates a post-quantum commitment for DAG event horizon.
+// NOTE: This uses SHA256 as a placeholder for local vertex ordering.
+// For real PQ threshold signatures, use the Signer in quasar.go which
+// integrates with github.com/luxfi/ringtail/threshold.
 func (q *BLS) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte {
 	if len(q.pqKey) == 0 {
-		// Return empty if no key
 		return []byte{}
 	}
 
-	// Create message to sign
+	// Create message to commit
 	h := sha256.New()
 	h.Write(blockID[:])
 
@@ -150,12 +165,11 @@ func (q *BLS) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte
 
 	message := h.Sum(nil)
 
-	// Create certificate
+	// Create local commitment
 	cert := sha256.New()
 	cert.Write(message)
 	cert.Write(q.pqKey)
 
-	// Production: Use ML-DSA from github.com/luxfi/crypto/mldsa or SLH-DSA from /slhdsa
 	return cert.Sum(nil)
 }
 
@@ -249,15 +263,15 @@ func (q *BLS) GetLatestHorizon() *dag.EventHorizon[VertexID] {
 	return &q.horizons[len(q.horizons)-1]
 }
 
-// createHorizonSignature creates a Ringtail + BLS fusion signature for the event horizon.
-// The signature combines:
-// 1. BLS aggregate signature (32 bytes) - for efficiency
-// 2. Ringtail post-quantum hash (32 bytes) - for security binding
+// createHorizonSignature creates a local attestation for the event horizon checkpoint.
+// This is a SHA256-based commitment used for DAG vertex ordering.
 //
-// Note: Full threshold signing (multi-party Ringtail) is handled by Quasar.hybridConsensus.
-// This function creates a local attestation for the horizon checkpoint.
+// NOTE: For production threshold signatures with real BLS + Ringtail,
+// use the Signer in quasar.go which integrates:
+//   - github.com/luxfi/crypto/bls for BLS threshold signatures
+//   - github.com/luxfi/ringtail/threshold for post-quantum signatures
 func (q *BLS) createHorizonSignature(checkpoint VertexID, validators []string) []byte {
-	// Create message to sign: checkpoint + sorted validators
+	// Create message: checkpoint + validators
 	h := sha256.New()
 	h.Write(checkpoint[:])
 	for _, v := range validators {
@@ -265,19 +279,18 @@ func (q *BLS) createHorizonSignature(checkpoint VertexID, validators []string) [
 	}
 	message := h.Sum(nil)
 
-	// BLS component: sign with BLS key
+	// BLS component commitment
 	blsSig := sha256.New()
 	blsSig.Write(message)
 	blsSig.Write(q.blsKey)
 	blsPart := blsSig.Sum(nil)
 
-	// PQ component: sign with post-quantum key
+	// PQ component commitment
 	pqSig := sha256.New()
 	pqSig.Write(message)
 	pqSig.Write(q.pqKey)
 	pqPart := pqSig.Sum(nil)
 
-	// Fusion: concatenate both signatures (64 bytes total)
-	// Production: Use github.com/luxfi/crypto/bls and /mldsa for real signatures
+	// Combined attestation (64 bytes)
 	return append(blsPart, pqPart...)
 }

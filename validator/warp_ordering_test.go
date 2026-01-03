@@ -7,9 +7,9 @@ import (
 	"math"
 	"testing"
 
+	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/ids"
 	mathset "github.com/luxfi/math/set"
-	"github.com/luxfi/crypto/bls"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,7 +72,7 @@ func TestFlattenValidatorSetNoPubKey(t *testing.T) {
 
 	result, err := FlattenValidatorSet(vdrSet)
 	require.NoError(err)
-	require.Empty(result.Validators)        // No validators with public keys
+	require.Empty(result.Validators)               // No validators with public keys
 	require.Equal(uint64(100), result.TotalWeight) // But weight still counted
 }
 

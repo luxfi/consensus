@@ -86,6 +86,9 @@ func (c *CGOConsensus) Add(block Block) error {
 	}
 	c.cacheMu.Unlock()
 
+	// Update preference to latest block
+	c.preference.Store(blockID)
+
 	return nil
 }
 

@@ -59,8 +59,8 @@ func (o *GPUOrchestrator) BLSSign(sk, msg []byte) ([]byte, error) { return nil, 
 func (o *GPUOrchestrator) BLSVerify(sig, pk, msg []byte) bool     { return false }
 
 // ML-DSA Operations - all return errors without CGO
-func (o *GPUOrchestrator) MLDSASign(sk, msg []byte) ([]byte, error)    { return nil, ErrCGODisabled }
-func (o *GPUOrchestrator) MLDSAVerify(sig, msg, pk []byte) bool        { return false }
+func (o *GPUOrchestrator) MLDSASign(sk, msg []byte) ([]byte, error) { return nil, ErrCGODisabled }
+func (o *GPUOrchestrator) MLDSAVerify(sig, msg, pk []byte) bool     { return false }
 func (o *GPUOrchestrator) MLDSABatchVerify(sigs, msgs [][]byte, pks [][]byte) ([]bool, error) {
 	return nil, ErrCGODisabled
 }
@@ -71,8 +71,10 @@ type GPUThresholdContext struct{}
 func (o *GPUOrchestrator) NewThresholdContext(t, n uint32) (*GPUThresholdContext, error) {
 	return nil, ErrCGODisabled
 }
-func (tc *GPUThresholdContext) Close()                                                       {}
-func (tc *GPUThresholdContext) Keygen(seed []byte) ([][]byte, []byte, error)                 { return nil, nil, ErrCGODisabled }
+func (tc *GPUThresholdContext) Close() {}
+func (tc *GPUThresholdContext) Keygen(seed []byte) ([][]byte, []byte, error) {
+	return nil, nil, ErrCGODisabled
+}
 func (tc *GPUThresholdContext) PartialSign(shareIndex uint32, share, msg []byte) ([]byte, error) {
 	return nil, ErrCGODisabled
 }
@@ -82,12 +84,16 @@ func (tc *GPUThresholdContext) Combine(partialSigs [][]byte, indices []uint32) (
 func (tc *GPUThresholdContext) Verify(sig, pk, msg []byte) bool { return false }
 
 // Hash Operations - stubs
-func (o *GPUOrchestrator) BatchSHA3_256(inputs [][]byte) ([][]byte, error) { return nil, ErrCGODisabled }
-func (o *GPUOrchestrator) BatchSHA3_512(inputs [][]byte) ([][]byte, error) { return nil, ErrCGODisabled }
-func (o *GPUOrchestrator) BatchBLAKE3(inputs [][]byte) ([][]byte, error)   { return nil, ErrCGODisabled }
-func (o *GPUOrchestrator) SHA3_256(data []byte) []byte                     { return nil }
-func (o *GPUOrchestrator) SHA3_512(data []byte) []byte                     { return nil }
-func (o *GPUOrchestrator) BLAKE3(data []byte) []byte                       { return nil }
+func (o *GPUOrchestrator) BatchSHA3_256(inputs [][]byte) ([][]byte, error) {
+	return nil, ErrCGODisabled
+}
+func (o *GPUOrchestrator) BatchSHA3_512(inputs [][]byte) ([][]byte, error) {
+	return nil, ErrCGODisabled
+}
+func (o *GPUOrchestrator) BatchBLAKE3(inputs [][]byte) ([][]byte, error) { return nil, ErrCGODisabled }
+func (o *GPUOrchestrator) SHA3_256(data []byte) []byte                   { return nil }
+func (o *GPUOrchestrator) SHA3_512(data []byte) []byte                   { return nil }
+func (o *GPUOrchestrator) BLAKE3(data []byte) []byte                     { return nil }
 
 // Block Verification - stub
 func (o *GPUOrchestrator) VerifyBlock(blsSigs, blsPKs [][]byte, thresholdSig, thresholdPK, blockHash []byte) bool {
