@@ -40,7 +40,7 @@ func TestBLSThresholdSigningFlow(t *testing.T) {
 		GroupKey:     groupKey,
 	}
 
-	h, err := NewHybridWithThresholdConfig(config)
+	h, err := NewSignerWithThresholdConfig(config)
 	require.NoError(t, err, "Failed to create hybrid engine")
 
 	// Verify threshold mode is enabled
@@ -93,7 +93,7 @@ func TestBLSThresholdInsufficientShares(t *testing.T) {
 	keyShares["v1"] = shares[1]
 	keyShares["v2"] = shares[2]
 
-	h, err := NewHybridWithThresholdConfig(ThresholdConfig{
+	h, err := NewSignerWithThresholdConfig(ThresholdConfig{
 		SchemeID:     threshold.SchemeBLS,
 		Threshold:    2,
 		TotalParties: 3,
@@ -124,7 +124,7 @@ func TestBLSThresholdWrongMessage(t *testing.T) {
 	keyShares["v1"] = shares[1]
 	keyShares["v2"] = shares[2]
 
-	h, err := NewHybridWithThresholdConfig(ThresholdConfig{
+	h, err := NewSignerWithThresholdConfig(ThresholdConfig{
 		SchemeID:     threshold.SchemeBLS,
 		Threshold:    2,
 		TotalParties: 3,
@@ -174,7 +174,7 @@ func TestDualSigningFlow(t *testing.T) {
 	require.NoError(t, err, "Failed to generate dual keys")
 
 	// Create hybrid engine with dual threshold signing
-	h, err := NewHybridWithDualThreshold(*config)
+	h, err := NewSignerWithDualThreshold(*config)
 	require.NoError(t, err, "Failed to create hybrid engine")
 
 	require.True(t, h.IsDualThresholdMode(), "Should be in dual threshold mode")
@@ -189,7 +189,7 @@ func TestDualSigningFlow(t *testing.T) {
 	// === ROUND 1: All validators compute BLS share + Ringtail D+MACs in parallel ===
 	t.Log("=== Round 1: BLS signing + Ringtail D matrices ===")
 
-	blsSigs := make([]*HybridSignature, 3)
+	blsSigs := make([]*QuasarSig, 3)
 	allRound1 := make(map[int]*ringtailThreshold.Round1Data)
 
 	for i, vid := range validatorIDs {

@@ -10,7 +10,7 @@ import (
 
 // BenchmarkSignMessage benchmarks signature creation with pooled buffers
 func BenchmarkSignMessage(b *testing.B) {
-	hybrid, err := NewHybrid(1)
+	hybrid, err := NewSigner(1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -28,13 +28,13 @@ func BenchmarkSignMessage(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		ReleaseHybridSignature(sig)
+		ReleaseQuasarSig(sig)
 	}
 }
 
 // BenchmarkSignMessageParallel benchmarks parallel signature creation
 func BenchmarkSignMessageParallel(b *testing.B) {
-	hybrid, err := NewHybrid(1)
+	hybrid, err := NewSigner(1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -53,14 +53,14 @@ func BenchmarkSignMessageParallel(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			ReleaseHybridSignature(sig)
+			ReleaseQuasarSig(sig)
 		}
 	})
 }
 
 // BenchmarkAggregateSignatures benchmarks signature aggregation with pooled slices
 func BenchmarkAggregateSignatures(b *testing.B) {
-	hybrid, err := NewHybrid(3)
+	hybrid, err := NewSigner(3)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -75,19 +75,19 @@ func BenchmarkAggregateSignatures(b *testing.B) {
 	msg := []byte("benchmark message for aggregation")
 
 	// Pre-create signatures
-	sigs := make([]*HybridSignature, 5)
+	sigs := make([]*QuasarSig, 5)
 	for i := 0; i < 5; i++ {
 		sig, err := hybrid.SignMessage(string(rune('A'+i)), msg)
 		if err != nil {
 			b.Fatal(err)
 		}
 		// Copy to avoid pool reuse during benchmark
-		sigs[i] = &HybridSignature{
+		sigs[i] = &QuasarSig{
 			BLS:         append([]byte(nil), sig.BLS...),
 			Ringtail:    append([]byte(nil), sig.Ringtail...),
 			ValidatorID: sig.ValidatorID,
 		}
-		ReleaseHybridSignature(sig)
+		ReleaseQuasarSig(sig)
 	}
 
 	b.ResetTimer()
@@ -103,7 +103,7 @@ func BenchmarkAggregateSignatures(b *testing.B) {
 
 // BenchmarkVerifyAggregatedSignature benchmarks aggregated signature verification with pooled slices
 func BenchmarkVerifyAggregatedSignature(b *testing.B) {
-	hybrid, err := NewHybrid(3)
+	hybrid, err := NewSigner(3)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -118,18 +118,18 @@ func BenchmarkVerifyAggregatedSignature(b *testing.B) {
 	msg := []byte("benchmark message for verification")
 
 	// Pre-create signatures
-	sigs := make([]*HybridSignature, 5)
+	sigs := make([]*QuasarSig, 5)
 	for i := 0; i < 5; i++ {
 		sig, err := hybrid.SignMessage(string(rune('A'+i)), msg)
 		if err != nil {
 			b.Fatal(err)
 		}
-		sigs[i] = &HybridSignature{
+		sigs[i] = &QuasarSig{
 			BLS:         append([]byte(nil), sig.BLS...),
 			Ringtail:    append([]byte(nil), sig.Ringtail...),
 			ValidatorID: sig.ValidatorID,
 		}
-		ReleaseHybridSignature(sig)
+		ReleaseQuasarSig(sig)
 	}
 
 	aggSig, err := hybrid.AggregateSignatures(msg, sigs)
@@ -149,7 +149,7 @@ func BenchmarkVerifyAggregatedSignature(b *testing.B) {
 
 // BenchmarkVerifyAggregatedSignatureParallel benchmarks parallel verification
 func BenchmarkVerifyAggregatedSignatureParallel(b *testing.B) {
-	hybrid, err := NewHybrid(3)
+	hybrid, err := NewSigner(3)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -165,18 +165,18 @@ func BenchmarkVerifyAggregatedSignatureParallel(b *testing.B) {
 	ctx := context.Background()
 
 	// Pre-create signatures
-	sigs := make([]*HybridSignature, 5)
+	sigs := make([]*QuasarSig, 5)
 	for i := 0; i < 5; i++ {
 		sig, err := hybrid.SignMessage(string(rune('A'+i)), msg)
 		if err != nil {
 			b.Fatal(err)
 		}
-		sigs[i] = &HybridSignature{
+		sigs[i] = &QuasarSig{
 			BLS:         append([]byte(nil), sig.BLS...),
 			Ringtail:    append([]byte(nil), sig.Ringtail...),
 			ValidatorID: sig.ValidatorID,
 		}
-		ReleaseHybridSignature(sig)
+		ReleaseQuasarSig(sig)
 	}
 
 	aggSig, err := hybrid.AggregateSignatures(msg, sigs)

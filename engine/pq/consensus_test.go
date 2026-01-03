@@ -449,16 +449,16 @@ func TestBlockToFinalityEvent(t *testing.T) {
 	validIDStr := validID.String()
 
 	testCases := []struct {
-		name     string
-		block    *quasar.Block
-		wantBLS  []byte
-		wantPQ   []byte
+		name    string
+		block   *quasar.Block
+		wantBLS []byte
+		wantPQ  []byte
 	}{
 		{
 			name: "block with certificate",
 			block: &quasar.Block{
 				Hash:      validIDStr,
-				Height:   100,
+				Height:    100,
 				Timestamp: testTime,
 				Cert: &quasar.BlockCert{
 					BLS: []byte("bls-proof-data"),
@@ -472,9 +472,9 @@ func TestBlockToFinalityEvent(t *testing.T) {
 			name: "block without certificate",
 			block: &quasar.Block{
 				Hash:      validIDStr,
-				Height:   50,
+				Height:    50,
 				Timestamp: testTime,
-				Cert:     nil,
+				Cert:      nil,
 			},
 			wantBLS: nil,
 			wantPQ:  nil,
@@ -483,7 +483,7 @@ func TestBlockToFinalityEvent(t *testing.T) {
 			name: "block with empty proofs in cert",
 			block: &quasar.Block{
 				Hash:      validIDStr,
-				Height:   75,
+				Height:    75,
 				Timestamp: testTime,
 				Cert: &quasar.BlockCert{
 					BLS: []byte{},
@@ -497,9 +497,9 @@ func TestBlockToFinalityEvent(t *testing.T) {
 			name: "block with invalid hash",
 			block: &quasar.Block{
 				Hash:      "invalid-hash",
-				Height:   25,
+				Height:    25,
 				Timestamp: testTime,
-				Cert:     nil,
+				Cert:      nil,
 			},
 			wantBLS: nil,
 			wantPQ:  nil,
@@ -508,9 +508,9 @@ func TestBlockToFinalityEvent(t *testing.T) {
 			name: "block with empty hash",
 			block: &quasar.Block{
 				Hash:      "",
-				Height:   10,
+				Height:    10,
 				Timestamp: testTime,
-				Cert:     nil,
+				Cert:      nil,
 			},
 			wantBLS: nil,
 			wantPQ:  nil,
@@ -599,7 +599,7 @@ func TestSetFinalizedCallbackInvocation(t *testing.T) {
 	// Invoke the callback with a test block
 	testBlock := &quasar.Block{
 		Hash:      validID.String(),
-		Height:   42,
+		Height:    42,
 		Timestamp: time.Now(),
 		Cert: &quasar.BlockCert{
 			BLS: []byte("test-bls"),
@@ -643,9 +643,9 @@ func TestSetFinalizedCallbackInvocationNilCert(t *testing.T) {
 	// Invoke the callback with a block that has no cert
 	testBlock := &quasar.Block{
 		Hash:      validID.String(),
-		Height:   100,
+		Height:    100,
 		Timestamp: time.Now(),
-		Cert:     nil,
+		Cert:      nil,
 	}
 
 	cb(testBlock)

@@ -1,8 +1,9 @@
 package flare
 
 import (
-	"github.com/luxfi/consensus/core/dag"
 	"testing"
+
+	"github.com/luxfi/consensus/core/dag"
 )
 
 type testVertex struct {

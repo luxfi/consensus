@@ -69,26 +69,58 @@ type Stats struct {
 	Uptime          time.Duration // Time since start
 }
 
-// Core is an alias for the aggregator implementation.
-// Use NewCore() to create a new instance.
-type Core = Quasar
+// BLSSignature contains a classical BLS threshold signature.
+// Fast path for consensus - used in parallel with RingtailSignature.
+type BLSSignature struct {
+	Signature   []byte // BLS signature bytes
+	ValidatorID string // Signing validator
+	IsThreshold bool   // True if threshold signature
+	SignerIndex int    // Signer index in committee
+}
 
-// QuasarCore is a deprecated alias for backward compatibility.
-// Deprecated: Use Quasar or Core instead.
-type QuasarCore = Quasar
+// RingtailSignature contains a post-quantum Ringtail threshold signature.
+// Quantum-safe path - used in parallel with BLSSignature.
+type RingtailSignature struct {
+	Signature   []byte // Ringtail (Ring-LWE) signature bytes
+	ValidatorID string // Signing validator
+	IsThreshold bool   // True if threshold signature
+	SignerIndex int    // Signer index in committee
+	Round       int    // Ringtail protocol round (1 or 2)
+}
 
-// PChain is a deprecated alias for backward compatibility.
-// Deprecated: Use BLS instead.
-type PChain = BLS
+// QuasarSignature bundles BLS + Ringtail for complete quantum finality.
+// Both signatures are collected in parallel.
+type QuasarSignature struct {
+	BLS      *BLSSignature      // Classical fast path
+	Ringtail *RingtailSignature // Quantum-safe path
+}
 
-// NewPChain is a deprecated alias for backward compatibility.
-// Deprecated: Use NewBLS instead.
-var NewPChain = NewBLS
+// RingtailRound1Data contains the output of Ringtail Round 1.
+type RingtailRound1Data struct {
+	PartyID int
+}
 
-// QuasarHybridConsensus is a deprecated alias for backward compatibility.
-// Deprecated: Use Hybrid instead.
-type QuasarHybridConsensus = Hybrid
+// Signer is the exported interface for the quantum signing engine.
+// It provides parallel BLS+Ringtail threshold signing for PQ-safe consensus.
+type Signer = signer
 
-// NewQuasarHybridConsensus is a deprecated alias for backward compatibility.
-// Deprecated: Use NewHybrid instead.
-var NewQuasarHybridConsensus = NewHybrid
+// NewSigner creates a new quantum signer with the given threshold.
+func NewSigner(threshold int) (*Signer, error) {
+	return newSigner(threshold)
+}
+
+// NewSignerWithConfig creates a new quantum signer with full configuration.
+func NewSignerWithConfig(config SignerConfig) (*Signer, error) {
+	return newSignerWithDualThreshold(config)
+}
+
+// NewSignerWithDualThreshold creates a new quantum signer with dual threshold configuration.
+// This is an alias for NewSignerWithConfig for backward compatibility.
+func NewSignerWithDualThreshold(config SignerConfig) (*Signer, error) {
+	return NewSignerWithConfig(config)
+}
+
+// NewSignerWithThresholdConfig creates a signer from ThresholdConfig.
+func NewSignerWithThresholdConfig(config ThresholdConfig) (*Signer, error) {
+	return newSignerWithThresholdConfig(config)
+}

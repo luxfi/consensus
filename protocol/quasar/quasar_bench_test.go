@@ -96,8 +96,8 @@ func BenchmarkBLSSigningVariableMessageSize(b *testing.B) {
 // Hybrid Signature Benchmarks (BLS + ML-DSA/Ringtail)
 // =============================================================================
 
-func BenchmarkHybridSignatureCreation(b *testing.B) {
-	hybrid, err := NewHybrid(1)
+func BenchmarkQuasarSigCreation(b *testing.B) {
+	hybrid, err := NewSigner(1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -118,8 +118,8 @@ func BenchmarkHybridSignatureCreation(b *testing.B) {
 	}
 }
 
-func BenchmarkHybridSignatureVerification(b *testing.B) {
-	hybrid, err := NewHybrid(1)
+func BenchmarkQuasarSigVerification(b *testing.B) {
+	hybrid, err := NewSigner(1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -137,15 +137,15 @@ func BenchmarkHybridSignatureVerification(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if !hybrid.VerifyHybridSignature(message, sig) {
+		if !hybrid.VerifyQuasarSig(message, sig) {
 			b.Fatal("verification failed")
 		}
 	}
 }
 
-func BenchmarkHybridSignatureVariableMessageSize(b *testing.B) {
+func BenchmarkQuasarSigVariableMessageSize(b *testing.B) {
 	sizes := []int{32, 64, 128, 256, 512, 1024}
-	hybrid, err := NewHybrid(1)
+	hybrid, err := NewSigner(1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func BenchmarkHybridSignatureVariableMessageSize(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if !hybrid.VerifyHybridSignature(message, sig) {
+				if !hybrid.VerifyQuasarSig(message, sig) {
 					b.Fatal("verification failed")
 				}
 			}
@@ -268,12 +268,12 @@ func BenchmarkBLSAggregatedVerification(b *testing.B) {
 	}
 }
 
-func BenchmarkHybridAggregation(b *testing.B) {
+func BenchmarkSignerAggregation(b *testing.B) {
 	counts := []int{4, 8, 16, 32}
 
 	for _, count := range counts {
 		b.Run(fmt.Sprintf("%d_validators", count), func(b *testing.B) {
-			hybrid, err := NewHybrid(count)
+			hybrid, err := NewSigner(count)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -282,7 +282,7 @@ func BenchmarkHybridAggregation(b *testing.B) {
 			rand.Read(message)
 
 			// Add validators and collect signatures
-			sigs := make([]*HybridSignature, count)
+			sigs := make([]*QuasarSig, count)
 			for i := 0; i < count; i++ {
 				id := fmt.Sprintf("validator-%d", i)
 				if err := hybrid.AddValidator(id, 100); err != nil {
@@ -307,12 +307,12 @@ func BenchmarkHybridAggregation(b *testing.B) {
 	}
 }
 
-func BenchmarkHybridAggregatedVerification(b *testing.B) {
+func BenchmarkSignerAggregatedVerification(b *testing.B) {
 	counts := []int{4, 8, 16, 32}
 
 	for _, count := range counts {
 		b.Run(fmt.Sprintf("%d_validators", count), func(b *testing.B) {
-			hybrid, err := NewHybrid(count)
+			hybrid, err := NewSigner(count)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -321,7 +321,7 @@ func BenchmarkHybridAggregatedVerification(b *testing.B) {
 			rand.Read(message)
 
 			// Add validators and collect signatures
-			sigs := make([]*HybridSignature, count)
+			sigs := make([]*QuasarSig, count)
 			for i := 0; i < count; i++ {
 				id := fmt.Sprintf("validator-%d", i)
 				if err := hybrid.AddValidator(id, 100); err != nil {
@@ -369,7 +369,7 @@ func BenchmarkThresholdRound(b *testing.B) {
 
 	for _, tc := range thresholds {
 		b.Run(fmt.Sprintf("n%d_t%d", tc.n, tc.t), func(b *testing.B) {
-			hybrid, err := NewHybrid(tc.t)
+			hybrid, err := NewSigner(tc.t)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -391,7 +391,7 @@ func BenchmarkThresholdRound(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				// Collect threshold signatures (simulate a round)
-				sigs := make([]*HybridSignature, tc.t)
+				sigs := make([]*QuasarSig, tc.t)
 				for j := 0; j < tc.t; j++ {
 					sig, err := hybrid.SignMessage(ids[j], message)
 					if err != nil {
@@ -421,7 +421,7 @@ func BenchmarkThresholdSigningOnly(b *testing.B) {
 
 	for _, t := range thresholds {
 		b.Run(fmt.Sprintf("%d_signers", t), func(b *testing.B) {
-			hybrid, err := NewHybrid(t)
+			hybrid, err := NewSigner(t)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -533,93 +533,9 @@ func BenchmarkMLDSAVerification(b *testing.B) {
 // Ringtail (Stub) Benchmarks
 // =============================================================================
 
-func BenchmarkRingtailKeyGen(b *testing.B) {
-	seed := make([]byte, 32)
-	rand.Read(seed)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _, err := KeyGen(seed)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkRingtailPrecompute(b *testing.B) {
-	sk := make([]byte, 32)
-	rand.Read(sk)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, err := Precompute(sk)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkRingtailQuickSign(b *testing.B) {
-	sk := make([]byte, 32)
-	rand.Read(sk)
-	precomp, err := Precompute(sk)
-	if err != nil {
-		b.Fatal(err)
-	}
-	message := make([]byte, 32)
-	rand.Read(message)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, err := QuickSign(precomp, message)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkRingtailAggregate(b *testing.B) {
-	counts := []int{4, 8, 16, 32, 64}
-
-	for _, count := range counts {
-		b.Run(fmt.Sprintf("%d_shares", count), func(b *testing.B) {
-			shares := make([]Share, count)
-			for i := 0; i < count; i++ {
-				shares[i] = make([]byte, 32)
-				rand.Read(shares[i])
-			}
-
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				_, err := Aggregate(shares)
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
-}
-
-func BenchmarkRingtailVerify(b *testing.B) {
-	pk := make([]byte, 32)
-	rand.Read(pk)
-	message := make([]byte, 32)
-	rand.Read(message)
-	cert := make([]byte, 32)
-	rand.Read(cert)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if !Verify(pk, message, cert) {
-			b.Fatal("verification failed")
-		}
-	}
-}
+// NOTE: Ringtail benchmarks are in the real ringtail package at
+// github.com/luxfi/ringtail/threshold. The quasar package uses the real
+// implementation via the Signer type in quasar.go.
 
 // =============================================================================
 // End-to-End Quasar Benchmarks
@@ -630,7 +546,11 @@ func BenchmarkQuasarBlockProcessing(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	if err := qa.hybridConsensus.AddValidator("validator1", 100); err != nil {
+	// Need at least 2 validators for epoch manager
+	if _, err := qa.AddValidator("validator1", 100); err != nil {
+		b.Fatal(err)
+	}
+	if _, err := qa.AddValidator("validator2", 100); err != nil {
 		b.Fatal(err)
 	}
 
@@ -680,7 +600,7 @@ func BenchmarkQuasarValidatorAddition(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		hybrid, err := NewHybrid(1)
+		hybrid, err := NewSigner(1)
 		if err != nil {
 			b.Fatal(err)
 		}

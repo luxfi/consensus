@@ -38,9 +38,9 @@ const (
 )
 
 var (
-	ErrEpochRateLimited = errors.New("epoch keygen rate limited: must wait at least 10 minutes between rotations")
-	ErrNoValidatorChange  = errors.New("validator set unchanged, no keygen needed")
-	ErrEpochNotFound      = errors.New("epoch not found")
+	ErrEpochRateLimited    = errors.New("epoch keygen rate limited: must wait at least 10 minutes between rotations")
+	ErrNoValidatorChange   = errors.New("validator set unchanged, no keygen needed")
+	ErrEpochNotFound       = errors.New("epoch not found")
 	ErrInvalidValidatorSet = errors.New("invalid validator set configuration")
 )
 
@@ -52,14 +52,14 @@ type EpochManager struct {
 	mu sync.RWMutex
 
 	// Current epoch state
-	currentEpoch    uint64
-	currentKeys     *EpochKeys
-	lastKeygenTime  time.Time
+	currentEpoch   uint64
+	currentKeys    *EpochKeys
+	lastKeygenTime time.Time
 
 	// Historical epochs for signature verification
 	// We need to verify signatures from recent epochs during transitions
-	epochHistory    map[uint64]*EpochKeys
-	historyLimit    int // How many old epochs to keep
+	epochHistory map[uint64]*EpochKeys
+	historyLimit int // How many old epochs to keep
 
 	// Validator set tracking
 	currentValidators []string
@@ -68,15 +68,15 @@ type EpochManager struct {
 
 // EpochKeys holds the Ringtail keys for a specific epoch.
 type EpochKeys struct {
-	Epoch           uint64
-	CreatedAt       time.Time
-	ExpiresAt       time.Time
-	ValidatorSet    []string
-	Threshold       int
-	TotalParties    int
-	GroupKey        *ringtailThreshold.GroupKey
-	Shares          map[string]*ringtailThreshold.KeyShare
-	Signers         map[string]*ringtailThreshold.Signer
+	Epoch        uint64
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+	ValidatorSet []string
+	Threshold    int
+	TotalParties int
+	GroupKey     *ringtailThreshold.GroupKey
+	Shares       map[string]*ringtailThreshold.KeyShare
+	Signers      map[string]*ringtailThreshold.Signer
 }
 
 // NewEpochManager creates a new epoch manager.
@@ -86,9 +86,9 @@ func NewEpochManager(threshold int, historyLimit int) *EpochManager {
 	}
 
 	return &EpochManager{
-		epochHistory:  make(map[uint64]*EpochKeys),
-		historyLimit:  historyLimit,
-		threshold:     threshold,
+		epochHistory: make(map[uint64]*EpochKeys),
+		historyLimit: historyLimit,
+		threshold:    threshold,
 	}
 }
 
