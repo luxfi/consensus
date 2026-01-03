@@ -546,9 +546,12 @@ func (t *Transitive) handleVote(vote Vote) {
 		return
 	}
 
-	pending.VoteCount++
-	responses := map[ids.ID]int{vote.BlockID: pending.VoteCount}
-	_ = t.consensus.Poll(t.ctx, responses)
+	// Only count accept votes toward quorum
+	if vote.Accept {
+		pending.VoteCount++
+		responses := map[ids.ID]int{vote.BlockID: pending.VoteCount}
+		_ = t.consensus.Poll(t.ctx, responses)
+	}
 }
 
 func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
