@@ -57,13 +57,13 @@ func (u *unarySnowball) RecordPoll(voteCount, threshold int) bool {
 
 // binaryTreeSnowball tracks binary choice at tree branch point
 type binaryTreeSnowball struct {
-	preference       int
-	prefStrength     [2]int
-	confidence       int
-	finalized        bool
-	alphaPreference  int
-	alphaConfidence  int
-	beta             int
+	preference      int
+	prefStrength    [2]int
+	confidence      int
+	finalized       bool
+	alphaPreference int
+	alphaConfidence int
+	beta            int
 }
 
 func newBinaryTreeSnowball(alphaPreference, alphaConfidence, beta int) *binaryTreeSnowball {
@@ -114,7 +114,7 @@ type consensusTree struct {
 	preference [32]byte
 	finalized  bool
 	// Track choice to branch mapping for binary snowball
-	choices   [2][32]byte // choices[0] = first choice, choices[1] = second choice
+	choices    [2][32]byte // choices[0] = first choice, choices[1] = second choice
 	numChoices int
 }
 
@@ -643,7 +643,7 @@ func TestQuasarThroughput(t *testing.T) {
 func TestHybridConsensusBasic(t *testing.T) {
 	require := require.New(t)
 
-	hybrid, err := newHybridConsensus(2)
+	hybrid, err := newCertifier(2)
 	require.NoError(err)
 
 	// Add validators
@@ -676,7 +676,7 @@ func TestHybridConsensusBasic(t *testing.T) {
 func TestHybridConsensusValidatorChurn(t *testing.T) {
 	require := require.New(t)
 
-	hybrid, err := newHybridConsensus(2)
+	hybrid, err := newCertifier(2)
 	require.NoError(err)
 
 	hybrid.AddValidator("v1", 100)
