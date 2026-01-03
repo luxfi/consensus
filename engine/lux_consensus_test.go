@@ -503,7 +503,7 @@ func TestLuxConsensusPollFocusDecideReject(t *testing.T) {
 	// Now state is 1, threshold is 1, so decided=true
 	// Poll with low ratio to hit the reject branch
 	lowRatioResponses := map[ids.ID]int{
-		item2: 1,  // Only 10% - below alpha (90%)
+		item2:                1, // Only 10% - below alpha (90%)
 		ids.GenerateTestID(): 9, // 90% for another item
 	}
 	continuePolling = lc2.Poll(lowRatioResponses)

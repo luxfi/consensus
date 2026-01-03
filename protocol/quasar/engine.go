@@ -29,7 +29,7 @@ type quasarEngine struct {
 	startTime       time.Time
 
 	// Consensus engine
-	hybrid *HybridConsensus
+	certifier *Certifier
 
 	// Metrics
 	processed uint64
@@ -42,9 +42,9 @@ func NewEngine(cfg Config) (Engine, error) {
 		threshold = 1
 	}
 
-	hybrid, err := newHybridConsensus(threshold)
+	certifier, err := newCertifier(threshold)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create hybrid consensus: %w", err)
+		return nil, fmt.Errorf("failed to create certifier: %w", err)
 	}
 
 	bufSize := 1000
@@ -53,7 +53,7 @@ func NewEngine(cfg Config) (Engine, error) {
 		incoming:        make(chan *Block, bufSize),
 		finalized:       make(chan *Block, bufSize),
 		finalizedBlocks: make(map[string]*Block),
-		hybrid:          hybrid,
+		certifier: certifier,
 	}, nil
 }
 
@@ -119,7 +119,7 @@ func (q *quasarEngine) Stats() Stats {
 		ProcessedBlocks: q.processed,
 		FinalizedBlocks: uint64(len(q.finalizedBlocks)),
 		PendingBlocks:   len(q.incoming),
-		Validators:      q.hybrid.validatorCount(),
+		Validators:      q.certifier.validatorCount(),
 		Uptime:          time.Since(q.startTime),
 	}
 }
@@ -144,7 +144,7 @@ func (q *quasarEngine) processBlock(block *Block) {
 	q.processed++
 
 	// Generate quantum certificate
-	cert := q.hybrid.generateCert(block)
+	cert := q.certifier.generateCert(block)
 	if cert == nil {
 		return // Did not achieve consensus
 	}
@@ -174,34 +174,37 @@ func computeHash(block *Block) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// HybridConsensus handles BLS + PQ certificate generation.
-type HybridConsensus struct {
+// Certifier handles lightweight certificate generation for the engine.
+// NOTE: This uses SHA256 commitments for internal block tracking.
+// For real threshold BLS + Ringtail signatures, see the Signer in quasar.go.
+type Certifier struct {
 	mu         sync.RWMutex
 	threshold  int
 	validators map[string]int // validator -> weight
 }
 
-func newHybridConsensus(threshold int) (*HybridConsensus, error) {
-	return &HybridConsensus{
+func newCertifier(threshold int) (*Certifier, error) {
+	return &Certifier{
 		threshold:  threshold,
 		validators: make(map[string]int),
 	}, nil
 }
 
-func (h *HybridConsensus) validatorCount() int {
+func (h *Certifier) validatorCount() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.validators)
 }
 
-func (h *HybridConsensus) generateCert(block *Block) *BlockCert {
+// generateCert creates a lightweight certificate for internal block tracking.
+// NOTE: This uses SHA256 for internal engine use only. For real threshold
+// signatures with BLS + Ringtail, use the Signer via ProcessBlock in Quasar.
+func (h *Certifier) generateCert(block *Block) *BlockCert {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	// Generate BLS aggregate
+	// Create deterministic commitments for block tracking
 	blsData := sha256.Sum256(block.ID[:])
-
-	// Generate PQ certificate
 	pqData := sha256.Sum256(append(block.ID[:], block.ChainID[:]...))
 
 	return &BlockCert{
@@ -214,14 +217,14 @@ func (h *HybridConsensus) generateCert(block *Block) *BlockCert {
 }
 
 // AddValidator adds a validator to the consensus.
-func (h *HybridConsensus) AddValidator(id string, weight int) {
+func (h *Certifier) AddValidator(id string, weight int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.validators[id] = weight
 }
 
 // RemoveValidator removes a validator from the consensus.
-func (h *HybridConsensus) RemoveValidator(id string) {
+func (h *Certifier) RemoveValidator(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.validators, id)
