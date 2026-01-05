@@ -7,12 +7,12 @@ exclude github.com/ethereum/go-ethereum v1.10.26
 exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
-	github.com/luxfi/crypto v1.17.31
+	github.com/luxfi/crypto v1.17.36
 	github.com/luxfi/database v1.2.11
 	github.com/luxfi/geth v1.16.53
-	github.com/luxfi/ids v1.2.5
+	github.com/luxfi/ids v1.2.7
 	github.com/luxfi/log v1.1.26
-	github.com/luxfi/math v1.2.0
+	github.com/luxfi/math v1.2.2
 	github.com/luxfi/p2p v1.4.6
 	github.com/luxfi/ringtail v0.2.0
 	github.com/luxfi/vm v1.0.2
@@ -26,11 +26,11 @@ require (
 require (
 	github.com/ALTree/bigfloat v0.2.0 // indirect
 	github.com/DataDog/zstd v1.5.7 // indirect
-	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251221085550-b8e13ca38217 // indirect
+	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251230134950-44c893854e3f // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cloudflare/circl v1.6.2-0.20251204010831-23491bd573cf // indirect
+	github.com/cloudflare/circl v1.6.2 // indirect
 	github.com/cockroachdb/errors v1.12.0 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240816210425-c5d0cb0b6fc0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20241215232642-bb51bb14a506 // indirect
@@ -61,7 +61,9 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/luxfi/cache v1.1.0 // indirect
+	github.com/luxfi/gpu v0.29.4 // indirect
 	github.com/luxfi/lattice/v7 v7.0.0 // indirect
+	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/metric v1.4.8 // indirect
 	github.com/luxfi/node v1.22.14 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
@@ -85,7 +87,7 @@ require (
 	go.uber.org/zap v1.27.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
+	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
