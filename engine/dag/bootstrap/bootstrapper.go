@@ -192,8 +192,8 @@ func (b *Bootstrapper) PullQuery(ctx context.Context, nodeID ids.NodeID, request
 	return nil
 }
 
-// Chits handles chit messages
-func (b *Bootstrapper) Chits(ctx context.Context, nodeID ids.NodeID, requestID uint32, preferredID ids.ID, preferredIDAtHeight ids.ID, acceptedID ids.ID) error {
+// Vote handles vote messages
+func (b *Bootstrapper) Vote(ctx context.Context, nodeID ids.NodeID, requestID uint32, preferredID ids.ID, preferredIDAtHeight ids.ID, acceptedID ids.ID) error {
 	return nil
 }
 
