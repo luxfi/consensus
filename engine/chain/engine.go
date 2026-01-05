@@ -42,6 +42,12 @@ type BlockBuilder interface {
 	GetBlock(context.Context, ids.ID) (block.Block, error)
 	ParseBlock(context.Context, []byte) (block.Block, error)
 	LastAccepted(context.Context) (ids.ID, error)
+	// SetPreference tells the VM which block to build on next.
+	// This MUST be called after accepting a block to keep the VM's preferred
+	// block in sync with the last accepted block. Without this, the VM's
+	// Preferred() returns the old block while GetLastAccepted() returns the
+	// new block, causing GetState(preferred) to fail during block building.
+	SetPreference(context.Context, ids.ID) error
 }
 
 // BlockProposer submits blocks to validators.
@@ -416,9 +422,12 @@ func (t *Transitive) Notify(ctx context.Context, msg Message) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	fmt.Printf("[CONSENSUS DEBUG] Notify: msg.Type=%v\n", msg.Type)
+
 	switch msg.Type {
 	case PendingTxs:
 		t.pendingBuildBlocks++
+		fmt.Printf("[CONSENSUS DEBUG] PendingTxs received, pendingBuildBlocks=%d\n", t.pendingBuildBlocks)
 		return t.buildBlocksLocked(ctx)
 	case StateSyncDone:
 		return nil
@@ -470,6 +479,29 @@ func (t *Transitive) PendingBuildBlocks() int {
 	return t.pendingBuildBlocks
 }
 
+// HasPendingBlock checks if a block is in the pending blocks map (built or received but not yet finalized).
+// This is used by the Vote handler to determine if votes should be processed immediately
+// (block exists) or buffered (block not yet available).
+func (t *Transitive) HasPendingBlock(blockID ids.ID) bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	_, exists := t.pendingBlocks[blockID]
+	return exists
+}
+
+// GetPendingBlock returns the VMBlock for a pending block if it exists.
+// This allows the Vote handler to process votes for blocks that are in consensus
+// but not yet verified/stored in the VM.
+func (t *Transitive) GetPendingBlock(blockID ids.ID) (block.Block, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	pending, exists := t.pendingBlocks[blockID]
+	if !exists || pending.VMBlock == nil {
+		return nil, false
+	}
+	return pending.VMBlock, true
+}
+
 // -----------------------------------------------------------------------------
 // Internal
 // -----------------------------------------------------------------------------
@@ -492,10 +524,17 @@ func (t *Transitive) processPendingBlocks() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	if len(t.pendingBlocks) > 0 {
+		fmt.Printf("[CONSENSUS DEBUG] processPendingBlocks: %d pending blocks\n", len(t.pendingBlocks))
+	}
+
 	for blockID, pending := range t.pendingBlocks {
 		if pending.Decided {
 			continue
 		}
+
+		fmt.Printf("[CONSENSUS DEBUG] checking block %s: votes=%d isAccepted=%v isRejected=%v\n",
+			blockID, pending.VoteCount, t.consensus.IsAccepted(blockID), t.consensus.IsRejected(blockID))
 
 		if t.consensus.IsAccepted(blockID) {
 			pending.Decided = true
@@ -503,6 +542,17 @@ func (t *Transitive) processPendingBlocks() {
 			if pending.VMBlock != nil {
 				if err := pending.VMBlock.Accept(t.ctx); err != nil {
 					fmt.Printf("warning: accept failed for %s: %v\n", blockID, err)
+				}
+			}
+			// After accepting a block, update the VM's preferred block to build on
+			// This is critical: without this, the VM's Preferred() returns the old block
+			// while GetLastAccepted() returns the newly accepted block, causing
+			// GetState(preferred) to fail when building the next block
+			if t.vm != nil {
+				if err := t.vm.SetPreference(t.ctx, blockID); err != nil {
+					fmt.Printf("warning: SetPreference failed for %s: %v\n", blockID, err)
+				} else {
+					fmt.Printf("[CONSENSUS DEBUG] SetPreference updated to %s\n", blockID)
 				}
 			}
 			delete(t.pendingBlocks, blockID)
@@ -556,16 +606,22 @@ func (t *Transitive) handleVote(vote Vote) {
 
 func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 	if t.vm == nil {
+		fmt.Println("[CONSENSUS DEBUG] buildBlocksLocked: vm is nil")
 		return nil
 	}
+
+	fmt.Printf("[CONSENSUS DEBUG] buildBlocksLocked: pendingBuildBlocks=%d\n", t.pendingBuildBlocks)
 
 	for t.pendingBuildBlocks > 0 {
 		t.pendingBuildBlocks--
 
+		fmt.Println("[CONSENSUS DEBUG] calling vm.BuildBlock")
 		vmBlock, err := t.vm.BuildBlock(ctx)
 		if err != nil {
+			fmt.Printf("[CONSENSUS DEBUG] vm.BuildBlock error: %v\n", err)
 			return nil
 		}
+		fmt.Printf("[CONSENSUS DEBUG] vm.BuildBlock success: block=%s height=%d\n", vmBlock.ID(), vmBlock.Height())
 
 		t.blocksBuilt++
 
@@ -578,17 +634,20 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		}
 
 		if err := t.consensus.AddBlock(ctx, consensusBlock); err != nil {
+			fmt.Printf("[CONSENSUS DEBUG] AddBlock failed: %v\n", err)
 			continue
 		}
+		fmt.Printf("[CONSENSUS DEBUG] AddBlock success for block=%s\n", vmBlock.ID())
 
 		t.pendingBlocks[vmBlock.ID()] = &PendingBlock{
 			ConsensusBlock: consensusBlock,
 			VMBlock:        vmBlock,
 			ProposedAt:     time.Now(),
-			VoteCount:      0,
+			VoteCount:      1, // Count proposer's own vote
 			Decided:        false,
 		}
 
+		fmt.Printf("[CONSENSUS DEBUG] proposer=%v\n", t.proposer != nil)
 		if t.proposer != nil {
 			proposal := BlockProposal{
 				BlockID:   vmBlock.ID(),

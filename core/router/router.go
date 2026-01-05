@@ -39,9 +39,14 @@ const (
 	PushQuery
 	// PullQuery pulls a query
 	PullQuery
-	// Chits is chits response
-	Chits
+	// Vote is the authenticated preference signal returned by polling
+	Vote
+	// GetContext requests the verification context (parent chain) for a block
+	GetContext
+	// Context is the response containing prerequisite blocks needed to verify/attach a tip
+	Context
 )
+
 
 // Field represents a message field
 type Field byte
