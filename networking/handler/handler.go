@@ -43,5 +43,8 @@ const (
 	Put                 = router.Put
 	PushQuery           = router.PushQuery
 	PullQuery           = router.PullQuery
-	Chits               = router.Chits
+	Vote                = router.Vote
+	GetContext          = router.GetContext
+	Context             = router.Context
 )
+
