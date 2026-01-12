@@ -7,7 +7,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/luxfi/consensus"
+	"github.com/luxfi/consensus/runtime"
 	validators "github.com/luxfi/consensus/validator"
 	"github.com/luxfi/ids"
 	log "github.com/luxfi/log"
@@ -22,6 +22,7 @@ var (
 )
 
 // SimpleValidatorState is a minimal validator state for testing
+// Implements validators.State interface
 type SimpleValidatorState struct{}
 
 // GetValidatorSet returns an empty validator set for testing
@@ -52,23 +53,41 @@ func (s *SimpleValidatorState) GetWarpValidatorSet(ctx context.Context, height u
 	}, nil
 }
 
+// GetMinimumHeight returns height 0 for testing
+func (s *SimpleValidatorState) GetMinimumHeight(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
+// GetChainID returns the provided ID as the chain ID for testing
+func (s *SimpleValidatorState) GetChainID(netID ids.ID) (ids.ID, error) {
+	return netID, nil
+}
+
+// GetNetworkID returns the provided ID as the network ID for testing
+func (s *SimpleValidatorState) GetNetworkID(chainID ids.ID) (ids.ID, error) {
+	return chainID, nil
+}
+
+// Verify SimpleValidatorState implements validators.State
+var _ validators.State = (*SimpleValidatorState)(nil)
+
 // ConsensusContext updates a consensus context with default test values
-func ConsensusContext(ctx *consensus.Context) *consensus.Context {
+func ConsensusContext(ctx *runtime.Runtime) *runtime.Runtime {
 	// Simple consensus package doesn't have these fields, just return the context as-is
 	return ctx
 }
 
 // NewContext creates a new consensus context for testing
 // This is a compatibility function that creates a context with a generated chain ID
-func NewContext(tb testing.TB) *consensus.Context {
+func NewContext(tb testing.TB) *runtime.Runtime {
 	return Context(tb, ids.GenerateTestID())
 }
 
 // Context creates a new consensus context for testing with a specific chain ID
-func Context(tb testing.TB, chainID ids.ID) *consensus.Context {
+func Context(tb testing.TB, chainID ids.ID) *runtime.Runtime {
 	tb.Helper()
 
-	ctx := &consensus.Context{
+	ctx := &runtime.Runtime{
 		NetworkID: 1, // Mainnet (primary network)
 		ChainID:   chainID,
 		NodeID:    ids.GenerateTestNodeID(),

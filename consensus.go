@@ -12,9 +12,9 @@ import (
 	"errors"
 
 	"github.com/luxfi/consensus/config"
-	consensuscontext "github.com/luxfi/consensus/context"
 	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/consensus/engine/interfaces"
+	"github.com/luxfi/consensus/runtime"
 	"github.com/luxfi/consensus/types"
 )
 
@@ -25,11 +25,12 @@ type (
 	Chain  = engine.Chain
 	Config = types.Config
 
-	// Context type
-	Context = consensuscontext.Context
-
 	// VM State type
 	State = interfaces.State
+
+	// Runtime type for VM wiring (chain IDs, validators, logging, etc.)
+	Runtime = runtime.Runtime
+	IDs     = runtime.IDs
 
 	// Core types
 	Block       = types.Block
@@ -87,14 +88,6 @@ var (
 	ErrTimeout        = types.ErrTimeout
 	ErrNotInitialized = types.ErrNotInitialized
 	ErrUnknownState   = errors.New("unknown state")
-)
-
-// Context accessor functions re-exported from context package
-var (
-	GetNetworkID      = consensuscontext.GetNetworkID
-	GetValidatorState = consensuscontext.GetValidatorState
-	WithContext       = consensuscontext.WithContext
-	FromContext       = consensuscontext.FromContext
 )
 
 // DefaultConfig returns the default consensus configuration
