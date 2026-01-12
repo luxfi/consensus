@@ -467,8 +467,8 @@ func (p *QuantumPolicy) OnVote(ctx context.Context, vote *Vote) error {
 			p.pqVotes[vote.CandidateID] = make(map[VoterID][]byte)
 		}
 		p.pqVotes[vote.CandidateID][vote.VoterID] = vote.Signature[1:]
-	case SigHybrid:
-		// Hybrid vote contains both: [scheme][bls_len][bls][pq]
+	case SigQuasar:
+		// Quasar vote contains both: [scheme][bls_len][bls][ringtail]
 		if len(vote.Signature) < 4 {
 			return nil
 		}
@@ -513,10 +513,10 @@ func (p *QuantumPolicy) MaybeFinalize(ctx context.Context, candidateID Candidate
 		return nil, nil
 	}
 
-	// Build hybrid proof: [bls_aggregate][pq_signatures...]
-	// In production: aggregate BLS signatures, concat PQ signatures
+	// Build Quasar proof: [bls_aggregate][ringtail_signatures...]
+	// In production: aggregate BLS signatures, concat Ringtail signatures
 	proof := make([]byte, 0)
-	proof = append(proof, SigHybrid) // Mark as hybrid
+	proof = append(proof, SigQuasar) // Mark as Quasar
 
 	// Placeholder: just hash the signatures for demo
 	h := sha256.New()
@@ -551,5 +551,5 @@ func (p *QuantumPolicy) Verify(ctx context.Context, cert *Certificate) (bool, er
 	if len(cert.Proof) < 33 { // scheme + hash
 		return false, nil
 	}
-	return cert.Proof[0] == SigHybrid, nil
+	return cert.Proof[0] == SigQuasar, nil
 }
