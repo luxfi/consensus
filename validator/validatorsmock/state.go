@@ -42,6 +42,21 @@ func (m *State) EXPECT() *StateMockRecorder {
 	return m.recorder
 }
 
+// GetChainID mocks base method.
+func (m *State) GetChainID(netID ids.ID) (ids.ID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChainID", netID)
+	ret0, _ := ret[0].(ids.ID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChainID indicates an expected call of GetChainID.
+func (mr *StateMockRecorder) GetChainID(netID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChainID", reflect.TypeOf((*State)(nil).GetChainID), netID)
+}
+
 // GetCurrentHeight mocks base method.
 func (m *State) GetCurrentHeight(ctx context.Context) (uint64, error) {
 	m.ctrl.T.Helper()
@@ -70,6 +85,36 @@ func (m *State) GetCurrentValidators(ctx context.Context, height uint64, netID i
 func (mr *StateMockRecorder) GetCurrentValidators(ctx, height, netID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentValidators", reflect.TypeOf((*State)(nil).GetCurrentValidators), ctx, height, netID)
+}
+
+// GetMinimumHeight mocks base method.
+func (m *State) GetMinimumHeight(ctx context.Context) (uint64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMinimumHeight", ctx)
+	ret0, _ := ret[0].(uint64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMinimumHeight indicates an expected call of GetMinimumHeight.
+func (mr *StateMockRecorder) GetMinimumHeight(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMinimumHeight", reflect.TypeOf((*State)(nil).GetMinimumHeight), ctx)
+}
+
+// GetNetworkID mocks base method.
+func (m *State) GetNetworkID(chainID ids.ID) (ids.ID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNetworkID", chainID)
+	ret0, _ := ret[0].(ids.ID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNetworkID indicates an expected call of GetNetworkID.
+func (mr *StateMockRecorder) GetNetworkID(chainID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNetworkID", reflect.TypeOf((*State)(nil).GetNetworkID), chainID)
 }
 
 // GetValidatorSet mocks base method.
