@@ -99,6 +99,18 @@ func (m *mockState) GetWarpValidatorSet(ctx context.Context, height uint64, netI
 	}, nil
 }
 
+func (m *mockState) GetMinimumHeight(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
+func (m *mockState) GetChainID(netID ids.ID) (ids.ID, error) {
+	return netID, nil
+}
+
+func (m *mockState) GetNetworkID(chainID ids.ID) (ids.ID, error) {
+	return chainID, nil
+}
+
 // Mock Set implementation
 type mockSet struct {
 	validators map[ids.NodeID]Validator
