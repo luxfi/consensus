@@ -117,20 +117,20 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 //
 // The goroutine exits when the channel is closed.
 func (rt *Runtime) ForwardVMNotifications(toEngine <-chan block.Message) {
-	if rt.config.Logger != nil {
+	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Info("starting VM notification forwarder for Lux consensus",
 			log.Stringer("chainID", rt.config.ChainID))
 	}
 
 	for msg := range toEngine {
-		if rt.config.Logger != nil {
+		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("received VM notification, forwarding to consensus engine",
 				log.Uint32("type", uint32(msg.Type)))
 		}
 
 		ctx := context.Background()
 		if err := rt.Notify(ctx, Message{Type: MessageType(msg.Type)}); err != nil {
-			if rt.config.Logger != nil {
+			if !rt.config.Logger.IsZero() {
 				rt.config.Logger.Warn("failed to notify consensus engine",
 					log.Uint32("type", uint32(msg.Type)),
 					log.Err(err))
@@ -138,7 +138,7 @@ func (rt *Runtime) ForwardVMNotifications(toEngine <-chan block.Message) {
 		}
 	}
 
-	if rt.config.Logger != nil {
+	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Info("VM notification forwarder stopped")
 	}
 }
@@ -157,7 +157,7 @@ var _ BlockProposer = (*gossiperProposer)(nil)
 // Propose broadcasts a block proposal to validators via the network gossiper.
 func (p *gossiperProposer) Propose(ctx context.Context, proposal BlockProposal) error {
 	if p.gossiper == nil {
-		if p.logger != nil {
+		if !p.logger.IsZero() {
 			p.logger.Warn("cannot propose block - gossiper is nil",
 				log.Stringer("blockID", proposal.BlockID))
 		}
@@ -165,7 +165,7 @@ func (p *gossiperProposer) Propose(ctx context.Context, proposal BlockProposal) 
 	}
 
 	sentTo := p.gossiper.GossipPut(p.chainID, p.networkID, proposal.BlockData)
-	if p.logger != nil {
+	if !p.logger.IsZero() {
 		p.logger.Info("proposed block to validators",
 			log.Stringer("blockID", proposal.BlockID),
 			log.Uint64("height", proposal.Height),
@@ -177,7 +177,7 @@ func (p *gossiperProposer) Propose(ctx context.Context, proposal BlockProposal) 
 // RequestVotes asks specific validators to vote on a block.
 func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) error {
 	if p.gossiper == nil {
-		if p.logger != nil {
+		if !p.logger.IsZero() {
 			p.logger.Warn("cannot request votes - gossiper is nil",
 				log.Stringer("blockID", req.BlockID))
 		}
@@ -185,7 +185,7 @@ func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) er
 	}
 
 	sentTo := p.gossiper.SendPullQuery(p.chainID, p.networkID, req.BlockID, req.Validators)
-	if p.logger != nil {
+	if !p.logger.IsZero() {
 		p.logger.Debug("requested votes from validators",
 			log.Stringer("blockID", req.BlockID),
 			log.Int("requested", len(req.Validators)),
@@ -214,7 +214,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 	// Parse the block
 	blk, err := rt.config.VM.ParseBlock(ctx, blockData)
 	if err != nil {
-		if rt.config.Logger != nil {
+		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("failed to parse incoming block",
 				log.Stringer("from", fromNodeID),
 				log.Err(err))
@@ -224,7 +224,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 
 	// Verify the block
 	if err := blk.Verify(ctx); err != nil {
-		if rt.config.Logger != nil {
+		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("incoming block failed verification",
 				log.Stringer("blockID", blk.ID()),
 				log.Stringer("from", fromNodeID),
@@ -233,7 +233,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 		return nil, nil // Don't return error - just skip invalid blocks
 	}
 
-	if rt.config.Logger != nil {
+	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Info("received and verified block from gossip",
 			log.Stringer("blockID", blk.ID()),
 			log.Uint64("height", blk.Height()),
@@ -251,7 +251,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 		// Accept if this block extends our last accepted block
 		// OR if it's at height 1 (first block after genesis)
 		if parentID == lastAccepted || blk.Height() == 1 {
-			if rt.config.Logger != nil {
+			if !rt.config.Logger.IsZero() {
 				rt.config.Logger.Info("fast-follow: accepting block from validator",
 					log.Stringer("blockID", blk.ID()),
 					log.Uint64("height", blk.Height()),
@@ -262,7 +262,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 
 			// Accept the block directly
 			if err := blk.Accept(ctx); err != nil {
-				if rt.config.Logger != nil {
+				if !rt.config.Logger.IsZero() {
 					rt.config.Logger.Warn("failed to accept block in fast-follow",
 						log.Stringer("blockID", blk.ID()),
 						log.Err(err))
@@ -270,14 +270,14 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 			} else {
 				// Update VM preference to build on this block
 				if err := rt.config.VM.SetPreference(ctx, blk.ID()); err != nil {
-					if rt.config.Logger != nil {
+					if !rt.config.Logger.IsZero() {
 						rt.config.Logger.Warn("failed to set preference after fast-follow accept",
 							log.Stringer("blockID", blk.ID()),
 							log.Err(err))
 					}
 				}
 				rt.Transitive.blocksAccepted++
-				if rt.config.Logger != nil {
+				if !rt.config.Logger.IsZero() {
 					rt.config.Logger.Info("fast-follow: block accepted successfully",
 						log.Stringer("blockID", blk.ID()),
 						log.Uint64("height", blk.Height()))
@@ -288,14 +288,14 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 				// proposer (node1) stays at height 0 while followers advance.
 				if rt.config.Gossiper != nil {
 					if err := rt.config.Gossiper.SendVote(rt.config.ChainID, fromNodeID, blk.ID()); err != nil {
-						if rt.config.Logger != nil {
+						if !rt.config.Logger.IsZero() {
 							rt.config.Logger.Warn("failed to send vote to proposer after fast-follow",
 								log.Stringer("blockID", blk.ID()),
 								log.Stringer("proposer", fromNodeID),
 								log.Err(err))
 						}
 					} else {
-						if rt.config.Logger != nil {
+						if !rt.config.Logger.IsZero() {
 							rt.config.Logger.Info("fast-follow: sent vote back to proposer",
 								log.Stringer("blockID", blk.ID()),
 								log.Stringer("proposer", fromNodeID))
@@ -309,7 +309,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 
 	// If fast-follow doesn't apply, fall back to consensus tracking
 	// (This handles out-of-order blocks or conflicting chains)
-	if rt.config.Logger != nil {
+	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Debug("block does not extend chain tip, adding to consensus tracking",
 			log.Stringer("blockID", blk.ID()),
 			log.Uint64("height", blk.Height()))
@@ -326,7 +326,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 
 	// Add to consensus engine
 	if err := rt.Transitive.consensus.AddBlock(ctx, consensusBlock); err != nil {
-		if rt.config.Logger != nil {
+		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("failed to add block to consensus",
 				log.Stringer("blockID", blk.ID()),
 				log.Err(err))
@@ -353,7 +353,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 	// Vote in favor of the block (process our vote)
 	responses := map[ids.ID]int{blk.ID(): 1}
 	if err := rt.Transitive.consensus.Poll(ctx, responses); err != nil {
-		if rt.config.Logger != nil {
+		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("failed to vote on block",
 				log.Stringer("blockID", blk.ID()),
 				log.Err(err))

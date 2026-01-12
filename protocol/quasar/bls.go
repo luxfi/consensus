@@ -1,6 +1,6 @@
 // Package quasar - BLS DAG Event Horizon Implementation
 //
-// This file implements DAG-based event horizon consensus for vertex ordering.
+// This file implements DAG-based event horizon consensus for vertex utils.
 // It uses SHA256 commitments for local attestations within the DAG.
 //
 // IMPORTANT: This is NOT the threshold signature implementation.
@@ -108,7 +108,7 @@ func (q *BLS) SetFinalizedCallback(cb func(*Block)) {
 }
 
 // generateBLSAggregate generates a commitment for DAG event horizon.
-// NOTE: This uses SHA256 as a placeholder for local vertex ordering.
+// NOTE: This uses SHA256 as a placeholder for local vertex utils.
 // For threshold block finality with real BLS signatures, use the Signer
 // in quasar.go which integrates with github.com/luxfi/crypto/bls.
 func (q *BLS) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte {
@@ -139,7 +139,7 @@ func (q *BLS) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte 
 }
 
 // generatePQCertificate generates a post-quantum commitment for DAG event horizon.
-// NOTE: This uses SHA256 as a placeholder for local vertex ordering.
+// NOTE: This uses SHA256 as a placeholder for local vertex utils.
 // For real PQ threshold signatures, use the Signer in quasar.go which
 // integrates with github.com/luxfi/ringtail/threshold.
 func (q *BLS) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte {
@@ -264,7 +264,7 @@ func (q *BLS) GetLatestHorizon() *dag.EventHorizon[VertexID] {
 }
 
 // createHorizonSignature creates a local attestation for the event horizon checkpoint.
-// This is a SHA256-based commitment used for DAG vertex ordering.
+// This is a SHA256-based commitment used for DAG vertex utils.
 //
 // NOTE: For production threshold signatures with real BLS + Ringtail,
 // use the Signer in quasar.go which integrates:
