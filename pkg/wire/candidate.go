@@ -115,7 +115,7 @@ type Vote struct {
 	Preference bool `json:"preference"`
 
 	// Signature is scheme-tagged: first byte indicates scheme
-	// 0x00 = none, 0x01 = Ed25519, 0x02 = BLS, 0x03 = Ringtail, 0x04 = hybrid
+	// 0x00 = none, 0x01 = Ed25519, 0x02 = BLS, 0x03 = Ringtail, 0x04 = Quasar
 	Signature []byte `json:"signature,omitempty"`
 
 	// TimestampMs for ordering
@@ -128,7 +128,7 @@ const (
 	SigEd25519 byte = 0x01
 	SigBLS    byte = 0x02
 	SigRingtail byte = 0x03
-	SigHybrid byte = 0x04 // BLS + Ringtail
+	SigQuasar   byte = 0x04 // BLS + Ringtail (Quasar protocol)
 )
 
 // NewVote creates a vote with current timestamp
