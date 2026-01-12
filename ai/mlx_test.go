@@ -1,9 +1,6 @@
 // Copyright (C) 2019-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-//go:build mlx
-// +build mlx
-
 package ai
 
 import (
@@ -154,4 +151,46 @@ func TestMLXBackendConcurrency(t *testing.T) {
 		t.Error("Throughput should be positive after concurrent processing")
 	}
 	t.Logf("Concurrent processing throughput: %.2f votes/sec", throughput)
+}
+
+// TestAccelBackendInitialization tests direct AccelBackend usage
+func TestAccelBackendInitialization(t *testing.T) {
+	backend, err := NewAccelBackend(100)
+	if err != nil {
+		t.Fatalf("Failed to initialize AccelBackend: %v", err)
+	}
+
+	if !backend.IsEnabled() {
+		t.Error("AccelBackend should be enabled")
+	}
+
+	if backend.GetDeviceInfo() == "" {
+		t.Error("Device info should not be empty")
+	}
+}
+
+// TestAccelBackendProcessVotes tests AccelBackend vote processing
+func TestAccelBackendProcessVotes(t *testing.T) {
+	backend, err := NewAccelBackend(10)
+	if err != nil {
+		t.Fatalf("Failed to initialize AccelBackend: %v", err)
+	}
+
+	votes := make([]Vote, 10)
+	for i := range votes {
+		votes[i] = Vote{
+			VoterID:      [32]byte{byte(i)},
+			BlockID:      [32]byte{byte(i * 2)},
+			IsPreference: i%2 == 0,
+		}
+	}
+
+	processed, err := backend.ProcessVotesBatch(votes)
+	if err != nil {
+		t.Fatalf("Failed to process votes: %v", err)
+	}
+
+	if processed != len(votes) {
+		t.Errorf("Expected to process %d votes, got %d", len(votes), processed)
+	}
 }
