@@ -49,7 +49,7 @@ func (v *CanonicalValidator) Compare(o *CanonicalValidator) int {
 
 var _ Sortable[*CanonicalValidator] = (*CanonicalValidator)(nil)
 
-// FlattenValidatorSet converts the provided [vdrSet] into a canonical ordering.
+// FlattenValidatorSet converts the provided [vdrSet] into a canonical utils.
 // Also returns the total weight of the validator set.
 func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalValidatorSet, error) {
 	var (

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/engine"
-	"github.com/luxfi/log"
+	log "github.com/luxfi/log"
 )
 
 // VMMessage is an alias for engine.Message
