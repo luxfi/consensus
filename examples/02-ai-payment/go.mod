@@ -12,8 +12,9 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/luxfi/crypto v1.17.31 // indirect
-	github.com/luxfi/ids v1.2.5 // indirect
+	github.com/kr/text v0.2.0 // indirect
+	github.com/luxfi/crypto v1.17.37 // indirect
+	github.com/luxfi/ids v1.2.8 // indirect
 	github.com/luxfi/lattice/v7 v7.0.0 // indirect
 	github.com/luxfi/ringtail v0.2.0 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
