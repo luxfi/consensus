@@ -77,3 +77,18 @@ func (s *TestState) GetWarpValidatorSets(ctx context.Context, heights []uint64, 
 	}
 	return result, nil
 }
+
+// GetMinimumHeight returns the minimum acceptable height
+func (s *TestState) GetMinimumHeight(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
+// GetChainID returns the chain ID for a given network ID
+func (s *TestState) GetChainID(netID ids.ID) (ids.ID, error) {
+	return netID, nil
+}
+
+// GetNetworkID returns the network ID for a given chain ID
+func (s *TestState) GetNetworkID(chainID ids.ID) (ids.ID, error) {
+	return chainID, nil
+}
