@@ -15,9 +15,149 @@ The Lux Consensus package provides advanced consensus mechanisms for blockchain 
 - **Photon→Quasar Flow**: Light-speed consensus with DAG finalization
 - **Modular Design**: Pluggable consensus engines with hot-swapping support
 
-## Current Status (2025-12-12)
+## Current Status (2026-01-12)
 
-### v1.22.22 Release - Protocol Naming Cleanup ✅ (2025-12-12 Latest)
+### AI Agent + Blockchain Wire Compatibility Analysis (2026-01-12 Latest)
+
+**Goal**: Unify `luxfi/consensus` (Go blockchain) with `hanzo-consensus` (Python AI agents) for wire compatibility.
+
+#### Protocol Comparison
+
+| Aspect | Blockchain (`luxfi/consensus`) | AI Agents (`hanzo-consensus`) |
+|--------|-------------------------------|------------------------------|
+| **Parameters** | k, Alpha, Beta | k, alpha, beta_1, beta_2 |
+| **Identity** | `NodeID` (32 bytes crypto) | String `id` |
+| **Items** | Block IDs, transactions | Text prompts/responses |
+| **Communication** | Transport interface (RPC) | MCP mesh (tool calls) |
+| **Finalization** | Certificate with BLS sigs | `finalized` bool, `winner` |
+| **Agreement** | Vote count ≥ alpha | Word overlap Jaccard |
+
+#### Key Findings
+
+**Identical Core Algorithm**:
+Both implementations use the same metastable consensus:
+1. Sample k peers per round
+2. Threshold voting with alpha
+3. Confidence accumulation toward beta
+4. Two-phase finality
+
+**Different Wire Semantics**:
+- Blockchain: `Vote{BlockID, VoteType, Voter, Signature}` over Transport
+- AI Agents: `Result{id, output, ok, ms}` over MCP mesh
+
+#### Unification Strategy
+
+**Option A: Shared Wire Protocol (Recommended)**
+
+Create a unified message format that both can emit/consume:
+
+```protobuf
+// Shared consensus wire protocol
+message ConsensusVote {
+  bytes item_id = 1;        // 32-byte ID (hash of item being voted on)
+  bytes voter_id = 2;       // 32-byte voter identity
+  bool preference = 3;      // true = accept, false = reject
+  int64 timestamp_ms = 4;   // Unix timestamp
+  bytes signature = 5;      // Optional BLS/Ed25519 signature
+  bytes payload = 6;        // Optional: full item content for AI decisions
+}
+
+message ConsensusResult {
+  bytes item_id = 1;
+  bool finalized = 2;
+  bool accepted = 3;        // true if accepted, false if rejected
+  int64 confidence = 4;     // 0-100 confidence score
+  repeated bytes signatures = 5;  // Certificate signatures
+}
+```
+
+**Option B: Bridge Adapter**
+
+Keep separate protocols, create adapter that translates:
+- `Vote` ↔ `Result`
+- `NodeID` ↔ Agent string ID (via SHA256 hash)
+- `Block.Payload` ↔ `prompt/response` text
+
+**Option C: MCP Transport for Blockchain**
+
+Implement blockchain Transport interface using MCP:
+```go
+type MCPTransport[T comparable] struct {
+    mesh *MCPMesh
+}
+
+func (t *MCPTransport[T]) RequestVotes(ctx context.Context, peers []types.NodeID, item T) <-chan Photon[T] {
+    // Call MCP agents and convert their responses to Photons
+}
+```
+
+#### Implementation Plan
+
+1. **Shared Types Package** (`pkg/consensus-wire/`)
+   - Common `Vote`, `Result`, `ID` types
+   - JSON and Protobuf serialization
+   - Used by both Go and Python
+
+2. **Identity Bridging**
+   - AI agents get derived NodeIDs: `NodeID = SHA256(agent_string_id)`
+   - Allows AI agents to participate as pseudo-validators
+
+3. **Payload Abstraction**
+   - Blockchain votes on `BlockID` (32 bytes)
+   - AI agents vote on `SHA256(prompt_text)`
+   - Both resolve to 32-byte item IDs
+
+4. **Certificate Mechanism for AI**
+   - AI consensus produces text `synthesis`
+   - Hash synthesis to get `item_id`
+   - Collect threshold signatures → Certificate
+
+#### hanzo-consensus Integration Path
+
+The `hanzo-consensus` in `python-sdk` can be merged as:
+
+1. **Keep as Standalone** - Pure Python implementation for environments without Go/C
+2. **Use as MCP Frontend** - AI agents use hanzo-consensus, bridge to blockchain for finalization
+3. **Merge into pkg/python** - Consolidate into single Python SDK with both modes
+
+**Recommended**: Option 2 - Use hanzo-consensus for agent-to-agent discussion, bridge final decisions to blockchain for immutable record.
+
+```python
+# Example: AI agent consensus → blockchain finalization
+from hanzo_consensus import run_mcp_consensus, MCPMesh
+from lux_consensus import Chain, Vote, ID
+
+# Run AI consensus
+mesh = MCPMesh()
+mesh.register("claude", claude_server)
+mesh.register("gpt4", gpt4_server)
+mesh.register("gemini", gemini_server)
+
+state = await run_mcp_consensus(mesh, "What's the best approach?")
+
+if state.finalized:
+    # Bridge to blockchain
+    item_id = ID(hashlib.sha256(state.synthesis.encode()).digest())
+    chain = Chain(config)
+    chain.start()
+
+    # Each AI agent votes on chain
+    for agent_id in state.participants:
+        voter_id = ID(hashlib.sha256(agent_id.encode()).digest())
+        vote = Vote(item_id, VoteType.COMMIT, voter_id)
+        chain.record_vote(vote)
+```
+
+#### Files Changed (2026-01-12)
+
+- **`consensus.go`** - Updated to import `runtime` instead of `context`
+- **`context/context.go`** - DELETED (migrated to `runtime`)
+- **`validator/validators_test.go`** - Fixed mockState interface
+- **`validator/validatorstest/test.go`** - Fixed TestState interface
+
+---
+
+### v1.22.22 Release - Protocol Naming Cleanup ✅ (2025-12-12)
 
 **Major Refactoring**: Simplified protocol file naming across consensus packages with cosmic/light metaphor consistency.
 

@@ -12,9 +12,23 @@ import (
 
 // State provides validator state management
 type State interface {
+	// GetValidatorSet returns validators at a specific height for a network
 	GetValidatorSet(ctx context.Context, height uint64, netID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
+
+	// GetCurrentValidators returns current validators
 	GetCurrentValidators(ctx context.Context, height uint64, netID ids.ID) (map[ids.NodeID]*GetValidatorOutput, error)
+
+	// GetCurrentHeight returns the current height
 	GetCurrentHeight(ctx context.Context) (uint64, error)
+
+	// GetMinimumHeight returns the minimum acceptable height
+	GetMinimumHeight(ctx context.Context) (uint64, error)
+
+	// GetChainID returns the chain ID for a given network ID
+	GetChainID(netID ids.ID) (ids.ID, error)
+
+	// GetNetworkID returns the network ID for a given chain ID
+	GetNetworkID(chainID ids.ID) (ids.ID, error)
 
 	// GetWarpValidatorSets returns Warp validator sets for the requested heights and netIDs.
 	// Returns a map of netID -> height -> WarpSet containing BLS-enabled validators.
