@@ -85,7 +85,7 @@ SIG_NONE = 0x00
 SIG_ED25519 = 0x01
 SIG_BLS = 0x02
 SIG_RINGTAIL = 0x03
-SIG_HYBRID = 0x04
+SIG_QUASAR = 0x04  # BLS + Ringtail (Quasar protocol)
 
 
 # =============================================================================
