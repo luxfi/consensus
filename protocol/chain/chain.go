@@ -1,22 +1,7 @@
 package chain
 
-import (
-	"context"
-	"time"
+import "github.com/luxfi/consensus/engine/chain/block"
 
-	"github.com/luxfi/ids"
-)
-
-// Block represents a blockchain block
-type Block interface {
-	ID() ids.ID
-	Parent() ids.ID // Alias for ParentID for compatibility
-	ParentID() ids.ID
-	Height() uint64
-	Timestamp() time.Time
-	Bytes() []byte
-	Status() uint8
-	Accept(context.Context) error
-	Reject(context.Context) error
-	Verify(context.Context) error
-}
+// Block is the canonical chain block interface.
+// This aliases the engine/chain/block.Block to avoid duplicate interfaces.
+type Block = block.Block
