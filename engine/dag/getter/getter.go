@@ -10,7 +10,7 @@ import (
 	"github.com/luxfi/consensus/engine/dag/state"
 	"github.com/luxfi/consensus/networking/sender"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/log"
+	log "github.com/luxfi/log"
 )
 
 // Getter gets vertices
