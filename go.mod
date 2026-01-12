@@ -11,7 +11,7 @@ require (
 	github.com/luxfi/database v1.17.38
 	github.com/luxfi/geth v1.16.69
 	github.com/luxfi/ids v1.2.8
-	github.com/luxfi/log v1.2.1
+	github.com/luxfi/log v1.3.0
 	github.com/luxfi/math v1.2.2
 	github.com/luxfi/p2p v1.18.4
 	github.com/luxfi/ringtail v0.2.0
@@ -51,12 +51,13 @@ require (
 	github.com/luxfi/cache v1.1.0 // indirect
 	github.com/luxfi/compress v0.0.2 // indirect
 	github.com/luxfi/concurrent v0.0.2 // indirect
-	github.com/luxfi/gpu v0.30.0 // indirect
 	github.com/luxfi/lattice/v7 v7.0.0 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/metric v1.4.9 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.0 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
@@ -88,3 +89,5 @@ require (
 exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 
 exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
+
+replace github.com/luxfi/log => ../log

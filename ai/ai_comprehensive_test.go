@@ -93,7 +93,7 @@ func TestNewSimple(t *testing.T) {
 		t.Error("Agent model is nil")
 	}
 
-	if agent.log == nil {
+	if agent.log.IsZero() {
 		t.Error("Agent logger is nil")
 	}
 
