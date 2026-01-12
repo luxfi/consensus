@@ -5,7 +5,7 @@ import (
 	"context"
 	"net/http"
 
-	consensuscontext "github.com/luxfi/consensus/context"
+	"github.com/luxfi/consensus/runtime"
 	"github.com/luxfi/consensus/core/choices"
 	"github.com/luxfi/consensus/version"
 	"github.com/luxfi/database"
@@ -108,7 +108,7 @@ type ChainContext struct {
 	XAssetID ids.ID
 
 	// Consensus context
-	Ctx *consensuscontext.Context
+	Ctx *runtime.Runtime
 }
 
 // BlockMessage represents a block-specific consensus message
