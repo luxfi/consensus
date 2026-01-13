@@ -185,6 +185,12 @@ func (m *mockVM) LastAccepted(ctx context.Context) (ids.ID, error) {
 	return m.lastAcceptedID, nil
 }
 
+func (m *mockVM) SetPreference(ctx context.Context, id ids.ID) error {
+	// Mock implementation - just record the preferred block
+	m.lastAcceptedID = id
+	return nil
+}
+
 // TestNotifyPendingTxsTriggersBuildBlock verifies that Notify(PendingTxs) triggers BuildBlock
 func TestNotifyPendingTxsTriggersBuildBlock(t *testing.T) {
 	engine := New()
@@ -368,6 +374,11 @@ func (m *trackingMockVM) ParseBlock(ctx context.Context, bytes []byte) (block.Bl
 
 func (m *trackingMockVM) LastAccepted(ctx context.Context) (ids.ID, error) {
 	return m.lastAcceptedID, nil
+}
+
+func (m *trackingMockVM) SetPreference(ctx context.Context, id ids.ID) error {
+	m.lastAcceptedID = id
+	return nil
 }
 
 // TestEngine_DoesNotAcceptWithoutQuorum verifies blocks are NOT accepted without sufficient votes
@@ -846,5 +857,129 @@ func TestEngine_RejectsWithInsufficientSupport(t *testing.T) {
 	// Block should NOT have Accept called
 	if blk.acceptCalled > 0 {
 		t.Errorf("Block Accept() should NOT be called for rejected block, but was called %d times", blk.acceptCalled)
+	}
+}
+
+// -----------------------------------------------------------------------------
+// SyncState tests (for RLP import recovery)
+// -----------------------------------------------------------------------------
+
+// TestSyncState_UpdatesConsensusState verifies SyncState correctly updates consensus.
+// This is critical for recovering from admin_importChain RLP imports.
+func TestSyncState_UpdatesConsensusState(t *testing.T) {
+	engine := New()
+	ctx := context.Background()
+
+	// Before sync, bootstrapped is false (engine not started)
+	if engine.IsBootstrapped() {
+		t.Error("Engine should not be bootstrapped before Start or SyncState")
+	}
+
+	// Simulate RLP import by syncing to a block at height 1000
+	importedBlockID := ids.GenerateTestID()
+	err := engine.SyncState(ctx, importedBlockID, 1000)
+	if err != nil {
+		t.Fatalf("SyncState failed: %v", err)
+	}
+
+	// After sync, engine should be bootstrapped
+	if !engine.IsBootstrapped() {
+		t.Error("Engine should be bootstrapped after SyncState")
+	}
+
+	// Consensus should have updated finalized tip
+	if engine.consensus.GetFinalizedTip() != importedBlockID {
+		t.Errorf("Expected finalizedTip=%s, got %s",
+			importedBlockID, engine.consensus.GetFinalizedTip())
+	}
+}
+
+// TestSyncState_ClearsStalePendingBlocks verifies SyncState removes stale blocks.
+func TestSyncState_ClearsStalePendingBlocks(t *testing.T) {
+	engine := New()
+	ctx := context.Background()
+
+	// Add some pending blocks at various heights
+	block1 := &Block{id: ids.GenerateTestID(), height: 100}
+	block2 := &Block{id: ids.GenerateTestID(), height: 500}
+	block3 := &Block{id: ids.GenerateTestID(), height: 1500}
+
+	engine.mu.Lock()
+	engine.pendingBlocks[block1.id] = &PendingBlock{ConsensusBlock: block1}
+	engine.pendingBlocks[block2.id] = &PendingBlock{ConsensusBlock: block2}
+	engine.pendingBlocks[block3.id] = &PendingBlock{ConsensusBlock: block3}
+	engine.mu.Unlock()
+
+	// Sync to height 1000 - blocks at 100 and 500 should be cleared
+	importedBlockID := ids.GenerateTestID()
+	err := engine.SyncState(ctx, importedBlockID, 1000)
+	if err != nil {
+		t.Fatalf("SyncState failed: %v", err)
+	}
+
+	// Verify stale blocks were removed
+	engine.mu.RLock()
+	_, has1 := engine.pendingBlocks[block1.id]
+	_, has2 := engine.pendingBlocks[block2.id]
+	_, has3 := engine.pendingBlocks[block3.id]
+	engine.mu.RUnlock()
+
+	if has1 {
+		t.Error("Block at height 100 should be cleared (below sync height 1000)")
+	}
+	if has2 {
+		t.Error("Block at height 500 should be cleared (below sync height 1000)")
+	}
+	if !has3 {
+		t.Error("Block at height 1500 should NOT be cleared (above sync height 1000)")
+	}
+}
+
+// TestSyncState_Idempotent verifies calling SyncState multiple times is safe.
+func TestSyncState_Idempotent(t *testing.T) {
+	engine := New()
+	ctx := context.Background()
+
+	blockID1 := ids.GenerateTestID()
+	blockID2 := ids.GenerateTestID()
+
+	// First sync
+	if err := engine.SyncState(ctx, blockID1, 100); err != nil {
+		t.Fatalf("First SyncState failed: %v", err)
+	}
+
+	if engine.consensus.GetFinalizedTip() != blockID1 {
+		t.Error("First sync should update finalizedTip")
+	}
+
+	// Second sync (higher block)
+	if err := engine.SyncState(ctx, blockID2, 200); err != nil {
+		t.Fatalf("Second SyncState failed: %v", err)
+	}
+
+	if engine.consensus.GetFinalizedTip() != blockID2 {
+		t.Error("Second sync should update finalizedTip to new block")
+	}
+
+	// Should still be bootstrapped
+	if !engine.IsBootstrapped() {
+		t.Error("Should remain bootstrapped after multiple SyncState calls")
+	}
+}
+
+// TestSyncState_WithEmptyID verifies SyncState handles empty block ID.
+func TestSyncState_WithEmptyID(t *testing.T) {
+	engine := New()
+	ctx := context.Background()
+
+	// Sync with empty ID (genesis state)
+	err := engine.SyncState(ctx, ids.Empty, 0)
+	if err != nil {
+		t.Fatalf("SyncState with empty ID failed: %v", err)
+	}
+
+	// Should still bootstrap
+	if !engine.IsBootstrapped() {
+		t.Error("Should be bootstrapped even with empty block ID")
 	}
 }

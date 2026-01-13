@@ -5,6 +5,8 @@ package engine
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"sync"
@@ -12,6 +14,9 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/types"
+	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/crypto/mldsa"
+	"github.com/luxfi/crypto/secp256k1"
 )
 
 // GPU Batch Pipeline for ultra-low-latency consensus processing.
@@ -763,13 +768,7 @@ func hashPair(a, b [32]byte) [32]byte {
 
 // sha256Hash computes SHA256.
 func sha256Hash(data []byte) [32]byte {
-	// Would use crypto/sha256 in production
-	var result [32]byte
-	// Placeholder: XOR-fold for testing
-	for i, b := range data {
-		result[i%32] ^= b
-	}
-	return result
+	return sha256.Sum256(data)
 }
 
 // updateMetrics records processing statistics.
@@ -870,30 +869,55 @@ func (p *GPUBatchPipeline) Running() bool {
 	return p.running.Load()
 }
 
-// Signature verification stubs - would call into crypto packages
+// Signature verification using real crypto packages
 func verifyECDSA(hash, sig, pubkey []byte) bool {
-	// Would use github.com/luxfi/crypto secp256k1
-	return len(sig) == 65 && len(pubkey) >= 33
+	if len(sig) < 64 {
+		return false
+	}
+	return secp256k1.VerifySignature(pubkey, hash, sig[:64])
 }
 
 func verifyEd25519(hash, sig, pubkey []byte) bool {
-	// Would use crypto/ed25519
-	return len(sig) == 64 && len(pubkey) == 32
+	if len(sig) != ed25519.SignatureSize || len(pubkey) != ed25519.PublicKeySize {
+		return false
+	}
+	return ed25519.Verify(pubkey, hash, sig)
 }
 
 func verifyBLS(hash, sig, pubkey []byte) bool {
-	// Would use github.com/luxfi/crypto/bls
-	return len(sig) == 96 && len(pubkey) == 48
+	pk, err := bls.PublicKeyFromCompressedBytes(pubkey)
+	if err != nil {
+		return false
+	}
+	signature, err := bls.SignatureFromBytes(sig)
+	if err != nil {
+		return false
+	}
+	return bls.Verify(pk, signature, hash)
 }
 
 func verifyMLDSA(hash, sig, pubkey []byte) bool {
-	// Would use github.com/luxfi/crypto/mldsa
-	return len(sig) > 0 && len(pubkey) > 0
+	// Auto-detect mode from public key size (FIPS 204 sizes)
+	var mode mldsa.Mode
+	switch len(pubkey) {
+	case 1312:
+		mode = mldsa.MLDSA44
+	case 1952:
+		mode = mldsa.MLDSA65
+	case 2592:
+		mode = mldsa.MLDSA87
+	default:
+		return false
+	}
+	pk, err := mldsa.PublicKeyFromBytes(pubkey, mode)
+	if err != nil {
+		return false
+	}
+	return pk.VerifySignature(hash, sig)
 }
 
 // gpuAvailable checks if GPU acceleration is available.
+// Returns false to use CPU fallback - GPU support requires luxcpp/gpu binding.
 func gpuAvailable() bool {
-	// Would check via luxcpp/gpu
-	// For now, return false to use CPU path
 	return false
 }

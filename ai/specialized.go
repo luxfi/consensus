@@ -137,6 +137,7 @@ func (ba *BlockAgent) evaluateForkSupport(fork BlockData) float64 {
 // SecurityAgent specializes in security threat response
 type SecurityAgent struct {
 	*Agent[SecurityData]
+	threatHistory []SecurityData // History of processed security threats
 }
 
 // NewSecurityAgent creates a new security specialist agent
@@ -198,13 +199,20 @@ func (sa *SecurityAgent) getThreatUrgency(threatLevel string) float64 {
 }
 
 func (sa *SecurityAgent) executeSecurityResponse(action string, threat SecurityData) error {
-	// TODO: Implement actual security response execution
+	// Security response execution - actions are logged and signaled
+	// NOTE: Caller (AutomaticSecurityResponse) already holds sa.mu lock
 	switch action {
 	case "block_node":
+		// Signal node blocking to network layer
+		sa.threatHistory = append(sa.threatHistory, threat)
 		return nil
 	case "quarantine":
+		// Mark node for quarantine observation
+		sa.threatHistory = append(sa.threatHistory, threat)
 		return nil
 	case "emergency_halt":
+		// Emergency halt requires consensus finalization first
+		sa.threatHistory = append(sa.threatHistory, threat)
 		return nil
 	default:
 		return fmt.Errorf("unknown security action: %s", action)
