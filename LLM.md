@@ -286,7 +286,7 @@ use lux_consensus::{Chain, Block, Vote, Config};
 
 **Before (v1.21.x)**: 10+ parameters (k, alpha_preference, alpha_confidence, beta, concurrent_polls, etc.)
 
-**After (v1.22.0)**: 
+**After (v1.22.0)**:
 - Single parameter: `node_count`
 - Factory methods: `Config::single_validator()`, `Config::testnet()`, `Config::mainnet()`
 - Auto-calculation: `GetConfig(nodeCount)` computes optimal parameters
@@ -430,7 +430,7 @@ All production-critical code paths are now fully implemented and tested.
 **Remaining TODOs Analysis:**
 - Total TODOs: 18 in production code
 - Nature: All future enhancements, not production blockers
-- Examples: 
+- Examples:
   - Ringtail+BLS fusion (future post-quantum enhancement)
   - DAG engine integration (alternative consensus, not required)
   - AI agent features (experimental features)
@@ -445,7 +445,7 @@ All production-critical code paths are now fully implemented and tested.
 - ✅ Node integration successful
 - ✅ No blocking TODOs
 
-**Deployment Status:** 
+**Deployment Status:**
 ✅ **READY FOR PRODUCTION**
 
 The v1.22.0 release represents a complete, tested, and documented consensus implementation suitable for production blockchain deployments.
@@ -456,16 +456,6 @@ The v1.22.0 release represents a complete, tested, and documented consensus impl
 - **Quasar Protocol**: 7 tests (initialization, phases, certificates)
 - **Flare & Horizon**: Additional protocol coverage
 - **Prism Protocol**: 0 tests (simpler DAG cutting, less critical)
-
-#### Comparison with Avalanchego
-- **Avalanchego**: 85+ snow consensus tests (46 snowball + 30 snowman + network tests)
-- **Lux**: 48 protocol tests testing OUR implementations (Wave, Focus, FPC, Quasar)
-- **Approach**: Test OUR protocols with OUR nomenclature, not port "snow*" naming
-- **Result**: Comprehensive coverage of threshold voting, confidence building, and finalization
-
-**Key Insight**: We DON'T need to port avalanchego's snowball tests - we already have equivalent coverage testing Wave + Focus + FPC!
-
-See `/tmp/LUX_TEST_MAPPING.md` and `/tmp/TEST_PARITY_ANALYSIS.md` for detailed analysis.
 
 ### FPC Implementation Complete ✅ (2025-11-10)
 
@@ -529,13 +519,6 @@ See `/tmp/LUX_TEST_MAPPING.md` and `/tmp/TEST_PARITY_ANALYSIS.md` for detailed a
 - **Rust SDK**: Complete Criterion suite (639ns vote, 6.6B votes/sec batch)
 - **Python CPU**: Standalone benchmarks (775ns vote, 1.6M votes/sec)
 - **Python MLX GPU**: Verified 13-30x speedup on 1K+ batches
-
-#### Tests Ported from Avalanchego (55 tests)
-- Network simulation framework
-- Byzantine fault tolerance (55vs45 attack)
-- Transitive voting propagation
-- Error propagation and recovery
-- Randomized consistency with Mersenne Twister PRNG
 
 #### Real Measured Performance
 | Language | Single Vote | Single Block | Batch 1K | Throughput |
@@ -710,7 +693,7 @@ consensus/
 │
 ├── engine/                  # Consensus engines
 │   ├── chain/              # Linear consensus
-│   ├── dag/                # DAG consensus  
+│   ├── dag/                # DAG consensus
 │   └── pq/                 # Post-quantum consensus
 │
 ├── protocol/                # Consensus protocols
@@ -877,13 +860,6 @@ test/fixtures/   # Test data
   - Single vote 639ns, 6.6B votes/sec batch throughput
 - **Python CPU**: Standalone in `pkg/python/benchmark_cpu_standalone.py`
   - Single vote 775ns, 1.6M votes/sec
-
-#### Tests Ported from Avalanchego (55 tests)
-- Network simulation framework
-- Byzantine fault tolerance (55vs45 attack) in `test/integration/byzantine_fault_test.go`
-- Transitive voting propagation
-- Error propagation and recovery
-- Randomized consistency with Mersenne Twister PRNG
 
 #### Documentation Updates
 - `docs/content/docs/index.mdx`: Updated with all real CPU + GPU measurements

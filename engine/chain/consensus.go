@@ -210,3 +210,41 @@ func (c *ChainConsensus) Stats() map[string]interface{} {
 		"finalized_tip": c.finalizedTip.String(),
 	}
 }
+
+// SyncState synchronizes consensus state with external state (e.g., after RLP import).
+// This updates the finalizedTip and marks the consensus as bootstrapped so that
+// new blocks can be built on top of the imported chain.
+//
+// This is called by the syncer after admin_importChain to reconcile consensus
+// state with the EVM state database.
+func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Update finalized tip to the synced block
+	c.finalizedTip = lastAcceptedID
+
+	// Mark as bootstrapped so new blocks can be proposed
+	c.bootstrapped = true
+
+	// Update tips - the synced block is now the only tip
+	c.tips = make(map[ids.ID]bool)
+	if lastAcceptedID != ids.Empty {
+		c.tips[lastAcceptedID] = true
+	}
+
+	// Clear any blocks below the synced height (they're now stale)
+	for blockID, block := range c.blocks {
+		if block.height < height {
+			delete(c.blocks, blockID)
+		}
+	}
+}
+
+// GetFinalizedTip returns the current finalized tip block ID.
+// This is useful for debugging and health checks.
+func (c *ChainConsensus) GetFinalizedTip() ids.ID {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.finalizedTip
+}
