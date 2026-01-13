@@ -1,3 +1,6 @@
+// Copyright (C) 2025, Lux Industries Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package horizon
 
 import (
@@ -21,22 +24,48 @@ type View interface {
 
 type Params struct{ N, F int }
 
-// TransitiveClosure computes the transitive closure of a vertex in the DAG
+// TransitiveClosure computes all ancestors of a vertex using BFS traversal.
+// Returns the vertex itself plus all vertices reachable by following parent edges.
 func TransitiveClosure[V comparable](store dag.Store[V], vertex V) []V {
-	// TODO: Implement transitive closure computation
-	return []V{vertex}
+	visited := make(map[any]bool)
+	var result []V
+	queue := []V{vertex}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		// Use interface conversion for map key
+		key := any(current)
+		if visited[key] {
+			continue
+		}
+		visited[key] = true
+		result = append(result, current)
+
+		// Add all parents to queue
+		if block, exists := store.Get(current); exists {
+			for _, parent := range block.Parents() {
+				parentKey := any(parent)
+				if !visited[parentKey] {
+					queue = append(queue, parent)
+				}
+			}
+		}
+	}
+
+	return result
 }
 
-// Certificate represents a proof that a vertex has achieved consensus
+// Certificate represents a proof that a vertex has achieved consensus.
 type Certificate[V comparable] struct {
 	Vertex    V
-	Proof     []V
-	Threshold int
+	Proof     []V   // Vertices that contributed to the certificate
+	Threshold int   // Minimum valid proofs required
 }
 
-// ValidateCertificate checks if a certificate is valid given a validator function
+// ValidateCertificate checks if a certificate meets the threshold with valid proofs.
 func ValidateCertificate[V comparable](store dag.Store[V], cert Certificate[V], isValid func(V) bool) bool {
-	// TODO: Implement certificate validation
 	validCount := 0
 	for _, proof := range cert.Proof {
 		if isValid(proof) {
@@ -46,41 +75,141 @@ func ValidateCertificate[V comparable](store dag.Store[V], cert Certificate[V], 
 	return validCount >= cert.Threshold
 }
 
-// SkipList represents a skip list data structure for efficient DAG traversal
+// SkipList provides O(log n) traversal through DAG levels.
+// Each vertex has pointers to ancestors at exponentially increasing distances.
 type SkipList[V comparable] struct {
-	Levels map[V][]V
+	Levels map[any][]V // key is vertex, value is skip pointers
 }
 
-// BuildSkipList constructs a skip list from DAG vertices for efficient navigation
+// BuildSkipList constructs a skip list with logarithmic skip pointers.
+// Level 0: immediate parent, Level 1: 2 steps back, Level 2: 4 steps back, etc.
 func BuildSkipList[V comparable](store dag.Store[V], vertices []V) *SkipList[V] {
-	// TODO: Implement skip list construction
 	sl := &SkipList[V]{
-		Levels: make(map[V][]V),
+		Levels: make(map[any][]V),
 	}
 
-	// Simple placeholder: each vertex points to its first parent
+	// Build skip pointers for each vertex
 	for _, v := range vertices {
-		if block, exists := store.Get(v); exists {
-			parents := block.Parents()
-			if len(parents) > 0 {
-				sl.Levels[v] = []V{parents[0]}
-			} else {
-				sl.Levels[v] = []V{}
-			}
+		block, exists := store.Get(v)
+		if !exists {
+			continue
 		}
+
+		parents := block.Parents()
+		if len(parents) == 0 {
+			sl.Levels[any(v)] = []V{}
+			continue
+		}
+
+		// Start with first parent as level 0
+		skips := []V{parents[0]}
+
+		// Build higher levels by following skip pointers
+		current := parents[0]
+		for level := 1; level < 8; level++ { // Max 8 levels (256 step jumps)
+			// Jump 2^level steps
+			for step := 0; step < (1 << level); step++ {
+				currentBlock, exists := store.Get(current)
+				if !exists {
+					break
+				}
+				currentParents := currentBlock.Parents()
+				if len(currentParents) == 0 {
+					break
+				}
+				current = currentParents[0]
+			}
+			skips = append(skips, current)
+		}
+
+		sl.Levels[any(v)] = skips
 	}
 
 	return sl
 }
 
-// FindPath finds a path between two vertices in the DAG
+// FindPath finds a path from 'from' to 'to' using BFS.
+// Returns the path as a slice of vertices and true if found, nil and false otherwise.
 func FindPath[V comparable](store dag.Store[V], from, to V) ([]V, bool) {
-	// TODO: Implement path finding algorithm
-	// Simple placeholder: return single vertex path if vertices exist
-	if _, exists1 := store.Get(from); exists1 {
-		if _, exists2 := store.Get(to); exists2 {
-			return []V{from, to}, true
+	// BFS to find path
+	type node struct {
+		vertex V
+		path   []V
+	}
+
+	visited := make(map[any]bool)
+	queue := []node{{vertex: from, path: []V{from}}}
+
+	toKey := any(to)
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		currentKey := any(current.vertex)
+		if visited[currentKey] {
+			continue
+		}
+		visited[currentKey] = true
+
+		// Check if we've reached the target
+		if currentKey == toKey {
+			return current.path, true
+		}
+
+		// Add parents to queue
+		if block, exists := store.Get(current.vertex); exists {
+			for _, parent := range block.Parents() {
+				parentKey := any(parent)
+				if !visited[parentKey] {
+					newPath := make([]V, len(current.path)+1)
+					copy(newPath, current.path)
+					newPath[len(current.path)] = parent
+					queue = append(queue, node{vertex: parent, path: newPath})
+				}
+			}
 		}
 	}
+
 	return nil, false
+}
+
+// LowestCommonAncestor finds the LCA of two vertices in the DAG.
+func LowestCommonAncestor[V comparable](store dag.Store[V], a, b V) (V, bool) {
+	// Get ancestors of a
+	ancestorsA := make(map[any]bool)
+	for _, v := range TransitiveClosure(store, a) {
+		ancestorsA[any(v)] = true
+	}
+
+	// Find first ancestor of b that is also an ancestor of a (BFS order = closest)
+	queue := []V{b}
+	visited := make(map[any]bool)
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		currentKey := any(current)
+		if visited[currentKey] {
+			continue
+		}
+		visited[currentKey] = true
+
+		if ancestorsA[currentKey] {
+			return current, true
+		}
+
+		if block, exists := store.Get(current); exists {
+			for _, parent := range block.Parents() {
+				parentKey := any(parent)
+				if !visited[parentKey] {
+					queue = append(queue, parent)
+				}
+			}
+		}
+	}
+
+	var zero V
+	return zero, false
 }

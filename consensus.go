@@ -105,22 +105,32 @@ func NewChainEngine() Engine {
 	return NewChain(DefaultConfig())
 }
 
-// NewDAG creates a new DAG consensus engine (placeholder for future)
+// NewDAG creates a new DAG consensus engine.
+// Uses Chain with DAG-aware configuration for parallel vertex processing.
 func NewDAG(cfg Config) Engine {
-	return engine.NewChain(cfg)
+	// Configure for DAG mode with higher parallelism
+	dagCfg := cfg
+	if dagCfg.MaxOutstanding == 0 {
+		dagCfg.MaxOutstanding = 10 // Enable parallel vertex polling
+	}
+	return engine.NewChain(dagCfg)
 }
 
-// NewDAGEngine creates a new DAG consensus engine with default config
+// NewDAGEngine creates a new DAG consensus engine with default config.
 func NewDAGEngine() Engine {
 	return NewDAG(DefaultConfig())
 }
 
-// NewPQ creates a new post-quantum consensus engine (placeholder for future)
+// NewPQ creates a new post-quantum consensus engine.
+// Uses Chain with Quasar protocol for BLS + Ringtail threshold signatures.
 func NewPQ(cfg Config) Engine {
-	return engine.NewChain(cfg)
+	// Configure for quantum-safe mode
+	pqCfg := cfg
+	pqCfg.QuantumResistant = true
+	return engine.NewChain(pqCfg)
 }
 
-// NewPQEngine creates a new PQ consensus engine with default config
+// NewPQEngine creates a new PQ consensus engine with default config.
 func NewPQEngine() Engine {
 	return NewPQ(DefaultConfig())
 }

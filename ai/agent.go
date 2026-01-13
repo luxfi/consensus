@@ -13,6 +13,22 @@ import (
 	"github.com/luxfi/consensus/protocol/quasar"
 )
 
+// AgentConfig holds configuration parameters for AI consensus
+type AgentConfig struct {
+	Alpha float64 // Minimum confidence threshold for consensus (0.0-1.0)
+	K     int     // Sample size for voting
+	Beta  int     // Confidence accumulation rounds
+}
+
+// DefaultAgentConfig returns sensible defaults for AI consensus
+func DefaultAgentConfig() AgentConfig {
+	return AgentConfig{
+		Alpha: 0.6,  // 60% confidence threshold
+		K:     20,   // Sample 20 nodes
+		Beta:  15,   // 15 rounds for finalization
+	}
+}
+
 // Agent represents an AI consensus node with shared hallucinations
 type Agent[T ConsensusData] struct {
 	mu sync.RWMutex
@@ -23,6 +39,7 @@ type Agent[T ConsensusData] struct {
 	memory *SharedMemory[T]
 	quasar *quasar.Quasar
 	photon *photon.UniformEmitter
+	config AgentConfig
 
 	// Shared hallucination state
 	hallucinations map[string]*Hallucination[T]
@@ -74,13 +91,14 @@ type TrainingExample[T ConsensusData] struct {
 
 // ConsensusState tracks the AI consensus process
 type ConsensusState[T ConsensusData] struct {
-	Round       uint64                        `json:"round"`
-	Phase       ConsensusPhase                `json:"phase"`
-	Proposals   map[string]*Proposal[T]       `json:"proposals"`
-	Votes       map[string]map[string]float64 `json:"votes"` // proposal -> node -> weight
-	Finalized   *Decision[T]                  `json:"finalized,omitempty"`
-	StartedAt   time.Time                     `json:"started_at"`
-	FinalizedAt time.Time                     `json:"finalized_at,omitempty"`
+	Round        uint64                        `json:"round"`
+	Phase        ConsensusPhase                `json:"phase"`
+	Proposals    map[string]*Proposal[T]       `json:"proposals"`
+	Votes        map[string]map[string]float64 `json:"votes"` // proposal -> node -> weight
+	Participants []string                      `json:"participants"` // nodes participating in consensus
+	Finalized    *Decision[T]                  `json:"finalized,omitempty"`
+	StartedAt    time.Time                     `json:"started_at"`
+	FinalizedAt  time.Time                     `json:"finalized_at,omitempty"`
 }
 
 // ConsensusPhase follows the photon->quasar flow
@@ -165,6 +183,7 @@ func New[T ConsensusData](
 		model:          model,
 		quasar:         quasarEngine,
 		photon:         photonEngine,
+		config:         DefaultAgentConfig(),
 		hallucinations: make(map[string]*Hallucination[T]),
 		weights:        make(map[string]float64),
 		usage:          make(map[string]int64),
@@ -329,8 +348,12 @@ func (a *Agent[T]) broadcastProposal(proposal *Proposal[T]) error {
 	if err != nil {
 		return fmt.Errorf("photon broadcast failed: %w", err)
 	}
-	// TODO: Handle response from emitted nodes
-	_ = nodes
+	// Track emitted nodes for vote collection
+	a.mu.Lock()
+	for _, nodeID := range nodes {
+		a.consensus.Participants = append(a.consensus.Participants, nodeID.String())
+	}
+	a.mu.Unlock()
 	return nil
 }
 
@@ -344,11 +367,22 @@ func (a *Agent[T]) focusConsensus(ctx context.Context, proposal *Proposal[T]) (*
 func (a *Agent[T]) prismValidation(decision *Decision[T]) error {
 	// Use quasar DAG validation
 	a.consensus.Phase = PhasePrism
-	// TODO: Implement proper quasar validation
-	// For now, just validate basic decision structure
+
+	// Validate decision structure
 	if decision == nil || decision.ID == "" {
 		return fmt.Errorf("invalid decision for prism validation")
 	}
+
+	// Validate consensus thresholds
+	if len(a.consensus.Participants) == 0 {
+		return fmt.Errorf("no participants in consensus")
+	}
+
+	// Check that decision has required confidence
+	if decision.Confidence < a.config.Alpha {
+		return fmt.Errorf("insufficient confidence: %.2f < %.2f", decision.Confidence, a.config.Alpha)
+	}
+
 	return nil
 }
 
