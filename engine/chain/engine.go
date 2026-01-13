@@ -479,14 +479,20 @@ func (t *Transitive) ReceiveVote(vote Vote) bool {
 
 	if !started {
 		// Engine not started - drop vote to prevent state corruption
+		fmt.Printf("[VOTE DEBUG] ReceiveVote DROPPED: engine not started, blockID=%s from=%s accept=%v\n",
+			vote.BlockID, vote.NodeID, vote.Accept)
 		return false
 	}
 
 	select {
 	case t.votes <- vote:
+		fmt.Printf("[VOTE DEBUG] ReceiveVote QUEUED: blockID=%s from=%s accept=%v channelLen=%d\n",
+			vote.BlockID, vote.NodeID, vote.Accept, len(t.votes))
 		return true
 	default:
 		// Channel full; vote will be resent
+		fmt.Printf("[VOTE DEBUG] ReceiveVote DROPPED: channel full, blockID=%s from=%s accept=%v\n",
+			vote.BlockID, vote.NodeID, vote.Accept)
 		return false
 	}
 }
@@ -621,19 +627,32 @@ func (t *Transitive) handleVote(vote Vote) {
 
 	t.votesReceived++
 
+	fmt.Printf("[VOTE DEBUG] handleVote: blockID=%s from=%s accept=%v pendingBlocksCount=%d\n",
+		vote.BlockID, vote.NodeID, vote.Accept, len(t.pendingBlocks))
+
 	// Only process votes for blocks we're tracking
 	pending, exists := t.pendingBlocks[vote.BlockID]
 	if !exists {
+		// DEBUG: List all pending blocks to see what we ARE tracking
+		fmt.Printf("[VOTE DEBUG] handleVote DROPPED: block NOT in pendingBlocks. Tracking blocks:\n")
+		for id, p := range t.pendingBlocks {
+			fmt.Printf("[VOTE DEBUG]   - blockID=%s voteCount=%d decided=%v\n", id, p.VoteCount, p.Decided)
+		}
 		return
 	}
 
+	fmt.Printf("[VOTE DEBUG] handleVote: block found in pending, currentVoteCount=%d\n", pending.VoteCount)
+
 	if err := t.consensus.ProcessVote(t.ctx, vote.BlockID, vote.Accept); err != nil {
+		fmt.Printf("[VOTE DEBUG] handleVote: ProcessVote error: %v\n", err)
 		return
 	}
 
 	// Only count accept votes toward quorum
 	if vote.Accept {
 		pending.VoteCount++
+		fmt.Printf("[VOTE DEBUG] handleVote: incremented VoteCount to %d for block=%s\n",
+			pending.VoteCount, vote.BlockID)
 		responses := map[ids.ID]int{vote.BlockID: pending.VoteCount}
 		_ = t.consensus.Poll(t.ctx, responses)
 	}
