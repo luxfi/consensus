@@ -13,6 +13,15 @@ import (
 	"github.com/luxfi/log"
 )
 
+// ValidatorSampler provides access to the validator set for peer sampling.
+// This is the minimal interface needed by consensus - avoids importing full validator package.
+type ValidatorSampler interface {
+	// Sample returns k random validator NodeIDs from the network.
+	Sample(networkID ids.ID, k int) ([]ids.NodeID, error)
+	// Count returns the number of validators in the network.
+	Count(networkID ids.ID) int
+}
+
 // NetworkConfig holds parameters for integrating consensus with the node network.
 type NetworkConfig struct {
 	// ChainID is the ID of this chain (used for chain-scoped messages like Put, PullQuery)
@@ -21,6 +30,11 @@ type NetworkConfig struct {
 	// For primary network chains (P/X/C), this equals constants.PrimaryNetworkID
 	// For L1 chains, this is the L1's validator set ID
 	NetworkID ids.ID
+	// NodeID is this node's identifier (for excluding self from samples)
+	NodeID ids.NodeID
+	// Validators provides access to the validator set for peer sampling.
+	// If nil, the engine broadcasts to all peers (less efficient).
+	Validators ValidatorSampler
 	// Logger for consensus events
 	Logger log.Logger
 	// Gossiper broadcasts messages to validators
@@ -57,6 +71,10 @@ type Gossiper interface {
 type Runtime struct {
 	*Transitive
 	config NetworkConfig
+
+	// Validator sampling for k-peer polls
+	validators ValidatorSampler
+	nodeID     ids.NodeID
 }
 
 // NewRuntime creates a fully wired consensus runtime ready for production use.
@@ -90,14 +108,37 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	rt := &Runtime{
 		Transitive: engine,
 		config:     cfg,
+		validators: cfg.Validators,
+		nodeID:     cfg.NodeID,
+	}
+
+	// Log validator set status for debugging
+	hasLogger := cfg.Logger != nil && !cfg.Logger.IsZero()
+	if cfg.Validators != nil {
+		count := cfg.Validators.Count(cfg.NetworkID)
+		if hasLogger {
+			cfg.Logger.Info("consensus engine initialized with validator set",
+				log.Stringer("networkID", cfg.NetworkID),
+				log.Int("validatorCount", count),
+				log.Int("k", params.K),
+				log.Int("alpha", params.AlphaPreference))
+		}
+	} else {
+		if hasLogger {
+			cfg.Logger.Warn("consensus engine initialized WITHOUT validator set - will broadcast to all peers",
+				log.Stringer("networkID", cfg.NetworkID))
+		}
 	}
 
 	// Wire the proposer (adapts Gossiper to BlockProposer interface)
 	engine.SetProposer(&gossiperProposer{
-		gossiper:  cfg.Gossiper,
-		chainID:   cfg.ChainID,
-		networkID: cfg.NetworkID,
-		logger:    cfg.Logger,
+		gossiper:   cfg.Gossiper,
+		chainID:    cfg.ChainID,
+		networkID:  cfg.NetworkID,
+		logger:     cfg.Logger,
+		validators: cfg.Validators,
+		nodeID:     cfg.NodeID,
+		k:          params.K,
 	})
 
 	// Set the VM for block building
@@ -106,6 +147,25 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	}
 
 	return rt
+}
+
+// SampleValidators returns k random validator NodeIDs for the network.
+// This is used by the consensus engine for k-sampling polls.
+// Returns nil if no validator sampler is configured (falls back to broadcast).
+func (rt *Runtime) SampleValidators(k int) ([]ids.NodeID, error) {
+	if rt.validators == nil {
+		return nil, nil // Will broadcast to all
+	}
+	return rt.validators.Sample(rt.config.NetworkID, k)
+}
+
+// ValidatorCount returns the number of validators in the network.
+// Returns 0 if no validator sampler is configured.
+func (rt *Runtime) ValidatorCount() int {
+	if rt.validators == nil {
+		return 0
+	}
+	return rt.validators.Count(rt.config.NetworkID)
 }
 
 // ForwardVMNotifications reads from the VM's toEngine channel and forwards
@@ -146,10 +206,13 @@ func (rt *Runtime) ForwardVMNotifications(toEngine <-chan block.Message) {
 // gossiperProposer adapts a Gossiper to the BlockProposer interface.
 // This bridges the network layer (Gossiper) to the consensus layer (BlockProposer).
 type gossiperProposer struct {
-	gossiper  Gossiper
-	chainID   ids.ID
-	networkID ids.ID
-	logger    log.Logger
+	gossiper   Gossiper
+	chainID    ids.ID
+	networkID  ids.ID
+	logger     log.Logger
+	validators ValidatorSampler // For k-peer sampling
+	nodeID     ids.NodeID       // This node's ID (to exclude from samples)
+	k          int              // Sample size from consensus params
 }
 
 var _ BlockProposer = (*gossiperProposer)(nil)
@@ -175,6 +238,8 @@ func (p *gossiperProposer) Propose(ctx context.Context, proposal BlockProposal) 
 }
 
 // RequestVotes asks specific validators to vote on a block.
+// If req.Validators is nil and we have a ValidatorSampler, sample k validators.
+// This implements the core Snowball/Avalanche k-sampling behavior.
 func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) error {
 	if p.gossiper == nil {
 		if !p.logger.IsZero() {
@@ -184,11 +249,44 @@ func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) er
 		return nil
 	}
 
-	sentTo := p.gossiper.SendPullQuery(p.chainID, p.networkID, req.BlockID, req.Validators)
+	// Determine which validators to query
+	validators := req.Validators
+	if validators == nil && p.validators != nil && p.k > 0 {
+		// Sample k validators from the validator set (excluding self)
+		sampled, err := p.validators.Sample(p.networkID, p.k)
+		if err != nil {
+			if !p.logger.IsZero() {
+				p.logger.Warn("failed to sample validators, falling back to broadcast",
+					log.Stringer("blockID", req.BlockID),
+					log.Int("k", p.k),
+					log.Err(err))
+			}
+			// Fall back to broadcast (nil validators)
+		} else {
+			// Filter out self from sample
+			filtered := make([]ids.NodeID, 0, len(sampled))
+			for _, nodeID := range sampled {
+				if nodeID != p.nodeID {
+					filtered = append(filtered, nodeID)
+				}
+			}
+			validators = filtered
+
+			if !p.logger.IsZero() {
+				p.logger.Debug("sampled k validators for poll",
+					log.Stringer("blockID", req.BlockID),
+					log.Int("k", p.k),
+					log.Int("sampled", len(validators)),
+					log.Int("totalValidators", p.validators.Count(p.networkID)))
+			}
+		}
+	}
+
+	sentTo := p.gossiper.SendPullQuery(p.chainID, p.networkID, req.BlockID, validators)
 	if !p.logger.IsZero() {
 		p.logger.Debug("requested votes from validators",
 			log.Stringer("blockID", req.BlockID),
-			log.Int("requested", len(req.Validators)),
+			log.Int("requested", len(validators)),
 			log.Int("sentTo", sentTo))
 	}
 	return nil
