@@ -1,5 +1,5 @@
 // Copyright (C) 2025, Lux Industries Inc. All rights reserved.
-// Randomized consensus consistency tests ported from avalanchego
+// Randomized consensus consistency tests ported from upstream
 
 package integration
 

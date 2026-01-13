@@ -159,8 +159,9 @@ func TestProcessBlockContextCancellation(t *testing.T) {
 	engine := NewConsensus(config.LocalParams())
 	ctx := context.Background()
 
-	// Initialize engine
-	err := engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	// Initialize engine with 32-byte keys
+	blsKey, pqKey := GenerateTestKeys()
+	err := engine.Initialize(ctx, blsKey, pqKey)
 	require.NoError(t, err)
 
 	// Fill up the finality channel
@@ -181,8 +182,9 @@ func TestProcessBlockContextCancellation(t *testing.T) {
 func TestProcessBlockContextDone(t *testing.T) {
 	engine := NewConsensus(config.LocalParams())
 
-	// Initialize engine
-	err := engine.Initialize(context.Background(), []byte("bls-key"), []byte("pq-key"))
+	// Initialize engine with 32-byte keys
+	blsKey, pqKey := GenerateTestKeys()
+	err := engine.Initialize(context.Background(), blsKey, pqKey)
 	require.NoError(t, err)
 
 	// Fill up the finality channel
@@ -254,8 +256,9 @@ func TestProcessBlockEmptyCertificates(t *testing.T) {
 	engine := NewConsensus(config.LocalParams())
 	ctx := context.Background()
 
-	// Initialize with proper keys
-	err := engine.Initialize(ctx, []byte("valid-bls-key"), []byte("valid-pq-key"))
+	// Initialize with proper 32-byte keys
+	blsKey, pqKey := GenerateTestKeys()
+	err := engine.Initialize(ctx, blsKey, pqKey)
 	require.NoError(t, err)
 
 	blockID := ids.GenerateTestID()
@@ -325,7 +328,8 @@ func TestMultipleConcurrentProcessBlock(t *testing.T) {
 	engine := NewConsensus(config.LocalParams())
 	ctx := context.Background()
 
-	_ = engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	blsKey, pqKey := GenerateTestKeys()
+	_ = engine.Initialize(ctx, blsKey, pqKey)
 
 	done := make(chan bool, 10)
 
@@ -370,8 +374,12 @@ func TestProcessBlockPQGenerationFailure(t *testing.T) {
 	engine := NewConsensus(config.LocalParams())
 	ctx := context.Background()
 
-	// Initialize with valid BLS key but empty PQ key to trigger PQ generation failure
-	err := engine.Initialize(ctx, []byte("bls-key"), nil)
+	// Initialize with valid 32-byte BLS key but nil PQ key to trigger PQ generation failure
+	blsKey := make([]byte, 32)
+	for i := range blsKey {
+		blsKey[i] = byte(i + 1)
+	}
+	err := engine.Initialize(ctx, blsKey, nil) // nil PQ key
 	require.NoError(t, err)
 
 	blockID := ids.GenerateTestID()
@@ -388,7 +396,8 @@ func TestProcessBlockVotingEdgeCases(t *testing.T) {
 	engine := NewConsensus(config.LocalParams())
 	ctx := context.Background()
 
-	_ = engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	blsKey, pqKey := GenerateTestKeys()
+	_ = engine.Initialize(ctx, blsKey, pqKey)
 
 	// Test with exactly at threshold
 	blockID := ids.GenerateTestID()
@@ -407,7 +416,8 @@ func TestProcessBlockVotingBelowThreshold(t *testing.T) {
 	engine := NewConsensus(config.LocalParams())
 	ctx := context.Background()
 
-	_ = engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	blsKey, pqKey := GenerateTestKeys()
+	_ = engine.Initialize(ctx, blsKey, pqKey)
 
 	blockID := ids.GenerateTestID()
 	// LocalParams has Alpha=0.69, so 68% should fail
