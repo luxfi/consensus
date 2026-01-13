@@ -242,23 +242,37 @@ type AgreementState struct {
 // =============================================================================
 // VOTER IDENTITY
 // =============================================================================
+// Single canonical derivation: VoterID = H(domain || data)
+// Domain separator ensures VoterID == NodeID when using same domain.
+// =============================================================================
+
+// NodeIDDomain is the canonical domain separator (matches node repo)
+const NodeIDDomain = "LuxNodeID/v1"
 
 // VoterID is a 32-byte voter identifier
-// For blockchain: NodeID (crypto-derived from public key)
-// For AI agents: H(agent_string_id)
 type VoterID [32]byte
 
 // EmptyVoterID is the zero voter ID
 var EmptyVoterID VoterID
 
-// DeriveVoterID derives a VoterID from a string (e.g., agent name)
-func DeriveVoterID(id string) VoterID {
-	return sha256.Sum256([]byte(id))
+// DeriveVoterID is the single canonical derivation function.
+// VoterID = H(domain || data)
+//
+// For validators: DeriveVoterID(NodeIDDomain, mldsaPublicKey)
+// For AI agents:  DeriveVoterID("agent", []byte(agentName))
+func DeriveVoterID(domain string, data []byte) VoterID {
+	h := sha256.New()
+	h.Write([]byte(domain))
+	h.Write(data)
+	var v VoterID
+	copy(v[:], h.Sum(nil))
+	return v
 }
 
-// DeriveVoterIDFromBytes derives from raw bytes (e.g., public key)
-func DeriveVoterIDFromBytes(data []byte) VoterID {
-	return sha256.Sum256(data)
+// VoterIDFromPublicKey derives VoterID from any public key using NodeIDDomain.
+// This ensures VoterID == NodeID for the same public key.
+func VoterIDFromPublicKey(publicKey []byte) VoterID {
+	return DeriveVoterID(NodeIDDomain, publicKey)
 }
 
 // =============================================================================
