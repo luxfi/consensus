@@ -344,6 +344,41 @@ func (t *Transitive) IsBootstrapped() bool {
 	return t.bootstrapped
 }
 
+// SyncState synchronizes consensus state with VM state.
+// This is called by the syncer after RLP import or state sync to reconcile
+// the consensus engine's lastAccepted pointer with the VM's actual state.
+//
+// This method:
+//   1. Updates the consensus finalizedTip to match the VM's last accepted block
+//   2. Clears any stale pending blocks that conflict with the new chain tip
+//   3. Marks the engine as bootstrapped
+//
+// This is safe to call multiple times - it's idempotent.
+func (t *Transitive) SyncState(ctx context.Context, lastAcceptedID ids.ID, height uint64) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// Update consensus state
+	if t.consensus != nil {
+		t.consensus.SyncState(lastAcceptedID, height)
+	}
+
+	// Clear any pending blocks that are now stale (below the synced height)
+	for blockID, pending := range t.pendingBlocks {
+		if pending.ConsensusBlock != nil && pending.ConsensusBlock.height <= height {
+			delete(t.pendingBlocks, blockID)
+		}
+	}
+
+	// Ensure we're marked as bootstrapped
+	t.bootstrapped = true
+
+	fmt.Printf("[CONSENSUS] SyncState: updated to lastAccepted=%s height=%d\n",
+		lastAcceptedID, height)
+
+	return nil
+}
+
 // HealthCheck returns health stats.
 func (t *Transitive) HealthCheck(ctx context.Context) (interface{}, error) {
 	t.mu.RLock()

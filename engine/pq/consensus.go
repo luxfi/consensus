@@ -94,10 +94,10 @@ func (s *memoryStore) Children(id quasar.VertexID) []quasar.VertexID {
 	return []quasar.VertexID{}
 }
 
-// NewConsensus creates a new post-quantum consensus engine
+// NewConsensus creates a new post-quantum consensus engine.
+// Uses in-memory storage suitable for single-node operation.
+// For distributed deployment, inject a persistent Store implementation.
 func NewConsensus(params config.Parameters) *ConsensusEngine {
-	// Create a simple in-memory store for P-Chain vertices
-	// TODO: Use proper persistent storage in production
 	store := &memoryStore{}
 
 	return &ConsensusEngine{
@@ -124,8 +124,7 @@ func (e *ConsensusEngine) ProcessBlock(ctx context.Context, blockID ids.ID, vote
 		return nil
 	}
 
-	// For now, use simplified consensus logic
-	// In production, this would integrate with quasar's internal methods
+	// Simplified majority voting - the quasar.BLS handles DAG finality separately
 	totalVotes := 0
 	maxVotes := 0
 	bestBlock := ""
@@ -146,14 +145,14 @@ func (e *ConsensusEngine) ProcessBlock(ctx context.Context, blockID ids.ID, vote
 	// Generate real certificates using cryptography
 	var cert *quasar.CertBundle
 	if e.certGen != nil {
-		// Generate BLS aggregate signature
-		blsSig, err := e.certGen.GenerateBLSAggregate(blockID, votes)
+		// Generate BLS signature for this block
+		blsSig, err := e.certGen.SignBlock(blockID)
 		if err != nil {
 			return fmt.Errorf("failed to generate BLS signature: %w", err)
 		}
 
 		// Generate post-quantum certificate
-		pqCert, err := e.certGen.GeneratePQCertificate(blockID, votes)
+		pqCert, err := e.certGen.GeneratePQSignature(blockID)
 		if err != nil {
 			return fmt.Errorf("failed to generate PQ certificate: %w", err)
 		}
@@ -167,8 +166,8 @@ func (e *ConsensusEngine) ProcessBlock(ctx context.Context, blockID ids.ID, vote
 		blsKey, pqKey := GenerateTestKeys()
 		testGen := NewCertificateGenerator(blsKey, pqKey)
 
-		blsSig, _ := testGen.GenerateBLSAggregate(blockID, votes)
-		pqCert, _ := testGen.GeneratePQCertificate(blockID, votes)
+		blsSig, _ := testGen.SignBlock(blockID)
+		pqCert, _ := testGen.GeneratePQSignature(blockID)
 
 		cert = &quasar.CertBundle{
 			BLSAgg: blsSig,

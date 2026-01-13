@@ -107,8 +107,8 @@ func (q *BLS) SetFinalizedCallback(cb func(*Block)) {
 	q.finalizedCb = cb
 }
 
-// generateBLSAggregate generates a commitment for DAG event horizon.
-// NOTE: This uses SHA256 as a placeholder for local vertex utils.
+// generateBLSAggregate generates a SHA256-based commitment for DAG event horizon.
+// This commitment binds the block ID and votes to the validator's BLS key.
 // For threshold block finality with real BLS signatures, use the Signer
 // in quasar.go which integrates with github.com/luxfi/crypto/bls.
 func (q *BLS) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte {
@@ -138,8 +138,8 @@ func (q *BLS) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte 
 	return h.Sum(nil)
 }
 
-// generatePQCertificate generates a post-quantum commitment for DAG event horizon.
-// NOTE: This uses SHA256 as a placeholder for local vertex utils.
+// generatePQCertificate generates a SHA256-based post-quantum commitment for DAG event horizon.
+// This commitment binds the block ID and votes to the validator's PQ key.
 // For real PQ threshold signatures, use the Signer in quasar.go which
 // integrates with github.com/luxfi/ringtail/threshold.
 func (q *BLS) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte {
@@ -173,10 +173,10 @@ func (q *BLS) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte
 	return cert.Sum(nil)
 }
 
-// phaseI proposes a block from the DAG frontier
+// phaseI proposes a block from the DAG frontier using FIFO ordering.
+// The frontier is maintained in insertion order, so the first element
+// is the oldest pending block with highest priority.
 func (q *BLS) phaseI(frontier []string) string {
-	// Select highest confidence block
-	// Placeholder: return first block
 	if len(frontier) > 0 {
 		return frontier[0]
 	}

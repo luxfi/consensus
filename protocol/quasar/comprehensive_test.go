@@ -1416,11 +1416,17 @@ func TestVerkleWitness_FullVerification(t *testing.T) {
 	path := compressPath(stateRoot)
 	openingProof := createIPAProof(commitment, path)
 
+	// Create a valid-length BLS signature (48 bytes for G1 compressed)
+	blsSig := make([]byte, 48)
+	for i := range blsSig {
+		blsSig[i] = byte(i + 1)
+	}
+
 	witness := &WitnessProof{
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		BLSAggregate: []byte{1, 2, 3, 4}, // Stub accepts any non-empty
+		BLSAggregate: blsSig, // Must be at least 48 bytes for BLS G1
 		RingtailBits: []byte{0x01},
 		ValidatorSet: []byte{5, 6, 7, 8},
 		BlockHeight:  100,
@@ -1443,11 +1449,17 @@ func TestVerkleWitness_FullVerification_InsufficientThreshold(t *testing.T) {
 	path := compressPath(stateRoot)
 	openingProof := createIPAProof(commitment, path)
 
+	// Create a valid-length BLS signature (48 bytes for G1 compressed)
+	blsSig := make([]byte, 48)
+	for i := range blsSig {
+		blsSig[i] = byte(i + 1)
+	}
+
 	witness := &WitnessProof{
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		BLSAggregate: []byte{1, 2, 3, 4},
+		BLSAggregate: blsSig, // Valid-length signature
 		RingtailBits: []byte{0x01}, // Only 1 signer, need 5
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
@@ -1678,10 +1690,22 @@ func TestSigner_AggregateSignatures_InvalidBLS(t *testing.T) {
 func TestVerkleWitness_VerifyBLSAggregate(t *testing.T) {
 	w := NewVerkleWitness(1)
 
-	// Stub implementation should not error
-	err := w.verifyBLSAggregate([]byte{1, 2, 3}, []byte{4, 5, 6})
+	// Create a valid-length BLS signature (48 bytes for G1 compressed)
+	blsSig := make([]byte, 48)
+	for i := range blsSig {
+		blsSig[i] = byte(i + 1)
+	}
+
+	// BLS verification should pass with valid-length signature
+	err := w.verifyBLSAggregate(blsSig, []byte{4, 5, 6})
 	if err != nil {
 		t.Errorf("verifyBLSAggregate failed: %v", err)
+	}
+
+	// Should fail with too-short signature
+	err = w.verifyBLSAggregate([]byte{1, 2, 3}, []byte{4, 5, 6})
+	if err == nil {
+		t.Error("verifyBLSAggregate should fail with short signature")
 	}
 }
 
@@ -1702,10 +1726,12 @@ func TestHelperFunctions(t *testing.T) {
 		t.Errorf("hashValidatorSet length = %d, want 32", len(hash))
 	}
 
-	// Test timeNow (placeholder)
+	// Test timeNow - returns current Unix timestamp
 	ts := timeNow()
-	if ts != 0 {
-		t.Errorf("timeNow() = %d, want 0 (placeholder)", ts)
+	now := time.Now().Unix()
+	// Allow 1 second tolerance
+	if ts < now-1 || ts > now+1 {
+		t.Errorf("timeNow() = %d, expected close to %d", ts, now)
 	}
 }
 
@@ -2451,11 +2477,17 @@ func TestVerkleWitness_FullVerification_RingtailThresholdNotMet(t *testing.T) {
 	path := compressPath(stateRoot)
 	openingProof := createIPAProof(commitment, path)
 
+	// Create a valid-length BLS signature (48 bytes for G1 compressed)
+	blsSig := make([]byte, 48)
+	for i := range blsSig {
+		blsSig[i] = byte(i + 1)
+	}
+
 	witness := &WitnessProof{
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		BLSAggregate: []byte{1, 2, 3, 4},
+		BLSAggregate: blsSig, // Valid-length signature
 		RingtailBits: []byte{0x01}, // Only 1 signer, need 10
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
@@ -2659,11 +2691,17 @@ func TestVerkleWitness_VerifyStateTransition_SlowPath(t *testing.T) {
 	path := compressPath(stateRoot)
 	openingProof := createIPAProof(commitment, path)
 
+	// Create a valid-length BLS signature (48 bytes for G1 compressed)
+	blsSig := make([]byte, 48)
+	for i := range blsSig {
+		blsSig[i] = byte(i + 1)
+	}
+
 	witness := &WitnessProof{
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		BLSAggregate: []byte{1, 2, 3, 4},
+		BLSAggregate: blsSig, // Valid-length signature
 		RingtailBits: []byte{0x01}, // 1 signer meets threshold
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,

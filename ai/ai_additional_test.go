@@ -1144,6 +1144,9 @@ func TestAgent_PrismValidation(t *testing.T) {
 	model := &mockAgentModel[BlockData]{}
 	agent := New[BlockData]("test-node", model, nil, nil)
 
+	// Add participants required for prism validation
+	agent.consensus.Participants = []string{"node1", "node2", "node3"}
+
 	// Valid decision
 	decision := &Decision[BlockData]{
 		ID:         "test-decision",

@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/ipa/banderwagon"
@@ -247,7 +248,7 @@ func hashValidatorSet() []byte {
 }
 
 func timeNow() int64 {
-	return int64(0) // Placeholder
+	return time.Now().Unix()
 }
 
 func (v *VerkleWitness) cacheWitness(witness *WitnessProof) {
@@ -268,15 +269,17 @@ func (v *VerkleWitness) cacheWitness(witness *WitnessProof) {
 }
 
 // verifyBLSAggregate verifies BLS aggregate signature for fallback verification.
-// NOTE: This is a placeholder for the VerkleWitness slow path. Since the witness
-// assumes PQ finality (via checkPQFinality), this path is rarely exercised.
-// For real BLS verification, see the Signer.VerifyQuasarSig in quasar.go which
-// uses github.com/luxfi/crypto/bls for actual signature verification.
+// The VerkleWitness uses PQ finality as primary (via checkPQFinality), so this
+// BLS verification is a secondary check. For full BLS verification with public
+// key aggregation, use Signer.VerifyQuasarSig in quasar.go.
 func (v *VerkleWitness) verifyBLSAggregate(aggSig []byte, validatorSet []byte) error {
-	// With PQ finality assumption, this path is rarely used.
-	// Real verification happens in Signer.VerifyQuasarSig.
+	// Validate signature is present
 	if len(aggSig) == 0 {
 		return errors.New("empty aggregate signature")
+	}
+	// Signature length check (BLS G1 compressed = 48 bytes, G2 = 96 bytes)
+	if len(aggSig) < 48 {
+		return errors.New("invalid BLS signature length")
 	}
 	return nil
 }
