@@ -14,19 +14,40 @@ from enum import IntEnum
 import time
 
 # Version info
-__version__ = '1.0.0'
+__version__ = '1.22.22'
 __all__ = [
-    # Main classes
+    # Main classes (legacy blockchain types)
     'Chain', 'Config', 'Block', 'Vote', 'Certificate',
+    # Wire protocol types (unified sequencer types)
+    'Candidate', 'WireVote', 'WireCertificate',
+    'PolicyID', 'ValidatorSet', 'Validator',
+    'SequencerConfig', 'SequencerIdentity', 'RecursiveNetwork',
     # Enums
     'Status', 'Decision', 'VoteType',
     # Constants
     'GENESIS_ID',
     # Factory functions
     'default_config', 'new_chain', 'new_block', 'new_vote', 'quick_start',
+    'single_node_config', 'agent_mesh_config', 'blockchain_config',
+    # Identity functions
+    'derive_voter_id', 'voter_id_from_agent', 'voter_id_from_public_key',
+    # Bridge functions (AI consensus -> blockchain)
+    'hanzo_result_to_vote', 'hanzo_state_to_certificate', 'create_ai_candidate',
     # Errors
     'ConsensusError', 'BlockNotFoundError', 'InvalidBlockError', 'NoQuorumError'
 ]
+
+# Import wire protocol types (prefixed to avoid conflicts with legacy types)
+from .types import (
+    Candidate,
+    Vote as WireVote,  # Wire protocol vote (uses candidate_id)
+    Certificate as WireCertificate,  # Wire protocol certificate
+    PolicyID, ValidatorSet, Validator,
+    SequencerConfig, SequencerIdentity, RecursiveNetwork,
+    single_node_config, agent_mesh_config, blockchain_config,
+    derive_voter_id, voter_id_from_agent, voter_id_from_public_key,
+    hanzo_result_to_vote, hanzo_state_to_certificate, create_ai_candidate,
+)
 
 
 # ============= TYPES =============

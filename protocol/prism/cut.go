@@ -1,6 +1,11 @@
 package prism
 
-import "github.com/luxfi/consensus/core/types"
+import (
+	"crypto/rand"
+	"encoding/binary"
+
+	"github.com/luxfi/consensus/core/types"
+)
 
 // Cut provides random cutting of peers for consensus voting (like a prism cuts light)
 type Cut[T comparable] interface {
@@ -29,19 +34,37 @@ func NewUniformCut(peers []types.NodeID) *UniformCut {
 	return &UniformCut{peers: peers}
 }
 
-// Sample implements Cut interface (cuts k rays from the peer population)
+// Sample implements Cut interface using Fisher-Yates shuffle with crypto/rand.
+// This provides uniform random sampling of k peers from the population.
 func (c *UniformCut) Sample(k int) []types.NodeID {
-	if k >= len(c.peers) {
+	n := len(c.peers)
+	if k >= n {
 		return c.peers
 	}
 
-	// Simple random cutting (in production, use proper randomization)
-	// TODO: Implement proper cryptographically secure random cutting
-	result := make([]types.NodeID, 0, k)
-	for i := 0; i < k && i < len(c.peers); i++ {
-		result = append(result, c.peers[i])
+	// Create a copy to shuffle (don't modify original)
+	shuffled := make([]types.NodeID, n)
+	copy(shuffled, c.peers)
+
+	// Fisher-Yates shuffle with cryptographic randomness
+	// Only need to shuffle first k elements
+	for i := 0; i < k; i++ {
+		// Generate random index j where i <= j < n
+		j := i + cryptoRandInt(n-i)
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 	}
-	return result
+
+	return shuffled[:k]
+}
+
+// cryptoRandInt returns a cryptographically secure random integer in [0, max).
+func cryptoRandInt(max int) int {
+	if max <= 0 {
+		return 0
+	}
+	var buf [8]byte
+	_, _ = rand.Read(buf[:])
+	return int(binary.LittleEndian.Uint64(buf[:]) % uint64(max))
 }
 
 // Luminance implements Cut interface

@@ -112,3 +112,32 @@ func (b *Backend) GetThroughput() float64 {
 	defer b.mu.RUnlock()
 	return b.throughput
 }
+
+// IsEnabled returns true if the backend is initialized and ready.
+func (b *Backend) IsEnabled() bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.initialized
+}
+
+// GetDeviceInfo returns information about the acceleration device.
+func (b *Backend) GetDeviceInfo() string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if !b.initialized {
+		return ""
+	}
+	return "luxfi/accel consensus accelerator"
+}
+
+// NewMLXBackend creates a backend with MLX-compatible settings.
+// This is an alias for NewBackend maintained for backward compatibility.
+func NewMLXBackend(batchSize int) (*Backend, error) {
+	return NewBackend(batchSize)
+}
+
+// NewAccelBackend creates an accelerated consensus backend.
+// This is an alias for NewBackend maintained for backward compatibility.
+func NewAccelBackend(batchSize int) (*Backend, error) {
+	return NewBackend(batchSize)
+}

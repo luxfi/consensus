@@ -44,12 +44,13 @@ type Config struct {
 }
 
 type Driver[V VID] struct {
-	cfg  Config
-	wv   wave.Wave[V]
-	cut  prism.Cut[V]
-	str  Store[V]
-	prop Proposer[V]
-	com  Committer[V]
+	cfg       Config
+	wv        wave.Wave[V]
+	cut       prism.Cut[V]
+	str       Store[V]
+	prop      Proposer[V]
+	com       Committer[V]
+	committed []V // Track committed vertices in order
 }
 
 func NewDriver[V VID](cfg Config, cut prism.Cut[V], tx wave.Transport[V], store Store[V], prop Proposer[V], com Committer[V]) *Driver[V] {
@@ -67,9 +68,13 @@ func NewDriver[V VID](cfg Config, cut prism.Cut[V], tx wave.Transport[V], store 
 	}
 
 	return &Driver[V]{
-		cfg: cfg,
-		wv:  wave.New[V](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx),
-		cut: cut, str: store, prop: prop, com: com,
+		cfg:       cfg,
+		wv:        wave.New[V](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx),
+		cut:       cut,
+		str:       store,
+		prop:      prop,
+		com:       com,
+		committed: make([]V, 0),
 	}
 }
 
@@ -93,21 +98,50 @@ func (d *Driver[V]) Tick(ctx context.Context) error {
 		d.wv.Tick(ctx, v)
 	}
 
-	// Use DAG order theory to derive commit/skip (cert/skip patterns)
-	// TODO: Implement proper type conversion or interface alignment
-	ordered := []V{} // dag.ComputeSafePrefix(d.str, frontier) // implement using horizon+flare
+	// Compute safe prefix: vertices that are finalized (decided accept) with all ancestors also finalized
+	ordered := d.computeSafePrefix(frontier)
 	if len(ordered) > 0 {
 		if err := d.com.Commit(ctx, ordered); err != nil {
 			return err
 		}
+		// Track committed vertices
+		d.committed = append(d.committed, ordered...)
 	}
 
-	// Optionally propose a new vertex extending the frontier
-	// TODO: Implement proper type conversion or interface alignment
-	// parents := dag.ChooseFrontier(frontier) // e.g., 2f+1 parents or all-recent
-	// _, _ = d.prop.Propose(ctx, parents)
-
 	return nil
+}
+
+// computeSafePrefix returns vertices from the frontier that are finalized with all ancestors also finalized.
+// This ensures we only commit vertices whose causal history is completely decided.
+func (d *Driver[V]) computeSafePrefix(frontier []V) []V {
+	var safe []V
+	for _, v := range frontier {
+		if d.isFullyFinalized(v) {
+			safe = append(safe, v)
+		}
+	}
+	return safe
+}
+
+// isFullyFinalized checks if a vertex and all its ancestors are finalized.
+func (d *Driver[V]) isFullyFinalized(v V) bool {
+	// Check this vertex is finalized
+	state, exists := d.wv.State(v)
+	if !exists || !state.Decided || state.Result != types.DecideAccept {
+		return false
+	}
+
+	// Check all parents are finalized (recursively)
+	block, exists := d.str.Get(v)
+	if !exists {
+		return false
+	}
+	for _, parent := range block.Parents() {
+		if !d.isFullyFinalized(parent) {
+			return false
+		}
+	}
+	return true
 }
 
 // Start begins the Field engine operation
@@ -140,9 +174,9 @@ func (d *Driver[V]) IsFinalized(vertex V) bool {
 	return false
 }
 
-// GetCommittedVertices returns vertices that have been committed in order
+// GetCommittedVertices returns vertices that have been committed in order.
 func (d *Driver[V]) GetCommittedVertices() []V {
-	// TODO: Implement committed vertex tracking
-	// This would require maintaining a list of committed vertices from the Committer
-	return []V{}
+	result := make([]V, len(d.committed))
+	copy(result, d.committed)
+	return result
 }
