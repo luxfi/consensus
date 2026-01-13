@@ -215,18 +215,18 @@ func TestNetworkingTracker(t *testing.T) {
 }
 EOF
 
-# Create test for snow/consensus/snowman package
-mkdir -p snow/consensus/snowman
-cat > snow/consensus/snowman/snowman_test.go << 'EOF'
-package snowman
+# Create test for protocol/wave consensus package
+mkdir -p protocol/wave
+cat > protocol/wave/wave_placeholder_test.go << 'EOF'
+package wave
 
 import (
 	"testing"
 	"github.com/stretchr/testify/require"
 )
 
-func TestSnowman(t *testing.T) {
-	// Test placeholder for snowman package
+func TestWaveConsensus(t *testing.T) {
+	// Test placeholder for wave consensus package
 	require.True(t, true)
 }
 EOF
