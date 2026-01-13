@@ -1,7 +1,7 @@
 # Error Propagation Tests for Lux Consensus
 
 ## Overview
-Successfully ported error propagation tests from avalanchego's snowman consensus to Lux consensus engine.
+Successfully ported error propagation tests from upstream chain consensus to Lux consensus engine.
 
 ## Tests Implemented
 
@@ -28,8 +28,8 @@ Successfully ported error propagation tests from avalanchego's snowman consensus
 - **ConsensusContext** - Context with Prometheus registerer for metrics testing
 - **Parameters** - Consensus parameters matching snowball configuration
 
-### Adaptations from avalanchego
-1. Used Lux's `bag.Bag` from `node/utils/bag` instead of avalanche's bag implementation
+### Adaptations from upstream
+1. Used Lux's `bag.Bag` from `node/utils/bag` instead of upstream's bag implementation
 2. Adapted to Lux's block interfaces in `engine/chain/block`
 3. Used Lux's test utilities from `engine/chain/chaintest`
 4. Fixed bag initialization issues (requires SetThreshold to avoid nil set bug)

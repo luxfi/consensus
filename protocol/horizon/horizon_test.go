@@ -226,11 +226,19 @@ func TestTransitiveClosure(t *testing.T) {
 
 	closure := TransitiveClosure(g, "C")
 
-	// TransitiveClosure currently returns placeholder implementation (just the vertex itself)
-	if len(closure) == 1 && closure[0] == "C" {
-		t.Log("TransitiveClosure not fully implemented yet - returns single vertex")
-	} else {
-		t.Errorf("Expected placeholder closure [C], got %v", closure)
+	// TransitiveClosure returns all ancestors reachable from C following parent edges
+	// From C we can reach B (direct parent) and A (B's parent)
+	// Closure should include: C, B, A in BFS order
+	if len(closure) != 3 {
+		t.Errorf("Expected transitive closure of 3 vertices, got %d: %v", len(closure), closure)
+	}
+
+	// Verify all expected vertices are present
+	expected := map[string]bool{"A": true, "B": true, "C": true}
+	for _, v := range closure {
+		if !expected[v] {
+			t.Errorf("Unexpected vertex %s in closure", v)
+		}
 	}
 }
 
@@ -373,10 +381,21 @@ func TestBuildSkipListWithNonExistentVertex(t *testing.T) {
 		t.Fatal("Skip list levels should not be nil")
 	}
 
-	// B exists and should have entry (parent A)
+	// B exists and should have entries with skip pointers
+	// Level 0 should point to immediate parent A
+	// Higher levels also point to A since A has no parents (all jumps end at A)
 	if levels, ok := sl.Levels["B"]; ok {
-		if len(levels) != 1 || levels[0] != "A" {
-			t.Errorf("B should skip to A, got: %v", levels)
+		if len(levels) == 0 {
+			t.Error("B should have skip levels")
+		}
+		if levels[0] != "A" {
+			t.Errorf("B level 0 should skip to A, got: %s", levels[0])
+		}
+		// All levels should point to A since A is the root (no parents)
+		for i, target := range levels {
+			if target != "A" {
+				t.Errorf("B level %d should skip to A, got: %s", i, target)
+			}
 		}
 	} else {
 		t.Error("B should have an entry in skip list")

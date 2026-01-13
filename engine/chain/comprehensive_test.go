@@ -1057,6 +1057,12 @@ func (m *mockBlockBuilder) LastAccepted(ctx context.Context) (ids.ID, error) {
 	return m.lastAcceptedID, nil
 }
 
+func (m *mockBlockBuilder) SetPreference(ctx context.Context, id ids.ID) error {
+	// Mock implementation - just record the preferred block
+	m.lastAcceptedID = id
+	return nil
+}
+
 // =============================================================================
 // Integration Tests
 // =============================================================================

@@ -30,7 +30,8 @@ func TestInitialize(t *testing.T) {
 	engine := NewConsensus(config.DefaultParams())
 	ctx := context.Background()
 
-	err := engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	blsKey, pqKey := GenerateTestKeys()
+	err := engine.Initialize(ctx, blsKey, pqKey)
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
@@ -40,7 +41,8 @@ func TestProcessBlock(t *testing.T) {
 	engine := NewConsensus(config.DefaultParams())
 	ctx := context.Background()
 
-	err := engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	blsKey, pqKey := GenerateTestKeys()
+	err := engine.Initialize(ctx, blsKey, pqKey)
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
@@ -90,7 +92,8 @@ func TestFinalityChannel(t *testing.T) {
 	engine := NewConsensus(config.DefaultParams())
 	ctx := context.Background()
 
-	err := engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	blsKey, pqKey := GenerateTestKeys()
+	err := engine.Initialize(ctx, blsKey, pqKey)
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
@@ -166,7 +169,8 @@ func TestMultipleBlocks(t *testing.T) {
 	engine := NewConsensus(config.XChainParams()) // Fast params
 	ctx := context.Background()
 
-	err := engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	blsKey, pqKey := GenerateTestKeys()
+	err := engine.Initialize(ctx, blsKey, pqKey)
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
@@ -197,7 +201,8 @@ func TestMultipleBlocks(t *testing.T) {
 func BenchmarkProcessBlock(b *testing.B) {
 	engine := NewConsensus(config.XChainParams())
 	ctx := context.Background()
-	_ = engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
+	blsKey, pqKey := GenerateTestKeys()
+	_ = engine.Initialize(ctx, blsKey, pqKey)
 
 	votes := map[string]int{
 		"block": 4,
@@ -207,26 +212,16 @@ func BenchmarkProcessBlock(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		blockID := ids.GenerateTestID()
+		votes[blockID.String()] = 4
 		_ = engine.ProcessBlock(ctx, blockID, votes)
 	}
 }
 
-func BenchmarkIsFinalized(b *testing.B) {
+func BenchmarkMetrics(b *testing.B) {
 	engine := NewConsensus(config.DefaultParams())
-	ctx := context.Background()
-	_ = engine.Initialize(ctx, []byte("bls-key"), []byte("pq-key"))
-
-	// Add some finalized blocks
-	for i := 0; i < 100; i++ {
-		blockID := ids.GenerateTestID()
-		engine.finalized[blockID] = true
-	}
-
-	testID := ids.GenerateTestID()
-	engine.finalized[testID] = true
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = engine.IsFinalized(testID)
+		_ = engine.Metrics()
 	}
 }

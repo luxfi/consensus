@@ -100,7 +100,7 @@ func (sb *binarySnowball) RecordUnsuccessfulPoll() {
 func (sb *binarySnowball) Preference() int { return sb.preference }
 func (sb *binarySnowball) Finalized() bool { return sb.finalized }
 
-// --- Snowball Binary Tests (ported from avalanchego) ---
+// --- Snowball Binary Tests (ported from upstream) ---
 
 // TestSnowballBinaryBasic tests basic binary snowball voting behavior
 func TestSnowballBinaryBasic(t *testing.T) {
