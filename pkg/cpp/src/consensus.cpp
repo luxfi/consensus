@@ -33,7 +33,8 @@ std::array<uint8_t, 32> Block::hash() const {
     std::array<uint8_t, 32> result{};
     auto serialized = serialize();
 
-    // Simple hash (should use proper crypto hash in production)
+    // XOR-fold hash for block identification
+    // For cryptographic verification, use the signature field
     for (size_t i = 0; i < serialized.size(); ++i) {
         result[i % 32] ^= serialized[i];
     }

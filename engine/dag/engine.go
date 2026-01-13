@@ -5,6 +5,7 @@ package dag
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"sync"
 
@@ -77,7 +78,6 @@ func (e *dagEngine) GetVtx(ctx context.Context, id ids.ID) (Transaction, error) 
 
 	vertex, exists := e.consensus.GetVertex(id)
 	if !exists {
-		// Return nil without error (matches original stub behavior for tests)
 		return nil, nil
 	}
 
@@ -89,7 +89,6 @@ func (e *dagEngine) BuildVtx(ctx context.Context) (Transaction, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Return nil if no pending data (matches original stub behavior for tests)
 	if len(e.pendingData) == 0 {
 		return nil, nil
 	}
@@ -123,11 +122,59 @@ func (e *dagEngine) BuildVtx(ctx context.Context) (Transaction, error) {
 	return vertex, nil
 }
 
-// ParseVtx parses a vertex from bytes
+// ParseVtx parses a vertex from bytes.
+// Format: [32-byte ID][parent count][parents...][8-byte height][8-byte timestamp][data...]
+// Returns nil if the data is not a valid vertex encoding.
 func (e *dagEngine) ParseVtx(ctx context.Context, b []byte) (Transaction, error) {
-	// Return nil without error (matches original stub behavior for tests)
-	// In production, this would deserialize the vertex from bytes
-	return nil, nil
+	if len(b) < 42 { // 32 + 1 + 8 + 1 minimum
+		return nil, nil
+	}
+
+	// Parse ID - must not be all zeros
+	var id ids.ID
+	copy(id[:], b[:32])
+	if id == ids.Empty {
+		return nil, nil // Invalid: zero ID indicates invalid data
+	}
+
+	// Parse parent count - sanity check
+	parentCount := int(b[32])
+	if parentCount > 128 { // Unreasonable number of parents
+		return nil, nil
+	}
+	offset := 33
+
+	// Calculate expected minimum size with parents
+	expectedMinSize := 33 + (parentCount * 32) + 16
+	if len(b) < expectedMinSize {
+		return nil, nil // Not enough data for declared parent count
+	}
+
+	// Parse parents
+	parents := make([]ids.ID, parentCount)
+	for i := 0; i < parentCount; i++ {
+		if offset+32 > len(b) {
+			return nil, nil
+		}
+		copy(parents[i][:], b[offset:offset+32])
+		offset += 32
+	}
+
+	// Parse height and timestamp
+	if offset+16 > len(b) {
+		return nil, nil
+	}
+	height := binary.BigEndian.Uint64(b[offset : offset+8])
+	timestamp := binary.BigEndian.Uint64(b[offset+8 : offset+16])
+	offset += 16
+
+	// Remaining bytes are data
+	var data []byte
+	if offset < len(b) {
+		data = b[offset:]
+	}
+
+	return NewVertex(id, parents, height, int64(timestamp), data), nil
 }
 
 // Start starts the engine

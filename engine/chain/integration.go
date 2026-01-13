@@ -219,7 +219,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 				log.Stringer("from", fromNodeID),
 				log.Err(err))
 		}
-		return nil, nil // Don't return error - just skip invalid blocks
+		return nil, err
 	}
 
 	// Verify the block
@@ -230,7 +230,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 				log.Stringer("from", fromNodeID),
 				log.Err(err))
 		}
-		return nil, nil // Don't return error - just skip invalid blocks
+		return blk, err
 	}
 
 	if !rt.config.Logger.IsZero() {
@@ -361,4 +361,135 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 	}
 
 	return blk, nil
+}
+
+// OnImportComplete must be called after admin_importChain (RLP import) completes.
+// This reconciles the consensus engine's state with the VM's actual state after import.
+//
+// The problem this solves:
+//   - RLP import updates the EVM state database directly
+//   - But the consensus engine still thinks lastAccepted is the old block
+//   - This causes transactions to timeout (engine builds on wrong parent)
+//   - And causes "chains not bootstrapped" errors on node restart
+//
+// This method:
+//  1. Queries VM.LastAccepted() to get the current chain tip after import
+//  2. Updates consensus.finalizedTip to match
+//  3. Updates VM preference to build on the new tip
+//  4. Marks consensus as bootstrapped
+//
+// Usage in EVM admin API after successful import:
+//
+//	if err := rt.OnImportComplete(ctx); err != nil {
+//	    log.Warn("failed to sync consensus after import", "error", err)
+//	}
+//
+// This is idempotent - safe to call even if import didn't change state.
+func (rt *Runtime) OnImportComplete(ctx context.Context) error {
+	logger := rt.config.Logger
+	hasLogger := logger != nil && !logger.IsZero()
+
+	if rt.config.VM == nil {
+		if hasLogger {
+			logger.Warn("OnImportComplete: VM is nil, cannot sync state")
+		}
+		return nil
+	}
+
+	// Step 1: Query VM for current last accepted block
+	lastAcceptedID, err := rt.config.VM.LastAccepted(ctx)
+	if err != nil {
+		if hasLogger {
+			logger.Warn("OnImportComplete: failed to get last accepted from VM",
+				log.Err(err))
+		}
+		return err
+	}
+
+	// Step 2: Get block details (height) for consensus state
+	var height uint64
+	if lastAcceptedID != ids.Empty {
+		blk, err := rt.config.VM.GetBlock(ctx, lastAcceptedID)
+		if err != nil {
+			if hasLogger {
+				logger.Warn("OnImportComplete: failed to get block details",
+					log.Stringer("blockID", lastAcceptedID),
+					log.Err(err))
+			}
+			// Continue with height 0 - consensus can recover
+		} else {
+			height = blk.Height()
+		}
+	}
+
+	// Step 3: Update VM preference to build on current tip
+	// This is critical: without this, the VM's Preferred() returns old block
+	// while GetLastAccepted() returns the imported block, causing state mismatch
+	if err := rt.config.VM.SetPreference(ctx, lastAcceptedID); err != nil {
+		if hasLogger {
+			logger.Warn("OnImportComplete: failed to set VM preference",
+				log.Stringer("blockID", lastAcceptedID),
+				log.Err(err))
+		}
+		// Non-fatal: continue with consensus sync
+	}
+
+	// Step 4: Sync consensus engine state
+	if err := rt.Transitive.SyncState(ctx, lastAcceptedID, height); err != nil {
+		if hasLogger {
+			logger.Warn("OnImportComplete: failed to sync consensus state",
+				log.Stringer("blockID", lastAcceptedID),
+				log.Uint64("height", height),
+				log.Err(err))
+		}
+		return err
+	}
+
+	if hasLogger {
+		logger.Info("OnImportComplete: consensus state synced with VM",
+			log.Stringer("lastAcceptedID", lastAcceptedID),
+			log.Uint64("height", height))
+	}
+
+	return nil
+}
+
+// SyncStateFromVM queries the VM for its current state and syncs the consensus
+// engine to match. This is a lower-level version of OnImportComplete that can
+// be called without a full Runtime (e.g., from standalone syncer usage).
+//
+// Returns the synced block ID and height, or error.
+func SyncStateFromVM(ctx context.Context, vm BlockBuilder, consensus *Transitive) (ids.ID, uint64, error) {
+	if vm == nil {
+		return ids.Empty, 0, nil
+	}
+
+	// Get last accepted from VM
+	lastAcceptedID, err := vm.LastAccepted(ctx)
+	if err != nil {
+		return ids.Empty, 0, err
+	}
+
+	// Get height
+	var height uint64
+	if lastAcceptedID != ids.Empty {
+		blk, err := vm.GetBlock(ctx, lastAcceptedID)
+		if err == nil {
+			height = blk.Height()
+		}
+	}
+
+	// Set preference
+	if err := vm.SetPreference(ctx, lastAcceptedID); err != nil {
+		// Non-fatal
+	}
+
+	// Sync consensus
+	if consensus != nil {
+		if err := consensus.SyncState(ctx, lastAcceptedID, height); err != nil {
+			return lastAcceptedID, height, err
+		}
+	}
+
+	return lastAcceptedID, height, nil
 }

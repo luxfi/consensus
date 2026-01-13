@@ -1,5 +1,5 @@
 // Copyright (C) 2025, Lux Industries Inc All rights reserved.
-// Byzantine Fault Tolerance Tests - Ported from avalanchego
+// Byzantine Fault Tolerance Tests - Ported from upstream
 //
 // This test suite validates Byzantine fault tolerance in Lux consensus by:
 // 1. Testing 55 honest vs 45 Byzantine nodes (governance scenario)
@@ -101,7 +101,7 @@ type ByzantineTestBlock struct {
 }
 
 // TestSnowballGovernance tests 55 honest vs 45 Byzantine nodes
-// This is the critical governance scenario from avalanchego
+// This is the critical governance scenario from upstream consensus
 func TestSnowballGovernance(t *testing.T) {
 	const (
 		numHonest    = 55
