@@ -80,8 +80,8 @@ func TestCRITICAL1_ThresholdSigWithoutVerifier(t *testing.T) {
 func TestCRITICAL2_BlockCertVerifyRejectGarbage(t *testing.T) {
 	cert := &BlockCert{
 		BLS:  []byte("garbage-bls-not-a-real-signature"),
-		PQ:   []byte("garbage-pq-not-a-real-certificate"),
-		Sigs: make(map[string][]byte),
+		ZKProof:    []byte("garbage-pq-not-a-real-certificate"),
+		Validators: 0,
 	}
 
 	require.False(t, cert.Verify([]string{"v1", "v2", "v3"}),
@@ -99,15 +99,15 @@ func TestCRITICAL2_BlockCertVerifyWithKeysNilCert(t *testing.T) {
 // BLS or PQ fields are rejected.
 func TestCRITICAL2_BlockCertVerifyWithKeysEmptyFields(t *testing.T) {
 	// Empty BLS
-	cert := &BlockCert{BLS: nil, PQ: []byte("pq")}
+	cert := &BlockCert{BLS: nil, ZKProof:  []byte("pq")}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("pq")))
 
 	// Empty PQ
-	cert = &BlockCert{BLS: []byte("bls"), PQ: nil}
+	cert = &BlockCert{BLS: []byte("bls"), ZKProof:  nil}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("pq")))
 
 	// Empty group key
-	cert = &BlockCert{BLS: []byte("bls"), PQ: []byte("pq")}
+	cert = &BlockCert{BLS: []byte("bls"), ZKProof:  []byte("pq")}
 	require.False(t, cert.VerifyWithKeys(nil, []byte("pq")))
 }
 

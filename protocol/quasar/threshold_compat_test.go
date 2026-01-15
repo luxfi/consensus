@@ -665,7 +665,7 @@ func TestHybridConsensusBasic(t *testing.T) {
 	cert := hybrid.generateCert(block)
 	require.NotNil(cert)
 	require.NotEmpty(cert.BLS)
-	require.NotEmpty(cert.PQ)
+	require.NotEmpty(cert.ZKProof)
 	require.Equal(uint64(1), cert.Epoch)
 
 	// Verify certificate: Verify() now always returns false (requires VerifyWithKeys)
