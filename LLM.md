@@ -625,7 +625,7 @@ The v1.22.0 release represents a complete, tested, and documented consensus impl
 
 2. **Python is ONLY Complete SDK**:
    - All 3 consensus types fully implemented
-   - Real Snowball/Avalanche voting algorithms
+   - Real Lux consensus voting algorithms (Photon/Wave/Nova)
    - 64/64 tests verify actual consensus behavior
 
 3. **C SDK is Data Structure Library**:
