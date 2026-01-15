@@ -253,7 +253,7 @@ func TestBlock(t *testing.T) {
 		Timestamp: time.Now(),
 		Cert: &BlockCert{
 			BLS: []byte("bls"),
-			PQ:  []byte("pq"),
+			ZKProof:   []byte("pq"),
 		},
 	}
 
@@ -335,7 +335,7 @@ func TestQuantumFinality_Integration(t *testing.T) {
 		Timestamp: time.Now(),
 		Cert: &BlockCert{
 			BLS: cert.BLSAgg,
-			PQ:  cert.PQCert,
+			ZKProof:   cert.PQCert,
 		},
 	}
 
