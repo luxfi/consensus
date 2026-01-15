@@ -239,11 +239,11 @@ func (h *Certifier) generateCert(block *Block) *BlockCert {
 	pqData := sha256.Sum256(append(block.ID[:], block.ChainID[:]...))
 
 	return &BlockCert{
-		BLS:      blsData[:],
-		PQ:       pqData[:],
-		Sigs:     make(map[string][]byte),
-		Epoch:    block.Height,
-		Finality: time.Now(),
+		BLS:        blsData[:],
+		ZKProof:    pqData[:],
+		Epoch:      block.Height,
+		Finality:   time.Now(),
+		Validators: len(h.validators),
 	}
 }
 

@@ -611,7 +611,7 @@ func TestHybridConsensus_GenerateCert(t *testing.T) {
 		t.Error("expected non-empty BLS")
 	}
 
-	if len(cert.PQ) == 0 {
+	if len(cert.ZKProof) == 0 {
 		t.Error("expected non-empty PQ")
 	}
 
@@ -884,7 +884,7 @@ func TestBlockCert_Verify(t *testing.T) {
 			name: "empty BLS",
 			cert: &BlockCert{
 				BLS: nil,
-				PQ:  []byte{1, 2, 3},
+				ZKProof:   []byte{1, 2, 3},
 			},
 			validators: []string{"v1"},
 			want:       false,
@@ -893,7 +893,7 @@ func TestBlockCert_Verify(t *testing.T) {
 			name: "empty PQ",
 			cert: &BlockCert{
 				BLS: []byte{1, 2, 3},
-				PQ:  nil,
+				ZKProof:   nil,
 			},
 			validators: []string{"v1"},
 			want:       false,
@@ -902,8 +902,8 @@ func TestBlockCert_Verify(t *testing.T) {
 			name: "non-empty cert without crypto verification returns false",
 			cert: &BlockCert{
 				BLS:  []byte{1, 2, 3},
-				PQ:   []byte{4, 5, 6},
-				Sigs: make(map[string][]byte),
+				ZKProof:    []byte{4, 5, 6},
+				Validators: 0,
 			},
 			validators: []string{"v1", "v2"},
 			want:       false, // Verify() always returns false; use VerifyWithKeys
@@ -932,8 +932,8 @@ func TestBlock_Fields(t *testing.T) {
 		Data:      []byte("test data"),
 		Cert: &BlockCert{
 			BLS:      []byte{7, 8, 9},
-			PQ:       []byte{10, 11, 12},
-			Sigs:     map[string][]byte{"v1": {13, 14}},
+			ZKProof:        []byte{10, 11, 12},
+			Validators: 1,
 			Epoch:    100,
 			Finality: now,
 		},
