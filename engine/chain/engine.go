@@ -11,6 +11,7 @@ import (
 	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/log"
 )
 
 // -----------------------------------------------------------------------------
@@ -182,6 +183,13 @@ func WithSlashing(detector *slashing.Detector, db *slashing.DB) Option {
 	}
 }
 
+// WithLogger sets the engine logger.
+func WithLogger(l log.Logger) Option {
+	return func(t *Transitive) {
+		t.log = l
+	}
+}
+
 // WithVoteBuffers sets channel buffer sizes.
 func WithVoteBuffers(requests, votes int) Option {
 	return func(t *Transitive) {
@@ -247,6 +255,9 @@ type Transitive struct {
 	// Slashing: equivocation detection (optional, nil disables)
 	slashingDetector *slashing.Detector
 	slashingDB       *slashing.DB
+
+	// Logger for consensus events (nil-safe: uses log.Noop() if unset)
+	log log.Logger
 }
 
 // New creates an engine with default parameters.
@@ -296,6 +307,10 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 
 	for _, opt := range opts {
 		opt(t)
+	}
+
+	if t.log == nil {
+		t.log = log.Noop()
 	}
 
 	return t
@@ -747,7 +762,14 @@ func (t *Transitive) processPendingBlocks() {
 				action.vmBlock.Accept(ctx)
 			}
 			if vm != nil {
-				vm.SetPreference(ctx, action.blockID)
+				if err := vm.SetPreference(ctx, action.blockID); err != nil {
+					t.log.Crit("SetPreference failed after Accept — forcing preference",
+						"blockID", action.blockID,
+						"error", err)
+					// Force consensus to match the accepted block so the
+					// engine and VM don't diverge on preferred tip.
+					t.consensus.ForcePreference(action.blockID)
+				}
 			}
 		} else {
 			if action.vmBlock != nil {
@@ -863,6 +885,19 @@ func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
 		_ = pending.VMBlock.Accept(ctx)
 	}
 
+	// SetPreference must follow Accept to keep VM and consensus in sync.
+	t.mu.RLock()
+	vm := t.vm
+	t.mu.RUnlock()
+	if vm != nil {
+		if err := vm.SetPreference(ctx, blockID); err != nil {
+			t.log.Crit("SetPreference failed after Accept — forcing preference",
+				"blockID", blockID,
+				"error", err)
+			t.consensus.ForcePreference(blockID)
+		}
+	}
+
 	// Pipeline: block finalized → immediately build next
 	t.signalPipeline()
 }
@@ -888,9 +923,21 @@ func (t *Transitive) DrainAccepted(ctx context.Context) {
 	}
 	t.mu.Unlock()
 
+	t.mu.RLock()
+	vm := t.vm
+	t.mu.RUnlock()
+
 	for _, a := range toAccept {
 		if a.blk != nil {
 			_ = a.blk.Accept(ctx)
+		}
+		if vm != nil {
+			if err := vm.SetPreference(ctx, a.id); err != nil {
+				t.log.Crit("SetPreference failed after Accept — forcing preference",
+					"blockID", a.id,
+					"error", err)
+				t.consensus.ForcePreference(a.id)
+			}
 		}
 	}
 
@@ -905,12 +952,16 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 	}
 
 	for t.pendingBuildBlocks > 0 {
-		t.pendingBuildBlocks--
-
 		vmBlock, err := t.vm.BuildBlock(ctx)
 		if err != nil {
+			t.log.Error("BuildBlock failed, will retry next tick",
+				"error", err,
+				"pendingBuildBlocks", t.pendingBuildBlocks)
+			// Do NOT decrement pendingBuildBlocks — the request is still
+			// outstanding and will be retried on the next Notify or pipeline tick.
 			return nil
 		}
+		t.pendingBuildBlocks--
 
 		t.blocksBuilt++
 
@@ -956,7 +1007,12 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			t.mu.Unlock()
 			_ = vmBlock.Accept(ctx)
 			if t.vm != nil {
-				_ = t.vm.SetPreference(ctx, vmBlock.ID())
+				if err := t.vm.SetPreference(ctx, vmBlock.ID()); err != nil {
+					t.log.Crit("SetPreference failed after Accept — forcing preference",
+						"blockID", vmBlock.ID(),
+						"error", err)
+					t.consensus.ForcePreference(vmBlock.ID())
+				}
 			}
 			t.mu.Lock()
 		} else {
