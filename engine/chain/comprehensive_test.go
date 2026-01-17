@@ -613,8 +613,8 @@ func TestTransitiveNotifyPendingTxsWithVMError(t *testing.T) {
 	err := engine.Notify(ctx, msg)
 	require.NoError(err) // Errors are swallowed, not fatal
 
-	// Pending builds should be cleared after attempt
-	require.Zero(engine.PendingBuildBlocks())
+	// Pending builds must NOT be cleared on error — retained for retry (Q-01 fix)
+	require.Equal(1, engine.PendingBuildBlocks())
 }
 
 // TestTransitiveNotifyStateSyncDone tests Notify with StateSyncDone message
