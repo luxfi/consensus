@@ -282,6 +282,18 @@ func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) {
 	}
 }
 
+// ForcePreference forces the consensus preferred tip to the given block.
+// This is a recovery mechanism used when SetPreference fails after Accept —
+// without it, the VM and consensus engine disagree on the chain tip, causing
+// a state divergence death spiral.
+func (c *ChainConsensus) ForcePreference(blockID ids.ID) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.finalizedTip = blockID
+	// Ensure the forced block is a tip
+	c.tips[blockID] = true
+}
+
 // GetFinalizedTip returns the current finalized tip block ID.
 // This is useful for debugging and health checks.
 func (c *ChainConsensus) GetFinalizedTip() ids.ID {
