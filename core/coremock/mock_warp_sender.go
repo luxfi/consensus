@@ -103,3 +103,9 @@ type MockAppSender = MockWarpSender
 
 // Deprecated: Use NewMockWarpSender instead
 var NewMockAppSender = NewMockWarpSender
+
+// MockSender is an alias for MockWarpSender for backward compatibility
+type MockSender = MockWarpSender
+
+// NewMockSender is an alias for NewMockWarpSender for backward compatibility
+var NewMockSender = NewMockWarpSender
