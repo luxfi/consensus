@@ -1,59 +1,17 @@
-// Package version provides version information
+// Package version provides version information.
+// This package re-exports github.com/luxfi/version for backward compatibility.
+// New code should use github.com/luxfi/version directly.
 package version
 
-import "fmt"
+import (
+	"github.com/luxfi/version"
+)
 
-// Application represents an application version
-type Application struct {
-	Major int
-	Minor int
-	Patch int
+// Application is an alias for version.Application for backward compatibility.
+// New code should use version.Application directly.
+type Application = version.Application
 
-	// Additional metadata
-	Name string
-}
-
-// String returns the version string
-func (v *Application) String() string {
-	return fmt.Sprintf("%s-%d.%d.%d", v.Name, v.Major, v.Minor, v.Patch)
-}
-
-// Compatible returns whether versions are compatible
-func (v *Application) Compatible(other *Application) bool {
-	// Major version must match
-	return v.Major == other.Major
-}
-
-// Compare compares two versions
-// Returns -1 if v < other, 0 if v == other, 1 if v > other
-func (v *Application) Compare(other *Application) int {
-	if v.Major < other.Major {
-		return -1
-	}
-	if v.Major > other.Major {
-		return 1
-	}
-	if v.Minor < other.Minor {
-		return -1
-	}
-	if v.Minor > other.Minor {
-		return 1
-	}
-	if v.Patch < other.Patch {
-		return -1
-	}
-	if v.Patch > other.Patch {
-		return 1
-	}
-	return 0
-}
-
-// Current returns the current version
+// Current returns the current application version
 func Current() *Application {
-	return &Application{
-		Major: 1,
-		Minor: 22,
-		Patch: 0,
-		Name:  "lux",
-	}
+	return version.CurrentApp
 }
