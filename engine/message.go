@@ -4,27 +4,27 @@
 // Package engine provides consensus engine implementations.
 package engine
 
-import "github.com/luxfi/vm"
+import "github.com/luxfi/consensus/core"
 
-// Type aliases imported from vm package for consensus internal use
+// Type aliases from core package for consensus internal use
 type (
-	Message     = vm.Message
-	MessageType = vm.MessageType
-	Fx          = vm.Fx
-	FxLifecycle = vm.FxLifecycle
-	State       = vm.State
+	Message     = core.Message
+	MessageType = core.MessageType
+	Fx          = core.Fx
+	FxLifecycle = core.FxLifecycle
+	State       = core.State
 )
 
-// Re-export constants from vm package
+// Re-export constants from core package
 const (
-	PendingTxs    = vm.PendingTxs
-	StateSyncDone = vm.StateSyncDone
-	Unknown       = vm.Unknown
-	Starting      = vm.Starting
-	Syncing       = vm.Syncing
-	Bootstrapping = vm.Bootstrapping
-	Ready         = vm.Ready
-	Degraded      = vm.Degraded
-	Stopping      = vm.Stopping
-	Stopped       = vm.Stopped
+	PendingTxs    = core.PendingTxs
+	StateSyncDone = core.StateSyncDone
+	Unknown       = core.Unknown
+	Starting      = core.Starting
+	Syncing       = core.Syncing
+	Bootstrapping = core.Bootstrapping
+	Ready         = core.Ready
+	Degraded      = core.Degraded
+	Stopping      = core.Stopping
+	Stopped       = core.Stopped
 )
