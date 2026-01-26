@@ -16,7 +16,9 @@ require (
 	github.com/luxfi/metric v1.4.11
 	github.com/luxfi/p2p v1.18.7
 	github.com/luxfi/ringtail v0.2.0
-	github.com/luxfi/runtime v0.0.0-00010101000000-000000000000
+	github.com/luxfi/runtime v1.0.0
+	github.com/luxfi/validators v1.0.0
+	github.com/luxfi/version v1.0.1
 	github.com/luxfi/vm v1.0.20
 	github.com/luxfi/warp v1.18.5
 	github.com/prometheus/client_golang v1.23.2
@@ -60,8 +62,6 @@ require (
 	github.com/luxfi/mock v0.1.1 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.3 // indirect
-	github.com/luxfi/validators v0.0.0 // indirect
-	github.com/luxfi/version v1.0.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
@@ -92,7 +92,3 @@ require (
 exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 
 exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
-
-replace github.com/luxfi/runtime => ../runtime
-
-replace github.com/luxfi/validators => ../validators
