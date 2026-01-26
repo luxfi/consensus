@@ -1,5 +1,5 @@
 // Package core provides core consensus interfaces and contracts.
-// This package has zero dependencies on consensus modules.
+// This package has zero dependencies on vm modules to avoid import cycles.
 package core
 
 import (
@@ -7,7 +7,6 @@ import (
 
 	"github.com/luxfi/consensus/engine/interfaces"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/vm"
 )
 
 // BlockState represents block storage for consensus
@@ -53,19 +52,35 @@ type UTXO interface {
 	Amount() uint64
 }
 
-// Type aliases to vm package
-type (
-	Message     = vm.Message
-	MessageType = vm.MessageType
-	Fx          = vm.Fx
-	FxLifecycle = vm.FxLifecycle
+// MessageType defines types of messages sent between VMs and consensus
+type MessageType uint32
+
+// Message types for VM communication
+const (
+	PendingTxs    MessageType = 0
+	StateSyncDone MessageType = 1
 )
 
-// Constants re-exported from vm package
-const (
-	PendingTxs    = vm.PendingTxs
-	StateSyncDone = vm.StateSyncDone
-)
+// Message represents a message from VM to consensus engine
+type Message struct {
+	Type MessageType
+	Data []byte
+}
+
+// Fx represents a feature extension interface
+type Fx interface {
+	Initialize(vm interface{}) error
+	Bootstrapping() error
+	Bootstrapped() error
+}
+
+// FxLifecycle represents the lifecycle methods for feature extensions
+type FxLifecycle interface {
+	Initialize(vm interface{}) error
+	Bootstrapping() error
+	Bootstrapped() error
+	Shutdown() error
+}
 
 // VM is an alias to engine/interfaces.VM for backwards compatibility
 // Import from github.com/luxfi/consensus/engine/interfaces for the full VM interface
@@ -79,25 +94,25 @@ type AppError struct {
 
 func (e AppError) Error() string { return e.Message }
 
-// State is the VM lifecycle state, re-exported from vm.State
-type State = vm.State
+// State represents the operational state of a VM or consensus engine
+type State = interfaces.State
 
 // VMState is an alias for State (for compatibility with older code)
-type VMState = vm.State
+type VMState = interfaces.State
 
-// Re-export state constants from vm package
+// Re-export state constants from interfaces package
 const (
-	Unknown       = vm.Unknown
-	Starting      = vm.Starting
-	Syncing       = vm.Syncing
-	Bootstrapping = vm.Bootstrapping
-	Ready         = vm.Ready
-	Degraded      = vm.Degraded
-	Stopping      = vm.Stopping
-	Stopped       = vm.Stopped
+	Unknown       = interfaces.Unknown
+	Starting      = interfaces.Starting
+	Syncing       = interfaces.Syncing
+	Bootstrapping = interfaces.Bootstrapping
+	Ready         = interfaces.Ready
+	Degraded      = interfaces.Degraded
+	Stopping      = interfaces.Stopping
+	Stopped       = interfaces.Stopped
 
 	// Legacy aliases for VMState constants (old naming convention)
-	VMStateSyncing  = vm.Syncing
-	VMBootstrapping = vm.Bootstrapping
-	VMNormalOp      = vm.Ready
+	VMStateSyncing  = interfaces.Syncing
+	VMBootstrapping = interfaces.Bootstrapping
+	VMNormalOp      = interfaces.Ready
 )
