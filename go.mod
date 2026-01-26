@@ -8,18 +8,17 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
 	github.com/luxfi/accel v1.0.1
-	github.com/luxfi/crypto v1.17.39
-	github.com/luxfi/database v1.17.39
+	github.com/luxfi/crypto v1.17.40
+	github.com/luxfi/database v1.17.40
 	github.com/luxfi/ids v1.2.9
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/math v1.2.3
 	github.com/luxfi/metric v1.4.11
-	github.com/luxfi/p2p v1.18.7
+	github.com/luxfi/p2p v1.18.9
 	github.com/luxfi/ringtail v0.2.0
 	github.com/luxfi/runtime v1.0.0
 	github.com/luxfi/validators v1.0.0
 	github.com/luxfi/version v1.0.1
-	github.com/luxfi/vm v1.0.20
 	github.com/luxfi/warp v1.18.5
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
@@ -61,18 +60,20 @@ require (
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
+	github.com/luxfi/atomic v1.0.0 // indirect
 	github.com/luxfi/cache v1.2.1 // indirect
 	github.com/luxfi/codec v1.1.3 // indirect
-	github.com/luxfi/compress v0.0.4 // indirect
+	github.com/luxfi/compress v0.0.5 // indirect
 	github.com/luxfi/concurrent v0.0.3 // indirect
 	github.com/luxfi/constants v1.4.3 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
-	github.com/luxfi/geth v1.16.69 // indirect
+	github.com/luxfi/geth v1.16.73 // indirect
 	github.com/luxfi/lattice/v7 v7.0.0 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
-	github.com/luxfi/utils v1.1.3 // indirect
+	github.com/luxfi/utils v1.1.4 // indirect
+	github.com/luxfi/vm v1.0.27 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
