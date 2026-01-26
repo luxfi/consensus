@@ -2,10 +2,43 @@ package block
 
 import (
 	"context"
+	"net/http"
 	"time"
 
+	"github.com/luxfi/database"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/log"
+	"github.com/luxfi/runtime"
+	"github.com/luxfi/version"
+	"github.com/luxfi/warp"
 )
+
+// Init defines the initialization parameters for a VM.
+// This mirrors the Init struct from the vm package to avoid circular imports.
+type Init struct {
+	// Runtime provides chain-scoped wiring/identity/services.
+	Runtime *runtime.Runtime
+
+	// DB is this chain's database namespace (may be a view).
+	DB database.Database
+
+	// Sender is the canonical warp sender.
+	Sender warp.Sender
+
+	// Log is the logger for the VM.
+	Log log.Logger
+
+	// Genesis, Upgrade, Config are the initialization bytes.
+	Genesis []byte
+	Upgrade []byte
+	Config  []byte
+
+	// Fx registry or feature flags
+	Fx []any
+
+	// ToEngine delivers VM->engine notifications.
+	ToEngine chan<- Message
+}
 
 // Block is a block in the chain
 type Block interface {
@@ -46,20 +79,16 @@ type SignedBlock interface {
 	Proposer() ids.NodeID
 }
 
+// HealthCheckResult contains health check information
+type HealthCheckResult struct {
+	Healthy bool              `json:"healthy"`
+	Details map[string]string `json:"details,omitempty"`
+}
+
 // ChainVM defines the interface for a blockchain VM
 type ChainVM interface {
-	// Initialize initializes the VM
-	Initialize(
-		ctx context.Context,
-		chainCtx interface{},
-		db interface{},
-		genesisBytes []byte,
-		upgradeBytes []byte,
-		configBytes []byte,
-		msgChan interface{},
-		fxs []interface{},
-		appSender interface{},
-	) error
+	// Initialize initializes the VM using the Init struct
+	Initialize(ctx context.Context, init Init) error
 
 	// BuildBlock builds a new block
 	BuildBlock(context.Context) (Block, error)
@@ -74,7 +103,7 @@ type ChainVM interface {
 	Shutdown(context.Context) error
 
 	// NewHTTPHandler returns a new HTTP handler for the VM
-	NewHTTPHandler(context.Context) (interface{}, error)
+	NewHTTPHandler(context.Context) (http.Handler, error)
 
 	// SetState sets the VM state
 	SetState(context.Context, uint32) error
@@ -83,9 +112,9 @@ type ChainVM interface {
 	Version(context.Context) (string, error)
 
 	// Network callbacks - optional
-	Connected(context.Context, ids.NodeID, interface{}) error
+	Connected(context.Context, ids.NodeID, *version.Application) error
 	Disconnected(context.Context, ids.NodeID) error
-	HealthCheck(context.Context) (interface{}, error)
+	HealthCheck(context.Context) (HealthCheckResult, error)
 
 	// GetBlockIDAtHeight gets block ID at a specific height
 	GetBlockIDAtHeight(context.Context, uint64) (ids.ID, error)
@@ -97,7 +126,7 @@ type ChainVM interface {
 	LastAccepted(context.Context) (ids.ID, error)
 
 	// WaitForEvent blocks until an event occurs that should trigger block building
-	WaitForEvent(context.Context) (interface{}, error)
+	WaitForEvent(context.Context) (Message, error)
 }
 
 // StateSyncMode defines state sync modes
@@ -197,15 +226,10 @@ func GetAncestors(
 	return ancestors, nil
 }
 
-// Network callbacks
-type ChainVMWithNetwork interface {
-	ChainVM
-	Connected(ctx context.Context, nodeID ids.NodeID, version interface{}) error
-	Disconnected(ctx context.Context, nodeID ids.NodeID) error
-}
+// ChainVMWithNetwork is an alias for ChainVM which now includes network callbacks.
+// Deprecated: Use ChainVM directly.
+type ChainVMWithNetwork = ChainVM
 
-// HealthCheck interface
-type ChainVMWithHealth interface {
-	ChainVM
-	HealthCheck(ctx context.Context) (interface{}, error)
-}
+// ChainVMWithHealth is an alias for ChainVM which now includes health check.
+// Deprecated: Use ChainVM directly.
+type ChainVMWithHealth = ChainVM
