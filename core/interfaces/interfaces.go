@@ -8,22 +8,21 @@ import (
 	"context"
 
 	"github.com/luxfi/ids"
-	"github.com/luxfi/vm"
 )
 
-// State is the VM lifecycle state, aliased from vm.State
-type State = vm.State
+// State represents the operational state of a VM or consensus engine.
+type State uint8
 
-// Re-export State constants from vm package
+// State constants for VM lifecycle
 const (
-	Unknown       = vm.Unknown
-	Starting      = vm.Starting
-	Syncing       = vm.Syncing
-	Bootstrapping = vm.Bootstrapping
-	Ready         = vm.Ready
-	Degraded      = vm.Degraded
-	Stopping      = vm.Stopping
-	Stopped       = vm.Stopped
+	Unknown       State = iota // Unknown state
+	Starting                   // VM is starting up
+	Syncing                    // VM is syncing state
+	Bootstrapping              // VM is bootstrapping
+	Ready                      // VM is ready for normal operation
+	Degraded                   // VM is degraded but operational
+	Stopping                   // VM is shutting down
+	Stopped                    // VM has stopped
 )
 
 // ChainState represents the state of the consensus chain
