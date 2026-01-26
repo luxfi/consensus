@@ -15,11 +15,26 @@ import (
 	"time"
 
 	validators "github.com/luxfi/consensus/validator"
+	"github.com/luxfi/database"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/metric"
-	"github.com/luxfi/vm/chains/atomic"
 	"github.com/luxfi/warp"
 )
+
+// Element represents an atomic operation element.
+// This mirrors vm/chains/atomic.Element to avoid import cycles.
+type Element struct {
+	Key    []byte   `serialize:"true"`
+	Value  []byte   `serialize:"true"`
+	Traits [][]byte `serialize:"true"`
+}
+
+// Requests represents atomic operation requests.
+// This mirrors vm/chains/atomic.Requests to avoid import cycles.
+type Requests struct {
+	RemoveRequests [][]byte   `serialize:"true"`
+	PutRequests    []*Element `serialize:"true"`
+}
 
 // ValidatorState is an alias to validators.State for convenience
 type ValidatorState = validators.State
@@ -125,8 +140,23 @@ type Metrics interface {
 }
 
 // SharedMemory is the canonical interface for cross-chain atomic operations.
-// Uses atomic.Requests and atomic.Element as the ONE canonical types.
-type SharedMemory = atomic.SharedMemory
+// This interface mirrors vm/chains/atomic.SharedMemory to avoid import cycles.
+type SharedMemory interface {
+	// Get fetches values corresponding to keys that have been sent from peerChainID
+	Get(peerChainID ids.ID, keys [][]byte) (values [][]byte, err error)
+
+	// Indexed returns a paginated result of values with given traits from peerChainID
+	Indexed(
+		peerChainID ids.ID,
+		traits [][]byte,
+		startTrait,
+		startKey []byte,
+		limit int,
+	) (values [][]byte, lastTrait, lastKey []byte, err error)
+
+	// Apply atomically applies requests to chainID keys in the map with batches
+	Apply(requests map[ids.ID]*Requests, batches ...database.Batch) error
+}
 
 // WarpSigner provides BLS signing for Warp messages.
 // Matches warp.Signer interface exactly.
