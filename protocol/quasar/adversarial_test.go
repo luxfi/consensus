@@ -109,56 +109,56 @@ func TestRealThresholdSig_Accepted(t *testing.T) {
 }
 
 // ============================================================================
-// Finding 2: BlockCert crypto verification (CRITICAL)
-// Red showed BlockCert.Verify() returned false unconditionally and
-// BlockCert with garbage bytes was not properly rejected by VerifyWithKeys.
+// Finding 2: QuasarCert crypto verification (CRITICAL)
+// Red showed QuasarCert.Verify() returned false unconditionally and
+// QuasarCert with garbage bytes was not properly rejected by VerifyWithKeys.
 // ============================================================================
 
-// TestBlockCert_GarbageBytes_Rejected proves that a BlockCert with
+// TestQuasarCert_GarbageBytes_Rejected proves that a QuasarCert with
 // garbage BLS and PQ bytes is rejected by VerifyWithKeys.
-func TestBlockCert_GarbageBytes_Rejected(t *testing.T) {
-	cert := &BlockCert{
+func TestQuasarCert_GarbageBytes_Rejected(t *testing.T) {
+	cert := &QuasarCert{
 		BLS:        []byte{0x01},
-		ZKProof:    []byte{0x01},
+		PQProof:    []byte{0x01},
 		Validators: 1,
 	}
 
 	// Verify with any key must return false -- bytes don't match any valid sig
 	require.False(t, cert.Verify([]string{"v1", "v2"}),
-		"BlockCert.Verify with garbage bytes must return false")
+		"QuasarCert.Verify with garbage bytes must return false")
 
 	// VerifyWithKeys with real keys must also fail
 	groupKey := []byte("some-group-key-material")
 	pqKey := []byte("some-pq-key-material")
 	require.False(t, cert.VerifyWithKeys(groupKey, pqKey),
-		"BlockCert.VerifyWithKeys with garbage bytes must return false")
+		"QuasarCert.VerifyWithKeys with garbage bytes must return false")
 }
 
-// TestBlockCert_NilCert_Rejected proves nil cert handling.
-func TestBlockCert_NilCert_Rejected(t *testing.T) {
-	var cert *BlockCert
+// TestQuasarCert_NilCert_Rejected proves nil cert handling.
+func TestQuasarCert_NilCert_Rejected(t *testing.T) {
+	var cert *QuasarCert
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("key")),
-		"nil BlockCert must return false")
+		"nil QuasarCert must return false")
 }
 
-// TestBlockCert_EmptyBLS_Rejected proves empty BLS field is rejected.
-func TestBlockCert_EmptyBLS_Rejected(t *testing.T) {
-	cert := &BlockCert{
+// TestQuasarCert_EmptyBLS_Rejected proves empty BLS field is rejected.
+func TestQuasarCert_EmptyBLS_Rejected(t *testing.T) {
+	cert := &QuasarCert{
 		BLS: []byte{},
-		ZKProof:   []byte{0x01, 0x02},
+		PQProof:   []byte{0x01, 0x02},
 	}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("key")),
-		"BlockCert with empty BLS must return false")
+		"QuasarCert with empty BLS must return false")
 }
 
-// TestBlockCert_EmptyPQ_Rejected proves empty PQ field is rejected.
-func TestBlockCert_EmptyPQ_Rejected(t *testing.T) {
-	cert := &BlockCert{
+// TestQuasarCert_EmptyPQ_Rejected proves empty PQ field is rejected.
+func TestQuasarCert_EmptyPQ_Rejected(t *testing.T) {
+	cert := &QuasarCert{
 		BLS: []byte{0x01, 0x02},
-		ZKProof:   []byte{},
+		PQProof:   []byte{},
 	}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("key")),
-		"BlockCert with empty PQ must return false")
+		"QuasarCert with empty PQ must return false")
 }
 
 // ============================================================================

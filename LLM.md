@@ -1,6 +1,6 @@
 # AI Assistant Knowledge Base - Lux Consensus
 
-**Last Updated**: 2025-12-12
+**Last Updated**: 2026-04-10
 **Project**: consensus
 **Organization**: Lux Industries Inc
 **Repository**: ~/work/lux/consensus
@@ -9,11 +9,33 @@
 
 The Lux Consensus package provides advanced consensus mechanisms for blockchain systems, featuring:
 
-- **Multi-Consensus Architecture**: Chain (linear), DAG (parallel), and PQ (post-quantum) consensus
-- **AI-Powered Consensus**: Neural networks and LLMs for block validation and proposal
-- **Shared Hallucinations**: Distributed AI consensus with evolutionary capabilities
+- **Dual Consensus (Quasar)**: BLS + PQ (ML-DSA/Ringtail) — two independent cryptographic hardness assumptions for PQ-safe finality
+- **Multi-Consensus Architecture**: Chain (linear), DAG (parallel), and PQ (post-quantum) consensus modes
+- **GPU-Accelerated Crypto** (aspirational): BLS pairing, lattice computations, ZK proof generation via MLX/Metal — not yet implemented
+- **ZAP Transport**: Zero-copy binary P2P protocol (157x faster deserialization than protobuf)
 - **Photon→Quasar Flow**: Light-speed consensus with DAG finalization
-- **Modular Design**: Pluggable consensus engines with hot-swapping support
+- **Modular Design**: Each crypto layer (BLS, Ringtail, ML-DSA) independently toggleable
+
+## Quasar Dual Consensus
+
+Two independent cryptographic layers, each can be enabled/disabled:
+
+| Layer | Algorithm | Hardness Assumption | PQ Safety | Size |
+|-------|-----------|---------------------|-----------|------|
+| **BLS** | BLS12-381 aggregate | Discrete log (elliptic curves) | Classical only | 48 bytes |
+| **PQ** | ML-DSA-65 / Ringtail Ring-LWE | Module-LWE (+ Module-SIS) | PQ-safe | variable |
+
+**Modes**:
+- BLS-only: fastest classical consensus
+- BLS + PQ: dual consensus with post-quantum proof (~248 bytes/block)
+
+**NOT called "triple" or "hybrid"** — it's dual consensus (BLS + PQ). ML-DSA and Ringtail are both PQ proof options, not separate consensus layers.
+
+**GPU acceleration**: aspirational (not yet implemented). Target: BLS pairing ops, lattice computations, ZK proof generation.
+
+**Inter-node transport**: ZAP (`github.com/luxfi/zap`), NOT `github.com/luxfi/p2p`.
+
+**PQ-TLS 1.3**: Coming for ZAP transport. Go 1.26 defaults to ML-KEM-768 in TLS 1.3 key exchange. When enabled, ZAP connections will use PQ-safe key agreement end-to-end.
 
 ## Performance (2026-01-27)
 
@@ -39,7 +61,7 @@ The Lux Consensus package provides advanced consensus mechanisms for blockchain 
 | Mode | Throughput | Notes |
 |------|------------|-------|
 | Parallel CPU | 26K votes/sec | 8 cores, lock-free aggregation |
-| MLX GPU batch | 100M+ votes/sec | Apple Silicon, 1K+ batch size |
+| MLX GPU batch | 100M+ votes/sec | Apple Silicon, 1K+ batch size (aspirational) |
 
 ### Zero-Allocation Hot Paths
 - Vote counting uses pre-allocated ring buffers

@@ -230,7 +230,7 @@ func (h *Certifier) validatorCount() int {
 // generateCert creates a lightweight certificate for internal block tracking.
 // NOTE: This uses SHA256 for internal engine use only. For real threshold
 // signatures with BLS + Ringtail, use the Signer via ProcessBlock in Quasar.
-func (h *Certifier) generateCert(block *Block) *BlockCert {
+func (h *Certifier) generateCert(block *Block) *QuasarCert {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -238,9 +238,9 @@ func (h *Certifier) generateCert(block *Block) *BlockCert {
 	blsData := sha256.Sum256(block.ID[:])
 	pqData := sha256.Sum256(append(block.ID[:], block.ChainID[:]...))
 
-	return &BlockCert{
+	return &QuasarCert{
 		BLS:        blsData[:],
-		ZKProof:    pqData[:],
+		PQProof:    pqData[:],
 		Epoch:      block.Height,
 		Finality:   time.Now(),
 		Validators: len(h.validators),
