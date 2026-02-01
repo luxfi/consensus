@@ -564,7 +564,7 @@ func TestEngine_ComputeHash(t *testing.T) {
 	}
 }
 
-func TestHybridConsensus_AddRemoveValidator(t *testing.T) {
+func TestQuasarConsensus_AddRemoveValidator(t *testing.T) {
 	hc, err := newCertifier(1)
 	if err != nil {
 		t.Fatalf("newCertifier failed: %v", err)
@@ -588,7 +588,7 @@ func TestHybridConsensus_AddRemoveValidator(t *testing.T) {
 	}
 }
 
-func TestHybridConsensus_GenerateCert(t *testing.T) {
+func TestQuasarConsensus_GenerateCert(t *testing.T) {
 	hc, err := newCertifier(1)
 	if err != nil {
 		t.Fatalf("newCertifier failed: %v", err)
@@ -611,7 +611,7 @@ func TestHybridConsensus_GenerateCert(t *testing.T) {
 		t.Error("expected non-empty BLS")
 	}
 
-	if len(cert.ZKProof) == 0 {
+	if len(cert.PQProof) == 0 {
 		t.Error("expected non-empty PQ")
 	}
 
@@ -867,10 +867,10 @@ func TestSigner_GetActiveValidatorCount(t *testing.T) {
 // Types Tests (types.go)
 // =============================================================================
 
-func TestBlockCert_Verify(t *testing.T) {
+func TestQuasarCert_Verify(t *testing.T) {
 	tests := []struct {
 		name       string
-		cert       *BlockCert
+		cert       *QuasarCert
 		validators []string
 		want       bool
 	}{
@@ -882,27 +882,27 @@ func TestBlockCert_Verify(t *testing.T) {
 		},
 		{
 			name: "empty BLS",
-			cert: &BlockCert{
+			cert: &QuasarCert{
 				BLS: nil,
-				ZKProof:   []byte{1, 2, 3},
+				PQProof:   []byte{1, 2, 3},
 			},
 			validators: []string{"v1"},
 			want:       false,
 		},
 		{
 			name: "empty PQ",
-			cert: &BlockCert{
+			cert: &QuasarCert{
 				BLS: []byte{1, 2, 3},
-				ZKProof:   nil,
+				PQProof:   nil,
 			},
 			validators: []string{"v1"},
 			want:       false,
 		},
 		{
 			name: "non-empty cert without crypto verification returns false",
-			cert: &BlockCert{
+			cert: &QuasarCert{
 				BLS:  []byte{1, 2, 3},
-				ZKProof:    []byte{4, 5, 6},
+				PQProof:    []byte{4, 5, 6},
 				Validators: 0,
 			},
 			validators: []string{"v1", "v2"},
@@ -930,9 +930,9 @@ func TestBlock_Fields(t *testing.T) {
 		Hash:      "0xabc",
 		Timestamp: now,
 		Data:      []byte("test data"),
-		Cert: &BlockCert{
+		Cert: &QuasarCert{
 			BLS:      []byte{7, 8, 9},
-			ZKProof:        []byte{10, 11, 12},
+			PQProof:        []byte{10, 11, 12},
 			Validators: 1,
 			Epoch:    100,
 			Finality: now,
