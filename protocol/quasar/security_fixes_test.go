@@ -72,42 +72,42 @@ func TestCRITICAL1_ThresholdSigWithoutVerifier(t *testing.T) {
 		"threshold sig must fail without configured verifier")
 }
 
-// TestCRITICAL2_BlockCertVerifyRejectGarbage verifies that BlockCert.Verify
+// TestCRITICAL2_QuasarCertVerifyRejectGarbage verifies that QuasarCert.Verify
 // with garbage BLS/PQ bytes returns false.
 //
 // Before the fix, Verify only checked len(BLS) > 0 && len(PQ) > 0, meaning
 // any non-empty bytes passed verification. No cryptographic check.
-func TestCRITICAL2_BlockCertVerifyRejectGarbage(t *testing.T) {
-	cert := &BlockCert{
+func TestCRITICAL2_QuasarCertVerifyRejectGarbage(t *testing.T) {
+	cert := &QuasarCert{
 		BLS:  []byte("garbage-bls-not-a-real-signature"),
-		ZKProof:    []byte("garbage-pq-not-a-real-certificate"),
+		PQProof:    []byte("garbage-pq-not-a-real-certificate"),
 		Validators: 0,
 	}
 
 	require.False(t, cert.Verify([]string{"v1", "v2", "v3"}),
-		"CRITICAL: BlockCert.Verify must not pass with garbage bytes")
+		"CRITICAL: QuasarCert.Verify must not pass with garbage bytes")
 }
 
-// TestCRITICAL2_BlockCertVerifyWithKeysNilCert verifies nil safety.
-func TestCRITICAL2_BlockCertVerifyWithKeysNilCert(t *testing.T) {
-	var cert *BlockCert
+// TestCRITICAL2_QuasarCertVerifyWithKeysNilCert verifies nil safety.
+func TestCRITICAL2_QuasarCertVerifyWithKeysNilCert(t *testing.T) {
+	var cert *QuasarCert
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("pq")),
 		"nil cert must fail")
 }
 
-// TestCRITICAL2_BlockCertVerifyWithKeysEmptyFields verifies that empty
+// TestCRITICAL2_QuasarCertVerifyWithKeysEmptyFields verifies that empty
 // BLS or PQ fields are rejected.
-func TestCRITICAL2_BlockCertVerifyWithKeysEmptyFields(t *testing.T) {
+func TestCRITICAL2_QuasarCertVerifyWithKeysEmptyFields(t *testing.T) {
 	// Empty BLS
-	cert := &BlockCert{BLS: nil, ZKProof:  []byte("pq")}
+	cert := &QuasarCert{BLS: nil, PQProof:  []byte("pq")}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("pq")))
 
 	// Empty PQ
-	cert = &BlockCert{BLS: []byte("bls"), ZKProof:  nil}
+	cert = &QuasarCert{BLS: []byte("bls"), PQProof:  nil}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("pq")))
 
 	// Empty group key
-	cert = &BlockCert{BLS: []byte("bls"), ZKProof:  []byte("pq")}
+	cert = &QuasarCert{BLS: []byte("bls"), PQProof:  []byte("pq")}
 	require.False(t, cert.VerifyWithKeys(nil, []byte("pq")))
 }
 
