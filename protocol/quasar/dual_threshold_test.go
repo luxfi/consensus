@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestBLSThresholdSigningFlow tests BLS threshold signing via the Hybrid engine.
+// TestBLSThresholdSigningFlow tests BLS threshold signing via the Quasar signer.
 func TestBLSThresholdSigningFlow(t *testing.T) {
 	// Generate BLS threshold keys for 2-of-3 threshold
 	shares, groupKey, err := GenerateThresholdKeys(threshold.SchemeBLS, 2, 3)
@@ -31,7 +31,7 @@ func TestBLSThresholdSigningFlow(t *testing.T) {
 	keyShares["v1"] = shares[1]
 	keyShares["v2"] = shares[2]
 
-	// Create hybrid engine with BLS threshold signing
+	// Create Quasar signer with BLS threshold signing
 	config := ThresholdConfig{
 		SchemeID:     threshold.SchemeBLS,
 		Threshold:    2,
@@ -41,7 +41,7 @@ func TestBLSThresholdSigningFlow(t *testing.T) {
 	}
 
 	h, err := NewSignerWithThresholdConfig(config)
-	require.NoError(t, err, "Failed to create hybrid engine")
+	require.NoError(t, err, "Failed to create Quasar signer")
 
 	// Verify threshold mode is enabled
 	require.True(t, h.IsThresholdMode(), "Should be in threshold mode")
@@ -173,9 +173,9 @@ func TestDualSigningFlow(t *testing.T) {
 	config, err := GenerateDualKeys(2, 3)
 	require.NoError(t, err, "Failed to generate dual keys")
 
-	// Create hybrid engine with dual threshold signing
+	// Create Quasar signer with dual threshold signing
 	h, err := NewSignerWithDualThreshold(*config)
-	require.NoError(t, err, "Failed to create hybrid engine")
+	require.NoError(t, err, "Failed to create Quasar signer")
 
 	require.True(t, h.IsDualThresholdMode(), "Should be in dual threshold mode")
 
