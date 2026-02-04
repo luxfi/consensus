@@ -150,12 +150,12 @@ func New(config *Config, onDone func(ctx context.Context, lastReqID uint32) erro
 //
 // This queries the VM for its current last accepted block and updates the
 // consensus engine to match. Steps:
-//   1. Query VM.LastAccepted() to get current chain tip
-//   2. Fetch block details (height) via VM.GetBlock()
-//   3. Update VM preference via SetPreference()
-//   4. Persist consensus metadata to StateStore (critical for restart)
-//   5. Notify consensus engine via Consensus.SyncState() or OnSyncComplete
-//   6. Invoke onDone callback to complete bootstrap
+//  1. Query VM.LastAccepted() to get current chain tip
+//  2. Fetch block details (height) via VM.GetBlock()
+//  3. Update VM preference via SetPreference()
+//  4. Persist consensus metadata to StateStore (critical for restart)
+//  5. Notify consensus engine via Consensus.SyncState() or OnSyncComplete
+//  6. Invoke onDone callback to complete bootstrap
 //
 // This is idempotent - calling it when already synced is safe.
 func (s *Syncer) Start(ctx context.Context, startReqID uint32) error {

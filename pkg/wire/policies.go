@@ -204,10 +204,10 @@ type SamplePolicy struct {
 }
 
 type sampleState struct {
-	candidate   *Candidate
-	preference  bool
-	confidence  int
-	roundVotes  map[uint64]map[VoterID]bool // round -> voter -> preference
+	candidate    *Candidate
+	preference   bool
+	confidence   int
+	roundVotes   map[uint64]map[VoterID]bool // round -> voter -> preference
 	currentRound uint64
 }
 
@@ -330,10 +330,10 @@ func (p *SamplePolicy) Verify(ctx context.Context, cert *Certificate) (bool, err
 
 // L1Policy provides finality via L1 chain inclusion
 type L1Policy struct {
-	mu          sync.RWMutex
-	l1Verifier  L1Verifier
-	candidates  map[CandidateID]*Candidate
-	certs       map[CandidateID]*Certificate
+	mu         sync.RWMutex
+	l1Verifier L1Verifier
+	candidates map[CandidateID]*Candidate
+	certs      map[CandidateID]*Certificate
 }
 
 // L1Verifier verifies L1 inclusion proofs
