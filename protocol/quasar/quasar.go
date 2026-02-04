@@ -89,15 +89,15 @@ type SignerConfig struct {
 	BLSGroupKey  threshold.PublicKey
 
 	// Corona threshold (native 2-round protocol)
-	CoronaShares  map[string]*coronaThreshold.KeyShare
+	CoronaShares   map[string]*coronaThreshold.KeyShare
 	CoronaGroupKey *coronaThreshold.GroupKey
 }
 
 // CoronaRound1State holds Round 1 data for all parties in a signing session.
 type CoronaRound1State struct {
-	SessionID int
-	PRFKey    []byte
-	SignerIDs []int
+	SessionID  int
+	PRFKey     []byte
+	SignerIDs  []int
 	Round1Data map[int]*coronaThreshold.Round1Data
 }
 
