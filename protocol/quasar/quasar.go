@@ -89,15 +89,15 @@ type SignerConfig struct {
 	BLSGroupKey  threshold.PublicKey
 
 	// Ringtail threshold (native 2-round protocol)
-	RingtailShares  map[string]*ringtailThreshold.KeyShare
+	RingtailShares   map[string]*ringtailThreshold.KeyShare
 	RingtailGroupKey *ringtailThreshold.GroupKey
 }
 
 // RingtailRound1State holds Round 1 data for all parties in a signing session.
 type RingtailRound1State struct {
-	SessionID int
-	PRFKey    []byte
-	SignerIDs []int
+	SessionID  int
+	PRFKey     []byte
+	SignerIDs  []int
 	Round1Data map[int]*ringtailThreshold.Round1Data
 }
 
