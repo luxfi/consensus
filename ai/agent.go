@@ -23,9 +23,9 @@ type AgentConfig struct {
 // DefaultAgentConfig returns sensible defaults for AI consensus
 func DefaultAgentConfig() AgentConfig {
 	return AgentConfig{
-		Alpha: 0.6,  // 60% confidence threshold
-		K:     20,   // Sample 20 nodes
-		Beta:  15,   // 15 rounds for finalization
+		Alpha: 0.6, // 60% confidence threshold
+		K:     20,  // Sample 20 nodes
+		Beta:  15,  // 15 rounds for finalization
 	}
 }
 
@@ -94,7 +94,7 @@ type ConsensusState[T ConsensusData] struct {
 	Round        uint64                        `json:"round"`
 	Phase        ConsensusPhase                `json:"phase"`
 	Proposals    map[string]*Proposal[T]       `json:"proposals"`
-	Votes        map[string]map[string]float64 `json:"votes"` // proposal -> node -> weight
+	Votes        map[string]map[string]float64 `json:"votes"`        // proposal -> node -> weight
 	Participants []string                      `json:"participants"` // nodes participating in consensus
 	Finalized    *Decision[T]                  `json:"finalized,omitempty"`
 	StartedAt    time.Time                     `json:"started_at"`
