@@ -17,15 +17,15 @@ import (
 // mockImportVM simulates a VM that has had blocks imported via RLP.
 // It tracks the last accepted block and supports SetPreference.
 type mockImportVM struct {
-	lastAcceptedID    ids.ID
-	lastAcceptedErr   error
-	blocks            map[ids.ID]*mockBlock
-	getBlockErr       error
-	setPreferenceID   ids.ID
-	setPreferenceErr  error
+	lastAcceptedID     ids.ID
+	lastAcceptedErr    error
+	blocks             map[ids.ID]*mockBlock
+	getBlockErr        error
+	setPreferenceID    ids.ID
+	setPreferenceErr   error
 	setPreferenceCalls int
-	buildBlockErr     error
-	parseBlockErr     error
+	buildBlockErr      error
+	parseBlockErr      error
 }
 
 func newMockImportVM() *mockImportVM {
