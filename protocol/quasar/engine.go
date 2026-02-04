@@ -53,7 +53,7 @@ func NewEngine(cfg Config) (Engine, error) {
 		incoming:        make(chan *Block, bufSize),
 		finalized:       make(chan *Block, bufSize),
 		finalizedBlocks: make(map[string]*Block),
-		certifier: certifier,
+		certifier:       certifier,
 	}, nil
 }
 
