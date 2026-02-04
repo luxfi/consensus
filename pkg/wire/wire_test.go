@@ -435,8 +435,8 @@ func TestQuantumPolicyRTEnforcement(t *testing.T) {
 
 	// Test 3: Quasar (dual BLS+RT) vote should be accepted
 	// Format: [scheme][bls_len_hi][bls_len_lo][bls...][rt...]
-	blsSig := make([]byte, 96)  // 96 byte BLS signature
-	rtSig := make([]byte, 100)  // Ringtail signature
+	blsSig := make([]byte, 96) // 96 byte BLS signature
+	rtSig := make([]byte, 100) // Ringtail signature
 	quasarSig := make([]byte, 0)
 	quasarSig = append(quasarSig, SigQuasar)
 	quasarSig = append(quasarSig, byte(len(blsSig)>>8), byte(len(blsSig))) // BLS length

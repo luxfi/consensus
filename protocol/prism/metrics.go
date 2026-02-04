@@ -11,19 +11,19 @@ import (
 // Metrics tracks performance counters for the Prism DAG protocol.
 type Metrics struct {
 	// Vertex operations
-	VerticesCreated  atomic.Uint64
+	VerticesCreated   atomic.Uint64
 	VerticesFinalized atomic.Uint64
-	VerticesRejected atomic.Uint64
+	VerticesRejected  atomic.Uint64
 
 	// Cut operations
-	CutsPerformed    atomic.Uint64
-	CutLatencyNs     atomic.Int64
-	LastCutTime      atomic.Int64
+	CutsPerformed atomic.Uint64
+	CutLatencyNs  atomic.Int64
+	LastCutTime   atomic.Int64
 
 	// DAG statistics
-	DAGWidth         atomic.Uint64 // Current frontier width
-	DAGDepth         atomic.Uint64 // Maximum chain depth
-	PendingVertices  atomic.Uint64
+	DAGWidth        atomic.Uint64 // Current frontier width
+	DAGDepth        atomic.Uint64 // Maximum chain depth
+	PendingVertices atomic.Uint64
 
 	// Throughput
 	VerticesPerSecond atomic.Uint64

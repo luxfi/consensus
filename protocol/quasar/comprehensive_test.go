@@ -1459,7 +1459,7 @@ func TestVerkleWitness_FullVerification_InsufficientThreshold(t *testing.T) {
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		BLSAggregate: blsSig, // Valid-length signature
+		BLSAggregate: blsSig,       // Valid-length signature
 		RingtailBits: []byte{0x01}, // Only 1 signer, need 5
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
@@ -2487,7 +2487,7 @@ func TestVerkleWitness_FullVerification_RingtailThresholdNotMet(t *testing.T) {
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		BLSAggregate: blsSig, // Valid-length signature
+		BLSAggregate: blsSig,       // Valid-length signature
 		RingtailBits: []byte{0x01}, // Only 1 signer, need 10
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
@@ -2701,7 +2701,7 @@ func TestVerkleWitness_VerifyStateTransition_SlowPath(t *testing.T) {
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		BLSAggregate: blsSig, // Valid-length signature
+		BLSAggregate: blsSig,       // Valid-length signature
 		RingtailBits: []byte{0x01}, // 1 signer meets threshold
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,

@@ -111,12 +111,12 @@ type DARef struct {
 
 // DA layer types
 const (
-	DATypeLocal  = "local"  // Local disk
-	DATypeIPFS   = "ipfs"   // IPFS CID
-	DATypeBlob   = "blob"   // EIP-4844 blob
-	DATypeWarp   = "warp"   // Lux Warp message
-	DATypeP2P    = "p2p"    // P2P gossip
-	DATypeMCP    = "mcp"    // MCP mesh storage
+	DATypeLocal = "local" // Local disk
+	DATypeIPFS  = "ipfs"  // IPFS CID
+	DATypeBlob  = "blob"  // EIP-4844 blob
+	DATypeWarp  = "warp"  // Lux Warp message
+	DATypeP2P   = "p2p"   // P2P gossip
+	DATypeMCP   = "mcp"   // MCP mesh storage
 )
 
 // DataAvailability handles candidate data storage and retrieval
@@ -246,7 +246,7 @@ type SequencerConfig struct {
 	K int `json:"k"`
 
 	// Consensus parameters
-	Alpha float64 `json:"alpha"` // Agreement threshold
+	Alpha float64 `json:"alpha"`  // Agreement threshold
 	Beta1 float64 `json:"beta_1"` // Soft finality threshold
 	Beta2 float64 `json:"beta_2"` // Hard finality threshold
 
@@ -255,7 +255,7 @@ type SequencerConfig struct {
 	HardPolicy PolicyID `json:"hard_policy"`
 
 	// Timeouts
-	RoundTimeoutMs int64 `json:"round_timeout_ms"`
+	RoundTimeoutMs    int64 `json:"round_timeout_ms"`
 	FinalityTimeoutMs int64 `json:"finality_timeout_ms"`
 }
 
@@ -264,14 +264,14 @@ type SequencerConfig struct {
 // SingleNodeConfig returns config for K=1 self-sequencing
 func SingleNodeConfig(domain []byte) SequencerConfig {
 	return SequencerConfig{
-		Domain:     domain,
-		K:          1,
-		Alpha:      1.0,
-		Beta1:      1.0,
-		Beta2:      1.0,
-		SoftPolicy: PolicyNone,
-		HardPolicy: PolicyNone,
-		RoundTimeoutMs: 100,
+		Domain:            domain,
+		K:                 1,
+		Alpha:             1.0,
+		Beta1:             1.0,
+		Beta2:             1.0,
+		SoftPolicy:        PolicyNone,
+		HardPolicy:        PolicyNone,
+		RoundTimeoutMs:    100,
 		FinalityTimeoutMs: 100,
 	}
 }
@@ -279,14 +279,14 @@ func SingleNodeConfig(domain []byte) SequencerConfig {
 // AgentMeshConfig returns config for K=3/5 agent mesh
 func AgentMeshConfig(domain []byte, k int) SequencerConfig {
 	return SequencerConfig{
-		Domain:     domain,
-		K:          k,
-		Alpha:      0.6,
-		Beta1:      0.5,
-		Beta2:      0.8,
-		SoftPolicy: PolicyQuorum,
-		HardPolicy: PolicyQuorum,
-		RoundTimeoutMs: 5000,
+		Domain:            domain,
+		K:                 k,
+		Alpha:             0.6,
+		Beta1:             0.5,
+		Beta2:             0.8,
+		SoftPolicy:        PolicyQuorum,
+		HardPolicy:        PolicyQuorum,
+		RoundTimeoutMs:    5000,
 		FinalityTimeoutMs: 30000,
 	}
 }
@@ -294,14 +294,14 @@ func AgentMeshConfig(domain []byte, k int) SequencerConfig {
 // BlockchainConfig returns config for large permissionless network
 func BlockchainConfig(domain []byte) SequencerConfig {
 	return SequencerConfig{
-		Domain:     domain,
-		K:          20,
-		Alpha:      0.65,
-		Beta1:      0.5,
-		Beta2:      0.8,
-		SoftPolicy: PolicySampleConvergence,
-		HardPolicy: PolicyQuantum,
-		RoundTimeoutMs: 1000,
+		Domain:            domain,
+		K:                 20,
+		Alpha:             0.65,
+		Beta1:             0.5,
+		Beta2:             0.8,
+		SoftPolicy:        PolicySampleConvergence,
+		HardPolicy:        PolicyQuantum,
+		RoundTimeoutMs:    1000,
 		FinalityTimeoutMs: 60000,
 	}
 }
@@ -309,14 +309,14 @@ func BlockchainConfig(domain []byte) SequencerConfig {
 // RollupConfig returns config for OP Stack style rollup
 func RollupConfig(domain []byte) SequencerConfig {
 	return SequencerConfig{
-		Domain:     domain,
-		K:          1,
-		Alpha:      1.0,
-		Beta1:      1.0,
-		Beta2:      1.0,
-		SoftPolicy: PolicyNone,       // Sequencer head is soft
-		HardPolicy: PolicyL1Inclusion, // L1 is hard
-		RoundTimeoutMs: 2000,
+		Domain:            domain,
+		K:                 1,
+		Alpha:             1.0,
+		Beta1:             1.0,
+		Beta2:             1.0,
+		SoftPolicy:        PolicyNone,        // Sequencer head is soft
+		HardPolicy:        PolicyL1Inclusion, // L1 is hard
+		RoundTimeoutMs:    2000,
 		FinalityTimeoutMs: 600000, // 10 minutes for L1 + challenge
 	}
 }

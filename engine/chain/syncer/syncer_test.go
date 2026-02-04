@@ -13,12 +13,12 @@ import (
 
 // mockVM implements the VM interface for testing.
 type mockVM struct {
-	lastAcceptedID    ids.ID
-	lastAcceptedErr   error
-	blocks            map[ids.ID]*mockBlock
-	getBlockErr       error
-	setPreferenceID   ids.ID
-	setPreferenceErr  error
+	lastAcceptedID     ids.ID
+	lastAcceptedErr    error
+	blocks             map[ids.ID]*mockBlock
+	getBlockErr        error
+	setPreferenceID    ids.ID
+	setPreferenceErr   error
 	setPreferenceCalls int
 }
 
@@ -59,23 +59,23 @@ type mockBlock struct {
 	status    uint8
 }
 
-func (b *mockBlock) ID() ids.ID            { return b.id }
-func (b *mockBlock) Parent() ids.ID        { return b.parentID }
-func (b *mockBlock) ParentID() ids.ID      { return b.parentID }
-func (b *mockBlock) Height() uint64        { return b.height }
-func (b *mockBlock) Timestamp() time.Time  { return b.timestamp }
-func (b *mockBlock) Status() uint8         { return b.status }
+func (b *mockBlock) ID() ids.ID                   { return b.id }
+func (b *mockBlock) Parent() ids.ID               { return b.parentID }
+func (b *mockBlock) ParentID() ids.ID             { return b.parentID }
+func (b *mockBlock) Height() uint64               { return b.height }
+func (b *mockBlock) Timestamp() time.Time         { return b.timestamp }
+func (b *mockBlock) Status() uint8                { return b.status }
 func (b *mockBlock) Verify(context.Context) error { return nil }
 func (b *mockBlock) Accept(context.Context) error { return nil }
 func (b *mockBlock) Reject(context.Context) error { return nil }
-func (b *mockBlock) Bytes() []byte         { return b.data }
+func (b *mockBlock) Bytes() []byte                { return b.data }
 
 // mockConsensus implements ConsensusState for testing.
 type mockConsensus struct {
-	syncCalled     bool
-	syncID         ids.ID
-	syncHeight     uint64
-	syncErr        error
+	syncCalled bool
+	syncID     ids.ID
+	syncHeight uint64
+	syncErr    error
 }
 
 func (m *mockConsensus) SyncState(ctx context.Context, lastAcceptedID ids.ID, height uint64) error {

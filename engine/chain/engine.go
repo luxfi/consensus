@@ -349,9 +349,9 @@ func (t *Transitive) IsBootstrapped() bool {
 // the consensus engine's lastAccepted pointer with the VM's actual state.
 //
 // This method:
-//   1. Updates the consensus finalizedTip to match the VM's last accepted block
-//   2. Clears any stale pending blocks that conflict with the new chain tip
-//   3. Marks the engine as bootstrapped
+//  1. Updates the consensus finalizedTip to match the VM's last accepted block
+//  2. Clears any stale pending blocks that conflict with the new chain tip
+//  3. Marks the engine as bootstrapped
 //
 // This is safe to call multiple times - it's idempotent.
 func (t *Transitive) SyncState(ctx context.Context, lastAcceptedID ids.ID, height uint64) error {

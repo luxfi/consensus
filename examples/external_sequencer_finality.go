@@ -11,7 +11,8 @@
 // output with Lux consensus + ML-DSA/ML-KEM attestations.
 //
 // Flow:
-//   External Sequencer → Lux Validators (PQ attestations) → L1 with PQ proof
+//
+//	External Sequencer → Lux Validators (PQ attestations) → L1 with PQ proof
 //
 // This is NOT modifying the external sequencer - it's an overlay that adds
 // post-quantum finality guarantees to any sequencer's output.
@@ -51,14 +52,14 @@ const (
 // ExternalBlock represents a block from any external sequencer
 type ExternalBlock struct {
 	// Sequencer-agnostic fields
-	BlockHash   [32]byte // Content hash from sequencer
-	ParentHash  [32]byte
-	Height      uint64
-	Timestamp   uint64
-	StateRoot   [32]byte
-	TxRoot      [32]byte // Merkle root of transactions
-	TxCount     uint32
-	RawPayload  []byte // Original sequencer block bytes
+	BlockHash  [32]byte // Content hash from sequencer
+	ParentHash [32]byte
+	Height     uint64
+	Timestamp  uint64
+	StateRoot  [32]byte
+	TxRoot     [32]byte // Merkle root of transactions
+	TxCount    uint32
+	RawPayload []byte // Original sequencer block bytes
 
 	// Source identification
 	SequencerType SequencerType
