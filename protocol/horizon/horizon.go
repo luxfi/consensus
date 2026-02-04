@@ -60,8 +60,8 @@ func TransitiveClosure[V comparable](store dag.Store[V], vertex V) []V {
 // Certificate represents a proof that a vertex has achieved consensus.
 type Certificate[V comparable] struct {
 	Vertex    V
-	Proof     []V   // Vertices that contributed to the certificate
-	Threshold int   // Minimum valid proofs required
+	Proof     []V // Vertices that contributed to the certificate
+	Threshold int // Minimum valid proofs required
 }
 
 // ValidateCertificate checks if a certificate meets the threshold with valid proofs.

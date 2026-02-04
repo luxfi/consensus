@@ -47,7 +47,6 @@ const (
 	Context
 )
 
-
 // Field represents a message field
 type Field byte
 

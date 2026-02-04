@@ -124,9 +124,9 @@ type Vote struct {
 
 // Signature scheme tags
 const (
-	SigNone   byte = 0x00
-	SigEd25519 byte = 0x01
-	SigBLS    byte = 0x02
+	SigNone     byte = 0x00
+	SigEd25519  byte = 0x01
+	SigBLS      byte = 0x02
 	SigRingtail byte = 0x03
 	SigQuasar   byte = 0x04 // BLS + Ringtail (Quasar protocol)
 )
@@ -231,11 +231,11 @@ type AgreementState struct {
 	CandidateID CandidateID `json:"candidate_id"`
 
 	// Soft finality
-	SoftFinalized bool        `json:"soft_finalized"`
+	SoftFinalized bool         `json:"soft_finalized"`
 	SoftCert      *Certificate `json:"soft_cert,omitempty"`
 
 	// Hard finality
-	HardFinalized bool        `json:"hard_finalized"`
+	HardFinalized bool         `json:"hard_finalized"`
 	HardCert      *Certificate `json:"hard_cert,omitempty"`
 }
 
