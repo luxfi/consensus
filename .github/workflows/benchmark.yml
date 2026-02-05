@@ -22,6 +22,7 @@ jobs:
   benchmark:
     name: Run Benchmarks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -51,6 +52,7 @@ jobs:
           echo "Skipping ZMQ benchmarks - networking layer moved to node repository" | tee -a zmq-benchmark.md
 
       - name: Run consensus benchmarks
+        timeout-minutes: 15
         run: |
           echo "" | tee -a consensus-benchmark.md
           echo "## Consensus Algorithm Benchmarks" | tee -a consensus-benchmark.md
@@ -61,7 +63,7 @@ jobs:
           echo "" | tee -a consensus-benchmark.md
           echo "### Results" | tee -a consensus-benchmark.md
           echo '```' | tee -a consensus-benchmark.md
-          go test -bench=. -benchmem -benchtime=10s -run=XXX ./config ./engine/pq ./protocol/field ./protocol/quasar ./qzmq 2>&1 | tee -a consensus-benchmark.md || true
+          go test -bench=. -benchmem -benchtime=3s -run=XXX ./config ./engine/pq ./protocol/field ./protocol/quasar ./qzmq 2>&1 | tee -a consensus-benchmark.md || true
           echo '```' | tee -a consensus-benchmark.md
 
       - name: Run ZMQ consensus integration benchmarks
