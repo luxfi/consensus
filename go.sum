@@ -142,6 +142,8 @@ github.com/luxfi/math v1.2.3 h1:BgvIFw/srPXFLbcqtoDhLJOfmBsn86GPA1iWgsoyUb4=
 github.com/luxfi/math v1.2.3/go.mod h1:C8STnF2H+D6rqBPt248CiWY2TGuJgdtv/+4UqrT15iM=
 github.com/luxfi/math/big v0.1.0 h1:Vz4c0RsZVPdIKPsHPgAJChH/R3p15WHRUz7LkLf+NIQ=
 github.com/luxfi/math/big v0.1.0/go.mod h1:BuxSu22RbO93xBLk5Eam5nldFponoJ73xDFz4uJ3Huk=
+github.com/luxfi/mdns v0.1.0 h1:VB3mQcETc9j5SY1S6lAgFtuGr/rjWuDgPYnxS+OKWMQ=
+github.com/luxfi/mdns v0.1.0/go.mod h1:/3dheKVjUk2yiS/ocH1IDzeLXOIe+kpVsErIGDOZdiQ=
 github.com/luxfi/metric v1.4.11 h1:XMkJSGasvZ4GMzW45m3utec3d0OhmxvF5xBwrkEYGak=
 github.com/luxfi/metric v1.4.11/go.mod h1:EAFmkzd5EX654G48HXKIsyJufOUa4sxmOJKvwSRbjng=
 github.com/luxfi/mock v0.1.1 h1:0HEtIjg1J6CWz+IUyP6rsGqNWTcmxjFnSQIhaDuARwY=
@@ -172,6 +174,7 @@ github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWE
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/miekg/dns v1.1.27/go.mod h1:KNUDUusw/aVsxyTYZM1oqvCicbwhgbNgztCETuNZ7xM=
 github.com/miekg/dns v1.1.66 h1:FeZXOS3VCVsKnEAd+wBkjMC3D2K+ww66Cq3VnCINuJE=
+github.com/miekg/dns v1.1.66/go.mod h1:jGFzBsSNbJw6z1HYut1RKBKHA9PBdxeHrZG8J+gC2WE=
 github.com/montanaflynn/stats v0.7.1 h1:etflOAAHORrCC44V+aR6Ftzort912ZU+YLiSTuV8eaE=
 github.com/montanaflynn/stats v0.7.1/go.mod h1:etXPPgVO6n31NxCd9KQUMvCM+ve0ruNzt6R8Bnaayow=
 github.com/mr-tron/base58 v1.2.0 h1:T/HDJBh4ZCPbU39/+c3rRvE0uKBQlU27+QI8LJ4t64o=
