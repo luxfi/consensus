@@ -65,9 +65,10 @@ func (s *SimpleValidatorState) GetChainID(netID ids.ID) (ids.ID, error) {
 	return netID, nil
 }
 
-// GetNetworkID returns the provided ID as the network ID for testing
+// GetNetworkID returns the primary network ID for testing.
+// All standard chains (P-Chain, X-Chain, C-Chain) belong to the primary network.
 func (s *SimpleValidatorState) GetNetworkID(chainID ids.ID) (ids.ID, error) {
-	return chainID, nil
+	return ids.Empty, nil
 }
 
 // Verify SimpleValidatorState implements validators.State
@@ -102,9 +103,10 @@ func (s *RuntimeValidatorState) GetChainID(netID ids.ID) (ids.ID, error) {
 	return netID, nil
 }
 
-// GetNetworkID returns the provided ID for testing
+// GetNetworkID returns the primary network ID for testing.
+// All standard chains (P-Chain, X-Chain, C-Chain) belong to the primary network.
 func (s *RuntimeValidatorState) GetNetworkID(chainID ids.ID) (ids.ID, error) {
-	return chainID, nil
+	return ids.Empty, nil
 }
 
 // GetWarpValidatorSets returns empty Warp validator sets for testing
