@@ -13,7 +13,7 @@ require (
 	github.com/luxfi/ids v1.2.9
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/math v1.2.3
-	github.com/luxfi/metric v1.4.11
+	github.com/luxfi/metric v1.4.12
 	github.com/luxfi/p2p v1.18.9
 	github.com/luxfi/ringtail v0.2.0
 	github.com/luxfi/runtime v1.0.0
