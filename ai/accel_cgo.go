@@ -1,6 +1,8 @@
 // Copyright (C) 2019-2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
+//go:build cgo && accel
+
 package ai
 
 import (
@@ -10,19 +12,6 @@ import (
 
 	"github.com/luxfi/accel/ops/consensus"
 )
-
-// Vote represents a consensus vote for batch processing.
-type Vote struct {
-	VoterID      [32]byte
-	BlockID      [32]byte
-	IsPreference bool
-}
-
-// ValidatorInfo contains validator information for quorum calculations.
-type ValidatorInfo struct {
-	ValidatorID [32]byte
-	Weight      uint64
-}
 
 // Backend provides GPU-accelerated consensus using luxfi/accel.
 type Backend struct {
@@ -81,7 +70,7 @@ func (b *Backend) ProcessVotesBatch(votes []Vote) (int, error) {
 }
 
 // ComputeQuorum checks if a quorum is reached for a set of votes.
-func (b *Backend) ComputeQuorum(votes []Vote, validators []ValidatorInfo, threshold float64) (*consensus.QuorumResult, error) {
+func (b *Backend) ComputeQuorum(votes []Vote, validators []ValidatorInfo, threshold float64) (*QuorumResult, error) {
 	if !b.initialized {
 		return nil, fmt.Errorf("backend not initialized")
 	}
@@ -103,7 +92,17 @@ func (b *Backend) ComputeQuorum(votes []Vote, validators []ValidatorInfo, thresh
 		}
 	}
 
-	return consensus.ComputeQuorum(voteData, validatorWeights, threshold)
+	result, err := consensus.ComputeQuorum(voteData, validatorWeights, threshold)
+	if err != nil {
+		return nil, err
+	}
+
+	return &QuorumResult{
+		HasQuorum:    result.HasQuorum,
+		TotalWeight:  result.TotalWeight,
+		VotedWeight:  result.VotedWeight,
+		QuorumWeight: result.QuorumWeight,
+	}, nil
 }
 
 // GetThroughput returns the current throughput in votes/second.
