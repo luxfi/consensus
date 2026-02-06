@@ -65,9 +65,9 @@ jobs:
       - name: Run consensus benchmarks
         timeout-minutes: 10
         run: |
-          echo "=== Running Fast Consensus Benchmarks (excluding slow integration and BFT benchmarks) ==="
-          echo "Note: Comprehensive benchmarks including BFT run in benchmark.yml workflow"
-          go test -bench=. -benchmem -benchtime=100ms -timeout=8m -run=^$ $(go list ./... | grep -v -E 'test/integration|engine/bft') | tee consensus-benchmark-results.txt || true
+          echo "=== Running Fast Consensus Benchmarks (core + protocol only) ==="
+          echo "Note: Full benchmarks including engine/BFT run in benchmark.yml workflow"
+          go test -bench=. -benchmem -benchtime=100ms -timeout=8m -run=^$ $(go list ./... | grep -E '^github.com/luxfi/consensus/(core|protocol|utils)') | tee consensus-benchmark-results.txt || true
 
       - name: Display consensus benchmark results
         run: |
