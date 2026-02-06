@@ -60,9 +60,10 @@ func (c *ChainConsensus) AddBlock(ctx context.Context, block *Block) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Check if block already exists
+	// Check if block already exists - this is not an error, just means
+	// we've already added this block. Return success.
 	if _, exists := c.blocks[block.id]; exists {
-		return fmt.Errorf("block already exists: %s", block.id)
+		return nil
 	}
 
 	// Initialize Lux consensus for this block using Photon → Wave → Focus
