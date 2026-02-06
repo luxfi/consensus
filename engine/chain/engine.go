@@ -298,8 +298,10 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 	t.bootstrapped = true
 	t.started = true
 
-	go t.pollLoop()
-	go t.voteHandler()
+	// Capture ctx in local variable to avoid race with struct field access
+	engineCtx := t.ctx
+	go t.pollLoopWithCtx(engineCtx)
+	go t.voteHandlerWithCtx(engineCtx)
 
 	return nil
 }
@@ -547,13 +549,13 @@ func (t *Transitive) GetPendingBlock(blockID ids.ID) (block.Block, bool) {
 // Internal
 // -----------------------------------------------------------------------------
 
-func (t *Transitive) pollLoop() {
+func (t *Transitive) pollLoopWithCtx(ctx context.Context) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-t.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			t.processPendingBlocks()
@@ -610,10 +612,10 @@ func (t *Transitive) processPendingBlocks() {
 	}
 }
 
-func (t *Transitive) voteHandler() {
+func (t *Transitive) voteHandlerWithCtx(ctx context.Context) {
 	for {
 		select {
-		case <-t.ctx.Done():
+		case <-ctx.Done():
 			return
 		case vote := <-t.votes:
 			t.handleVote(vote)
