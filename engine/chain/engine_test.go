@@ -3,6 +3,7 @@ package chain
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -322,8 +323,8 @@ type trackingMockBlock struct {
 	height       uint64
 	timestamp    time.Time
 	bytes        []byte
-	acceptCalled int
-	rejectCalled int
+	acceptCalled int64
+	rejectCalled int64
 }
 
 func (b *trackingMockBlock) ID() ids.ID                   { return b.id }
@@ -334,14 +335,17 @@ func (b *trackingMockBlock) Timestamp() time.Time         { return b.timestamp }
 func (b *trackingMockBlock) Status() uint8                { return 0 }
 func (b *trackingMockBlock) Verify(context.Context) error { return nil }
 func (b *trackingMockBlock) Accept(context.Context) error {
-	b.acceptCalled++
+	atomic.AddInt64(&b.acceptCalled, 1)
 	return nil
 }
 func (b *trackingMockBlock) Reject(context.Context) error {
-	b.rejectCalled++
+	atomic.AddInt64(&b.rejectCalled, 1)
 	return nil
 }
 func (b *trackingMockBlock) Bytes() []byte { return b.bytes }
+
+func (b *trackingMockBlock) AcceptCalled() int64 { return atomic.LoadInt64(&b.acceptCalled) }
+func (b *trackingMockBlock) RejectCalled() int64 { return atomic.LoadInt64(&b.rejectCalled) }
 
 // trackingMockVM returns trackingMockBlocks for acceptance tracking
 type trackingMockVM struct {
@@ -435,8 +439,8 @@ func TestEngine_DoesNotAcceptWithoutQuorum(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Block should NOT be accepted yet (insufficient votes)
-	if blk.acceptCalled > 0 {
-		t.Errorf("Block Accept() should NOT be called with insufficient votes, but was called %d times", blk.acceptCalled)
+	if blk.AcceptCalled() > 0 {
+		t.Errorf("Block Accept() should NOT be called with insufficient votes, but was called %d times", blk.AcceptCalled())
 	}
 
 	// Check consensus state - should not be accepted
@@ -505,8 +509,8 @@ func TestEngine_AcceptsAfterQuorum(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	// Block SHOULD be accepted after quorum
-	if blk.acceptCalled != 1 {
-		t.Errorf("Block Accept() should be called exactly once after quorum, but was called %d times", blk.acceptCalled)
+	if blk.AcceptCalled() != 1 {
+		t.Errorf("Block Accept() should be called exactly once after quorum, but was called %d times", blk.AcceptCalled())
 	}
 
 	// Block should no longer be in pending
@@ -747,8 +751,8 @@ func TestProcessVote_AcceptTrueIncrementsSupport(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Block should be accepted
-	if blk.acceptCalled != 1 {
-		t.Errorf("Expected Accept() to be called once, got %d", blk.acceptCalled)
+	if blk.AcceptCalled() != 1 {
+		t.Errorf("Expected Accept() to be called once, got %d", blk.AcceptCalled())
 	}
 }
 
@@ -797,8 +801,8 @@ func TestProcessVote_AcceptFalseDoesNotAccept(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Block should NOT be accepted (only reject votes received)
-	if blk.acceptCalled > 0 {
-		t.Errorf("Accept() should NOT be called with only reject votes, got %d calls", blk.acceptCalled)
+	if blk.AcceptCalled() > 0 {
+		t.Errorf("Accept() should NOT be called with only reject votes, got %d calls", blk.AcceptCalled())
 	}
 }
 
@@ -855,8 +859,8 @@ func TestEngine_RejectsWithInsufficientSupport(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	// Block should NOT have Accept called
-	if blk.acceptCalled > 0 {
-		t.Errorf("Block Accept() should NOT be called for rejected block, but was called %d times", blk.acceptCalled)
+	if blk.AcceptCalled() > 0 {
+		t.Errorf("Block Accept() should NOT be called for rejected block, but was called %d times", blk.AcceptCalled())
 	}
 }
 
