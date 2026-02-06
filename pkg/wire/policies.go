@@ -730,7 +730,7 @@ func isIPv6Literal(s string) bool {
 		c := s[i]
 		if c == ':' {
 			hasColon = true
-		} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		} else if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			// Contains non-hex, non-colon - probably a hostname
 			return false
 		}
