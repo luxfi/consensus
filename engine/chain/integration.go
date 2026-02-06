@@ -577,10 +577,8 @@ func SyncStateFromVM(ctx context.Context, vm BlockBuilder, consensus *Transitive
 		}
 	}
 
-	// Set preference
-	if err := vm.SetPreference(ctx, lastAcceptedID); err != nil {
-		// Non-fatal
-	}
+	// Set preference (non-fatal if this fails)
+	_ = vm.SetPreference(ctx, lastAcceptedID)
 
 	// Sync consensus
 	if consensus != nil {
