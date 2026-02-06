@@ -80,7 +80,12 @@ func TestGroupedEpochManager_ParallelKeygen(t *testing.T) {
 	t.Logf("Naive 999-validator keygen would be ~500ms+")
 
 	// 333 groups × 3ms = ~1s sequential keygen
-	require.Less(t, elapsed, 2*time.Second, "Grouped keygen should complete in reasonable time")
+	// Skip timing check with race detector (adds 10-20x overhead)
+	if !raceEnabled {
+		require.Less(t, elapsed, 2*time.Second, "Grouped keygen should complete in reasonable time")
+	} else {
+		t.Logf("Skipping timing check with race detector enabled")
+	}
 }
 
 func TestGroupedEpochManager_GroupAssignment(t *testing.T) {
@@ -177,7 +182,12 @@ func TestGroupedEpochManager_ParallelGroupSign(t *testing.T) {
 
 	// With groups of 3, should be ~243ms × 3 sequential = ~729ms
 	// But with parallel, should be ~243ms
-	require.Less(t, elapsed, 2*time.Second, "Signing should be reasonably fast")
+	// Skip timing check with race detector (adds 10-20x overhead)
+	if !raceEnabled {
+		require.Less(t, elapsed, 2*time.Second, "Signing should be reasonably fast")
+	} else {
+		t.Logf("Skipping timing check with race detector enabled")
+	}
 
 	// Verify grouped signature
 	gs := &GroupedSignature{
