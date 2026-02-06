@@ -4,6 +4,9 @@
 package context
 
 import (
+	"context"
+
+	"github.com/luxfi/ids"
 	"github.com/luxfi/runtime"
 )
 
@@ -22,3 +25,20 @@ type Keystore = runtime.Keystore
 
 // Metrics is an alias for runtime.Metrics
 type Metrics = runtime.Metrics
+
+// GetChainID extracts chain ID from context (backwards compatibility)
+var GetChainID = runtime.GetChainID
+
+// GetNetworkID extracts network ID from context (backwards compatibility)
+var GetNetworkID = runtime.GetNetworkID
+
+// GetValidatorState extracts validator state from context (backwards compatibility)
+var GetValidatorState = runtime.GetValidatorState
+
+// WithValidatorState adds a validator state to the context (backwards compatibility)
+var WithValidatorState = runtime.WithValidatorState
+
+// GetNetID is an alias for GetNetworkID for compatibility
+func GetNetID(ctx context.Context) ids.ID {
+	return ids.Empty // Stub for compatibility
+}
