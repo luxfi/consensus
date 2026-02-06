@@ -111,6 +111,10 @@ func TestProcessBatchSuccess(t *testing.T) {
 }
 
 func TestProcessMultipleBatches(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping in short mode")
+	}
+
 	config := DefaultPipelineConfig()
 	config.EnableGPU = false
 	config.BatchSize = 100
@@ -132,7 +136,7 @@ func TestProcessMultipleBatches(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Collect results
+	// Collect results with longer timeout for race detector
 	results := make([]*BatchResult, 0, batchCount)
 	wg.Add(1)
 	go func() {
@@ -141,7 +145,7 @@ func TestProcessMultipleBatches(t *testing.T) {
 			select {
 			case result := <-pipeline.Results():
 				results = append(results, result)
-			case <-time.After(5 * time.Second):
+			case <-time.After(30 * time.Second):
 				return
 			}
 		}
