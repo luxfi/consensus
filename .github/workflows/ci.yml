@@ -62,11 +62,11 @@ jobs:
         run: go build -o bin/consensus ./cmd/consensus
 
       - name: Run consensus benchmarks
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
           echo "=== Running Fast Consensus Benchmarks (excluding slow integration and BFT benchmarks) ==="
           echo "Note: Comprehensive benchmarks including BFT run in benchmark.yml workflow"
-          go test -bench=. -benchmem -benchtime=1s -timeout=5m -run=^$ $(go list ./... | grep -v -E 'test/integration|engine/bft') | tee consensus-benchmark-results.txt || true
+          go test -bench=. -benchmem -benchtime=100ms -timeout=8m -run=^$ $(go list ./... | grep -v -E 'test/integration|engine/bft') | tee consensus-benchmark-results.txt || true
 
       - name: Display consensus benchmark results
         run: |
