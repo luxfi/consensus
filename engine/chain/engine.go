@@ -690,10 +690,18 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		}
 
 		if err := t.consensus.AddBlock(ctx, consensusBlock); err != nil {
-			fmt.Printf("[CONSENSUS DEBUG] AddBlock failed: %v\n", err)
-			continue
+			// Check if block already exists in consensus - this is OK, just means
+			// we've already added it. We still need to track it in pendingBlocks
+			// so the polling/finalization logic can proceed.
+			if _, exists := t.pendingBlocks[vmBlock.ID()]; exists {
+				fmt.Printf("[CONSENSUS DEBUG] AddBlock: block already tracked in pendingBlocks, skipping: %s\n", vmBlock.ID())
+				continue
+			}
+			// Block exists in consensus but not in pendingBlocks - fall through to add it
+			fmt.Printf("[CONSENSUS DEBUG] AddBlock: block exists in consensus but not in pendingBlocks, will track: %s\n", vmBlock.ID())
+		} else {
+			fmt.Printf("[CONSENSUS DEBUG] AddBlock success for block=%s\n", vmBlock.ID())
 		}
-		fmt.Printf("[CONSENSUS DEBUG] AddBlock success for block=%s\n", vmBlock.ID())
 
 		t.pendingBlocks[vmBlock.ID()] = &PendingBlock{
 			ConsensusBlock: consensusBlock,
@@ -701,6 +709,15 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			ProposedAt:     time.Now(),
 			VoteCount:      1, // Count proposer's own vote
 			Decided:        false,
+		}
+
+		// CRITICAL: Process proposer's own vote through consensus Poll
+		// With quorum-size=1, this single vote should finalize the block
+		responses := map[ids.ID]int{vmBlock.ID(): 1}
+		if err := t.consensus.Poll(t.ctx, responses); err != nil {
+			fmt.Printf("[CONSENSUS DEBUG] Poll error for proposer vote: %v\n", err)
+		} else {
+			fmt.Printf("[CONSENSUS DEBUG] Poll processed proposer's vote for block=%s\n", vmBlock.ID())
 		}
 
 		fmt.Printf("[CONSENSUS DEBUG] proposer=%v\n", t.proposer != nil)
