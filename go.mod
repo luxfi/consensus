@@ -9,11 +9,11 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 require (
 	github.com/luxfi/accel v1.0.1
 	github.com/luxfi/crypto v1.17.40
-	github.com/luxfi/database v1.17.40
+	github.com/luxfi/database v1.17.42
 	github.com/luxfi/ids v1.2.9
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/math v1.2.3
-	github.com/luxfi/metric v1.4.12
+	github.com/luxfi/metric v1.5.0
 	github.com/luxfi/p2p v1.18.9
 	github.com/luxfi/ringtail v0.2.0
 	github.com/luxfi/runtime v1.0.0
@@ -47,7 +47,6 @@ require (
 	github.com/consensys/gnark-crypto v0.19.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
-	github.com/dgraph-io/badger/v4 v4.9.0 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.4.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/getsentry/sentry-go v0.40.0 // indirect
@@ -79,6 +78,7 @@ require (
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.4 // indirect
 	github.com/luxfi/vm v1.0.27 // indirect
+	github.com/luxfi/zapdb/v4 v4.9.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/miekg/dns v1.1.66 // indirect
