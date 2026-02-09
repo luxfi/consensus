@@ -221,7 +221,7 @@ func TestChainConsensusPollFinalization(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	// Beta=1 for quick finalization
+	// Beta=1 for quick finalization, K=1, Alpha=1 means 1 vote is enough
 	consensus := NewChainConsensus(1, 1, 1)
 
 	// Add a block
@@ -237,7 +237,13 @@ func TestChainConsensusPollFinalization(t *testing.T) {
 	// Initial state
 	require.False(consensus.IsAccepted(blockID))
 
-	// Poll multiple times to achieve finalization
+	// Process accept votes to meet the alpha threshold
+	// With alpha=1, we need at least 1 accept vote
+	for i := 0; i < 10; i++ {
+		require.NoError(consensus.ProcessVote(ctx, blockID, true))
+	}
+
+	// Poll to achieve finalization
 	responses := map[ids.ID]int{blockID: 10}
 	for i := 0; i < 5; i++ {
 		err := consensus.Poll(ctx, responses)
@@ -423,6 +429,7 @@ func TestTransitiveAddBlock(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Create a block
 	blockID := ids.GenerateTestID()
@@ -445,6 +452,7 @@ func TestTransitiveProcessVote(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Add a block first
 	blockID := ids.GenerateTestID()
@@ -468,6 +476,7 @@ func TestTransitivePoll(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Add a block first
 	blockID := ids.GenerateTestID()
@@ -494,6 +503,7 @@ func TestTransitiveIsAccepted(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Unknown block should not be accepted
 	unknownID := ids.GenerateTestID()
@@ -507,6 +517,7 @@ func TestTransitivePreference(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Initially should return empty preference
 	pref := engine.Preference()
@@ -540,6 +551,7 @@ func TestTransitiveNotifyPendingTxs(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Initially no pending builds
 	require.Zero(engine.PendingBuildBlocks())
@@ -560,6 +572,7 @@ func TestTransitiveNotifyPendingTxsWithVM(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Set a mock VM that succeeds
 	mockVM := &mockBlockBuilder{
@@ -585,6 +598,7 @@ func TestTransitiveNotifyPendingTxsWithVMError(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Set a mock VM that returns error
 	mockVM := &mockBlockBuilder{
@@ -610,6 +624,7 @@ func TestTransitiveNotifyStateSyncDone(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Send StateSyncDone notification
 	msg := Message{Type: StateSyncDone}
@@ -624,6 +639,7 @@ func TestTransitiveNotifyUnknownType(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Send unknown notification type
 	msg := Message{Type: 999}
@@ -658,8 +674,10 @@ func TestTransitiveBuildBlocksLockedNilVM(t *testing.T) {
 	// Set pending builds
 	engine.pendingBuildBlocks = 3
 
-	// buildBlocksLocked should exit early with nil VM
+	// buildBlocksLocked expects caller to hold mu.Lock
+	engine.mu.Lock()
 	err := engine.buildBlocksLocked(ctx)
+	engine.mu.Unlock()
 	require.NoError(err)
 
 	// Pending builds should remain unchanged
@@ -684,8 +702,10 @@ func TestTransitiveBuildBlocksLockedMultiple(t *testing.T) {
 	engine.vm = mockVM
 	engine.pendingBuildBlocks = 3
 
-	// Build should be called for each pending block
+	// buildBlocksLocked expects caller to hold mu.Lock
+	engine.mu.Lock()
 	err := engine.buildBlocksLocked(ctx)
+	engine.mu.Unlock()
 	require.NoError(err)
 	require.Equal(3, buildCount)
 	require.Zero(engine.pendingBuildBlocks)
@@ -712,8 +732,10 @@ func TestTransitiveBuildBlocksLockedPartialFailure(t *testing.T) {
 	engine.vm = mockVM
 	engine.pendingBuildBlocks = 3
 
-	// Should stop after error (not fatal)
+	// buildBlocksLocked expects caller to hold mu.Lock
+	engine.mu.Lock()
 	err := engine.buildBlocksLocked(ctx)
+	engine.mu.Unlock()
 	require.NoError(err)
 	require.Equal(2, buildCount) // Called twice (success, then fail)
 }
@@ -842,6 +864,7 @@ func TestTransitiveConcurrentNotify(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Set a simple VM
 	engine.SetVM(&mockBlockBuilder{
@@ -956,6 +979,7 @@ func TestTransitiveHealthCheckAfterStart(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	health, err := engine.HealthCheck(ctx)
 	require.NoError(err)
@@ -1081,6 +1105,7 @@ func TestFullConsensusFlow(t *testing.T) {
 	}
 	engine := NewWithParams(params)
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	// Add genesis block
 	genesisID := ids.GenerateTestID()
@@ -1177,6 +1202,7 @@ func TestNotifyMultiplePendingTxs(t *testing.T) {
 
 	engine := New()
 	require.NoError(engine.Start(ctx, true))
+	defer engine.Stop(ctx)
 
 	buildCount := 0
 	mockVM := &mockBlockBuilder{
