@@ -183,16 +183,34 @@ func (rt *Runtime) ForwardVMNotifications(toEngine <-chan block.Message) {
 	}
 
 	for msg := range toEngine {
+		// Translate block.MessageType → engine.MessageType
+		// block.PendingTxs = 1 (iota+1), core.PendingTxs = 0
+		// block.StateSyncDone = 2, core.StateSyncDone = 1
+		var engineMsgType MessageType
+		switch msg.Type {
+		case block.PendingTxs:
+			engineMsgType = PendingTxs
+		case block.StateSyncDone:
+			engineMsgType = StateSyncDone
+		default:
+			if !rt.config.Logger.IsZero() {
+				rt.config.Logger.Warn("unknown VM message type, dropping",
+					log.Uint32("type", uint32(msg.Type)))
+			}
+			continue
+		}
+
 		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("received VM notification, forwarding to consensus engine",
-				log.Uint32("type", uint32(msg.Type)))
+				log.Uint32("vmType", uint32(msg.Type)),
+				log.Uint32("engineType", uint32(engineMsgType)))
 		}
 
 		ctx := context.Background()
-		if err := rt.Notify(ctx, Message{Type: MessageType(msg.Type)}); err != nil {
+		if err := rt.Notify(ctx, Message{Type: engineMsgType}); err != nil {
 			if !rt.config.Logger.IsZero() {
 				rt.config.Logger.Warn("failed to notify consensus engine",
-					log.Uint32("type", uint32(msg.Type)),
+					log.Uint32("type", uint32(engineMsgType)),
 					log.Err(err))
 			}
 		}
