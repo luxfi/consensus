@@ -3,7 +3,6 @@ package chain
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -105,7 +104,8 @@ type PendingBlock struct {
 	ConsensusBlock *Block
 	VMBlock        block.Block
 	ProposedAt     time.Time
-	VoteCount      int
+	VoteCount      int // Accept votes
+	RejectCount    int // Reject votes
 	Decided        bool
 }
 
@@ -214,6 +214,7 @@ type Transitive struct {
 	cancel       context.CancelFunc
 	bootstrapped bool
 	started      bool
+	wg           sync.WaitGroup // tracks background goroutines
 
 	// Block management
 	pendingBlocks      map[ids.ID]*PendingBlock
@@ -300,6 +301,8 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 
 	// Capture ctx in local variable to avoid race with struct field access
 	engineCtx := t.ctx
+
+	t.wg.Add(2)
 	go t.pollLoopWithCtx(engineCtx)
 	go t.voteHandlerWithCtx(engineCtx)
 
@@ -313,12 +316,24 @@ func (t *Transitive) StartWithID(ctx context.Context, requestID uint32) error {
 
 // Stop stops the engine.
 func (t *Transitive) Stop(ctx context.Context) error {
+	// Cancel context first, outside the lock, to signal goroutines to exit.
+	// This prevents deadlock where goroutines are blocked waiting for the lock
+	// while we're holding the lock waiting for them to exit.
+	t.mu.RLock()
+	cancel := t.cancel
+	t.mu.RUnlock()
+
+	if cancel != nil {
+		cancel()
+	}
+
+	// Wait for goroutines to exit before updating state.
+	// This ensures clean shutdown without goroutine leaks.
+	t.wg.Wait()
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.cancel != nil {
-		t.cancel()
-	}
 	t.bootstrapped = false
 	t.started = false
 	return nil
@@ -374,9 +389,6 @@ func (t *Transitive) SyncState(ctx context.Context, lastAcceptedID ids.ID, heigh
 
 	// Ensure we're marked as bootstrapped
 	t.bootstrapped = true
-
-	fmt.Printf("[CONSENSUS] SyncState: updated to lastAccepted=%s height=%d\n",
-		lastAcceptedID, height)
 
 	return nil
 }
@@ -459,12 +471,9 @@ func (t *Transitive) Notify(ctx context.Context, msg Message) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	fmt.Printf("[CONSENSUS DEBUG] Notify: msg.Type=%v\n", msg.Type)
-
 	switch msg.Type {
 	case PendingTxs:
 		t.pendingBuildBlocks++
-		fmt.Printf("[CONSENSUS DEBUG] PendingTxs received, pendingBuildBlocks=%d\n", t.pendingBuildBlocks)
 		return t.buildBlocksLocked(ctx)
 	case StateSyncDone:
 		return nil
@@ -480,21 +489,13 @@ func (t *Transitive) ReceiveVote(vote Vote) bool {
 	t.mu.RUnlock()
 
 	if !started {
-		// Engine not started - drop vote to prevent state corruption
-		fmt.Printf("[VOTE DEBUG] ReceiveVote DROPPED: engine not started, blockID=%s from=%s accept=%v\n",
-			vote.BlockID, vote.NodeID, vote.Accept)
 		return false
 	}
 
 	select {
 	case t.votes <- vote:
-		fmt.Printf("[VOTE DEBUG] ReceiveVote QUEUED: blockID=%s from=%s accept=%v channelLen=%d\n",
-			vote.BlockID, vote.NodeID, vote.Accept, len(t.votes))
 		return true
 	default:
-		// Channel full; vote will be resent
-		fmt.Printf("[VOTE DEBUG] ReceiveVote DROPPED: channel full, blockID=%s from=%s accept=%v\n",
-			vote.BlockID, vote.NodeID, vote.Accept)
 		return false
 	}
 }
@@ -550,6 +551,8 @@ func (t *Transitive) GetPendingBlock(blockID ids.ID) (block.Block, bool) {
 // -----------------------------------------------------------------------------
 
 func (t *Transitive) pollLoopWithCtx(ctx context.Context) {
+	defer t.wg.Done()
+
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -558,128 +561,160 @@ func (t *Transitive) pollLoopWithCtx(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			// Check context again before processing to avoid work after shutdown
+			if ctx.Err() != nil {
+				return
+			}
 			t.processPendingBlocks()
 		}
 	}
 }
 
 func (t *Transitive) processPendingBlocks() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	// Phase 1: Snapshot pending block IDs under t.mu (fast read lock).
+	type candidate struct {
+		blockID ids.ID
+		vmBlock block.Block
+	}
+	t.mu.RLock()
+	var candidates []candidate
+	for blockID, pending := range t.pendingBlocks {
+		if !pending.Decided {
+			candidates = append(candidates, candidate{blockID: blockID, vmBlock: pending.VMBlock})
+		}
+	}
+	t.mu.RUnlock()
 
-	if len(t.pendingBlocks) > 0 {
-		fmt.Printf("[CONSENSUS DEBUG] processPendingBlocks: %d pending blocks\n", len(t.pendingBlocks))
+	if len(candidates) == 0 {
+		return
 	}
 
-	for blockID, pending := range t.pendingBlocks {
-		if pending.Decided {
-			continue
+	// Phase 2: Check consensus state WITHOUT holding t.mu (avoids nested lock).
+	type blockAction struct {
+		blockID ids.ID
+		vmBlock block.Block
+		accept  bool
+	}
+	var actions []blockAction
+	for _, c := range candidates {
+		if t.consensus.IsRejected(c.blockID) {
+			actions = append(actions, blockAction{blockID: c.blockID, vmBlock: c.vmBlock, accept: false})
+		} else if t.consensus.IsAccepted(c.blockID) {
+			actions = append(actions, blockAction{blockID: c.blockID, vmBlock: c.vmBlock, accept: true})
 		}
+	}
 
-		fmt.Printf("[CONSENSUS DEBUG] checking block %s: votes=%d isAccepted=%v isRejected=%v\n",
-			blockID, pending.VoteCount, t.consensus.IsAccepted(blockID), t.consensus.IsRejected(blockID))
+	if len(actions) == 0 {
+		return
+	}
 
-		if t.consensus.IsAccepted(blockID) {
+	// Phase 3: Update bookkeeping under t.mu write lock.
+	t.mu.Lock()
+	var vm BlockBuilder
+	var ctx context.Context
+	for _, action := range actions {
+		if pending, exists := t.pendingBlocks[action.blockID]; exists {
 			pending.Decided = true
-			t.blocksAccepted++
-			if pending.VMBlock != nil {
-				if err := pending.VMBlock.Accept(t.ctx); err != nil {
-					fmt.Printf("warning: accept failed for %s: %v\n", blockID, err)
-				}
+			if action.accept {
+				t.blocksAccepted++
+			} else {
+				t.blocksRejected++
 			}
-			// After accepting a block, update the VM's preferred block to build on
-			// This is critical: without this, the VM's Preferred() returns the old block
-			// while GetLastAccepted() returns the newly accepted block, causing
-			// GetState(preferred) to fail when building the next block
-			if t.vm != nil {
-				if err := t.vm.SetPreference(t.ctx, blockID); err != nil {
-					fmt.Printf("warning: SetPreference failed for %s: %v\n", blockID, err)
-				} else {
-					fmt.Printf("[CONSENSUS DEBUG] SetPreference updated to %s\n", blockID)
-				}
+			delete(t.pendingBlocks, action.blockID)
+		}
+	}
+	vm = t.vm
+	ctx = t.ctx
+	t.mu.Unlock()
+
+	// Phase 4: Execute VM operations outside all locks.
+	for _, action := range actions {
+		if action.accept {
+			if action.vmBlock != nil {
+				action.vmBlock.Accept(ctx)
 			}
-			delete(t.pendingBlocks, blockID)
-		} else if t.consensus.IsRejected(blockID) {
-			pending.Decided = true
-			t.blocksRejected++
-			if pending.VMBlock != nil {
-				if err := pending.VMBlock.Reject(t.ctx); err != nil {
-					fmt.Printf("warning: reject failed for %s: %v\n", blockID, err)
-				}
+			if vm != nil {
+				vm.SetPreference(ctx, action.blockID)
 			}
-			delete(t.pendingBlocks, blockID)
+		} else {
+			if action.vmBlock != nil {
+				action.vmBlock.Reject(ctx)
+			}
 		}
 	}
 }
 
 func (t *Transitive) voteHandlerWithCtx(ctx context.Context) {
+	defer t.wg.Done()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case vote := <-t.votes:
+			// Check context again before processing to avoid work after shutdown
+			if ctx.Err() != nil {
+				return
+			}
 			t.handleVote(vote)
 		}
 	}
 }
 
 func (t *Transitive) handleVote(vote Vote) {
+	// Collect state under t.mu, release before calling consensus methods
+	// to avoid nested lock (t.mu -> c.mu) deadlock.
 	t.mu.Lock()
-	defer t.mu.Unlock()
-
 	t.votesReceived++
-
-	fmt.Printf("[VOTE DEBUG] handleVote: blockID=%s from=%s accept=%v pendingBlocksCount=%d\n",
-		vote.BlockID, vote.NodeID, vote.Accept, len(t.pendingBlocks))
-
-	// Only process votes for blocks we're tracking
-	pending, exists := t.pendingBlocks[vote.BlockID]
-	if !exists {
-		// DEBUG: List all pending blocks to see what we ARE tracking
-		fmt.Printf("[VOTE DEBUG] handleVote DROPPED: block NOT in pendingBlocks. Tracking blocks:\n")
-		for id, p := range t.pendingBlocks {
-			fmt.Printf("[VOTE DEBUG]   - blockID=%s voteCount=%d decided=%v\n", id, p.VoteCount, p.Decided)
+	_, exists := t.pendingBlocks[vote.BlockID]
+	var voteCount int
+	if exists {
+		if vote.Accept {
+			t.pendingBlocks[vote.BlockID].VoteCount++
+			voteCount = t.pendingBlocks[vote.BlockID].VoteCount
+		} else {
+			t.pendingBlocks[vote.BlockID].RejectCount++
 		}
+	}
+	ctx := t.ctx
+	t.mu.Unlock()
+
+	if !exists {
 		return
 	}
 
-	fmt.Printf("[VOTE DEBUG] handleVote: block found in pending, currentVoteCount=%d\n", pending.VoteCount)
-
-	if err := t.consensus.ProcessVote(t.ctx, vote.BlockID, vote.Accept); err != nil {
-		fmt.Printf("[VOTE DEBUG] handleVote: ProcessVote error: %v\n", err)
+	if err := t.consensus.ProcessVote(ctx, vote.BlockID, vote.Accept); err != nil {
 		return
 	}
 
-	// Only count accept votes toward quorum
 	if vote.Accept {
-		pending.VoteCount++
-		fmt.Printf("[VOTE DEBUG] handleVote: incremented VoteCount to %d for block=%s\n",
-			pending.VoteCount, vote.BlockID)
-		responses := map[ids.ID]int{vote.BlockID: pending.VoteCount}
-		_ = t.consensus.Poll(t.ctx, responses)
+		responses := map[ids.ID]int{vote.BlockID: voteCount}
+		_ = t.consensus.Poll(ctx, responses)
+	} else {
+		// Trigger poll to check for rejection quorum
+		_ = t.consensus.Poll(ctx, map[ids.ID]int{vote.BlockID: voteCount})
 	}
 }
 
 func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 	if t.vm == nil {
-		fmt.Println("[CONSENSUS DEBUG] buildBlocksLocked: vm is nil")
 		return nil
 	}
-
-	fmt.Printf("[CONSENSUS DEBUG] buildBlocksLocked: pendingBuildBlocks=%d\n", t.pendingBuildBlocks)
 
 	for t.pendingBuildBlocks > 0 {
 		t.pendingBuildBlocks--
 
-		fmt.Println("[CONSENSUS DEBUG] calling vm.BuildBlock")
 		vmBlock, err := t.vm.BuildBlock(ctx)
 		if err != nil {
-			fmt.Printf("[CONSENSUS DEBUG] vm.BuildBlock error: %v\n", err)
 			return nil
 		}
-		fmt.Printf("[CONSENSUS DEBUG] vm.BuildBlock success: block=%s height=%d\n", vmBlock.ID(), vmBlock.Height())
 
 		t.blocksBuilt++
+
+		// Skip if already tracked
+		if _, exists := t.pendingBlocks[vmBlock.ID()]; exists {
+			continue
+		}
 
 		consensusBlock := &Block{
 			id:        vmBlock.ID(),
@@ -689,38 +724,27 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			data:      vmBlock.Bytes(),
 		}
 
-		if err := t.consensus.AddBlock(ctx, consensusBlock); err != nil {
-			// Check if block already exists in consensus - this is OK, just means
-			// we've already added it. We still need to track it in pendingBlocks
-			// so the polling/finalization logic can proceed.
-			if _, exists := t.pendingBlocks[vmBlock.ID()]; exists {
-				fmt.Printf("[CONSENSUS DEBUG] AddBlock: block already tracked in pendingBlocks, skipping: %s\n", vmBlock.ID())
-				continue
-			}
-			// Block exists in consensus but not in pendingBlocks - fall through to add it
-			fmt.Printf("[CONSENSUS DEBUG] AddBlock: block exists in consensus but not in pendingBlocks, will track: %s\n", vmBlock.ID())
-		} else {
-			fmt.Printf("[CONSENSUS DEBUG] AddBlock success for block=%s\n", vmBlock.ID())
+		// Release t.mu before calling consensus (avoids nested lock t.mu -> c.mu).
+		t.mu.Unlock()
+		addErr := t.consensus.AddBlock(ctx, consensusBlock)
+		if addErr == nil {
+			_ = t.consensus.ProcessVote(ctx, vmBlock.ID(), true)
+			_ = t.consensus.Poll(ctx, map[ids.ID]int{vmBlock.ID(): 1})
+		}
+		t.mu.Lock()
+
+		if addErr != nil {
+			continue
 		}
 
 		t.pendingBlocks[vmBlock.ID()] = &PendingBlock{
 			ConsensusBlock: consensusBlock,
 			VMBlock:        vmBlock,
 			ProposedAt:     time.Now(),
-			VoteCount:      1, // Count proposer's own vote
+			VoteCount:      1,
 			Decided:        false,
 		}
 
-		// CRITICAL: Process proposer's own vote through consensus Poll
-		// With quorum-size=1, this single vote should finalize the block
-		responses := map[ids.ID]int{vmBlock.ID(): 1}
-		if err := t.consensus.Poll(t.ctx, responses); err != nil {
-			fmt.Printf("[CONSENSUS DEBUG] Poll error for proposer vote: %v\n", err)
-		} else {
-			fmt.Printf("[CONSENSUS DEBUG] Poll processed proposer's vote for block=%s\n", vmBlock.ID())
-		}
-
-		fmt.Printf("[CONSENSUS DEBUG] proposer=%v\n", t.proposer != nil)
 		if t.proposer != nil {
 			proposal := BlockProposal{
 				BlockID:   vmBlock.ID(),
@@ -728,18 +752,12 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 				Height:    vmBlock.Height(),
 				ParentID:  vmBlock.ParentID(),
 			}
-			if err := t.proposer.Propose(ctx, proposal); err != nil {
-				fmt.Printf("warning: propose failed for %s: %v\n", vmBlock.ID(), err)
-			}
-			// Request votes from all validators (nil = all validators)
-			// This sends PullQuery messages asking validators to vote on this block
+			t.proposer.Propose(ctx, proposal)
 			voteReq := VoteRequest{
 				BlockID:    vmBlock.ID(),
-				Validators: nil, // nil means request from all validators
+				Validators: nil,
 			}
-			if err := t.proposer.RequestVotes(ctx, voteReq); err != nil {
-				fmt.Printf("warning: request votes failed for %s: %v\n", vmBlock.ID(), err)
-			}
+			t.proposer.RequestVotes(ctx, voteReq)
 		}
 	}
 	return nil
