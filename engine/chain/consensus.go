@@ -24,6 +24,10 @@ type Block struct {
 	luxConsensus *engine.LuxConsensus
 	accepted     bool
 	rejected     bool
+
+	// Vote tracking for rejection support
+	acceptVotes int
+	rejectVotes int
 }
 
 // ChainConsensus implements real Lux consensus for linear chains using Photon → Wave → Focus
@@ -60,10 +64,9 @@ func (c *ChainConsensus) AddBlock(ctx context.Context, block *Block) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Check if block already exists - this is not an error, just means
-	// we've already added this block. Return success.
+	// Check if block already exists
 	if _, exists := c.blocks[block.id]; exists {
-		return nil
+		return fmt.Errorf("block already exists: %s", block.id)
 	}
 
 	// Initialize Lux consensus for this block using Photon → Wave → Focus
@@ -96,8 +99,19 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept
 		return fmt.Errorf("block not initialized for consensus")
 	}
 
+	// Track both accept and reject votes
 	if accept {
+		block.acceptVotes++
 		block.luxConsensus.RecordVote(blockID)
+	} else {
+		block.rejectVotes++
+	}
+
+	// Check if rejection quorum is reached (reject votes >= alpha)
+	if block.rejectVotes >= c.alpha {
+		block.rejected = true
+		// Remove from tips since this block is rejected
+		delete(c.tips, blockID)
 	}
 
 	return nil
@@ -115,12 +129,31 @@ func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) err
 			continue
 		}
 
+		// Skip already decided blocks
+		if block.accepted || block.rejected {
+			continue
+		}
+
+		// Check if rejection quorum already reached (reject votes >= alpha)
+		if block.rejectVotes >= c.alpha {
+			block.rejected = true
+			delete(c.tips, blockID)
+			continue
+		}
+
+		// Only consider acceptance if we have enough accept votes
+		// This prevents premature acceptance with insufficient quorum
+		if block.acceptVotes < c.alpha {
+			continue
+		}
+
 		if block.luxConsensus != nil {
 			blockResponses := map[ids.ID]int{blockID: votes}
 			shouldContinue := block.luxConsensus.Poll(blockResponses)
 
 			// Check if block reached finality through Focus convergence
-			if !shouldContinue && block.luxConsensus.Decided() {
+			// AND we have sufficient accept votes (quorum reached)
+			if !shouldContinue && block.luxConsensus.Decided() && block.acceptVotes >= c.alpha {
 				block.accepted = true
 				c.finalizedTip = blockID
 			}
