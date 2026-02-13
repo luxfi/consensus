@@ -58,6 +58,11 @@ type Gossiper interface {
 	GossipPut(chainID ids.ID, networkID ids.ID, blockData []byte) int
 	// SendPullQuery sends a PullQuery to specific validators requesting votes.
 	SendPullQuery(chainID ids.ID, networkID ids.ID, blockID ids.ID, validators []ids.NodeID) int
+	// SendPushQuery sends a PushQuery (block data + vote request) to validators.
+	// Unlike PullQuery (which only sends blockID), PushQuery includes the block bytes
+	// so peers can immediately verify and respond with their vote.
+	// Returns the number of validators the message was sent to.
+	SendPushQuery(chainID ids.ID, networkID ids.ID, blockData []byte, validators []ids.NodeID) int
 	// SendVote sends a vote response back to the proposer node.
 	// Vote response back to the proposer
 	// This is called after fast-follow acceptance to notify the proposer
@@ -300,12 +305,21 @@ func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) er
 		}
 	}
 
-	sentTo := p.gossiper.SendPullQuery(p.chainID, p.networkID, req.BlockID, validators)
+	var sentTo int
+	if len(req.BlockData) > 0 {
+		// PushQuery: send block bytes + vote request in one message.
+		// Peers can immediately verify and respond with their vote.
+		sentTo = p.gossiper.SendPushQuery(p.chainID, p.networkID, req.BlockData, validators)
+	} else {
+		// Fallback to PullQuery (blockID only) if no block data available.
+		sentTo = p.gossiper.SendPullQuery(p.chainID, p.networkID, req.BlockID, validators)
+	}
 	if !p.logger.IsZero() {
 		p.logger.Debug("requested votes from validators",
 			log.Stringer("blockID", req.BlockID),
 			log.Int("requested", len(validators)),
-			log.Int("sentTo", sentTo))
+			log.Int("sentTo", sentTo),
+			log.Bool("pushQuery", len(req.BlockData) > 0))
 	}
 	return nil
 }
