@@ -107,6 +107,12 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept
 		block.rejectVotes++
 	}
 
+	// Check if acceptance quorum is reached (accept votes >= alpha)
+	if block.acceptVotes >= c.alpha && !block.accepted {
+		block.accepted = true
+		c.finalizedTip = blockID
+	}
+
 	// Check if rejection quorum is reached (reject votes >= alpha)
 	if block.rejectVotes >= c.alpha {
 		block.rejected = true
