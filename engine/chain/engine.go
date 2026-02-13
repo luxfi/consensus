@@ -88,6 +88,7 @@ type BlockProposal struct {
 // VoteRequest asks specific validators to vote.
 type VoteRequest struct {
 	BlockID    ids.ID
+	BlockData  []byte // Block bytes for PushQuery (peers can immediately verify and vote)
 	Validators []ids.NodeID
 }
 
@@ -755,6 +756,7 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			t.proposer.Propose(ctx, proposal)
 			voteReq := VoteRequest{
 				BlockID:    vmBlock.ID(),
+				BlockData:  vmBlock.Bytes(),
 				Validators: nil,
 			}
 			t.proposer.RequestVotes(ctx, voteReq)
