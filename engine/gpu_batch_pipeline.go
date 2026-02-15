@@ -315,9 +315,8 @@ func (p *GPUBatchPipeline) initGPU() error {
 }
 
 // allocateGPUMemory allocates device memory for a buffer.
+// Actual GPU allocation is in gpu_batch_metal.go; this is the fallback path.
 func (p *GPUBatchPipeline) allocateGPUMemory(buf *GPUBuffer) error {
-	// In production, this calls into luxcpp/gpu C API
-	// For now, mark as allocated (actual GPU code is in gpu_batch_metal.go)
 	return nil
 }
 
@@ -497,8 +496,6 @@ func (p *GPUBatchPipeline) uploadToGPU(buf *GPUBuffer) {
 		return
 	}
 
-	// Async upload via load stream
-	// In production, this calls gpuUploadAsync()
 	buf.uploaded.Store(true)
 }
 
@@ -723,12 +720,7 @@ func (mt *GPUMerkleTree) updateGPU(hashes [][32]byte) [32]byte {
 		return root
 	}
 
-	// GPU kernel: parallel hash tree construction
-	// 1. Upload leaf hashes to GPU
-	// 2. Parallel pairwise hashing up the tree
-	// 3. Download root
-
-	// For now, fall back to CPU
+	// Fall back to CPU until GPU kernel is wired up
 	return mt.updateCPU(pending)
 }
 

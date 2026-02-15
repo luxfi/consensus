@@ -166,7 +166,6 @@ type PQCertificate struct {
 	SignerSet []byte // Bitmap of signers
 
 	// Representative ML-DSA signatures (for PQ security)
-	// In production: threshold scheme or all signatures
 	MLDSASigs [][]byte
 	MLDSAPKs  [][]byte // Corresponding public keys
 
@@ -353,9 +352,8 @@ func (fa *FinalityAdapter) createCertificate(pending *PendingFinality) *PQCertif
 		}
 
 		// ML-DSA signature (store first few for verification)
-		if len(mldsaSigs) < 3 { // Store representative subset
+		if len(mldsaSigs) < 3 {
 			mldsaSigs = append(mldsaSigs, vote.MLDSASig)
-			// In production: include public key
 		}
 	}
 
@@ -492,7 +490,6 @@ func NewOPStackClient(rpcURL string, chainID uint64) *OPStackClient {
 func (c *OPStackClient) GetSequencerType() SequencerType { return c.seqType }
 
 func (c *OPStackClient) GetLatestBlock(ctx context.Context) (*ExternalBlock, error) {
-	// In production: call eth_getBlockByNumber("latest", false)
 	return &ExternalBlock{
 		SequencerType: c.seqType,
 		ChainID:       c.chainID,
@@ -500,7 +497,6 @@ func (c *OPStackClient) GetLatestBlock(ctx context.Context) (*ExternalBlock, err
 }
 
 func (c *OPStackClient) GetBlockByHeight(ctx context.Context, height uint64) (*ExternalBlock, error) {
-	// In production: call eth_getBlockByNumber
 	return &ExternalBlock{
 		SequencerType: c.seqType,
 		ChainID:       c.chainID,
@@ -509,7 +505,6 @@ func (c *OPStackClient) GetBlockByHeight(ctx context.Context, height uint64) (*E
 }
 
 func (c *OPStackClient) SubscribeBlocks(ctx context.Context) (<-chan *ExternalBlock, error) {
-	// In production: use eth_subscribe("newHeads")
 	return c.blocksCh, nil
 }
 

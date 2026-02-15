@@ -43,7 +43,7 @@ type Init struct {
 // Block is a block in the chain
 type Block interface {
 	ID() ids.ID
-	Parent() ids.ID // Alias for ParentID for compatibility
+	Parent() ids.ID
 	ParentID() ids.ID
 	Height() uint64
 	Timestamp() time.Time
@@ -226,10 +226,3 @@ func GetAncestors(
 	return ancestors, nil
 }
 
-// ChainVMWithNetwork is an alias for ChainVM which now includes network callbacks.
-// Deprecated: Use ChainVM directly.
-type ChainVMWithNetwork = ChainVM
-
-// ChainVMWithHealth is an alias for ChainVM which now includes health check.
-// Deprecated: Use ChainVM directly.
-type ChainVMWithHealth = ChainVM
