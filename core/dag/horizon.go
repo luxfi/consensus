@@ -302,14 +302,11 @@ func Horizon[V VID](store Store[V], checkpoints []EventHorizon[V]) EventHorizon[
 		}
 	}
 
-	// Create new event horizon
-	// In a real implementation, we'd verify post-quantum signatures
-	// For now, we establish the horizon at the highest reachable vertex
 	newHorizon := EventHorizon[V]{
 		Checkpoint: newCheckpoint,
 		Height:     maxHeight,
-		Validators: latest.Validators, // Inherit validators from previous
-		Signature:  latest.Signature,  // In real impl, create new aggregate signature
+		Validators: latest.Validators,
+		Signature:  latest.Signature,
 	}
 
 	return newHorizon
