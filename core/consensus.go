@@ -88,8 +88,7 @@ type FxLifecycle interface {
 	Shutdown() error
 }
 
-// VM is an alias to engine/interfaces.VM for backwards compatibility
-// Import from github.com/luxfi/consensus/engine/interfaces for the full VM interface
+// VM re-exports engine/interfaces.VM
 type VM = interfaces.VM
 
 // AppError represents an application-level error
@@ -103,8 +102,6 @@ func (e AppError) Error() string { return e.Message }
 // State represents the operational state of a VM or consensus engine
 type State = interfaces.State
 
-// VMState is an alias for State (for compatibility with older code)
-type VMState = interfaces.State
 
 // Re-export state constants from interfaces package
 const (
@@ -116,9 +113,4 @@ const (
 	Degraded      = interfaces.Degraded
 	Stopping      = interfaces.Stopping
 	Stopped       = interfaces.Stopped
-
-	// Legacy aliases for VMState constants (old naming convention)
-	VMStateSyncing  = interfaces.Syncing
-	VMBootstrapping = interfaces.Bootstrapping
-	VMNormalOp      = interfaces.Ready
 )
