@@ -13,8 +13,7 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// CGOConsensus is a CGO-based implementation of consensus
-// For now, it's the same as the pure Go implementation
+// CGOConsensus is a CGO-based consensus implementation
 type CGOConsensus struct {
 	mu         sync.RWMutex
 	preference atomic.Value // ids.ID

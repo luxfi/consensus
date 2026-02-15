@@ -1,4 +1,4 @@
-// Package validatorstest re-exports github.com/luxfi/validators/validatorstest for backward compatibility.
+// Package validatorstest re-exports github.com/luxfi/validators/validatorstest.
 package validatorstest
 
 import (
