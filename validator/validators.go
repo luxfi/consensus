@@ -1,13 +1,11 @@
-// Package validators provides validator state management.
-// This package re-exports github.com/luxfi/validators for backward compatibility.
-// New code should use github.com/luxfi/validators directly.
+// Package validators re-exports github.com/luxfi/validators.
 package validators
 
 import (
 	"github.com/luxfi/validators"
 )
 
-// State is an alias for validators.State for backward compatibility.
+// State re-exports validators.State.
 type State = validators.State
 
 // GetValidatorOutput is an alias for validators.GetValidatorOutput

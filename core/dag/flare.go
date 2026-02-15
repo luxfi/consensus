@@ -134,8 +134,6 @@ func HasSkipGeneric[V VID](store Store[V], vertex V, params Params) bool {
 	}
 
 	// Count vertices in next round that don't reference this vertex
-	// This is approximated by checking if they're not in the children set
-	// In a real implementation, we'd iterate through all vertices in round+1
 	for child := range childrenInNextRound {
 		childBlock, _ := store.Get(child)
 		hasReference := false
