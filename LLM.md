@@ -9,27 +9,31 @@
 
 The Lux Consensus package provides advanced consensus mechanisms for blockchain systems, featuring:
 
-- **Dual Consensus (Quasar)**: BLS + PQ (ML-DSA/Corona) — two independent cryptographic hardness assumptions for PQ-safe finality
+- **Triple Consensus (Quasar)**: BLS + Corona + ML-DSA — three independent cryptographic hardness assumptions for PQ-safe finality
 - **Multi-Consensus Architecture**: Chain (linear), DAG (parallel), and PQ (post-quantum) consensus modes
 - **GPU-Accelerated Crypto** (aspirational): BLS pairing, lattice computations, ZK proof generation via MLX/Metal — not yet implemented
 - **ZAP Transport**: Zero-copy binary P2P protocol (157x faster deserialization than protobuf)
 - **Photon→Quasar Flow**: Light-speed consensus with DAG finalization
 - **Modular Design**: Each crypto layer (BLS, Corona, ML-DSA) independently toggleable
 
-## Quasar Dual Consensus
+## Quasar Triple Consensus
 
-Two independent cryptographic layers, each can be enabled/disabled:
+Three independent cryptographic layers, each can be enabled/disabled:
 
 | Layer | Algorithm | Hardness Assumption | PQ Safety | Size |
 |-------|-----------|---------------------|-----------|------|
 | **BLS** | BLS12-381 aggregate | Discrete log (elliptic curves) | Classical only | 48 bytes |
-| **PQ** | ML-DSA-65 / Corona Ring-LWE | Module-LWE (+ Module-SIS) | PQ-safe | variable |
+| **Corona** | Ring-LWE threshold | Module-SIS | PQ-safe | variable |
+| **ML-DSA** | ML-DSA-65 (FIPS 204) | Module-LWE | PQ-safe | ~3.3 KB |
 
 **Modes**:
 - BLS-only: fastest classical consensus
-- BLS + PQ: dual consensus with post-quantum proof (~248 bytes/block)
+- BLS + ML-DSA: dual consensus with PQ identity proof
+- BLS + Corona: dual consensus with PQ threshold proof
+- BLS + Corona + ML-DSA: full triple consensus (`TripleSignRound1`, all 3 in parallel)
 
-**NOT called "triple" or "hybrid"** — it's dual consensus (BLS + PQ). ML-DSA and Corona are both PQ proof options, not separate consensus layers.
+`IsTripleMode()` returns true when all three signing paths are configured.
+`TripleSignRound1` runs BLS + Corona + ML-DSA in parallel via goroutines.
 
 **GPU acceleration**: aspirational (not yet implemented). Target: BLS pairing ops, lattice computations, ZK proof generation.
 

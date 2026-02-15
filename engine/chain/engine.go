@@ -317,7 +317,6 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 }
 
 // NewWithParams creates an engine with specific parameters.
-// Deprecated: Use NewWithConfig or New(WithParams(p)).
 func NewWithParams(params config.Parameters) *Transitive {
 	cfg := DefaultConfig()
 	cfg.Params = params
@@ -449,26 +448,19 @@ func (t *Transitive) HealthCheck(ctx context.Context) (interface{}, error) {
 	return stats, nil
 }
 
-// -----------------------------------------------------------------------------
-// Deprecated setters (backward compatibility)
-// -----------------------------------------------------------------------------
-
 // SetProposer sets the block proposer.
-// Deprecated: Use WithProposer option at construction.
 func (t *Transitive) SetProposer(proposer BlockProposer) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.proposer = proposer
 }
 
-// SetEmitter sets the proposer.
-// Deprecated: Use WithProposer option at construction.
+// SetEmitter sets the proposer (alias for SetProposer).
 func (t *Transitive) SetEmitter(e BlockProposer) {
 	t.SetProposer(e)
 }
 
 // SetVM sets the block builder.
-// Deprecated: Use WithVM option at construction.
 func (t *Transitive) SetVM(vm BlockBuilder) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
