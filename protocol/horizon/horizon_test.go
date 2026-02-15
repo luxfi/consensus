@@ -88,7 +88,6 @@ func (g *TestGraph) Children(v string) []string {
 	return children
 }
 
-// Legacy methods for backward compatibility
 func (g *TestGraph) Parents(v string) []string {
 	return g.edges[v]
 }
