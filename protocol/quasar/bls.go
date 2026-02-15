@@ -81,10 +81,6 @@ type Bundle struct {
 	Binding []byte
 }
 
-// QBlock is an alias for Block for backward compatibility.
-// Deprecated: Use Block instead.
-type QBlock = Block
-
 // Client interface for Quasar operations
 type Client interface {
 	SubmitCheckpoint(epoch uint64, root []byte, attest []byte) error

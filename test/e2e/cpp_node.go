@@ -39,9 +39,8 @@ func (n *CppNode) Start(ctx context.Context, port int) error {
 		return fmt.Errorf("c++ binary not available")
 	}
 
-	// For now, just mark as healthy - actual IPC would be implemented here
 	n.healthy = true
-	n.t.Log("C++ node started successfully (simulated)")
+	n.t.Log("C++ node started (simulated)")
 	return nil
 }
 

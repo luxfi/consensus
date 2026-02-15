@@ -63,7 +63,7 @@ func NewLuxConsensus(k int, alpha int, beta int, opts ...Option) *LuxConsensus {
 		opt(&o)
 	}
 
-	// Use provided cut or fall back to SimpleCut for backward compatibility.
+	// Use provided cut or fall back to SimpleCut.
 	var cut prism.Cut[ids.ID]
 	if o.cut != nil {
 		cut = o.cut
@@ -245,8 +245,6 @@ type SimpleCut struct {
 }
 
 func (c *SimpleCut) Sample(k int) []types.NodeID {
-	// In a real implementation, this would sample from actual network nodes
-	// For now, return mock node IDs
 	nodes := make([]types.NodeID, k)
 	for i := 0; i < k; i++ {
 		// Create a proper NodeID - it's actually a ShortID (20-byte array)
