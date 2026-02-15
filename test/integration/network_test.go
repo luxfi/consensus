@@ -247,7 +247,7 @@ func (c *ChainConsensus) RecordPoll(ctx context.Context, votes *bag.Bag[ids.ID])
 				// Increment consecutive poll count
 				c.consecutivePoll[blockID]++
 
-				// Also track confidence for backward compatibility
+				// Track confidence
 				c.confidence[blockID]++
 
 				// Check if we've reached beta consecutive successful polls

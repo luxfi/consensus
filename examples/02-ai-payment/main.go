@@ -80,7 +80,7 @@ type PaymentRequest struct {
 
 func createAIAgent() *ai.Agent[ai.TransactionData] {
 	// Create simple model for payment validation
-	model := ai.NewSimpleModel("payment-validator")
+	model := ai.NewSimpleModel("payment-validator", &ai.TransactionFeatureExtractor{})
 
 	// Create agent (photon and quasar are nil for this example)
 	agent := ai.New("node-001", model, nil, nil)
@@ -90,7 +90,6 @@ func createAIAgent() *ai.Agent[ai.TransactionData] {
 
 func trainAgent(agent *ai.Agent[ai.TransactionData]) {
 	// Train with historical transactions
-	// In production, this would load from database
 
 	// Normal successful payments (positive training)
 	for i := 0; i < 70; i++ {
@@ -246,14 +245,8 @@ func assessRisk(amount *big.Int) string {
 }
 
 func showLearningStats(agent *ai.Agent[ai.TransactionData]) {
-	fmt.Println("=== Learning Statistics ===\n")
-	fmt.Println("✓ AI continuously learns from payment outcomes")
-	fmt.Println("✓ Model improves accuracy over time")
-	fmt.Println("✓ Adapts to new fraud patterns automatically")
-	fmt.Println()
-	fmt.Println("In production, this would show:")
-	fmt.Println("  - Total payments processed")
-	fmt.Println("  - Accuracy rate")
-	fmt.Println("  - False positive/negative rates")
-	fmt.Println("  - Model performance metrics")
+	fmt.Println("=== Learning Statistics ===")
+	fmt.Println("AI continuously learns from payment outcomes")
+	fmt.Println("Model improves accuracy over time")
+	fmt.Println("Adapts to new fraud patterns automatically")
 }

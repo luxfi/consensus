@@ -1,46 +1,28 @@
-// Package context provides consensus context for VMs.
-// This package re-exports runtime.Runtime for backward compatibility.
-// New code should use github.com/luxfi/runtime directly.
+// Package context re-exports runtime types for consensus VMs.
 package context
 
 import (
-	"context"
-
-	"github.com/luxfi/ids"
 	"github.com/luxfi/runtime"
 )
 
-// Context is an alias for runtime.Runtime for backward compatibility.
-// New code should use runtime.Runtime directly.
+// Context re-exports runtime.Runtime.
 type Context = runtime.Runtime
 
-// ValidatorState is an alias for runtime.ValidatorState
+// ValidatorState re-exports runtime.ValidatorState.
 type ValidatorState = runtime.ValidatorState
 
-// BCLookup is an alias for runtime.BCLookup
+// BCLookup re-exports runtime.BCLookup.
 type BCLookup = runtime.BCLookup
 
-// Keystore is an alias for runtime.Keystore
+// Keystore re-exports runtime.Keystore.
 type Keystore = runtime.Keystore
 
-// Metrics is an alias for runtime.Metrics
+// Metrics re-exports runtime.Metrics.
 type Metrics = runtime.Metrics
 
-// GetChainID extracts chain ID from context (backwards compatibility)
-var GetChainID = runtime.GetChainID
-
-// GetNetworkID extracts network ID from context (backwards compatibility)
-var GetNetworkID = runtime.GetNetworkID
-
-// GetValidatorState extracts validator state from context (backwards compatibility)
-var GetValidatorState = runtime.GetValidatorState
-
-// WithValidatorState adds a validator state to the context (backwards compatibility)
-var WithValidatorState = runtime.WithValidatorState
-
-// GetNetID is an alias for GetNetworkID for backward compatibility.
-// Returns ids.Empty because network-level ID extraction requires runtime.Runtime;
-// callers needing the actual network ID should use GetNetworkID instead.
-func GetNetID(ctx context.Context) ids.ID {
-	return ids.Empty
-}
+var (
+	GetChainID       = runtime.GetChainID
+	GetNetworkID     = runtime.GetNetworkID
+	GetValidatorState = runtime.GetValidatorState
+	WithValidatorState = runtime.WithValidatorState
+)

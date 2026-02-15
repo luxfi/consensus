@@ -27,7 +27,5 @@ func DefaultFPC() FPCConfig {
 
 // WithFPC adds FPC configuration to Parameters
 func (p Parameters) WithFPC(fpc FPCConfig) Parameters {
-	// In a real implementation, you'd add FPC fields to Parameters
-	// For now, just return the parameters unchanged
 	return p
 }

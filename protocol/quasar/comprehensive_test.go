@@ -1832,10 +1832,6 @@ func TestHorizon_ComputeBlockHash(t *testing.T) {
 // =============================================================================
 
 func TestTypeAliases(t *testing.T) {
-	// Test that type aliases work correctly
-	var _ *QBlock = (*Block)(nil)
-	var _ *ChainBlock = (*Block)(nil)
-
 	// NewBLS creates a BLS instance
 	cfg := config.DefaultParams()
 	store := newMockStore()

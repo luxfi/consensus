@@ -7,18 +7,10 @@ import (
 	"encoding/json"
 )
 
-// =============================================================================
-// BACKWARD COMPATIBILITY: Legacy wire types
-// =============================================================================
-// These types are preserved for backward compatibility with existing code.
-// New code should use Candidate, Vote (from candidate.go), and Certificate.
-// =============================================================================
-
-// EmptyID is the zero item ID (deprecated: use EmptyCandidateID)
+// EmptyID is the zero item ID.
 var EmptyID = EmptyCandidateID
 
 // Result represents the outcome of a consensus round.
-// This is a legacy type; new code should use Certificate with policy-based proofs.
 type Result struct {
 	// ItemID is the 32-byte ID of the item that reached consensus
 	ItemID ItemID `json:"item_id"`

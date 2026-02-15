@@ -319,55 +319,6 @@ func (s *Syncer) HealthCheck(ctx context.Context) (interface{}, error) {
 	return status, nil
 }
 
-// DeprecatedConfig is the old config format for backward compatibility.
-// Deprecated: Use Config instead.
-type DeprecatedConfig struct {
-	GetHandler     interface{}
-	Context        interface{}
-	StartupTracker interface{}
-	Sender         interface{}
-	Beacons        []types.NodeID
-	VM             interface{}
-}
-
-// NewDeprecatedConfig creates a config from deprecated parameters.
-// Deprecated: Use NewConfig instead.
-func NewDeprecatedConfig(
-	getHandler interface{},
-	ctx interface{},
-	startupTracker interface{},
-	sender interface{},
-	beacons []types.NodeID,
-	vm interface{},
-) (*DeprecatedConfig, error) {
-	return &DeprecatedConfig{
-		GetHandler:     getHandler,
-		Context:        ctx,
-		StartupTracker: startupTracker,
-		Sender:         sender,
-		Beacons:        beacons,
-		VM:             vm,
-	}, nil
-}
-
-// NewFromDeprecated creates a Syncer from deprecated config.
-// This allows gradual migration from old API to new API.
-func NewFromDeprecated(config *DeprecatedConfig, onDone func(ctx context.Context, lastReqID uint32) error) *Syncer {
-	// Try to extract VM if it implements our interface
-	var vm VM
-	if v, ok := config.VM.(VM); ok {
-		vm = v
-	}
-
-	return &Syncer{
-		config: Config{
-			VM:      vm,
-			Beacons: config.Beacons,
-		},
-		onDoneCallback: onDone,
-	}
-}
-
 // SyncResult contains the result of a sync operation.
 type SyncResult struct {
 	// LastAcceptedID is the block ID consensus should build on.
