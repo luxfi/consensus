@@ -130,13 +130,11 @@ func (b *Backend) GetDeviceInfo() string {
 }
 
 // NewMLXBackend creates a backend with MLX-compatible settings.
-// This is an alias for NewBackend maintained for backward compatibility.
 func NewMLXBackend(batchSize int) (*Backend, error) {
 	return NewBackend(batchSize)
 }
 
 // NewAccelBackend creates an accelerated consensus backend.
-// This is an alias for NewBackend maintained for backward compatibility.
 func NewAccelBackend(batchSize int) (*Backend, error) {
 	return NewBackend(batchSize)
 }

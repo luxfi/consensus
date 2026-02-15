@@ -1,4 +1,4 @@
-// Package validatorsmock re-exports github.com/luxfi/validators/validatorsmock for backward compatibility.
+// Package validatorsmock re-exports github.com/luxfi/validators/validatorsmock.
 package validatorsmock
 
 import (
