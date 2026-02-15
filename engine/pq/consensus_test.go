@@ -470,9 +470,9 @@ func TestBlockToFinalityEvent(t *testing.T) {
 				Hash:      validIDStr,
 				Height:    100,
 				Timestamp: testTime,
-				Cert: &quasar.BlockCert{
-					BLS: []byte("bls-proof-data"),
-					PQ:  []byte("pq-proof-data"),
+				Cert: &quasar.QuasarCert{
+					BLS:     []byte("bls-proof-data"),
+					PQProof: []byte("pq-proof-data"),
 				},
 			},
 			wantBLS: []byte("bls-proof-data"),
@@ -495,9 +495,9 @@ func TestBlockToFinalityEvent(t *testing.T) {
 				Hash:      validIDStr,
 				Height:    75,
 				Timestamp: testTime,
-				Cert: &quasar.BlockCert{
-					BLS: []byte{},
-					PQ:  []byte{},
+				Cert: &quasar.QuasarCert{
+					BLS:     []byte{},
+					PQProof: []byte{},
 				},
 			},
 			wantBLS: []byte{},
@@ -611,9 +611,9 @@ func TestSetFinalizedCallbackInvocation(t *testing.T) {
 		Hash:      validID.String(),
 		Height:    42,
 		Timestamp: time.Now(),
-		Cert: &quasar.BlockCert{
-			BLS: []byte("test-bls"),
-			PQ:  []byte("test-pq"),
+		Cert: &quasar.QuasarCert{
+			BLS:     []byte("test-bls"),
+			PQProof: []byte("test-pq"),
 		},
 	}
 
