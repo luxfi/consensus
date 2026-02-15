@@ -80,7 +80,7 @@ func TestWaveWithFPCMissingSeed(t *testing.T) {
 	}
 }
 
-// TestWaveWithFPCDisabled verifies backward compatibility without FPC
+// TestWaveWithFPCDisabled verifies wave works without FPC
 func TestWaveWithFPCDisabled(t *testing.T) {
 	// Create config with FPC disabled (default behavior)
 	cfg := Config{

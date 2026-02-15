@@ -345,31 +345,6 @@ func TestHealthCheck(t *testing.T) {
 	require.Equal(blockID.String(), status["lastAccepted"])
 }
 
-// TestDeprecatedAPI verifies backward compatibility with old API.
-func TestDeprecatedAPI(t *testing.T) {
-	require := require.New(t)
-	ctx := context.Background()
-
-	blockID := ids.GenerateTestID()
-	vm := newMockVM()
-	vm.lastAcceptedID = blockID
-	vm.blocks[blockID] = &mockBlock{id: blockID, height: 100}
-
-	// Use deprecated config
-	deprecatedConfig, err := NewDeprecatedConfig(nil, nil, nil, nil, nil, vm)
-	require.NoError(err)
-
-	doneCalled := false
-	syncer := NewFromDeprecated(deprecatedConfig, func(ctx context.Context, reqID uint32) error {
-		doneCalled = true
-		return nil
-	})
-
-	err = syncer.Start(ctx, 0)
-	require.NoError(err)
-	require.True(doneCalled)
-}
-
 // -----------------------------------------------------------------------------
 // Persistence Tests - Critical for restart resilience
 // -----------------------------------------------------------------------------

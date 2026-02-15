@@ -9,27 +9,31 @@
 
 The Lux Consensus package provides advanced consensus mechanisms for blockchain systems, featuring:
 
-- **Dual Consensus (Quasar)**: BLS + PQ (ML-DSA/Ringtail) — two independent cryptographic hardness assumptions for PQ-safe finality
+- **Triple Consensus (Quasar)**: BLS + Ringtail + ML-DSA — three independent cryptographic hardness assumptions for PQ-safe finality
 - **Multi-Consensus Architecture**: Chain (linear), DAG (parallel), and PQ (post-quantum) consensus modes
 - **GPU-Accelerated Crypto** (aspirational): BLS pairing, lattice computations, ZK proof generation via MLX/Metal — not yet implemented
 - **ZAP Transport**: Zero-copy binary P2P protocol (157x faster deserialization than protobuf)
 - **Photon→Quasar Flow**: Light-speed consensus with DAG finalization
 - **Modular Design**: Each crypto layer (BLS, Ringtail, ML-DSA) independently toggleable
 
-## Quasar Dual Consensus
+## Quasar Triple Consensus
 
-Two independent cryptographic layers, each can be enabled/disabled:
+Three independent cryptographic layers, each can be enabled/disabled:
 
 | Layer | Algorithm | Hardness Assumption | PQ Safety | Size |
 |-------|-----------|---------------------|-----------|------|
 | **BLS** | BLS12-381 aggregate | Discrete log (elliptic curves) | Classical only | 48 bytes |
-| **PQ** | ML-DSA-65 / Ringtail Ring-LWE | Module-LWE (+ Module-SIS) | PQ-safe | variable |
+| **Ringtail** | Ring-LWE threshold | Module-SIS | PQ-safe | variable |
+| **ML-DSA** | ML-DSA-65 (FIPS 204) | Module-LWE | PQ-safe | ~3.3 KB |
 
 **Modes**:
 - BLS-only: fastest classical consensus
-- BLS + PQ: dual consensus with post-quantum proof (~248 bytes/block)
+- BLS + ML-DSA: dual consensus with PQ identity proof
+- BLS + Ringtail: dual consensus with PQ threshold proof
+- BLS + Ringtail + ML-DSA: full triple consensus (`TripleSignRound1`, all 3 in parallel)
 
-**NOT called "triple" or "hybrid"** — it's dual consensus (BLS + PQ). ML-DSA and Ringtail are both PQ proof options, not separate consensus layers.
+`IsTripleMode()` returns true when all three signing paths are configured.
+`TripleSignRound1` runs BLS + Ringtail + ML-DSA in parallel via goroutines.
 
 **GPU acceleration**: aspirational (not yet implemented). Target: BLS pairing ops, lattice computations, ZK proof generation.
 
