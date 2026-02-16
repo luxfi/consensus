@@ -35,7 +35,7 @@ type FinalityEvent struct {
 	Height    uint64
 	BlockID   ids.ID
 	Timestamp time.Time
-	PQProof   []byte // Post-quantum proof
+	PQProof   []byte // Z-Chain ZKP: Groth16 proving BLS ∧ ML-DSA ∧ Ringtail
 	BLSProof  []byte // Classical BLS proof
 }
 

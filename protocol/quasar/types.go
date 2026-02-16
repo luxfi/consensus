@@ -23,16 +23,21 @@ type Block struct {
 
 // QuasarCert is the finality certificate for Quasar consensus.
 //
-// Carries up to three verification paths:
-//   1. BLS aggregate (48 bytes) — classical fast-path (BLS12-381, ECDL hardness)
-//   2. PQ proof (variable) — post-quantum (ML-DSA-65 FIPS 204, or Ringtail Ring-LWE)
+// Validators sign with three independent schemes (BLS, ML-DSA, Ringtail).
+// Z-Chain generates a single Groth16 SNARK proving all three are valid:
 //
-// In triple mode (BLS + Ringtail + ML-DSA), PQProof carries the aggregated
-// post-quantum material from both Ringtail threshold and ML-DSA identity sigs.
-// Future: Groth16 SNARK (~192 bytes) to compress N ML-DSA sigs.
+//   Statement: ∀ i ∈ [N]:
+//     BLS.Verify(bls_pk_i, msg, bls_σ_i) = 1      ∧
+//     ML-DSA.Verify(mldsa_pk_i, msg, mldsa_σ_i) = 1 ∧
+//     Ringtail.Verify(rt_pk, msg, rt_σ) = 1
+//
+// The BLS aggregate is kept separately for fast classical verification (48 bytes).
+// PQProof carries the Z-Chain ZKP (~192 bytes) proving BLS + ML-DSA + Ringtail.
+//
+// Compression: N * (48 + 3309 + RT) bytes → 48 + 192 bytes.
 type QuasarCert struct {
-	BLS     []byte    // BLS aggregate signature (N validators → 48 bytes)
-	PQProof []byte    // Post-quantum proof (ML-DSA sig or future Groth16 SNARK aggregate)
+	BLS     []byte    // BLS aggregate (fast classical path, 48 bytes)
+	PQProof []byte    // Z-Chain ZKP: Groth16 proving BLS ∧ ML-DSA ∧ Ringtail (~192 bytes)
 	Epoch    uint64    // Epoch number
 	Finality time.Time // Time of finality
 	// Validators is the count of validators who signed the PQ proof.
