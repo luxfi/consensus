@@ -1,103 +1,122 @@
 # Lux Consensus
 
 [![CI Status](https://github.com/luxfi/consensus/actions/workflows/ci.yml/badge.svg)](https://github.com/luxfi/consensus/actions)
-[![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)](https://github.com/luxfi/consensus)
-[![Go Version](https://img.shields.io/badge/go-1.24.5-blue)](https://go.dev)
-[![Release](https://img.shields.io/badge/release-v1.22.0-green)](https://github.com/luxfi/consensus/releases/tag/v1.22.0)
+[![Go Version](https://img.shields.io/badge/go-1.26-blue)](https://go.dev)
 
-## Lux Quasar: Post Quantum Consensus Engine with Photonic Selection
+## Quasar Family of Consensus
 
-Quasar upgrades traditional consensus mechanisms with a Quantum Finality
-engine. Quasar combines traditional BLS signature aggregation with parallel
-lattice encryption to deliver **2-round finality** with both classical and 
-quantum security. Every chain in the Lux primary network - Q, C, X - run Quasar, 
-reaching Quantum Finality, in < 1 second.
+Quasar is the consensus engine for the Lux network. It provides unified
+consensus for linear chains (P-Chain, C-Chain) and DAG chains (X-Chain) with
+post-quantum finality via three independent cryptographic signing paths.
 
-## Why Quasar?
+### Sub-Protocols
 
-Traditional consensus engines have limitations:
-- Different engines for different chain types
-- No native post-quantum security
-- Complex multi-layer architecture
+| Protocol | Role | Package |
+|----------|------|---------|
+| **Photon** | K-of-N committee selection via Fisher-Yates sampling with luminance-weighted reputation | `protocol/photon` |
+| **Wave** | Per-round threshold voting with FPC (Fast Probabilistic Consensus) | `protocol/wave` |
+| **Focus** | Confidence accumulation: beta consecutive successes = local finality | `protocol/focus` |
+| **Nova** | Linear chain consensus mode (P-Chain, C-Chain) -- wraps Ray | `protocol/nova` |
+| **Nebula** | DAG consensus mode (X-Chain) -- wraps Field | `protocol/nebula` |
+| **Prism** | DAG geometry: frontiers, cuts, uniform peer sampling | `protocol/prism` |
+| **Horizon** | DAG order-theory: reachability, LCA, transitive closure, skip lists | `protocol/horizon` |
+| **Flare** | DAG certificate/skip detection via 2f+1 quorum | `protocol/flare` |
+| **Ray** | Linear chain finality driver: Wave + Focus + Sink | `protocol/ray` |
+| **Field** | DAG finality driver: Wave + safe-prefix commit | `protocol/field` |
+| **Quasar** | BLS + Ringtail + ML-DSA threshold signing, epoch management | `protocol/quasar` |
 
-Quasar solves all these with **"One engine to rule them all"**:
-- **Unified Protocol**: Same engine for DAG, linear, EVM, MPC chains
-- **Quantum Finality**: Every block requires post quantum certificates
-- **2-Round Total**: BLS Signatures (1 round) + Lattice Signatures (2 phases) = quantum finality
-- **Zero Leaders**: Fully decentralized, leaderless, highly secure
-- **Sub-Second Performance**: <1s finality with quantum security
+### Signing Modes
 
-## 🚀 Recent Updates (v1.22.0 - January 2025)
+Each cryptographic layer is independently toggleable:
 
-### Simplified Single-Import API 🚀
-- **NEW**: Complete package restructure with shallow, obvious paths
-- **NEW**: Single-import convenience for all SDKs (Go, Python, Rust)
-- **NEW**: Unified `consensus.Chain` API replacing complex factory patterns
-- **NEW**: Type aliases for zero-friction development
-- **BREAKING**: Migrated from deep nested paths to clean root exports
+| Mode | Layers | Use Case |
+|------|--------|----------|
+| BLS-only | BLS12-381 threshold | Fastest classical consensus |
+| BLS + ML-DSA | BLS + FIPS 204 ML-DSA-65 | Dual with PQ identity proof |
+| BLS + Ringtail | BLS + Ring-LWE 2-round threshold | Dual with PQ threshold proof |
+| BLS + Ringtail + ML-DSA | All three in parallel | Full Quasar (triple mode) |
 
-### Multi-Language SDK with 100% Test Parity 🎉
-- **NEW**: Complete C implementation with optimized hash tables (9M+ blocks/sec)
-- **NEW**: Rust FFI bindings with safe wrappers and Criterion benchmarks
-- **NEW**: Python SDK via Cython with Pythonic API (6.7M blocks/sec)
-- **NEW**: Go CGO integration for seamless C/Go switching
-- **NEW**: Quantum-resistant OP Stack integration example
-- **100% test parity** across all 4 language implementations
-- **15 comprehensive test categories** with full coverage
-- **Performance benchmarks** exceeding all targets
+`IsTripleMode()` returns true when all three paths are configured.
+`TripleSignRound1` runs BLS + Ringtail + ML-DSA signing in parallel goroutines.
 
-### Previous: Photon/Emitter Refactoring ✅
-- Replaced `Sampler/Sample` pattern with light-themed `Emitter/Emit`
-- Implemented luminance tracking (10-1000 lux range) for node selection
-- Performance-based weighting adjusts selection probability
-- **96%+ test coverage maintained**
-- **CI fully green** with all lint checks passing
+## Architecture
+
+```
+consensus/
+  protocol/
+    photon/       Committee selection (Emitter + Luminance)
+    wave/         Threshold voting + FPC
+      fpc/        Fast Probabilistic Consensus selector
+    focus/        Confidence counter (beta tracker)
+    prism/        DAG cuts, frontiers, uniform sampling
+    horizon/      DAG reachability, LCA, skip lists
+    flare/        DAG cert/skip classification (2f+1)
+    ray/          Linear chain driver (Nova uses this)
+    field/        DAG finality driver (Nebula uses this)
+    nova/         Linear chain consensus mode
+    nebula/       DAG consensus mode
+    chain/        Block interface primitives
+    quasar/       BLS + Ringtail + ML-DSA threshold signing
+  engine/         Consensus engine (Chain, DAG, PQ wrappers)
+  core/           Core types, DAG structures
+  types/          Block, Vote, Config, Bag
+  config/         Parameter presets (single, local, testnet, mainnet)
+  runtime/        VM wiring (chain IDs, validators, logging)
+  pkg/wire/       Wire protocol credentials (ML-DSA-44/65/87 + BLS + Ed25519)
+  bench/          Benchmarks
+  version/        Re-exports github.com/luxfi/version
+```
+
+## Consensus Flow
+
+### Linear Chains (Nova)
+
+```
+Photon (select committee) -> Wave (threshold vote) -> Focus (count beta) -> Ray (decide) -> Sink
+```
+
+### DAG Chains (Nebula)
+
+```
+Photon (select committee) -> Wave (threshold vote per frontier vertex)
+  -> Flare (cert/skip) -> Horizon (safe prefix) -> Field (commit ordered prefix) -> Committer
+```
+
+### Quasar PQ Finality
+
+After consensus decision, the Quasar signing layer produces threshold certificates:
+
+1. BLS: single-round threshold share via `crypto/threshold`
+2. Ringtail: 2-round Ring-LWE threshold via `luxfi/ringtail/threshold`
+3. ML-DSA-65: single-round FIPS 204 identity signature
+
+All three run in parallel. A block is quantum-final when all configured certificate
+layers are valid.
+
+## Key Hierarchy
+
+| Layer | Key Type | Purpose |
+|-------|----------|---------|
+| Node-ID | Ed25519 | P2P transport auth |
+| Validator-BLS | BLS12-381 | Classical finality votes |
+| Validator-PQ | Ringtail (Ring-LWE) | PQ finality shares |
+| Validator-ID | ML-DSA-65 (FIPS 204) | PQ identity attestation |
+| Wallet (EVM) | secp256k1 | User transaction signatures |
+| Wallet (X-Chain) | secp256k1 | UTXO locking |
 
 ## Quick Start
 
-### Installation
-
-#### Go (Default)
-```bash
-go get github.com/luxfi/consensus@v1.22.0
-```
-
-#### C Library (High Performance)
-```bash
-cd consensus/c
-make && sudo make install
-# Enable with: CGO_ENABLED=1 USE_C_CONSENSUS=1
-```
-
-#### Rust
-```bash
-# Add to Cargo.toml
-[dependencies]
-lux-consensus = "1.22.0"
-```
-
-#### Python
-```bash
-cd consensus/python
-python3 setup.py install
-# Or: pip install lux-consensus
-```
-
-### Basic Usage
 ```go
-import "github.com/luxfi/consensus" // Single clean import!
+import "github.com/luxfi/consensus"
 
-// Create chain with default config
 chain := consensus.NewChain(consensus.DefaultConfig())
 
-// Start the chain
 ctx := context.Background()
 if err := chain.Start(ctx); err != nil {
-    panic(err)
+    log.Fatal(err)
 }
 defer chain.Stop()
 
-// Add a block
 block := &consensus.Block{
     ID:       consensus.NewID(),
     ParentID: consensus.GenesisID,
@@ -105,256 +124,54 @@ block := &consensus.Block{
     Payload:  []byte("Hello, Lux!"),
 }
 if err := chain.Add(ctx, block); err != nil {
-    panic(err)
+    log.Fatal(err)
 }
 ```
 
-### Running Tests
-```bash
-# Run all tests
-go test ./...
-
-# Run with coverage
-go test -cover ./...
-
-# Run benchmarks
-go test -bench=. ./...
-```
-
-## Architecture
-
-### Core Consensus Components
-
-```text
-consensus/
-├── protocol/
-│   ├── photon/           # 🌟 K-of-N committee selection
-│   │   ├── emitter.go    # Light emission-based peer selection
-│   │   └── luminance.go  # Node brightness tracking (lux units)
-│   ├── wave/             # 🌊 Wave consensus mechanism
-│   │   ├── wave.go       # Threshold voting (α, β parameters)
-│   │   └── fpc/          # Fast Probabilistic Consensus
-│   ├── focus/            # 🎯 Confidence tracking
-│   ├── quasar/           # ⚛️ Post-quantum finality
-│   │   ├── quasar.go     # BLS + Ringtail dual threshold signing
-│   │   ├── bls.go        # BLS DAG event horizon
-│   │   ├── witness.go    # Verkle witness verification
-│   │   ├── epoch.go      # Ringtail threshold signing
-│   │   └── core.go       # QuantumBlock aggregation
-│   ├── prism/            # 🔷 DAG cutting & ordering
-│   ├── nebula/           # ☁️ State sync protocol
-│   ├── nova/             # ⭐ Parallel chain support
-│   └── ray/              # Chain consensus protocol
-│
-├── core/
-│   ├── dag/              # 📊 DAG structure & ordering
-│   │   ├── flare.go      # Certificate generation
-│   │   └── horizon.go    # Frontier management
-│   └── consensus.go      # Core consensus types
-│
-├── engine/               # 🎮 Consensus engines
-│   ├── chain/            # Linear blockchain engine
-│   ├── dag/              # DAG-based engine
-│   └── pq/               # Post-quantum engine
-│       ├── crypto.go     # PQ cryptographic operations
-│       └── consensus.go  # PQ consensus integration
-│
-└── pkg/                  # SDK bindings
-    ├── c/                # C FFI
-    ├── cpp/              # C++ wrapper
-    ├── python/           # Python bindings
-    ├── rust/             # Rust bindings
-    ├── typescript/       # TypeScript SDK
-    └── wire/             # Wire protocol + credentials
-        └── credentials.go # ML-DSA-44/65/87 + BLS + Ed25519
-```
-
-## Framework for Quasar Consensus
-
-**Quasar** is built on two core components that provide both classical and quantum finality:
-
-### 1. Nova DAG (Classical Finality)
-- **Sampling**: k-peer sampling for vote collection
-- **Confidence**: Build confidence d(T) through repeated sampling
-- **Thresholds**: β₁ for early preference, β₂ for decision
-- **Time**: ~600-700ms to classical finality
-
-### 2. Quasar (Quantum Finality)
-- **Phase I - Propose**: Sample DAG frontier, propose highest confidence
-- **Phase II - Commit**: Aggregate threshold signatures if > α𝚌 agree
-- **Certificates**: Lattice-based post-quantum certificates
-- **Time**: ~200-300ms additional for quantum finality
-
-## Quantum Finality
-
-Every block header now contains:
+## Configuration
 
 ```go
-type CertBundle struct {
-    BLSAgg  []byte  // 96B BLS aggregate signature
-    PQCert  []byte  // ~3KB lattice certificate
-}
+// Auto-configure based on validator count
+params := consensus.GetConfig(21) // mainnet defaults
 
-// Block is only final when BOTH certificates are valid
-isFinal := verifyBLS(blsAgg, quorum) && verifyPQ(pqCert, quorum)
+// Or use presets
+consensus.SingleValidatorParams() // 1 node, dev
+consensus.LocalParams()           // 5 nodes, local
+consensus.TestnetParams()         // 11 nodes, testnet
+consensus.MainnetParams()         // 21 nodes, production
 ```
 
-## Key Hierarchy
+## Benchmarks
 
-| Layer | Key Type | Purpose | Storage |
-|-------|----------|---------|---------|
-| Node-ID | ed25519 | P2P transport auth | `$HOME/.lux/node.key` |
-| Validator-BLS | bls12-381 | Fast finality votes | `$HOME/.lux/bls.key` |
-| Validator-PQ | lattice | PQ finality shares | `$HOME/.lux/rt.key` |
-| Wallet (EVM) | secp256k1 or Lamport | User tx signatures | In wallet |
-| Wallet (X-Chain) | secp256k1 or Dilithium | UTXO locking | In wallet |
+Measured on Apple M1 Max:
 
-The same `rt.key` registered on Q-Chain is reused by all chains - no extra onboarding.
+| Component | Operation | Time/Op |
+|-----------|-----------|---------|
+| Wave | Vote round | 3.38 us |
+| Photon | K-of-N selection | 3.03 us |
+| Luminance | Brightness update | 72 ns |
 
-## Quick Start
+ZAP wire protocol (measured, `bench/`):
 
-```go
-package main
-
-import (
-  "context"
-  "log"
-
-  "github.com/luxfi/consensus/config"
-  "github.com/luxfi/consensus/engine/quasar"
-  "github.com/luxfi/ids"
-)
-
-func main() {
-  // 1. Configure Quasar parameters
-  cfg := config.Parameters{
-    K:               21,  // Validators to sample
-    AlphaPreference: 15,  // Preference threshold
-    AlphaConfidence: 18,  // Confidence threshold
-    Beta:            8,   // Finalization rounds
-    QRounds:         2,   // Quantum rounds
-  }
-
-  // 2. Create Quasar engine
-  nodeID := ids.GenerateNodeID()
-  engine := quasar.NewQuasar(cfg, nodeID)
-
-  // 3. Initialize with both BLS and PQ keys
-  engine.Initialize(ctx, blsKey, pqKey)
-
-  // 4. Process vertices/blocks
-  engine.AddVertex(ctx, vertex)
-
-  // 5. Dual-certificate finality
-  engine.SetFinalizedCallback(func(qBlock QBlock) {
-    log.Printf("Q-block %d finalized with quantum certificates\n", qBlock.Height)
-  })
-}
-```
-
-## Performance Metrics
-
-### Consensus Performance
-| Network | Validators | Finality | Block Time | Configuration |
-|---------|-----------|----------|------------|---------------|
-| **Mainnet** | 21 | 9.63s | 200ms | Production ready |
-| **Testnet** | 11 | 6.3s | 100ms | Testing network |
-| **Local** | 5 | 3.69s | 10ms | Development |
-| **X-Chain** | 5 | 5ms | 1ms | 100Gbps networks |
-
-### Benchmark Results (Apple M1 Max)
-| Component | Operation | Time/Op | Memory | Allocations |
-|-----------|-----------|---------|--------|-------------|
-| **Wave Consensus** | Vote Round | 3.38μs | 2.3KB | 8 allocs |
-| **Photon Emitter** | K-of-N Selection | 3.03μs | 3.0KB | 2 allocs |
-| **Luminance** | Brightness Update | 72ns | 0B | 0 allocs |
-| **Quasar** | Phase I | 0.33ns | 0B | 0 allocs |
-| **Quasar** | Phase II | 40.7ns | 0B | 0 allocs |
-
-Both BLS and post-quantum certificates complete within one consensus slot.
-
-## Security Model
-
-1. **Pre-quantum**: Attacker must corrupt ≥⅓ stake to fork
-2. **Q-day (BLS broken)**: Attacker can forge BLS but not lattice
-   - Block fails quantum check
-   - Consensus halts rather than accepting unsafe fork
-3. **Post-quantum**: Security rests on lattice SVP (2¹⁶⁰ ops)
-
-Attack window ≤ PQ round time (≤50ms mainnet).
-
-## Chain Integration
-
-| Chain | Integration | Rule |
-|-------|-------------|------|
-| Q-Chain | Q-blocks as internal txs | All chains read Q-blocks |
-| C-Chain | Every block has CertBundle | Invalid without quantum certs |
-| X-Chain | Vertex metadata references Q-block | Epoch sealed by quantum cert |
-| M-Chain | MPC rounds reference Q-block height | Custody requires PQ proof |
-
-## Account-Level PQ Options
-
-### EVM (C-Chain)
-- Lamport-XMSS multisig contracts
-- Gas: ~300k for VERIFY_LAMPORT
-- EIP-4337 AA wrapper available
-
-### X-Chain
-- New LatticeOutput type with PQ pubkey
-- Spend verifies single RT signature (~1.8KB)
-- CLI: `lux-wallet generate --pq`
-
-## Research Tools
-
-```bash
-# Interactive parameter tuning
-consensus params tune
-
-# Distributed benchmark with Quasar
-consensus bench --engine quasar
-
-# Simulate quantum state progression
-consensus sim --quantum
-
-# Analyze quantum-certificate safety
-consensus check --quantum-cert
-```
-
-## Implementation Roadmap
-
-| Priority | Task | Status |
-|----------|------|--------|
-| P0 | Quasar engine core (Nova + Quasar) | ✓ Complete |
-| P0 | Quantum-certificate block headers | ✓ Complete |
-| P0 | Quantum key generation & registration | In Progress |
-| P1 | Quasar service with precompute | Planned |
-| P1 | PQ account options (Lamport) | ✓ Complete |
-| P1 | PQ account options (Dilithium) | Planned |
+| Configuration | Throughput |
+|--------------|------------|
+| Single connection | 114K TPS |
+| 20 parallel connections | 376K TPS |
+| 50 conns + batch 1000 | 20.26M TPS |
 
 ## Testing
 
 ```bash
-# Unit tests with quantum scenarios
-go test ./engine/quasar/...
-
-# Benchmark dual-certificate performance
-go test -bench=QuantumCert ./lattice/
-
-# Fuzz test certificate aggregation
-go test -fuzz=Certificate ./testing/
+GOWORK=off go test ./...
+GOWORK=off go test -bench=. ./bench/
 ```
 
-## Summary
+## Security Model
 
-Quasar is not an add-on or extra layer - it IS the consensus engine for Lux. By combining Nova DAG with Quasar PQ in a unified protocol, Quasar delivers:
-
-- **2-round finality** with both classical and quantum security
-- **Dual certificates** required for every block
-- **One engine** for all chain types
-- **Sub-second performance** even with PQ security
-
-Welcome to the quantum era of consensus.
+1. **Pre-quantum**: Attacker must corrupt >= 1/3 stake to fork
+2. **Q-day (BLS broken)**: Lattice certificates prevent unsafe finalization
+3. **Post-quantum**: Security rests on Module-LWE (Ringtail) + Module-LWE/SIS (ML-DSA)
 
 ## License
 
-BSD 3-Clause — free for academic & commercial use. See LICENSE.
+BSD 3-Clause. See LICENSE.
