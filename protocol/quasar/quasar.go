@@ -371,7 +371,7 @@ func (s *signer) DualSignRound2(validatorID string, sessionID int, message strin
 }
 
 // ============================================================================
-// Triple Consensus: BLS + Ringtail + ML-DSA (all 3 in parallel)
+// Quasar: BLS + Ringtail + ML-DSA (all 3 in parallel)
 // ============================================================================
 
 // TripleSignRound1 performs Round 1 of all three signing paths in parallel:
@@ -538,7 +538,7 @@ func (s *signer) SignMessageWithContext(ctx context.Context, validatorID string,
 		sig.IsThreshold = true
 		sig.SignerIndex = blsSigner.Index()
 
-		// Also sign with ML-DSA if available (triple consensus)
+		// Also sign with ML-DSA if available (Quasar)
 		if mldsaSK, ok := s.mldsaKeys[validatorID]; ok {
 			mldsaSig, err := mldsaSK.Sign(rand.Reader, message, nil)
 			if err == nil {
@@ -563,7 +563,7 @@ func (s *signer) SignMessageWithContext(ctx context.Context, validatorID string,
 	sig.BLS = append(sig.BLS, bls.SignatureToBytes(blsSig)...)
 	sig.IsThreshold = false
 
-	// Also sign with ML-DSA if available (triple consensus)
+	// Also sign with ML-DSA if available (Quasar)
 	if mldsaSK, ok := s.mldsaKeys[validatorID]; ok {
 		mldsaSig, err := mldsaSK.Sign(rand.Reader, message, nil)
 		if err == nil {
