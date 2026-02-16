@@ -9,7 +9,7 @@
 //
 // In the cosmic metaphor, a nebula is a stellar nursery - a cloud of possibilities
 // collapsing into ordered structure, representing parallel block creation that
-// eventually achieves consensus utils.
+// eventually achieves consensus.
 //
 // Nebula is designed for high-throughput chains that benefit from parallel
 // block production, such as the X-Chain for asset transfers.

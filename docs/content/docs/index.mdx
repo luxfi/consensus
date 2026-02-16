@@ -79,8 +79,8 @@ consensus/
 ├── protocol/
 │   ├── quasar/           # Post-quantum security
 │   │   └── ringtail.go   # Quantum-resistant signatures
-│   ├── nebula/           # State sync protocol
-│   └── nova/             # Parallel chain support
+│   ├── nebula/           # DAG consensus mode (wraps field)
+│   └── nova/             # Linear chain consensus mode (wraps ray)
 │
 ├── qzmq/                 # Post-quantum transport
 │   ├── session.go        # Hybrid key exchange
@@ -95,7 +95,7 @@ consensus/
 
 Quasar is built on two core components that provide both classical and quantum finality:
 
-#### Nova DAG (Classical Finality)
+#### Classical Finality (Wave + Focus)
 - **Sampling**: k-peer sampling for vote collection
 - **Confidence**: Build confidence through repeated sampling
 - **Thresholds**: Beta-1 for early preference, Beta-2 for decision
@@ -125,8 +125,7 @@ Quasar is built on two core components that provide both classical and quantum f
 | Wave Consensus | Vote Round | 3.38us | 2.3KB |
 | Photon Emitter | K-of-N Selection | 3.03us | 3.0KB |
 | Luminance | Brightness Update | 72ns | 0B |
-| Quasar Phase I | Propose | 0.33ns | 0B |
-| Quasar Phase II | Commit | 40.7ns | 0B |
+| Quasar Sign (BLS share) | Threshold share | ~45us | varies |
 
 ## Security Model
 
@@ -151,7 +150,7 @@ All 12 Lux consensus protocols use light metaphors:
 - [Photon](/docs/photon) — K-of-N committee selection via light emission
 
 ### DAG & Parallel
-- [Nova](/docs/nova) — Parallel chain support
+- [Nova](/docs/nova) — Linear chain consensus mode (wraps ray)
 - [Nebula](/docs/nebula) — DAG consensus using Field engine
 - [Prism](/docs/prism) — Light-path refraction for conflict resolution
 
