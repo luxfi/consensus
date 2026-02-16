@@ -10,9 +10,9 @@
 //	BLS-only:                  fastest classical consensus
 //	BLS + ML-DSA:              dual PQ consensus (single-round PQ sigs)
 //	BLS + Ringtail:            dual PQ consensus (2-round threshold)
-//	BLS + Ringtail + ML-DSA:   triple consensus (all three hardness assumptions)
+//	BLS + Ringtail + ML-DSA:   Quasar (all three hardness assumptions)
 //
-// Triple signing via [signer.TripleSignRound1] runs all three paths in parallel.
+// Quasar signing via [signer.TripleSignRound1] runs all three paths in parallel.
 // An adversary must break ECDL AND Module-LWE AND Module-SIS simultaneously.
 //
 // Inter-node transport uses ZAP (github.com/luxfi/zap) with optional PQ-TLS 1.3
