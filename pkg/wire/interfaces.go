@@ -192,7 +192,7 @@ type Response struct {
 }
 
 // Transport handles peer communication
-// Supports: local function call, TCP, QUIC, libp2p, MCP mesh, RPC
+// Supports: local function call, TCP, QUIC, ZAP, MCP mesh, RPC
 type Transport interface {
 	// Query sends request to peers and collects responses
 	Query(ctx context.Context, peers []VoterID, request *Request) <-chan *Response
