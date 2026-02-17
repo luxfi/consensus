@@ -637,7 +637,7 @@ func TestQuasarThroughput(t *testing.T) {
 	require.Greater(tps, 10.0, "Should process at least 10 blocks/sec")
 }
 
-// --- Quasar Triple Consensus Tests ---
+// --- Quasar Consensus Tests ---
 
 // TestQuasarConsensusBasic tests BLS + Ringtail + ML-DSA certificate generation
 func TestQuasarConsensusBasic(t *testing.T) {
