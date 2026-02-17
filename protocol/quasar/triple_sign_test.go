@@ -1,5 +1,5 @@
 // Copyright (C) 2025, Lux Industries Inc. All rights reserved.
-// Tests for the triple consensus signing path: BLS + Corona + ML-DSA.
+// Tests for the Quasar signing path: BLS + Corona + ML-DSA.
 
 package quasar
 
