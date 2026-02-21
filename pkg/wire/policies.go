@@ -6,8 +6,13 @@ package wire
 import (
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"sync"
 )
+
+// maxCandidates is the upper bound on tracked candidates per policy instance.
+// Prevents unbounded memory growth from malicious or buggy peers.
+const maxCandidates = 100000
 
 // =============================================================================
 // POLICY IMPLEMENTATIONS
@@ -47,6 +52,9 @@ func (p *NonePolicy) PolicyID() PolicyID {
 func (p *NonePolicy) OnCandidate(ctx context.Context, candidate *Candidate) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if len(p.candidates) >= maxCandidates {
+		return fmt.Errorf("candidate limit reached (%d)", maxCandidates)
+	}
 	p.candidates[candidate.ID] = candidate
 	return nil
 }
@@ -116,6 +124,9 @@ func (p *QuorumPolicy) PolicyID() PolicyID {
 func (p *QuorumPolicy) OnCandidate(ctx context.Context, candidate *Candidate) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if len(p.candidates) >= maxCandidates {
+		return fmt.Errorf("candidate limit reached (%d)", maxCandidates)
+	}
 	p.candidates[candidate.ID] = candidate
 	if _, ok := p.votes[candidate.ID]; !ok {
 		p.votes[candidate.ID] = make(map[VoterID]*Vote)
@@ -229,6 +240,9 @@ func (p *SamplePolicy) PolicyID() PolicyID {
 func (p *SamplePolicy) OnCandidate(ctx context.Context, candidate *Candidate) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if len(p.candidates) >= maxCandidates {
+		return fmt.Errorf("candidate limit reached (%d)", maxCandidates)
+	}
 	p.candidates[candidate.ID] = &sampleState{
 		candidate:  candidate,
 		preference: true, // Initial preference
@@ -361,6 +375,9 @@ func (p *L1Policy) PolicyID() PolicyID {
 func (p *L1Policy) OnCandidate(ctx context.Context, candidate *Candidate) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if len(p.candidates) >= maxCandidates {
+		return fmt.Errorf("candidate limit reached (%d)", maxCandidates)
+	}
 	p.candidates[candidate.ID] = candidate
 	return nil
 }
@@ -471,6 +488,9 @@ func (p *QuantumPolicy) PolicyID() PolicyID {
 func (p *QuantumPolicy) OnCandidate(ctx context.Context, candidate *Candidate) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if len(p.candidates) >= maxCandidates {
+		return fmt.Errorf("candidate limit reached (%d)", maxCandidates)
+	}
 	p.candidates[candidate.ID] = candidate
 	p.blsVotes[candidate.ID] = make(map[VoterID][]byte)
 	p.pqVotes[candidate.ID] = make(map[VoterID][]byte)
