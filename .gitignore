@@ -99,3 +99,8 @@ pkg/python/*.so
 pkg/python/build/
 pkg/typescript/target/
 __pycache__/
+
+LLM.md
+QWEN.md
+.AGENTS.md
+GEMINI.md
