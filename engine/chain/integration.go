@@ -5,6 +5,7 @@ package chain
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/luxfi/consensus/config"
@@ -80,6 +81,16 @@ type Runtime struct {
 	// Validator sampling for k-peer polls
 	validators ValidatorSampler
 	nodeID     ids.NodeID
+
+	// fastFollowMu serializes fast-follow block acceptance to prevent
+	// duplicate gossip deliveries from racing on the accept path.
+	fastFollowMu sync.Mutex
+	// fastFollowHeight tracks the highest block height accepted via fast-follow.
+	// We use height instead of parent ID matching because:
+	// 1. VM.LastAccepted() is stale after Accept() calls
+	// 2. Block-producing nodes don't update the tracker when they build blocks
+	// Height-based acceptance is safe because blocks are already verified.
+	fastFollowHeight uint64
 }
 
 // NewRuntime creates a fully wired consensus runtime ready for production use.
@@ -375,66 +386,83 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 	// 1. Block has been verified (cryptographic integrity, state transitions)
 	// 2. Block came from a known validator (fromNodeID)
 	// 3. Block extends our accepted chain (parent check below)
-	lastAccepted, err := rt.config.VM.LastAccepted(ctx)
-	if err == nil {
-		parentID := blk.ParentID()
-		// Accept if this block extends our last accepted block
-		// OR if it's at height 1 (first block after genesis)
-		if parentID == lastAccepted || blk.Height() == 1 {
-			if !rt.config.Logger.IsZero() {
-				rt.config.Logger.Info("fast-follow: accepting block from validator",
-					log.Stringer("blockID", blk.ID()),
-					log.Uint64("height", blk.Height()),
-					log.Stringer("from", fromNodeID),
-					log.Stringer("parent", parentID),
-					log.Stringer("lastAccepted", lastAccepted))
-			}
+	//
+	// The mutex serializes fast-follow acceptance to prevent concurrent
+	// Accept() calls from duplicate gossip delivery of the same block.
+	blockID := blk.ID()
+	rt.fastFollowMu.Lock()
+	defer rt.fastFollowMu.Unlock()
 
-			// Accept the block directly
-			if err := blk.Accept(ctx); err != nil {
+	// Height-based fast-follow: accept verified gossip blocks that advance
+	// beyond our tracked height. This is robust because:
+	// 1. Blocks are already cryptographically verified before reaching here
+	// 2. The sender is a known validator
+	// 3. Height ordering prevents re-accepting old blocks or going backwards
+	// 4. The mutex prevents concurrent acceptance races
+	//
+	// We use height instead of parent-ID matching because VM.LastAccepted()
+	// is asynchronous and block-producing nodes don't update the tracker.
+	incomingHeight := blk.Height()
+
+	// Dedup: skip blocks at or below our tracked height
+	if incomingHeight <= rt.fastFollowHeight {
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Info("fast-follow: block at/below tracked height, skipping",
+				log.Stringer("blockID", blockID),
+				log.Uint64("incomingHeight", incomingHeight),
+				log.Uint64("trackedHeight", rt.fastFollowHeight))
+		}
+		return blk, nil
+	}
+
+	if !rt.config.Logger.IsZero() {
+		rt.config.Logger.Info("fast-follow: accepting block from validator",
+			log.Stringer("blockID", blockID),
+			log.Uint64("height", incomingHeight),
+			log.Stringer("from", fromNodeID),
+			log.Uint64("trackedHeight", rt.fastFollowHeight))
+	}
+
+	// Accept the block directly
+	if err := blk.Accept(ctx); err != nil {
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("fast-follow: accept failed, falling through to consensus",
+				log.Stringer("blockID", blockID),
+				log.Uint64("height", incomingHeight),
+				log.Err(err))
+		}
+		// Accept failed - fall through to consensus tracking
+	} else {
+		// Update our height tracker immediately
+		rt.fastFollowHeight = incomingHeight
+
+		// Update VM preference to build on this block
+		if err := rt.config.VM.SetPreference(ctx, blockID); err != nil {
+			if !rt.config.Logger.IsZero() {
+				rt.config.Logger.Warn("fast-follow: failed to set preference",
+					log.Stringer("blockID", blockID),
+					log.Err(err))
+			}
+		}
+		rt.Transitive.blocksAccepted++
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Info("fast-follow: block accepted successfully",
+				log.Stringer("blockID", blockID),
+				log.Uint64("height", incomingHeight))
+		}
+
+		// Send vote back to proposer so they can finalize
+		if rt.config.Gossiper != nil {
+			if err := rt.config.Gossiper.SendVote(rt.config.ChainID, fromNodeID, blockID); err != nil {
 				if !rt.config.Logger.IsZero() {
-					rt.config.Logger.Warn("failed to accept block in fast-follow",
-						log.Stringer("blockID", blk.ID()),
+					rt.config.Logger.Warn("fast-follow: failed to send vote",
+						log.Stringer("blockID", blockID),
+						log.Stringer("proposer", fromNodeID),
 						log.Err(err))
 				}
-			} else {
-				// Update VM preference to build on this block
-				if err := rt.config.VM.SetPreference(ctx, blk.ID()); err != nil {
-					if !rt.config.Logger.IsZero() {
-						rt.config.Logger.Warn("failed to set preference after fast-follow accept",
-							log.Stringer("blockID", blk.ID()),
-							log.Err(err))
-					}
-				}
-				rt.Transitive.blocksAccepted++
-				if !rt.config.Logger.IsZero() {
-					rt.config.Logger.Info("fast-follow: block accepted successfully",
-						log.Stringer("blockID", blk.ID()),
-						log.Uint64("height", blk.Height()))
-				}
-
-				// CRITICAL: Send vote back to proposer so they can reach threshold
-				// and finalize their own copy of the block. Without this, the
-				// proposer (node1) stays at height 0 while followers advance.
-				if rt.config.Gossiper != nil {
-					if err := rt.config.Gossiper.SendVote(rt.config.ChainID, fromNodeID, blk.ID()); err != nil {
-						if !rt.config.Logger.IsZero() {
-							rt.config.Logger.Warn("failed to send vote to proposer after fast-follow",
-								log.Stringer("blockID", blk.ID()),
-								log.Stringer("proposer", fromNodeID),
-								log.Err(err))
-						}
-					} else {
-						if !rt.config.Logger.IsZero() {
-							rt.config.Logger.Info("fast-follow: sent vote back to proposer",
-								log.Stringer("blockID", blk.ID()),
-								log.Stringer("proposer", fromNodeID))
-						}
-					}
-				}
 			}
-			return blk, nil
 		}
+		return blk, nil
 	}
 
 	// If fast-follow doesn't apply, fall back to consensus tracking
