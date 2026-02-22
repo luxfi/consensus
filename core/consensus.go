@@ -55,10 +55,16 @@ type UTXO interface {
 // MessageType defines types of messages sent between VMs and consensus
 type MessageType uint32
 
-// Message types for VM communication
+// Message types for VM communication.
+// Values MUST match engine/chain/block.MessageType constants (iota + 1):
+//   - block.PendingTxs    = 1
+//   - block.StateSyncDone = 2
+//
+// The ForwardVMNotifications bridge casts block.MessageType to core.MessageType
+// by value, so these must be numerically identical.
 const (
-	PendingTxs    MessageType = 0
-	StateSyncDone MessageType = 1
+	PendingTxs    MessageType = iota + 1 // = 1, matches block.PendingTxs
+	StateSyncDone                        // = 2, matches block.StateSyncDone
 )
 
 // Message represents a message from VM to consensus engine
