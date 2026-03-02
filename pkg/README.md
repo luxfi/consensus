@@ -75,14 +75,14 @@ make test-cpp
 
 ## Consensus Engines
 
-All implementations support these consensus engines:
+All implementations support these consensus engines (Quasar family):
 
-1. **Snowball** - Classic Byzantine fault-tolerant consensus
-2. **Avalanche** - DAG-based consensus with conflict sets
-3. **Snowflake** - Simplified binary consensus
-4. **DAG** - Full directed acyclic graph consensus
+1. **Wave** - Threshold voting with fast probabilistic consensus (production)
+2. **Nova** - Linear chain consensus (wraps Ray sub-protocol)
+3. **Nebula** - DAG consensus with safe-prefix commit (wraps Field sub-protocol)
+4. **PostQuantum** - Quantum-resistant consensus with BLS + Ringtail + ML-DSA
 5. **Chain** - Linear chain consensus for ordered blocks
-6. **PostQuantum** - Quantum-resistant consensus with lattice cryptography
+6. **DAG** - Full directed acyclic graph consensus
 
 ## Performance Benchmarks
 
