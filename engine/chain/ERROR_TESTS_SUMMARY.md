@@ -26,7 +26,7 @@ Successfully ported error propagation tests from upstream chain consensus to Lux
 - **ErrorBlock** - Test block implementation that can inject errors on Accept/Reject/Verify
 - **Consensus** - Simplified consensus engine for testing with proper error propagation
 - **ConsensusContext** - Context with Prometheus registerer for metrics testing
-- **Parameters** - Consensus parameters matching snowball configuration
+- **Parameters** - Consensus parameters matching Quasar/Wave configuration
 
 ### Adaptations from upstream
 1. Used Lux's `bag.Bag` from `node/utils/bag` instead of upstream's bag implementation
