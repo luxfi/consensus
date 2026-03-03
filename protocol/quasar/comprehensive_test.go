@@ -3090,7 +3090,8 @@ func TestSigner_ThresholdMode_SignAndVerify(t *testing.T) {
 	// Lagrange interpolation in the BLS scheme, which is not yet implemented.
 	// The current stub uses the master key for all shares, making aggregated
 	// signatures invalid for true threshold verification.
-	// TODO: Implement proper BLS scalar field arithmetic for polynomial evaluation.
+	// Production BLS threshold uses luxfi/threshold/protocols/frost for proper
+	// polynomial evaluation and Lagrange interpolation.
 	//
 	// For now, we verify the infrastructure is correctly wired up:
 	// - Key generation works
