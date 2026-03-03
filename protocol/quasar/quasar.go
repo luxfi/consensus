@@ -16,7 +16,12 @@ import (
 	"github.com/luxfi/crypto/threshold"
 	_ "github.com/luxfi/crypto/threshold/bls" // Register BLS threshold scheme
 
-	ringtailThreshold "github.com/luxfi/ringtail/threshold"
+	// Pulsar threshold is the corrected lattice kernel that replaced
+	// upstream Ringtail. Type aliasing preserves the historical
+	// `ringtailThreshold` identifier so this file's signing routines
+	// (Round1/Round2/Finalize) stay byte-stable while the underlying
+	// types come from pulsar/threshold.
+	ringtailThreshold "github.com/luxfi/pulsar/threshold"
 )
 
 // Buffer pools for hot paths - reduces GC pressure during signing/verification
@@ -87,7 +92,7 @@ type Validator struct {
 	ID          string
 	BLSPubKey   *bls.PublicKey
 	RingtailPub []byte           // Ringtail group public key contribution
-	MLDSAPubKey *mldsa.PublicKey  // ML-DSA-65 identity key (nil if not configured)
+	MLDSAPubKey *mldsa.PublicKey // ML-DSA-65 identity key (nil if not configured)
 	Weight      uint64
 	Active      bool
 }
@@ -451,7 +456,7 @@ func (s *signer) TripleSignRound1(ctx context.Context, validatorID string, messa
 		MLDSA:       mldsaSig,
 		ValidatorID: validatorID,
 		IsThreshold: true,
-		SignerIndex:  blsSigner.Index(),
+		SignerIndex: blsSigner.Index(),
 	}
 
 	return sig, round1Data, nil
@@ -871,7 +876,6 @@ func newSignerWithThresholdConfig(config ThresholdConfig) (*signer, error) {
 
 	return h, nil
 }
-
 
 // GenerateThresholdKeys generates threshold keys for a single scheme.
 func GenerateThresholdKeys(schemeID threshold.SchemeID, t, n int) ([]threshold.KeyShare, threshold.PublicKey, error) {
