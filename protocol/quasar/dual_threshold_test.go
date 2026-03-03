@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/luxfi/crypto/threshold"
-	coronaThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/pulsar/threshold"
 	"github.com/stretchr/testify/require"
 )
 
