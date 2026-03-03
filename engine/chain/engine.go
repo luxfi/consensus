@@ -225,6 +225,9 @@ type Transitive struct {
 	voteRequests chan VoteRequest
 	votes        chan Vote
 
+	// Pipeline: signal channel for continuous block production
+	pipelineSignal chan struct{}
+
 	// Metrics
 	blocksBuilt    uint64
 	blocksAccepted uint64
@@ -251,21 +254,31 @@ func New(opts ...Option) *Transitive {
 //	cfg := Config{Params: config.MainnetParams(), VM: vm}
 //	engine := NewWithConfig(cfg, WithProposer(proposer))
 func NewWithConfig(cfg Config, opts ...Option) *Transitive {
+	// Scale buffers for burst mode — 1ms blocks produce 1000 blocks/sec,
+	// so vote channels need depth to avoid back-pressure stalls.
+	burst := cfg.Params.BlockTime <= time.Millisecond
 	if cfg.VoteRequestBuffer == 0 {
 		cfg.VoteRequestBuffer = 100
+		if burst {
+			cfg.VoteRequestBuffer = 4096
+		}
 	}
 	if cfg.VoteBuffer == 0 {
 		cfg.VoteBuffer = 1000
+		if burst {
+			cfg.VoteBuffer = 16384
+		}
 	}
 
 	t := &Transitive{
-		consensus:     NewChainConsensus(cfg.Params.K, cfg.Params.AlphaPreference, int(cfg.Params.Beta)),
-		params:        cfg.Params,
-		vm:            cfg.VM,
-		proposer:      cfg.Proposer,
-		pendingBlocks: make(map[ids.ID]*PendingBlock),
-		voteRequests:  make(chan VoteRequest, cfg.VoteRequestBuffer),
-		votes:         make(chan Vote, cfg.VoteBuffer),
+		consensus:      NewChainConsensus(cfg.Params.K, cfg.Params.AlphaPreference, int(cfg.Params.Beta)),
+		params:         cfg.Params,
+		vm:             cfg.VM,
+		proposer:       cfg.Proposer,
+		pendingBlocks:  make(map[ids.ID]*PendingBlock),
+		voteRequests:   make(chan VoteRequest, cfg.VoteRequestBuffer),
+		votes:          make(chan Vote, cfg.VoteBuffer),
+		pipelineSignal: make(chan struct{}, 1),
 	}
 
 	for _, opt := range opts {
@@ -303,9 +316,10 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 	// Capture ctx in local variable to avoid race with struct field access
 	engineCtx := t.ctx
 
-	t.wg.Add(2)
+	t.wg.Add(3)
 	go t.pollLoopWithCtx(engineCtx)
 	go t.voteHandlerWithCtx(engineCtx)
+	go t.pipelineLoop(engineCtx)
 
 	return nil
 }
@@ -554,7 +568,14 @@ func (t *Transitive) GetPendingBlock(blockID ids.ID) (block.Block, bool) {
 func (t *Transitive) pollLoopWithCtx(ctx context.Context) {
 	defer t.wg.Done()
 
-	ticker := time.NewTicker(50 * time.Millisecond)
+	// Use BlockTime as poll interval — the engine must check finalization
+	// at least as fast as blocks are produced. For 1ms blocks this means
+	// 1ms polling; for mainnet 200ms blocks, 200ms polling.
+	interval := t.params.BlockTime
+	if interval <= 0 {
+		interval = 50 * time.Millisecond // fallback
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -562,12 +583,44 @@ func (t *Transitive) pollLoopWithCtx(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Check context again before processing to avoid work after shutdown
 			if ctx.Err() != nil {
 				return
 			}
 			t.processPendingBlocks()
 		}
+	}
+}
+
+// pipelineLoop implements pipelined block production: as soon as a block is
+// finalized, immediately build the next block. This decouples throughput from
+// latency — with a 10-stage pipeline, a 10ms round produces 1 block/ms.
+func (t *Transitive) pipelineLoop(ctx context.Context) {
+	defer t.wg.Done()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.pipelineSignal:
+			if ctx.Err() != nil {
+				return
+			}
+			// A block was just finalized — immediately try to build the next one
+			t.mu.Lock()
+			if t.vm != nil {
+				t.pendingBuildBlocks++
+				_ = t.buildBlocksLocked(ctx)
+			}
+			t.mu.Unlock()
+		}
+	}
+}
+
+// signalPipeline wakes the pipeline goroutine to build the next block.
+func (t *Transitive) signalPipeline() {
+	select {
+	case t.pipelineSignal <- struct{}{}:
+	default: // already signaled
 	}
 }
 
@@ -610,11 +663,14 @@ func (t *Transitive) processPendingBlocks() {
 	}
 
 	// Phase 3: Update bookkeeping under t.mu write lock.
+	// Track which actions were actually found (not already finalized by tryFinalizeBlock).
 	t.mu.Lock()
 	var vm BlockBuilder
 	var ctx context.Context
-	for _, action := range actions {
+	found := make([]bool, len(actions))
+	for i, action := range actions {
 		if pending, exists := t.pendingBlocks[action.blockID]; exists {
+			found[i] = true
 			pending.Decided = true
 			if action.accept {
 				t.blocksAccepted++
@@ -628,9 +684,16 @@ func (t *Transitive) processPendingBlocks() {
 	ctx = t.ctx
 	t.mu.Unlock()
 
-	// Phase 4: Execute VM operations outside all locks.
-	for _, action := range actions {
+	// Phase 4: Execute VM operations ONLY for blocks found in phase 3.
+	// Blocks already finalized by tryFinalizeBlock are skipped to prevent
+	// double Accept/Reject calls which could corrupt VM state.
+	accepted := false
+	for i, action := range actions {
+		if !found[i] {
+			continue // already finalized by vote handler
+		}
 		if action.accept {
+			accepted = true
 			if action.vmBlock != nil {
 				action.vmBlock.Accept(ctx)
 			}
@@ -642,6 +705,11 @@ func (t *Transitive) processPendingBlocks() {
 				action.vmBlock.Reject(ctx)
 			}
 		}
+	}
+
+	// Pipeline: if any block was accepted, immediately build next
+	if accepted {
+		t.signalPipeline()
 	}
 }
 
@@ -721,6 +789,9 @@ func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
 	if pending.VMBlock != nil {
 		_ = pending.VMBlock.Accept(ctx)
 	}
+
+	// Pipeline: block finalized → immediately build next
+	t.signalPipeline()
 }
 
 // DrainAccepted finalizes any pending blocks that consensus has accepted.
@@ -748,6 +819,10 @@ func (t *Transitive) DrainAccepted(ctx context.Context) {
 		if a.blk != nil {
 			_ = a.blk.Accept(ctx)
 		}
+	}
+
+	if len(toAccept) > 0 {
+		t.signalPipeline()
 	}
 }
 
@@ -779,8 +854,16 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			data:      vmBlock.Bytes(),
 		}
 
-		// Release t.mu before calling consensus (avoids nested lock t.mu -> c.mu).
+		// Verify BEFORE consensus — prevents accepting invalid blocks in K=1 mode
+		// where self-vote causes immediate acceptance. If Verify fails, the block
+		// is never added to consensus, so IsAccepted cannot return true for it.
 		t.mu.Unlock()
+		if err := vmBlock.Verify(ctx); err != nil {
+			t.mu.Lock()
+			continue
+		}
+
+		// Now add to consensus and self-vote.
 		addErr := t.consensus.AddBlock(ctx, consensusBlock)
 		if addErr == nil {
 			_ = t.consensus.ProcessVote(ctx, vmBlock.ID(), true)
@@ -795,14 +878,9 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		// Check if consensus already accepted this block (K=1 single-node mode).
 		alreadyAccepted := t.consensus.IsAccepted(vmBlock.ID())
 		if alreadyAccepted {
-			// Single-node mode: block accepted synchronously via self-vote.
-			// Must Verify before Accept — VMs (PlatformVM) prepare state during Verify.
+			// Block already verified above — safe to accept.
 			t.blocksAccepted++
 			t.mu.Unlock()
-			if err := vmBlock.Verify(ctx); err != nil {
-				t.mu.Lock()
-				continue
-			}
 			_ = vmBlock.Accept(ctx)
 			if t.vm != nil {
 				_ = t.vm.SetPreference(ctx, vmBlock.ID())
