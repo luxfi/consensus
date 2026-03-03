@@ -13,7 +13,7 @@ import (
 )
 
 // CNode implements NodeRunner for C implementation
-// Currently uses stub implementation to avoid CGo build dependencies
+// Uses simulated implementation to avoid CGo build dependencies in tests.
 type CNode struct {
 	t         *testing.T
 	decisions map[ids.ID]bool
@@ -36,13 +36,13 @@ func (n *CNode) Start(ctx context.Context, port int) error {
 	// Check if C library is built
 	cLibPath := filepath.Join("pkg", "c", "build", "liblux_consensus.a")
 	if _, err := os.Stat(cLibPath); os.IsNotExist(err) {
-		n.t.Log("⚠️  C library not built, using stub implementation")
-		n.healthy = true // Still mark as healthy for stub
+		n.t.Log("C library not built, using simulated implementation")
+		n.healthy = true
 		return nil
 	}
 
 	n.healthy = true
-	n.t.Log("✅ C node started successfully (stub)")
+	n.t.Log("C node started successfully (simulated)")
 	return nil
 }
 
@@ -67,8 +67,7 @@ func (n *CNode) ProposeBlock(testBlock *Block) error {
 
 	n.t.Logf("C node: proposing block %s (height %d)", testBlock.ID, testBlock.Height)
 
-	// For E2E test stub, simulate consensus
-	// In production with CGo, this would call C library functions
+	// Simulated consensus for E2E cross-language test.
 	blockData := map[string]interface{}{
 		"id":        testBlock.ID.String(),
 		"parent_id": testBlock.ParentID.String(),

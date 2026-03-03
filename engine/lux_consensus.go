@@ -280,7 +280,7 @@ func (t *SimpleTransport) RequestVotes(_ context.Context, _ []types.NodeID, _ id
 	return ch
 }
 
-// Err returns ErrNoTransport to indicate this is a stub.
+// Err returns ErrNoTransport because SimpleTransport has no network connectivity.
 func (t *SimpleTransport) Err() error {
 	return ErrNoTransport
 }

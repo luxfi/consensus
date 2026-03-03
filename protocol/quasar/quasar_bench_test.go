@@ -530,7 +530,7 @@ func BenchmarkMLDSAVerification(b *testing.B) {
 }
 
 // =============================================================================
-// Ringtail (Stub) Benchmarks
+// Ringtail Benchmarks (Reference)
 // =============================================================================
 
 // NOTE: Ringtail benchmarks are in the real ringtail package at

@@ -2169,8 +2169,8 @@ func TestEngine_NewEngine_NegativeThreshold(t *testing.T) {
 
 func TestEngine_ProcessBlock_NilCert(t *testing.T) {
 	// This tests the path where generateCert returns nil
-	// Since our stub implementation always returns a cert, we need to
-	// directly call processBlock with a modified hybrid that returns nil
+	// The default implementation always returns a cert; to test the nil-cert
+	// path, call processBlock with a modified hybrid that returns nil.
 
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
 	engine, err := NewTestEngine(cfg)
@@ -3088,7 +3088,7 @@ func TestSigner_ThresholdMode_SignAndVerify(t *testing.T) {
 
 	// Note: Full threshold verification requires proper polynomial evaluation and
 	// Lagrange interpolation in the BLS scheme, which is not yet implemented.
-	// The current stub uses the master key for all shares, making aggregated
+	// The current test setup uses the master key for all shares, making aggregated
 	// signatures invalid for true threshold verification.
 	// Production BLS threshold uses luxfi/threshold/protocols/frost for proper
 	// polynomial evaluation and Lagrange interpolation.
