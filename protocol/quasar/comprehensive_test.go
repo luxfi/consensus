@@ -337,20 +337,23 @@ func TestEngine_NewEngine(t *testing.T) {
 
 func TestEngine_NewEngine_ZeroThreshold(t *testing.T) {
 	cfg := Config{QThreshold: 0, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
-	if err != nil {
-		t.Fatalf("NewEngine with zero threshold failed: %v", err)
+	_, err := NewEngine(cfg)
+	if err == nil {
+		t.Fatal("NewEngine with zero threshold should fail")
 	}
+}
 
-	// Should default to threshold 1
-	if engine == nil {
-		t.Fatal("expected non-nil engine")
+func TestEngine_NewEngine_ThresholdOne_Rejected(t *testing.T) {
+	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
+	_, err := NewEngine(cfg)
+	if err == nil {
+		t.Fatal("NewEngine with threshold=1 should fail in production mode")
 	}
 }
 
 func TestEngine_StartStop(t *testing.T) {
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
 		t.Fatalf("NewEngine failed: %v", err)
 	}
@@ -370,7 +373,7 @@ func TestEngine_StartStop(t *testing.T) {
 
 func TestEngine_Submit_NilBlock(t *testing.T) {
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
 		t.Fatalf("NewEngine failed: %v", err)
 	}
@@ -383,7 +386,7 @@ func TestEngine_Submit_NilBlock(t *testing.T) {
 
 func TestEngine_Submit_ValidBlock(t *testing.T) {
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
 		t.Fatalf("NewEngine failed: %v", err)
 	}
@@ -409,7 +412,7 @@ func TestEngine_Submit_ValidBlock(t *testing.T) {
 
 func TestEngine_Submit_BufferFull(t *testing.T) {
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
 		t.Fatalf("NewEngine failed: %v", err)
 	}
@@ -440,7 +443,7 @@ func TestEngine_Submit_BufferFull(t *testing.T) {
 
 func TestEngine_Finalized(t *testing.T) {
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
 		t.Fatalf("NewEngine failed: %v", err)
 	}
@@ -453,7 +456,7 @@ func TestEngine_Finalized(t *testing.T) {
 
 func TestEngine_IsFinalized(t *testing.T) {
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
 		t.Fatalf("NewEngine failed: %v", err)
 	}
@@ -491,7 +494,7 @@ func TestEngine_IsFinalized(t *testing.T) {
 
 func TestEngine_Stats(t *testing.T) {
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
 		t.Fatalf("NewEngine failed: %v", err)
 	}
@@ -896,14 +899,14 @@ func TestBlockCert_Verify(t *testing.T) {
 			want:       false,
 		},
 		{
-			name: "valid cert",
+			name: "non-empty cert without crypto verification returns false",
 			cert: &BlockCert{
 				BLS:  []byte{1, 2, 3},
 				PQ:   []byte{4, 5, 6},
 				Sigs: make(map[string][]byte),
 			},
 			validators: []string{"v1", "v2"},
-			want:       true,
+			want:       false, // Verify() always returns false; use VerifyWithKeys
 		},
 	}
 
@@ -1518,7 +1521,7 @@ func TestVerkleWitness_FullVerification_InsufficientThreshold(t *testing.T) {
 // =============================================================================
 
 func TestQuasar_ProcessBlockWithContext_Cancelled(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -1547,7 +1550,7 @@ func TestQuasar_ProcessBlockWithContext_Cancelled(t *testing.T) {
 }
 
 func TestQuasar_SubmitBlock_AutoRegister(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -1588,7 +1591,7 @@ func TestQuasar_SubmitBlock_AutoRegister(t *testing.T) {
 }
 
 func TestQuasar_SubmitBlock_BufferFull(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -1614,7 +1617,7 @@ func TestQuasar_SubmitBlock_BufferFull(t *testing.T) {
 }
 
 func TestQuasar_FinalizeQuantumEpoch_NoBlocks(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -1629,7 +1632,7 @@ func TestQuasar_FinalizeQuantumEpoch_NoBlocks(t *testing.T) {
 }
 
 func TestQuasar_ComputeQuantumHash(t *testing.T) {
-	q, _ := NewQuasar(1)
+	q, _ := NewTestQuasar(1)
 
 	block := &Block{
 		ChainName: "Test",
@@ -1975,7 +1978,7 @@ func TestBLS_ComputeCanonicalOrder_WithHorizons(t *testing.T) {
 }
 
 func TestQuasar_SubmitChainBlock_BufferFull(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2020,7 +2023,7 @@ func TestQuasar_SubmitChainBlock_BufferFull(t *testing.T) {
 }
 
 func TestQuasar_ProcessBlockWithContext_ContextCancelledAfterLock(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2048,7 +2051,7 @@ func TestQuasar_ProcessBlockWithContext_ContextCancelledAfterLock(t *testing.T) 
 }
 
 func TestQuasar_VerifyQuantumFinalityWithContext_AllPaths(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2083,7 +2086,7 @@ func TestQuasar_VerifyQuantumFinalityWithContext_AllPaths(t *testing.T) {
 }
 
 func TestQuasar_RegisterChain_AlreadyRegistered(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2102,7 +2105,7 @@ func TestQuasar_RegisterChain_AlreadyRegistered(t *testing.T) {
 }
 
 func TestQuasar_ProcessChain_ContextDone(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2131,7 +2134,7 @@ func TestQuasar_ProcessChain_ContextDone(t *testing.T) {
 }
 
 func TestQuasar_QuantumFinalizer_ContextDone(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2156,14 +2159,11 @@ func TestQuasar_QuantumFinalizer_ContextDone(t *testing.T) {
 }
 
 func TestEngine_NewEngine_NegativeThreshold(t *testing.T) {
-	// Negative threshold should get converted to 1
+	// Negative threshold should be rejected
 	cfg := Config{QThreshold: -5, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
-	if err != nil {
-		t.Fatalf("NewEngine with negative threshold failed: %v", err)
-	}
-	if engine == nil {
-		t.Fatal("expected non-nil engine")
+	_, err := NewEngine(cfg)
+	if err == nil {
+		t.Fatal("NewEngine with negative threshold should fail")
 	}
 }
 
@@ -2173,9 +2173,9 @@ func TestEngine_ProcessBlock_NilCert(t *testing.T) {
 	// directly call processBlock with a modified hybrid that returns nil
 
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
-		t.Fatalf("NewEngine failed: %v", err)
+		t.Fatalf("NewTestEngine failed: %v", err)
 	}
 
 	ctx := context.Background()
@@ -2203,7 +2203,7 @@ func TestEngine_ProcessBlock_NilCert(t *testing.T) {
 
 func TestEngine_FinalizedChannel_BufferFull(t *testing.T) {
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
 		t.Fatalf("NewEngine failed: %v", err)
 	}
@@ -2364,7 +2364,7 @@ func TestVerkleWitness_VerifyVerkleCommitment_InvalidOpeningProof(t *testing.T) 
 }
 
 func TestProcessPXCChain_ContextDone(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2411,7 +2411,7 @@ func TestProcessPXCChain_ContextDone(t *testing.T) {
 }
 
 func TestQuasar_SubmitBlock_BufferNotExists(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2437,7 +2437,7 @@ func TestQuasar_SubmitBlock_BufferNotExists(t *testing.T) {
 }
 
 func TestQuasar_VerifyQuantumFinalityWithContext_InvalidSignature(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2479,7 +2479,7 @@ func TestQuasar_VerifyQuantumFinalityWithContext_InvalidSignature(t *testing.T) 
 }
 
 func TestQuasar_QuantumFinalizer_TickerCase(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2695,7 +2695,7 @@ func TestVerkleWitness_FullVerification_RingtailThresholdNotMet(t *testing.T) {
 
 func TestEngine_ProcessBlock_FinalizedChannelDrop(t *testing.T) {
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
 		t.Fatalf("NewEngine failed: %v", err)
 	}
@@ -2729,7 +2729,7 @@ func TestEngine_ProcessBlock_FinalizedChannelDrop(t *testing.T) {
 func TestQuasar_SubmitBlock_RegisterChainError(t *testing.T) {
 	// This is hard to test because RegisterChain only returns nil
 	// But we can ensure the auto-register path is exercised
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2763,7 +2763,7 @@ func TestQuasar_SubmitBlock_RegisterChainError(t *testing.T) {
 }
 
 func TestQuasar_VerifyQuantumFinalityWithContext_LoopContextCheck(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}
@@ -2831,7 +2831,7 @@ func TestSigner_VerifyAggregatedSignature_ContextCancelledInLoop(t *testing.T) {
 
 func TestEngine_Stop_NotStarted(t *testing.T) {
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	if err != nil {
 		t.Fatalf("NewEngine failed: %v", err)
 	}
@@ -2908,7 +2908,7 @@ func TestVerkleWitness_VerifyStateTransition_SlowPath(t *testing.T) {
 }
 
 func TestQuasar_SubmitBlock_BufferFullDropOldest(t *testing.T) {
-	q, err := NewQuasar(1)
+	q, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("NewQuasar failed: %v", err)
 	}

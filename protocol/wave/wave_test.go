@@ -385,7 +385,7 @@ func TestWaveFPCWithCustomThresholds(t *testing.T) {
 		EnableFPC: true,
 		ThetaMin:  0.6,
 		ThetaMax:  0.9,
-		FPCSeed:   fpc.DeriveEpochSeed(1, []byte("test")),
+		FPCSeed:   fpc.DeriveEpochSeed(1, []byte("test"), nil),
 	}
 
 	cut := newMockCut[string](10)
@@ -424,7 +424,7 @@ func TestWaveFPCZeroThresholds(t *testing.T) {
 		EnableFPC: true,
 		ThetaMin:  0, // Should default to 0.5
 		ThetaMax:  0, // Should default to 0.8
-		FPCSeed:   fpc.DeriveEpochSeed(1, []byte("test")),
+		FPCSeed:   fpc.DeriveEpochSeed(1, []byte("test"), nil),
 	}
 
 	cut := newMockCut[string](10)
