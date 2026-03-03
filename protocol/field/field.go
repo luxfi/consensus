@@ -44,13 +44,14 @@ type Config struct {
 }
 
 type Driver[V VID] struct {
-	cfg       Config
-	wv        wave.Wave[V]
-	cut       prism.Cut[V]
-	str       Store[V]
-	prop      Proposer[V]
-	com       Committer[V]
-	committed []V // Track committed vertices in order
+	cfg            Config
+	wv             wave.Wave[V]
+	cut            prism.Cut[V]
+	str            Store[V]
+	prop           Proposer[V]
+	com            Committer[V]
+	committed      []V // Track committed vertices in order
+	finalizedCache map[V]bool
 }
 
 func NewDriver[V VID](cfg Config, cut prism.Cut[V], tx wave.Transport[V], store Store[V], prop Proposer[V], com Committer[V]) *Driver[V] {
@@ -67,14 +68,16 @@ func NewDriver[V VID](cfg Config, cut prism.Cut[V], tx wave.Transport[V], store 
 		cfg.RoundTO = 250 * time.Millisecond
 	}
 
+	wv, _ := wave.New[V](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx)
 	return &Driver[V]{
-		cfg:       cfg,
-		wv:        wave.New[V](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx),
-		cut:       cut,
-		str:       store,
-		prop:      prop,
-		com:       com,
-		committed: make([]V, 0),
+		cfg:            cfg,
+		wv:             wv,
+		cut:            cut,
+		str:            store,
+		prop:           prop,
+		com:            com,
+		committed:      make([]V, 0),
+		finalizedCache: make(map[V]bool),
 	}
 }
 
@@ -124,24 +127,40 @@ func (d *Driver[V]) computeSafePrefix(frontier []V) []V {
 }
 
 // isFullyFinalized checks if a vertex and all its ancestors are finalized.
+// Results are memoized in finalizedCache to avoid O(n^2) repeated DFS.
 func (d *Driver[V]) isFullyFinalized(v V) bool {
+	if cached, ok := d.finalizedCache[v]; ok {
+		return cached
+	}
+
 	// Check this vertex is finalized
 	state, exists := d.wv.State(v)
 	if !exists || !state.Decided || state.Result != types.DecideAccept {
+		d.finalizedCache[v] = false
 		return false
 	}
 
 	// Check all parents are finalized (recursively)
 	block, exists := d.str.Get(v)
 	if !exists {
+		d.finalizedCache[v] = false
 		return false
 	}
 	for _, parent := range block.Parents() {
 		if !d.isFullyFinalized(parent) {
+			d.finalizedCache[v] = false
 			return false
 		}
 	}
+
+	d.finalizedCache[v] = true
 	return true
+}
+
+// ClearFinalizedCache resets the finalization memoization cache.
+// Call this on epoch rotation so stale entries do not persist.
+func (d *Driver[V]) ClearFinalizedCache() {
+	d.finalizedCache = make(map[V]bool)
 }
 
 // Start begins the Field engine operation

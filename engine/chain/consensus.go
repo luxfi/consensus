@@ -20,7 +20,7 @@ type Block struct {
 	timestamp int64
 	data      []byte
 
-	// Consensus state - using Lux consensus instead of Snowball
+	// Consensus state - Photon -> Wave -> Focus finality
 	luxConsensus *engine.LuxConsensus
 	accepted     bool
 	rejected     bool

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
+	"github.com/luxfi/consensus/core/slashing"
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/ids"
 )
@@ -1162,5 +1163,234 @@ func TestBurstThroughput(t *testing.T) {
 				t.Logf("WARNING: < 100 blocks/sec — pipeline not saturated")
 			}
 		})
+	}
+}
+
+// --- Slashing integration tests ---
+
+func TestSlashing_DoubleVoteDropped(t *testing.T) {
+	detector := slashing.NewDetector(64, 0.5)
+	db := slashing.NewDB(1 * time.Hour)
+	engine := New(WithSlashing(detector, db))
+	ctx := context.Background()
+
+	_ = engine.Start(ctx, true)
+	defer engine.Stop(ctx)
+
+	// Add a pending block at height 100
+	blkID := ids.ID{0xAA}
+	blk := &Block{id: blkID, parentID: ids.Empty, height: 100, timestamp: time.Now().Unix()}
+	_ = engine.AddBlock(ctx, blk)
+	engine.mu.Lock()
+	engine.pendingBlocks[blkID] = &PendingBlock{
+		ConsensusBlock: blk,
+		ProposedAt:     time.Now(),
+	}
+	engine.mu.Unlock()
+
+	// Also add a second block at height 100
+	blkID2 := ids.ID{0xBB}
+	blk2 := &Block{id: blkID2, parentID: ids.Empty, height: 100, timestamp: time.Now().Unix()}
+	_ = engine.AddBlock(ctx, blk2)
+	engine.mu.Lock()
+	engine.pendingBlocks[blkID2] = &PendingBlock{
+		ConsensusBlock: blk2,
+		ProposedAt:     time.Now(),
+	}
+	engine.mu.Unlock()
+
+	var nodeA ids.NodeID
+	nodeA[0] = 0x01
+
+	// First vote: nodeA votes for blkID at height 100 -- should succeed
+	engine.ReceiveVote(Vote{BlockID: blkID, NodeID: nodeA, Accept: true})
+	time.Sleep(50 * time.Millisecond) // let vote handler process
+
+	engine.mu.RLock()
+	pending1 := engine.pendingBlocks[blkID]
+	vote1Count := 0
+	if pending1 != nil {
+		vote1Count = pending1.VoteCount
+	}
+	engine.mu.RUnlock()
+
+	if vote1Count != 1 {
+		t.Fatalf("first vote should be counted, got VoteCount=%d", vote1Count)
+	}
+
+	// Second vote: nodeA votes for blkID2 at height 100 -- equivocation, should be dropped
+	engine.ReceiveVote(Vote{BlockID: blkID2, NodeID: nodeA, Accept: true})
+	time.Sleep(50 * time.Millisecond)
+
+	engine.mu.RLock()
+	pending2 := engine.pendingBlocks[blkID2]
+	vote2Count := 0
+	if pending2 != nil {
+		vote2Count = pending2.VoteCount
+	}
+	engine.mu.RUnlock()
+
+	if vote2Count != 0 {
+		t.Fatalf("equivocating vote should be dropped, got VoteCount=%d", vote2Count)
+	}
+
+	// Verify evidence was recorded
+	rec := db.GetRecord(nodeA)
+	if rec == nil {
+		t.Fatal("slash record should exist for equivocating validator")
+	}
+	if rec.SlashCount != 1 {
+		t.Fatalf("expected 1 slash, got %d", rec.SlashCount)
+	}
+	if !db.IsJailed(nodeA) {
+		t.Fatal("equivocating validator should be jailed")
+	}
+}
+
+func TestSlashing_JailedVotesDropped(t *testing.T) {
+	detector := slashing.NewDetector(64, 0.5)
+	db := slashing.NewDB(1 * time.Hour)
+	engine := New(WithSlashing(detector, db))
+	ctx := context.Background()
+
+	_ = engine.Start(ctx, true)
+	defer engine.Stop(ctx)
+
+	var nodeA ids.NodeID
+	nodeA[0] = 0x01
+
+	// Pre-jail nodeA
+	db.RecordEvidence(slashing.Evidence{
+		Type:        slashing.DoubleVote,
+		ValidatorID: nodeA,
+		Height:      50,
+		Proof:       []byte("test"),
+	})
+
+	// Add a pending block
+	blkID := ids.ID{0xCC}
+	blk := &Block{id: blkID, parentID: ids.Empty, height: 200, timestamp: time.Now().Unix()}
+	_ = engine.AddBlock(ctx, blk)
+	engine.mu.Lock()
+	engine.pendingBlocks[blkID] = &PendingBlock{
+		ConsensusBlock: blk,
+		ProposedAt:     time.Now(),
+	}
+	engine.mu.Unlock()
+
+	// Jailed validator's vote should be dropped entirely (not counted)
+	engine.ReceiveVote(Vote{BlockID: blkID, NodeID: nodeA, Accept: true})
+	time.Sleep(50 * time.Millisecond)
+
+	engine.mu.RLock()
+	pending := engine.pendingBlocks[blkID]
+	count := 0
+	if pending != nil {
+		count = pending.VoteCount
+	}
+	engine.mu.RUnlock()
+
+	if count != 0 {
+		t.Fatalf("jailed validator vote should not be counted, got VoteCount=%d", count)
+	}
+	if !db.IsJailed(nodeA) {
+		t.Fatal("validator should be jailed")
+	}
+}
+
+func TestSlashing_CheckBlockProposal(t *testing.T) {
+	detector := slashing.NewDetector(64, 0.5)
+	db := slashing.NewDB(1 * time.Hour)
+	engine := New(WithSlashing(detector, db))
+
+	var nodeA ids.NodeID
+	nodeA[0] = 0x01
+
+	blkID1 := ids.ID{0xAA}
+	blkID2 := ids.ID{0xBB}
+
+	// First block from nodeA at height 100 -- should pass
+	ev := engine.CheckBlockProposal(nodeA, 100, blkID1, []byte("data1"))
+	if ev != nil {
+		t.Fatal("first block should not produce evidence")
+	}
+
+	// Second different block from nodeA at height 100 -- equivocation
+	ev = engine.CheckBlockProposal(nodeA, 100, blkID2, []byte("data2"))
+	if ev == nil {
+		t.Fatal("double-sign must produce evidence")
+	}
+	if ev.Type != slashing.DoubleSign {
+		t.Fatalf("expected DoubleSign, got %s", ev.Type)
+	}
+
+	// Verify evidence recorded and validator jailed
+	if !db.IsJailed(nodeA) {
+		t.Fatal("double-signing validator should be jailed")
+	}
+
+	// Further proposals from jailed validator should be rejected
+	blkID3 := ids.ID{0xCC}
+	ev = engine.CheckBlockProposal(nodeA, 200, blkID3, []byte("data3"))
+	if ev == nil {
+		t.Fatal("jailed validator proposals should be rejected")
+	}
+}
+
+func TestSlashing_Disabled(t *testing.T) {
+	// Without slashing option, everything works normally
+	engine := New()
+	ctx := context.Background()
+
+	_ = engine.Start(ctx, true)
+	defer engine.Stop(ctx)
+
+	blkID := ids.ID{0xAA}
+	blk := &Block{id: blkID, parentID: ids.Empty, height: 100, timestamp: time.Now().Unix()}
+	_ = engine.AddBlock(ctx, blk)
+	engine.mu.Lock()
+	engine.pendingBlocks[blkID] = &PendingBlock{
+		ConsensusBlock: blk,
+		ProposedAt:     time.Now(),
+	}
+	engine.mu.Unlock()
+
+	var nodeA ids.NodeID
+	nodeA[0] = 0x01
+
+	engine.ReceiveVote(Vote{BlockID: blkID, NodeID: nodeA, Accept: true})
+	time.Sleep(50 * time.Millisecond)
+
+	engine.mu.RLock()
+	pending := engine.pendingBlocks[blkID]
+	count := 0
+	if pending != nil {
+		count = pending.VoteCount
+	}
+	engine.mu.RUnlock()
+
+	if count != 1 {
+		t.Fatalf("vote should be counted when slashing disabled, got %d", count)
+	}
+
+	// CheckBlockProposal should return nil when slashing disabled
+	ev := engine.CheckBlockProposal(nodeA, 100, blkID, []byte("data"))
+	if ev != nil {
+		t.Fatal("CheckBlockProposal should return nil when slashing disabled")
+	}
+}
+
+func TestSlashing_SlashingDBAccessor(t *testing.T) {
+	db := slashing.NewDB(1 * time.Hour)
+	engine := New(WithSlashing(slashing.NewDetector(64, 0.5), db))
+
+	got := engine.SlashingDB()
+	if got != db {
+		t.Fatal("SlashingDB() should return the configured DB")
+	}
+
+	engine2 := New()
+	if engine2.SlashingDB() != nil {
+		t.Fatal("SlashingDB() should return nil when slashing disabled")
 	}
 }

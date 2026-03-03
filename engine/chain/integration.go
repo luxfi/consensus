@@ -302,7 +302,7 @@ func (p *gossiperProposer) Propose(ctx context.Context, proposal BlockProposal) 
 
 // RequestVotes asks specific validators to vote on a block.
 // If req.Validators is nil and we have a ValidatorSampler, sample k validators.
-// This implements the core Snowball/Avalanche k-sampling behavior.
+// This implements Lux k-sampling: select k validators and request votes.
 //
 // Single-node mode (K=1, only validator is self): the proposer delivers a
 // self-vote via the SelfVoter callback instead of polling the network.

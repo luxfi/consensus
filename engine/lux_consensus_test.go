@@ -6,8 +6,8 @@ package engine
 import (
 	"context"
 	"testing"
-	"time"
 
+	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/ids"
 	"github.com/stretchr/testify/require"
 )
@@ -240,8 +240,9 @@ func TestSimpleCutLuminance(t *testing.T) {
 	require.Equal(float64(10), luminance.Lx)
 }
 
-// TestSimpleTransportRequestVotes tests the SimpleTransport.RequestVotes method
-func TestSimpleTransportRequestVotes(t *testing.T) {
+// TestSimpleTransportRequestVotesReturnsEmpty tests that SimpleTransport
+// no longer fabricates votes -- it returns an empty closed channel.
+func TestSimpleTransportRequestVotesReturnsEmpty(t *testing.T) {
 	require := require.New(t)
 
 	transport := &SimpleTransport{}
@@ -254,46 +255,17 @@ func TestSimpleTransportRequestVotes(t *testing.T) {
 	ctx := context.Background()
 	ch := transport.RequestVotes(ctx, peers, itemID)
 
-	// Collect votes
-	votes := make([]bool, 0)
-	for photon := range ch {
-		require.Equal(itemID, photon.Item)
-		require.True(photon.Prefer)
-		votes = append(votes, photon.Prefer)
-	}
-
-	require.Len(votes, 3)
-}
-
-// TestSimpleTransportRequestVotesContextCanceled tests context cancellation
-func TestSimpleTransportRequestVotesContextCanceled(t *testing.T) {
-	require := require.New(t)
-
-	transport := &SimpleTransport{}
-	peers := make([]ids.NodeID, 100)
-	for i := 0; i < 100; i++ {
-		peers[i] = ids.GenerateTestNodeID()
-	}
-	itemID := ids.GenerateTestID()
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	ch := transport.RequestVotes(ctx, peers, itemID)
-
-	// Cancel after a short delay
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		cancel()
-	}()
-
-	// Collect votes until channel closes
 	count := 0
 	for range ch {
 		count++
 	}
+	require.Equal(0, count, "SimpleTransport must not fabricate votes")
+}
 
-	// We may have received some votes before cancellation
-	require.True(count <= 100)
+// TestSimpleTransportErr tests that SimpleTransport reports no-transport error.
+func TestSimpleTransportErr(t *testing.T) {
+	transport := &SimpleTransport{}
+	require.ErrorIs(t, transport.Err(), ErrNoTransport)
 }
 
 // TestSimpleTransportMakeLocalPhoton tests the MakeLocalPhoton method
@@ -395,31 +367,36 @@ func TestLuxConsensusPollDecisionWithLowRatio(t *testing.T) {
 	require.NotNil(lc)
 }
 
-// TestSimpleTransportRequestVotesEarlyCancel tests early context cancellation
-func TestSimpleTransportRequestVotesEarlyCancel(t *testing.T) {
+// TestNewLuxConsensusWithStakeWeightedCut tests constructing with a real StakeWeightedCut.
+func TestNewLuxConsensusWithStakeWeightedCut(t *testing.T) {
 	require := require.New(t)
 
-	transport := &SimpleTransport{}
-	peers := make([]ids.NodeID, 1000) // Many peers
-	for i := 0; i < 1000; i++ {
-		peers[i] = ids.GenerateTestNodeID()
+	validators := make([]prism.Validator, 20)
+	for i := range validators {
+		validators[i] = prism.Validator{
+			ID:     ids.GenerateTestNodeID(),
+			Weight: uint64(100 + i),
+		}
 	}
-	itemID := ids.GenerateTestID()
+	cut, err := prism.NewStakeWeightedCut(validators)
+	require.NoError(err)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	// Cancel immediately
-	cancel()
+	lc := NewLuxConsensus(20, 15, 10, WithCut(cut))
+	require.NotNil(lc)
+	require.Equal(20, lc.k)
 
-	ch := transport.RequestVotes(ctx, peers, itemID)
+	// Verify the cut is stake-weighted (not SimpleCut).
+	nodes := lc.prismCut.Sample(5)
+	require.Len(nodes, 5)
 
-	// Drain channel
-	count := 0
-	for range ch {
-		count++
+	// All sampled nodes should be from our validator set.
+	validIDs := make(map[ids.NodeID]bool)
+	for _, v := range validators {
+		validIDs[v.ID] = true
 	}
-
-	// Should get very few or no votes due to immediate cancellation
-	require.True(count < 1000)
+	for _, n := range nodes {
+		require.True(validIDs[n], "sampled node not in validator set")
+	}
 }
 
 // TestLuxConsensusPollFocusDecidedWithLowRatio tests the reject branch in Poll

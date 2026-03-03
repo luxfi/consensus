@@ -5,6 +5,8 @@ package engine
 
 import (
 	"context"
+	crand "crypto/rand"
+	"errors"
 	"sync"
 	"time"
 
@@ -15,6 +17,8 @@ import (
 	"github.com/luxfi/consensus/protocol/wave"
 	"github.com/luxfi/ids"
 )
+
+var ErrNoTransport = errors.New("no real transport configured: SimpleTransport cannot send vote requests over the network")
 
 // LuxConsensus implements Lux's consensus protocol using Photon → Wave → Focus → Prism → Quasar
 type LuxConsensus struct {
@@ -40,8 +44,11 @@ type LuxConsensus struct {
 	consecutiveSuccesses map[ids.ID]uint32
 }
 
-// NewLuxConsensus creates a new Lux consensus instance
-func NewLuxConsensus(k int, alpha int, beta int) *LuxConsensus {
+// NewLuxConsensus creates a new Lux consensus instance with stake-weighted sampling.
+// The cut parameter provides the peer sampling strategy (use prism.NewStakeWeightedCut
+// for production, or prism.NewUniformCut for testing).
+// The transport parameter handles network vote requests.
+func NewLuxConsensus(k int, alpha int, beta int, opts ...Option) *LuxConsensus {
 	alphaRatio := float64(alpha) / float64(k)
 
 	// Ensure beta is non-negative for uint32 conversion
@@ -51,11 +58,32 @@ func NewLuxConsensus(k int, alpha int, beta int) *LuxConsensus {
 	// #nosec G115 -- beta is guaranteed >= 0 after check above
 	betaU32 := uint32(beta)
 
-	// Create a simple cut implementation for sampling
-	cut := &SimpleCut{k: k}
+	o := options{}
+	for _, opt := range opts {
+		opt(&o)
+	}
 
-	// Create a simple transport implementation
-	transport := &SimpleTransport{}
+	// Use provided cut or fall back to SimpleCut for backward compatibility.
+	var cut prism.Cut[ids.ID]
+	if o.cut != nil {
+		cut = o.cut
+	} else {
+		cut = &SimpleCut{k: k}
+	}
+
+	// Use provided transport or fall back to SimpleTransport.
+	var transport wave.Transport[ids.ID]
+	if o.transport != nil {
+		transport = o.transport
+	} else {
+		transport = &SimpleTransport{}
+	}
+
+	// Generate FPC seed from crypto/rand for this instance.
+	var fpcSeed [32]byte
+	if _, err := crand.Read(fpcSeed[:]); err != nil {
+		panic("failed to generate FPC seed: " + err.Error())
+	}
 
 	// Create Wave configuration with FPC enabled for dynamic thresholds
 	waveCfg := wave.Config{
@@ -63,13 +91,17 @@ func NewLuxConsensus(k int, alpha int, beta int) *LuxConsensus {
 		Alpha:     alphaRatio,
 		Beta:      betaU32,
 		RoundTO:   1 * time.Second,
-		EnableFPC: true, // Enable Fast Probabilistic Consensus
-		ThetaMin:  0.5,  // FPC minimum threshold
-		ThetaMax:  0.8,  // FPC maximum threshold
+		EnableFPC: true,        // Enable Fast Probabilistic Consensus
+		ThetaMin:  0.5,         // FPC minimum threshold
+		ThetaMax:  0.8,         // FPC maximum threshold
+		FPCSeed:   fpcSeed[:],
 	}
 
 	// Create consensus components
-	w := wave.New[ids.ID](waveCfg, cut, transport)
+	w, err := wave.New[ids.ID](waveCfg, cut, transport)
+	if err != nil {
+		panic("failed to create wave: " + err.Error())
+	}
 	f := focus.NewConfidence[ids.ID](beta, alphaRatio)
 
 	return &LuxConsensus{
@@ -84,6 +116,24 @@ func NewLuxConsensus(k int, alpha int, beta int) *LuxConsensus {
 		decisions:            make(map[ids.ID]types.Decision),
 		consecutiveSuccesses: make(map[ids.ID]uint32),
 	}
+}
+
+// Option configures LuxConsensus construction.
+type Option func(*options)
+
+type options struct {
+	cut       prism.Cut[ids.ID]
+	transport wave.Transport[ids.ID]
+}
+
+// WithCut sets the peer sampling strategy.
+func WithCut(cut prism.Cut[ids.ID]) Option {
+	return func(o *options) { o.cut = cut }
+}
+
+// WithTransport sets the network transport for vote requests.
+func WithTransport(transport wave.Transport[ids.ID]) Option {
+	return func(o *options) { o.transport = transport }
 }
 
 // RecordVote records a vote for an item
@@ -221,28 +271,18 @@ type SimpleTransport struct {
 	votes map[ids.ID]bool
 }
 
-func (t *SimpleTransport) RequestVotes(ctx context.Context, peers []types.NodeID, item ids.ID) <-chan wave.Photon[ids.ID] {
-	ch := make(chan wave.Photon[ids.ID], len(peers))
-
-	// Simulate vote collection
-	go func() {
-		defer close(ch)
-
-		for _, peer := range peers {
-			select {
-			case <-ctx.Done():
-				return
-			case ch <- wave.Photon[ids.ID]{
-				Item:      item,
-				Prefer:    true, // Simulate preference
-				Sender:    peer,
-				Timestamp: time.Now(),
-			}:
-			}
-		}
-	}()
-
+func (t *SimpleTransport) RequestVotes(_ context.Context, _ []types.NodeID, _ ids.ID) <-chan wave.Photon[ids.ID] {
+	// SimpleTransport has no real network connectivity.
+	// Return a closed empty channel so callers see zero votes rather than
+	// fabricated "Prefer: true" responses that bypass Sybil resistance.
+	ch := make(chan wave.Photon[ids.ID])
+	close(ch)
 	return ch
+}
+
+// Err returns ErrNoTransport to indicate this is a stub.
+func (t *SimpleTransport) Err() error {
+	return ErrNoTransport
 }
 
 func (t *SimpleTransport) MakeLocalPhoton(item ids.ID, prefer bool) wave.Photon[ids.ID] {
