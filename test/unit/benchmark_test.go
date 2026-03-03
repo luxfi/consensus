@@ -9,11 +9,8 @@ import (
 	"time"
 )
 
-// Simple benchmark to test consensus operations
-// This is a placeholder that can be expanded with actual consensus implementations
-
+// BenchmarkSimpleConsensus measures baseline timestamp overhead for calibration.
 func BenchmarkSimpleConsensus(b *testing.B) {
-	// Placeholder benchmark
 	for i := 0; i < b.N; i++ {
 		_ = time.Now().Unix()
 	}

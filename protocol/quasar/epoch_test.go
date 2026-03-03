@@ -71,7 +71,7 @@ func TestEpochManager_RotateEpoch_NoChange(t *testing.T) {
 	_, err := em.InitializeEpoch(validators)
 	require.NoError(t, err)
 
-	// Hack: bypass rate limit for testing
+	// Reset rate-limit window so rotation can proceed immediately.
 	em.mu.Lock()
 	em.lastKeygenTime = time.Now().Add(-2 * time.Hour)
 	em.mu.Unlock()
@@ -91,7 +91,7 @@ func TestEpochManager_RotateEpoch_Force(t *testing.T) {
 	_, err := em.InitializeEpoch(validators)
 	require.NoError(t, err)
 
-	// Hack: bypass rate limit for testing
+	// Reset rate-limit window so rotation can proceed immediately.
 	em.mu.Lock()
 	em.lastKeygenTime = time.Now().Add(-2 * time.Hour)
 	em.mu.Unlock()
@@ -114,7 +114,7 @@ func TestEpochManager_RotateEpoch_ValidatorChange(t *testing.T) {
 	keys0, err := em.InitializeEpoch(validators)
 	require.NoError(t, err)
 
-	// Hack: bypass rate limit for testing
+	// Reset rate-limit window so rotation can proceed immediately.
 	em.mu.Lock()
 	em.lastKeygenTime = time.Now().Add(-2 * time.Hour)
 	em.mu.Unlock()
@@ -144,7 +144,7 @@ func TestEpochManager_RotateEpoch_AddValidator(t *testing.T) {
 	_, err := em.InitializeEpoch(validators)
 	require.NoError(t, err)
 
-	// Hack: bypass rate limit for testing
+	// Reset rate-limit window so rotation can proceed immediately.
 	em.mu.Lock()
 	em.lastKeygenTime = time.Now().Add(-2 * time.Hour)
 	em.mu.Unlock()
