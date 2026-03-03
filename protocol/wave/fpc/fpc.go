@@ -12,14 +12,18 @@ var (
 	ErrEmptySeed = errors.New("fpc: seed must not be empty")
 )
 
-// DeriveEpochSeed produces a per-epoch seed from an epoch number and chain ID.
-// seed = sha256(epoch_number || chain_id)
-func DeriveEpochSeed(epochNumber uint64, chainID []byte) []byte {
+// DeriveEpochSeed produces a per-epoch seed from an epoch number, chain ID,
+// and the hash of the last finalized block from the previous epoch.
+// The prevBlockHash is only known after finalization, making the seed
+// unpredictable before the epoch starts.
+// seed = sha256(epoch_number || chain_id || prev_block_hash)
+func DeriveEpochSeed(epochNumber uint64, chainID []byte, prevBlockHash []byte) []byte {
 	h := sha256.New()
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], epochNumber)
 	h.Write(buf[:])
 	h.Write(chainID)
+	h.Write(prevBlockHash)
 	return h.Sum(nil)
 }
 
