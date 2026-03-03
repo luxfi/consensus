@@ -1,8 +1,8 @@
 // Copyright (C) 2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 //
-// Snowball compatibility tests for Quasar - validates consensus equivalence
-// between Snowball's tree-based voting and Quasar's quantum finality model.
+// Threshold compatibility tests for Quasar - validates consensus equivalence
+// between threshold tree-based voting and Quasar's quantum finality model.
 
 package quasar
 
