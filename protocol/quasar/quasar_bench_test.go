@@ -542,7 +542,7 @@ func BenchmarkMLDSAVerification(b *testing.B) {
 // =============================================================================
 
 func BenchmarkQuasarBlockProcessing(b *testing.B) {
-	qa, err := NewQuasar(1)
+	qa, err := NewTestQuasar(1)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -573,7 +573,7 @@ func BenchmarkQuasarBlockProcessing(b *testing.B) {
 }
 
 func BenchmarkQuasarQuantumHash(b *testing.B) {
-	qa, err := NewQuasar(1)
+	qa, err := NewTestQuasar(1)
 	if err != nil {
 		b.Fatal(err)
 	}

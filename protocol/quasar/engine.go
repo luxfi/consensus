@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -35,8 +36,38 @@ type quasarEngine struct {
 	processed uint64
 }
 
+var (
+	// ErrThresholdTooLow is returned when the consensus threshold is below the
+	// minimum safe value of 2. Single-node mode must use NewTestEngine.
+	ErrThresholdTooLow = errors.New("QThreshold must be >= 2 for production consensus")
+)
+
 // NewEngine creates a new Quasar consensus engine.
+// Threshold must be >= 2 for production use. For single-node testing, use NewTestEngine.
 func NewEngine(cfg Config) (Engine, error) {
+	if cfg.QThreshold < 2 {
+		return nil, ErrThresholdTooLow
+	}
+	threshold := cfg.QThreshold
+
+	certifier, err := newCertifier(threshold)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certifier: %w", err)
+	}
+
+	bufSize := 1000
+	return &quasarEngine{
+		cfg:             cfg,
+		incoming:        make(chan *Block, bufSize),
+		finalized:       make(chan *Block, bufSize),
+		finalizedBlocks: make(map[string]*Block),
+		certifier:       certifier,
+	}, nil
+}
+
+// NewTestEngine creates a Quasar engine with threshold=1 for single-node testing.
+// Must NOT be used in production.
+func NewTestEngine(cfg Config) (Engine, error) {
 	threshold := cfg.QThreshold
 	if threshold < 1 {
 		threshold = 1

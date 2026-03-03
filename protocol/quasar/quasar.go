@@ -462,7 +462,10 @@ func (s *signer) VerifyQuasarSigWithContext(ctx context.Context, message []byte,
 	defer s.mu.RUnlock()
 
 	if sig.IsThreshold {
-		return true // Shares verified during aggregation
+		if s.blsVerifier == nil || len(sig.BLS) == 0 {
+			return false
+		}
+		return s.blsVerifier.VerifyBytes(message, sig.BLS)
 	}
 
 	validator, exists := s.validators[sig.ValidatorID]

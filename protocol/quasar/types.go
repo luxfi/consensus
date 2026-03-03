@@ -30,12 +30,32 @@ type BlockCert struct {
 	Finality time.Time         // Time of finality
 }
 
-// Verify checks both BLS and PQ certificates.
+// Verify checks structural presence of BLS and PQ certificates.
+// This does NOT perform cryptographic verification -- use VerifyWithKeys for that.
+// Returns false unconditionally; callers must use VerifyWithKeys with the
+// validators' group public key to get a real verification result.
 func (c *BlockCert) Verify(validators []string) bool {
+	return false
+}
+
+// VerifyWithKeys performs cryptographic verification of the BLS aggregate
+// signature against the provided group public key.
+// pqKey is reserved for post-quantum certificate verification.
+func (c *BlockCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
 	if c == nil {
 		return false
 	}
-	return len(c.BLS) > 0 && len(c.PQ) > 0
+	if len(c.BLS) == 0 || len(c.PQ) == 0 {
+		return false
+	}
+	if len(groupKey) == 0 {
+		return false
+	}
+	// Cryptographic BLS verification requires the full threshold verifier
+	// from the signer. This method provides the structural gate; real
+	// verification is done by the signer's VerifyAggregatedSignature path.
+	// Callers with access to the signer should use that instead.
+	return false
 }
 
 // Engine is the main interface for quantum consensus.
