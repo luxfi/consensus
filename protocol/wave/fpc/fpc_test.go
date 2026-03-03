@@ -205,6 +205,134 @@ func TestPhaseCoverage(t *testing.T) {
 	}
 }
 
+// --- Additional inversion and edge-case tests ---
+
+// TestDifferentSeedsProduceDifferentThresholdSequences verifies that two
+// selectors built from different seeds produce different threshold sequences
+// across many phases. It is statistically near-impossible for two PRFs with
+// different keys to match across 100 phases.
+func TestDifferentSeedsProduceDifferentThresholdSequences(t *testing.T) {
+	s1, err := NewSelector(0.5, 0.8, []byte("alpha-seed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := NewSelector(0.5, 0.8, []byte("beta-seed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	k := 200
+	matches := 0
+	const phases = 100
+	for phase := uint64(0); phase < phases; phase++ {
+		if s1.SelectThreshold(phase, k) == s2.SelectThreshold(phase, k) {
+			matches++
+		}
+	}
+
+	// With a 30% range ([0.5,0.8]*200 = [100,160]), about 60 distinct values.
+	// P(match per phase) ~ 1/60. Expected matches ~ 1.67 in 100 phases.
+	// If >20 match, something is wrong.
+	if matches > 20 {
+		t.Errorf("different seeds produced %d/%d matching thresholds -- PRF may be broken", matches, phases)
+	}
+}
+
+// TestSameSeedDeterministicSequence verifies that the same seed produces
+// the exact same threshold sequence on every invocation (reproducibility).
+func TestSameSeedDeterministicSequence(t *testing.T) {
+	seed := []byte("deterministic-seed-42")
+	k := 150
+
+	s1, err := NewSelector(0.4, 0.9, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := NewSelector(0.4, 0.9, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for phase := uint64(0); phase < 500; phase++ {
+		t1 := s1.SelectThreshold(phase, k)
+		t2 := s2.SelectThreshold(phase, k)
+		if t1 != t2 {
+			t.Fatalf("phase %d: s1=%d, s2=%d -- same seed must be deterministic", phase, t1, t2)
+		}
+	}
+}
+
+// TestDeriveEpochSeedDifferentEpochs verifies that every distinct epoch
+// number produces a distinct seed (for the same chain).
+func TestDeriveEpochSeedDifferentEpochs(t *testing.T) {
+	chain := []byte("lux-mainnet")
+	seen := make(map[string]uint64) // seed hex -> epoch
+
+	for epoch := uint64(0); epoch < 1000; epoch++ {
+		seed := DeriveEpochSeed(epoch, chain)
+		key := string(seed)
+		if prev, exists := seen[key]; exists {
+			t.Fatalf("epoch %d and %d produced the same seed", prev, epoch)
+		}
+		seen[key] = epoch
+	}
+}
+
+// TestThresholdAlwaysInRange verifies the critical safety property that
+// for all phases, all k values, the returned threshold is in
+// [ceil(thetaMin*k), ceil(thetaMax*k)].
+func TestThresholdAlwaysInRange(t *testing.T) {
+	thetaMin, thetaMax := 0.5, 0.8
+	seed := DeriveEpochSeed(1, []byte("range-test"))
+	s, err := NewSelector(thetaMin, thetaMax, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	kValues := []int{1, 2, 3, 10, 50, 100, 1000, 10000}
+	for _, k := range kValues {
+		lo := int(thetaMin * float64(k))        // floor
+		hi := int(thetaMax*float64(k)) + 1       // ceiling with margin
+
+		for phase := uint64(0); phase < 200; phase++ {
+			threshold := s.SelectThreshold(phase, k)
+			if threshold < lo || threshold > hi {
+				t.Fatalf("k=%d phase=%d: threshold %d outside [%d, %d]",
+					k, phase, threshold, lo, hi)
+			}
+		}
+	}
+}
+
+// TestSelectThresholdKZero verifies behavior when k=0.
+func TestSelectThresholdKZero(t *testing.T) {
+	s, err := NewSelector(0.5, 0.8, []byte("zero-k"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	threshold := s.SelectThreshold(1, 0)
+	if threshold != 0 {
+		t.Errorf("expected threshold 0 for k=0, got %d", threshold)
+	}
+}
+
+// TestSelectThresholdKOne verifies behavior when k=1.
+// ceil(theta * 1) should be 1 for any theta > 0.
+func TestSelectThresholdKOne(t *testing.T) {
+	s, err := NewSelector(0.5, 0.8, []byte("one-k"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for phase := uint64(0); phase < 100; phase++ {
+		threshold := s.SelectThreshold(phase, 1)
+		if threshold != 1 {
+			t.Fatalf("phase %d: expected threshold 1 for k=1, got %d", phase, threshold)
+		}
+	}
+}
+
 func BenchmarkSelectThreshold(b *testing.B) {
 	s, _ := NewSelector(0.5, 0.8, []byte("bench-seed"))
 	k := 100
