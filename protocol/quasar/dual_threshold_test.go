@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/luxfi/crypto/threshold"
-	ringtailThreshold "github.com/luxfi/ringtail/threshold"
+	ringtailThreshold "github.com/luxfi/pulsar/threshold"
 	"github.com/stretchr/testify/require"
 )
 
