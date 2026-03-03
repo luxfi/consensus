@@ -253,7 +253,7 @@ func TestBlock(t *testing.T) {
 		Timestamp: time.Now(),
 		Cert: &QuasarCert{
 			BLS: []byte("bls"),
-			PQProof:   []byte("pq"),
+			MLDSAProof:   []byte("pq"),
 		},
 	}
 
@@ -335,7 +335,7 @@ func TestQuantumFinality_Integration(t *testing.T) {
 		Timestamp: time.Now(),
 		Cert: &QuasarCert{
 			BLS: cert.BLSAgg,
-			PQProof:   cert.PQCert,
+			MLDSAProof:   cert.PQCert,
 		},
 	}
 
@@ -416,8 +416,8 @@ func BenchmarkCertVerifyWithKeys(b *testing.B) {
 	}
 }
 
-// NOTE: Ringtail post-quantum crypto tests are in the real ringtail package
-// at github.com/luxfi/ringtail/threshold. The quasar package uses the real
+// NOTE: Post-quantum threshold crypto tests live in the Pulsar package at
+// github.com/luxfi/pulsar/threshold. The quasar package uses that real
 // implementation via the Signer type in quasar.go.
 
 func TestBundle(t *testing.T) {

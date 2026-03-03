@@ -80,7 +80,7 @@ func TestCRITICAL1_ThresholdSigWithoutVerifier(t *testing.T) {
 func TestCRITICAL2_QuasarCertVerifyRejectGarbage(t *testing.T) {
 	cert := &QuasarCert{
 		BLS:  []byte("garbage-bls-not-a-real-signature"),
-		PQProof:    []byte("garbage-pq-not-a-real-certificate"),
+		MLDSAProof:    []byte("garbage-pq-not-a-real-certificate"),
 		Validators: 0,
 	}
 
@@ -99,15 +99,15 @@ func TestCRITICAL2_QuasarCertVerifyWithKeysNilCert(t *testing.T) {
 // BLS or PQ fields are rejected.
 func TestCRITICAL2_QuasarCertVerifyWithKeysEmptyFields(t *testing.T) {
 	// Empty BLS
-	cert := &QuasarCert{BLS: nil, PQProof:  []byte("pq")}
+	cert := &QuasarCert{BLS: nil, MLDSAProof:  []byte("pq")}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("pq")))
 
 	// Empty PQ
-	cert = &QuasarCert{BLS: []byte("bls"), PQProof:  nil}
+	cert = &QuasarCert{BLS: []byte("bls"), MLDSAProof:  nil}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("pq")))
 
 	// Empty group key
-	cert = &QuasarCert{BLS: []byte("bls"), PQProof:  []byte("pq")}
+	cert = &QuasarCert{BLS: []byte("bls"), MLDSAProof:  []byte("pq")}
 	require.False(t, cert.VerifyWithKeys(nil, []byte("pq")))
 }
 

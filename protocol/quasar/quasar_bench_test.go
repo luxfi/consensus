@@ -533,8 +533,8 @@ func BenchmarkMLDSAVerification(b *testing.B) {
 // Ringtail Benchmarks (Reference)
 // =============================================================================
 
-// NOTE: Ringtail benchmarks are in the real ringtail package at
-// github.com/luxfi/ringtail/threshold. The quasar package uses the real
+// NOTE: Post-quantum threshold benchmarks live in the Pulsar package at
+// github.com/luxfi/pulsar/threshold. The quasar package uses that real
 // implementation via the Signer type in quasar.go.
 
 // =============================================================================

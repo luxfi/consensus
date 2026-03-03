@@ -21,8 +21,8 @@ type Keystore = runtime.Keystore
 type Metrics = runtime.Metrics
 
 var (
-	GetChainID       = runtime.GetChainID
-	GetNetworkID     = runtime.GetNetworkID
-	GetValidatorState = runtime.GetValidatorState
+	GetChainID         = runtime.GetChainID
+	GetNetworkID       = runtime.GetNetworkID
+	GetValidatorState  = runtime.GetValidatorState
 	WithValidatorState = runtime.WithValidatorState
 )

@@ -430,3 +430,112 @@ func TestBuildSkipListWithNoParents(t *testing.T) {
 		t.Error("Root should have an entry in skip list")
 	}
 }
+
+func TestLowestCommonAncestor(t *testing.T) {
+	g := NewTestGraph()
+
+	// Diamond DAG:
+	//     A
+	//    / \
+	//   B   C
+	//    \ /
+	//     D
+	g.AddEdge("A", "B")
+	g.AddEdge("A", "C")
+	g.AddEdge("B", "D")
+	g.AddEdge("C", "D")
+
+	// LCA of B and C should be A
+	lca, found := LowestCommonAncestor(g, "B", "C")
+	if !found {
+		t.Fatal("should find LCA of B and C")
+	}
+	if lca != "A" {
+		t.Errorf("LCA(B,C) should be A, got %s", lca)
+	}
+
+	// LCA of D and B: TransitiveClosure(D) = {D,B,C,A}, BFS from B finds B in ancestors
+	lca, found = LowestCommonAncestor(g, "D", "B")
+	if !found {
+		t.Fatal("should find LCA of D and B")
+	}
+	// B is an ancestor of D, so LCA(D,B) is B
+	if lca != "B" {
+		t.Errorf("LCA(D,B) should be B, got %s", lca)
+	}
+
+	// LCA of same vertex
+	lca, found = LowestCommonAncestor(g, "A", "A")
+	if !found {
+		t.Fatal("should find LCA of A and A")
+	}
+	if lca != "A" {
+		t.Errorf("LCA(A,A) should be A, got %s", lca)
+	}
+
+	// Non-existent vertex: X does not exist
+	_, found = LowestCommonAncestor(g, "X", "A")
+	if found {
+		t.Error("should not find LCA with non-existent vertex")
+	}
+}
+
+func TestLowestCommonAncestorLinearChain(t *testing.T) {
+	g := NewTestGraph()
+	// A -> B -> C -> D
+	g.AddEdge("A", "B")
+	g.AddEdge("B", "C")
+	g.AddEdge("C", "D")
+
+	lca, found := LowestCommonAncestor(g, "D", "C")
+	if !found {
+		t.Fatal("should find LCA")
+	}
+	if lca != "C" {
+		t.Errorf("LCA(D,C) should be C, got %s", lca)
+	}
+
+	lca, found = LowestCommonAncestor(g, "D", "A")
+	if !found {
+		t.Fatal("should find LCA")
+	}
+	if lca != "A" {
+		t.Errorf("LCA(D,A) should be A, got %s", lca)
+	}
+}
+
+func TestTransitiveClosureSingleNode(t *testing.T) {
+	g := NewTestGraph()
+	g.blocks["solo"] = &TestBlockView{id: "solo", parents: []string{}, author: "test", round: 0}
+
+	closure := TransitiveClosure(g, "solo")
+	if len(closure) != 1 {
+		t.Errorf("expected 1, got %d", len(closure))
+	}
+	if closure[0] != "solo" {
+		t.Errorf("expected solo, got %s", closure[0])
+	}
+}
+
+func TestTransitiveClosureNonExistent(t *testing.T) {
+	g := NewTestGraph()
+	g.AddEdge("A", "B")
+
+	closure := TransitiveClosure(g, "X")
+	if len(closure) != 1 {
+		t.Errorf("non-existent vertex should return itself, got %d", len(closure))
+	}
+}
+
+func TestFindPathSameVertex(t *testing.T) {
+	g := NewTestGraph()
+	g.blocks["A"] = &TestBlockView{id: "A", parents: []string{}, author: "test", round: 0}
+
+	path, found := FindPath(g, "A", "A")
+	if !found {
+		t.Fatal("should find path from A to A")
+	}
+	if len(path) != 1 || path[0] != "A" {
+		t.Errorf("path from A to A should be [A], got %v", path)
+	}
+}

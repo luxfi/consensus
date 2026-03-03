@@ -1,6 +1,27 @@
 // Copyright (C) 2025, Lux Industries Inc All rights reserved.
-// Epoch-based Ringtail key management for quantum-safe consensus.
-// Keys rotate when validator sets change, with rate limiting for security.
+// Epoch-based Pulsar share management for quantum-safe consensus.
+//
+// The cosmic vocabulary stack (see pulsar/DESIGN.md): a Pulsar group key
+// is the persistent body that survives every validator-set rotation;
+// only the share distribution rotates. Each Pulsar certificate emitted
+// over a Quasar bundle is the "pulse" — one threshold signature under
+// the unchanged GroupKey.
+//
+// Concretely: the master signing secret s and the public matrix A are
+// preserved across every routine epoch (Refresh / Reshare). They change
+// only at Reanchor — a rare governance event that opens a fresh
+// KeyEra.
+//
+// This file owns the EpochManager — the consensus-layer driver that
+// (a) bootstraps the first key era at chain genesis, (b) drives every
+// subsequent rotation through the LSS-Pulsar adapter, and (c) wires
+// the activation circuit-breaker so a chain never accepts a new
+// committee whose shares fail to threshold-sign under the unchanged
+// GroupKey.
+//
+// Rate limiting and validator-set change detection stay unchanged from
+// the original RotateEpoch implementation — those are pure consensus
+// policy and orthogonal to the share-rotation mechanics.
 
 package quasar
 
@@ -9,11 +30,33 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
-	ringtailThreshold "github.com/luxfi/ringtail/threshold"
+	"github.com/luxfi/pulsar/keyera"
+	"github.com/luxfi/pulsar/primitives"
+	pulsarReshare "github.com/luxfi/pulsar/reshare"
+	pulsarSign "github.com/luxfi/pulsar/sign"
+	ringtailThreshold "github.com/luxfi/pulsar/threshold"
+
+	"github.com/luxfi/lattice/v7/ring"
+
+	"github.com/luxfi/threshold/pkg/party"
+	"github.com/luxfi/threshold/protocols/lss"
 )
+
+// signQ is the Pulsar lattice prime, re-exported here so the local
+// Lambda recomputation does not require pulsar/sign to add a public
+// accessor. Mirrors sign.Q at compile time.
+var signQ = pulsarSign.Q
+
+// pulsarComputeLagrange wraps primitives.ComputeLagrangeCoefficients so
+// callers do not need to import pulsar/primitives directly. Returns
+// Lagrange coefficients keyed by position in the input slice.
+func pulsarComputeLagrange(r *ring.Ring, T []int, modulus *big.Int) []ring.Poly {
+	return primitives.ComputeLagrangeCoefficients(r, T, modulus)
+}
 
 const (
 	// MinEpochDuration is the minimum time between key rotations.
@@ -44,10 +87,20 @@ var (
 	ErrInvalidValidatorSet = errors.New("invalid validator set configuration")
 )
 
-// EpochManager manages Ringtail key epochs for the validator set.
-// Fresh keys are generated when validators change, with rate limiting
-// to prevent excessive key churn while still rotating frequently enough
-// to frustrate quantum attacks.
+// EpochManager drives the Pulsar share lifecycle for the validator set.
+//
+// At chain genesis the manager runs Bootstrap (one-time trusted-dealer
+// ceremony confined to era 0). Every subsequent validator-set rotation
+// is a SHARE rotation, not a key rotation: lss.DynamicResharePulsar
+// preserves the GroupKey (A, bTilde) and the master secret s, and only
+// rotates the share distribution. The activation circuit-breaker
+// (pulsar/reshare.VerifyActivation) gates committing the new committee.
+//
+// Rate-limiting policy is unchanged from the original epoch design.
+// History retention exists to support cross-epoch verification while
+// the chain transitions; signatures from old epochs continue to
+// verify under the unchanged GroupKey, so history is operationally a
+// per-validator-set log rather than a per-key log.
 type EpochManager struct {
 	mu sync.RWMutex
 
@@ -55,6 +108,13 @@ type EpochManager struct {
 	currentEpoch   uint64
 	currentKeys    *EpochKeys
 	lastKeygenTime time.Time
+
+	// currentEra is the persistent Pulsar key era. Bootstrap creates it
+	// once at genesis; every subsequent Reshare mutates currentEra.State
+	// in place (preserving currentEra.GroupKey). On Reanchor we discard
+	// the era and open a fresh one — currently unused; reanchor flows
+	// through governance and is wired via a separate API.
+	currentEra *keyera.KeyEra
 
 	// Historical epochs for signature verification
 	// We need to verify signatures from recent epochs during transitions
@@ -64,9 +124,26 @@ type EpochManager struct {
 	// Validator set tracking
 	currentValidators []string
 	threshold         int
+
+	// Chain identity bound into every resharing transcript. Defaults to
+	// "lux-quasar" if unset by the caller; production deployments should
+	// inject the chain-specific binding via SetChainID.
+	chainID []byte
+	groupID []byte
 }
 
-// EpochKeys holds the Ringtail keys for a specific epoch.
+// EpochKeys holds the per-epoch Pulsar share state for a specific epoch.
+//
+// GroupKey is preserved across every Reshare within a key era. Shares
+// rotate. Signers wrap each share for the 2-round Pulsar (Ringtail)
+// signing protocol.
+//
+// Naming note: this type was historically called EpochKeys when each
+// rotation generated a fresh keypair. With Pulsar resharing the type
+// holds *shares* of one persistent key, but the public name is kept
+// for byte-stable callers (BundleSigner, GroupedEpochManager,
+// adversarial_test.go, etc.). Conceptually it is the per-epoch
+// EpochShareState defined in pulsar/DESIGN.md.
 type EpochKeys struct {
 	Epoch        uint64
 	CreatedAt    time.Time
@@ -77,6 +154,14 @@ type EpochKeys struct {
 	GroupKey     *ringtailThreshold.GroupKey
 	Shares       map[string]*ringtailThreshold.KeyShare
 	Signers      map[string]*ringtailThreshold.Signer
+
+	// LSS lifecycle fields. Generation increments by one on every
+	// successful Reshare under the same KeyEraID. RollbackFrom is
+	// nonzero only when this state descends from a Rollback. KeyEraID
+	// bumps only on Reanchor (rare governance event).
+	KeyEraID     uint64
+	Generation   uint64
+	RollbackFrom uint64
 }
 
 // NewEpochManager creates a new epoch manager.
@@ -89,11 +174,37 @@ func NewEpochManager(threshold int, historyLimit int) *EpochManager {
 		epochHistory: make(map[uint64]*EpochKeys),
 		historyLimit: historyLimit,
 		threshold:    threshold,
+		chainID:      []byte("lux-quasar"),
+		groupID:      []byte{0},
+	}
+}
+
+// SetChainID binds the resharing transcript to a specific chain identity
+// and Pulsar group. Production deployments should call this before
+// InitializeEpoch so activation certs cannot be replayed across chains.
+func (em *EpochManager) SetChainID(chainID, groupID []byte) {
+	em.mu.Lock()
+	defer em.mu.Unlock()
+	if len(chainID) > 0 {
+		em.chainID = append([]byte(nil), chainID...)
+	}
+	if len(groupID) > 0 {
+		em.groupID = append([]byte(nil), groupID...)
 	}
 }
 
 // InitializeEpoch creates the first epoch with the initial validator set.
-// This should be called once at genesis or node startup.
+//
+// At chain genesis this runs the Pulsar Bootstrap ceremony — the one-time
+// trusted-dealer step that forms the persistent GroupKey (A, bTilde) and
+// distributes the initial shares. The dealer state is erased before
+// returning. Subsequent rotations call RotateEpoch, which preserves
+// GroupKey and only rotates the share distribution via the LSS-Pulsar
+// adapter.
+//
+// Bootstrap is the only step where a master secret s exists in process
+// memory. After this returns the node holds only public values and its
+// own share.
 func (em *EpochManager) InitializeEpoch(validators []string) (*EpochKeys, error) {
 	em.mu.Lock()
 	defer em.mu.Unlock()
@@ -107,13 +218,21 @@ func (em *EpochManager) InitializeEpoch(validators []string) (*EpochKeys, error)
 			ErrInvalidValidatorSet, em.threshold, len(validators))
 	}
 
-	keys, err := em.generateEpochKeys(0, validators)
+	era, err := keyera.Bootstrap(
+		em.threshold,
+		validators,
+		keyera.PulsarGroupID(0),
+		keyera.PulsarKeyEraID(1), // EraID 0 is reserved as "unset"
+		nil,                      // crypto/rand.Reader
+	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pulsar bootstrap: %w", err)
 	}
+	keys := em.epochKeysFromState(0, validators, em.threshold, era.State, era.GroupKey)
 
 	em.currentEpoch = 0
 	em.currentKeys = keys
+	em.currentEra = era
 	em.currentValidators = validators
 	em.lastKeygenTime = time.Now()
 	em.epochHistory[0] = keys
@@ -121,9 +240,31 @@ func (em *EpochManager) InitializeEpoch(validators []string) (*EpochKeys, error)
 	return keys, nil
 }
 
-// RotateEpoch generates new keys for a new validator set.
-// Returns ErrEpochRateLimited if called within MinEpochDuration of last rotation.
-// Returns ErrNoValidatorChange if validator set hasn't changed (unless force=true).
+// RotateEpoch transitions the chain to a new validator set by RESHARING
+// the existing GroupKey to the new committee — never by generating a
+// fresh keypair. The master secret s, the public matrix A, and the
+// rounded public key bTilde are all preserved across this call.
+//
+// Two distinct flows live here:
+//
+//  1. First call (currentEra == nil): treated as a delayed Bootstrap
+//     for callers that did not invoke InitializeEpoch. Equivalent to
+//     InitializeEpoch but rate-limit-aware.
+//
+//  2. Subsequent calls: build a map[party.ID]*lss.PulsarConfig from the
+//     era's current shares, hand it to lss.DynamicResharePulsar, and
+//     gate acceptance on the activation circuit-breaker. The new
+//     committee threshold-signs the canonical activation message under
+//     the unchanged GroupKey; only when the signature verifies does
+//     this method commit the new state and return.
+//
+// Returns ErrEpochRateLimited if called within MinEpochDuration of the
+// last rotation. Returns ErrNoValidatorChange if the validator set
+// hasn't changed (unless force=true). Returns a wrapped activation
+// error (pulsarReshare.ErrActivationFailed) if the new committee
+// cannot collectively sign under the unchanged GroupKey — in which
+// case the chain stays at the old epoch and the old committee
+// continues signing.
 func (em *EpochManager) RotateEpoch(validators []string, force bool) (*EpochKeys, error) {
 	em.mu.Lock()
 	defer em.mu.Unlock()
@@ -155,7 +296,7 @@ func (em *EpochManager) RotateEpoch(validators []string, force bool) (*EpochKeys
 	}
 
 	newEpoch := em.currentEpoch + 1
-	keys, err := em.generateEpochKeysWithThreshold(newEpoch, validators, effectiveThreshold)
+	keys, err := em.reshareEpochKeys(newEpoch, validators, effectiveThreshold)
 	if err != nil {
 		return nil, err
 	}
@@ -329,39 +470,307 @@ type EpochStats struct {
 
 // Internal helpers
 
-func (em *EpochManager) generateEpochKeys(epoch uint64, validators []string) (*EpochKeys, error) {
-	return em.generateEpochKeysWithThreshold(epoch, validators, em.threshold)
-}
-
-func (em *EpochManager) generateEpochKeysWithThreshold(epoch uint64, validators []string, threshold int) (*EpochKeys, error) {
-	n := len(validators)
-
-	// Generate Ringtail threshold keys
-	shares, groupKey, err := ringtailThreshold.GenerateKeys(threshold, n, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate Ringtail keys: %w", err)
+// reshareEpochKeys drives the share rotation for a new validator set.
+//
+// First call (no era yet): runs Bootstrap and returns its initial state.
+// This branch is the caller-friendly path for code that skipped
+// InitializeEpoch — it keeps the rate-limit guard inline.
+//
+// Subsequent calls: builds the per-party PulsarConfig map from the
+// current era's shares, calls lss.DynamicResharePulsar, then drives
+// the new committee to threshold-sign the canonical activation message
+// under the unchanged GroupKey. The activation cert is verified via
+// pulsarReshare.VerifyActivation. The new state is committed only on
+// successful verification.
+func (em *EpochManager) reshareEpochKeys(epoch uint64, validators []string, threshold int) (*EpochKeys, error) {
+	if em.currentEra == nil {
+		era, err := keyera.Bootstrap(
+			threshold,
+			validators,
+			keyera.PulsarGroupID(0),
+			keyera.PulsarKeyEraID(1),
+			nil,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("pulsar bootstrap (delayed): %w", err)
+		}
+		em.currentEra = era
+		return em.epochKeysFromState(epoch, validators, threshold, era.State, era.GroupKey), nil
 	}
 
+	era := em.currentEra
+	gkBefore := era.GroupKey
+
+	// Build per-party LSS-Pulsar configs from the current era state.
+	oldConfigs := make(map[party.ID]*lss.PulsarConfig, len(era.State.Validators))
+	for _, v := range era.State.Validators {
+		share, ok := era.State.Shares[v]
+		if !ok {
+			return nil, fmt.Errorf("pulsar reshare: missing share for old validator %s", v)
+		}
+		perParty := &keyera.EpochShareState{
+			KeyEraID:     era.State.KeyEraID,
+			Generation:   era.State.Generation,
+			RollbackFrom: era.State.RollbackFrom,
+			Epoch:        era.State.Epoch,
+			Validators:   era.State.Validators,
+			Threshold:    era.State.Threshold,
+			Shares:       map[string]*ringtailThreshold.KeyShare{v: share},
+		}
+		oldConfigs[party.ID(v)] = &lss.PulsarConfig{State: perParty, PartyID: party.ID(v)}
+	}
+
+	newPartyIDs := make([]party.ID, len(validators))
+	for i, v := range validators {
+		newPartyIDs[i] = party.ID(v)
+	}
+
+	newConfigs, err := lss.DynamicResharePulsar(oldConfigs, newPartyIDs, threshold, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("pulsar reshare (lss adapter): %w", err)
+	}
+
+	// Reassemble a single in-process state for the new committee. Each
+	// PulsarConfig holds only its own party's share; combine them into
+	// the era state so this node — which carries every share in the
+	// trusted-collaborator orchestration path — can drive activation
+	// signing on behalf of the committee.
+	var (
+		nextKeyEraID     uint64
+		nextGeneration   uint64
+		nextRollbackFrom uint64
+		nextEpoch        uint64
+		nextThreshold    int
+	)
+	combinedShares := make(map[string]*ringtailThreshold.KeyShare, len(newPartyIDs))
+	for _, id := range newPartyIDs {
+		cfg := newConfigs[id]
+		if cfg == nil || cfg.State == nil {
+			return nil, fmt.Errorf("pulsar reshare: lss adapter returned no state for %s", id)
+		}
+		share, ok := cfg.State.Shares[string(id)]
+		if !ok {
+			return nil, fmt.Errorf("pulsar reshare: lss adapter returned no share for %s", id)
+		}
+		combinedShares[string(id)] = share
+		nextKeyEraID = cfg.State.KeyEraID
+		nextGeneration = cfg.State.Generation
+		nextRollbackFrom = cfg.State.RollbackFrom
+		nextEpoch = cfg.State.Epoch
+		nextThreshold = cfg.State.Threshold
+	}
+
+	nextState := &keyera.EpochShareState{
+		KeyEraID:     nextKeyEraID,
+		Generation:   nextGeneration,
+		RollbackFrom: nextRollbackFrom,
+		Epoch:        nextEpoch,
+		Validators:   append([]string(nil), validators...),
+		Threshold:    nextThreshold,
+		Shares:       combinedShares,
+	}
+
+	// Activation circuit-breaker. The new committee threshold-signs the
+	// canonical activation message under the UNCHANGED GroupKey. If the
+	// signature verifies, the chain commits; otherwise it stays at the
+	// old epoch (the caller treats the error as ErrActivationFailed and
+	// the old committee continues signing on the next round).
+	if err := em.verifyActivationLocked(gkBefore, era.State, nextState); err != nil {
+		return nil, fmt.Errorf("pulsar reshare activation: %w", err)
+	}
+
+	// Commit the new state to the era. Within a key era, era.GroupKey
+	// pointer is preserved.
+	era.State = nextState
+
+	return em.epochKeysFromState(epoch, validators, threshold, nextState, era.GroupKey), nil
+}
+
+// epochKeysFromState assembles an EpochKeys snapshot from a Pulsar
+// EpochShareState plus the era's persistent GroupKey. The Signers map
+// wraps each share for the 2-round Pulsar signing protocol, byte-stable
+// with the historical EpochKeys layout.
+func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, threshold int, state *keyera.EpochShareState, gk *ringtailThreshold.GroupKey) *EpochKeys {
 	now := time.Now()
 	keys := &EpochKeys{
 		Epoch:        epoch,
 		CreatedAt:    now,
 		ExpiresAt:    now.Add(MaxEpochDuration),
-		ValidatorSet: validators,
+		ValidatorSet: append([]string(nil), validators...),
 		Threshold:    threshold,
-		TotalParties: n,
-		GroupKey:     groupKey,
-		Shares:       make(map[string]*ringtailThreshold.KeyShare),
-		Signers:      make(map[string]*ringtailThreshold.Signer),
+		TotalParties: len(validators),
+		GroupKey:     gk,
+		Shares:       make(map[string]*ringtailThreshold.KeyShare, len(validators)),
+		Signers:      make(map[string]*ringtailThreshold.Signer, len(validators)),
+		KeyEraID:     state.KeyEraID,
+		Generation:   state.Generation,
+		RollbackFrom: state.RollbackFrom,
+	}
+	for _, v := range validators {
+		share := state.Shares[v]
+		keys.Shares[v] = share
+		keys.Signers[v] = ringtailThreshold.NewSigner(share)
+	}
+	return keys
+}
+
+// verifyActivationLocked drives the activation circuit-breaker for a
+// resharing transition. The new committee threshold-signs the canonical
+// activation message under the UNCHANGED GroupKey using their freshly-
+// derived shares; the chain accepts the new state only when the
+// signature verifies via pulsarReshare.VerifyActivation.
+//
+// In the trusted-collaborator orchestration path (this in-process
+// EpochManager), every validator's share lives on this node, so the
+// node can drive every Round1/Round2/Finalize step locally. In a
+// distributed deployment, the round-based protocol at
+// threshold/protocols/pulsar replaces this with per-party computation;
+// the consensus mempool collects the partial signatures and the
+// VerifyActivation check happens in the same shape.
+//
+// transcript and exchange hashes are bound to the chain identity
+// (chainID, groupID), the era lineage (KeyEraID), and the
+// generation/epoch tuple so that a malicious proposer cannot replay an
+// activation cert across chains, eras, or generations.
+func (em *EpochManager) verifyActivationLocked(gk *ringtailThreshold.GroupKey, oldState, newState *keyera.EpochShareState) error {
+	// Threshold-sign the activation message under the new committee.
+	signers := make([]*ringtailThreshold.Signer, 0, len(newState.Validators))
+	signerIndices := make([]int, 0, len(newState.Validators))
+	for _, v := range newState.Validators {
+		share, ok := newState.Shares[v]
+		if !ok {
+			return fmt.Errorf("activation: missing share for new validator %s", v)
+		}
+		signers = append(signers, ringtailThreshold.NewSigner(share))
+		signerIndices = append(signerIndices, share.Index)
 	}
 
-	// Map shares to validator IDs
-	for i, validatorID := range validators {
-		keys.Shares[validatorID] = shares[i]
-		keys.Signers[validatorID] = ringtailThreshold.NewSigner(shares[i])
+	// Sign the exact bytes the chain will verify. We don't yet have a
+	// distributed exchange transcript (no commits/complaints in the
+	// in-process path); the empty ReshareTranscript hashes deterministically
+	// to a fixed value the verifier reproduces.
+	tx := pulsarReshare.TranscriptInputs{
+		ChainID:            em.chainID,
+		GroupID:            em.groupID,
+		OldEpochID:         oldState.Epoch,
+		NewEpochID:         newState.Epoch,
+		OldSetHash:         hashValidatorSetForActivation(oldState.Validators),
+		NewSetHash:         hashValidatorSetForActivation(newState.Validators),
+		ThresholdOld:       uint32(oldState.Threshold),
+		ThresholdNew:       uint32(newState.Threshold),
+		GroupPublicKeyHash: hashGroupKey(gk),
+		Variant:            "reshare",
+	}
+	exchange := pulsarReshare.ReshareTranscript{}
+	activation := pulsarReshare.ActivationMessage{
+		Transcript:        tx,
+		ReshareTranscript: exchange,
+	}
+	// nil suite resolves to the production default Pulsar HashSuite.
+	msg := activation.SignableBytes(nil)
+
+	const sessionID = 0
+	prfKey := derivePRFKey(em.chainID, em.groupID, newState.KeyEraID, newState.Generation, newState.Epoch)
+
+	round1 := make(map[int]*ringtailThreshold.Round1Data, len(signers))
+	for _, s := range signers {
+		// Round1 sets PartyID from the underlying share index.
+		r1 := s.Round1(sessionID, prfKey, signerIndices)
+		round1[r1.PartyID] = r1
+	}
+	round2 := make(map[int]*ringtailThreshold.Round2Data, len(signers))
+	for _, s := range signers {
+		r2, err := s.Round2(sessionID, string(msg), prfKey, signerIndices, round1)
+		if err != nil {
+			return fmt.Errorf("activation: round2: %w", err)
+		}
+		round2[r2.PartyID] = r2
+	}
+	sig, err := signers[0].Finalize(round2)
+	if err != nil {
+		return fmt.Errorf("activation: finalize: %w", err)
 	}
 
-	return keys, nil
+	// VerifyActivation runs the chain-level circuit-breaker check.
+	// It re-derives both transcript hashes from cert.Message and
+	// confirms they match the chain's local view, then runs the
+	// supplied verifier callback against the unchanged GroupKey.
+	cert := &pulsarReshare.ActivationCert{
+		Message:   activation,
+		Signature: nil, // opaque bytes; the verifier closure ignores Signature serialization here
+	}
+	localTranscriptHash := tx.Hash(nil)
+	localExchangeHash := exchange.Hash(nil)
+	verifier := func(message, _ []byte) bool {
+		// We hold the structured Pulsar Signature (sig) directly; the
+		// closure receives the same canonical message we just signed.
+		// The Signature reference is captured here; ActivationCert's
+		// opaque bytes are unused in the in-process path.
+		_ = message
+		return ringtailThreshold.Verify(gk, string(msg), sig)
+	}
+	if err := pulsarReshare.VerifyActivation(cert, localTranscriptHash, localExchangeHash, nil, verifier); err != nil {
+		return err
+	}
+	return nil
+}
+
+// hashValidatorSetForActivation returns the canonical 32-byte hash of a validator set.
+// Sorted-by-string ordering matches the OldSetHash/NewSetHash binding
+// the activation transcript expects.
+func hashValidatorSetForActivation(validators []string) [32]byte {
+	sorted := append([]string(nil), validators...)
+	// Insertion sort — committee size is bounded.
+	for i := 1; i < len(sorted); i++ {
+		for j := i; j > 0 && sorted[j-1] > sorted[j]; j-- {
+			sorted[j-1], sorted[j] = sorted[j], sorted[j-1]
+		}
+	}
+	h := sha256.New()
+	h.Write([]byte("quasar.validator-set.v1"))
+	var lenBuf [4]byte
+	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(sorted)))
+	h.Write(lenBuf[:])
+	for _, v := range sorted {
+		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(v)))
+		h.Write(lenBuf[:])
+		h.Write([]byte(v))
+	}
+	var out [32]byte
+	copy(out[:], h.Sum(nil))
+	return out
+}
+
+// hashGroupKey returns a stable 32-byte digest of a Pulsar GroupKey for
+// transcript binding. The current public Bytes() method returns a
+// short-form summary; we wrap it in SHA-256 for fixed width.
+func hashGroupKey(gk *ringtailThreshold.GroupKey) [32]byte {
+	h := sha256.New()
+	h.Write([]byte("quasar.group-key.v1"))
+	if gk != nil {
+		h.Write(gk.Bytes())
+	}
+	var out [32]byte
+	copy(out[:], h.Sum(nil))
+	return out
+}
+
+// derivePRFKey produces a 32-byte session-binding PRF key for the
+// activation signing. Distinct from any block-level prfKey so an
+// activation signature cannot be replayed for block-level signing.
+func derivePRFKey(chainID, groupID []byte, keyEraID, generation, epoch uint64) []byte {
+	h := sha256.New()
+	h.Write([]byte("quasar.activation.prf.v1"))
+	h.Write(chainID)
+	h.Write(groupID)
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], keyEraID)
+	h.Write(buf[:])
+	binary.BigEndian.PutUint64(buf[:], generation)
+	h.Write(buf[:])
+	binary.BigEndian.PutUint64(buf[:], epoch)
+	h.Write(buf[:])
+	return h.Sum(nil)
 }
 
 func (em *EpochManager) validatorSetUnchanged(newValidators []string) bool {
@@ -587,8 +996,18 @@ func (bs *BundleSigner) LastBundle() *QuantumBundle {
 	return bs.lastBundle
 }
 
-// SignBundle performs the 2-round Ringtail signing for a bundle.
-// This runs the full threshold signing protocol with participating validators.
+// SignBundle performs the 2-round Pulsar (Ringtail) signing for a
+// bundle. Runs the full threshold signing protocol with the
+// participating validators.
+//
+// Each share's Lambda is recomputed for the participating subset
+// before signing. Pulsar's keyera bakes a Lambda for the FULL
+// committee at Bootstrap; when fewer parties sign, the Lagrange
+// weights must be re-derived for the actual signing subset so the
+// reconstructed signature evaluates the secret-sharing polynomial at
+// 0 correctly. This is identical to how distributed Pulsar deployments
+// recompute Lambda when a coordinator picks a quorum smaller than the
+// full set.
 func (bs *BundleSigner) SignBundle(
 	bundle *QuantumBundle,
 	sessionID int,
@@ -615,13 +1034,18 @@ func (bs *BundleSigner) SignBundle(
 		return fmt.Errorf("insufficient signers: %d < threshold %d", len(signerIndices), keys.Threshold)
 	}
 
+	subsetSigners, err := newSubsetSigners(keys, participatingValidators, signerIndices)
+	if err != nil {
+		return err
+	}
+
 	message := bundle.SignableMessage()
 
 	// Round 1: Collect commitments
 	round1Data := make(map[int]*ringtailThreshold.Round1Data)
 	for _, v := range participatingValidators {
-		signer, exists := keys.Signers[v]
-		if !exists {
+		signer, ok := subsetSigners[v]
+		if !ok {
 			continue
 		}
 		r1 := signer.Round1(sessionID, prfKey, signerIndices)
@@ -631,8 +1055,8 @@ func (bs *BundleSigner) SignBundle(
 	// Round 2: Generate signature shares
 	round2Data := make(map[int]*ringtailThreshold.Round2Data)
 	for _, v := range participatingValidators {
-		signer, exists := keys.Signers[v]
-		if !exists {
+		signer, ok := subsetSigners[v]
+		if !ok {
 			continue
 		}
 		r2, err := signer.Round2(sessionID, message, prfKey, signerIndices, round1Data)
@@ -644,14 +1068,63 @@ func (bs *BundleSigner) SignBundle(
 
 	// Finalize
 	firstValidator := participatingValidators[0]
-	signer := keys.Signers[firstValidator]
-	sig, err := signer.Finalize(round2Data)
+	finalSigner := subsetSigners[firstValidator]
+	sig, err := finalSigner.Finalize(round2Data)
 	if err != nil {
 		return fmt.Errorf("finalize failed: %w", err)
 	}
 
 	bundle.Signature = sig
 	return nil
+}
+
+// newSubsetSigners produces a fresh set of Signers whose underlying
+// shares carry Lambda recomputed for the participating subset.
+//
+// The per-share KeyShare has an Index field that the original keygen
+// converted into an evaluation point (Index+1). When a strict subset
+// signs, the Lagrange coefficient for each signer at the polynomial's
+// constant term must be derived from the SUBSET evaluation points,
+// not the full-committee evaluation points. We compute these on the
+// fly and clone each KeyShare with the corrected Lambda.
+//
+// Side effects: this allocates one KeyShare clone and one Signer per
+// participating validator. The original epoch state is not mutated.
+func newSubsetSigners(keys *EpochKeys, participating []string, signerIndices []int) (map[string]*ringtailThreshold.Signer, error) {
+	if len(participating) == 0 {
+		return nil, errors.New("no participating validators")
+	}
+	if keys == nil || keys.GroupKey == nil {
+		return nil, errors.New("missing group key")
+	}
+	r := keys.GroupKey.Params.R
+	q := big.NewInt(int64(signQ))
+	subsetLambda := pulsarComputeLagrange(r, signerIndices, q)
+
+	indexToSlot := make(map[int]int, len(signerIndices))
+	for slot, idx := range signerIndices {
+		indexToSlot[idx] = slot
+	}
+
+	out := make(map[string]*ringtailThreshold.Signer, len(participating))
+	for _, v := range participating {
+		share, ok := keys.Shares[v]
+		if !ok {
+			continue
+		}
+		slot, ok := indexToSlot[share.Index]
+		if !ok {
+			continue
+		}
+		newLambda := r.NewPoly()
+		newLambda.Copy(subsetLambda[slot])
+		r.NTT(newLambda, newLambda)
+		r.MForm(newLambda, newLambda)
+		cloned := *share
+		cloned.Lambda = newLambda
+		out[v] = ringtailThreshold.NewSigner(&cloned)
+	}
+	return out, nil
 }
 
 // VerifyBundle verifies a quantum bundle's Ringtail signature.

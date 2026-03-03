@@ -122,7 +122,7 @@ func TestFinalityChannel(t *testing.T) {
 		if event.Height != 1 {
 			t.Errorf("Wrong height in event: got %d, want 1", event.Height)
 		}
-		if len(event.PQProof) == 0 {
+		if len(event.MLDSAProof) == 0 {
 			t.Error("Missing PQ proof in event")
 		}
 		if len(event.BLSProof) == 0 {
