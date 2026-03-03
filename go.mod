@@ -8,15 +8,17 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
 	github.com/luxfi/accel v1.0.1
-	github.com/luxfi/crypto v1.17.40
+	github.com/luxfi/crypto v1.17.43
 	github.com/luxfi/database v1.17.42
 	github.com/luxfi/ids v1.2.9
+	github.com/luxfi/lattice/v7 v7.0.1
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/math v1.2.3
 	github.com/luxfi/metric v1.5.0
 	github.com/luxfi/p2p v1.18.9
-	github.com/luxfi/ringtail v0.2.0
+	github.com/luxfi/pulsar v0.1.0-rc1-pq-consensus-freeze
 	github.com/luxfi/runtime v1.0.0
+	github.com/luxfi/threshold v0.1.0-rc1-pq-consensus-freeze
 	github.com/luxfi/validators v1.0.0
 	github.com/luxfi/version v1.0.1
 	github.com/luxfi/warp v1.18.5
@@ -29,6 +31,7 @@ require (
 )
 
 require (
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/ALTree/bigfloat v0.2.0 // indirect
 	github.com/DataDog/zstd v1.5.7 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -45,10 +48,12 @@ require (
 	github.com/cockroachdb/redact v1.1.6 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20250429170803-42689b6311bb // indirect
 	github.com/consensys/gnark-crypto v0.20.1 // indirect
+	github.com/cronokirby/saferith v0.33.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.4.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/getsentry/sentry-go v0.40.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -58,6 +63,8 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gorilla/rpc v1.2.1 // indirect
 	github.com/grandcat/zeroconf v1.0.0 // indirect
+	github.com/gtank/merlin v0.1.1 // indirect
+	github.com/gtank/ristretto255 v0.2.0 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
@@ -71,7 +78,7 @@ require (
 	github.com/luxfi/constants v1.4.3 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
 	github.com/luxfi/geth v1.16.73 // indirect
-	github.com/luxfi/lattice/v7 v7.0.0 // indirect
+	github.com/luxfi/lens v0.1.0-rc1-pq-consensus-freeze // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.0 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
@@ -82,9 +89,11 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/miekg/dns v1.1.66 // indirect
-	github.com/montanaflynn/stats v0.8.2 // indirect
+	github.com/mimoo/StrobeGo v0.0.0-20220103164710-9a04d6ca976b // indirect
+	github.com/montanaflynn/stats v0.9.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/onsi/ginkgo/v2 v2.28.0 // indirect
 	github.com/onsi/gomega v1.39.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -93,6 +102,7 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/supranational/blst v0.3.16 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20220614013038-64ee5596c38a // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.40.0 // indirect
@@ -115,3 +125,18 @@ require (
 exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 
 exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
+
+// Local replace directives for the LSS-Pulsar / LSS-Lens cutover. Pulsar
+// and Lens have no remote yet; the threshold repo's lss_pulsar /
+// lss_lens adapters likewise live in our local tree. These pin the
+// consensus build to the in-tree source of truth and MUST be retained
+// until the repos publish tagged releases.
+// Local-dev replace directives. Tagged versions above pin the
+// March 3, 2026 PQ Consensus Architecture Freeze. See
+// ~/work/lux/consensus/CROSS-REPO-VERSION-PIN.md for the canonical commit
+// SHA → tag mapping.
+replace github.com/luxfi/pulsar => ../pulsar // pinned to v0.1.0-rc1-pq-consensus-freeze; see go-mod-pin.md
+
+replace github.com/luxfi/threshold => ../threshold // pinned to v0.1.0-rc1-pq-consensus-freeze; see go-mod-pin.md
+
+replace github.com/luxfi/lens => ../lens // pinned to v0.1.0-rc1-pq-consensus-freeze; see go-mod-pin.md
