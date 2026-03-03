@@ -533,8 +533,8 @@ func BenchmarkMLDSAVerification(b *testing.B) {
 // Corona Benchmarks (Reference)
 // =============================================================================
 
-// NOTE: Corona benchmarks are in the real corona package at
-// github.com/luxfi/corona/threshold. The quasar package uses the real
+// NOTE: Post-quantum threshold benchmarks live in the Pulsar package at
+// github.com/luxfi/pulsar/threshold. The quasar package uses that real
 // implementation via the Signer type in quasar.go.
 
 // =============================================================================

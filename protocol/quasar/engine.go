@@ -240,7 +240,7 @@ func (h *Certifier) generateCert(block *Block) *QuasarCert {
 
 	return &QuasarCert{
 		BLS:        blsData[:],
-		PQProof:    pqData[:],
+		MLDSAProof: pqData[:],
 		Epoch:      block.Height,
 		Finality:   time.Now(),
 		Validators: len(h.validators),
