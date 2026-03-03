@@ -401,7 +401,7 @@ func TestProcessBlockVotingEdgeCases(t *testing.T) {
 
 	// Test with exactly at threshold
 	blockID := ids.GenerateTestID()
-	// LocalParams has Alpha=0.69, so need 69% votes
+	// LocalParams has Alpha=0.67 (2/3 threshold), 69% exceeds it
 	votes := map[string]int{
 		blockID.String(): 69,
 		"other":          31, // 69/100 = 0.69 = Alpha exactly
@@ -420,10 +420,10 @@ func TestProcessBlockVotingBelowThreshold(t *testing.T) {
 	_ = engine.Initialize(ctx, blsKey, pqKey)
 
 	blockID := ids.GenerateTestID()
-	// LocalParams has Alpha=0.69, so 68% should fail
+	// LocalParams has Alpha=0.67 (2/3 threshold), so 66% should fail
 	votes := map[string]int{
-		blockID.String(): 68,
-		"other":          32, // 68/100 = 0.68 < 0.69 Alpha
+		blockID.String(): 66,
+		"other":          34, // 66/100 = 0.66 < 0.67 Alpha
 	}
 
 	err := engine.ProcessBlock(ctx, blockID, votes)
