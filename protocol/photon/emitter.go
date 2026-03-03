@@ -1,6 +1,11 @@
 package photon
 
-import "github.com/luxfi/consensus/core/types"
+import (
+	"crypto/rand"
+	"encoding/binary"
+
+	"github.com/luxfi/consensus/core/types"
+)
 
 // Emitter emits consensus messages
 type Emitter interface {
@@ -41,14 +46,34 @@ func NewUniformEmitter(nodes []types.NodeID, options EmitterOptions) *UniformEmi
 	}
 }
 
-// Emit emits a message to selected nodes
+// Emit selects a uniform random subset of nodes using Fisher-Yates shuffle
+// with crypto/rand (same algorithm as prism.UniformCut.Sample).
 func (e *UniformEmitter) Emit(msg interface{}) ([]types.NodeID, error) {
-	// Select random subset of nodes
-	selected := make([]types.NodeID, 0, e.options.Fanout)
-	for i := 0; i < e.options.Fanout && i < len(e.nodes); i++ {
-		selected = append(selected, e.nodes[i])
+	n := len(e.nodes)
+	k := e.options.Fanout
+	if k >= n {
+		return e.nodes, nil
 	}
-	return selected, nil
+
+	// Shuffle a copy so we don't mutate the original slice order.
+	shuffled := make([]types.NodeID, n)
+	copy(shuffled, e.nodes)
+
+	for i := 0; i < k; i++ {
+		j := i + cryptoRandInt(n-i)
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	}
+	return shuffled[:k], nil
+}
+
+// cryptoRandInt returns a cryptographically secure random integer in [0, max).
+func cryptoRandInt(max int) int {
+	if max <= 0 {
+		return 0
+	}
+	var buf [8]byte
+	_, _ = rand.Read(buf[:])
+	return int(binary.LittleEndian.Uint64(buf[:]) % uint64(max))
 }
 
 // EmitTo emits a message to specific nodes

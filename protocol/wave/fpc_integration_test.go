@@ -7,11 +7,14 @@ import (
 
 	"github.com/luxfi/consensus/core/types"
 	"github.com/luxfi/consensus/protocol/prism"
+	"github.com/luxfi/consensus/protocol/wave/fpc"
 	"github.com/luxfi/ids"
 )
 
 // TestWaveWithFPCEnabled demonstrates FPC usage with dynamic thresholds
 func TestWaveWithFPCEnabled(t *testing.T) {
+	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"))
+
 	// Create config with FPC enabled
 	cfg := Config{
 		K:         100,
@@ -21,12 +24,16 @@ func TestWaveWithFPCEnabled(t *testing.T) {
 		EnableFPC: true,
 		ThetaMin:  0.5,
 		ThetaMax:  0.8,
+		FPCSeed:   seed,
 	}
 
 	cut := &MockCut{k: cfg.K}
 	tx := &MockTransport{}
 
-	wave := New[ids.ID](cfg, cut, tx)
+	wave, err := New[ids.ID](cfg, cut, tx)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
 
 	// Verify FPC is enabled
 	if wave.fpcSelector == nil {
@@ -53,6 +60,26 @@ func TestWaveWithFPCEnabled(t *testing.T) {
 	}
 }
 
+// TestWaveWithFPCMissingSeed verifies that missing seed is rejected
+func TestWaveWithFPCMissingSeed(t *testing.T) {
+	cfg := Config{
+		K:         100,
+		Alpha:     0.6,
+		Beta:      10,
+		RoundTO:   100 * time.Millisecond,
+		EnableFPC: true,
+		// FPCSeed intentionally omitted
+	}
+
+	cut := &MockCut{k: cfg.K}
+	tx := &MockTransport{}
+
+	_, err := New[ids.ID](cfg, cut, tx)
+	if err == nil {
+		t.Fatal("Expected error when FPCSeed is empty with EnableFPC=true")
+	}
+}
+
 // TestWaveWithFPCDisabled verifies backward compatibility without FPC
 func TestWaveWithFPCDisabled(t *testing.T) {
 	// Create config with FPC disabled (default behavior)
@@ -67,7 +94,10 @@ func TestWaveWithFPCDisabled(t *testing.T) {
 	cut := &MockCut{k: cfg.K}
 	tx := &MockTransport{}
 
-	wave := New[ids.ID](cfg, cut, tx)
+	wave, err := New[ids.ID](cfg, cut, tx)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
 
 	// Verify FPC is NOT enabled
 	if wave.fpcSelector != nil {
@@ -88,6 +118,8 @@ func TestWaveWithFPCDisabled(t *testing.T) {
 
 // TestFPCThresholdVariation demonstrates dynamic threshold changes per phase
 func TestFPCThresholdVariation(t *testing.T) {
+	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"))
+
 	cfg := Config{
 		K:         100,
 		Beta:      10,
@@ -95,12 +127,16 @@ func TestFPCThresholdVariation(t *testing.T) {
 		EnableFPC: true,
 		ThetaMin:  0.5,
 		ThetaMax:  0.8,
+		FPCSeed:   seed,
 	}
 
 	cut := &MockCut{k: cfg.K}
 	tx := &MockTransport{}
 
-	wave := New[ids.ID](cfg, cut, tx)
+	wave, err := New[ids.ID](cfg, cut, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Collect thresholds for different phases
 	thresholds := make(map[int]bool)
@@ -124,8 +160,10 @@ func TestFPCThresholdVariation(t *testing.T) {
 	t.Logf("FPC generated %d different threshold values across 100 phases", len(thresholds))
 }
 
-// TestFPCDeterminism verifies FPC produces same thresholds for same phases
+// TestFPCDeterminism verifies FPC produces same thresholds for same seed+phase
 func TestFPCDeterminism(t *testing.T) {
+	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"))
+
 	cfg1 := Config{
 		K:         100,
 		Beta:      10,
@@ -133,6 +171,7 @@ func TestFPCDeterminism(t *testing.T) {
 		EnableFPC: true,
 		ThetaMin:  0.5,
 		ThetaMax:  0.8,
+		FPCSeed:   seed,
 	}
 
 	cfg2 := Config{
@@ -142,13 +181,20 @@ func TestFPCDeterminism(t *testing.T) {
 		EnableFPC: true,
 		ThetaMin:  0.5,
 		ThetaMax:  0.8,
+		FPCSeed:   seed,
 	}
 
 	cut := &MockCut{k: 100}
 	tx := &MockTransport{}
 
-	wave1 := New[ids.ID](cfg1, cut, tx)
-	wave2 := New[ids.ID](cfg2, cut, tx)
+	wave1, err := New[ids.ID](cfg1, cut, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wave2, err := New[ids.ID](cfg2, cut, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Same phase should give same threshold
 	for phase := uint64(1); phase <= 50; phase++ {
@@ -165,6 +211,8 @@ func TestFPCDeterminism(t *testing.T) {
 
 // TestFPCvsFixedAlpha compares FPC vs fixed alpha behavior
 func TestFPCvsFixedAlpha(t *testing.T) {
+	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"))
+
 	// FPC-enabled config
 	fpcCfg := Config{
 		K:         100,
@@ -173,6 +221,7 @@ func TestFPCvsFixedAlpha(t *testing.T) {
 		EnableFPC: true,
 		ThetaMin:  0.5,
 		ThetaMax:  0.8,
+		FPCSeed:   seed,
 	}
 
 	// Fixed alpha config
@@ -187,8 +236,14 @@ func TestFPCvsFixedAlpha(t *testing.T) {
 	cut := &MockCut{k: 100}
 	tx := &MockTransport{}
 
-	fpcWave := New[ids.ID](fpcCfg, cut, tx)
-	fixedWave := New[ids.ID](fixedCfg, cut, tx)
+	fpcWave, err := New[ids.ID](fpcCfg, cut, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixedWave, err := New[ids.ID](fixedCfg, cut, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// FPC should vary thresholds
 	fpcThresholds := make(map[int]bool)
