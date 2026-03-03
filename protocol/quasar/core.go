@@ -58,16 +58,34 @@ type ChainBlock = Block
 // QuantumBlock represents a quantum-finalized aggregate block.
 type QuantumBlock struct {
 	Height        uint64
+	Epoch         uint64 // Epoch in which this block was created
 	SourceBlocks  []*Block
 	QuantumHash   string
 	BLSSignature  []byte
 	RingtailProof []byte // ML-DSA signature
 	Timestamp     time.Time
+	CreatedAt     time.Time // When this block entered the pending set
 	ValidatorSigs map[string]*QuasarSig
 }
 
-// NewQuasar creates the supermassive black hole at the center of the blockchain galaxy
+const (
+	// pendingBlockTTL is the maximum time a block may remain in the pending set
+	// before being evicted. Blocks that cannot gather enough signatures within
+	// this window are stale and should be re-submitted.
+	pendingBlockTTL = 1 * time.Minute
+
+	// finalizedEpochRetention is the number of recent epochs whose finalized
+	// blocks are kept in memory. Older epochs are pruned to bound memory.
+	// Matches EpochManager history depth.
+	finalizedEpochRetention uint64 = 6
+)
+
+// NewQuasar creates the supermassive black hole at the center of the blockchain galaxy.
+// Threshold must be >= 2 for production use. For single-node testing, use NewTestQuasar.
 func NewQuasar(threshold int) (*Quasar, error) {
+	if threshold < 2 {
+		return nil, ErrThresholdTooLow
+	}
 	s, err := newSigner(threshold)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create signer: %w", err)
@@ -87,6 +105,37 @@ func NewQuasar(threshold int) (*Quasar, error) {
 	}
 
 	// Auto-register primary chains (errors ignored as these are guaranteed to succeed on init)
+	_ = core.RegisterChain("P-Chain")
+	_ = core.RegisterChain("X-Chain")
+	_ = core.RegisterChain("C-Chain")
+
+	return core, nil
+}
+
+// NewTestQuasar creates a Quasar instance for single-node testing with threshold >= 1.
+// Must NOT be used in production.
+func NewTestQuasar(threshold int) (*Quasar, error) {
+	if threshold < 1 {
+		return nil, errors.New("threshold must be at least 1")
+	}
+	s, err := newSigner(threshold)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create signer: %w", err)
+	}
+
+	core := &Quasar{
+		pChainBlocks:     make(chan *ChainBlock, 100),
+		xChainBlocks:     make(chan *ChainBlock, 100),
+		cChainBlocks:     make(chan *ChainBlock, 100),
+		chainBuffers:     make(map[string]chan *ChainBlock),
+		signer:           s,
+		epochManager:     NewEpochManager(threshold, 3),
+		pendingBlocks:    make(map[string]*QuantumBlock),
+		finalizedBlocks:  make(map[string]*QuantumBlock),
+		quantumHeight:    0,
+		registeredChains: make(map[string]bool),
+	}
+
 	_ = core.RegisterChain("P-Chain")
 	_ = core.RegisterChain("X-Chain")
 	_ = core.RegisterChain("C-Chain")
@@ -220,11 +269,14 @@ func (q *Quasar) processBlockWithContext(ctx context.Context, block *ChainBlock)
 	}
 
 	// Create pending quantum block
+	now := time.Now()
 	qBlock := &QuantumBlock{
 		Height:        q.quantumHeight + 1,
+		Epoch:         q.epochManager.GetCurrentEpoch(),
 		SourceBlocks:  []*ChainBlock{block},
 		QuantumHash:   quantumHash,
-		Timestamp:     time.Now(),
+		Timestamp:     now,
+		CreatedAt:     now,
 		ValidatorSigs: make(map[string]*QuasarSig),
 	}
 
@@ -296,7 +348,23 @@ func (q *Quasar) quantumFinalizer(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			q.evictStalePendingBlocks()
 			q.finalizeQuantumEpoch()
+		}
+	}
+}
+
+// evictStalePendingBlocks removes pending blocks older than pendingBlockTTL.
+// Blocks that cannot gather enough signatures within the TTL window are
+// considered stale and must be re-submitted.
+func (q *Quasar) evictStalePendingBlocks() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	now := time.Now()
+	for hash, qb := range q.pendingBlocks {
+		if now.Sub(qb.CreatedAt) > pendingBlockTTL {
+			delete(q.pendingBlocks, hash)
 		}
 	}
 }
@@ -321,6 +389,17 @@ func (q *Quasar) finalizeQuantumEpoch() {
 	// Generate quantum proof (BLS aggregated + Ringtail)
 	// Aggregation of multi-validator proofs is handled by the Signer
 	q.quantumProofs++
+
+	// Prune finalized blocks from old epochs to bound memory growth.
+	currentEpoch := q.epochManager.GetCurrentEpoch()
+	if currentEpoch > finalizedEpochRetention {
+		cutoff := currentEpoch - finalizedEpochRetention
+		for hash, qb := range q.finalizedBlocks {
+			if qb.Epoch < cutoff {
+				delete(q.finalizedBlocks, hash)
+			}
+		}
+	}
 
 	// Log quantum finality achievement
 	fmt.Printf("[QUANTUM] Epoch finalized at height %d with %d blocks, proof #%d\n",
