@@ -37,7 +37,7 @@ type Config struct {
 }
 
 type Driver[T ID] struct {
-	wv            wave.Wave[T]
+	wv            *wave.Wave[T]
 	cut           prism.Cut[T]
 	tx            Transport[T]
 	src           Source[T]
@@ -65,9 +65,9 @@ func NewDriver[T ID](cfg Config, cut prism.Cut[T], tx Transport[T], src Source[T
 		cfg.MaxBatch = 64
 	}
 
-	wv, _ := wave.New[T](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx)
+	wvVal, _ := wave.New[T](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx)
 	return &Driver[T]{
-		wv:  wv,
+		wv:  &wvVal,
 		cut: cut, tx: tx, src: src, out: out, cfg: cfg,
 		height:        0,
 		hasPreference: false,
