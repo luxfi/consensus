@@ -87,8 +87,65 @@ func TestLocalParams(t *testing.T) {
 	if p.K != 3 {
 		t.Errorf("Local should have 3 validators, got %d", p.K)
 	}
-	if p.BlockTime != 10*time.Millisecond {
-		t.Errorf("Local BlockTime should be 10ms, got %v", p.BlockTime)
+	if p.BlockTime != 1*time.Millisecond {
+		t.Errorf("Local BlockTime should be 1ms, got %v", p.BlockTime)
+	}
+	if p.RoundTO != 5*time.Millisecond {
+		t.Errorf("Local RoundTO should be 5ms, got %v", p.RoundTO)
+	}
+}
+
+func TestSoloGPUParams(t *testing.T) {
+	p := SoloGPUParams()
+
+	if p.K != 1 {
+		t.Errorf("SoloGPU K should be 1, got %d", p.K)
+	}
+	if p.BlockTime != 1*time.Millisecond {
+		t.Errorf("SoloGPU BlockTime should be 1ms, got %v", p.BlockTime)
+	}
+	if p.GasLimit != 1_000_000_000 {
+		t.Errorf("SoloGPU GasLimit should be 1B, got %d", p.GasLimit)
+	}
+	if err := p.Validate(); err != nil {
+		t.Errorf("SoloGPU params should be valid, got %v", err)
+	}
+
+	// 1B gas / 21000 gas = 47,619 txs/block × 1000 blocks/sec = 47.6M TPS ceiling
+	txsPerBlock := p.GasLimit / 21000
+	if txsPerBlock != 47619 {
+		t.Errorf("Expected 47619 txs/block, got %d", txsPerBlock)
+	}
+}
+
+func TestBurstParams(t *testing.T) {
+	p := BurstParams()
+
+	if p.BlockTime != 1*time.Millisecond {
+		t.Errorf("Burst BlockTime should be 1ms, got %v", p.BlockTime)
+	}
+	if p.RoundTO != 5*time.Millisecond {
+		t.Errorf("Burst RoundTO should be 5ms, got %v", p.RoundTO)
+	}
+	if p.GasLimit != 2_100_000_000 {
+		t.Errorf("Burst GasLimit should be 2.1B, got %d", p.GasLimit)
+	}
+	if p.MaxOutstandingItems != 8192 {
+		t.Errorf("Burst MaxOutstandingItems should be 8192, got %d", p.MaxOutstandingItems)
+	}
+	if p.ConcurrentPolls != 8 {
+		t.Errorf("Burst ConcurrentPolls should be 8, got %d", p.ConcurrentPolls)
+	}
+	if err := p.Validate(); err != nil {
+		t.Errorf("Burst params should be valid, got %v", err)
+	}
+
+	// Verify: 2.1B gas / 21000 gas per tx = 100K txs/block
+	// 100K txs × 1000 blocks/sec = 100M TPS
+	txsPerBlock := p.GasLimit / 21000
+	tps := txsPerBlock * 1000 // 1ms blocks = 1000 blocks/sec
+	if tps != 100_000_000 {
+		t.Errorf("Burst TPS should be 100M, got %d", tps)
 	}
 }
 
@@ -99,9 +156,9 @@ func TestWithBlockTime(t *testing.T) {
 		wantRound time.Duration
 	}{
 		{"1ms ultra-fast", 1 * time.Millisecond, 5 * time.Millisecond},
-		{"5ms very fast", 5 * time.Millisecond, 25 * time.Millisecond},
-		{"10ms fast", 10 * time.Millisecond, 250 * time.Millisecond}, // uses original
-		{"100ms normal", 100 * time.Millisecond, 250 * time.Millisecond},
+		{"5ms very fast", 5 * time.Millisecond, 15 * time.Millisecond},
+		{"10ms fast", 10 * time.Millisecond, 26 * time.Millisecond},
+		{"100ms normal", 100 * time.Millisecond, 251 * time.Millisecond},
 	}
 
 	for _, tt := range tests {
@@ -110,7 +167,7 @@ func TestWithBlockTime(t *testing.T) {
 			if p.BlockTime != tt.blockTime {
 				t.Errorf("BlockTime not set: got %v, want %v", p.BlockTime, tt.blockTime)
 			}
-			if tt.blockTime < 10*time.Millisecond && p.RoundTO != tt.wantRound {
+			if p.RoundTO != tt.wantRound {
 				t.Errorf("RoundTO not adjusted: got %v, want %v", p.RoundTO, tt.wantRound)
 			}
 		})
