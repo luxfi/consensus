@@ -72,8 +72,7 @@ func (n *RustNode) ProposeBlock(testBlock *Block) error {
 
 	n.t.Logf("Rust node: proposing block %s (height %d)", testBlock.ID, testBlock.Height)
 
-	// For E2E test stub, simulate consensus
-	// In production, this would communicate with Rust process via FFI or IPC
+	// Simulated consensus for E2E cross-language test.
 	blockData := map[string]interface{}{
 		"id":        testBlock.ID.String(),
 		"parent_id": testBlock.ParentID.String(),

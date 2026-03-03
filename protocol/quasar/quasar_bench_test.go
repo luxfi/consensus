@@ -530,7 +530,7 @@ func BenchmarkMLDSAVerification(b *testing.B) {
 }
 
 // =============================================================================
-// Corona (Stub) Benchmarks
+// Corona Benchmarks (Reference)
 // =============================================================================
 
 // NOTE: Corona benchmarks are in the real corona package at

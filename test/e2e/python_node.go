@@ -83,8 +83,7 @@ func (n *PythonNode) ProposeBlock(testBlock *Block) error {
 
 	n.t.Logf("Python node: proposing block %s (height %d)", testBlock.ID, testBlock.Height)
 
-	// For E2E test stub, simulate consensus
-	// In production, this would communicate with Python process
+	// Simulated consensus for E2E cross-language test.
 	blockData := map[string]interface{}{
 		"id":        testBlock.ID.String(),
 		"parent_id": testBlock.ParentID.String(),
