@@ -100,9 +100,9 @@ type ByzantineTestBlock struct {
 	timestamp int64
 }
 
-// TestSnowballGovernance tests 55 honest vs 45 Byzantine nodes
-// This is the critical governance scenario from upstream consensus
-func TestSnowballGovernance(t *testing.T) {
+// TestByzantineGovernance tests 55 honest vs 45 Byzantine nodes
+// This is the critical governance scenario for Lux consensus
+func TestByzantineGovernance(t *testing.T) {
 	const (
 		numHonest    = 55
 		numByzantine = 45

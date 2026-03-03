@@ -65,8 +65,9 @@ func NewDriver[T ID](cfg Config, cut prism.Cut[T], tx Transport[T], src Source[T
 		cfg.MaxBatch = 64
 	}
 
+	wv, _ := wave.New[T](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx)
 	return &Driver[T]{
-		wv:  wave.New[T](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx),
+		wv:  wv,
 		cut: cut, tx: tx, src: src, out: out, cfg: cfg,
 		height:        0,
 		hasPreference: false,

@@ -1,8 +1,8 @@
 // Copyright (C) 2025, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 //
-// Snowball compatibility tests - validates that Wave consensus exhibits
-// equivalent safety and liveness properties to Snowball binary voting.
+// Threshold compatibility tests - validates that Wave consensus exhibits
+// equivalent safety and liveness properties to threshold binary voting.
 
 package wave
 
@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// --- Test infrastructure for snowball-style voting simulation ---
+// --- Test infrastructure for threshold-style voting simulation ---
 
 // binaryChoice represents a binary voting choice (like snowball red/blue)
 type binaryChoice int
@@ -100,10 +100,10 @@ func (sb *binarySnowball) RecordUnsuccessfulPoll() {
 func (sb *binarySnowball) Preference() int { return sb.preference }
 func (sb *binarySnowball) Finalized() bool { return sb.finalized }
 
-// --- Snowball Binary Tests (ported from upstream) ---
+// --- Threshold Binary Tests (ported from upstream) ---
 
-// TestSnowballBinaryBasic tests basic binary snowball voting behavior
-func TestSnowballBinaryBasic(t *testing.T) {
+// TestThresholdBinaryBasic tests basic binary threshold voting behavior
+func TestThresholdBinaryBasic(t *testing.T) {
 	require := require.New(t)
 
 	red := 0
@@ -135,8 +135,8 @@ func TestSnowballBinaryBasic(t *testing.T) {
 	require.True(sb.Finalized())
 }
 
-// TestSnowballBinaryRecordPreference tests preference-only polls
-func TestSnowballBinaryRecordPreference(t *testing.T) {
+// TestThresholdBinaryRecordPreference tests preference-only polls
+func TestThresholdBinaryRecordPreference(t *testing.T) {
 	require := require.New(t)
 
 	red := 0
@@ -172,8 +172,8 @@ func TestSnowballBinaryRecordPreference(t *testing.T) {
 	require.True(sb.Finalized())
 }
 
-// TestSnowballBinaryUnsuccessfulPoll tests confidence reset on failed poll
-func TestSnowballBinaryUnsuccessfulPoll(t *testing.T) {
+// TestThresholdBinaryUnsuccessfulPoll tests confidence reset on failed poll
+func TestThresholdBinaryUnsuccessfulPoll(t *testing.T) {
 	require := require.New(t)
 
 	red := 0
@@ -200,8 +200,8 @@ func TestSnowballBinaryUnsuccessfulPoll(t *testing.T) {
 	require.True(sb.Finalized())
 }
 
-// TestSnowballBinaryLockColor tests that finalized choice cannot change
-func TestSnowballBinaryLockColor(t *testing.T) {
+// TestThresholdBinaryLockColor tests that finalized choice cannot change
+func TestThresholdBinaryLockColor(t *testing.T) {
 	require := require.New(t)
 
 	red := 0
@@ -227,11 +227,11 @@ func TestSnowballBinaryLockColor(t *testing.T) {
 	require.True(sb.Finalized())
 }
 
-// --- Wave-based Snowball simulation tests ---
+// --- Wave-based threshold simulation tests ---
 
-// waveSnowball wraps Wave to provide Snowball-like semantics
-type waveSnowball struct {
-	wave   Wave[string]
+// waveThreshold wraps Wave to provide threshold-voting semantics
+type waveThreshold struct {
+	wave   *Wave[string]
 	itemID string
 	tx     *deterministicTransport
 	cut    *mockCut[string]
@@ -287,7 +287,7 @@ func (d *deterministicTransport) SetVotes(yesCount, noCount int) {
 	}
 }
 
-func newWaveSnowball(k int, alpha float64, beta uint32) *waveSnowball {
+func newWaveThreshold(k int, alpha float64, beta uint32) *waveThreshold {
 	cfg := Config{
 		K:       k,
 		Alpha:   alpha,
@@ -297,26 +297,26 @@ func newWaveSnowball(k int, alpha float64, beta uint32) *waveSnowball {
 
 	cut := newMockCut[string](k * 2)
 	tx := newDeterministicTransport()
-	wave := New[string](cfg, cut, tx)
+	w, _ := New[string](cfg, cut, tx)
 
-	return &waveSnowball{
-		wave:   wave,
+	return &waveThreshold{
+		wave:   &w,
 		itemID: "test",
 		tx:     tx,
 		cut:    cut,
 	}
 }
 
-func (ws *waveSnowball) Poll(yesVotes, noVotes int) {
+func (ws *waveThreshold) Poll(yesVotes, noVotes int) {
 	ws.tx.SetVotes(yesVotes, noVotes)
 	ws.wave.Tick(context.Background(), ws.itemID)
 }
 
-func (ws *waveSnowball) Preference() bool {
+func (ws *waveThreshold) Preference() bool {
 	return ws.wave.Preference(ws.itemID)
 }
 
-func (ws *waveSnowball) Finalized() bool {
+func (ws *waveThreshold) Finalized() bool {
 	state, exists := ws.wave.State(ws.itemID)
 	if !exists {
 		return false
@@ -324,7 +324,7 @@ func (ws *waveSnowball) Finalized() bool {
 	return state.Decided
 }
 
-func (ws *waveSnowball) Count() uint32 {
+func (ws *waveThreshold) Count() uint32 {
 	state, exists := ws.wave.State(ws.itemID)
 	if !exists {
 		return 0
@@ -332,12 +332,12 @@ func (ws *waveSnowball) Count() uint32 {
 	return state.Count
 }
 
-// TestWaveSnowballEquivalence tests that Wave exhibits snowball-like behavior
-func TestWaveSnowballEquivalence(t *testing.T) {
+// TestWaveThresholdEquivalence tests that Wave exhibits snowball-like behavior
+func TestWaveThresholdEquivalence(t *testing.T) {
 	require := require.New(t)
 
 	// K=5, Alpha=0.8 (threshold=4), Beta=3
-	ws := newWaveSnowball(5, 0.8, 3)
+	ws := newWaveThreshold(5, 0.8, 3)
 
 	require.False(ws.Finalized())
 
@@ -360,12 +360,12 @@ func TestWaveSnowballEquivalence(t *testing.T) {
 	require.True(ws.Finalized())
 }
 
-// TestWaveSnowballConfidenceReset tests confidence reset on preference switch
-func TestWaveSnowballConfidenceReset(t *testing.T) {
+// TestWaveThresholdConfidenceReset tests confidence reset on preference switch
+func TestWaveThresholdConfidenceReset(t *testing.T) {
 	require := require.New(t)
 
 	// K=5, Alpha=0.8 (threshold=4), Beta=3
-	ws := newWaveSnowball(5, 0.8, 3)
+	ws := newWaveThreshold(5, 0.8, 3)
 
 	// Two yes polls
 	ws.Poll(5, 0)
@@ -385,12 +385,12 @@ func TestWaveSnowballConfidenceReset(t *testing.T) {
 	require.True(ws.Finalized())
 }
 
-// TestWaveSnowballSplitVote tests behavior with split votes (no threshold met)
-func TestWaveSnowballSplitVote(t *testing.T) {
+// TestWaveThresholdSplitVote tests behavior with split votes (no threshold met)
+func TestWaveThresholdSplitVote(t *testing.T) {
 	require := require.New(t)
 
 	// K=10, Alpha=0.8 (threshold=8), Beta=3
-	ws := newWaveSnowball(10, 0.8, 3)
+	ws := newWaveThreshold(10, 0.8, 3)
 
 	// Build up some confidence
 	ws.Poll(10, 0)
@@ -403,12 +403,12 @@ func TestWaveSnowballSplitVote(t *testing.T) {
 	require.False(ws.Finalized())
 }
 
-// TestWaveSnowballDecisionPersistence tests that decisions are final
-func TestWaveSnowballDecisionPersistence(t *testing.T) {
+// TestWaveThresholdDecisionPersistence tests that decisions are final
+func TestWaveThresholdDecisionPersistence(t *testing.T) {
 	require := require.New(t)
 
 	// K=5, Alpha=0.8, Beta=2
-	ws := newWaveSnowball(5, 0.8, 2)
+	ws := newWaveThreshold(5, 0.8, 2)
 
 	// Finalize with yes preference
 	ws.Poll(5, 0)
@@ -487,7 +487,7 @@ func validateConfig(cfg Config) bool {
 	return true
 }
 
-// --- N-ary voting simulation (ported from nnary_snowball_test.go) ---
+// --- N-ary voting simulation (ported from nnary_threshold_test.go) ---
 
 // narySnowball simulates N-ary snowball voting
 type narySnowball struct {
@@ -556,8 +556,8 @@ func (ns *narySnowball) RecordUnsuccessfulPoll() {
 func (ns *narySnowball) Preference() string { return ns.preference }
 func (ns *narySnowball) Finalized() bool    { return ns.finalized }
 
-// TestNarySnowballBasic tests N-ary snowball with multiple choices
-func TestNarySnowballBasic(t *testing.T) {
+// TestThresholdNaryBasic tests N-ary snowball with multiple choices
+func TestThresholdNaryBasic(t *testing.T) {
 	require := require.New(t)
 
 	red, blue, green := "red", "blue", "green"
@@ -604,8 +604,8 @@ func TestNarySnowballBasic(t *testing.T) {
 	require.True(ns.Finalized())
 }
 
-// TestNarySnowballVirtuous tests immediate finalization with single choice
-func TestNarySnowballVirtuous(t *testing.T) {
+// TestThresholdNaryVirtuous tests immediate finalization with single choice
+func TestThresholdNaryVirtuous(t *testing.T) {
 	require := require.New(t)
 
 	alphaPreference, alphaConfidence := 1, 2
@@ -621,8 +621,8 @@ func TestNarySnowballVirtuous(t *testing.T) {
 	require.True(ns.Finalized())
 }
 
-// TestNarySnowballUnsuccessfulPoll tests confidence reset
-func TestNarySnowballUnsuccessfulPoll(t *testing.T) {
+// TestThresholdNaryUnsuccessfulPoll tests confidence reset
+func TestThresholdNaryUnsuccessfulPoll(t *testing.T) {
 	require := require.New(t)
 
 	alphaPreference, alphaConfidence := 1, 2
@@ -661,7 +661,7 @@ type simNode struct {
 	nodeID     int
 }
 
-// simNetwork simulates a network of snowball nodes
+// simNetwork simulates a network of threshold voting nodes
 type simNetwork struct {
 	nodes  []*simNode
 	params struct {
