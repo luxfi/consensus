@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
+	"github.com/luxfi/consensus/core/slashing"
 	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/ids"
@@ -173,6 +174,14 @@ func WithEmitter(e BlockProposer) Option {
 	return WithProposer(e)
 }
 
+// WithSlashing enables equivocation detection and slashing evidence collection.
+func WithSlashing(detector *slashing.Detector, db *slashing.DB) Option {
+	return func(t *Transitive) {
+		t.slashingDetector = detector
+		t.slashingDB = db
+	}
+}
+
 // WithVoteBuffers sets channel buffer sizes.
 func WithVoteBuffers(requests, votes int) Option {
 	return func(t *Transitive) {
@@ -234,6 +243,10 @@ type Transitive struct {
 	blocksRejected uint64
 	votesSent      uint64
 	votesReceived  uint64
+
+	// Slashing: equivocation detection (optional, nil disables)
+	slashingDetector *slashing.Detector
+	slashingDB       *slashing.DB
 }
 
 // New creates an engine with default parameters.
@@ -454,6 +467,42 @@ func (t *Transitive) SetVM(vm BlockBuilder) {
 // AddBlock adds a block to consensus.
 func (t *Transitive) AddBlock(ctx context.Context, blk *Block) error {
 	return t.consensus.AddBlock(ctx, blk)
+}
+
+// CheckBlockProposal checks a block proposal for double-signing.
+// Call this when receiving a block from a remote validator before adding it to consensus.
+// Returns the evidence if the proposer equivocated, nil otherwise.
+func (t *Transitive) CheckBlockProposal(proposerID ids.NodeID, height uint64, blockID ids.ID, blockData []byte) *slashing.Evidence {
+	t.mu.RLock()
+	detector := t.slashingDetector
+	sdb := t.slashingDB
+	t.mu.RUnlock()
+
+	if detector == nil {
+		return nil
+	}
+
+	// Reject proposals from jailed validators
+	if sdb != nil && sdb.IsJailed(proposerID) {
+		return &slashing.Evidence{
+			Type:        slashing.DoubleSign,
+			ValidatorID: proposerID,
+			Height:      height,
+		}
+	}
+
+	ev := detector.CheckBlock(proposerID, height, blockID, blockData)
+	if ev != nil && sdb != nil {
+		sdb.RecordEvidence(*ev)
+	}
+	return ev
+}
+
+// SlashingDB returns the slashing database, or nil if slashing is disabled.
+func (t *Transitive) SlashingDB() *slashing.DB {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.slashingDB
 }
 
 // ProcessVote processes a vote.
@@ -735,22 +784,46 @@ func (t *Transitive) handleVote(vote Vote) {
 	// to avoid nested lock (t.mu -> c.mu) deadlock.
 	t.mu.Lock()
 	t.votesReceived++
-	_, exists := t.pendingBlocks[vote.BlockID]
-	var voteCount int
-	if exists {
-		if vote.Accept {
-			t.pendingBlocks[vote.BlockID].VoteCount++
-			voteCount = t.pendingBlocks[vote.BlockID].VoteCount
-		} else {
-			t.pendingBlocks[vote.BlockID].RejectCount++
-		}
-	}
+	pending, exists := t.pendingBlocks[vote.BlockID]
+	detector := t.slashingDetector
+	sdb := t.slashingDB
 	ctx := t.ctx
-	t.mu.Unlock()
 
 	if !exists {
+		t.mu.Unlock()
 		return
 	}
+
+	var height uint64
+	if pending.ConsensusBlock != nil {
+		height = pending.ConsensusBlock.height
+	}
+
+	// Equivocation + jail checks before counting the vote.
+	// Detector and DB use their own locks; safe to call under t.mu
+	// since there is no lock ordering conflict (t.mu -> detector.mu is one direction only).
+	if detector != nil {
+		if ev := detector.CheckVote(vote.NodeID, height, vote.BlockID, vote.Accept); ev != nil {
+			if sdb != nil {
+				sdb.RecordEvidence(*ev)
+			}
+			t.mu.Unlock()
+			return
+		}
+		if sdb != nil && sdb.IsJailed(vote.NodeID) {
+			t.mu.Unlock()
+			return
+		}
+	}
+
+	var voteCount int
+	if vote.Accept {
+		pending.VoteCount++
+		voteCount = pending.VoteCount
+	} else {
+		pending.RejectCount++
+	}
+	t.mu.Unlock()
 
 	if err := t.consensus.ProcessVote(ctx, vote.BlockID, vote.Accept); err != nil {
 		return

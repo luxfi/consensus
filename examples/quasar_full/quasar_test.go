@@ -18,7 +18,9 @@ import (
 
 // TestFPCDynamicThresholds tests FPC threshold selection
 func TestFPCDynamicThresholds(t *testing.T) {
-	selector := fpc.NewSelector(0.5, 0.8, nil)
+	seed := fpc.DeriveEpochSeed(0, []byte("test-chain"))
+	selector, err := fpc.NewSelector(0.5, 0.8, seed)
+	require.NoError(t, err)
 	k := 20
 
 	// Test determinism: same round = same threshold
@@ -325,7 +327,8 @@ func BenchmarkQuasarFullProtocol(b *testing.B) {
 
 // BenchmarkFPCThresholdSelection benchmarks FPC performance
 func BenchmarkFPCThresholdSelection(b *testing.B) {
-	selector := fpc.NewSelector(0.5, 0.8, nil)
+	seed := fpc.DeriveEpochSeed(0, []byte("bench-chain"))
+	selector, _ := fpc.NewSelector(0.5, 0.8, seed)
 	k := 20
 
 	b.ResetTimer()
