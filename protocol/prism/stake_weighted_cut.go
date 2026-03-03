@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	ErrNoValidators     = errors.New("stake weighted cut: no validators with positive weight")
+	ErrNoValidators      = errors.New("stake weighted cut: no validators with positive weight")
 	ErrInsufficientPeers = errors.New("stake weighted cut: fewer validators than requested sample size")
 )
 
