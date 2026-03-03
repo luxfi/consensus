@@ -199,8 +199,8 @@ func TestAccelBackendProcessVotes(t *testing.T) {
 	}
 }
 
-// TestBackendStubFunctionality tests that the stub works correctly
-func TestBackendStubFunctionality(t *testing.T) {
+// TestBackendFallbackFunctionality tests that the pure-Go fallback works correctly.
+func TestBackendFallbackFunctionality(t *testing.T) {
 	backend, err := NewBackend(100)
 	if err != nil {
 		t.Fatalf("Failed to create backend: %v", err)

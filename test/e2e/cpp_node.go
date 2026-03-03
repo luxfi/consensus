@@ -41,7 +41,7 @@ func (n *CppNode) Start(ctx context.Context, port int) error {
 
 	// For now, just mark as healthy - actual IPC would be implemented here
 	n.healthy = true
-	n.t.Log("✅ C++ node started successfully (stub)")
+	n.t.Log("C++ node started successfully (simulated)")
 	return nil
 }
 
@@ -73,8 +73,7 @@ func (n *CppNode) ProposeBlock(testBlock *Block) error {
 
 	n.t.Logf("C++ node: proposing block %s (height %d)", testBlock.ID, testBlock.Height)
 
-	// For E2E test stub, simulate consensus
-	// In production, this would send to C++ process via IPC
+	// Simulated consensus for E2E cross-language test.
 	blockData := map[string]interface{}{
 		"id":        testBlock.ID.String(),
 		"parent_id": testBlock.ParentID.String(),
