@@ -13,7 +13,7 @@ import (
 
 // TestWaveWithFPCEnabled demonstrates FPC usage with dynamic thresholds
 func TestWaveWithFPCEnabled(t *testing.T) {
-	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"))
+	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"), nil)
 
 	// Create config with FPC enabled
 	cfg := Config{
@@ -118,7 +118,7 @@ func TestWaveWithFPCDisabled(t *testing.T) {
 
 // TestFPCThresholdVariation demonstrates dynamic threshold changes per phase
 func TestFPCThresholdVariation(t *testing.T) {
-	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"))
+	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"), nil)
 
 	cfg := Config{
 		K:         100,
@@ -162,7 +162,7 @@ func TestFPCThresholdVariation(t *testing.T) {
 
 // TestFPCDeterminism verifies FPC produces same thresholds for same seed+phase
 func TestFPCDeterminism(t *testing.T) {
-	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"))
+	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"), nil)
 
 	cfg1 := Config{
 		K:         100,
@@ -211,7 +211,7 @@ func TestFPCDeterminism(t *testing.T) {
 
 // TestFPCvsFixedAlpha compares FPC vs fixed alpha behavior
 func TestFPCvsFixedAlpha(t *testing.T) {
-	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"))
+	seed := fpc.DeriveEpochSeed(1, []byte("test-chain"), nil)
 
 	// FPC-enabled config
 	fpcCfg := Config{
