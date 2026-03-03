@@ -991,3 +991,176 @@ func TestSyncState_WithEmptyID(t *testing.T) {
 		t.Error("Should be bootstrapped even with empty block ID")
 	}
 }
+
+// burstVM implements BlockBuilder for throughput benchmarking.
+// Simulates a GPU EVM that can produce blocks at maximum speed.
+type burstVM struct {
+	height    atomic.Uint64
+	accepted  atomic.Uint64
+	parentID  atomic.Value // ids.ID
+	txsPerBlk uint64
+}
+
+func newBurstVM(txsPerBlock uint64) *burstVM {
+	vm := &burstVM{txsPerBlk: txsPerBlock}
+	vm.parentID.Store(ids.Empty)
+	return vm
+}
+
+func (v *burstVM) BuildBlock(_ context.Context) (block.Block, error) {
+	h := v.height.Add(1)
+	parent, _ := v.parentID.Load().(ids.ID)
+	blk := &mockBlock{
+		id:        ids.GenerateTestID(),
+		parentID:  parent,
+		height:    h,
+		timestamp: time.Now(),
+		bytes:     make([]byte, v.txsPerBlk*100), // ~100 bytes per tx
+	}
+	return blk, nil
+}
+
+func (v *burstVM) GetBlock(_ context.Context, id ids.ID) (block.Block, error) {
+	return nil, errors.New("not needed for benchmark")
+}
+
+func (v *burstVM) ParseBlock(_ context.Context, b []byte) (block.Block, error) {
+	return &mockBlock{bytes: b}, nil
+}
+
+func (v *burstVM) LastAccepted(_ context.Context) (ids.ID, error) {
+	parent, _ := v.parentID.Load().(ids.ID)
+	return parent, nil
+}
+
+func (v *burstVM) SetPreference(_ context.Context, id ids.ID) error {
+	v.parentID.Store(id)
+	v.accepted.Add(1)
+	return nil
+}
+
+// BenchmarkBurstPipeline measures the consensus pipeline at maximum speed.
+// This benchmarks the engine itself — how many blocks/sec can consensus
+// propose, vote, finalize, and pipeline the next build.
+func BenchmarkBurstPipeline(b *testing.B) {
+	scenarios := []struct {
+		name      string
+		params    config.Parameters
+		txsPerBlk uint64
+	}{
+		{"burst-100K-txs", singleNodeBurstParams(), 100_000},
+		{"local-47K-txs", singleNodeBurstParams(), 47_619},
+		{"default-47K-txs", config.SingleValidatorParams(), 47_619},
+	}
+
+	for _, sc := range scenarios {
+		b.Run(sc.name, func(b *testing.B) {
+			vm := newBurstVM(sc.txsPerBlk)
+			cfg := Config{
+				Params: sc.params,
+				VM:     vm,
+			}
+			engine := NewWithConfig(cfg)
+			ctx := context.Background()
+
+			if err := engine.Start(ctx, true); err != nil {
+				b.Fatal(err)
+			}
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				_ = engine.Notify(ctx, Message{Type: PendingTxs})
+			}
+
+			b.StopTimer()
+			_ = engine.Stop(ctx)
+
+			accepted := vm.accepted.Load()
+			b.ReportMetric(float64(accepted), "blocks")
+			b.ReportMetric(float64(accepted)*float64(sc.txsPerBlk), "txs")
+		})
+	}
+}
+
+// singleNodeBurstParams returns BurstParams with K=1 for single-node benchmarking.
+// Self-vote path: block is accepted synchronously in buildBlocksLocked.
+func singleNodeBurstParams() config.Parameters {
+	p := config.BurstParams()
+	p.K = 1
+	p.Alpha = 1.0
+	p.Beta = 1
+	p.AlphaPreference = 1
+	p.AlphaConfidence = 1
+	p.BetaVirtuous = 1
+	p.BetaRogue = 1
+	return p
+}
+
+// TestBurstThroughput runs the pipeline for a fixed duration and reports TPS.
+func TestBurstThroughput(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping burst throughput test in short mode")
+	}
+
+	scenarios := []struct {
+		name      string
+		params    config.Parameters
+		txsPerBlk uint64
+	}{
+		{"SoloGPU-47K", config.SoloGPUParams(), 47_619},
+		{"Burst-100K", singleNodeBurstParams(), 100_000},
+	}
+
+	for _, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			vm := newBurstVM(sc.txsPerBlk)
+			cfg := Config{Params: sc.params, VM: vm}
+			engine := NewWithConfig(cfg)
+			ctx, cancel := context.WithCancel(context.Background())
+
+			if err := engine.Start(ctx, true); err != nil {
+				t.Fatal(err)
+			}
+
+			duration := 3 * time.Second
+			deadline := time.Now().Add(duration)
+			notifications := 0
+
+			start := time.Now()
+			for time.Now().Before(deadline) {
+				_ = engine.Notify(ctx, Message{Type: PendingTxs})
+				notifications++
+			}
+			elapsed := time.Since(start)
+
+			cancel()
+			_ = engine.Stop(context.Background())
+
+			accepted := vm.accepted.Load()
+			height := vm.height.Load()
+			blocksPerSec := float64(accepted) / elapsed.Seconds()
+			tps := blocksPerSec * float64(sc.txsPerBlk)
+
+			t.Logf("")
+			t.Logf("=== Burst Pipeline: %s ===", sc.name)
+			t.Logf("Duration:        %v", elapsed.Round(time.Millisecond))
+			t.Logf("Notifications:   %d", notifications)
+			t.Logf("Blocks built:    %d", height)
+			t.Logf("Blocks accepted: %d", accepted)
+			t.Logf("Blocks/sec:      %.0f", blocksPerSec)
+			t.Logf("TPS (%dK/blk):  %.2fM", sc.txsPerBlk/1000, tps/1_000_000)
+			t.Logf("Block time cfg:  %v", cfg.Params.BlockTime)
+			t.Logf("Round timeout:   %v", cfg.Params.RoundTO)
+			t.Logf("")
+
+			if accepted == 0 {
+				t.Fatalf("No blocks accepted — pipeline broken")
+			}
+			if blocksPerSec < 100 {
+				t.Logf("WARNING: < 100 blocks/sec — pipeline not saturated")
+			}
+		})
+	}
+}
