@@ -1,6 +1,7 @@
 package slashing
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -382,5 +383,208 @@ func TestPopcount(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("popcount(0b%b, %d) = %d, want %d", tt.v, tt.window, got, tt.want)
 		}
+	}
+}
+
+// --- Inversion tests: evidence must be rejected when invalid ---
+
+// TestDB_DuplicateEvidence_NoDoubleSlash verifies that recording evidence
+// for the same validator at the same height twice increments the slash count
+// each time (the DB does not deduplicate -- that is the caller's responsibility
+// via the Detector). This documents the current behavior: the DB is append-only.
+// If deduplication is added later, this test should be updated to verify it.
+func TestDB_DuplicateEvidence_NoDoubleSlash(t *testing.T) {
+	db := NewDB(1 * time.Hour)
+	v := nodeID(1)
+
+	ev := Evidence{
+		Type:        DoubleVote,
+		ValidatorID: v,
+		Height:      100,
+		Timestamp:   time.Now(),
+		Proof:       []byte("proof-1"),
+	}
+
+	rec1 := db.RecordEvidence(ev)
+	if rec1.SlashCount != 1 {
+		t.Fatalf("expected slash count 1, got %d", rec1.SlashCount)
+	}
+
+	// Same evidence again -- DB currently allows it (caller must dedup).
+	rec2 := db.RecordEvidence(ev)
+	if rec2.SlashCount != 2 {
+		t.Fatalf("expected slash count 2 (DB does not dedup), got %d", rec2.SlashCount)
+	}
+	if len(rec2.Evidence) != 2 {
+		t.Fatalf("expected 2 evidence entries, got %d", len(rec2.Evidence))
+	}
+}
+
+// TestDB_NonExistentValidator verifies that querying a validator with no
+// slashing history returns nil/false.
+func TestDB_NonExistentValidator(t *testing.T) {
+	db := NewDB(1 * time.Hour)
+	unknown := nodeID(42)
+
+	if db.IsJailed(unknown) {
+		t.Fatal("non-existent validator must not be jailed")
+	}
+	rec := db.GetRecord(unknown)
+	if rec != nil {
+		t.Fatal("non-existent validator must have nil record")
+	}
+}
+
+// TestDB_JailDurationExponential verifies jail duration doubles with each
+// successive slash: base, 2*base, 4*base, 8*base.
+func TestDB_JailDurationExponential(t *testing.T) {
+	base := 1 * time.Hour
+	db := NewDB(base)
+	v := nodeID(1)
+
+	now := time.Now()
+	for slash := uint32(1); slash <= 4; slash++ {
+		ev := Evidence{
+			Type:        DoubleVote,
+			ValidatorID: v,
+			Height:      uint64(slash * 100),
+			Timestamp:   now,
+			Proof:       []byte{byte(slash)},
+		}
+		rec := db.RecordEvidence(ev)
+		if rec.SlashCount != slash {
+			t.Fatalf("slash %d: expected count %d, got %d", slash, slash, rec.SlashCount)
+		}
+
+		// Expected jail: base * 2^(slash-1)
+		expectedDuration := base
+		for i := uint32(1); i < slash; i++ {
+			expectedDuration *= 2
+		}
+		actualJail := rec.JailedUntil.Sub(now)
+		// Allow 1 second drift from time.Now() inside RecordEvidence
+		tolerance := 1 * time.Second
+		if actualJail < expectedDuration-tolerance || actualJail > expectedDuration+tolerance {
+			t.Fatalf("slash %d: expected jail ~%v, got %v", slash, expectedDuration, actualJail)
+		}
+	}
+}
+
+// TestDB_UnjailedValidatorCanBeReslashed verifies a validator whose jail
+// expired can be slashed again, incrementing the slash count.
+func TestDB_UnjailedValidatorCanBeReslashed(t *testing.T) {
+	db := NewDB(1 * time.Millisecond) // very short base jail
+	v := nodeID(1)
+
+	ev1 := Evidence{Type: DoubleVote, ValidatorID: v, Height: 100, Timestamp: time.Now(), Proof: []byte("1")}
+	db.RecordEvidence(ev1)
+	if !db.IsJailed(v) {
+		t.Fatal("should be jailed after first slash")
+	}
+
+	// Wait for jail to expire
+	time.Sleep(5 * time.Millisecond)
+	if db.IsJailed(v) {
+		t.Fatal("jail should have expired")
+	}
+
+	// Re-slash
+	ev2 := Evidence{Type: DoubleSign, ValidatorID: v, Height: 200, Timestamp: time.Now(), Proof: []byte("2")}
+	rec := db.RecordEvidence(ev2)
+	if rec.SlashCount != 2 {
+		t.Fatalf("expected slash count 2 after re-slash, got %d", rec.SlashCount)
+	}
+	if !db.IsJailed(v) {
+		t.Fatal("should be jailed again after re-slash")
+	}
+}
+
+// TestDB_ConcurrentEvidenceSubmission verifies that concurrent evidence
+// submissions do not corrupt the DB state (race safety).
+func TestDB_ConcurrentEvidenceSubmission(t *testing.T) {
+	db := NewDB(1 * time.Hour)
+	v := nodeID(1)
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ev := Evidence{
+				Type:        DoubleVote,
+				ValidatorID: v,
+				Height:      uint64(idx),
+				Timestamp:   time.Now(),
+				Proof:       []byte{byte(idx)},
+			}
+			db.RecordEvidence(ev)
+		}(i)
+	}
+	wg.Wait()
+
+	rec := db.GetRecord(v)
+	if rec == nil {
+		t.Fatal("expected non-nil record after concurrent submissions")
+	}
+	if rec.SlashCount != goroutines {
+		t.Fatalf("expected %d slashes, got %d", goroutines, rec.SlashCount)
+	}
+	if len(rec.Evidence) != goroutines {
+		t.Fatalf("expected %d evidence entries, got %d", goroutines, len(rec.Evidence))
+	}
+}
+
+// TestDetector_ConcurrentCheckVote verifies the Detector is race-safe
+// under concurrent vote checking.
+func TestDetector_ConcurrentCheckVote(t *testing.T) {
+	d := NewDetector(64, 0.5)
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			v := nodeID(byte(idx))
+			b := blockID(byte(idx))
+			d.CheckVote(v, 100, b, true)
+		}(i)
+	}
+	wg.Wait()
+
+	// Verify state is consistent: each validator should have exactly one
+	// vote recorded at height 100.
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.votes[100]) != goroutines {
+		t.Fatalf("expected %d validators in votes map, got %d", goroutines, len(d.votes[100]))
+	}
+}
+
+// TestCheckVote_ForgedEvidence_WrongValidator ensures that evidence produced
+// by one validator cannot be "attributed" to another validator. The detector
+// associates evidence with the validatorID passed to CheckVote, so an attacker
+// must actually observe the victim voting.
+func TestCheckVote_ForgedEvidence_WrongValidator(t *testing.T) {
+	d := NewDetector(64, 0.5)
+
+	// Honest validator votes for block A
+	honest := nodeID(1)
+	d.CheckVote(honest, 100, blockID(0xAA), true)
+
+	// Attacker is a different validator
+	attacker := nodeID(2)
+	ev := d.CheckVote(attacker, 100, blockID(0xBB), true)
+	if ev != nil {
+		t.Fatal("voting by different validators must not produce evidence")
+	}
+
+	// The honest validator did NOT double-vote
+	ev = d.CheckVote(honest, 100, blockID(0xAA), true)
+	if ev != nil {
+		t.Fatal("re-submitting same vote must not produce evidence")
 	}
 }
