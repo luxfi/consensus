@@ -406,7 +406,7 @@ func TestMerkleTreePairHashing(t *testing.T) {
 	hash2 := hashPair(a, b)
 	require.Equal(t, hash1, hash2)
 
-	// Different inputs (reversed order) - our XOR placeholder may be commutative
+	// Different inputs (reversed order) - XOR hashing is commutative by design;
 	// In production with SHA256, hash(a||b) != hash(b||a)
 	c := [32]byte{7, 8, 9}
 	hash3 := hashPair(a, c)

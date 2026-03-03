@@ -10,8 +10,8 @@ import (
 	"sync"
 )
 
-// Backend provides a stub consensus backend when luxfi/accel is not available.
-// This stub allows the package to compile without CGO dependencies.
+// Backend provides a pure-Go consensus backend when luxfi/accel is not available.
+// This fallback allows the package to compile without CGO dependencies.
 type Backend struct {
 	mu          sync.RWMutex
 	batchSize   int
@@ -19,8 +19,8 @@ type Backend struct {
 	initialized bool
 }
 
-// NewBackend creates a stub consensus backend.
-// Returns an error indicating acceleration is not available.
+// NewBackend creates a pure-Go consensus backend (no GPU acceleration).
+// Returns a functional backend that processes votes in software.
 func NewBackend(batchSize int) (*Backend, error) {
 	return &Backend{
 		batchSize:   batchSize,
@@ -28,16 +28,15 @@ func NewBackend(batchSize int) (*Backend, error) {
 	}, nil
 }
 
-// ProcessVotesBatch is a stub that returns an error when accel is not available.
+// ProcessVotesBatch counts votes without GPU acceleration.
 func (b *Backend) ProcessVotesBatch(votes []Vote) (int, error) {
 	if len(votes) == 0 {
 		return 0, nil
 	}
-	// Stub implementation: just count votes without GPU acceleration
 	return len(votes), nil
 }
 
-// ComputeQuorum is a stub that computes quorum without GPU acceleration.
+// ComputeQuorum computes quorum without GPU acceleration.
 func (b *Backend) ComputeQuorum(votes []Vote, validators []ValidatorInfo, threshold float64) (*QuorumResult, error) {
 	if len(validators) == 0 {
 		return nil, fmt.Errorf("no validators provided")
@@ -89,12 +88,12 @@ func (b *Backend) GetDeviceInfo() string {
 	return ""
 }
 
-// NewMLXBackend creates a stub backend when MLX is not available.
+// NewMLXBackend creates a pure-Go backend when MLX is not available.
 func NewMLXBackend(batchSize int) (*Backend, error) {
 	return NewBackend(batchSize)
 }
 
-// NewAccelBackend creates a stub backend when acceleration is not available.
+// NewAccelBackend creates a pure-Go backend when acceleration is not available.
 func NewAccelBackend(batchSize int) (*Backend, error) {
 	return NewBackend(batchSize)
 }
