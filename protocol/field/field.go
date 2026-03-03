@@ -45,7 +45,7 @@ type Config struct {
 
 type Driver[V VID] struct {
 	cfg            Config
-	wv             wave.Wave[V]
+	wv             *wave.Wave[V]
 	cut            prism.Cut[V]
 	str            Store[V]
 	prop           Proposer[V]
@@ -68,10 +68,10 @@ func NewDriver[V VID](cfg Config, cut prism.Cut[V], tx wave.Transport[V], store 
 		cfg.RoundTO = 250 * time.Millisecond
 	}
 
-	wv, _ := wave.New[V](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx)
+	wvVal, _ := wave.New[V](wave.Config{K: cfg.PollSize, Alpha: cfg.Alpha, Beta: cfg.Beta, RoundTO: cfg.RoundTO}, cut, tx)
 	return &Driver[V]{
 		cfg:            cfg,
-		wv:             wv,
+		wv:             &wvVal,
 		cut:            cut,
 		str:            store,
 		prop:           prop,
