@@ -4,8 +4,23 @@ import (
 	"testing"
 )
 
+func TestNewSelectorRequiresSeed(t *testing.T) {
+	_, err := NewSelector(0.5, 0.8, nil)
+	if err != ErrEmptySeed {
+		t.Fatalf("Expected ErrEmptySeed for nil seed, got %v", err)
+	}
+
+	_, err = NewSelector(0.5, 0.8, []byte{})
+	if err != ErrEmptySeed {
+		t.Fatalf("Expected ErrEmptySeed for empty seed, got %v", err)
+	}
+}
+
 func TestNewSelector(t *testing.T) {
-	s := NewSelector(0.5, 0.8, []byte("test-seed"))
+	s, err := NewSelector(0.5, 0.8, []byte("test-seed"))
+	if err != nil {
+		t.Fatalf("NewSelector returned error: %v", err)
+	}
 	if s == nil {
 		t.Fatal("NewSelector returned nil")
 	}
@@ -19,23 +34,50 @@ func TestNewSelector(t *testing.T) {
 	}
 }
 
-func TestDefaultSelector(t *testing.T) {
-	s := DefaultSelector()
-	if s == nil {
-		t.Fatal("DefaultSelector returned nil")
+func TestDeriveEpochSeed(t *testing.T) {
+	seed1 := DeriveEpochSeed(1, []byte("chain-A"))
+	seed2 := DeriveEpochSeed(2, []byte("chain-A"))
+	seed3 := DeriveEpochSeed(1, []byte("chain-B"))
+
+	if len(seed1) != 32 {
+		t.Fatalf("Expected 32-byte seed, got %d", len(seed1))
 	}
 
-	min, max := s.Range()
-	if min != 0.5 {
-		t.Errorf("Expected default min=0.5, got %f", min)
+	// Different epoch => different seed
+	if string(seed1) == string(seed2) {
+		t.Error("Different epochs must produce different seeds")
 	}
-	if max != 0.8 {
-		t.Errorf("Expected default max=0.8, got %f", max)
+
+	// Different chain => different seed
+	if string(seed1) == string(seed3) {
+		t.Error("Different chains must produce different seeds")
+	}
+
+	// Deterministic
+	seed1b := DeriveEpochSeed(1, []byte("chain-A"))
+	if string(seed1) != string(seed1b) {
+		t.Error("DeriveEpochSeed must be deterministic")
+	}
+}
+
+func TestDeriveEpochSeedUsableInSelector(t *testing.T) {
+	seed := DeriveEpochSeed(42, []byte("lux-mainnet"))
+	s, err := NewSelector(0.5, 0.8, seed)
+	if err != nil {
+		t.Fatalf("NewSelector with derived seed returned error: %v", err)
+	}
+
+	threshold := s.SelectThreshold(1, 100)
+	if threshold < 50 || threshold > 81 {
+		t.Errorf("Threshold %d outside expected range [50, 81]", threshold)
 	}
 }
 
 func TestSelectThreshold(t *testing.T) {
-	s := NewSelector(0.5, 0.8, []byte("test-seed"))
+	s, err := NewSelector(0.5, 0.8, []byte("test-seed"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	k := 100
 	threshold := s.SelectThreshold(1, k)
@@ -50,7 +92,10 @@ func TestSelectThreshold(t *testing.T) {
 }
 
 func TestDeterministicThresholds(t *testing.T) {
-	s := NewSelector(0.5, 0.8, []byte("test-seed"))
+	s, err := NewSelector(0.5, 0.8, []byte("test-seed"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	k := 100
 	phase := uint64(42)
@@ -65,7 +110,10 @@ func TestDeterministicThresholds(t *testing.T) {
 }
 
 func TestDifferentPhasesGiveDifferentThresholds(t *testing.T) {
-	s := NewSelector(0.5, 0.8, []byte("test-seed"))
+	s, err := NewSelector(0.5, 0.8, []byte("test-seed"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	k := 100
 	thresholds := make(map[int]bool)
@@ -83,7 +131,10 @@ func TestDifferentPhasesGiveDifferentThresholds(t *testing.T) {
 }
 
 func TestThetaRange(t *testing.T) {
-	s := NewSelector(0.5, 0.8, []byte("test-seed"))
+	s, err := NewSelector(0.5, 0.8, []byte("test-seed"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Test theta values for many phases
 	for phase := uint64(0); phase < 1000; phase++ {
@@ -96,8 +147,14 @@ func TestThetaRange(t *testing.T) {
 }
 
 func TestDifferentSeedsGiveDifferentResults(t *testing.T) {
-	s1 := NewSelector(0.5, 0.8, []byte("seed-1"))
-	s2 := NewSelector(0.5, 0.8, []byte("seed-2"))
+	s1, err := NewSelector(0.5, 0.8, []byte("seed-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := NewSelector(0.5, 0.8, []byte("seed-2"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	k := 100
 	phase := uint64(42)
@@ -111,23 +168,12 @@ func TestDifferentSeedsGiveDifferentResults(t *testing.T) {
 	}
 }
 
-func TestConvenienceFunction(t *testing.T) {
-	k := 100
-	phase := uint64(1)
-
-	threshold := SelectThreshold(phase, k, 0.5, 0.8)
-
-	minThreshold := int(0.5 * float64(k))
-	maxThreshold := int(0.8*float64(k)) + 1
-
-	if threshold < minThreshold || threshold > maxThreshold {
-		t.Errorf("Threshold %d outside expected range [%d, %d]", threshold, minThreshold, maxThreshold)
-	}
-}
-
 func TestInvalidRanges(t *testing.T) {
 	// Test auto-correction of invalid ranges
-	s := NewSelector(-0.1, 1.5, []byte("test"))
+	s, err := NewSelector(-0.1, 1.5, []byte("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	min, max := s.Range()
 
@@ -141,7 +187,10 @@ func TestInvalidRanges(t *testing.T) {
 }
 
 func TestPhaseCoverage(t *testing.T) {
-	s := NewSelector(0.5, 0.8, []byte("test-seed"))
+	s, err := NewSelector(0.5, 0.8, []byte("test-seed"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	k := 100
 
 	// Test a wide range of phases to ensure no panics or errors
@@ -157,7 +206,7 @@ func TestPhaseCoverage(t *testing.T) {
 }
 
 func BenchmarkSelectThreshold(b *testing.B) {
-	s := NewSelector(0.5, 0.8, []byte("bench-seed"))
+	s, _ := NewSelector(0.5, 0.8, []byte("bench-seed"))
 	k := 100
 
 	b.ResetTimer()
@@ -167,7 +216,7 @@ func BenchmarkSelectThreshold(b *testing.B) {
 }
 
 func BenchmarkComputeTheta(b *testing.B) {
-	s := NewSelector(0.5, 0.8, []byte("bench-seed"))
+	s, _ := NewSelector(0.5, 0.8, []byte("bench-seed"))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

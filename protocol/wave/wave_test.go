@@ -10,6 +10,7 @@ import (
 
 	"github.com/luxfi/consensus/core/types"
 	"github.com/luxfi/consensus/protocol/prism"
+	"github.com/luxfi/consensus/protocol/wave/fpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -106,7 +107,7 @@ func TestWaveBasicVoting(t *testing.T) {
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Add unanimous votes for "tx1"
 	for i := 0; i < 5; i++ {
@@ -136,7 +137,7 @@ func TestWaveConfidenceBuilding(t *testing.T) {
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Add unanimous votes
 	for i := 0; i < 5; i++ {
@@ -170,7 +171,7 @@ func TestWavePreferenceSwitch(t *testing.T) {
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	ctx := context.Background()
 
@@ -210,7 +211,7 @@ func TestWaveSplitVote(t *testing.T) {
 
 	cut := newMockCut[string](15)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Split vote: 5 yes, 5 no (neither reaches threshold)
 	for i := 0; i < 5; i++ {
@@ -239,7 +240,7 @@ func TestWaveMultipleItems(t *testing.T) {
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Add votes for multiple items
 	for i := 0; i < 5; i++ {
@@ -283,7 +284,7 @@ func TestWaveTimeout(t *testing.T) {
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Don't add any votes (will timeout)
 	ctx := context.Background()
@@ -307,7 +308,7 @@ func TestWaveDecisionPersistence(t *testing.T) {
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Add unanimous votes
 	for i := 0; i < 5; i++ {
@@ -351,7 +352,7 @@ func TestWaveHighThroughput(t *testing.T) {
 
 	cut := newMockCut[string](100)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	ctx := context.Background()
 
@@ -384,11 +385,12 @@ func TestWaveFPCWithCustomThresholds(t *testing.T) {
 		EnableFPC: true,
 		ThetaMin:  0.6,
 		ThetaMax:  0.9,
+		FPCSeed:   fpc.DeriveEpochSeed(1, []byte("test")),
 	}
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Add unanimous votes
 	for i := 0; i < 5; i++ {
@@ -422,11 +424,12 @@ func TestWaveFPCZeroThresholds(t *testing.T) {
 		EnableFPC: true,
 		ThetaMin:  0, // Should default to 0.5
 		ThetaMax:  0, // Should default to 0.8
+		FPCSeed:   fpc.DeriveEpochSeed(1, []byte("test")),
 	}
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Add unanimous votes
 	for i := 0; i < 5; i++ {
@@ -457,7 +460,7 @@ func TestWaveContextCancellation(t *testing.T) {
 	// Use slow transport that never sends votes
 	tx := newSlowMockTransport[string](10 * time.Second)
 
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Cancel context quickly to trigger ctx.Done() path
 	ctx, cancel := context.WithCancel(context.Background())
@@ -489,7 +492,7 @@ func TestWaveRejectDecision(t *testing.T) {
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Add unanimous NO votes
 	for i := 0; i < 5; i++ {
@@ -524,7 +527,7 @@ func TestWaveNoVotesTimeout(t *testing.T) {
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// No votes added - the mock returns an empty closed channel
 	// which times out, resulting in totalVotes=0 and early return
@@ -592,7 +595,7 @@ func TestWaveTimeoutPath(t *testing.T) {
 	// Use slow transport that delays 50ms (longer than 10ms timeout)
 	tx := newSlowMockTransport[string](50 * time.Millisecond)
 
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	ctx := context.Background()
 	wave.Tick(ctx, "tx1")
@@ -616,7 +619,7 @@ func TestWaveStateNotExists(t *testing.T) {
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Query state for item that was never processed
 	state, exists := wave.State("nonexistent")
@@ -637,7 +640,7 @@ func TestWavePreferenceNotExists(t *testing.T) {
 
 	cut := newMockCut[string](10)
 	tx := newMockTransport[string]()
-	wave := New[string](cfg, cut, tx)
+	wave, _ := New[string](cfg, cut, tx)
 
 	// Query preference for item that was never processed
 	pref := wave.Preference("nonexistent")

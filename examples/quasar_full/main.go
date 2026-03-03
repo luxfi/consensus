@@ -41,7 +41,11 @@ func demonstrateFPC() {
 	fmt.Println("━━━ Part 1: Fast Probabilistic Consensus (FPC) ━━━")
 	fmt.Println()
 
-	selector := fpc.NewSelector(0.5, 0.8, nil)
+	seed := fpc.DeriveEpochSeed(0, []byte("lux-demo"))
+	selector, err := fpc.NewSelector(0.5, 0.8, seed)
+	if err != nil {
+		panic(err)
+	}
 	k := 20
 
 	fmt.Println("  FPC prevents stuck states with dynamic thresholds")
