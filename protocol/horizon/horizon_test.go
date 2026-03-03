@@ -325,10 +325,10 @@ func TestFindPath(t *testing.T) {
 		t.Errorf("Path should end at A, got %s", path[len(path)-1])
 	}
 
-	// FindPath currently has a simple placeholder implementation
+	// FindPath returns a path when both vertices exist in the graph.
 	_, found = FindPath(g, "B", "C")
 	if found {
-		t.Log("FindPath placeholder returns path if both vertices exist")
+		t.Log("FindPath returns path when both vertices exist")
 	}
 }
 
