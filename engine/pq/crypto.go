@@ -10,7 +10,7 @@ import (
 
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/corona/threshold"
+	"github.com/luxfi/pulsar/threshold"
 )
 
 // CertificateGenerator generates real BLS and Corona threshold signatures.
