@@ -102,7 +102,6 @@ func (e AppError) Error() string { return e.Message }
 // State represents the operational state of a VM or consensus engine
 type State = interfaces.State
 
-
 // Re-export state constants from interfaces package
 const (
 	Unknown       = interfaces.Unknown

@@ -273,7 +273,7 @@ func TestProcessBlockEmptyCertificates(t *testing.T) {
 	select {
 	case event := <-engine.FinalityChannel():
 		require.Equal(t, blockID, event.BlockID)
-		require.NotEmpty(t, event.PQProof)
+		require.NotEmpty(t, event.MLDSAProof)
 		require.NotEmpty(t, event.BLSProof)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Expected finality event")
@@ -285,14 +285,14 @@ func TestFinalityEventFields(t *testing.T) {
 		Height:    100,
 		BlockID:   ids.GenerateTestID(),
 		Timestamp: time.Now(),
-		PQProof:   []byte("pq-proof"),
+		MLDSAProof:   []byte("pq-proof"),
 		BLSProof:  []byte("bls-proof"),
 	}
 
 	require.Equal(t, uint64(100), event.Height)
 	require.NotEmpty(t, event.BlockID)
 	require.False(t, event.Timestamp.IsZero())
-	require.Equal(t, []byte("pq-proof"), event.PQProof)
+	require.Equal(t, []byte("pq-proof"), event.MLDSAProof)
 	require.Equal(t, []byte("bls-proof"), event.BLSProof)
 }
 
@@ -472,7 +472,7 @@ func TestBlockToFinalityEvent(t *testing.T) {
 				Timestamp: testTime,
 				Cert: &quasar.QuasarCert{
 					BLS:     []byte("bls-proof-data"),
-					PQProof: []byte("pq-proof-data"),
+					MLDSAProof: []byte("pq-proof-data"),
 				},
 			},
 			wantBLS: []byte("bls-proof-data"),
@@ -497,7 +497,7 @@ func TestBlockToFinalityEvent(t *testing.T) {
 				Timestamp: testTime,
 				Cert: &quasar.QuasarCert{
 					BLS:     []byte{},
-					PQProof: []byte{},
+					MLDSAProof: []byte{},
 				},
 			},
 			wantBLS: []byte{},
@@ -534,7 +534,7 @@ func TestBlockToFinalityEvent(t *testing.T) {
 			require.Equal(t, tc.block.Height, event.Height)
 			require.Equal(t, tc.block.Timestamp, event.Timestamp)
 			require.Equal(t, tc.wantBLS, event.BLSProof)
-			require.Equal(t, tc.wantPQ, event.PQProof)
+			require.Equal(t, tc.wantPQ, event.MLDSAProof)
 		})
 	}
 }
@@ -613,7 +613,7 @@ func TestSetFinalizedCallbackInvocation(t *testing.T) {
 		Timestamp: time.Now(),
 		Cert: &quasar.QuasarCert{
 			BLS:     []byte("test-bls"),
-			PQProof: []byte("test-pq"),
+			MLDSAProof: []byte("test-pq"),
 		},
 	}
 
@@ -622,7 +622,7 @@ func TestSetFinalizedCallbackInvocation(t *testing.T) {
 	require.True(t, callbackCalled)
 	require.Equal(t, uint64(42), receivedEvent.Height)
 	require.Equal(t, []byte("test-bls"), receivedEvent.BLSProof)
-	require.Equal(t, []byte("test-pq"), receivedEvent.PQProof)
+	require.Equal(t, []byte("test-pq"), receivedEvent.MLDSAProof)
 }
 
 // TestSetFinalizedCallbackInvocationNilCert tests callback with nil certificate
@@ -663,5 +663,5 @@ func TestSetFinalizedCallbackInvocationNilCert(t *testing.T) {
 	require.True(t, callbackCalled)
 	require.Equal(t, uint64(100), receivedEvent.Height)
 	require.Nil(t, receivedEvent.BLSProof)
-	require.Nil(t, receivedEvent.PQProof)
+	require.Nil(t, receivedEvent.MLDSAProof)
 }
