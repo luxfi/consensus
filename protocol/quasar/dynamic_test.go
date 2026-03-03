@@ -199,11 +199,20 @@ func TestQuantumSecurityForAllChains(t *testing.T) {
 		t.Fatalf("Failed to submit bridge block: %v", err)
 	}
 
-	// Wait for quantum finalization
+	// Wait for block to reach pending state (self-vote from validator1)
 	time.Sleep(200 * time.Millisecond)
 
-	// Verify bridge block has quantum finality
+	// Supply second vote to meet threshold=2
 	blockHash := q.computeQuantumHash(bridgeBlock)
+	sig, err := q.SignMessage("validator2", []byte(blockHash))
+	if err != nil {
+		t.Fatalf("Failed to sign bridge block from validator2: %v", err)
+	}
+	if !q.ReceiveVote(blockHash, "validator2", sig) {
+		t.Fatal("Failed to receive vote for bridge block")
+	}
+
+	// Verify bridge block has quantum finality
 	if !q.VerifyQuantumFinality(blockHash) {
 		t.Error("Bridge block does not have quantum finality")
 	}

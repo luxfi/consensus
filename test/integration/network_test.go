@@ -957,7 +957,7 @@ func TestNetworkResilience(t *testing.T) {
 }
 
 // adaptiveConsensusParams calculates optimal consensus parameters based on network size and colors
-// Based on Avalanche consensus paper and network convergence theory:
+// Based on Lux consensus parameters and network convergence theory:
 // - K scales with network size (sample ~80% of network for robust convergence)
 // - Alpha maintains supermajority threshold (~65-70% of K for Byzantine tolerance)
 // - Beta scales logarithmically with colors (more rounds for more competing values)
