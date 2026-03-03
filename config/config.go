@@ -13,6 +13,8 @@ var (
 	ErrInvalidBeta        = errors.New("beta must be >= 1")
 	ErrBlockTimeTooLow    = errors.New("block time must be >= 1ms")
 	ErrRoundTimeoutTooLow = errors.New("round timeout must be >= block time")
+	ErrKTooLowForMainnet  = errors.New("K must be >= 11 for mainnet (networkID=1): low K enables cheap 51% attacks")
+	ErrKTooLowForTestnet  = errors.New("K must be >= 5 for testnet (networkID=5): low K enables cheap 51% attacks")
 )
 
 // Parameters defines consensus parameters
@@ -258,5 +260,25 @@ func (p Parameters) Valid() error {
 		return ErrParametersInvalid
 	}
 
+	return nil
+}
+
+// ValidateForNetwork validates parameters are safe for the given network.
+// Mainnet (1) requires K >= 11, testnet (5) requires K >= 5.
+// Local/devnet (>= 1337) allows any K.
+func (p Parameters) ValidateForNetwork(networkID uint32) error {
+	if err := p.Valid(); err != nil {
+		return err
+	}
+	switch networkID {
+	case 1: // mainnet
+		if p.K < 11 {
+			return ErrKTooLowForMainnet
+		}
+	case 5: // testnet
+		if p.K < 5 {
+			return ErrKTooLowForTestnet
+		}
+	}
 	return nil
 }
