@@ -119,7 +119,7 @@ func TestRealThresholdSig_Accepted(t *testing.T) {
 func TestQuasarCert_GarbageBytes_Rejected(t *testing.T) {
 	cert := &QuasarCert{
 		BLS:        []byte{0x01},
-		PQProof:    []byte{0x01},
+		MLDSAProof:    []byte{0x01},
 		Validators: 1,
 	}
 
@@ -145,7 +145,7 @@ func TestQuasarCert_NilCert_Rejected(t *testing.T) {
 func TestQuasarCert_EmptyBLS_Rejected(t *testing.T) {
 	cert := &QuasarCert{
 		BLS: []byte{},
-		PQProof:   []byte{0x01, 0x02},
+		MLDSAProof:   []byte{0x01, 0x02},
 	}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("key")),
 		"QuasarCert with empty BLS must return false")
@@ -155,7 +155,7 @@ func TestQuasarCert_EmptyBLS_Rejected(t *testing.T) {
 func TestQuasarCert_EmptyPQ_Rejected(t *testing.T) {
 	cert := &QuasarCert{
 		BLS: []byte{0x01, 0x02},
-		PQProof:   []byte{},
+		MLDSAProof:   []byte{},
 	}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("key")),
 		"QuasarCert with empty PQ must return false")

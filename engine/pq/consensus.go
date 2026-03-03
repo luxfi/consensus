@@ -30,13 +30,16 @@ type ConsensusEngine struct {
 	certGen *CertificateGenerator
 }
 
-// FinalityEvent represents a finalized block with quantum-resistant proofs
+// FinalityEvent represents a finalized block with quantum-resistant proofs.
+// Carries all three components for parallel verification: classical BLS,
+// lattice Ringtail, and FIPS 204 ML-DSA. Defense in depth.
 type FinalityEvent struct {
-	Height    uint64
-	BlockID   ids.ID
-	Timestamp time.Time
-	PQProof   []byte // Z-Chain ZKP: Groth16 proving BLS ∧ ML-DSA ∧ Ringtail
-	BLSProof  []byte // Classical BLS proof
+	Height     uint64
+	BlockID    ids.ID
+	Timestamp  time.Time
+	BLSProof   []byte // Classical BLS12-381 aggregate
+	Ringtail   []byte // Ringtail lattice threshold sig
+	MLDSAProof []byte // FIPS 204 ML-DSA proof
 }
 
 // memoryStore is a simple in-memory implementation of dag.Store for P-Chain vertices
@@ -187,11 +190,11 @@ func (e *ConsensusEngine) ProcessBlock(ctx context.Context, blockID ids.ID, vote
 	// Emit finality event
 	select {
 	case e.finality <- FinalityEvent{
-		Height:    e.height,
-		BlockID:   blockID,
-		Timestamp: time.Now(),
-		PQProof:   cert.PQCert,
-		BLSProof:  cert.BLSAgg,
+		Height:     e.height,
+		BlockID:    blockID,
+		Timestamp:  time.Now(),
+		MLDSAProof: cert.PQCert,
+		BLSProof:   cert.BLSAgg,
 	}:
 	case <-ctx.Done():
 		return ctx.Err()
@@ -224,17 +227,19 @@ func (e *ConsensusEngine) Height() uint64 {
 // blockToFinalityEvent converts a quasar.Block to a FinalityEvent
 func blockToFinalityEvent(block *quasar.Block) FinalityEvent {
 	blockID, _ := ids.FromString(block.Hash)
-	var pqProof, blsProof []byte
+	var mldsaProof, ringtail, blsProof []byte
 	if block.Cert != nil {
-		pqProof = block.Cert.PQProof
+		mldsaProof = block.Cert.MLDSAProof
+		ringtail = block.Cert.Ringtail
 		blsProof = block.Cert.BLS
 	}
 	return FinalityEvent{
-		Height:    block.Height,
-		BlockID:   blockID,
-		Timestamp: block.Timestamp,
-		PQProof:   pqProof,
-		BLSProof:  blsProof,
+		Height:     block.Height,
+		BlockID:    blockID,
+		Timestamp:  block.Timestamp,
+		MLDSAProof: mldsaProof,
+		Ringtail:   ringtail,
+		BLSProof:   blsProof,
 	}
 }
 

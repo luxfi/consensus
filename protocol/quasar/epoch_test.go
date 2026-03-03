@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	ringtailThreshold "github.com/luxfi/ringtail/threshold"
+	ringtailThreshold "github.com/luxfi/pulsar/threshold"
 	"github.com/stretchr/testify/require"
 )
 
@@ -276,15 +276,27 @@ func TestEpochManager_CrossEpochVerification(t *testing.T) {
 
 	require.Equal(t, uint64(1), em.GetCurrentEpoch())
 
-	// Signature from epoch 0 should still verify against epoch 0 keys
+	// Signature from epoch 0 still verifies against epoch 0 keys.
 	valid := em.VerifySignatureForEpoch(message, sig0, 0)
 	require.True(t, valid, "Epoch 0 signature should verify with epoch 0 keys")
 
-	// Should NOT verify against epoch 1 keys (different group key)
+	// Pulsar resharing preserves the GroupKey across epochs within a
+	// key era. Therefore an epoch 0 signature remains valid under
+	// epoch 1's GroupKey too — that is the entire point of the
+	// pulsar lifecycle (one persistent group public key, only the
+	// share distribution rotates). This is the new semantics relative
+	// to the deprecated fresh-DKG-per-epoch model. The chain
+	// distinguishes epochs by the metadata the signature is bound to,
+	// not by the group public key.
 	valid = em.VerifySignatureForEpoch(message, sig0, 1)
-	require.False(t, valid, "Epoch 0 signature should NOT verify with epoch 1 keys")
+	require.True(t, valid, "Epoch 0 signature SHOULD verify with epoch 1 keys (GroupKey preserved across reshare)")
 
-	t.Log("Cross-epoch verification working correctly")
+	// GroupKey pointer identity is preserved across the reshare.
+	keys1, err := em.GetEpochKeys(1)
+	require.NoError(t, err)
+	require.Same(t, keys0.GroupKey, keys1.GroupKey, "GroupKey must be preserved across reshare")
+
+	t.Log("Cross-epoch verification working correctly: GroupKey preserved across reshare")
 }
 
 func TestEpochManager_PruneHistory(t *testing.T) {
@@ -582,15 +594,18 @@ func TestQuasar_EpochSigningAfterRotation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), q.GetCurrentEpoch())
 
-	// Epoch 0 signature should still verify with epoch 0 keys
+	// Epoch 0 signature should still verify with epoch 0 keys.
 	valid = q.epochManager.VerifySignatureForEpoch(message, sig0, 0)
 	require.True(t, valid, "Epoch 0 signature should still verify after rotation")
 
-	// But not with epoch 1 keys
+	// Pulsar resharing preserves the GroupKey across epochs within
+	// the same key era — see TestEpochManager_CrossEpochVerification
+	// for the long-form rationale. Hence an epoch 0 signature also
+	// verifies under epoch 1's keys.
 	valid = q.epochManager.VerifySignatureForEpoch(message, sig0, 1)
-	require.False(t, valid, "Epoch 0 signature should NOT verify with epoch 1 keys")
+	require.True(t, valid, "Epoch 0 signature should verify with epoch 1 keys (GroupKey preserved across reshare)")
 
-	t.Log("Signing and verification across epochs working correctly")
+	t.Log("Signing and verification across epochs working correctly: GroupKey preserved across reshare")
 }
 
 // ============================================================================

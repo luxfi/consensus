@@ -7,7 +7,7 @@
 // IMPORTANT: This is NOT the threshold signature implementation.
 // For real cryptographic threshold signatures (BLS + Ringtail), see:
 //   - quasar.go: Signer struct with github.com/luxfi/crypto/bls integration
-//   - epoch.go: Ringtail threshold signing via github.com/luxfi/ringtail/threshold
+//   - epoch.go: Pulsar threshold signing via github.com/luxfi/pulsar/threshold (Ringtail-equivalent kernel)
 //
 // The BLS struct here handles DAG vertex ordering and event horizon
 // establishment, which operates independently of block finality signatures.
@@ -153,7 +153,7 @@ func (q *BLS) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte 
 //
 // For full Ringtail threshold signatures, see:
 //   - quasar.go: signer.RingtailRound1/Round2/Finalize (2-round protocol)
-//   - epoch.go: EpochManager.VerifySignatureForEpoch (via github.com/luxfi/ringtail/threshold)
+//   - epoch.go: EpochManager.VerifySignatureForEpoch (via github.com/luxfi/pulsar/threshold)
 func (q *BLS) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte {
 	if len(q.pqKey) == 0 {
 		return []byte{}
@@ -288,7 +288,7 @@ func (q *BLS) GetLatestHorizon() *dag.EventHorizon[VertexID] {
 //
 // For full threshold signatures with real BLS + Ringtail, see:
 //   - quasar.go: signer.AggregateSignatures (BLS threshold via github.com/luxfi/crypto/bls)
-//   - epoch.go: BundleSigner.SignBundle (Ringtail 2-round via github.com/luxfi/ringtail/threshold)
+//   - epoch.go: BundleSigner.SignBundle (Pulsar 2-round via github.com/luxfi/pulsar/threshold)
 func (q *BLS) createHorizonSignature(checkpoint VertexID, validators []string) []byte {
 	// Create message digest: checkpoint + validators
 	h := sha256.New()
