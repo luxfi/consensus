@@ -36,18 +36,24 @@ post-quantum finality. All sub-protocols live in `protocol/`.
 
 ### Quasar Certificate
 
-Validators sign with BLS, ML-DSA, and Ringtail. Z-Chain generates a single
-Groth16 SNARK proving all three are valid (~192 bytes).
+`QuasarCert` (see `protocol/quasar/types.go:40`) is a 3-tuple:
 
-| Layer | Scheme | Hardness | Size |
-|-------|--------|----------|------|
-| BLS | BLS12-381 aggregate | ECDL | 48 bytes |
-| ML-DSA | ML-DSA-65 (FIPS 204) | Module-LWE + SIS | ~3.3KB raw |
-| Ringtail | Ring-LWE threshold | Module-LWE | variable |
-| **ZKP** | **Groth16 / BN254** | — | **~192 bytes** |
+```go
+type QuasarCert struct {
+    BLS        []byte  // BLS12-381 aggregate, 48 bytes classical fast path
+    Ringtail   []byte  // Ring-LWE threshold (PQ), O(1) after DKG
+    MLDSAProof []byte  // Z-Chain Groth16 rolling up N × ML-DSA identity sigs, ~192 bytes
+    Epoch      uint64
+    Finality   time.Time
+    Validators int
+}
+```
 
-Certificate = BLS aggregate (48 B) + Z-Chain ZKP (~192 B) = ~240 bytes total.
-Compression: N * (48 + 3309 + RT) → 240 bytes regardless of validator count.
+| Layer | Scheme | Hardness | Raw Size | In Cert |
+|-------|--------|----------|----------|---------|
+| BLS | BLS12-381 aggregate | co-CDH | 48 B | 48 B |
+| ML-DSA | ML-DSA-65 (FIPS 204) | Module-LWE + MSIS | ~3309 B per validator | 192 B (Groth16) |
+| Ringtail | Ring-LWE threshold | Module-LWE | O(1) after DKG | variable |
 
 Modes (each layer independently toggleable):
 - BLS-only: classical fast path
@@ -57,6 +63,56 @@ Modes (each layer independently toggleable):
 
 `IsTripleMode()` checks all three signing layers.
 Crypto: `luxfi/crypto/bls`, `luxfi/crypto/mldsa`, `luxfi/ringtail/threshold`.
+
+### Chain Separation for Threshold Cryptography
+
+Quasar consensus lives here in `consensus/`, but the threshold-crypto ceremonies
+that feed it are split across the primary network chains:
+
+| Chain | Role |
+|-------|------|
+| **X-Chain** | *Verifies* already-signed UTXOs via Fx plugins (secp256k1fx, mldsafx, slhdsafx, ed25519fx, secp256r1fx...). Does not run MPC ceremonies. |
+| **Q-Chain** | Runs the Ringtail 2-round threshold for *consensus only* (this repo's `protocol/quasar/` emits those rounds). Not a general MPC host. |
+| **T-Chain** | Runs *all* MPC ceremonies: CGGMP21, FROST, Ringtail (general), TFHE. The signing partner for cross-chain custody. |
+| **Z-Chain** | Rolls N per-validator ML-DSA identity sigs into a single 192-byte Groth16 proof per epoch (the `MLDSAProof` field). |
+
+**Why `MLDSAProof` and not `ThresholdMLDSA`**: threshold ML-DSA has no FIPS
+standard; research constructions hit a rejection-sampling circular dependency
+(see `~/work/lux/proofs/quasar-cert-soundness.tex` App. A). Quasar takes the
+non-threshold path — each validator signs individually, Z-Chain compresses via
+Groth16 over BLS12-381.
+
+### Formal Proofs (LP-105 + Proof Sketch)
+
+The paper + proof sketch carry the soundness/liveness/PQ-safety arguments:
+
+- `~/work/lux/papers/lp-105-quasar-consensus.tex`:
+  - §5 Chain Separation
+  - §6 QuasarCert Formal Definition (Def 6.1, 6.2)
+  - Thm 7.5 Soundness
+  - Thm 7.6 Parallel Liveness
+  - Thm 7.7 Post-Quantum Safety
+- `~/work/lux/proofs/quasar-cert-soundness.tex`:
+  - App B — ML-DSA-65 R1CS constraint count (~2^22.5 per verification; per-cert
+    amortized to ~2^20 via shared-matrix optimization for n=21 validators)
+  - App C — Static vs adaptive corruption (Fischlin / erasure hybrids)
+  - App D — Trusted-setup ceremony (Bowe-Gabizon-Miers), PLONK upgrade path
+  - App E — Ringtail parameter tightness: classical 2^142, quantum 2^130 via
+    BDGL sieving + Grover speedup
+
+### Domain separation
+
+All ML-DSA/SLH-DSA callers bind signatures to a context string per FIPS 204/205:
+
+| Context | Used by | File |
+|---------|---------|------|
+| `lux-x-chain-utxo-v1` | UTXO Fx plugins | `utxo/mldsafx`, `utxo/slhdsafx` |
+| `lux-evm-precompile-mldsa-v1` | EVM precompile | `precompile/mldsa/contract.go` |
+| `lux-evm-precompile-slhdsa-v1` | EVM precompile | `precompile/slhdsa/contract.go` |
+| `lux-reshare-v1` | Key resharing HKDF | `threshold/mpc` |
+| `lux-wave-v1` | Wave voting | `consensus/protocol/wave` |
+
+No collisions. See `crypto/mldsa.SignCtx`/`VerifySignatureCtx` (same for slhdsa).
 
 ### Transport
 
@@ -84,6 +140,10 @@ version/              Re-exports github.com/luxfi/version
 
 ## Performance (Measured)
 
+All numbers below are measured on Apple M1 Max (10 cores, darwin/arm64), CPU
+path only unless noted. See `BENCHMARKS.md` for full raw output and reproduce
+commands.
+
 ### ZAP Wire Protocol (bench/)
 | Config | Throughput |
 |--------|------------|
@@ -97,6 +157,80 @@ version/              Re-exports github.com/luxfi/version
 | Wave | Vote round | 3.38 us |
 | Photon | K-of-N selection | 3.03 us |
 | Luminance | Brightness update | 72 ns |
+| Quasar | QuantumHash | 435 ns |
+| Quasar | Validator add | 328 us |
+
+### QuasarCert Components (measured 2026-04-13)
+
+Per-component CPU costs for QuasarCert production and verification:
+
+| Operation | Time | Source |
+|-----------|------|--------|
+| BLS sign (single) | 350 us | `crypto/bls BenchmarkSign` |
+| BLS verify (single) | 820 us | `crypto/bls BenchmarkVerify` |
+| BLS aggregate 100 sigs | 5.3 ms | `protocol/quasar BenchmarkBLSAggregation/100` |
+| BLS aggregated verify (100 signers) | 875 us | `protocol/quasar BenchmarkBLSAggregatedVerification/100` |
+| ML-DSA-65 sign | 495 us | `crypto/mldsa BenchmarkMLDSA_Sign` |
+| ML-DSA-65 verify | 181 us | `crypto/mldsa BenchmarkMLDSA_Verify` |
+| ML-DSA-65 verify (via Fx) | 254 us | `utxo/mldsafx BenchmarkMLDSA65Verify` |
+| ML-DSA-65 verify (cached) | 3 us | `utxo/mldsafx BenchmarkMLDSA65VerifyCached` |
+| SLH-DSA-192f verify | 1.92 ms | `utxo/slhdsafx BenchmarkSLH192fVerify` |
+| Quasar full block (BLS+ML-DSA+Ringtail) | 1.85 ms | `protocol/quasar BenchmarkQuasarBlockProcessing` |
+
+**QuasarCert verify (approx CPU, single cert, n=21 validators):**
+- BLS aggregate verify: ~875 us (constant in signer count)
+- Groth16 proof verify: ~1-3 ms (pairing-dominated, not yet in our bench harness — see App B of proof sketch)
+- Ringtail threshold verify: variable, amortized O(1) after DKG
+- Total: ~2-5 ms per cert, GPU batch can amortize 10-100x across certs
+
+**Note on the stale 357 us claim in older papers:** The "357 us epoch finality"
+from earlier Lux drafts (lux-triple-proof-consensus, lux-master-security-model,
+lux-performance-security-tradeoffs) does not match any measured operation in
+the current code. Closest real candidates: BLS single keygen (350 us),
+ML-DSA-65 sign (495 us), Groth16 proof size is 192 B but prover time is
+~400 ms CPU / ~5-15 ms GPU for the full ML-DSA-65 verification circuit
+(App B). Papers should quote the measured 2-5 ms CPU QuasarCert verify.
+
+### Signature Schemes Benchmark (crypto + utxo Fx)
+
+| Scheme | Single Verify | Cached | Ratio vs secp256k1 |
+|--------|---------------|--------|-------------------|
+| secp256k1 (C, native) | 658 ns | — | 1.0x |
+| P-256 (Go stdlib) | 121 us | 1.0 us | 184x |
+| Ed25519 (Go stdlib) | 205 us | 1.1 us | 312x |
+| ML-DSA-44 | 140 us | — | 213x |
+| ML-DSA-65 | 250 us | 3.0 us | 380x |
+| ML-DSA-87 | 420 us | — | 638x |
+| SLH-DSA-SHA2-192f | 1.92 ms | 131 us | 2912x |
+| BLS (single verify) | 820 us | — | 1246x |
+
+`CostPerSignature` values in UTXO Fx plugins are benchmarked-proportional.
+
+### GPU Primitives (Metal, Apple M1 Max)
+
+| Operation | Time | Throughput |
+|-----------|------|------------|
+| MatMul (dense) | 399 us | 20.0 GB/s |
+| Add (elementwise) | 336 us | 238 MB/s |
+| NTT (N=8, CPU fallback) | 461 ns | — |
+| PolyMul (N=8, CPU fallback) | 1.5 us | — |
+| FieldMul | 2.2 us | — |
+
+GPU batch verify kicks in at ≥64 signatures (`accel.BLSBatchVerifyThreshold`).
+Below that, the CPU single-verify path is faster due to kernel dispatch
+overhead. Raw Metal dispatch is ~100 us minimum; the break-even for ML-DSA is
+around 64 signatures.
+
+### EVM (evmgpu core, CPU only)
+
+| Operation | Time |
+|-----------|------|
+| InsertChain empty block | 171 us (5844 blocks/sec) |
+| InsertChain value-tx block | 246 us (4067 blocks/sec) |
+
+ring-call benchmarks (ring200, ring1000) currently hit a pre-existing
+nil-pointer in `core/types.Header.Hash` at bench_test.go:306 when running full
+chain-read; unrelated to consensus correctness but flagged for evmgpu repo.
 
 ### Lux vs Avalanche (bench/)
 ZAP deserialization: 157x faster than protobuf (21 ns vs 3231 ns, zero allocs).

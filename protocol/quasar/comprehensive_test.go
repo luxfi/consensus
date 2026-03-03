@@ -611,7 +611,7 @@ func TestQuasarConsensus_GenerateCert(t *testing.T) {
 		t.Error("expected non-empty BLS")
 	}
 
-	if len(cert.PQProof) == 0 {
+	if len(cert.MLDSAProof) == 0 {
 		t.Error("expected non-empty PQ")
 	}
 
@@ -858,10 +858,10 @@ func TestSigner_GetActiveValidatorCount(t *testing.T) {
 // Ringtail Tests
 // =============================================================================
 //
-// NOTE: Ringtail post-quantum crypto is tested in the real ringtail package
-// at github.com/luxfi/ringtail/threshold. The quasar package uses the real
-// implementation via the Signer type in quasar.go. Tests for threshold signing
-// are in quasar_test.go and epoch_test.go.
+// NOTE: Post-quantum threshold crypto is tested in the Pulsar package at
+// github.com/luxfi/pulsar/threshold. The quasar package uses that real
+// implementation via the Signer type in quasar.go. Tests for threshold
+// signing are in quasar_test.go and epoch_test.go.
 
 // =============================================================================
 // Types Tests (types.go)
@@ -884,7 +884,7 @@ func TestQuasarCert_Verify(t *testing.T) {
 			name: "empty BLS",
 			cert: &QuasarCert{
 				BLS: nil,
-				PQProof:   []byte{1, 2, 3},
+				MLDSAProof:   []byte{1, 2, 3},
 			},
 			validators: []string{"v1"},
 			want:       false,
@@ -893,7 +893,7 @@ func TestQuasarCert_Verify(t *testing.T) {
 			name: "empty PQ",
 			cert: &QuasarCert{
 				BLS: []byte{1, 2, 3},
-				PQProof:   nil,
+				MLDSAProof:   nil,
 			},
 			validators: []string{"v1"},
 			want:       false,
@@ -902,7 +902,7 @@ func TestQuasarCert_Verify(t *testing.T) {
 			name: "non-empty cert without crypto verification returns false",
 			cert: &QuasarCert{
 				BLS:  []byte{1, 2, 3},
-				PQProof:    []byte{4, 5, 6},
+				MLDSAProof:    []byte{4, 5, 6},
 				Validators: 0,
 			},
 			validators: []string{"v1", "v2"},
@@ -932,7 +932,7 @@ func TestBlock_Fields(t *testing.T) {
 		Data:      []byte("test data"),
 		Cert: &QuasarCert{
 			BLS:      []byte{7, 8, 9},
-			PQProof:        []byte{10, 11, 12},
+			MLDSAProof:        []byte{10, 11, 12},
 			Validators: 1,
 			Epoch:    100,
 			Finality: now,
