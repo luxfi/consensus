@@ -3,8 +3,25 @@ package fpc
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"math"
 )
+
+var (
+	// ErrEmptySeed is returned when a nil or empty seed is provided.
+	ErrEmptySeed = errors.New("fpc: seed must not be empty")
+)
+
+// DeriveEpochSeed produces a per-epoch seed from an epoch number and chain ID.
+// seed = sha256(epoch_number || chain_id)
+func DeriveEpochSeed(epochNumber uint64, chainID []byte) []byte {
+	h := sha256.New()
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], epochNumber)
+	h.Write(buf[:])
+	h.Write(chainID)
+	return h.Sum(nil)
+}
 
 // Selector provides phase-dependent threshold selection for FPC
 type Selector struct {
@@ -13,22 +30,23 @@ type Selector struct {
 	seed     []byte
 }
 
-// NewSelector creates a new FPC threshold selector
-func NewSelector(thetaMin, thetaMax float64, seed []byte) *Selector {
+// NewSelector creates a new FPC threshold selector.
+// seed must be non-empty; use DeriveEpochSeed to produce one.
+func NewSelector(thetaMin, thetaMax float64, seed []byte) (*Selector, error) {
+	if len(seed) == 0 {
+		return nil, ErrEmptySeed
+	}
 	if thetaMin <= 0 || thetaMin >= 1 {
 		thetaMin = 0.5
 	}
 	if thetaMax <= thetaMin || thetaMax > 1 {
 		thetaMax = 0.8
 	}
-	if seed == nil {
-		seed = []byte("lux-fpc-default-seed")
-	}
 	return &Selector{
 		thetaMin: thetaMin,
 		thetaMax: thetaMax,
 		seed:     seed,
-	}
+	}, nil
 }
 
 // SelectThreshold picks θ ∈ [θ_min, θ_max] using PRF for phase
@@ -68,15 +86,4 @@ func (s *Selector) Theta(phase uint64) float64 {
 // Range returns the configured theta range
 func (s *Selector) Range() (min, max float64) {
 	return s.thetaMin, s.thetaMax
-}
-
-// DefaultSelector returns a selector with default parameters
-func DefaultSelector() *Selector {
-	return NewSelector(0.5, 0.8, nil)
-}
-
-// SelectThreshold is a convenience function using default selector
-func SelectThreshold(phase uint64, k int, thetaMin, thetaMax float64) int {
-	s := NewSelector(thetaMin, thetaMax, nil)
-	return s.SelectThreshold(phase, k)
 }
