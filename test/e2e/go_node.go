@@ -31,10 +31,9 @@ func NewGoNode(t *testing.T) *GoNode {
 func (n *GoNode) Start(ctx context.Context, port int) error {
 	n.t.Logf("Starting Go node on port %d", port)
 
-	// For E2E stub, just mark as healthy
-	// In production, this would create a full consensus engine
+	// Simulated node for E2E cross-language consensus tests.
 	n.healthy = true
-	n.t.Log("✅ Go node started successfully (stub)")
+	n.t.Log("Go node started successfully (simulated)")
 	return nil
 }
 
@@ -55,8 +54,7 @@ func (n *GoNode) ProposeBlock(testBlock *Block) error {
 	// Store block
 	n.blocks[testBlock.ID] = testBlock
 
-	// For E2E test stub, simulate accepting the block
-	// In production, this would go through the full consensus protocol
+	// Simulated consensus: accept immediately for E2E cross-language test.
 	n.decisions[testBlock.ID] = true
 
 	return nil

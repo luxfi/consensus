@@ -38,7 +38,9 @@ var GetValidatorState = runtime.GetValidatorState
 // WithValidatorState adds a validator state to the context (backwards compatibility)
 var WithValidatorState = runtime.WithValidatorState
 
-// GetNetID is an alias for GetNetworkID for compatibility
+// GetNetID is an alias for GetNetworkID for backward compatibility.
+// Returns ids.Empty because network-level ID extraction requires runtime.Runtime;
+// callers needing the actual network ID should use GetNetworkID instead.
 func GetNetID(ctx context.Context) ids.ID {
-	return ids.Empty // Stub for compatibility
+	return ids.Empty
 }
