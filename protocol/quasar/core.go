@@ -36,6 +36,7 @@ type Quasar struct {
 	epochManager *EpochManager
 
 	// Quantum finality state - the singularity
+	pendingBlocks   map[string]*QuantumBlock // blockHash -> awaiting threshold sigs
 	finalizedBlocks map[string]*QuantumBlock // blockHash -> finalized block
 	quantumHeight   uint64
 
@@ -79,6 +80,7 @@ func NewQuasar(threshold int) (*Quasar, error) {
 		chainBuffers:     make(map[string]chan *ChainBlock),
 		signer:           s,
 		epochManager:     NewEpochManager(threshold, 3), // Keep 3 epochs in history
+		pendingBlocks:    make(map[string]*QuantumBlock),
 		finalizedBlocks:  make(map[string]*QuantumBlock),
 		quantumHeight:    0,
 		registeredChains: make(map[string]bool),
@@ -191,6 +193,7 @@ func (q *Quasar) processBlock(block *ChainBlock) {
 }
 
 // processBlockWithContext applies quantum consensus to a single block, respecting context cancellation.
+// The block is placed in pending state and only finalized when QThreshold signatures are collected.
 func (q *Quasar) processBlockWithContext(ctx context.Context, block *ChainBlock) {
 	// Check context before acquiring lock
 	if ctx.Err() != nil {
@@ -208,35 +211,79 @@ func (q *Quasar) processBlockWithContext(ctx context.Context, block *ChainBlock)
 	// Create quantum hash combining block data
 	quantumHash := q.computeQuantumHash(block)
 
-	// Collect validator signatures (BLS + Ringtail parallel)
-	// Each validator signs with both BLS and Ringtail for quantum-safe finality.
-	// Multi-validator collection happens via RequestVotes in the transport layer.
-	signatures := make(map[string]*QuasarSig)
-
-	// Sign with local validator key
-	sig, err := q.signer.SignMessageWithContext(ctx, "validator1", []byte(quantumHash))
-	if err == nil {
-		signatures["validator1"] = sig
+	// Skip if already finalized or pending
+	if _, exists := q.finalizedBlocks[quantumHash]; exists {
+		return
 	}
-
-	// Check context after signing
-	if ctx.Err() != nil {
+	if _, exists := q.pendingBlocks[quantumHash]; exists {
 		return
 	}
 
-	// Create quantum block
+	// Create pending quantum block
 	qBlock := &QuantumBlock{
 		Height:        q.quantumHeight + 1,
 		SourceBlocks:  []*ChainBlock{block},
 		QuantumHash:   quantumHash,
 		Timestamp:     time.Now(),
-		ValidatorSigs: signatures,
+		ValidatorSigs: make(map[string]*QuasarSig),
 	}
 
-	// Store finalized block
-	q.finalizedBlocks[quantumHash] = qBlock
-	q.quantumHeight++
-	q.processedBlocks++
+	q.pendingBlocks[quantumHash] = qBlock
+
+	// Sign with local validator key (self-vote)
+	sig, err := q.signer.SignMessageWithContext(ctx, "validator1", []byte(quantumHash))
+	if err == nil {
+		q.addVoteLocked(quantumHash, "validator1", sig)
+	}
+}
+
+// ReceiveVote records a validator's signature for a pending block.
+// When the threshold is met, the block is finalized.
+// Returns true if the vote was accepted, false if the block is unknown or already finalized.
+func (q *Quasar) ReceiveVote(quantumHash string, validatorID string, sig *QuasarSig) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.addVoteLocked(quantumHash, validatorID, sig)
+}
+
+// addVoteLocked adds a vote and finalizes the block if threshold is met.
+// Caller must hold q.mu.
+func (q *Quasar) addVoteLocked(quantumHash string, validatorID string, sig *QuasarSig) bool {
+	// Already finalized -- nothing to do
+	if _, exists := q.finalizedBlocks[quantumHash]; exists {
+		return false
+	}
+
+	qBlock, exists := q.pendingBlocks[quantumHash]
+	if !exists {
+		return false
+	}
+
+	// Verify the signature before accepting
+	if !q.signer.VerifyQuasarSig([]byte(quantumHash), sig) {
+		return false
+	}
+
+	// Record vote (dedup by validator ID)
+	qBlock.ValidatorSigs[validatorID] = sig
+
+	// Check threshold
+	if len(qBlock.ValidatorSigs) >= q.signer.threshold {
+		// Move from pending to finalized
+		delete(q.pendingBlocks, quantumHash)
+		q.finalizedBlocks[quantumHash] = qBlock
+		q.quantumHeight++
+		q.processedBlocks++
+	}
+
+	return true
+}
+
+// GetPendingCount returns the number of blocks awaiting threshold signatures.
+func (q *Quasar) GetPendingCount() int {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	return len(q.pendingBlocks)
 }
 
 // quantumFinalizer runs the quantum finalization process

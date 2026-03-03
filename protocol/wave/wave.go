@@ -33,6 +33,7 @@ type Config struct {
 	EnableFPC bool          // Enable Fast Probabilistic Consensus
 	ThetaMin  float64       // FPC minimum threshold (default: 0.5)
 	ThetaMax  float64       // FPC maximum threshold (default: 0.8)
+	FPCSeed   []byte        // FPC seed (required when EnableFPC=true); use fpc.DeriveEpochSeed
 }
 
 // WaveState represents the polling state of an item in wave consensus
@@ -58,8 +59,9 @@ type Wave[T comparable] struct {
 	prefs  map[T]bool // current preferences
 }
 
-// New creates a new Wave instance
-func New[T comparable](cfg Config, cut prism.Cut[T], tx Transport[T]) Wave[T] {
+// New creates a new Wave instance.
+// When cfg.EnableFPC is true, cfg.FPCSeed must be non-empty.
+func New[T comparable](cfg Config, cut prism.Cut[T], tx Transport[T]) (Wave[T], error) {
 	// Initialize FPC selector if enabled
 	var fpcSel *fpc.Selector
 	if cfg.EnableFPC {
@@ -71,7 +73,11 @@ func New[T comparable](cfg Config, cut prism.Cut[T], tx Transport[T]) Wave[T] {
 		if thetaMax == 0 {
 			thetaMax = 0.8 // Default
 		}
-		fpcSel = fpc.NewSelector(thetaMin, thetaMax, nil)
+		var err error
+		fpcSel, err = fpc.NewSelector(thetaMin, thetaMax, cfg.FPCSeed)
+		if err != nil {
+			return Wave[T]{}, err
+		}
 	}
 
 	return Wave[T]{
@@ -82,7 +88,7 @@ func New[T comparable](cfg Config, cut prism.Cut[T], tx Transport[T]) Wave[T] {
 		phase:       0,
 		states:      make(map[T]*WaveState),
 		prefs:       make(map[T]bool),
-	}
+	}, nil
 }
 
 // Tick performs one round of sampling and threshold checking for an item
