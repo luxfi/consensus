@@ -91,9 +91,9 @@ func NewLuxConsensus(k int, alpha int, beta int, opts ...Option) *LuxConsensus {
 		Alpha:     alphaRatio,
 		Beta:      betaU32,
 		RoundTO:   1 * time.Second,
-		EnableFPC: true,        // Enable Fast Probabilistic Consensus
-		ThetaMin:  0.5,         // FPC minimum threshold
-		ThetaMax:  0.8,         // FPC maximum threshold
+		EnableFPC: true, // Enable Fast Probabilistic Consensus
+		ThetaMin:  0.5,  // FPC minimum threshold
+		ThetaMax:  0.8,  // FPC maximum threshold
 		FPCSeed:   fpcSeed[:],
 	}
 
