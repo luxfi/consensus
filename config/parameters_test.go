@@ -274,6 +274,108 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestValidateForNetwork(t *testing.T) {
+	tests := []struct {
+		name      string
+		params    Parameters
+		networkID uint32
+		wantErr   error
+	}{
+		// Mainnet (networkID=1): K >= 11 required
+		{
+			name:      "mainnet params on mainnet",
+			params:    MainnetParams(),
+			networkID: 1,
+			wantErr:   nil,
+		},
+		{
+			name:      "testnet params on mainnet",
+			params:    TestnetParams(),
+			networkID: 1,
+			wantErr:   nil, // K=11, exactly at minimum
+		},
+		{
+			name:      "burst params on mainnet rejected",
+			params:    BurstParams(),
+			networkID: 1,
+			wantErr:   ErrKTooLowForMainnet,
+		},
+		{
+			name:      "solo GPU params on mainnet rejected",
+			params:    SoloGPUParams(),
+			networkID: 1,
+			wantErr:   ErrKTooLowForMainnet,
+		},
+		{
+			name:      "local params on mainnet rejected",
+			params:    LocalParams(),
+			networkID: 1,
+			wantErr:   ErrKTooLowForMainnet,
+		},
+
+		// Testnet (networkID=5): K >= 5 required
+		{
+			name:      "testnet params on testnet",
+			params:    TestnetParams(),
+			networkID: 5,
+			wantErr:   nil,
+		},
+		{
+			name:      "burst params on testnet rejected",
+			params:    BurstParams(),
+			networkID: 5,
+			wantErr:   ErrKTooLowForTestnet,
+		},
+		{
+			name:      "solo GPU params on testnet rejected",
+			params:    SoloGPUParams(),
+			networkID: 5,
+			wantErr:   ErrKTooLowForTestnet,
+		},
+
+		// Local/devnet (networkID >= 1337): any K allowed
+		{
+			name:      "burst params on local",
+			params:    BurstParams(),
+			networkID: 1337,
+			wantErr:   nil,
+		},
+		{
+			name:      "solo GPU params on local",
+			params:    SoloGPUParams(),
+			networkID: 1337,
+			wantErr:   nil,
+		},
+		{
+			name:      "local params on devnet",
+			params:    LocalParams(),
+			networkID: 9999,
+			wantErr:   nil,
+		},
+
+		// Basic validation still runs first
+		{
+			name: "invalid params fail before network check",
+			params: Parameters{
+				K:     0,
+				Alpha: 0.69,
+				Beta:  14,
+			},
+			networkID: 1337,
+			wantErr:   ErrInvalidK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.params.ValidateForNetwork(tt.networkID)
+			if err != tt.wantErr {
+				t.Errorf("ValidateForNetwork(%d) error = %v, wantErr %v", tt.networkID, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func BenchmarkValidate(b *testing.B) {
 	p := DefaultParams()
 	b.ResetTimer()
