@@ -35,9 +35,9 @@ func TestNewSelector(t *testing.T) {
 }
 
 func TestDeriveEpochSeed(t *testing.T) {
-	seed1 := DeriveEpochSeed(1, []byte("chain-A"))
-	seed2 := DeriveEpochSeed(2, []byte("chain-A"))
-	seed3 := DeriveEpochSeed(1, []byte("chain-B"))
+	seed1 := DeriveEpochSeed(1, []byte("chain-A"), nil)
+	seed2 := DeriveEpochSeed(2, []byte("chain-A"), nil)
+	seed3 := DeriveEpochSeed(1, []byte("chain-B"), nil)
 
 	if len(seed1) != 32 {
 		t.Fatalf("Expected 32-byte seed, got %d", len(seed1))
@@ -54,14 +54,24 @@ func TestDeriveEpochSeed(t *testing.T) {
 	}
 
 	// Deterministic
-	seed1b := DeriveEpochSeed(1, []byte("chain-A"))
+	seed1b := DeriveEpochSeed(1, []byte("chain-A"), nil)
 	if string(seed1) != string(seed1b) {
 		t.Error("DeriveEpochSeed must be deterministic")
+	}
+
+	// Different prevBlockHash => different seed (secret input)
+	seed4 := DeriveEpochSeed(1, []byte("chain-A"), []byte("blockhash-abc"))
+	seed5 := DeriveEpochSeed(1, []byte("chain-A"), []byte("blockhash-xyz"))
+	if string(seed1) == string(seed4) {
+		t.Error("prevBlockHash must change the seed")
+	}
+	if string(seed4) == string(seed5) {
+		t.Error("Different prevBlockHash must produce different seeds")
 	}
 }
 
 func TestDeriveEpochSeedUsableInSelector(t *testing.T) {
-	seed := DeriveEpochSeed(42, []byte("lux-mainnet"))
+	seed := DeriveEpochSeed(42, []byte("lux-mainnet"), nil)
 	s, err := NewSelector(0.5, 0.8, seed)
 	if err != nil {
 		t.Fatalf("NewSelector with derived seed returned error: %v", err)
@@ -269,7 +279,7 @@ func TestDeriveEpochSeedDifferentEpochs(t *testing.T) {
 	seen := make(map[string]uint64) // seed hex -> epoch
 
 	for epoch := uint64(0); epoch < 1000; epoch++ {
-		seed := DeriveEpochSeed(epoch, chain)
+		seed := DeriveEpochSeed(epoch, chain, nil)
 		key := string(seed)
 		if prev, exists := seen[key]; exists {
 			t.Fatalf("epoch %d and %d produced the same seed", prev, epoch)
@@ -283,7 +293,7 @@ func TestDeriveEpochSeedDifferentEpochs(t *testing.T) {
 // [ceil(thetaMin*k), ceil(thetaMax*k)].
 func TestThresholdAlwaysInRange(t *testing.T) {
 	thetaMin, thetaMax := 0.5, 0.8
-	seed := DeriveEpochSeed(1, []byte("range-test"))
+	seed := DeriveEpochSeed(1, []byte("range-test"), nil)
 	s, err := NewSelector(thetaMin, thetaMax, seed)
 	if err != nil {
 		t.Fatal(err)

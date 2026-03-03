@@ -298,7 +298,7 @@ func TestQuasarEngineBasic(t *testing.T) {
 	require := require.New(t)
 
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	require.NoError(err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -344,7 +344,7 @@ func TestQuasarEngineMultipleBlocks(t *testing.T) {
 	require := require.New(t)
 
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	require.NoError(err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -594,7 +594,7 @@ func TestQuasarThroughput(t *testing.T) {
 	require := require.New(t)
 
 	cfg := Config{QThreshold: 1, QuasarTimeout: 30}
-	engine, err := NewEngine(cfg)
+	engine, err := NewTestEngine(cfg)
 	require.NoError(err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -668,8 +668,9 @@ func TestHybridConsensusBasic(t *testing.T) {
 	require.NotEmpty(cert.PQ)
 	require.Equal(uint64(1), cert.Epoch)
 
-	// Verify certificate
-	require.True(cert.Verify([]string{"v1", "v2", "v3"}))
+	// Verify certificate: Verify() now always returns false (requires VerifyWithKeys)
+	// This is the security fix -- Verify() no longer does a length-only check.
+	require.False(cert.Verify([]string{"v1", "v2", "v3"}))
 }
 
 // TestHybridConsensusValidatorChurn tests validator add/remove

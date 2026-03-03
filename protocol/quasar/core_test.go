@@ -454,7 +454,7 @@ func TestThresholdFinalizationRequiresQuorum(t *testing.T) {
 // TestSingleNodeModeImmediateFinalization verifies that threshold=1 (single-node)
 // still produces immediate finalization from the self-vote.
 func TestSingleNodeModeImmediateFinalization(t *testing.T) {
-	qa, err := NewQuasar(1)
+	qa, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("Failed to create quasar: %v", err)
 	}
@@ -530,7 +530,7 @@ func TestDuplicateVoteDoesNotDoubleCount(t *testing.T) {
 // TestReceiveVoteForUnknownBlock verifies ReceiveVote returns false
 // for blocks not in the pending set.
 func TestReceiveVoteForUnknownBlock(t *testing.T) {
-	qa, err := NewQuasar(1)
+	qa, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("Failed to create quasar: %v", err)
 	}
@@ -553,7 +553,7 @@ func TestReceiveVoteForUnknownBlock(t *testing.T) {
 // TestReceiveVoteForAlreadyFinalizedBlock verifies that votes for
 // already-finalized blocks are rejected.
 func TestReceiveVoteForAlreadyFinalizedBlock(t *testing.T) {
-	qa, err := NewQuasar(1)
+	qa, err := NewTestQuasar(1)
 	if err != nil {
 		t.Fatalf("Failed to create quasar: %v", err)
 	}

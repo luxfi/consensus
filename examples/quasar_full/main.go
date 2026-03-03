@@ -41,7 +41,7 @@ func demonstrateFPC() {
 	fmt.Println("━━━ Part 1: Fast Probabilistic Consensus (FPC) ━━━")
 	fmt.Println()
 
-	seed := fpc.DeriveEpochSeed(0, []byte("lux-demo"))
+	seed := fpc.DeriveEpochSeed(0, []byte("lux-demo"), nil)
 	selector, err := fpc.NewSelector(0.5, 0.8, seed)
 	if err != nil {
 		panic(err)
