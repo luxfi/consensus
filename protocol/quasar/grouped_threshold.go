@@ -19,7 +19,8 @@ import (
 	"sync"
 	"time"
 
-	coronaThreshold "github.com/luxfi/corona/threshold"
+	"github.com/luxfi/pulsar/keyera"
+	coronaThreshold "github.com/luxfi/pulsar/threshold"
 )
 
 const (
@@ -204,7 +205,13 @@ func (gem *GroupedEpochManager) assignToGroups(validators []string, seed []byte)
 	return groups
 }
 
-// generateGroupKeys creates Corona keys for a single group.
+// generateGroupKeys creates Pulsar share state for a single group via
+// the keyera Bootstrap ceremony. Each group is its own key era — the
+// grouped layout partitions validators into smaller signing committees,
+// each carrying an independent persistent GroupKey. Resharing across
+// the outer validator-set rotation flows through the LSS-Pulsar adapter
+// at the EpochManager level; per-group bootstrap is a one-time call
+// when the group is first formed.
 func (gem *GroupedEpochManager) generateGroupKeys(index int, validators []string) (*ValidatorGroup, error) {
 	n := len(validators)
 	t := gem.groupThreshold
@@ -212,7 +219,13 @@ func (gem *GroupedEpochManager) generateGroupKeys(index int, validators []string
 		t = n - 1
 	}
 
-	shares, groupKey, err := coronaThreshold.GenerateKeys(t, n, nil)
+	era, err := keyera.Bootstrap(
+		t,
+		validators,
+		keyera.PulsarGroupID(index),
+		keyera.PulsarKeyEraID(1),
+		nil,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -221,14 +234,15 @@ func (gem *GroupedEpochManager) generateGroupKeys(index int, validators []string
 		Index:      index,
 		Validators: validators,
 		Threshold:  t,
-		GroupKey:   groupKey,
+		GroupKey:   era.GroupKey,
 		Shares:     make(map[string]*coronaThreshold.KeyShare),
 		Signers:    make(map[string]*coronaThreshold.Signer),
 	}
 
-	for i, v := range validators {
-		group.Shares[v] = shares[i]
-		group.Signers[v] = coronaThreshold.NewSigner(shares[i])
+	for _, v := range validators {
+		share := era.State.Shares[v]
+		group.Shares[v] = share
+		group.Signers[v] = coronaThreshold.NewSigner(share)
 	}
 
 	return group, nil
