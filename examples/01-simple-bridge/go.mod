@@ -1,6 +1,6 @@
 module github.com/luxfi/consensus/examples/01-simple-bridge
 
-go 1.26
+go 1.26.1
 
 require github.com/luxfi/dex v0.0.0
 
