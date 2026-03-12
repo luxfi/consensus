@@ -1,6 +1,6 @@
 module github.com/luxfi/consensus/examples/quasar_full
 
-go 1.26
+go 1.26.1
 
 replace github.com/luxfi/consensus => ../..
 
