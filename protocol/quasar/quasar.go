@@ -305,7 +305,7 @@ func (s *signer) DualSignRound1(ctx context.Context, validatorID string, message
 	}
 
 	var wg sync.WaitGroup
-	var blsErr error
+	var blsErr, rtErr error
 	var blsShare threshold.SignatureShare
 	var round1Data *coronaThreshold.Round1Data
 
@@ -326,13 +326,16 @@ func (s *signer) DualSignRound1(ctx context.Context, validatorID string, message
 	// Corona Round 1
 	go func() {
 		defer wg.Done()
-		round1Data, _ = s.CoronaRound1(validatorID, sessionID, prfKey)
+		round1Data, rtErr = s.CoronaRound1(validatorID, sessionID, prfKey)
 	}()
 
 	wg.Wait()
 
 	if blsErr != nil {
 		return nil, nil, fmt.Errorf("BLS signing failed: %w", blsErr)
+	}
+	if rtErr != nil {
+		return nil, nil, fmt.Errorf("Corona Round1 failed: %w", rtErr)
 	}
 
 	sig := &QuasarSig{
