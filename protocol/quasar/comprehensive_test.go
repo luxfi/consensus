@@ -1615,6 +1615,144 @@ func TestCertBundle_Verify_Nil(t *testing.T) {
 	}
 }
 
+func TestCertBundle_VerifyWithKeys(t *testing.T) {
+	cfg := config.DefaultParams()
+	q := NewBLS(cfg, newMockStore())
+
+	blsKey := []byte("test-bls-key-material-32-bytes!!")
+	pqKey := []byte("test-pq-key-material-32-bytes!!!")
+	_ = q.Initialize(context.Background(), blsKey, pqKey)
+
+	// Generate a cert via phaseII
+	votes := map[string]int{"block-A": 10, "block-B": 2}
+	cert := q.phaseII(votes, "block-A")
+	if cert == nil {
+		t.Fatal("expected non-nil cert from phaseII")
+	}
+
+	// Correct keys must verify
+	if !cert.VerifyWithKeys(blsKey, pqKey) {
+		t.Error("VerifyWithKeys should pass with correct keys")
+	}
+
+	// Wrong BLS key must fail
+	if cert.VerifyWithKeys([]byte("wrong-bls-key"), pqKey) {
+		t.Error("VerifyWithKeys should fail with wrong BLS key")
+	}
+
+	// Wrong PQ key must fail
+	if cert.VerifyWithKeys(blsKey, []byte("wrong-pq-key")) {
+		t.Error("VerifyWithKeys should fail with wrong PQ key")
+	}
+
+	// Both wrong must fail
+	if cert.VerifyWithKeys([]byte("wrong-bls"), []byte("wrong-pq")) {
+		t.Error("VerifyWithKeys should fail with both wrong keys")
+	}
+
+	// Nil cert must fail
+	var nilCert *CertBundle
+	if nilCert.VerifyWithKeys(blsKey, pqKey) {
+		t.Error("nil cert should fail VerifyWithKeys")
+	}
+
+	// Empty message must fail
+	emptyMsg := &CertBundle{BLSAgg: cert.BLSAgg, PQCert: cert.PQCert}
+	if emptyMsg.VerifyWithKeys(blsKey, pqKey) {
+		t.Error("empty message cert should fail VerifyWithKeys")
+	}
+
+	// Tampered BLS signature must fail
+	tampered := &CertBundle{
+		BLSAgg:  append([]byte{0xff}, cert.BLSAgg[1:]...),
+		PQCert:  cert.PQCert,
+		Message: cert.Message,
+	}
+	if tampered.VerifyWithKeys(blsKey, pqKey) {
+		t.Error("tampered BLS sig should fail VerifyWithKeys")
+	}
+
+	// Tampered PQ cert must fail
+	tampered2 := &CertBundle{
+		BLSAgg:  cert.BLSAgg,
+		PQCert:  append([]byte{0xff}, cert.PQCert[1:]...),
+		Message: cert.Message,
+	}
+	if tampered2.VerifyWithKeys(blsKey, pqKey) {
+		t.Error("tampered PQ cert should fail VerifyWithKeys")
+	}
+
+	// Tampered message must fail
+	tampered3 := &CertBundle{
+		BLSAgg:  cert.BLSAgg,
+		PQCert:  cert.PQCert,
+		Message: append([]byte{0xff}, cert.Message[1:]...),
+	}
+	if tampered3.VerifyWithKeys(blsKey, pqKey) {
+		t.Error("tampered message should fail VerifyWithKeys")
+	}
+}
+
+func TestCertBundle_HMACDifferentKeys(t *testing.T) {
+	cfg := config.DefaultParams()
+
+	// Two BLS instances with different keys
+	q1 := NewBLS(cfg, newMockStore())
+	_ = q1.Initialize(context.Background(), []byte("key-alpha-32-bytes-of-material!"), []byte("pq-alpha-32-bytes-of-material!!"))
+
+	q2 := NewBLS(cfg, newMockStore())
+	_ = q2.Initialize(context.Background(), []byte("key-beta--32-bytes-of-material!"), []byte("pq-beta--32-bytes-of-material!!"))
+
+	blockID := [32]byte{0xab, 0xcd}
+	votes := map[string]int{"v1": 5}
+
+	sig1 := q1.generateBLSAggregate(blockID, votes)
+	sig2 := q2.generateBLSAggregate(blockID, votes)
+
+	if string(sig1) == string(sig2) {
+		t.Error("different keys must produce different HMAC outputs")
+	}
+
+	pq1 := q1.generatePQCertificate(blockID, votes)
+	pq2 := q2.generatePQCertificate(blockID, votes)
+
+	if string(pq1) == string(pq2) {
+		t.Error("different PQ keys must produce different HMAC outputs")
+	}
+}
+
+func TestCertBundle_MessageDigestStored(t *testing.T) {
+	cfg := config.DefaultParams()
+	q := NewBLS(cfg, newMockStore())
+
+	blsKey := []byte("bls-key-for-message-digest-test!")
+	pqKey := []byte("pq-key-for-message-digest-test!!")
+	_ = q.Initialize(context.Background(), blsKey, pqKey)
+
+	votes := map[string]int{"block-X": 8}
+	cert := q.phaseII(votes, "block-X")
+	if cert == nil {
+		t.Fatal("expected non-nil cert")
+	}
+
+	if len(cert.Message) != 32 {
+		t.Errorf("expected 32-byte message digest, got %d", len(cert.Message))
+	}
+
+	if len(cert.BLSAgg) != 32 {
+		t.Errorf("expected 32-byte BLS HMAC, got %d", len(cert.BLSAgg))
+	}
+
+	if len(cert.PQCert) != 32 {
+		t.Errorf("expected 32-byte PQ HMAC, got %d", len(cert.PQCert))
+	}
+
+	// BLS and PQ certs must differ (different keys)
+	if string(cert.BLSAgg) == string(cert.PQCert) {
+		t.Error("BLS and PQ HMAC outputs should differ (different keys)")
+	}
+}
+
 func TestHorizon_ComputeBlockHash(t *testing.T) {
 	block := &Block{
 		Hash:      "0xabc123",

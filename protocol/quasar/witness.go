@@ -4,8 +4,8 @@
 package quasar
 
 import (
-	"bytes"
 	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"sync"
 	"time"
@@ -230,7 +230,7 @@ func verifyIPAOpening(commitment *banderwagon.Element, path []byte, proof []byte
 	hasher.Write(commitmentBytes[:])
 	hasher.Write(path)
 	expected := hasher.Sum(nil)
-	return bytes.Equal(expected, proof)
+	return subtle.ConstantTimeCompare(expected, proof) == 1
 }
 
 func compressPath(stateRoot []byte) []byte {
