@@ -347,8 +347,9 @@ func (p *GPUBatchPipeline) Stop() error {
 
 	p.cancel()
 
-	// Wait for all pending batches to complete
-	for p.pendingCount.Load() > 0 {
+	// Wait for all pending batches to drain (bounded to prevent hang)
+	drainDeadline := time.Now().Add(5 * time.Second)
+	for p.pendingCount.Load() > 0 && time.Now().Before(drainDeadline) {
 		time.Sleep(time.Millisecond)
 	}
 
@@ -413,8 +414,11 @@ func (p *GPUBatchPipeline) loadAndProcess(batchID uint64, txs []Transaction) {
 
 	start := time.Now()
 
-	// 1. Get inactive buffer
+	// 1. Get inactive buffer (nil if context cancelled)
 	buf := p.getInactiveBuffer()
+	if buf == nil {
+		return
+	}
 	defer buf.inUse.Store(false)
 
 	// 2. Load transactions to buffer (CPU-side)
@@ -449,29 +453,30 @@ func (p *GPUBatchPipeline) loadAndProcess(batchID uint64, txs []Transaction) {
 }
 
 // getInactiveBuffer returns the buffer not currently being processed.
+// Returns nil if the pipeline context is cancelled during the wait.
 func (p *GPUBatchPipeline) getInactiveBuffer() *GPUBuffer {
-	p.bufferMu.Lock()
-	defer p.bufferMu.Unlock()
-
-	// Find first available buffer
-	for _, buf := range p.buffers {
-		if !buf.inUse.Load() {
-			buf.inUse.Store(true)
-			return buf
+	for {
+		// Check context before each attempt
+		select {
+		case <-p.ctx.Done():
+			return nil
+		default:
 		}
-	}
 
-	// All buffers busy - wait for one (shouldn't happen with proper backpressure)
-	inactiveIdx := (p.activeBuffer + 1) % len(p.buffers)
-	buf := p.buffers[inactiveIdx]
+		p.bufferMu.Lock()
+		// Find first available buffer
+		for _, buf := range p.buffers {
+			if !buf.inUse.Load() {
+				buf.inUse.Store(true)
+				p.bufferMu.Unlock()
+				return buf
+			}
+		}
+		p.bufferMu.Unlock()
 
-	// Spin until available
-	for buf.inUse.Load() {
-		// Brief yield
+		// All buffers busy - yield and retry without holding the lock
 		time.Sleep(time.Microsecond)
 	}
-	buf.inUse.Store(true)
-	return buf
 }
 
 // loadTransactions copies transaction data into buffer.
