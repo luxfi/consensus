@@ -1,7 +1,8 @@
 // Package quasar - BLS DAG Event Horizon Implementation
 //
-// This file implements DAG-based event horizon consensus for vertex utils.
-// It uses SHA256 commitments for local attestations within the DAG.
+// This file implements DAG-based event horizon consensus for vertex ordering.
+// It uses HMAC-SHA256 keyed commitments for local attestations within the DAG,
+// providing cryptographically sound message authentication for the event horizon.
 //
 // IMPORTANT: This is NOT the threshold signature implementation.
 // For real cryptographic threshold signatures (BLS + Ringtail), see:
@@ -14,6 +15,7 @@ package quasar
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
 	"sync"
@@ -33,13 +35,42 @@ var uint64BufPool = sync.Pool{
 
 // CertBundle contains both BLS and PQ certificates for a block.
 type CertBundle struct {
-	BLSAgg []byte // BLS aggregate signature
-	PQCert []byte // Post-quantum certificate
+	BLSAgg  []byte // HMAC-SHA256 keyed with blsKey
+	PQCert  []byte // HMAC-SHA256 keyed with pqKey
+	Message []byte // The message digest that was signed
 }
 
-// Verify checks both BLS and PQ certificates.
+// Verify performs structural checks only (non-empty fields).
+//
+// Deprecated: Use VerifyWithKeys for cryptographic HMAC verification.
+// For full threshold BLS + Ringtail verification, see quasar.go
+// signer.VerifyAggregatedSignature and epoch.go VerifySignatureForEpoch.
 func (c *CertBundle) Verify(_ []string) bool {
 	return c != nil && len(c.BLSAgg) > 0 && len(c.PQCert) > 0
+}
+
+// VerifyWithKeys verifies both HMAC-SHA256 certificates against the provided keys.
+// Returns true only if both the BLS and PQ HMACs are valid for the stored message.
+//
+// For full threshold BLS + Ringtail signature verification, see:
+//   - quasar.go: signer.VerifyAggregatedSignature (BLS threshold)
+//   - epoch.go: EpochManager.VerifySignatureForEpoch (Ringtail threshold)
+func (c *CertBundle) VerifyWithKeys(blsKey, pqKey []byte) bool {
+	if c == nil || len(c.BLSAgg) == 0 || len(c.PQCert) == 0 || len(c.Message) == 0 {
+		return false
+	}
+
+	// Verify BLS HMAC
+	blsMAC := hmac.New(sha256.New, blsKey)
+	blsMAC.Write(c.Message)
+	if !hmac.Equal(c.BLSAgg, blsMAC.Sum(nil)) {
+		return false
+	}
+
+	// Verify PQ HMAC
+	pqMAC := hmac.New(sha256.New, pqKey)
+	pqMAC.Write(c.Message)
+	return hmac.Equal(c.PQCert, pqMAC.Sum(nil))
 }
 
 // Bundle represents a finalized epoch bundle.
@@ -107,70 +138,58 @@ func (q *BLS) SetFinalizedCallback(cb func(*Block)) {
 	q.finalizedCb = cb
 }
 
-// generateBLSAggregate generates a SHA256-based commitment for DAG event horizon.
-// This commitment binds the block ID and votes to the validator's BLS key.
-// For threshold block finality with real BLS signatures, use the Signer
-// in quasar.go which integrates with github.com/luxfi/crypto/bls.
+// generateBLSAggregate generates an HMAC-SHA256 commitment for DAG event horizon,
+// keyed with the validator's BLS key material. This binds the block ID and votes
+// to the key using a cryptographically sound MAC construction.
+//
+// For full threshold BLS aggregate signatures, see quasar.go:
+//   - signer.AggregateSignatures (threshold aggregation via github.com/luxfi/crypto/bls)
+//   - signer.VerifyAggregatedSignature (threshold verification)
 func (q *BLS) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte {
 	if len(q.blsKey) == 0 {
 		return []byte{}
 	}
-
-	// Create deterministic commitment based on blockID and votes
-	h := sha256.New()
-	h.Write(blockID[:])
-
-	// Get pooled buffer for uint64 encoding
-	bufPtr := uint64BufPool.Get().(*[]byte)
-	countBytes := *bufPtr
-	defer uint64BufPool.Put(bufPtr)
-
-	// Add votes to hash
-	for validator, count := range votes {
-		h.Write([]byte(validator))
-		binary.LittleEndian.PutUint64(countBytes, uint64(count))
-		h.Write(countBytes)
-	}
-
-	// Mix in key for local binding
-	h.Write(q.blsKey)
-
-	return h.Sum(nil)
+	return computeHMAC(q.blsKey, buildVoteDigest(blockID, votes))
 }
 
-// generatePQCertificate generates a SHA256-based post-quantum commitment for DAG event horizon.
-// This commitment binds the block ID and votes to the validator's PQ key.
-// For real PQ threshold signatures, use the Signer in quasar.go which
-// integrates with github.com/luxfi/ringtail/threshold.
+// generatePQCertificate generates an HMAC-SHA256 commitment for DAG event horizon,
+// keyed with the validator's PQ key material. This binds the block ID and votes
+// to the key using a cryptographically sound MAC construction.
+//
+// For full Ringtail threshold signatures, see:
+//   - quasar.go: signer.RingtailRound1/Round2/Finalize (2-round protocol)
+//   - epoch.go: EpochManager.VerifySignatureForEpoch (via github.com/luxfi/ringtail/threshold)
 func (q *BLS) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte {
 	if len(q.pqKey) == 0 {
 		return []byte{}
 	}
+	return computeHMAC(q.pqKey, buildVoteDigest(blockID, votes))
+}
 
-	// Create message to commit
+// buildVoteDigest creates a deterministic message digest from a block ID and vote map.
+// Used as the HMAC input for both BLS and PQ certificate generation.
+func buildVoteDigest(blockID ids.ID, votes map[string]int) []byte {
 	h := sha256.New()
 	h.Write(blockID[:])
 
-	// Get pooled buffer for uint64 encoding
 	bufPtr := uint64BufPool.Get().(*[]byte)
 	countBytes := *bufPtr
 	defer uint64BufPool.Put(bufPtr)
 
-	// Add votes to message
 	for validator, count := range votes {
 		h.Write([]byte(validator))
 		binary.LittleEndian.PutUint64(countBytes, uint64(count))
 		h.Write(countBytes)
 	}
 
-	message := h.Sum(nil)
+	return h.Sum(nil)
+}
 
-	// Create local commitment
-	cert := sha256.New()
-	cert.Write(message)
-	cert.Write(q.pqKey)
-
-	return cert.Sum(nil)
+// computeHMAC returns HMAC-SHA256(key, message).
+func computeHMAC(key, message []byte) []byte {
+	mac := hmac.New(sha256.New, key)
+	mac.Write(message)
+	return mac.Sum(nil)
 }
 
 // phaseI proposes a block from the DAG frontier using FIFO ordering.
@@ -201,20 +220,18 @@ func (q *BLS) phaseII(votes map[string]int, proposal string) *CertBundle {
 
 	// Check if support meets alpha threshold
 	if float64(support)/float64(total) >= q.Alpha {
-		// Generate real certificates using cryptography
 		// Convert proposal to ID for certificate generation
 		proposalHash := sha256.Sum256([]byte(proposal))
 		blockID, _ := ids.ToID(proposalHash[:])
 
-		// Generate BLS aggregate
-		blsSig := q.generateBLSAggregate(blockID, votes)
-
-		// Generate PQ certificate
-		pqCert := q.generatePQCertificate(blockID, votes)
+		// Build message digest once -- map iteration is non-deterministic,
+		// so all three fields must use the same digest.
+		msg := buildVoteDigest(blockID, votes)
 
 		return &CertBundle{
-			BLSAgg: blsSig,
-			PQCert: pqCert,
+			BLSAgg:  computeHMAC(q.blsKey, msg),
+			PQCert:  computeHMAC(q.pqKey, msg),
+			Message: msg,
 		}
 	}
 
@@ -264,14 +281,13 @@ func (q *BLS) GetLatestHorizon() *dag.EventHorizon[VertexID] {
 }
 
 // createHorizonSignature creates a local attestation for the event horizon checkpoint.
-// This is a SHA256-based commitment used for DAG vertex utils.
+// Uses HMAC-SHA256 keyed with blsKey and pqKey for cryptographically sound binding.
 //
-// NOTE: For production threshold signatures with real BLS + Ringtail,
-// use the Signer in quasar.go which integrates:
-//   - github.com/luxfi/crypto/bls for BLS threshold signatures
-//   - github.com/luxfi/ringtail/threshold for post-quantum signatures
+// For full threshold signatures with real BLS + Ringtail, see:
+//   - quasar.go: signer.AggregateSignatures (BLS threshold via github.com/luxfi/crypto/bls)
+//   - epoch.go: BundleSigner.SignBundle (Ringtail 2-round via github.com/luxfi/ringtail/threshold)
 func (q *BLS) createHorizonSignature(checkpoint VertexID, validators []string) []byte {
-	// Create message: checkpoint + validators
+	// Create message digest: checkpoint + validators
 	h := sha256.New()
 	h.Write(checkpoint[:])
 	for _, v := range validators {
@@ -279,18 +295,16 @@ func (q *BLS) createHorizonSignature(checkpoint VertexID, validators []string) [
 	}
 	message := h.Sum(nil)
 
-	// BLS component commitment
-	blsSig := sha256.New()
-	blsSig.Write(message)
-	blsSig.Write(q.blsKey)
-	blsPart := blsSig.Sum(nil)
+	// BLS component: HMAC-SHA256(blsKey, message)
+	blsMAC := hmac.New(sha256.New, q.blsKey)
+	blsMAC.Write(message)
+	blsPart := blsMAC.Sum(nil)
 
-	// PQ component commitment
-	pqSig := sha256.New()
-	pqSig.Write(message)
-	pqSig.Write(q.pqKey)
-	pqPart := pqSig.Sum(nil)
+	// PQ component: HMAC-SHA256(pqKey, message)
+	pqMAC := hmac.New(sha256.New, q.pqKey)
+	pqMAC.Write(message)
+	pqPart := pqMAC.Sum(nil)
 
-	// Combined attestation (64 bytes)
+	// Combined attestation (64 bytes: 32 BLS + 32 PQ)
 	return append(blsPart, pqPart...)
 }

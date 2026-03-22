@@ -127,31 +127,46 @@ go test -bench=. ./...
 
 ```text
 consensus/
-├── photon/                # 🌟 K-of-N committee selection (NEW)
-│   ├── emitter.go        # Light emission-based peer selection
-│   └── luminance.go      # Node brightness tracking (lux units)
+├── protocol/
+│   ├── photon/           # 🌟 K-of-N committee selection
+│   │   ├── emitter.go    # Light emission-based peer selection
+│   │   └── luminance.go  # Node brightness tracking (lux units)
+│   ├── wave/             # 🌊 Wave consensus mechanism
+│   │   ├── wave.go       # Threshold voting (α, β parameters)
+│   │   └── fpc/          # Fast Probabilistic Consensus
+│   ├── focus/            # 🎯 Confidence tracking
+│   ├── quasar/           # ⚛️ Post-quantum finality
+│   │   ├── quasar.go     # BLS + Ringtail dual threshold signing
+│   │   ├── bls.go        # BLS DAG event horizon
+│   │   ├── witness.go    # Verkle witness verification
+│   │   ├── epoch.go      # Ringtail threshold signing
+│   │   └── core.go       # QuantumBlock aggregation
+│   ├── prism/            # 🔷 DAG cutting & ordering
+│   ├── nebula/           # ☁️ State sync protocol
+│   ├── nova/             # ⭐ Parallel chain support
+│   └── ray/              # Chain consensus protocol
 │
 ├── core/
-│   ├── wave/             # 🌊 Wave consensus mechanism
-│   │   └── engine.go     # Threshold voting (α, β parameters)
 │   ├── dag/              # 📊 DAG structure & ordering
-│   │   ├── flare/        # Certificate generation
-│   │   └── horizon/      # Frontier management
-│   └── focus/            # 🎯 Confidence tracking
+│   │   ├── flare.go      # Certificate generation
+│   │   └── horizon.go    # Frontier management
+│   └── consensus.go      # Core consensus types
 │
-├── protocol/
-│   ├── quasar/          # ⚛️ Post-quantum security
-│   │   └── ringtail.go  # Quantum-resistant signatures
-│   ├── nebula/          # ☁️ State sync protocol
-│   └── nova/            # ⭐ Parallel chain support
+├── engine/               # 🎮 Consensus engines
+│   ├── chain/            # Linear blockchain engine
+│   ├── dag/              # DAG-based engine
+│   └── pq/               # Post-quantum engine
+│       ├── crypto.go     # PQ cryptographic operations
+│       └── consensus.go  # PQ consensus integration
 │
-├── qzmq/                # 🔐 Post-quantum transport
-│   ├── session.go       # Hybrid key exchange
-│   └── messages.go      # Wire protocol
-│
-└── engine/              # 🎮 Consensus engines
-    ├── chain/          # Linear blockchain
-    └── dag/            # DAG-based chains
+└── pkg/                  # SDK bindings
+    ├── c/                # C FFI
+    ├── cpp/              # C++ wrapper
+    ├── python/           # Python bindings
+    ├── rust/             # Rust bindings
+    ├── typescript/       # TypeScript SDK
+    └── wire/             # Wire protocol + credentials
+        └── credentials.go # ML-DSA-44/65/87 + BLS + Ed25519
 ```
 
 ## Framework for Quasar Consensus
