@@ -238,8 +238,8 @@ func (s *signer) RingtailRound1(validatorID string, sessionID int, prfKey []byte
 
 	// Get all signer indices
 	signerIDs := make([]int, 0, len(s.ringtailSigners))
-	for _, s := range s.ringtailShares {
-		signerIDs = append(signerIDs, s.Index)
+	for _, share := range s.ringtailShares {
+		signerIDs = append(signerIDs, share.Index)
 	}
 
 	return signer.Round1(sessionID, prfKey, signerIDs), nil
@@ -258,8 +258,8 @@ func (s *signer) RingtailRound2(validatorID string, sessionID int, message strin
 	}
 
 	signerIDs := make([]int, 0, len(s.ringtailSigners))
-	for _, s := range s.ringtailShares {
-		signerIDs = append(signerIDs, s.Index)
+	for _, share := range s.ringtailShares {
+		signerIDs = append(signerIDs, share.Index)
 	}
 
 	return signer.Round2(sessionID, message, prfKey, signerIDs, round1Data)
@@ -311,8 +311,8 @@ func (s *signer) DualSignRound1(ctx context.Context, validatorID string, message
 
 	// Get BLS signer indices
 	blsIndices := make([]int, 0, len(s.blsSigners))
-	for _, s := range s.blsSigners {
-		blsIndices = append(blsIndices, s.Index())
+	for _, blsSigner := range s.blsSigners {
+		blsIndices = append(blsIndices, blsSigner.Index())
 	}
 
 	wg.Add(2)
@@ -404,8 +404,8 @@ func (s *signer) SignMessageWithContext(ctx context.Context, validatorID string,
 	blsSigner, hasBLSSigner := s.blsSigners[validatorID]
 	if hasBLSSigner {
 		blsIndices := make([]int, 0, len(s.blsSigners))
-		for _, s := range s.blsSigners {
-			blsIndices = append(blsIndices, s.Index())
+		for _, blsSigner := range s.blsSigners {
+			blsIndices = append(blsIndices, blsSigner.Index())
 		}
 
 		share, err := blsSigner.SignShare(ctx, message, blsIndices, nil)
@@ -762,8 +762,8 @@ func (s *signer) SignMessageThreshold(ctx context.Context, validatorID string, m
 	}
 
 	signerIndices := make([]int, 0, len(s.blsSigners))
-	for _, s := range s.blsSigners {
-		signerIndices = append(signerIndices, s.Index())
+	for _, blsSigner := range s.blsSigners {
+		signerIndices = append(signerIndices, blsSigner.Index())
 	}
 
 	return signer.SignShare(ctx, message, signerIndices, nil)
