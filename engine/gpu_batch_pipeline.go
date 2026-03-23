@@ -829,17 +829,8 @@ func (p *GPUBatchPipeline) Results() <-chan *BatchResult {
 }
 
 // Metrics returns current pipeline metrics.
-func (p *GPUBatchPipeline) Metrics() PipelineMetrics {
-	return PipelineMetrics{
-		TotalBatches:      atomic.Uint64{},
-		TotalTransactions: atomic.Uint64{},
-		TotalValid:        atomic.Uint64{},
-		TotalInvalid:      atomic.Uint64{},
-		TotalGPUTime:      atomic.Int64{},
-		TotalCPUTime:      atomic.Int64{},
-		BufferSwaps:       atomic.Uint64{},
-		BackpressureCount: atomic.Uint64{},
-	}
+func (p *GPUBatchPipeline) Metrics() *PipelineMetrics {
+	return p.metrics
 }
 
 // GetMetricsSnapshot returns a snapshot of current metrics.
