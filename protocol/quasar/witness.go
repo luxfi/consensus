@@ -158,7 +158,7 @@ func (v *VerkleWitness) CreateWitness(
 // BatchVerify verifies multiple witnesses in parallel (hyper-efficient)
 func (v *VerkleWitness) BatchVerify(witnesses []*WitnessProof) error {
 	// Since we assume PQ finality, we can verify in parallel
-	errors := make(chan error, len(witnesses))
+	errs := make(chan error, len(witnesses))
 	var wg sync.WaitGroup
 
 	for _, witness := range witnesses {
@@ -166,16 +166,16 @@ func (v *VerkleWitness) BatchVerify(witnesses []*WitnessProof) error {
 		go func(w *WitnessProof) {
 			defer wg.Done()
 			if err := v.VerifyStateTransition(w); err != nil {
-				errors <- err
+				errs <- err
 			}
 		}(witness)
 	}
 
 	wg.Wait()
-	close(errors)
+	close(errs)
 
 	// Check for any errors
-	for err := range errors {
+	for err := range errs {
 		if err != nil {
 			return err
 		}
@@ -208,6 +208,9 @@ func compressToBitfield(signers []bool) []byte {
 }
 
 func createVerkleCommitment(stateRoot []byte) *banderwagon.Element {
+	if len(stateRoot) < 32 {
+		return nil
+	}
 	// Create commitment from state root
 	var point banderwagon.Element
 	_ = point.SetBytes(stateRoot[:32]) // Safe to ignore: input is valid
