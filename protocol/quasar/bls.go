@@ -18,6 +18,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
+	"sort"
 	"sync"
 
 	"github.com/luxfi/consensus/config"
@@ -176,7 +177,15 @@ func buildVoteDigest(blockID ids.ID, votes map[string]int) []byte {
 	countBytes := *bufPtr
 	defer uint64BufPool.Put(bufPtr)
 
-	for validator, count := range votes {
+	// Sort validators for deterministic digest
+	validators := make([]string, 0, len(votes))
+	for v := range votes {
+		validators = append(validators, v)
+	}
+	sort.Strings(validators)
+
+	for _, validator := range validators {
+		count := votes[validator]
 		h.Write([]byte(validator))
 		binary.LittleEndian.PutUint64(countBytes, uint64(count))
 		h.Write(countBytes)
