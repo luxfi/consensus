@@ -1,6 +1,7 @@
 package quasar
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
 	"testing"
@@ -72,25 +73,43 @@ func TestDualSignRound1_ErrorPropagation(t *testing.T) {
 	require.Contains(t, err.Error(), "not configured for dual signing")
 }
 
-// TestCertBundle_StructuralVerification tests the current structural
-// verification behavior and documents the security boundary.
-func TestCertBundle_StructuralVerification(t *testing.T) {
-	// Valid bundle passes structural check
+// TestCertBundle_VerifyPanics verifies the deprecated Verify method panics
+// to prevent accidental use of the non-cryptographic path.
+func TestCertBundle_VerifyPanics(t *testing.T) {
 	cert := &CertBundle{
 		BLSAgg: []byte{0x01, 0x02, 0x03},
 		PQCert: []byte{0x04, 0x05, 0x06},
 	}
-	require.True(t, cert.Verify(nil), "non-empty cert passes structural check")
+	require.Panics(t, func() { cert.Verify(nil) }, "Verify must panic to enforce VerifyWithKeys usage")
+}
+
+// TestCertBundle_VerifyWithKeys_Regression tests cryptographic HMAC verification.
+func TestCertBundle_VerifyWithKeys_Regression(t *testing.T) {
+	blsKey := []byte("regression-bls-key-32bytes!!")
+	pqKey := []byte("regression-pq-key-32bytes!!!")
+	message := []byte("regression test")
+
+	blsMAC := hmac.New(sha256.New, blsKey)
+	blsMAC.Write(message)
+	pqMAC := hmac.New(sha256.New, pqKey)
+	pqMAC.Write(message)
+
+	cert := &CertBundle{
+		BLSAgg:  blsMAC.Sum(nil),
+		PQCert:  pqMAC.Sum(nil),
+		Message: message,
+	}
+	require.True(t, cert.VerifyWithKeys(blsKey, pqKey), "valid cert passes HMAC check")
 
 	// Nil cert fails
 	var nilCert *CertBundle
-	require.False(t, nilCert.Verify(nil), "nil cert must fail")
+	require.False(t, nilCert.VerifyWithKeys(blsKey, pqKey), "nil cert must fail")
 
 	// Empty BLS fails
-	emptyBLS := &CertBundle{BLSAgg: []byte{}, PQCert: []byte{0x01}}
-	require.False(t, emptyBLS.Verify(nil), "empty BLS must fail")
+	emptyBLS := &CertBundle{BLSAgg: []byte{}, PQCert: cert.PQCert, Message: message}
+	require.False(t, emptyBLS.VerifyWithKeys(blsKey, pqKey), "empty BLS must fail")
 
 	// Empty PQ fails
-	emptyPQ := &CertBundle{BLSAgg: []byte{0x01}, PQCert: []byte{}}
-	require.False(t, emptyPQ.Verify(nil), "empty PQ must fail")
+	emptyPQ := &CertBundle{BLSAgg: cert.BLSAgg, PQCert: []byte{}, Message: message}
+	require.False(t, emptyPQ.VerifyWithKeys(blsKey, pqKey), "empty PQ must fail")
 }

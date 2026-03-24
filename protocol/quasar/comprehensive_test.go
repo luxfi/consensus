@@ -11,8 +11,34 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/crypto/ipa/banderwagon"
 	"github.com/luxfi/crypto/threshold"
 )
+
+// validStateRoot returns a 32-byte slice that is a valid banderwagon point
+// encoding. The i parameter produces distinct roots by scalar multiplication.
+func validStateRoot(t *testing.T, i int) []byte {
+	t.Helper()
+	var p banderwagon.Element
+	p.Add(&banderwagon.Generator, &banderwagon.Generator)
+	// Multiply by (i+1) to get distinct points
+	for j := 0; j < i; j++ {
+		p.Add(&p, &banderwagon.Generator)
+	}
+	b := p.Bytes()
+	return b[:]
+}
+
+// validBLSSig generates a real BLS signature for testing.
+func validBLSSig(t *testing.T, msg []byte) []byte {
+	t.Helper()
+	sk, err := bls.NewSecretKey()
+	if err != nil {
+		t.Fatalf("BLS NewSecretKey: %v", err)
+	}
+	sig := bls.Sign(sk, msg)
+	return bls.SignatureToBytes(sig)
+}
 
 // =============================================================================
 // BLS Tests (bls.go)
@@ -1097,7 +1123,7 @@ func TestCompressedWitness_Size(t *testing.T) {
 	}
 }
 
-func TestVerkleWitness_VerifyCompressed(t *testing.T) {
+func TestVerkleWitness_ValidateCompressedStructure(t *testing.T) {
 	w := NewVerkleWitness(3)
 
 	tests := []struct {
@@ -1141,9 +1167,9 @@ func TestVerkleWitness_VerifyCompressed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := w.VerifyCompressed(tt.cw)
+			err := w.validateCompressedStructure(tt.cw)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("VerifyCompressed() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("validateCompressedStructure() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -1299,7 +1325,10 @@ func TestVerkleWitness_VerifyStateTransition(t *testing.T) {
 	}
 
 	// Create commitment
-	commitment := createVerkleCommitment(stateRoot)
+	commitment, cErr := createVerkleCommitment(stateRoot)
+	if cErr != nil {
+		t.Fatalf("createVerkleCommitment failed: %v", cErr)
+	}
 	commitmentBytes := commitment.Bytes()
 
 	// Create path
@@ -1342,13 +1371,15 @@ func TestVerkleWitness_VerifyStateTransition_InvalidCommitment(t *testing.T) {
 func TestVerkleWitness_BatchVerify(t *testing.T) {
 	w := NewVerkleWitness(1)
 
-	// Create valid witnesses
+	// Create valid witnesses with real banderwagon points
 	witnesses := make([]*WitnessProof, 3)
 	for i := range witnesses {
-		stateRoot := make([]byte, 32)
-		stateRoot[0] = byte(i)
+		stateRoot := validStateRoot(t, i)
 
-		commitment := createVerkleCommitment(stateRoot)
+		commitment, cErr := createVerkleCommitment(stateRoot)
+		if cErr != nil {
+			t.Fatalf("createVerkleCommitment failed: %v", cErr)
+		}
 		commitmentBytes := commitment.Bytes()
 		path := compressPath(stateRoot)
 		openingProof := createIPAProof(commitment, path)
@@ -1373,7 +1404,10 @@ func TestVerkleWitness_BatchVerify_WithInvalid(t *testing.T) {
 
 	// Create valid witness
 	stateRoot := make([]byte, 32)
-	commitment := createVerkleCommitment(stateRoot)
+	commitment, cErr := createVerkleCommitment(stateRoot)
+	if cErr != nil {
+		t.Fatalf("createVerkleCommitment failed: %v", cErr)
+	}
 	commitmentBytes := commitment.Bytes()
 	path := compressPath(stateRoot)
 	openingProof := createIPAProof(commitment, path)
@@ -1411,29 +1445,34 @@ func TestVerkleWitness_FullVerification(t *testing.T) {
 		stateRoot[i] = byte(i)
 	}
 
-	commitment := createVerkleCommitment(stateRoot)
+	commitment, cErr := createVerkleCommitment(stateRoot)
+	if cErr != nil {
+		t.Fatalf("createVerkleCommitment failed: %v", cErr)
+	}
 	commitmentBytes := commitment.Bytes()
 	path := compressPath(stateRoot)
 	openingProof := createIPAProof(commitment, path)
 
-	// Create a valid-length BLS signature (48 bytes for G1 compressed)
-	blsSig := make([]byte, 48)
-	for i := range blsSig {
-		blsSig[i] = byte(i + 1)
+	// Generate a real BLS signature so deserialization passes
+	sk, err := bls.NewSecretKey()
+	if err != nil {
+		t.Fatalf("BLS NewSecretKey: %v", err)
 	}
+	sig := bls.Sign(sk, stateRoot)
+	blsSigBytes := bls.SignatureToBytes(sig)
 
 	witness := &WitnessProof{
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		BLSAggregate: blsSig, // Must be at least 48 bytes for BLS G1
+		BLSAggregate: blsSigBytes,
 		RingtailBits: []byte{0x01},
 		ValidatorSet: []byte{5, 6, 7, 8},
 		BlockHeight:  100,
 		StateRoot:    stateRoot,
 	}
 
-	err := w.VerifyStateTransition(witness)
+	err = w.VerifyStateTransition(witness)
 	if err != nil {
 		t.Errorf("fullVerification failed: %v", err)
 	}
@@ -1444,7 +1483,10 @@ func TestVerkleWitness_FullVerification_InsufficientThreshold(t *testing.T) {
 	w.assumePQFinal = false  // Force full verification path
 
 	stateRoot := make([]byte, 32)
-	commitment := createVerkleCommitment(stateRoot)
+	commitment, cErr := createVerkleCommitment(stateRoot)
+	if cErr != nil {
+		t.Fatalf("createVerkleCommitment failed: %v", cErr)
+	}
 	commitmentBytes := commitment.Bytes()
 	path := compressPath(stateRoot)
 	openingProof := createIPAProof(commitment, path)
@@ -1608,11 +1650,15 @@ func TestQuasar_ComputeQuantumHash(t *testing.T) {
 	}
 }
 
-func TestCertBundle_Verify_Nil(t *testing.T) {
-	var cert *CertBundle = nil
-	if cert.Verify([]string{"v1"}) {
-		t.Error("nil cert should not verify")
-	}
+func TestCertBundle_Verify_Panics(t *testing.T) {
+	// Non-nil cert panics to enforce VerifyWithKeys usage
+	cert := &CertBundle{BLSAgg: []byte{1}, PQCert: []byte{2}}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("CertBundle.Verify should panic")
+		}
+	}()
+	cert.Verify([]string{"v1"})
 }
 
 func TestCertBundle_VerifyWithKeys(t *testing.T) {
@@ -1828,22 +1874,26 @@ func TestSigner_AggregateSignatures_InvalidBLS(t *testing.T) {
 func TestVerkleWitness_VerifyBLSAggregate(t *testing.T) {
 	w := NewVerkleWitness(1)
 
-	// Create a valid-length BLS signature (48 bytes for G1 compressed)
-	blsSig := make([]byte, 48)
-	for i := range blsSig {
-		blsSig[i] = byte(i + 1)
+	// Random 48 bytes are NOT a valid BLS G1 point -- deserialization must fail
+	invalidSig := make([]byte, 48)
+	for i := range invalidSig {
+		invalidSig[i] = byte(i + 1)
 	}
-
-	// BLS verification should pass with valid-length signature
-	err := w.verifyBLSAggregate(blsSig, []byte{4, 5, 6})
-	if err != nil {
-		t.Errorf("verifyBLSAggregate failed: %v", err)
+	err := w.verifyBLSAggregate(invalidSig, []byte{4, 5, 6})
+	if err == nil {
+		t.Error("verifyBLSAggregate should reject invalid BLS curve point")
 	}
 
 	// Should fail with too-short signature
 	err = w.verifyBLSAggregate([]byte{1, 2, 3}, []byte{4, 5, 6})
 	if err == nil {
 		t.Error("verifyBLSAggregate should fail with short signature")
+	}
+
+	// Should fail with empty signature
+	err = w.verifyBLSAggregate(nil, []byte{4, 5, 6})
+	if err == nil {
+		t.Error("verifyBLSAggregate should fail with empty signature")
 	}
 }
 
@@ -2291,7 +2341,10 @@ func TestVerkleWitness_VerifyVerkleCommitment_InvalidOpeningProof(t *testing.T) 
 		stateRoot[i] = byte(i)
 	}
 
-	commitment := createVerkleCommitment(stateRoot)
+	commitment, cErr := createVerkleCommitment(stateRoot)
+	if cErr != nil {
+		t.Fatalf("createVerkleCommitment failed: %v", cErr)
+	}
 	commitmentBytes := commitment.Bytes()
 	path := compressPath(stateRoot)
 
@@ -2610,7 +2663,10 @@ func TestVerkleWitness_FullVerification_RingtailThresholdNotMet(t *testing.T) {
 		stateRoot[i] = byte(i)
 	}
 
-	commitment := createVerkleCommitment(stateRoot)
+	commitment, cErr := createVerkleCommitment(stateRoot)
+	if cErr != nil {
+		t.Fatalf("createVerkleCommitment failed: %v", cErr)
+	}
 	commitmentBytes := commitment.Bytes()
 	path := compressPath(stateRoot)
 	openingProof := createIPAProof(commitment, path)
@@ -2796,7 +2852,10 @@ func TestVerkleWitness_VerifyStateTransition_FastPath(t *testing.T) {
 		stateRoot[i] = byte(i)
 	}
 
-	commitment := createVerkleCommitment(stateRoot)
+	commitment, cErr := createVerkleCommitment(stateRoot)
+	if cErr != nil {
+		t.Fatalf("createVerkleCommitment failed: %v", cErr)
+	}
 	commitmentBytes := commitment.Bytes()
 	path := compressPath(stateRoot)
 	openingProof := createIPAProof(commitment, path)
@@ -2819,27 +2878,24 @@ func TestVerkleWitness_VerifyStateTransition_SlowPath(t *testing.T) {
 	w := NewVerkleWitness(1)
 	w.assumePQFinal = false // Force slow path (full verification)
 
-	stateRoot := make([]byte, 32)
-	for i := range stateRoot {
-		stateRoot[i] = byte(i)
-	}
+	stateRoot := validStateRoot(t, 0)
 
-	commitment := createVerkleCommitment(stateRoot)
+	commitment, cErr := createVerkleCommitment(stateRoot)
+	if cErr != nil {
+		t.Fatalf("createVerkleCommitment failed: %v", cErr)
+	}
 	commitmentBytes := commitment.Bytes()
 	path := compressPath(stateRoot)
 	openingProof := createIPAProof(commitment, path)
 
-	// Create a valid-length BLS signature (48 bytes for G1 compressed)
-	blsSig := make([]byte, 48)
-	for i := range blsSig {
-		blsSig[i] = byte(i + 1)
-	}
+	// Generate a real BLS signature so deserialization passes
+	blsSigBytes := validBLSSig(t, stateRoot)
 
 	witness := &WitnessProof{
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		BLSAggregate: blsSig,       // Valid-length signature
+		BLSAggregate: blsSigBytes,
 		RingtailBits: []byte{0x01}, // 1 signer meets threshold
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
