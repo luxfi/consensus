@@ -2,6 +2,8 @@ package quasar
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"testing"
 	"time"
 
@@ -187,33 +189,61 @@ func TestPhaseII_Commit(t *testing.T) {
 	}
 }
 
-func TestCertBundle_Verify(t *testing.T) {
+func TestCertBundle_VerifyWithKeys_Engine(t *testing.T) {
+	blsKey := []byte("test-bls-key-32-bytes-long!!")
+	pqKey := []byte("test-pq-key-32-bytes-long!!!")
+	message := []byte("test message")
+
+	// Create valid cert using HMAC
+	blsMAC := hmac.New(sha256.New, blsKey)
+	blsMAC.Write(message)
+	pqMAC := hmac.New(sha256.New, pqKey)
+	pqMAC.Write(message)
+
 	cert := &CertBundle{
-		BLSAgg: []byte("mock-bls-signature"),
-		PQCert: []byte("mock-pq-certificate"),
+		BLSAgg:  blsMAC.Sum(nil),
+		PQCert:  pqMAC.Sum(nil),
+		Message: message,
 	}
 
-	// Mock verification (would use actual crypto in production)
-	quorum := []string{"node1", "node2", "node3"}
-
-	valid := cert.Verify(quorum)
+	valid := cert.VerifyWithKeys(blsKey, pqKey)
 	if !valid {
-		t.Error("certificate verification failed")
+		t.Error("certificate verification failed with correct keys")
 	}
 
-	// Test with empty signatures
-	cert.BLSAgg = nil
-	valid = cert.Verify(quorum)
+	// Test with wrong keys
+	valid = cert.VerifyWithKeys([]byte("wrong-key"), pqKey)
+	if valid {
+		t.Error("should fail with wrong BLS key")
+	}
+
+	// Test with empty BLS
+	emptyCert := &CertBundle{BLSAgg: nil, PQCert: cert.PQCert, Message: message}
+	valid = emptyCert.VerifyWithKeys(blsKey, pqKey)
 	if valid {
 		t.Error("empty BLS signature should fail verification")
 	}
 
-	cert.BLSAgg = []byte("mock-bls")
-	cert.PQCert = nil
-	valid = cert.Verify(quorum)
+	// Test with empty PQ
+	emptyCert = &CertBundle{BLSAgg: cert.BLSAgg, PQCert: nil, Message: message}
+	valid = emptyCert.VerifyWithKeys(blsKey, pqKey)
 	if valid {
 		t.Error("empty PQ certificate should fail verification")
 	}
+}
+
+func TestCertBundle_Verify_Panics_Engine(t *testing.T) {
+	cert := &CertBundle{
+		BLSAgg: []byte{0x01},
+		PQCert: []byte{0x02},
+	}
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Error("CertBundle.Verify should panic")
+		}
+	}()
+	cert.Verify(nil)
 }
 
 func TestBlock(t *testing.T) {
@@ -364,16 +394,25 @@ func BenchmarkPhaseII(b *testing.B) {
 	}
 }
 
-func BenchmarkCertVerify(b *testing.B) {
+func BenchmarkCertVerifyWithKeys(b *testing.B) {
+	blsKey := []byte("bench-bls-key-32-bytes-long!!")
+	pqKey := []byte("bench-pq-key-32-bytes-long!!!")
+	message := []byte("benchmark message")
+
+	blsMAC := hmac.New(sha256.New, blsKey)
+	blsMAC.Write(message)
+	pqMAC := hmac.New(sha256.New, pqKey)
+	pqMAC.Write(message)
+
 	cert := &CertBundle{
-		BLSAgg: make([]byte, 96),
-		PQCert: make([]byte, 3072),
+		BLSAgg:  blsMAC.Sum(nil),
+		PQCert:  pqMAC.Sum(nil),
+		Message: message,
 	}
-	quorum := []string{"n1", "n2", "n3", "n4", "n5"}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = cert.Verify(quorum)
+		_ = cert.VerifyWithKeys(blsKey, pqKey)
 	}
 }
 
