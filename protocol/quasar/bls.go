@@ -41,13 +41,11 @@ type CertBundle struct {
 	Message []byte // The message digest that was signed
 }
 
-// Verify performs structural checks only (non-empty fields).
-//
-// Deprecated: Use VerifyWithKeys for cryptographic HMAC verification.
+// Verify is removed. Use VerifyWithKeys for cryptographic HMAC verification.
 // For full threshold BLS + Ringtail verification, see quasar.go
 // signer.VerifyAggregatedSignature and epoch.go VerifySignatureForEpoch.
 func (c *CertBundle) Verify(_ []string) bool {
-	return c != nil && len(c.BLSAgg) > 0 && len(c.PQCert) > 0
+	panic("CertBundle.Verify is removed: use VerifyWithKeys for cryptographic verification")
 }
 
 // VerifyWithKeys verifies both HMAC-SHA256 certificates against the provided keys.
