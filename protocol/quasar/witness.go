@@ -127,7 +127,10 @@ func (v *VerkleWitness) CreateWitness(
 	height uint64,
 ) (*WitnessProof, error) {
 	// Create Verkle commitment
-	commitment := createVerkleCommitment(stateRoot)
+	commitment, err := createVerkleCommitment(stateRoot)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create opening proof (IPA)
 	openingProof := createIPAProof(commitment, stateRoot)
@@ -207,14 +210,16 @@ func compressToBitfield(signers []bool) []byte {
 	return bitfield
 }
 
-func createVerkleCommitment(stateRoot []byte) *banderwagon.Element {
+func createVerkleCommitment(stateRoot []byte) (*banderwagon.Element, error) {
 	if len(stateRoot) < 32 {
-		return nil
+		return nil, errors.New("stateRoot too short for commitment (need >= 32 bytes)")
 	}
 	// Create commitment from state root
 	var point banderwagon.Element
-	_ = point.SetBytes(stateRoot[:32]) // Safe to ignore: input is valid
-	return &point
+	if err := point.SetBytes(stateRoot[:32]); err != nil {
+		return nil, errors.New("invalid stateRoot: not a valid banderwagon point")
+	}
+	return &point, nil
 }
 
 func createIPAProof(commitment *banderwagon.Element, data []byte) []byte {
@@ -237,7 +242,11 @@ func verifyIPAOpening(commitment *banderwagon.Element, path []byte, proof []byte
 }
 
 func compressPath(stateRoot []byte) []byte {
-	// Compress the tree path
+	if len(stateRoot) < 16 {
+		out := make([]byte, 16)
+		copy(out, stateRoot)
+		return out
+	}
 	compressed := make([]byte, 16)
 	copy(compressed, stateRoot[:16])
 	return compressed
@@ -283,6 +292,11 @@ func (v *VerkleWitness) verifyBLSAggregate(aggSig []byte, validatorSet []byte) e
 	// Signature length check (BLS G1 compressed = 48 bytes, G2 = 96 bytes)
 	if len(aggSig) < 48 {
 		return errors.New("invalid BLS signature length")
+	}
+	// Deserialize the signature to validate it is a valid curve point.
+	// This prevents accepting arbitrary bytes as a "valid" signature.
+	if _, err := bls.SignatureFromBytes(aggSig); err != nil {
+		return errors.New("BLS signature deserialization failed: not a valid curve point")
 	}
 	return nil
 }
@@ -346,8 +360,11 @@ func (c *CompressedWitness) Size() int {
 	return len(c.CommitmentAndProof) + 8 + 4 // ~44 bytes
 }
 
-// VerifyCompressed verifies a compressed witness (ultra-fast)
-func (v *VerkleWitness) VerifyCompressed(cw *CompressedWitness) error {
+// validateCompressedStructure checks structural validity of a compressed witness.
+// This is NOT cryptographic verification -- it only checks that the validator
+// threshold is met in the bitfield. Callers must not treat a nil return as
+// proof of authenticity.
+func (v *VerkleWitness) validateCompressedStructure(cw *CompressedWitness) error {
 	// Extract validator count from bitfield
 	validatorCount := 0
 	for i := uint32(0); i < 32; i++ {
