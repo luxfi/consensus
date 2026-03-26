@@ -1,0 +1,173 @@
+---
+title: Ray Protocol
+description: Linear chain consensus driver with sequential finality
+---
+
+# Ray Protocol
+
+Ray finalizes linear chains through single-threaded consensus. After Focus accumulates beta consecutive successes, Ray provides the final accept/reject decision for the linear case. It is a single beam of light that marks a definitive state transition -- bright, decisive, observable.
+
+## Overview
+
+Ray is the linear consensus driver. It pulls pending items from a Source, runs Wave voting on each, and commits decided items to a Sink in strict order. No reordering. No gaps.
+
+The composition: **Ray -> Wave -> Prism** (sampling).
+
+Ray is used by Nova (linear blockchain mode) as the underlying decision engine.
+
+## Core Algorithm
+
+```go
+// Ray drives linear consensus over pending items.
+// Located at: protocol/ray/ray.go
+
+type Driver[T ID] struct {
+    wv            wave.Wave[T]
+    cut           prism.Cut[T]
+    tx            Transport[T]
+    src           Source[T]
+    out           Sink[T]
+    cfg           Config
+    height        uint64
+    preference    T
+    hasPreference bool
+}
+
+// Tick drives one sampling round across up to MaxBatch pending items.
+// Items that reach beta are emitted to Sink in input order.
+func (d *Driver[T]) Tick(ctx context.Context) error {
+    items := d.src.NextPending(ctx, d.cfg.MaxBatch)
+    if len(items) == 0 {
+        return nil
+    }
+
+    var decided []T
+    for _, it := range items {
+        d.wv.Tick(ctx, it)
+        if st, ok := d.wv.State(it); ok && st.Decided {
+            if st.Result == types.DecideAccept {
+                decided = append(decided, it)
+            }
+        }
+    }
+    if len(decided) > 0 {
+        d.preference = decided[0]
+        d.hasPreference = true
+        d.height++
+        return d.out.Decide(ctx, decided, types.DecideAccept)
+    }
+    return nil
+}
+```
+
+## Interfaces
+
+Ray defines three interfaces that connect it to the rest of the system:
+
+```go
+// Source provides pending items in order
+type Source[T ID] interface {
+    NextPending(ctx context.Context, n int) []T
+}
+
+// Sink receives final decisions
+type Sink[T ID] interface {
+    Decide(ctx context.Context, items []T, d types.Decision) error
+}
+
+// Transport bridges network vote requests
+type Transport[T ID] interface {
+    RequestVotes(ctx context.Context, peers []types.NodeID, item T) <-chan wave.Photon[T]
+    MakeLocalPhoton(item T, prefer bool) wave.Photon[T]
+}
+```
+
+## Configuration
+
+```go
+type Config struct {
+    PollSize int           // Sample size (k)
+    Alpha    float64       // Threshold ratio
+    Beta     uint32        // Confidence threshold
+    RoundTO  time.Duration // Round timeout
+    MaxBatch int           // Maximum items per tick
+}
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| PollSize | 20 | Number of peers to sample per round |
+| Alpha | 0.8 | Threshold ratio for vote counting |
+| Beta | 15 | Consecutive rounds for finality |
+| RoundTO | 250ms | Round timeout duration |
+| MaxBatch | 64 | Maximum items processed per tick |
+
+## Key Invariants
+
+### Total Order
+
+Decided items form a prefix of the source order. If item at index `i` is decided, all items at index `< i` are also decided.
+
+### Monotonic Progress
+
+The decided set only grows. Height increments monotonically with each decision.
+
+### No Gaps
+
+Decisions are sequential. Ray processes items from Source in order and does not skip ahead.
+
+## Formal Verification
+
+Ray's ordering and monotonicity properties are machine-checked in Lean 4. See [`lean/Protocol/Ray.lean`](https://github.com/luxfi/formal/blob/main/lean/Protocol/Ray.lean).
+
+| Theorem | Statement |
+|---------|-----------|
+| `decided_is_prefix` | Decided items form a prefix of source order |
+| `no_gaps` | If item i is decided, item i-1 is decided |
+| `decided_monotone` | Decided count never decreases |
+
+**Author of formal proofs**: Woo Bin, Lux Network.
+
+## Integration with Nova
+
+Nova wraps Ray to provide blockchain-specific semantics:
+
+```go
+// Nova delegates all consensus to Ray
+type Nova[T comparable] struct {
+    rayEngine *ray.Driver[T]
+    config    Config
+}
+
+func (n *Nova[T]) Tick(ctx context.Context) error {
+    return n.rayEngine.Tick(ctx)
+}
+
+func (n *Nova[T]) IsFinalized(block T) bool {
+    return n.rayEngine.IsFinalized(block)
+}
+```
+
+## Related Protocols
+
+- [Wave](/docs/wave) -- Threshold voting primitive used by Ray
+- [Nova](/docs/nova) -- Linear blockchain mode built on Ray
+- [Prism](/docs/prism) -- Peer sampling used by Wave within Ray
+- [Field](/docs/field) -- DAG counterpart to Ray
+
+## References
+
+- Paper: [Lux Consensus](https://github.com/luxfi/papers) -- Linear finality model
+- Paper: [Lux FPC Consensus](https://github.com/luxfi/papers) -- FPC integration with Ray
+- Implementation: `protocol/ray/ray.go`
+- Formal proof: [`lean/Protocol/Ray.lean`](https://github.com/luxfi/formal/blob/main/lean/Protocol/Ray.lean)
+
+## Testing
+
+```bash
+# Run Ray tests
+go test ./protocol/ray/...
+
+# Test linear chain finality
+go test -run=TestRay ./protocol/ray/
+```

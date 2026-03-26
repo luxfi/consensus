@@ -136,10 +136,41 @@ Quasar is built on two core components that provide both classical and quantum f
 
 Attack window is limited to PQ round time (50ms on mainnet).
 
+## Protocols
+
+All 12 Lux consensus protocols use light metaphors:
+
+### Core Protocols
+- [Wave](/docs/wave) — Classical threshold voting consensus
+- [Flare](/docs/flare) — Rapid finalization with certificate/skip mechanism
+- [Ray](/docs/ray) — Directed acyclic consensus with ray-casting
+- [Field](/docs/field) — Field-theoretic vertex ordering engine
+
+### Quantum & Security
+- [Quasar](/docs/quasar) — Post-quantum finality (BLS + Ringtail hybrid)
+- [Photon](/docs/photon) — K-of-N committee selection via light emission
+
+### DAG & Parallel
+- [Nova](/docs/nova) — Parallel chain support
+- [Nebula](/docs/nebula) — DAG consensus using Field engine
+- [Prism](/docs/prism) — Light-path refraction for conflict resolution
+
+### Infrastructure
+- [Horizon](/docs/horizon) — DAG view and vertex relationship layer
+- [Focus](/docs/focus) — Confidence tracking and convergence
+- [Chain](/docs/chain) — Linear chain consensus for P-Chain/C-Chain
+
+## Formal Verification
+
+All protocols are formally verified using Lean 4 with Mathlib:
+- **33 Lean 4 theorems** proved across all 12 protocols
+- **68 Halmos symbolic proofs** for Solidity smart contracts
+- [Full Formal Verification Details](/docs/formal-verification)
+
+*Formal verification conducted by Woo Bin, Lux Network.*
+
 ## Next Steps
 
-- [Quasar Protocol](/docs/quasar) - Deep dive into quantum finality
-- [Wave Consensus](/docs/wave) - Classical consensus mechanism
-- [Photon Selection](/docs/photon) - Committee selection algorithm
+- [Formal Verification](/docs/formal-verification) - Machine-checked proofs
 - [Configuration](/docs/configuration) - Parameter tuning guide
 - [API Reference](/docs/api) - Complete API documentation
