@@ -1,0 +1,162 @@
+---
+title: Flare Protocol
+description: DAG certificate generation and commit/skip classification
+---
+
+# Flare Protocol
+
+Flare finalizes DAG vertices via a cascading accept protocol. Once Prism and Horizon narrow the candidate set, Flare walks the dependency graph and accepts vertices in causal order. It is the controlled detonation that commits prepared transactions -- deliberate, irreversible, definitive.
+
+## Overview
+
+Flare is the commit rule for DAG consensus. For a proposer vertex at round `r`, Flare classifies the vertex into exactly one of three states based on votes from round `r+1`:
+
+- **Certificate (Commit)**: At least `2f+1` vertices at round `r+1` support the proposer
+- **Skip**: At least `2f+1` vertices at round `r+1` do NOT support the proposer
+- **Undecided**: Neither condition is met yet
+
+This classification is mutually exclusive -- certificate and skip cannot both hold simultaneously.
+
+## Core Algorithm
+
+```go
+// Flare classifies proposer vertices based on round r+1 support.
+// Located at: protocol/flare/flare.go
+
+type Flare struct{ p dag.Params }
+
+func NewFlare(p dag.Params) *Flare { return &Flare{p: p} }
+
+func (f *Flare) Classify(v dag.View, proposer dag.Meta) Decision {
+    switch {
+    case HasCertificate(v, proposer, f.p):
+        return DecideCommit
+    case HasSkip(v, proposer, f.p):
+        return DecideSkip
+    default:
+        return DecideUndecided
+    }
+}
+```
+
+### Certificate Detection
+
+A certificate exists when at least `2f+1` vertices in the next round include the proposer in their parent set:
+
+```go
+func HasCertificate(v dag.View, proposer dag.Meta, p dag.Params) bool {
+    r1 := proposer.Round() + 1
+    next := v.ByRound(r1)
+    support := 0
+    for _, m := range next {
+        if v.Supports(m.ID(), proposer.Author(), proposer.Round()) {
+            support++
+            if support >= 2*p.F+1 {
+                return true
+            }
+        }
+    }
+    return false
+}
+```
+
+### Skip Detection
+
+A skip certificate exists when at least `2f+1` vertices in the next round do NOT include the proposer:
+
+```go
+func HasSkip(v dag.View, proposer dag.Meta, p dag.Params) bool {
+    r1 := proposer.Round() + 1
+    next := v.ByRound(r1)
+    nos := 0
+    for _, m := range next {
+        if !v.Supports(m.ID(), proposer.Author(), proposer.Round()) {
+            nos++
+            if nos >= 2*p.F+1 {
+                return true
+            }
+        }
+    }
+    return false
+}
+```
+
+## Parameters
+
+| Parameter | Description | Derivation |
+|-----------|-------------|------------|
+| N | Total validators | Network configuration |
+| F | Maximum Byzantine faults | F < N/3 |
+| Certificate threshold | 2F+1 | Quorum intersection guarantee |
+| Skip threshold | 2F+1 | Same quorum requirement |
+
+## Safety Properties
+
+### Mutual Exclusivity
+
+Certificate and skip cannot both hold for the same proposer. If `support >= 2f+1` and `noSupport >= 2f+1`, then `total >= 4f+2`. But `total <= n < 3f+1 < 4f+2`, a contradiction.
+
+### Honest Support Guarantee
+
+If a certificate exists (support >= 2f+1) and at most `f` supporters are Byzantine, then at least `f+1` honest nodes support the proposer. This ensures that certificates reflect genuine network consensus.
+
+### Classification Totality
+
+For any proposer vertex, `Classify` returns exactly one of `{Commit, Skip, Undecided}`. The three cases are exhaustive and mutually exclusive.
+
+## Formal Verification
+
+All Flare properties are machine-checked in Lean 4. See [`lean/Protocol/Flare.lean`](https://github.com/luxfi/formal/blob/main/lean/Protocol/Flare.lean).
+
+| Theorem | Statement |
+|---------|-----------|
+| `cert_skip_exclusive` | Certificate and skip cannot both hold when total <= n |
+| `cert_honest_support` | A certificate implies >= f+1 honest supporters |
+| `classify_total` | Classification returns exactly one of three outcomes |
+
+**Author of formal proofs**: Woo Bin, Lux Network.
+
+## Integration with Field
+
+Flare provides the commit/skip classification that Field uses to determine which vertices to finalize:
+
+```go
+// Field calls Flare to classify frontier vertices
+func (d *Driver[V]) Tick(ctx context.Context) error {
+    frontier := d.str.Head()
+    for _, v := range frontier {
+        d.wv.Tick(ctx, v)  // Wave voting
+    }
+    // Compute safe prefix using Flare cert/skip results
+    ordered := d.computeSafePrefix(frontier)
+    if len(ordered) > 0 {
+        return d.com.Commit(ctx, ordered)
+    }
+    return nil
+}
+```
+
+## Related Protocols
+
+- [Wave](/docs/wave) -- Provides the threshold voting that feeds into Flare
+- [Field](/docs/field) -- Uses Flare classifications to drive DAG finality
+- [Horizon](/docs/horizon) -- Provides DAG order-theory predicates alongside Flare
+
+## References
+
+- Paper: [Lux Consensus](https://github.com/luxfi/papers) -- Section on DAG commit rules
+- Implementation: `protocol/flare/flare.go`, `core/dag/flare.go`
+- Formal proof: [`lean/Protocol/Flare.lean`](https://github.com/luxfi/formal/blob/main/lean/Protocol/Flare.lean)
+
+## Testing
+
+```bash
+# Run Flare tests
+go test ./protocol/flare/...
+
+# Run core DAG Flare tests
+go test ./core/dag/...
+
+# Test certificate and skip detection
+go test -run=TestFlareClassify ./protocol/flare/
+```
