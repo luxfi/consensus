@@ -1,0 +1,201 @@
+---
+title: Field Protocol
+description: DAG consensus driver with distributed state reduction
+---
+
+# Field Protocol
+
+Field orchestrates DAG finality via distributed state reduction. It represents a superposition of rays (transaction paths) that aggregate multiple stellar processes (flare events) into a coherent finality layer. Where Ray handles linear finality, Field coordinates the multi-dimensional case: parallel transactions, causal dependencies, and DAG vertex acceptance across the network.
+
+## Overview
+
+Field is the DAG-mode counterpart to Ray. It uses Wave for voting and Flare for commit/skip classification. The central property: committed vertices form a **consistent cut** of the DAG -- if vertex `v` is committed and `u` is an ancestor of `v`, then `u` is also committed.
+
+The composition: **Field -> Wave -> Prism** (sampling) + **Flare** (cert/skip).
+
+Field is used by Nebula (DAG blockchain mode) as the underlying decision engine.
+
+## Core Algorithm
+
+```go
+// Field drives DAG consensus by voting on frontier vertices
+// and computing safe prefixes for commitment.
+// Located at: protocol/field/field.go
+
+type Driver[V VID] struct {
+    cfg       Config
+    wv        wave.Wave[V]
+    cut       prism.Cut[V]
+    str       Store[V]
+    prop      Proposer[V]
+    com       Committer[V]
+    committed []V
+}
+
+// Tick runs one poll round over DAG heads, looks for cert/skip,
+// and commits the safe prefix.
+func (d *Driver[V]) Tick(ctx context.Context) error {
+    frontier := d.str.Head()
+    if len(frontier) == 0 {
+        return nil
+    }
+
+    // Drive thresholding on frontier candidates
+    for _, v := range frontier {
+        d.wv.Tick(ctx, v)
+    }
+
+    // Compute safe prefix: vertices that are finalized
+    // with all ancestors also finalized
+    ordered := d.computeSafePrefix(frontier)
+    if len(ordered) > 0 {
+        if err := d.com.Commit(ctx, ordered); err != nil {
+            return err
+        }
+        d.committed = append(d.committed, ordered...)
+    }
+    return nil
+}
+```
+
+### Safe Prefix Computation
+
+The safe prefix ensures we only commit vertices whose entire causal history is decided:
+
+```go
+func (d *Driver[V]) computeSafePrefix(frontier []V) []V {
+    var safe []V
+    for _, v := range frontier {
+        if d.isFullyFinalized(v) {
+            safe = append(safe, v)
+        }
+    }
+    return safe
+}
+
+func (d *Driver[V]) isFullyFinalized(v V) bool {
+    state, exists := d.wv.State(v)
+    if !exists || !state.Decided || state.Result != types.DecideAccept {
+        return false
+    }
+    block, exists := d.str.Get(v)
+    if !exists {
+        return false
+    }
+    for _, parent := range block.Parents() {
+        if !d.isFullyFinalized(parent) {
+            return false
+        }
+    }
+    return true
+}
+```
+
+## Interfaces
+
+```go
+// Store exposes local DAG state for cert/skip scans and causal reads
+type Store[V VID] interface {
+    Head() []V
+    Get(V) (BlockView[V], bool)
+    Children(V) []V
+}
+
+// Proposer builds new vertices from frontier
+type Proposer[V VID] interface {
+    Propose(ctx context.Context, parents []V) (V, error)
+}
+
+// Committer applies an ordered prefix decided by Field
+type Committer[V VID] interface {
+    Commit(ctx context.Context, ordered []V) error
+}
+```
+
+## Configuration
+
+```go
+type Config struct {
+    PollSize int           // Sample size for voting
+    Alpha    float64       // Threshold ratio
+    Beta     uint32        // Confidence threshold
+    RoundTO  time.Duration // Round timeout
+}
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| PollSize | 20 | Peers sampled per round |
+| Alpha | 0.8 | Threshold ratio |
+| Beta | 15 | Consecutive rounds for finality |
+| RoundTO | 250ms | Round timeout |
+
+## Epoch Coordination
+
+Field includes an epoch service (`field/nebula.go`) that coordinates epoch transitions and cross-chain checkpoint bundling:
+
+```go
+type Service struct {
+    currentEpoch uint64
+    checkpoints  map[uint64]Checkpoint
+    bundleSize   int
+}
+
+type Checkpoint struct {
+    Epoch     uint64
+    Timestamp time.Time
+    Root      [32]byte   // Merkle root of finalized vertices
+    Signature []byte     // Aggregate signature from validators
+}
+```
+
+Epochs demarcate finality boundaries where all vertices within an epoch are guaranteed to be ordered before the next epoch starts.
+
+## Key Invariants
+
+### Consistent Cut
+
+The committed set is downward-closed under ancestry. If vertex `v` is committed and `u` is an ancestor of `v`, then `u` is committed. This ensures no vertex is committed without its entire causal history.
+
+### Monotonic Growth
+
+The committed set only grows. Once a vertex is committed, it stays committed.
+
+### Parallel Safety
+
+Two honest nodes agree on the committed prefix. Conflicting vertices are resolved through Wave voting before commitment.
+
+## Formal Verification
+
+Field's consistent cut and monotonicity properties are machine-checked in Lean 4. See [`lean/Protocol/Field.lean`](https://github.com/luxfi/formal/blob/main/lean/Protocol/Field.lean).
+
+| Theorem | Statement |
+|---------|-----------|
+| `committed_is_consistent_cut` | Committed set is always a consistent cut of the DAG |
+| `committed_monotone` | Committed set is monotonically growing |
+
+**Author of formal proofs**: Woo Bin, Lux Network.
+
+## Related Protocols
+
+- [Wave](/docs/wave) -- Threshold voting used by Field
+- [Flare](/docs/flare) -- Certificate/skip classification for DAG vertices
+- [Nebula](/docs/nebula) -- DAG blockchain mode built on Field
+- [Horizon](/docs/horizon) -- DAG order-theory predicates used alongside Field
+- [Ray](/docs/ray) -- Linear counterpart to Field
+
+## References
+
+- Paper: [Lux Consensus](https://github.com/luxfi/papers) -- DAG consensus model
+- Implementation: `protocol/field/field.go`, `protocol/field/nebula.go`
+- Formal proof: [`lean/Protocol/Field.lean`](https://github.com/luxfi/formal/blob/main/lean/Protocol/Field.lean)
+
+## Testing
+
+```bash
+# Run Field tests
+go test ./protocol/field/...
+
+# Test DAG consensus driver
+go test -run=TestField ./protocol/field/
+```
