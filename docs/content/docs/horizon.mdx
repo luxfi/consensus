@@ -1,0 +1,67 @@
+---
+title: Horizon Consensus
+description: DAG view and vertex relationship management for consensus protocols
+---
+
+# Horizon Consensus
+
+Horizon provides the DAG view layer that other consensus protocols use to access vertex relationships, round information, and support analysis.
+
+## Overview
+
+Horizon defines the foundational data structures and interfaces for DAG-based consensus. It provides the `View` interface that protocols like Nebula, Field, and Prism use to query the DAG structure.
+
+## Core Types
+
+```go
+type VertexID [32]byte
+
+type Meta interface {
+    ID() VertexID
+    Author() string
+    Round() uint64
+    Parents() []VertexID
+}
+
+type View interface {
+    Get(VertexID) (Meta, bool)
+    ByRound(round uint64) []Meta
+    Supports(from VertexID, author string, round uint64) bool
+}
+
+type Params struct {
+    N int  // total validators
+    F int  // max faulty validators
+}
+```
+
+## How It Works
+
+1. **Vertex Storage**: Horizon maintains the DAG of vertices with their metadata
+2. **Round Queries**: Protocols query vertices by round number for ordering
+3. **Support Analysis**: Determines if a vertex supports a particular author/round combination
+4. **Parent Traversal**: Enables walking the DAG structure through parent references
+
+## Light Metaphor
+
+"Horizon" represents the visible boundary of the DAG — the furthest point validators can see in the consensus history, analogous to the visual horizon where sky meets ground.
+
+## Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `N` | Total number of validators |
+| `F` | Maximum number of faulty validators (must satisfy N > 3F) |
+
+## Integration
+
+Horizon is the foundation layer used by:
+- **Nebula** — DAG consensus
+- **Field** — Vertex ordering
+- **Prism** — Conflict resolution
+- **All DAG-based protocols**
+
+## References
+
+- [Nebula Protocol](/docs/nebula) — DAG consensus
+- [Field Protocol](/docs/field) — Vertex ordering engine

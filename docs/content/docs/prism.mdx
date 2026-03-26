@@ -1,0 +1,72 @@
+---
+title: Prism Consensus
+description: Light-path refraction analysis for DAG conflict resolution
+---
+
+# Prism Consensus
+
+Prism provides conflict resolution in DAG-based consensus through light-path refraction analysis. It determines optimal ordering of conflicting transactions by analyzing the structure of the DAG.
+
+## Overview
+
+In a DAG-based consensus system, multiple validators may propose conflicting transactions simultaneously. Prism resolves these conflicts by computing frontiers (cuts) through the DAG and analyzing interference patterns between vertices.
+
+## Core Concepts
+
+### Frontier
+
+A frontier represents a consistent cut through the DAG partial order:
+
+```go
+type Frontier struct {
+    Height   uint64
+    Vertices []types.NodeID
+}
+```
+
+### Refraction
+
+The Refractor interface analyzes paths through the DAG:
+
+```go
+type Refractor interface {
+    // ComputeFrontier returns the current frontier
+    ComputeFrontier() Frontier
+
+    // RefractPath finds optimal path through conflicts
+    RefractPath(from, to types.NodeID) []types.NodeID
+
+    // Interference checks if two vertices conflict
+    Interference(a, b types.NodeID) bool
+}
+```
+
+## How It Works
+
+1. **Frontier Computation**: Prism computes the current frontier — the set of vertices at the "leading edge" of the DAG
+2. **Interference Detection**: When two vertices contain conflicting transactions, Prism marks them as interfering
+3. **Path Refraction**: Like light refracting through a prism, the protocol finds the optimal path through conflicting vertices based on validator support
+4. **Resolution**: The path with the strongest validator support is selected, resolving the conflict
+
+## Light Metaphor
+
+The "prism" metaphor reflects how this protocol separates conflicting transaction paths (like a prism separating light into its component wavelengths), allowing the consensus layer to select the correct path.
+
+## Formal Verification
+
+Prism's conflict resolution properties are formally verified in Lean 4:
+- **Frontier consistency** — proven in `Protocol/Prism.lean`
+- **Interference symmetry** — if A interferes with B, B interferes with A
+- See [Formal Verification](/docs/formal-verification) for full details
+
+## Integration
+
+Prism is used by:
+- **Nebula** — DAG consensus conflict resolution
+- **Field** — Vertex ordering with conflict awareness
+
+## References
+
+- [Nebula Protocol](/docs/nebula) — DAG consensus using Prism
+- [Field Protocol](/docs/field) — Vertex ordering
+- [Formal Proofs](https://github.com/luxfi/formal/blob/main/lean/Protocol/Prism.lean)
