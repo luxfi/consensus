@@ -1,0 +1,63 @@
+---
+title: Focus Consensus
+description: Confidence tracking and convergence acceleration for consensus protocols
+---
+
+# Focus Consensus
+
+Focus provides confidence tracking for consensus decisions, enabling protocols to monitor convergence progress and trigger finalization when thresholds are met.
+
+## Overview
+
+Focus implements a generic confidence counter system used by other consensus protocols. It tracks how many consecutive rounds a particular item has maintained majority support, enabling efficient finalization decisions.
+
+## Core Types
+
+```go
+type Tracker[ID comparable] struct {
+    counts map[ID]int
+}
+
+func NewTracker[ID comparable]() *Tracker[ID]
+func (t *Tracker[ID]) Incr(id ID)
+func (t *Tracker[ID]) Count(id ID) int
+func (t *Tracker[ID]) Reset(id ID)
+func (t *Tracker[ID]) Decided(id ID, beta uint32) bool
+```
+
+## How It Works
+
+1. **Increment**: Each round a validator confirms its preference, the confidence counter increments
+2. **Reset**: If the preference changes, the counter resets to zero
+3. **Decision**: When the counter reaches the beta threshold, the item is considered decided
+4. **Thread Safety**: All operations are protected by read-write locks for concurrent access
+
+## Light Metaphor
+
+"Focus" represents the process of bringing consensus into sharp clarity — like adjusting the focus on a lens until the image becomes clear. Each round of agreement sharpens the focus until the decision crystallizes.
+
+## Usage by Other Protocols
+
+Focus trackers are used by:
+- **Wave** — Tracks confidence in preferred transaction
+- **Flare** — Monitors certificate chain confidence
+- **Ray** — Confidence in DAG vertex preferences
+
+## Configuration
+
+| Parameter | Description |
+|-----------|-------------|
+| `Beta` | Confidence threshold for finalization (typically 20-30) |
+
+## Formal Verification
+
+Focus confidence properties are verified through Wave protocol proofs:
+- **Confidence monotonicity** — proven in `Protocol/Wave.lean` (confidence_monotone)
+- **Decided stability** — proven in `Protocol/Wave.lean` (decided_stable)
+- See [Formal Verification](/docs/formal-verification) for full details
+
+## References
+
+- [Wave Protocol](/docs/wave) — Primary user of Focus tracking
+- [Flare Protocol](/docs/flare) — Uses Focus for certificate confidence
+- [Formal Proofs](https://github.com/luxfi/formal/blob/main/lean/Protocol/Wave.lean)
