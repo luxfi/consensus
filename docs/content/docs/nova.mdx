@@ -1,0 +1,161 @@
+---
+title: Nova Protocol
+description: Linear blockchain consensus mode with sequential finality
+---
+
+# Nova Protocol
+
+Nova implements classic linear chain consensus where blocks extend sequentially. In the cosmic metaphor, a nova is a stellar explosion -- a singular, decisive event in linear time, representing the finality of each block in sequence.
+
+## Overview
+
+Nova wraps the Ray engine to provide blockchain-specific semantics: height tracking, preference management, and sequential finality. It is the simplest consensus mode, designed for chains that require strict ordering and single-chain semantics, such as the P-Chain for platform operations.
+
+The composition: **Nova -> Ray -> Wave -> Prism** (sampling).
+
+## Core Algorithm
+
+```go
+// Nova implements linear blockchain consensus using Ray.
+// Located at: protocol/nova/nova.go
+
+type Nova[T comparable] struct {
+    rayEngine *ray.Driver[T]
+    config    Config
+}
+
+type Config struct {
+    SampleSize  int           // k parameter for sampling
+    Alpha       float64       // threshold ratio
+    Beta        uint32        // confidence threshold
+    RoundTO     time.Duration // round timeout
+    GenesisHash [32]byte      // genesis block hash
+}
+
+func NewNova[T comparable](cfg Config, cut prism.Cut[T],
+    tx wave.Transport[T], source ray.Source[T], sink ray.Sink[T]) *Nova[T] {
+    rayConfig := ray.Config{
+        PollSize: cfg.SampleSize,
+        Alpha:    cfg.Alpha,
+        Beta:     cfg.Beta,
+        RoundTO:  cfg.RoundTO,
+    }
+    return &Nova[T]{
+        rayEngine: ray.NewDriver(rayConfig, cut, tx, source, sink),
+        config:    cfg,
+    }
+}
+```
+
+## Operations
+
+```go
+// Start begins Nova consensus
+func (n *Nova[T]) Start(ctx context.Context) error
+
+// Stop ends Nova consensus
+func (n *Nova[T]) Stop(ctx context.Context) error
+
+// ProposeBlock proposes a new block for the current height
+func (n *Nova[T]) ProposeBlock(ctx context.Context, block T) error
+
+// Tick performs one consensus round for linear chain progression
+func (n *Nova[T]) Tick(ctx context.Context) error
+
+// GetPreference returns the current preferred block
+func (n *Nova[T]) GetPreference() (T, bool)
+
+// IsFinalized checks if a block is finalized
+func (n *Nova[T]) IsFinalized(block T) bool
+
+// Height returns the current blockchain height
+func (n *Nova[T]) Height() uint64
+```
+
+## Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| SampleSize | 20 | Validators sampled per round |
+| Alpha | 0.8 | Threshold ratio for voting |
+| Beta | 15 | Consecutive rounds for finality |
+| RoundTO | 250ms | Round timeout duration |
+
+## Usage
+
+```go
+cfg := nova.Config{
+    SampleSize: 20,
+    Alpha:      0.8,
+    Beta:       15,
+    RoundTO:    250 * time.Millisecond,
+}
+n := nova.NewNova(cfg, cut, transport, source, sink)
+n.Start(ctx)
+defer n.Stop(ctx)
+
+// Propose a block
+n.ProposeBlock(ctx, block)
+
+// Drive consensus
+for !n.IsFinalized(block) {
+    n.Tick(ctx)
+}
+```
+
+## Key Properties
+
+### Chain Property
+
+Decided blocks form a valid chain with correct parent links. Each block extends exactly one parent, creating a single linear sequence.
+
+### Genesis Foundation
+
+The genesis block is always the first decided block. All subsequent blocks trace their ancestry back to genesis.
+
+### Height Monotonicity
+
+Block heights are strictly increasing. Nova enforces `height(block) = height(parent) + 1`.
+
+## Formal Verification
+
+Nova's chain and height properties are machine-checked in Lean 4. See [`lean/Protocol/Nova.lean`](https://github.com/luxfi/formal/blob/main/lean/Protocol/Nova.lean).
+
+| Theorem | Statement |
+|---------|-----------|
+| `height_increases` | Block height is strictly increasing after each append |
+
+Nova delegates consensus correctness to Ray, which in turn delegates to Wave. The composition is verified end-to-end through the protocol stack.
+
+**Author of formal proofs**: Woo Bin, Lux Network.
+
+## Chain Assignment
+
+| Chain | Consensus Mode | Why Nova |
+|-------|---------------|----------|
+| P-Chain | Nova | Platform operations require strict ordering |
+| C-Chain | Nova | EVM execution requires sequential block processing |
+| Q-Chain | Nova + Quasar | Quantum finality on a linear chain |
+
+## Related Protocols
+
+- [Ray](/docs/ray) -- Underlying linear decision engine
+- [Wave](/docs/wave) -- Threshold voting primitive
+- [Nebula](/docs/nebula) -- DAG counterpart to Nova
+- [Quasar](/docs/quasar) -- Adds quantum finality to Nova blocks
+
+## References
+
+- Paper: [Lux Consensus](https://github.com/luxfi/papers) -- Linear consensus mode
+- Implementation: `protocol/nova/nova.go`
+- Formal proof: [`lean/Protocol/Nova.lean`](https://github.com/luxfi/formal/blob/main/lean/Protocol/Nova.lean)
+
+## Testing
+
+```bash
+# Run Nova tests
+go test ./protocol/nova/...
+
+# Test linear chain progression
+go test -run=TestNova ./protocol/nova/
+```

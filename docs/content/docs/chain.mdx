@@ -1,0 +1,55 @@
+---
+title: Chain Consensus
+description: Linear chain consensus for sequential block ordering
+---
+
+# Chain Consensus
+
+Chain provides traditional linear chain consensus for the Lux blockchain, used on chains requiring strict sequential ordering (P-Chain, C-Chain).
+
+## Overview
+
+While Lux's DAG-based protocols (Nebula, Field, Prism) enable parallel transaction processing, Chain consensus provides the familiar linear block ordering required for EVM compatibility and platform operations.
+
+## How It Works
+
+1. **Block Proposal**: A validator proposes the next block in the chain
+2. **Wave Sampling**: Validators use Wave consensus to vote on the proposed block
+3. **Confidence Building**: Focus trackers accumulate confidence
+4. **Flare Finalization**: Once confidence threshold is met, the block is finalized via Flare certificates
+
+## Integration with Other Protocols
+
+Chain consensus composes the light-metaphor protocols:
+
+```
+Chain Consensus
+  ├── Wave (block preference sampling)
+  ├── Focus (confidence tracking)
+  ├── Flare (finalization certificates)
+  └── Quasar (quantum finality, optional)
+```
+
+## Usage
+
+| Chain | Consensus Mode | Notes |
+|-------|---------------|-------|
+| P-Chain | Chain (Linear) | Platform operations, validator management |
+| C-Chain | Chain (BFT) | EVM smart contracts, Chain ID 96369 |
+| X-Chain | DAG (Nebula) | Asset exchange, UTXO model |
+| Q-Chain | Chain + Quasar | Quantum-resistant finality |
+
+## Formal Verification
+
+Chain consensus inherits safety guarantees from its component protocols:
+- **BFT Safety** — proven in `Consensus/BFT.lean`
+- **Wave Finalization** — proven in `Protocol/Wave.lean`
+- **Flare Certificate Validity** — proven in `Protocol/Flare.lean`
+- See [Formal Verification](/docs/formal-verification) for full details
+
+## References
+
+- [Wave Protocol](/docs/wave) — Underlying sampling
+- [Flare Protocol](/docs/flare) — Block finalization
+- [Quasar Protocol](/docs/quasar) — Quantum finality layer
+- [BFT Theorems](https://github.com/luxfi/formal/blob/main/lean/Consensus/BFT.lean)
