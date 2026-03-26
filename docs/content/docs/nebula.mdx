@@ -1,0 +1,70 @@
+---
+title: Nebula Consensus
+description: DAG-based consensus using the Field engine for parallel transaction processing
+---
+
+# Nebula Consensus
+
+Nebula implements DAG (Directed Acyclic Graph) consensus using the internal Field engine, combining Wave sampling with Prism conflict resolution for high-throughput parallel processing.
+
+## Overview
+
+Nebula builds on the Field protocol to provide a DAG-based consensus layer. It enables parallel transaction ordering by constructing a DAG of vertices, where each vertex represents a batch of transactions. Conflicts are resolved through Prism's light-path refraction analysis.
+
+## Architecture
+
+```
+Nebula (DAG consensus)
+  ├── Field Engine (vertex ordering)
+  ├── Prism (conflict resolution via refraction)
+  └── Wave (sampling for vertex preferences)
+```
+
+## Core Types
+
+```go
+type Nebula[V VID] struct {
+    fieldEngine *field.Driver[V]
+    config      Config
+}
+
+type Config struct {
+    PollSize   int           // sample size for voting
+    Alpha      float64       // threshold ratio
+    Beta       uint32        // confidence threshold
+    RoundTO    time.Duration // round timeout
+    GenesisSet []byte        // genesis vertex set
+}
+```
+
+## How It Works
+
+1. **Vertex Proposal**: Validators propose vertices containing transaction batches
+2. **DAG Construction**: Vertices reference parent vertices, forming a DAG
+3. **Field Ordering**: The Field engine determines causal ordering of vertices
+4. **Conflict Detection**: Prism identifies conflicting transactions across vertices
+5. **Wave Sampling**: Validators sample peers to converge on preferred ordering
+6. **Finalization**: Once confidence thresholds are met, vertex ordering is finalized
+
+## Formal Verification
+
+Nebula's core properties are formally verified in Lean 4:
+- **Vertex ordering consistency** — proven in `Protocol/Nebula.lean`
+- **DAG acyclicity preservation** — inherited from Field proofs
+- See [Formal Verification](/docs/formal-verification) for full details
+
+## Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `PollSize` | 20 | Number of peers sampled per round |
+| `Alpha` | 0.8 | Threshold ratio for preference update |
+| `Beta` | 20 | Confidence threshold for finalization |
+| `RoundTO` | 250ms | Round timeout |
+
+## References
+
+- [Field Protocol](/docs/field) — Underlying vertex ordering engine
+- [Prism Protocol](/docs/prism) — Conflict resolution
+- [Wave Protocol](/docs/wave) — Sampling mechanism
+- [Formal Proofs](https://github.com/luxfi/formal/blob/main/lean/Protocol/Nebula.lean)
