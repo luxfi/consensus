@@ -18,8 +18,9 @@ typedef struct block_node {
     size_t children_capacity;
     
     // Consensus state
-    uint32_t preference_count;
-    uint32_t confidence_count;
+    // [C-010] Use uint64_t to prevent overflow at 2^32 votes
+    uint64_t preference_count;
+    uint64_t confidence_count;
     bool is_accepted;
     bool is_rejected;
     bool is_processing;
@@ -287,8 +288,26 @@ lux_error_t lux_consensus_add_block(
     
     // Add to parent's children
     if (node->parent->children_count >= node->parent->children_capacity) {
-        size_t new_capacity = node->parent->children_capacity ? 
-                             node->parent->children_capacity * 2 : 4;
+        size_t new_capacity;
+        if (node->parent->children_capacity == 0) {
+            new_capacity = 4;
+        } else {
+            // [C-009] Check for overflow before doubling capacity
+            if (node->parent->children_capacity > SIZE_MAX / 2) {
+                free(node->block.data);
+                free(node);
+                pthread_mutex_unlock(&engine->mutex);
+                return LUX_ERROR_OUT_OF_MEMORY;
+            }
+            new_capacity = node->parent->children_capacity * 2;
+        }
+        // [C-009] Also check that the total allocation size won't overflow
+        if (new_capacity > SIZE_MAX / sizeof(block_node_t*)) {
+            free(node->block.data);
+            free(node);
+            pthread_mutex_unlock(&engine->mutex);
+            return LUX_ERROR_OUT_OF_MEMORY;
+        }
         block_node_t** new_children = (block_node_t**)realloc(
             node->parent->children,
             new_capacity * sizeof(block_node_t*)
@@ -351,17 +370,28 @@ lux_error_t lux_consensus_process_vote(
         engine->vote_cache = cached_vote;
         engine->vote_cache_size++;
         
-        // Limit cache size
+        // [C-007] Evict 10% of cache when over limit to prevent DoS via unbounded growth.
+        // Previous code evicted only 1 entry (O(n) traversal per vote, negligible eviction).
         if (engine->vote_cache_size > 10000) {
-            vote_cache_t* old = engine->vote_cache;
-            while (old->next && old->next->next) {
-                old = old->next;
+            size_t evict_count = engine->vote_cache_size / 10; // 10%
+            if (evict_count == 0) evict_count = 1;
+
+            // Walk to the node just before the eviction tail
+            vote_cache_t* cursor = engine->vote_cache;
+            size_t keep_count = engine->vote_cache_size - evict_count;
+            for (size_t i = 1; i < keep_count && cursor->next; i++) {
+                cursor = cursor->next;
             }
-            if (old->next) {
-                free(old->next);
-                old->next = NULL;
-                engine->vote_cache_size--;
+
+            // Free the tail (oldest entries)
+            vote_cache_t* tail = cursor->next;
+            cursor->next = NULL;
+            while (tail) {
+                vote_cache_t* next = tail->next;
+                free(tail);
+                tail = next;
             }
+            engine->vote_cache_size = keep_count;
         }
     }
     
@@ -419,6 +449,9 @@ lux_error_t lux_consensus_get_preference(
 }
 
 // Polling
+// [C-006] Maximum number of validators to prevent resource exhaustion
+#define LUX_MAX_VALIDATORS 10000
+
 lux_error_t lux_consensus_poll(
     lux_chain_t* engine,
     uint32_t num_validators,
@@ -427,7 +460,12 @@ lux_error_t lux_consensus_poll(
     if (!engine || !validator_ids) {
         return LUX_ERROR_INVALID_PARAMS;
     }
-    
+
+    // [C-006] Bounds check on validator count to prevent DoS via excessive allocation
+    if (num_validators == 0 || num_validators > LUX_MAX_VALIDATORS) {
+        return LUX_ERROR_INVALID_PARAMS;
+    }
+
     pthread_mutex_lock(&engine->mutex);
     
     // Simulate polling validators (in real implementation, would do network calls)
