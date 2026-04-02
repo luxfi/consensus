@@ -695,6 +695,31 @@ func (t *Transitive) handleVote(vote Vote) {
 		// Trigger poll to check for rejection quorum
 		_ = t.consensus.Poll(ctx, map[ids.ID]int{vote.BlockID: voteCount})
 	}
+
+	// Finalize: if consensus accepted this block, call VM.Accept() and update state.
+	t.tryFinalizeBlock(ctx, vote.BlockID)
+}
+
+// tryFinalizeBlock checks if consensus has accepted a block and calls VM.Accept().
+func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
+	if !t.consensus.IsAccepted(blockID) {
+		return
+	}
+
+	t.mu.Lock()
+	pending, exists := t.pendingBlocks[blockID]
+	if !exists || pending.Decided {
+		t.mu.Unlock()
+		return
+	}
+	pending.Decided = true
+	t.blocksAccepted++
+	delete(t.pendingBlocks, blockID)
+	t.mu.Unlock()
+
+	if pending.VMBlock != nil {
+		_ = pending.VMBlock.Accept(ctx)
+	}
 }
 
 func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
@@ -732,6 +757,11 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			_ = t.consensus.ProcessVote(ctx, vmBlock.ID(), true)
 			_ = t.consensus.Poll(ctx, map[ids.ID]int{vmBlock.ID(): 1})
 		}
+
+		// In single-node mode (K=1), the self-vote above is sufficient.
+		// Try to finalize immediately without waiting for network votes.
+		t.tryFinalizeBlock(ctx, vmBlock.ID())
+
 		t.mu.Lock()
 
 		if addErr != nil {
