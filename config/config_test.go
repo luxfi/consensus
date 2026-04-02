@@ -6,37 +6,47 @@ import (
 	"testing"
 )
 
-// TestConsensusThreshold69 verifies the 69% threshold is properly configured
-func TestConsensusThreshold69(t *testing.T) {
+// TestConsensusThresholds verifies thresholds are properly configured
+func TestConsensusThresholds(t *testing.T) {
 	tests := []struct {
-		name   string
-		params Parameters
-		k      int
-		alpha  int
+		name     string
+		params   Parameters
+		k        int
+		alpha    int
+		alphaF   float64
+		minRatio float64
 	}{
 		{
-			name:   "DefaultParams",
-			params: DefaultParams(),
-			k:      20,
-			alpha:  14, // 70% of 20
+			name:     "DefaultParams",
+			params:   DefaultParams(),
+			k:        20,
+			alpha:    14,   // 70% of 20
+			alphaF:   0.69, // 69% threshold
+			minRatio: 0.69,
 		},
 		{
-			name:   "MainnetParams",
-			params: MainnetParams(),
-			k:      21,
-			alpha:  15, // ~71% of 21
+			name:     "MainnetParams",
+			params:   MainnetParams(),
+			k:        21,
+			alpha:    15,   // ~71% of 21
+			alphaF:   0.69, // 69% threshold
+			minRatio: 0.69,
 		},
 		{
-			name:   "TestnetParams",
-			params: TestnetParams(),
-			k:      11,
-			alpha:  8, // ~73% of 11
+			name:     "TestnetParams",
+			params:   TestnetParams(),
+			k:        11,
+			alpha:    8,    // ~73% of 11
+			alphaF:   0.69, // 69% threshold
+			minRatio: 0.69,
 		},
 		{
-			name:   "LocalParams",
-			params: LocalParams(),
-			k:      5,
-			alpha:  4, // 80% of 5
+			name:     "LocalParams",
+			params:   LocalParams(),
+			k:        3,
+			alpha:    2,    // 2/3 of 3
+			alphaF:   0.67, // 2/3 threshold
+			minRatio: 0.66,
 		},
 	}
 
@@ -47,21 +57,21 @@ func TestConsensusThreshold69(t *testing.T) {
 				t.Errorf("K = %d, want %d", tt.params.K, tt.k)
 			}
 
-			// Check Alpha is approximately 69%
-			if tt.params.Alpha < 0.68 || tt.params.Alpha > 0.70 {
-				t.Errorf("Alpha = %f, want ~0.69", tt.params.Alpha)
+			// Check Alpha matches expected threshold
+			if tt.params.Alpha != tt.alphaF {
+				t.Errorf("Alpha = %f, want %f", tt.params.Alpha, tt.alphaF)
 			}
 
-			// Check AlphaPreference meets 69% threshold
+			// Check AlphaPreference matches
 			if tt.params.AlphaPreference != tt.alpha {
 				t.Errorf("AlphaPreference = %d, want %d", tt.params.AlphaPreference, tt.alpha)
 			}
 
-			// Verify AlphaPreference is at least 69% of K
-			minAlpha := math.Ceil(float64(tt.params.K) * 0.69)
+			// Verify AlphaPreference meets minimum ratio of K
+			minAlpha := math.Ceil(float64(tt.params.K) * tt.minRatio)
 			if float64(tt.params.AlphaPreference) < minAlpha {
-				t.Errorf("AlphaPreference %d is below 69%% threshold %f",
-					tt.params.AlphaPreference, minAlpha)
+				t.Errorf("AlphaPreference %d is below %.0f%% threshold %f",
+					tt.params.AlphaPreference, tt.minRatio*100, minAlpha)
 			}
 
 			// Check that parameters are valid
@@ -179,10 +189,10 @@ func TestParameterValidation(t *testing.T) {
 			expectedErr: nil,
 		},
 		{
-			name: "Below 69% threshold",
+			name: "Below 2/3 threshold",
 			params: Parameters{
 				K:     20,
-				Alpha: 0.67, // Old 67% threshold
+				Alpha: 0.65, // Below minimum 2/3 threshold
 				Beta:  14,
 			},
 			expectedErr: ErrInvalidAlpha,

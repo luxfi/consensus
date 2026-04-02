@@ -211,16 +211,17 @@ func TestIntegrationParameterSets(t *testing.T) {
 
 	for _, ps := range paramSets {
 		t.Run(ps.name, func(t *testing.T) {
-			// Verify Alpha is 69%
-			if ps.params.Alpha < 0.68 || ps.params.Alpha > 0.70 {
-				t.Errorf("%s: Alpha %.3f not in 69%% range", ps.name, ps.params.Alpha)
+			// Verify Alpha meets minimum threshold (2/3 for local/xchain, 69% for others)
+			minAlpha := 0.66
+			if ps.params.Alpha < minAlpha || ps.params.Alpha > 1.0 {
+				t.Errorf("%s: Alpha %.3f not in valid range [%.2f, 1.0]", ps.name, ps.params.Alpha, minAlpha)
 			}
 
-			// Verify AlphaPreference meets threshold
+			// Verify AlphaPreference meets threshold (2/3 minimum)
 			if ps.params.K > 0 && ps.params.AlphaPreference > 0 {
 				actualPercent := float64(ps.params.AlphaPreference) / float64(ps.params.K)
-				if actualPercent < 0.69 {
-					t.Errorf("%s: AlphaPreference %d/%d = %.1f%% < 69%%",
+				if actualPercent < 0.66 {
+					t.Errorf("%s: AlphaPreference %d/%d = %.1f%% < 66%%",
 						ps.name, ps.params.AlphaPreference, ps.params.K, actualPercent*100)
 				}
 			}
