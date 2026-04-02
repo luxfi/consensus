@@ -146,7 +146,20 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		}
 	}
 
-	// Wire the proposer (adapts Gossiper to BlockProposer interface)
+	// Wire the proposer (adapts Gossiper to BlockProposer interface).
+	// In single-node mode (K=1, e.g. --dev), provide a self-voter callback
+	// so the proposer can accept its own blocks without network round-trips.
+	var selfVoter func(ids.ID)
+	if params.K == 1 {
+		selfVoter = func(blockID ids.ID) {
+			engine.ReceiveVote(Vote{
+				BlockID:  blockID,
+				NodeID:   cfg.NodeID,
+				Accept:   true,
+				SignedAt: time.Now(),
+			})
+		}
+	}
 	engine.SetProposer(&gossiperProposer{
 		gossiper:   cfg.Gossiper,
 		chainID:    cfg.ChainID,
@@ -155,6 +168,7 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		validators: cfg.Validators,
 		nodeID:     cfg.NodeID,
 		k:          params.K,
+		selfVoter:  selfVoter,
 	})
 
 	// Set the VM for block building
@@ -247,6 +261,7 @@ type gossiperProposer struct {
 	validators ValidatorSampler // For k-peer sampling
 	nodeID     ids.NodeID       // This node's ID (to exclude from samples)
 	k          int              // Sample size from consensus params
+	selfVoter  func(ids.ID)     // Callback for single-node self-voting (--dev mode)
 }
 
 var _ BlockProposer = (*gossiperProposer)(nil)
@@ -254,7 +269,7 @@ var _ BlockProposer = (*gossiperProposer)(nil)
 // Propose broadcasts a block proposal to validators via the network gossiper.
 func (p *gossiperProposer) Propose(ctx context.Context, proposal BlockProposal) error {
 	if p.gossiper == nil {
-		if !p.logger.IsZero() {
+		if p.logger != nil && !p.logger.IsZero() {
 			p.logger.Warn("cannot propose block - gossiper is nil",
 				log.Stringer("blockID", proposal.BlockID))
 		}
@@ -262,7 +277,7 @@ func (p *gossiperProposer) Propose(ctx context.Context, proposal BlockProposal) 
 	}
 
 	sentTo := p.gossiper.GossipPut(p.chainID, p.networkID, proposal.BlockData)
-	if !p.logger.IsZero() {
+	if p.logger != nil && !p.logger.IsZero() {
 		p.logger.Info("proposed block to validators",
 			log.Stringer("blockID", proposal.BlockID),
 			log.Uint64("height", proposal.Height),
@@ -274,9 +289,13 @@ func (p *gossiperProposer) Propose(ctx context.Context, proposal BlockProposal) 
 // RequestVotes asks specific validators to vote on a block.
 // If req.Validators is nil and we have a ValidatorSampler, sample k validators.
 // This implements the core Snowball/Avalanche k-sampling behavior.
+//
+// Single-node mode (K=1, only validator is self): the proposer delivers a
+// self-vote via the SelfVoter callback instead of polling the network.
+// This is the standard path for --dev mode (local single-validator networks).
 func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) error {
 	if p.gossiper == nil {
-		if !p.logger.IsZero() {
+		if p.logger != nil && !p.logger.IsZero() {
 			p.logger.Warn("cannot request votes - gossiper is nil",
 				log.Stringer("blockID", req.BlockID))
 		}
@@ -289,7 +308,7 @@ func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) er
 		// Sample k validators from the validator set (excluding self)
 		sampled, err := p.validators.Sample(p.networkID, p.k)
 		if err != nil {
-			if !p.logger.IsZero() {
+			if p.logger != nil && !p.logger.IsZero() {
 				p.logger.Warn("failed to sample validators, falling back to broadcast",
 					log.Stringer("blockID", req.BlockID),
 					log.Int("k", p.k),
@@ -306,7 +325,18 @@ func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) er
 			}
 			validators = filtered
 
-			if !p.logger.IsZero() {
+			// Single-node mode: all sampled validators were self.
+			// Deliver a self-vote directly — no network round-trip needed.
+			if len(filtered) == 0 && p.k == 1 && p.selfVoter != nil {
+				if p.logger != nil && !p.logger.IsZero() {
+					p.logger.Info("single-node mode: self-voting for proposed block",
+						log.Stringer("blockID", req.BlockID))
+				}
+				p.selfVoter(req.BlockID)
+				return nil
+			}
+
+			if p.logger != nil && !p.logger.IsZero() {
 				p.logger.Debug("sampled k validators for poll",
 					log.Stringer("blockID", req.BlockID),
 					log.Int("k", p.k),
@@ -325,7 +355,7 @@ func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) er
 		// Fallback to PullQuery (blockID only) if no block data available.
 		sentTo = p.gossiper.SendPullQuery(p.chainID, p.networkID, req.BlockID, validators)
 	}
-	if !p.logger.IsZero() {
+	if p.logger != nil && !p.logger.IsZero() {
 		p.logger.Debug("requested votes from validators",
 			log.Stringer("blockID", req.BlockID),
 			log.Int("requested", len(validators)),
