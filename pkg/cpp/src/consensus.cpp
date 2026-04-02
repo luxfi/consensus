@@ -8,9 +8,10 @@
 namespace lux::consensus {
 
 // Block serialization
+// Fix C-001: include timestamp in serialization to match corrected deserialize
 std::vector<uint8_t> Block::serialize() const {
     std::vector<uint8_t> result;
-    result.reserve(sizeof(id) + sizeof(parent_id) + sizeof(height) + payload.size());
+    result.reserve(sizeof(id) + sizeof(parent_id) + sizeof(height) + sizeof(uint64_t) + payload.size());
 
     // Add id
     result.insert(result.end(), id.begin(), id.end());
@@ -19,8 +20,15 @@ std::vector<uint8_t> Block::serialize() const {
     result.insert(result.end(), parent_id.begin(), parent_id.end());
 
     // Add height
-    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&height);
-    result.insert(result.end(), ptr, ptr + sizeof(height));
+    const uint8_t* height_ptr = reinterpret_cast<const uint8_t*>(&height);
+    result.insert(result.end(), height_ptr, height_ptr + sizeof(height));
+
+    // Add timestamp
+    auto epoch = timestamp.time_since_epoch();
+    uint64_t timestamp_secs = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::seconds>(epoch).count());
+    const uint8_t* ts_ptr = reinterpret_cast<const uint8_t*>(&timestamp_secs);
+    result.insert(result.end(), ts_ptr, ts_ptr + sizeof(timestamp_secs));
 
     // Add payload
     result.insert(result.end(), payload.begin(), payload.end());
@@ -43,10 +51,12 @@ std::array<uint8_t, 32> Block::hash() const {
 }
 
 // Block deserialization
+// Fix C-001: buffer size check corrected per LUX-SEC-REMEDIATION-2026
+// Minimum is 32 (id) + 32 (parent_id) + 8 (height) + 8 (timestamp) = 80
 Block Block::deserialize(std::span<const uint8_t> data) {
     Block block;
 
-    if (data.size() < 72) { // minimum: 32 + 32 + 8
+    if (data.size() < 80) { // minimum: 32 + 32 + 8 + 8
         return block;
     }
 
@@ -59,9 +69,15 @@ Block Block::deserialize(std::span<const uint8_t> data) {
     // Read height
     std::memcpy(&block.height, data.data() + 64, sizeof(block.height));
 
+    // Read timestamp
+    uint64_t timestamp_secs = 0;
+    std::memcpy(&timestamp_secs, data.data() + 72, sizeof(timestamp_secs));
+    block.timestamp = std::chrono::system_clock::time_point(
+        std::chrono::seconds(timestamp_secs));
+
     // Read payload
-    if (data.size() > 72) {
-        block.payload.assign(data.begin() + 72, data.end());
+    if (data.size() > 80) {
+        block.payload.assign(data.begin() + 80, data.end());
     }
 
     return block;
