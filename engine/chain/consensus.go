@@ -156,10 +156,11 @@ func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) err
 		if block.luxConsensus != nil {
 			blockResponses := map[ids.ID]int{blockID: votes}
 			shouldContinue := block.luxConsensus.Poll(blockResponses)
+			decided := block.luxConsensus.Decided()
 
 			// Check if block reached finality through Focus convergence
 			// AND we have sufficient accept votes (quorum reached)
-			if !shouldContinue && block.luxConsensus.Decided() && block.acceptVotes >= c.alpha {
+			if !shouldContinue && decided && block.acceptVotes >= c.alpha {
 				block.accepted = true
 				c.finalizedTip = blockID
 			}
