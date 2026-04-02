@@ -9,7 +9,7 @@ import (
 var (
 	ErrParametersInvalid  = errors.New("invalid consensus parameters")
 	ErrInvalidK           = errors.New("k must be >= 1")
-	ErrInvalidAlpha       = errors.New("alpha must be between 0.5 and 1.0")
+	ErrInvalidAlpha       = errors.New("alpha must be between 0.66 and 1.0")
 	ErrInvalidBeta        = errors.New("beta must be >= 1")
 	ErrBlockTimeTooLow    = errors.New("block time must be >= 1ms")
 	ErrRoundTimeoutTooLow = errors.New("round timeout must be >= block time")
@@ -83,29 +83,29 @@ func TestnetParams() Parameters {
 	return p
 }
 
-// LocalParams returns local parameters with 69% threshold
+// LocalParams returns local parameters with 2/3 threshold for 3-node networks
 func LocalParams() Parameters {
 	p := DefaultParams()
-	p.K = 5
-	p.Alpha = 0.69        // 69% threshold
-	p.Beta = 4            // Adjusted for 69%
-	p.AlphaPreference = 4 // 80% of K for 69% threshold
-	p.AlphaConfidence = 4 // Matches AlphaPreference
-	p.BetaVirtuous = 4    // Virtuous confidence for 69%
+	p.K = 3
+	p.Alpha = 0.67        // 2/3 threshold
+	p.Beta = 2            // Adjusted for 2/3
+	p.AlphaPreference = 2 // 2 of 3 for preference
+	p.AlphaConfidence = 2 // 2 of 3 for confidence
+	p.BetaVirtuous = 2    // Virtuous confidence for 2/3
 	p.BlockTime = 10 * time.Millisecond
 	p.RoundTO = 45 * time.Millisecond
 	return p
 }
 
-// XChainParams returns X-Chain parameters with 69% threshold
+// XChainParams returns X-Chain parameters with 2/3 threshold for 3-node networks
 func XChainParams() Parameters {
 	p := DefaultParams()
-	p.K = 5
-	p.Alpha = 0.69        // 69% threshold
-	p.Beta = 4            // Adjusted for 69%
-	p.AlphaPreference = 4 // 80% of K for 69% threshold
-	p.AlphaConfidence = 4 // Matches AlphaPreference
-	p.BetaVirtuous = 4    // Virtuous confidence for 69%
+	p.K = 3
+	p.Alpha = 0.67        // 2/3 threshold
+	p.Beta = 2            // Adjusted for 2/3
+	p.AlphaPreference = 2 // 2 of 3 for preference
+	p.AlphaConfidence = 2 // 2 of 3 for confidence
+	p.BetaVirtuous = 2    // Virtuous confidence for 2/3
 	p.BlockTime = 1 * time.Millisecond
 	p.RoundTO = 5 * time.Millisecond
 	return p
@@ -155,14 +155,14 @@ func (p Parameters) Validate() error {
 	return p.Valid()
 }
 
-// Valid validates parameters with 69% threshold enforcement
+// Valid validates parameters with threshold enforcement
 func (p Parameters) Valid() error {
 	// Check K, Alpha, Beta first - these are always required
 	if p.K < 1 {
 		return ErrInvalidK
 	}
-	// Enforce 69% threshold minimum (with small tolerance for rounding)
-	if p.Alpha < 0.68 || p.Alpha > 1.0 {
+	// Enforce minimum 2/3 threshold (with small tolerance for rounding)
+	if p.Alpha < 0.66 || p.Alpha > 1.0 {
 		return ErrInvalidAlpha
 	}
 	if p.Beta < 1 {
