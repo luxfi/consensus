@@ -695,6 +695,60 @@ func (t *Transitive) handleVote(vote Vote) {
 		// Trigger poll to check for rejection quorum
 		_ = t.consensus.Poll(ctx, map[ids.ID]int{vote.BlockID: voteCount})
 	}
+
+	// Finalize: if consensus accepted this block, call VM.Accept() and update state.
+	t.tryFinalizeBlock(ctx, vote.BlockID)
+}
+
+// tryFinalizeBlock checks if consensus has accepted a block and calls VM.Accept().
+func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
+	accepted := t.consensus.IsAccepted(blockID)
+	if !accepted {
+		return
+	}
+
+	t.mu.Lock()
+	pending, exists := t.pendingBlocks[blockID]
+	if !exists || pending.Decided {
+		t.mu.Unlock()
+		return
+	}
+	pending.Decided = true
+	t.blocksAccepted++
+	delete(t.pendingBlocks, blockID)
+	t.mu.Unlock()
+
+	if pending.VMBlock != nil {
+		_ = pending.VMBlock.Accept(ctx)
+	}
+}
+
+// DrainAccepted finalizes any pending blocks that consensus has accepted.
+// Called from the ForwardVMNotifications loop after each Notify.
+func (t *Transitive) DrainAccepted(ctx context.Context) {
+	t.mu.Lock()
+	var toAccept []struct {
+		id  ids.ID
+		blk block.Block
+	}
+	for id, pending := range t.pendingBlocks {
+		if !pending.Decided && t.consensus.IsAccepted(id) {
+			pending.Decided = true
+			t.blocksAccepted++
+			toAccept = append(toAccept, struct {
+				id  ids.ID
+				blk block.Block
+			}{id, pending.VMBlock})
+			delete(t.pendingBlocks, id)
+		}
+	}
+	t.mu.Unlock()
+
+	for _, a := range toAccept {
+		if a.blk != nil {
+			_ = a.blk.Accept(ctx)
+		}
+	}
 }
 
 func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
@@ -738,12 +792,27 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			continue
 		}
 
-		t.pendingBlocks[vmBlock.ID()] = &PendingBlock{
-			ConsensusBlock: consensusBlock,
-			VMBlock:        vmBlock,
-			ProposedAt:     time.Now(),
-			VoteCount:      1,
-			Decided:        false,
+		// Check if consensus already accepted this block (K=1 single-node mode).
+		alreadyAccepted := t.consensus.IsAccepted(vmBlock.ID())
+		if alreadyAccepted {
+			// Single-node mode: block accepted synchronously via self-vote.
+			// Must Verify before Accept — VMs (PlatformVM) prepare state during Verify.
+			t.blocksAccepted++
+			t.mu.Unlock()
+			if err := vmBlock.Verify(ctx); err != nil {
+				t.mu.Lock()
+				continue
+			}
+			_ = vmBlock.Accept(ctx)
+			t.mu.Lock()
+		} else {
+			t.pendingBlocks[vmBlock.ID()] = &PendingBlock{
+				ConsensusBlock: consensusBlock,
+				VMBlock:        vmBlock,
+				ProposedAt:     time.Now(),
+				VoteCount:      1,
+				Decided:        false,
+			}
 		}
 
 		if t.proposer != nil {
