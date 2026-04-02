@@ -6,6 +6,7 @@ package chain
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/luxfi/consensus/engine"
@@ -127,6 +128,7 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept
 func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[POLL-DEBUG] Poll called: responses=%v alpha=%d\n", responses, c.alpha)
 
 	// Poll each block's Lux consensus instance using Wave → Focus protocols
 	for blockID, votes := range responses {
