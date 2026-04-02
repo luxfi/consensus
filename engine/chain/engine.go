@@ -804,6 +804,9 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 				continue
 			}
 			_ = vmBlock.Accept(ctx)
+			if t.vm != nil {
+				_ = t.vm.SetPreference(ctx, vmBlock.ID())
+			}
 			t.mu.Lock()
 		} else {
 			t.pendingBlocks[vmBlock.ID()] = &PendingBlock{
