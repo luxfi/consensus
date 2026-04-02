@@ -757,11 +757,6 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			_ = t.consensus.ProcessVote(ctx, vmBlock.ID(), true)
 			_ = t.consensus.Poll(ctx, map[ids.ID]int{vmBlock.ID(): 1})
 		}
-
-		// In single-node mode (K=1), the self-vote above is sufficient.
-		// Try to finalize immediately without waiting for network votes.
-		t.tryFinalizeBlock(ctx, vmBlock.ID())
-
 		t.mu.Lock()
 
 		if addErr != nil {
@@ -775,7 +770,13 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			VoteCount:      1,
 			Decided:        false,
 		}
+		t.mu.Unlock()
 
+		// In single-node mode (K=1), the self-vote above is sufficient.
+		// Try to finalize immediately without waiting for network votes.
+		t.tryFinalizeBlock(ctx, vmBlock.ID())
+
+		t.mu.Lock()
 		if t.proposer != nil {
 			proposal := BlockProposal{
 				BlockID:   vmBlock.ID(),
