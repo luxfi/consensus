@@ -36,15 +36,15 @@ func TestXChainParams(t *testing.T) {
 	if p.RoundTO != 5*time.Millisecond {
 		t.Errorf("X-Chain round timeout should be 5ms, got %v", p.RoundTO)
 	}
-	if p.K != 5 {
-		t.Errorf("X-Chain should have K=5 for low latency, got %d", p.K)
+	if p.K != 3 {
+		t.Errorf("X-Chain should have K=3, got %d", p.K)
 	}
-	// 69% threshold update
-	if p.Alpha != 0.69 {
-		t.Errorf("X-Chain should have Alpha=0.69 (69%% threshold), got %f", p.Alpha)
+	// 2/3 threshold
+	if p.Alpha != 0.67 {
+		t.Errorf("X-Chain should have Alpha=0.67 (2/3 threshold), got %f", p.Alpha)
 	}
-	if p.Beta != 4 {
-		t.Errorf("X-Chain should have Beta=4 (adjusted for 69%%), got %d", p.Beta)
+	if p.Beta != 2 {
+		t.Errorf("X-Chain should have Beta=2 (adjusted for 2/3), got %d", p.Beta)
 	}
 }
 
@@ -84,8 +84,8 @@ func TestTestnetParams(t *testing.T) {
 func TestLocalParams(t *testing.T) {
 	p := LocalParams()
 
-	if p.K != 5 {
-		t.Errorf("Local should have 5 validators, got %d", p.K)
+	if p.K != 3 {
+		t.Errorf("Local should have 3 validators, got %d", p.K)
 	}
 	if p.BlockTime != 10*time.Millisecond {
 		t.Errorf("Local BlockTime should be 10ms, got %v", p.BlockTime)
