@@ -6,6 +6,7 @@ package chain
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/luxfi/consensus/engine"
@@ -63,6 +64,7 @@ func NewChainConsensus(k, alpha, beta int) *ChainConsensus {
 func (c *ChainConsensus) AddBlock(ctx context.Context, block *Block) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[ADD-DEBUG] AddBlock id=%s existing=%v\n", block.id, c.blocks[block.id] != nil)
 
 	// Check if block already exists
 	if _, exists := c.blocks[block.id]; exists {
@@ -127,6 +129,7 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept
 func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[POLL-DEBUG] Poll called: responses=%v alpha=%d\n", responses, c.alpha)
 
 	// Poll each block's Lux consensus instance using Wave → Focus protocols
 	for blockID, votes := range responses {
@@ -150,18 +153,23 @@ func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) err
 		// Only consider acceptance if we have enough accept votes
 		// This prevents premature acceptance with insufficient quorum
 		if block.acceptVotes < c.alpha {
+			fmt.Fprintf(os.Stderr, "[POLL-DEBUG] block %s: acceptVotes=%d < alpha=%d, skipping\n", blockID, block.acceptVotes, c.alpha)
 			continue
 		}
 
 		if block.luxConsensus != nil {
 			blockResponses := map[ids.ID]int{blockID: votes}
 			shouldContinue := block.luxConsensus.Poll(blockResponses)
+			decided := block.luxConsensus.Decided()
+			fmt.Fprintf(os.Stderr, "[POLL-DEBUG] block %s: shouldContinue=%v decided=%v acceptVotes=%d alpha=%d\n",
+				blockID, shouldContinue, decided, block.acceptVotes, c.alpha)
 
 			// Check if block reached finality through Focus convergence
 			// AND we have sufficient accept votes (quorum reached)
-			if !shouldContinue && block.luxConsensus.Decided() && block.acceptVotes >= c.alpha {
+			if !shouldContinue && decided && block.acceptVotes >= c.alpha {
 				block.accepted = true
 				c.finalizedTip = blockID
+				fmt.Fprintf(os.Stderr, "[POLL-DEBUG] BLOCK ACCEPTED: %s\n", blockID)
 			}
 		}
 	}
