@@ -3,6 +3,8 @@ package chain
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -702,12 +704,16 @@ func (t *Transitive) handleVote(vote Vote) {
 
 // tryFinalizeBlock checks if consensus has accepted a block and calls VM.Accept().
 func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
-	if !t.consensus.IsAccepted(blockID) {
+	accepted := t.consensus.IsAccepted(blockID)
+	fmt.Fprintf(os.Stderr, "[FINALIZE-DEBUG] tryFinalizeBlock blockID=%s accepted=%v\n", blockID, accepted)
+	if !accepted {
 		return
 	}
 
+	fmt.Fprintf(os.Stderr, "[FINALIZE-DEBUG] about to lock mu for pendingBlocks check\n")
 	t.mu.Lock()
 	pending, exists := t.pendingBlocks[blockID]
+	fmt.Fprintf(os.Stderr, "[FINALIZE-DEBUG] pendingBlocks check: exists=%v decided=%v mapSize=%d\n", exists, exists && pending.Decided, len(t.pendingBlocks))
 	if !exists || pending.Decided {
 		t.mu.Unlock()
 		return
@@ -718,7 +724,39 @@ func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
 	t.mu.Unlock()
 
 	if pending.VMBlock != nil {
-		_ = pending.VMBlock.Accept(ctx)
+		fmt.Fprintf(os.Stderr, "[FINALIZE-DEBUG] calling VM.Accept() for block %s type=%T\n", blockID, pending.VMBlock)
+		err := pending.VMBlock.Accept(ctx)
+		fmt.Fprintf(os.Stderr, "[FINALIZE-DEBUG] VM.Accept() returned err=%v\n", err)
+	} else {
+		fmt.Fprintf(os.Stderr, "[FINALIZE-DEBUG] VMBlock is nil for %s\n", blockID)
+	}
+}
+
+// DrainAccepted finalizes any pending blocks that consensus has accepted.
+// Called from the ForwardVMNotifications loop after each Notify.
+func (t *Transitive) DrainAccepted(ctx context.Context) {
+	t.mu.Lock()
+	var toAccept []struct {
+		id  ids.ID
+		blk block.Block
+	}
+	for id, pending := range t.pendingBlocks {
+		if !pending.Decided && t.consensus.IsAccepted(id) {
+			pending.Decided = true
+			t.blocksAccepted++
+			toAccept = append(toAccept, struct {
+				id  ids.ID
+				blk block.Block
+			}{id, pending.VMBlock})
+			delete(t.pendingBlocks, id)
+		}
+	}
+	t.mu.Unlock()
+
+	for _, a := range toAccept {
+		if a.blk != nil {
+			_ = a.blk.Accept(ctx)
+		}
 	}
 }
 
@@ -763,20 +801,26 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			continue
 		}
 
-		t.pendingBlocks[vmBlock.ID()] = &PendingBlock{
-			ConsensusBlock: consensusBlock,
-			VMBlock:        vmBlock,
-			ProposedAt:     time.Now(),
-			VoteCount:      1,
-			Decided:        false,
+		// Check if consensus already accepted this block (K=1 single-node mode).
+		alreadyAccepted := t.consensus.IsAccepted(vmBlock.ID())
+		if alreadyAccepted {
+			// Single-node mode: block accepted synchronously via self-vote.
+			// Call VM.Accept() directly — no need to track in pendingBlocks.
+			t.blocksAccepted++
+			t.mu.Unlock()
+			fmt.Fprintf(os.Stderr, "[FINALIZE-DEBUG] single-node immediate accept: block %s height %d\n", vmBlock.ID(), vmBlock.Height())
+			_ = vmBlock.Accept(ctx)
+			t.mu.Lock()
+		} else {
+			t.pendingBlocks[vmBlock.ID()] = &PendingBlock{
+				ConsensusBlock: consensusBlock,
+				VMBlock:        vmBlock,
+				ProposedAt:     time.Now(),
+				VoteCount:      1,
+				Decided:        false,
+			}
 		}
-		t.mu.Unlock()
 
-		// In single-node mode (K=1), the self-vote above is sufficient.
-		// Try to finalize immediately without waiting for network votes.
-		t.tryFinalizeBlock(ctx, vmBlock.ID())
-
-		t.mu.Lock()
 		if t.proposer != nil {
 			proposal := BlockProposal{
 				BlockID:   vmBlock.ID(),
