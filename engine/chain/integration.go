@@ -238,17 +238,31 @@ func (rt *Runtime) ForwardVMNotifications(toEngine <-chan block.Message) {
 
 		ctx := context.Background()
 		if err := rt.Notify(ctx, Message{Type: engineMsgType}); err != nil {
-			if !rt.config.Logger.IsZero() {
+			if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
 				rt.config.Logger.Warn("failed to notify consensus engine",
 					log.Uint32("type", uint32(engineMsgType)),
 					log.Err(err))
 			}
 		}
+
+		// In single-node mode, drain any accepted blocks and call VM.Accept().
+		// Notify → buildBlocksLocked → AddBlock + ProcessVote + Poll may have
+		// accepted blocks synchronously. The engine tracks them in pendingBlocks
+		// with Decided=false until we finalize here.
+		rt.drainAcceptedBlocks(ctx)
 	}
 
 	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Info("VM notification forwarder stopped")
 	}
+}
+
+// drainAcceptedBlocks finalizes any blocks that consensus has accepted.
+// This is called after each VM notification to ensure accepted blocks have
+// their VM.Accept() called promptly (especially important in single-node mode
+// where blocks are accepted synchronously during buildBlocksLocked).
+func (rt *Runtime) drainAcceptedBlocks(ctx context.Context) {
+	rt.Transitive.DrainAccepted(ctx)
 }
 
 // gossiperProposer adapts a Gossiper to the BlockProposer interface.
