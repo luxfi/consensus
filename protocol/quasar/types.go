@@ -22,12 +22,20 @@ type Block struct {
 }
 
 // BlockCert contains cryptographic certificates for quantum finality.
+//
+// Three verification paths from one compact cert (~248 bytes):
+//   1. BLS aggregate (48 bytes) — classical fast-path consensus
+//   2. ZK proof (~200 bytes) — STARK proving N ML-DSA sigs valid (post-quantum)
+//   3. Ringtail anonymity set embedded in the ZK proof (privacy)
+//
+// No individual validator signatures stored — ZK proof replaces them.
 type BlockCert struct {
-	BLS      []byte            // BLS aggregate signature
-	PQ       []byte            // Post-quantum certificate (ML-DSA/Ringtail)
-	Sigs     map[string][]byte // Individual validator signatures
-	Epoch    uint64            // Epoch number
-	Finality time.Time         // Time of finality
+	BLS      []byte    // BLS aggregate signature (N validators → 48 bytes)
+	ZKProof  []byte    // STARK proof aggregating N ML-DSA signatures (~200 bytes)
+	Epoch    uint64    // Epoch number
+	Finality time.Time // Time of finality
+	// Validators is the count of validators whose ML-DSA sigs are proven by ZKProof.
+	Validators int `json:"validators,omitempty"`
 }
 
 // Verify checks structural presence of BLS and PQ certificates.
@@ -45,7 +53,7 @@ func (c *BlockCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
 	if c == nil {
 		return false
 	}
-	if len(c.BLS) == 0 || len(c.PQ) == 0 {
+	if len(c.BLS) == 0 || len(c.ZKProof) == 0 {
 		return false
 	}
 	if len(groupKey) == 0 {
@@ -108,11 +116,21 @@ type RingtailSignature struct {
 	Round       int    // Ringtail protocol round (1 or 2)
 }
 
-// QuasarSignature bundles BLS + Ringtail for complete quantum finality.
-// Both signatures are collected in parallel.
+// QuasarSignature bundles all three proof paths for quantum finality.
+// Collected in parallel during the 2-round protocol.
+//
+// Per-validator (collected during consensus, NOT stored in block):
+//   BLS:      sign with BLS key           → aggregate into 48 bytes
+//   Ringtail: sign with ring-LWE key      → feeds into ZK circuit
+//   ML-DSA:   sign with ML-DSA-65 key     → feeds into ZK circuit
+//
+// In BlockCert (stored in block header, ~248 bytes):
+//   BLS aggregate:  48 bytes
+//   ZK proof:      ~200 bytes (STARK proving Ringtail + ML-DSA sigs valid)
 type QuasarSignature struct {
-	BLS      *BLSSignature      // Classical fast path
-	Ringtail *RingtailSignature // Quantum-safe path
+	BLS      *BLSSignature      // Classical fast path (aggregatable)
+	Ringtail *RingtailSignature // PQ anonymous path (ring-LWE threshold)
+	MLDSA    []byte             // PQ identity proof (ML-DSA-65, FIPS 204)
 }
 
 // RingtailRound1Data contains the output of Ringtail Round 1.
