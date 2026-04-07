@@ -118,9 +118,9 @@ func TestRealThresholdSig_Accepted(t *testing.T) {
 // garbage BLS and PQ bytes is rejected by VerifyWithKeys.
 func TestBlockCert_GarbageBytes_Rejected(t *testing.T) {
 	cert := &BlockCert{
-		BLS:  []byte{0x01},
-		PQ:   []byte{0x01},
-		Sigs: map[string][]byte{"attacker": {0xFF}},
+		BLS:        []byte{0x01},
+		ZKProof:    []byte{0x01},
+		Validators: 1,
 	}
 
 	// Verify with any key must return false -- bytes don't match any valid sig
@@ -145,7 +145,7 @@ func TestBlockCert_NilCert_Rejected(t *testing.T) {
 func TestBlockCert_EmptyBLS_Rejected(t *testing.T) {
 	cert := &BlockCert{
 		BLS: []byte{},
-		PQ:  []byte{0x01, 0x02},
+		ZKProof:   []byte{0x01, 0x02},
 	}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("key")),
 		"BlockCert with empty BLS must return false")
@@ -155,7 +155,7 @@ func TestBlockCert_EmptyBLS_Rejected(t *testing.T) {
 func TestBlockCert_EmptyPQ_Rejected(t *testing.T) {
 	cert := &BlockCert{
 		BLS: []byte{0x01, 0x02},
-		PQ:  []byte{},
+		ZKProof:   []byte{},
 	}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("key")),
 		"BlockCert with empty PQ must return false")
