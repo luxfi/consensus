@@ -1394,3 +1394,206 @@ func TestSlashing_SlashingDBAccessor(t *testing.T) {
 		t.Fatal("SlashingDB() should return nil when slashing disabled")
 	}
 }
+
+// =============================================================================
+// Q-01: BuildBlock error must NOT decrement pendingBuildBlocks
+// =============================================================================
+
+// failingBuildVM fails BuildBlock N times then succeeds.
+type failingBuildVM struct {
+	failCount      int
+	callCount      int
+	blocks         []*mockBlock
+	preferenceID   ids.ID
+	setPreferenceErr error
+}
+
+func (m *failingBuildVM) BuildBlock(_ context.Context) (block.Block, error) {
+	m.callCount++
+	if m.callCount <= m.failCount {
+		return nil, errors.New("transient BuildBlock error")
+	}
+	blk := &mockBlock{
+		id:     ids.GenerateTestID(),
+		height: uint64(m.callCount),
+	}
+	m.blocks = append(m.blocks, blk)
+	return blk, nil
+}
+
+func (m *failingBuildVM) GetBlock(_ context.Context, id ids.ID) (block.Block, error) {
+	for _, b := range m.blocks {
+		if b.id == id {
+			return b, nil
+		}
+	}
+	return nil, errors.New("not found")
+}
+
+func (m *failingBuildVM) ParseBlock(_ context.Context, b []byte) (block.Block, error) {
+	return &mockBlock{bytes: b}, nil
+}
+
+func (m *failingBuildVM) LastAccepted(_ context.Context) (ids.ID, error) {
+	return m.preferenceID, nil
+}
+
+func (m *failingBuildVM) SetPreference(_ context.Context, id ids.ID) error {
+	if m.setPreferenceErr != nil {
+		return m.setPreferenceErr
+	}
+	m.preferenceID = id
+	return nil
+}
+
+// TestBuildBlockError_DoesNotDecrementPending verifies Q-01: BuildBlock error
+// must not decrement pendingBuildBlocks so the build is retried.
+func TestBuildBlockError_DoesNotDecrementPending(t *testing.T) {
+	vm := &failingBuildVM{failCount: 1}
+	eng := New(WithVM(vm))
+
+	if err := eng.Start(context.Background(), true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer eng.Stop(context.Background())
+
+	// Send PendingTxs — BuildBlock will fail on first attempt
+	if err := eng.Notify(context.Background(), Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("Notify: %v", err)
+	}
+
+	// BuildBlock was called once (and failed)
+	if vm.callCount != 1 {
+		t.Fatalf("expected 1 BuildBlock call, got %d", vm.callCount)
+	}
+
+	// pendingBuildBlocks must still be 1 — NOT decremented on error
+	if got := eng.PendingBuildBlocks(); got != 1 {
+		t.Fatalf("expected pendingBuildBlocks=1 after error, got %d", got)
+	}
+}
+
+// TestBuildBlockError_RetriesOnNextNotify verifies that after a BuildBlock
+// error, the next Notify successfully builds the block (retry).
+func TestBuildBlockError_RetriesOnNextNotify(t *testing.T) {
+	vm := &failingBuildVM{failCount: 1}
+	eng := New(WithVM(vm))
+
+	if err := eng.Start(context.Background(), true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer eng.Stop(context.Background())
+
+	// First Notify: BuildBlock fails, counter stays at 1
+	eng.Notify(context.Background(), Message{Type: PendingTxs})
+	if vm.callCount != 1 {
+		t.Fatalf("expected 1 call after first Notify, got %d", vm.callCount)
+	}
+	if eng.PendingBuildBlocks() != 1 {
+		t.Fatalf("expected pendingBuildBlocks=1 after error, got %d", eng.PendingBuildBlocks())
+	}
+
+	// Second Notify: adds another pending + retries. failCount=1 means second
+	// call succeeds. The loop processes both pending (the retained one + new one).
+	eng.Notify(context.Background(), Message{Type: PendingTxs})
+
+	// Second call succeeded, third call is the second pending item.
+	// Call 2 succeeded (first pending consumed), call 3 succeeded (second pending consumed).
+	if vm.callCount < 2 {
+		t.Fatalf("expected at least 2 BuildBlock calls after retry, got %d", vm.callCount)
+	}
+
+	// All pending should be consumed now
+	if got := eng.PendingBuildBlocks(); got != 0 {
+		t.Fatalf("expected pendingBuildBlocks=0 after successful retry, got %d", got)
+	}
+}
+
+// TestBuildBlockError_RepeatedFailures_NoPermanentHalt verifies that repeated
+// BuildBlock failures don't permanently halt block production. Each Notify
+// retains the counter, so future Notifys always attempt to build.
+func TestBuildBlockError_RepeatedFailures_NoPermanentHalt(t *testing.T) {
+	vm := &failingBuildVM{failCount: 100} // fails 100 times
+	eng := New(WithVM(vm))
+
+	if err := eng.Start(context.Background(), true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer eng.Stop(context.Background())
+
+	// Send 5 notifications — all will fail but counter grows
+	for i := 0; i < 5; i++ {
+		eng.Notify(context.Background(), Message{Type: PendingTxs})
+	}
+
+	// pendingBuildBlocks should be 5 — none consumed because all failed
+	if got := eng.PendingBuildBlocks(); got != 5 {
+		t.Fatalf("expected pendingBuildBlocks=5 after 5 failures, got %d", got)
+	}
+
+	// Now make BuildBlock succeed (lower failCount below callCount)
+	vm.failCount = vm.callCount // next call will succeed
+
+	// Next Notify adds one more pending (total 6) and retries — all 6 should build
+	eng.Notify(context.Background(), Message{Type: PendingTxs})
+
+	if got := eng.PendingBuildBlocks(); got != 0 {
+		t.Fatalf("expected pendingBuildBlocks=0 after recovery, got %d", got)
+	}
+
+	if len(vm.blocks) < 6 {
+		t.Fatalf("expected at least 6 blocks built after recovery, got %d", len(vm.blocks))
+	}
+}
+
+// =============================================================================
+// Q-02: SetPreference failure after Accept must force preference
+// =============================================================================
+
+// TestSetPreferenceFailure_ForcesPreference verifies that when SetPreference
+// fails after Accept, the consensus engine forces its preference to match the
+// accepted block, preventing state divergence.
+func TestSetPreferenceFailure_ForcesPreference(t *testing.T) {
+	vm := &failingBuildVM{
+		failCount:        0, // BuildBlock always succeeds
+		setPreferenceErr: errors.New("SetPreference broken"),
+	}
+
+	// K=1 mode: self-vote causes immediate acceptance in buildBlocksLocked
+	eng := New(
+		WithVM(vm),
+		WithParams(config.Parameters{
+			K:               1,
+			AlphaPreference: 1,
+			AlphaConfidence: 1,
+			Beta:            1,
+		}),
+	)
+
+	if err := eng.Start(context.Background(), true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer eng.Stop(context.Background())
+
+	// Trigger block build — will be immediately accepted (K=1),
+	// then SetPreference will fail, and ForcePreference must be called.
+	eng.Notify(context.Background(), Message{Type: PendingTxs})
+
+	// Block was built and accepted
+	if len(vm.blocks) != 1 {
+		t.Fatalf("expected 1 block built, got %d", len(vm.blocks))
+	}
+
+	acceptedBlockID := vm.blocks[0].id
+
+	// Consensus preference must match the accepted block despite SetPreference error
+	if pref := eng.Preference(); pref != acceptedBlockID {
+		t.Fatalf("expected preference=%s after forced preference, got %s",
+			acceptedBlockID, pref)
+	}
+
+	// Verify consensus internal state agrees
+	if tip := eng.consensus.GetFinalizedTip(); tip != acceptedBlockID {
+		t.Fatalf("expected finalizedTip=%s, got %s", acceptedBlockID, tip)
+	}
+}
