@@ -111,14 +111,14 @@ func TestQuantumFinalityWithRingtail(t *testing.T) {
 	// Create a test message
 	message := []byte("Test quantum finality message")
 
-	// Sign with hybrid (BLS + Ringtail)
+	// Sign with Quasar (BLS + Ringtail + ML-DSA)
 	sig, err := qa.SignMessage("validator1", message)
 	if err != nil {
 		t.Fatalf("Failed to sign message: %v", err)
 	}
 
 	// Verify BLS signature is present
-	// Note: Ringtail requires dual threshold mode with HybridConfig
+	// Note: Ringtail requires dual threshold mode with SignerConfig
 	if len(sig.BLS) == 0 {
 		t.Error("BLS signature missing")
 	}
@@ -126,9 +126,9 @@ func TestQuantumFinalityWithRingtail(t *testing.T) {
 		t.Log("Ringtail threshold signature present")
 	}
 
-	// Verify hybrid signature
+	// Verify Quasar signature
 	if !qa.VerifyQuasarSig(message, sig) {
-		t.Error("Failed to verify hybrid signature")
+		t.Error("Failed to verify Quasar signature")
 	}
 
 	t.Log("Ringtail + BLS parallel consensus test passed")
@@ -183,7 +183,7 @@ func TestContextCancellation(t *testing.T) {
 	t.Run("SignMessageWithContext_cancelled", func(t *testing.T) {
 		hybrid, err := NewSigner(1)
 		if err != nil {
-			t.Fatalf("Failed to create hybrid: %v", err)
+			t.Fatalf("Failed to create signer: %v", err)
 		}
 
 		err = hybrid.AddValidator("validator1", 100)
@@ -208,7 +208,7 @@ func TestContextCancellation(t *testing.T) {
 	t.Run("VerifyQuasarSigWithContext_cancelled", func(t *testing.T) {
 		hybrid, err := NewSigner(1)
 		if err != nil {
-			t.Fatalf("Failed to create hybrid: %v", err)
+			t.Fatalf("Failed to create signer: %v", err)
 		}
 
 		err = hybrid.AddValidator("validator1", 100)
@@ -236,7 +236,7 @@ func TestContextCancellation(t *testing.T) {
 	t.Run("AggregateSignaturesWithContext_cancelled", func(t *testing.T) {
 		hybrid, err := NewSigner(1)
 		if err != nil {
-			t.Fatalf("Failed to create hybrid: %v", err)
+			t.Fatalf("Failed to create signer: %v", err)
 		}
 
 		err = hybrid.AddValidator("validator1", 100)
@@ -307,7 +307,7 @@ func TestContextCancellation(t *testing.T) {
 	t.Run("WithContext_valid_context_works", func(t *testing.T) {
 		hybrid, err := NewSigner(1)
 		if err != nil {
-			t.Fatalf("Failed to create hybrid: %v", err)
+			t.Fatalf("Failed to create signer: %v", err)
 		}
 
 		err = hybrid.AddValidator("validator1", 100)
