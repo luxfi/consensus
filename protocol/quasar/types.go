@@ -18,23 +18,23 @@ type Block struct {
 	Hash      string     // Block hash
 	Timestamp time.Time  // Block timestamp
 	Data      []byte     // Block payload data
-	Cert      *BlockCert // Quantum certificate (nil if not finalized)
+	Cert      *QuasarCert // Quantum certificate (nil if not finalized)
 }
 
-// BlockCert contains cryptographic certificates for quantum finality.
+// QuasarCert is the dual consensus finality certificate.
 //
-// Three verification paths from one compact cert (~248 bytes):
-//   1. BLS aggregate (48 bytes) — classical fast-path consensus
-//   2. ZK proof (~200 bytes) — STARK proving N ML-DSA sigs valid (post-quantum)
-//   3. Ringtail anonymity set embedded in the ZK proof (privacy)
+// Two verification paths:
+//   1. BLS aggregate (48 bytes) — classical fast-path consensus (BLS12-381)
+//   2. PQ proof (variable) — post-quantum certificate (ML-DSA-65 or Ringtail)
 //
-// No individual validator signatures stored — ZK proof replaces them.
-type BlockCert struct {
-	BLS      []byte    // BLS aggregate signature (N validators → 48 bytes)
-	ZKProof  []byte    // STARK proof aggregating N ML-DSA signatures (~200 bytes)
+// Future: ZK proof aggregation (Groth16, ~192 bytes) to compress N ML-DSA sigs.
+// Current: PQ field carries raw PQ signature material, not a SNARK/STARK proof.
+type QuasarCert struct {
+	BLS     []byte    // BLS aggregate signature (N validators → 48 bytes)
+	PQProof []byte    // Post-quantum proof (ML-DSA sig or future Groth16 SNARK aggregate)
 	Epoch    uint64    // Epoch number
 	Finality time.Time // Time of finality
-	// Validators is the count of validators whose ML-DSA sigs are proven by ZKProof.
+	// Validators is the count of validators who signed the PQ proof.
 	Validators int `json:"validators,omitempty"`
 }
 
@@ -42,18 +42,18 @@ type BlockCert struct {
 // This does NOT perform cryptographic verification -- use VerifyWithKeys for that.
 // Returns false unconditionally; callers must use VerifyWithKeys with the
 // validators' group public key to get a real verification result.
-func (c *BlockCert) Verify(validators []string) bool {
+func (c *QuasarCert) Verify(validators []string) bool {
 	return false
 }
 
 // VerifyWithKeys performs cryptographic verification of the BLS aggregate
 // signature against the provided group public key.
 // pqKey is reserved for post-quantum certificate verification.
-func (c *BlockCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
+func (c *QuasarCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
 	if c == nil {
 		return false
 	}
-	if len(c.BLS) == 0 || len(c.ZKProof) == 0 {
+	if len(c.BLS) == 0 || len(c.PQProof) == 0 {
 		return false
 	}
 	if len(groupKey) == 0 {
@@ -116,17 +116,17 @@ type RingtailSignature struct {
 	Round       int    // Ringtail protocol round (1 or 2)
 }
 
-// QuasarSignature bundles all three proof paths for quantum finality.
+// QuasarSignature bundles the proof paths for quantum finality.
 // Collected in parallel during the 2-round protocol.
 //
 // Per-validator (collected during consensus, NOT stored in block):
 //   BLS:      sign with BLS key           → aggregate into 48 bytes
-//   Ringtail: sign with ring-LWE key      → feeds into ZK circuit
-//   ML-DSA:   sign with ML-DSA-65 key     → feeds into ZK circuit
+//   Ringtail: sign with ring-LWE key      → PQ threshold proof
+//   ML-DSA:   sign with ML-DSA-65 key     → PQ identity proof
 //
-// In BlockCert (stored in block header, ~248 bytes):
+// In QuasarCert (stored in block header):
 //   BLS aggregate:  48 bytes
-//   ZK proof:      ~200 bytes (STARK proving Ringtail + ML-DSA sigs valid)
+//   PQ proof:       variable (ML-DSA sig or future SNARK aggregate)
 type QuasarSignature struct {
 	BLS      *BLSSignature      // Classical fast path (aggregatable)
 	Ringtail *RingtailSignature // PQ anonymous path (ring-LWE threshold)
