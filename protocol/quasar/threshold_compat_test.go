@@ -637,10 +637,10 @@ func TestQuasarThroughput(t *testing.T) {
 	require.Greater(tps, 10.0, "Should process at least 10 blocks/sec")
 }
 
-// --- Hybrid Consensus Tests ---
+// --- Quasar Triple Consensus Tests ---
 
-// TestHybridConsensusBasic tests BLS + PQ certificate generation
-func TestHybridConsensusBasic(t *testing.T) {
+// TestQuasarConsensusBasic tests BLS + Ringtail + ML-DSA certificate generation
+func TestQuasarConsensusBasic(t *testing.T) {
 	require := require.New(t)
 
 	hybrid, err := newCertifier(2)
@@ -665,7 +665,7 @@ func TestHybridConsensusBasic(t *testing.T) {
 	cert := hybrid.generateCert(block)
 	require.NotNil(cert)
 	require.NotEmpty(cert.BLS)
-	require.NotEmpty(cert.ZKProof)
+	require.NotEmpty(cert.PQProof)
 	require.Equal(uint64(1), cert.Epoch)
 
 	// Verify certificate: Verify() now always returns false (requires VerifyWithKeys)
@@ -673,8 +673,8 @@ func TestHybridConsensusBasic(t *testing.T) {
 	require.False(cert.Verify([]string{"v1", "v2", "v3"}))
 }
 
-// TestHybridConsensusValidatorChurn tests validator add/remove
-func TestHybridConsensusValidatorChurn(t *testing.T) {
+// TestQuasarConsensusValidatorChurn tests validator add/remove
+func TestQuasarConsensusValidatorChurn(t *testing.T) {
 	require := require.New(t)
 
 	hybrid, err := newCertifier(2)
