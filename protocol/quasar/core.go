@@ -23,7 +23,7 @@ type Quasar struct {
 	// Dynamic chain registration - automatically includes new subnets/chains
 	chainBuffers map[string]chan *ChainBlock // chainName -> buffer
 
-	// Legacy chain buffers for backwards compatibility
+	// Standard chain buffers (P/X/C)
 	pChainBlocks chan *ChainBlock
 	xChainBlocks chan *ChainBlock
 	cChainBlocks chan *ChainBlock
@@ -51,8 +51,7 @@ type Quasar struct {
 	ctx context.Context
 }
 
-// ChainBlock is an alias for Block for backward compatibility.
-// Deprecated: Use Block instead.
+// ChainBlock is an alias for Block used in chain-specific submission methods.
 type ChainBlock = Block
 
 // QuantumBlock represents a quantum-finalized aggregate block.

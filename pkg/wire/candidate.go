@@ -275,11 +275,7 @@ func VoterIDFromPublicKey(publicKey []byte) VoterID {
 	return DeriveVoterID(NodeIDDomain, publicKey)
 }
 
-// =============================================================================
-// HELPER: Content-addressed item ID (backwards compat with wire.go)
-// =============================================================================
-
-// ItemID is an alias for CandidateID for backwards compatibility
+// ItemID is a content-addressed item identifier.
 type ItemID = CandidateID
 
 // DeriveItemID derives an ItemID from arbitrary data

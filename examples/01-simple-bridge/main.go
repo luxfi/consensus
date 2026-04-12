@@ -70,9 +70,9 @@ func setupAssets(bridge *lx.CrossChainBridge) error {
 		WrappedContract: map[string]string{
 			"lux": "0x...lux",
 		},
-		MinTransfer: big.NewInt(10000000000000000),    // 0.01 ETH
-		MaxTransfer: big.NewInt(1000000000000000000),  // 1 ETH
-		DailyLimit:  big.NewInt(10000000000000000000), // 10 ETH
+		MinTransfer: new(big.Int).SetUint64(10000000000000000),   // 0.01 ETH
+		MaxTransfer: new(big.Int).SetUint64(1000000000000000000), // 1 ETH
+		DailyLimit:  new(big.Int).Mul(big.NewInt(10), new(big.Int).SetUint64(1000000000000000000)), // 10 ETH
 		DailyVolume: big.NewInt(0),
 		LastReset:   time.Now(),
 		Paused:      false,
@@ -89,9 +89,9 @@ func setupAssets(bridge *lx.CrossChainBridge) error {
 		WrappedContract: map[string]string{
 			"ethereum": "0x...eth",
 		},
-		MinTransfer: big.NewInt(1000000000000000000),      // 1 LUX
-		MaxTransfer: big.NewInt(1000000000000000000000),   // 1000 LUX
-		DailyLimit:  big.NewInt(100000000000000000000000), // 100k LUX
+		MinTransfer: new(big.Int).SetUint64(1000000000000000000),                                        // 1 LUX
+		MaxTransfer: new(big.Int).Mul(big.NewInt(1000), new(big.Int).SetUint64(1000000000000000000)),    // 1000 LUX
+		DailyLimit:  new(big.Int).Mul(big.NewInt(100000), new(big.Int).SetUint64(1000000000000000000)),  // 100k LUX
 		DailyVolume: big.NewInt(0),
 		LastReset:   time.Now(),
 		Paused:      false,

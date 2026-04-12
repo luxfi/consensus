@@ -1,7 +1,7 @@
 // Copyright (C) 2019-2025, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// Package validators re-exports github.com/luxfi/validators for backward compatibility.
+// Package validators re-exports github.com/luxfi/validators.
 package validators
 
 import (

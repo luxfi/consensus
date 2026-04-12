@@ -1,4 +1,4 @@
-// Package uptimemock re-exports github.com/luxfi/validators/uptime/uptimemock for backward compatibility.
+// Package uptimemock re-exports github.com/luxfi/validators/uptime/uptimemock.
 package uptimemock
 
 import (
