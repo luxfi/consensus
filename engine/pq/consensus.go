@@ -226,7 +226,7 @@ func blockToFinalityEvent(block *quasar.Block) FinalityEvent {
 	blockID, _ := ids.FromString(block.Hash)
 	var pqProof, blsProof []byte
 	if block.Cert != nil {
-		pqProof = block.Cert.ZKProof
+		pqProof = block.Cert.PQProof
 		blsProof = block.Cert.BLS
 	}
 	return FinalityEvent{
