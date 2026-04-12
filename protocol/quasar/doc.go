@@ -1,20 +1,22 @@
-// Package quasar implements Quasar triple consensus: BLS + Ringtail + ML-DSA.
+// Package quasar implements Quasar consensus with up to three independent
+// cryptographic signing paths running in parallel:
 //
-// Three independent cryptographic hardness assumptions run in parallel:
+//   - BLS12-381 threshold signatures — classical fast-path (ECDL hardness)
+//   - Ringtail (Ring-LWE) 2-round threshold — post-quantum lattice (Module-LWE)
+//   - ML-DSA-65 (FIPS 204) identity signatures — post-quantum (Module-LWE + Module-SIS)
 //
-//   - BLS12-381 aggregate signatures — classical fast-path (48-byte proof)
-//   - Ringtail (Ring-LWE) threshold signatures — post-quantum lattice path
-//   - ML-DSA-65 (FIPS 204) identity proofs — post-quantum, rolled into ZK proof
+// Modes (each layer independently toggleable):
 //
-// Each layer can be enabled independently. BLS-only gives fastest classical
-// consensus. BLS + Ringtail gives PQ-safe threshold finality. Full triple
-// mode adds ML-DSA ZK rollup (~200-byte STARK proving N ML-DSA sigs valid).
+//	BLS-only:                  fastest classical consensus
+//	BLS + ML-DSA:              dual PQ consensus (single-round PQ sigs)
+//	BLS + Ringtail:            dual PQ consensus (2-round threshold)
+//	BLS + Ringtail + ML-DSA:   triple consensus (all three hardness assumptions)
 //
-// All layers support GPU acceleration via github.com/luxfi/crypto for BLS
-// pairing, lattice computations, and ZK proof generation.
+// Triple signing via [signer.TripleSignRound1] runs all three paths in parallel.
+// An adversary must break ECDL AND Module-LWE AND Module-SIS simultaneously.
 //
-// Inter-node transport uses ZAP (github.com/luxfi/zap) for zero-copy
-// consensus messages — not github.com/luxfi/p2p.
+// Inter-node transport uses ZAP (github.com/luxfi/zap) with optional PQ-TLS 1.3
+// (Go 1.26 ML-KEM-768 default). GPU acceleration is aspirational.
 //
-// See QuasarCert and QuasarSignature in types.go for the wire format.
+// See [QuasarCert] and [QuasarSignature] in types.go for the wire format.
 package quasar
