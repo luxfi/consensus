@@ -79,6 +79,5 @@ type ChainContext struct {
 // DBManager manages databases
 type DBManager = manager.Manager
 
-// AppSender is an alias for p2p.Sender for backwards compatibility
-// The node passes a p2p.Sender to the VM via RPC
+// AppSender is a p2p.Sender passed to the VM via RPC
 type AppSender = p2p.Sender

@@ -1,4 +1,4 @@
-// Package uptime re-exports github.com/luxfi/validators/uptime for backward compatibility.
+// Package uptime re-exports github.com/luxfi/validators/uptime.
 package uptime
 
 import (

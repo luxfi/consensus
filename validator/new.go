@@ -1,6 +1,4 @@
-// Package validators provides validator state management.
-// This package re-exports github.com/luxfi/validators for backward compatibility.
-// New code should use github.com/luxfi/validators directly.
+// Package validators re-exports github.com/luxfi/validators.
 package validators
 
 import (

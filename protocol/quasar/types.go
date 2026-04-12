@@ -21,14 +21,15 @@ type Block struct {
 	Cert      *QuasarCert // Quantum certificate (nil if not finalized)
 }
 
-// QuasarCert is the dual consensus finality certificate.
+// QuasarCert is the finality certificate for Quasar consensus.
 //
-// Two verification paths:
-//   1. BLS aggregate (48 bytes) — classical fast-path consensus (BLS12-381)
-//   2. PQ proof (variable) — post-quantum certificate (ML-DSA-65 or Ringtail)
+// Carries up to three verification paths:
+//   1. BLS aggregate (48 bytes) — classical fast-path (BLS12-381, ECDL hardness)
+//   2. PQ proof (variable) — post-quantum (ML-DSA-65 FIPS 204, or Ringtail Ring-LWE)
 //
-// Future: ZK proof aggregation (Groth16, ~192 bytes) to compress N ML-DSA sigs.
-// Current: PQ field carries raw PQ signature material, not a SNARK/STARK proof.
+// In triple mode (BLS + Ringtail + ML-DSA), PQProof carries the aggregated
+// post-quantum material from both Ringtail threshold and ML-DSA identity sigs.
+// Future: Groth16 SNARK (~192 bytes) to compress N ML-DSA sigs.
 type QuasarCert struct {
 	BLS     []byte    // BLS aggregate signature (N validators → 48 bytes)
 	PQProof []byte    // Post-quantum proof (ML-DSA sig or future Groth16 SNARK aggregate)
@@ -116,17 +117,17 @@ type RingtailSignature struct {
 	Round       int    // Ringtail protocol round (1 or 2)
 }
 
-// QuasarSignature bundles the proof paths for quantum finality.
-// Collected in parallel during the 2-round protocol.
+// QuasarSignature bundles all three proof paths for quantum finality.
+// All three run in parallel via [signer.TripleSignRound1].
 //
 // Per-validator (collected during consensus, NOT stored in block):
-//   BLS:      sign with BLS key           → aggregate into 48 bytes
-//   Ringtail: sign with ring-LWE key      → PQ threshold proof
-//   ML-DSA:   sign with ML-DSA-65 key     → PQ identity proof
+//   BLS:      sign with BLS key           → aggregate into 48 bytes (ECDL)
+//   Ringtail: sign with ring-LWE key      → PQ threshold proof (Module-LWE)
+//   ML-DSA:   sign with ML-DSA-65 key     → PQ identity proof (Module-LWE + Module-SIS)
 //
 // In QuasarCert (stored in block header):
 //   BLS aggregate:  48 bytes
-//   PQ proof:       variable (ML-DSA sig or future SNARK aggregate)
+//   PQ proof:       variable (aggregated Ringtail + ML-DSA, or future SNARK)
 type QuasarSignature struct {
 	BLS      *BLSSignature      // Classical fast path (aggregatable)
 	Ringtail *RingtailSignature // PQ anonymous path (ring-LWE threshold)
@@ -153,7 +154,6 @@ func NewSignerWithConfig(config SignerConfig) (*Signer, error) {
 }
 
 // NewSignerWithDualThreshold creates a new quantum signer with dual threshold configuration.
-// This is an alias for NewSignerWithConfig for backward compatibility.
 func NewSignerWithDualThreshold(config SignerConfig) (*Signer, error) {
 	return NewSignerWithConfig(config)
 }

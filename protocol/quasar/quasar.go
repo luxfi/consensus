@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"sync"
 
+	"crypto/rand"
+
 	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/crypto/mldsa"
 	"github.com/luxfi/crypto/threshold"
 	_ "github.com/luxfi/crypto/threshold/bls" // Register BLS threshold scheme
 
@@ -23,6 +26,7 @@ var (
 			return &QuasarSig{
 				BLS:      make([]byte, 0, 96),
 				Ringtail: make([]byte, 0, 4096),
+				MLDSA:    make([]byte, 0, 3309), // ML-DSA-65 sig size
 			}
 		},
 	}
@@ -42,10 +46,14 @@ var (
 	}
 )
 
-// Signer implements parallel BLS+Ringtail threshold signing for PQ-safe consensus.
-// BLS provides fast classical threshold signatures.
-// Ringtail provides post-quantum threshold signatures based on Ring-LWE.
-// Both run in parallel to provide quantum-safe finality.
+// Signer implements parallel BLS + Ringtail + ML-DSA signing for PQ-safe consensus.
+//
+// Three independent signing paths:
+//   - BLS12-381: classical threshold signatures (ECDL hardness)
+//   - Ringtail: Ring-LWE 2-round threshold signatures (Module-LWE hardness)
+//   - ML-DSA-65: FIPS 204 post-quantum identity signatures (Module-LWE + Module-SIS)
+//
+// All three run in parallel via TripleSign. Each can be enabled independently.
 type signer struct {
 	mu sync.RWMutex
 
@@ -61,7 +69,11 @@ type signer struct {
 	ringtailSigners  map[string]*ringtailThreshold.Signer
 	ringtailShares   map[string]*ringtailThreshold.KeyShare
 
-	// Legacy BLS direct keys (for backward compatibility)
+	// Post-quantum ML-DSA-65 identity signing (FIPS 204)
+	mldsaKeys    map[string]*mldsa.PrivateKey
+	mldsaPubKeys map[string]*mldsa.PublicKey
+
+	// BLS direct keys (classical signing)
 	blsKeys    map[string]*bls.SecretKey
 	blsPubKeys map[string]*bls.PublicKey
 
@@ -74,7 +86,8 @@ type signer struct {
 type Validator struct {
 	ID          string
 	BLSPubKey   *bls.PublicKey
-	RingtailPub []byte // Ringtail group public key contribution
+	RingtailPub []byte           // Ringtail group public key contribution
+	MLDSAPubKey *mldsa.PublicKey  // ML-DSA-65 identity key (nil if not configured)
 	Weight      uint64
 	Active      bool
 }
@@ -113,6 +126,8 @@ func newSigner(thresholdVal int) (*signer, error) {
 		blsSigners:      make(map[string]threshold.Signer),
 		ringtailSigners: make(map[string]*ringtailThreshold.Signer),
 		ringtailShares:  make(map[string]*ringtailThreshold.KeyShare),
+		mldsaKeys:       make(map[string]*mldsa.PrivateKey),
+		mldsaPubKeys:    make(map[string]*mldsa.PublicKey),
 		validators:      make(map[string]*Validator),
 		threshold:       thresholdVal,
 	}, nil
@@ -130,6 +145,8 @@ func newSignerWithDualThreshold(config SignerConfig) (*signer, error) {
 		blsSigners:      make(map[string]threshold.Signer),
 		ringtailSigners: make(map[string]*ringtailThreshold.Signer),
 		ringtailShares:  make(map[string]*ringtailThreshold.KeyShare),
+		mldsaKeys:       make(map[string]*mldsa.PrivateKey),
+		mldsaPubKeys:    make(map[string]*mldsa.PublicKey),
 		validators:      make(map[string]*Validator),
 		threshold:       config.Threshold,
 	}
@@ -354,6 +371,100 @@ func (s *signer) DualSignRound2(validatorID string, sessionID int, message strin
 }
 
 // ============================================================================
+// Triple Consensus: BLS + Ringtail + ML-DSA (all 3 in parallel)
+// ============================================================================
+
+// TripleSignRound1 performs Round 1 of all three signing paths in parallel:
+//   - BLS: threshold share (single round, complete)
+//   - Ringtail: Round 1 of 2-round protocol (D matrix + MACs)
+//   - ML-DSA: full signature (single round, complete)
+//
+// Returns the QuasarSig with BLS + MLDSA filled, plus Ringtail Round1Data
+// for the 2-round protocol continuation.
+func (s *signer) TripleSignRound1(ctx context.Context, validatorID string, message []byte, sessionID int, prfKey []byte) (*QuasarSig, *ringtailThreshold.Round1Data, error) {
+	s.mu.RLock()
+	blsSigner, hasBLS := s.blsSigners[validatorID]
+	_, hasRingtail := s.ringtailSigners[validatorID]
+	mldsaSK, hasMLDSA := s.mldsaKeys[validatorID]
+	s.mu.RUnlock()
+
+	if !hasBLS {
+		return nil, nil, errors.New("validator not configured for BLS signing")
+	}
+
+	var wg sync.WaitGroup
+	var blsErr, rtErr, mldsaErr error
+	var blsShare threshold.SignatureShare
+	var round1Data *ringtailThreshold.Round1Data
+	var mldsaSig []byte
+
+	blsIndices := make([]int, 0, len(s.blsSigners))
+	for _, bs := range s.blsSigners {
+		blsIndices = append(blsIndices, bs.Index())
+	}
+
+	paths := 1 // BLS always
+	if hasRingtail {
+		paths++
+	}
+	if hasMLDSA {
+		paths++
+	}
+	wg.Add(paths)
+
+	// Path 1: BLS (classical threshold)
+	go func() {
+		defer wg.Done()
+		blsShare, blsErr = blsSigner.SignShare(ctx, message, blsIndices, nil)
+	}()
+
+	// Path 2: Ringtail Round 1 (PQ lattice threshold)
+	if hasRingtail {
+		go func() {
+			defer wg.Done()
+			round1Data, rtErr = s.RingtailRound1(validatorID, sessionID, prfKey)
+		}()
+	}
+
+	// Path 3: ML-DSA-65 (PQ identity, FIPS 204)
+	if hasMLDSA {
+		go func() {
+			defer wg.Done()
+			mldsaSig, mldsaErr = mldsaSK.Sign(rand.Reader, message, nil)
+		}()
+	}
+
+	wg.Wait()
+
+	if blsErr != nil {
+		return nil, nil, fmt.Errorf("BLS signing failed: %w", blsErr)
+	}
+	if rtErr != nil {
+		return nil, nil, fmt.Errorf("Ringtail Round1 failed: %w", rtErr)
+	}
+	if mldsaErr != nil {
+		return nil, nil, fmt.Errorf("ML-DSA signing failed: %w", mldsaErr)
+	}
+
+	sig := &QuasarSig{
+		BLS:         blsShare.Bytes(),
+		MLDSA:       mldsaSig,
+		ValidatorID: validatorID,
+		IsThreshold: true,
+		SignerIndex:  blsSigner.Index(),
+	}
+
+	return sig, round1Data, nil
+}
+
+// IsTripleMode returns true if all three signing paths are configured.
+func (s *signer) IsTripleMode() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.blsSigners) > 0 && len(s.ringtailSigners) > 0 && len(s.mldsaKeys) > 0
+}
+
+// ============================================================================
 // Legacy & Backward Compatibility
 // ============================================================================
 
@@ -362,20 +473,29 @@ func (s *signer) AddValidator(id string, weight uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// BLS key (classical)
 	blsSK, err := bls.NewSecretKey()
 	if err != nil {
 		return fmt.Errorf("failed to generate BLS key: %w", err)
 	}
 	blsPK := blsSK.PublicKey()
-
 	s.blsKeys[id] = blsSK
 	s.blsPubKeys[id] = blsPK
 
+	// ML-DSA-65 key (post-quantum identity, FIPS 204)
+	mldsaSK, err := mldsa.GenerateKey(rand.Reader, mldsa.MLDSA65)
+	if err != nil {
+		return fmt.Errorf("failed to generate ML-DSA key: %w", err)
+	}
+	s.mldsaKeys[id] = mldsaSK
+	s.mldsaPubKeys[id] = mldsaSK.PublicKey
+
 	s.validators[id] = &Validator{
-		ID:        id,
-		BLSPubKey: blsPK,
-		Weight:    weight,
-		Active:    true,
+		ID:          id,
+		BLSPubKey:   blsPK,
+		MLDSAPubKey: mldsaSK.PublicKey,
+		Weight:      weight,
+		Active:      true,
 	}
 
 	return nil
@@ -398,6 +518,7 @@ func (s *signer) SignMessageWithContext(ctx context.Context, validatorID string,
 	sig := sigPool.Get().(*QuasarSig)
 	sig.BLS = sig.BLS[:0]
 	sig.Ringtail = sig.Ringtail[:0]
+	sig.MLDSA = sig.MLDSA[:0]
 	sig.ValidatorID = validatorID
 
 	// Check for threshold signer
@@ -416,10 +537,19 @@ func (s *signer) SignMessageWithContext(ctx context.Context, validatorID string,
 		sig.BLS = append(sig.BLS, share.Bytes()...)
 		sig.IsThreshold = true
 		sig.SignerIndex = blsSigner.Index()
+
+		// Also sign with ML-DSA if available (triple consensus)
+		if mldsaSK, ok := s.mldsaKeys[validatorID]; ok {
+			mldsaSig, err := mldsaSK.Sign(rand.Reader, message, nil)
+			if err == nil {
+				sig.MLDSA = append(sig.MLDSA, mldsaSig...)
+			}
+		}
+
 		return sig, nil
 	}
 
-	// Fall back to legacy BLS
+	// Fall back to legacy BLS + ML-DSA
 	blsSK, exists := s.blsKeys[validatorID]
 	if !exists {
 		return nil, errors.New("validator not found")
@@ -433,6 +563,14 @@ func (s *signer) SignMessageWithContext(ctx context.Context, validatorID string,
 	sig.BLS = append(sig.BLS, bls.SignatureToBytes(blsSig)...)
 	sig.IsThreshold = false
 
+	// Also sign with ML-DSA if available (triple consensus)
+	if mldsaSK, ok := s.mldsaKeys[validatorID]; ok {
+		mldsaSig, err := mldsaSK.Sign(rand.Reader, message, nil)
+		if err == nil {
+			sig.MLDSA = append(sig.MLDSA, mldsaSig...)
+		}
+	}
+
 	return sig, nil
 }
 
@@ -444,6 +582,7 @@ func ReleaseQuasarSig(sig *QuasarSig) {
 	sig.ValidatorID = ""
 	sig.IsThreshold = false
 	sig.SignerIndex = 0
+	sig.MLDSA = sig.MLDSA[:0]
 	sigPool.Put(sig)
 }
 
@@ -453,6 +592,8 @@ func (s *signer) VerifyQuasarSig(message []byte, sig *QuasarSig) bool {
 }
 
 // VerifyQuasarSigWithContext verifies a signature.
+// Verifies all present paths: BLS (always), ML-DSA (when sig.MLDSA is non-empty).
+// Ringtail threshold verification is handled separately via VerifyRingtailSignature.
 func (s *signer) VerifyQuasarSigWithContext(ctx context.Context, message []byte, sig *QuasarSig) bool {
 	if ctx.Err() != nil {
 		return false
@@ -461,24 +602,40 @@ func (s *signer) VerifyQuasarSigWithContext(ctx context.Context, message []byte,
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	// Verify BLS (classical path — always required)
+	blsOK := false
 	if sig.IsThreshold {
 		if s.blsVerifier == nil || len(sig.BLS) == 0 {
 			return false
 		}
-		return s.blsVerifier.VerifyBytes(message, sig.BLS)
+		blsOK = s.blsVerifier.VerifyBytes(message, sig.BLS)
+	} else {
+		validator, exists := s.validators[sig.ValidatorID]
+		if !exists {
+			return false
+		}
+		blsSig, err := bls.SignatureFromBytes(sig.BLS)
+		if err != nil {
+			return false
+		}
+		blsOK = bls.Verify(validator.BLSPubKey, blsSig, message)
 	}
-
-	validator, exists := s.validators[sig.ValidatorID]
-	if !exists {
+	if !blsOK {
 		return false
 	}
 
-	blsSig, err := bls.SignatureFromBytes(sig.BLS)
-	if err != nil {
-		return false
+	// Verify ML-DSA (PQ identity path — when present)
+	if len(sig.MLDSA) > 0 {
+		validator, exists := s.validators[sig.ValidatorID]
+		if !exists || validator.MLDSAPubKey == nil {
+			return false
+		}
+		if !validator.MLDSAPubKey.Verify(message, sig.MLDSA, nil) {
+			return false
+		}
 	}
 
-	return bls.Verify(validator.BLSPubKey, blsSig, message)
+	return true
 }
 
 // AggregateSignatures aggregates BLS threshold signature shares.
@@ -613,8 +770,9 @@ func (s *signer) VerifyAggregatedSignatureWithContext(ctx context.Context, messa
 
 // QuasarSig contains BLS and optionally Ringtail signature data.
 type QuasarSig struct {
-	BLS         []byte
-	Ringtail    []byte
+	BLS         []byte // BLS12-381 signature (classical)
+	Ringtail    []byte // Ringtail Ring-LWE signature (PQ threshold)
+	MLDSA       []byte // ML-DSA-65 signature (PQ identity, FIPS 204)
 	ValidatorID string
 	IsThreshold bool
 	SignerIndex int
@@ -658,11 +816,7 @@ func (s *signer) IsDualThresholdMode() bool {
 	return s.blsScheme != nil && s.ringtailGroupKey != nil
 }
 
-// ============================================================================
-// Backward-compatible API
-// ============================================================================
-
-// ThresholdConfig for backward compatibility with single-scheme tests.
+// ThresholdConfig for single-scheme threshold signing.
 type ThresholdConfig struct {
 	SchemeID     threshold.SchemeID
 	Threshold    int
@@ -688,6 +842,8 @@ func newSignerWithThresholdConfig(config ThresholdConfig) (*signer, error) {
 		blsSigners:      make(map[string]threshold.Signer),
 		ringtailSigners: make(map[string]*ringtailThreshold.Signer),
 		ringtailShares:  make(map[string]*ringtailThreshold.KeyShare),
+		mldsaKeys:       make(map[string]*mldsa.PrivateKey),
+		mldsaPubKeys:    make(map[string]*mldsa.PublicKey),
 		validators:      make(map[string]*Validator),
 		threshold:       config.Threshold,
 		blsScheme:       scheme,
@@ -716,10 +872,6 @@ func newSignerWithThresholdConfig(config ThresholdConfig) (*signer, error) {
 	return h, nil
 }
 
-// newSignerWithThreshold is an alias for newSignerWithDualThreshold.
-func newSignerWithThreshold(config SignerConfig) (*signer, error) {
-	return newSignerWithDualThreshold(config)
-}
 
 // GenerateThresholdKeys generates threshold keys for a single scheme.
 func GenerateThresholdKeys(schemeID threshold.SchemeID, t, n int) ([]threshold.KeyShare, threshold.PublicKey, error) {
@@ -739,7 +891,7 @@ func GenerateThresholdKeys(schemeID threshold.SchemeID, t, n int) ([]threshold.K
 	return dealer.GenerateShares(context.Background())
 }
 
-// GenerateDualThresholdKeys generates both BLS and Ringtail keys (backward compat).
+// GenerateDualThresholdKeys generates both BLS and Ringtail keys.
 func GenerateDualThresholdKeys(t, n int) (*SignerConfig, error) {
 	return GenerateDualKeys(t, n)
 }
