@@ -34,16 +34,29 @@ post-quantum finality. All sub-protocols live in `protocol/`.
 
 **DAG (Nebula)**: Photon -> Wave (per frontier vertex) -> Flare (cert/skip) -> Horizon (safe prefix) -> Field (commit) -> Committer
 
-### Signing Modes (Quasar)
+### Quasar Certificate
 
-Each layer independently toggleable:
-- BLS-only: BLS12-381 threshold (fastest classical)
-- BLS + ML-DSA: dual PQ with FIPS 204 identity
-- BLS + Ringtail: dual PQ with Ring-LWE 2-round threshold
-- BLS + Ringtail + ML-DSA: full Quasar (`TripleSignRound1`, all 3 parallel)
+Validators sign with BLS, ML-DSA, and Ringtail. Z-Chain generates a single
+Groth16 SNARK proving all three are valid (~192 bytes).
 
-`IsTripleMode()` checks all three configured.
-Real crypto via `luxfi/crypto/bls`, `luxfi/crypto/mldsa`, `luxfi/ringtail/threshold`.
+| Layer | Scheme | Hardness | Size |
+|-------|--------|----------|------|
+| BLS | BLS12-381 aggregate | ECDL | 48 bytes |
+| ML-DSA | ML-DSA-65 (FIPS 204) | Module-LWE + SIS | ~3.3KB raw |
+| Ringtail | Ring-LWE threshold | Module-LWE | variable |
+| **ZKP** | **Groth16 / BN254** | — | **~192 bytes** |
+
+Certificate = BLS aggregate (48 B) + Z-Chain ZKP (~192 B) = ~240 bytes total.
+Compression: N * (48 + 3309 + RT) → 240 bytes regardless of validator count.
+
+Modes (each layer independently toggleable):
+- BLS-only: classical fast path
+- BLS + Ringtail: dual PQ
+- BLS + Ringtail + ML-DSA: full Quasar (`TripleSignRound1`)
+- Full Quasar + Z-Chain ZKP: production mode (succinct certificate)
+
+`IsTripleMode()` checks all three signing layers.
+Crypto: `luxfi/crypto/bls`, `luxfi/crypto/mldsa`, `luxfi/ringtail/threshold`.
 
 ### Transport
 
