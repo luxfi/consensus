@@ -9,14 +9,14 @@
 
 The Lux Consensus package provides advanced consensus mechanisms for blockchain systems, featuring:
 
-- **Triple Consensus (Quasar)**: BLS + Ringtail + ML-DSA — three independent cryptographic hardness assumptions for PQ-safe finality
+- **Quasar Consensus**: BLS + Ringtail + ML-DSA — three independent cryptographic hardness assumptions for PQ-safe finality
 - **Multi-Consensus Architecture**: Chain (linear), DAG (parallel), and PQ (post-quantum) consensus modes
 - **GPU-Accelerated Crypto** (aspirational): BLS pairing, lattice computations, ZK proof generation via MLX/Metal — not yet implemented
 - **ZAP Transport**: Zero-copy binary P2P protocol (157x faster deserialization than protobuf)
 - **Photon→Quasar Flow**: Light-speed consensus with DAG finalization
 - **Modular Design**: Each crypto layer (BLS, Ringtail, ML-DSA) independently toggleable
 
-## Quasar Triple Consensus
+## Quasar Consensus
 
 Three independent cryptographic layers, each can be enabled/disabled:
 
@@ -30,7 +30,7 @@ Three independent cryptographic layers, each can be enabled/disabled:
 - BLS-only: fastest classical consensus
 - BLS + ML-DSA: dual consensus with PQ identity proof
 - BLS + Ringtail: dual consensus with PQ threshold proof
-- BLS + Ringtail + ML-DSA: full triple consensus (`TripleSignRound1`, all 3 in parallel)
+- BLS + Ringtail + ML-DSA: full Quasar (`TripleSignRound1`, all 3 in parallel)
 
 `IsTripleMode()` returns true when all three signing paths are configured.
 `TripleSignRound1` runs BLS + Ringtail + ML-DSA in parallel via goroutines.
