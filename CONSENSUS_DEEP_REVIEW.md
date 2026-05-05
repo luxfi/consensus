@@ -123,7 +123,7 @@ var GenesisID = ids.Empty
 
 **Problem**:
 - Genesis block uses `ids.Empty` (all zeros)
-- Avalanche uses `ids.ID("11111111111111111111111111111111LpoYY")` as a well-known constant
+- Upstream avalanchego (historical prior art) uses `ids.ID("11111111111111111111111111111111LpoYY")` as a well-known constant
 - Code searches for "11111111111111111111111111111111LpoYY" found **0 matches** - not used anywhere
 - Different networks may have different genesis IDs, but code assumes `ids.Empty`
 
@@ -134,7 +134,7 @@ var GenesisID = ids.Empty
 
 **Evidence from codebase**:
 ```bash
-# Search for Avalanche genesis constant
+# Search for legacy upstream genesis constant (historical prior art)
 $ grep -r "11111111111111111111111111111111LpoYY" /Users/z/work/lux/consensus/
 # No matches found
 
