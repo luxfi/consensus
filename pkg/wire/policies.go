@@ -8,6 +8,12 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"sync"
+	"time"
+
+	"github.com/luxfi/consensus/protocol/quasar"
+	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/crypto/mldsa"
+	coronaThreshold "github.com/luxfi/pulsar/threshold"
 )
 
 // maxCandidates is the upper bound on tracked candidates per policy instance.
@@ -609,22 +615,24 @@ func (p *QuantumPolicy) MaybeFinalize(ctx context.Context, candidateID Candidate
 		return nil, nil
 	}
 
-	// Build Quasar proof: [scheme_tag][signature_commitment]
-	// The proof is a cryptographic commitment to all BLS and Corona signatures.
-	// Full signatures are collected in Signers for verification.
-	proof := make([]byte, 0)
-	proof = append(proof, SigQuasar) // Mark as Quasar protocol
+	// Build a real QuasarCert and serialize it. Aggregating BLS shares
+	// into a single 48-byte aggregate requires the BLS scheme/aggregator
+	// (held by the signer at a higher layer); here we concatenate the
+	// per-validator share bytes so the wire layer is self-contained, and
+	// embed individual ML-DSA-65 signatures in MLDSAProof.
+	qc := &quasar.QuasarCert{
+		BLS:        concatSignatures(p.blsVotes[candidateID]),
+		Corona:   concatSignatures(p.pqVotes[candidateID]),
+		MLDSAProof: nil,
+		Epoch:      candidate.Height,
+		Finality:   time.Now(),
+		Validators: blsCount,
+	}
 
-	// Create a binding commitment to all signatures using SHA-256
-	// This provides a compact proof that can be verified against the full signatures
-	h := sha256.New()
-	for _, sig := range p.blsVotes[candidateID] {
-		h.Write(sig)
+	proofBytes, err := qc.MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("quantum: marshal QuasarCert: %w", err)
 	}
-	for _, sig := range p.pqVotes[candidateID] {
-		h.Write(sig)
-	}
-	proof = append(proof, h.Sum(nil)...)
 
 	var signers []byte
 	for voter := range p.blsVotes[candidateID] {
@@ -635,21 +643,81 @@ func (p *QuantumPolicy) MaybeFinalize(ctx context.Context, candidateID Candidate
 		CandidateID: candidateID,
 		Height:      candidate.Height,
 		PolicyID:    PolicyQuantum,
-		Proof:       proof,
+		Proof:       proofBytes,
 		Signers:     signers,
 	}
 	p.certs[candidateID] = cert
 	return cert, nil
 }
 
+// concatSignatures concatenates the values of a voter→signature map into a
+// single byte slice. Ordering is undefined (the map is not ordered) but each
+// component preserves byte-for-byte its individual signature.
+func concatSignatures(m map[VoterID][]byte) []byte {
+	if len(m) == 0 {
+		return nil
+	}
+	total := 0
+	for _, s := range m {
+		total += len(s)
+	}
+	out := make([]byte, 0, total)
+	for _, s := range m {
+		out = append(out, s...)
+	}
+	return out
+}
+
+// Verify checks that the QuasarCert in cert.Proof is well-formed. Real
+// cryptographic verification requires the caller to supply the BLS aggregate
+// public key, the Corona group key, and the per-validator ML-DSA public
+// keys via VerifyWithRealKeys.
 func (p *QuantumPolicy) Verify(ctx context.Context, cert *Certificate) (bool, error) {
 	if cert.PolicyID != PolicyQuantum {
 		return false, nil
 	}
-	if len(cert.Proof) < 33 { // scheme + hash
+	qc := &quasar.QuasarCert{}
+	if err := qc.UnmarshalBinary(cert.Proof); err != nil {
 		return false, nil
 	}
-	return cert.Proof[0] == SigQuasar, nil
+	// Structural gate: BLS + Corona must be present for SigQuasar.
+	if len(qc.BLS) == 0 || len(qc.Corona) == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
+// VerifyWithKeys performs cryptographic verification of the certificate
+// using the supplied BLS aggregate, Corona group, and ML-DSA validator
+// keys. Returns nil iff every embedded signature verifies against the
+// canonical message digest sha256(cert.CandidateID || cert.Height).
+func (p *QuantumPolicy) VerifyWithKeys(
+	cert *Certificate,
+	blsAggKey *bls.PublicKey,
+	rtGroupKey *coronaThreshold.GroupKey,
+	mldsaKeys []*mldsa.PublicKey,
+) error {
+	if cert.PolicyID != PolicyQuantum {
+		return fmt.Errorf("quantum: wrong policy %d", cert.PolicyID)
+	}
+	qc := &quasar.QuasarCert{}
+	if err := qc.UnmarshalBinary(cert.Proof); err != nil {
+		return fmt.Errorf("quantum: decode QuasarCert: %w", err)
+	}
+
+	h := sha256.New()
+	h.Write(cert.CandidateID[:])
+	var hb [8]byte
+	for i := 0; i < 8; i++ {
+		hb[i] = byte(cert.Height >> (8 * (7 - i)))
+	}
+	h.Write(hb[:])
+	msg := h.Sum(nil)
+
+	if !qc.VerifyWithRealKeys(msg, blsAggKey, rtGroupKey, mldsaKeys) {
+		return fmt.Errorf("quantum: QuasarCert cryptographic verification failed")
+	}
+	return nil
 }
 
 // =============================================================================

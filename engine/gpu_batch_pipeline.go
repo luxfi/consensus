@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/luxfi/accel"
 	"github.com/luxfi/consensus/types"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
@@ -566,41 +567,72 @@ func (p *GPUBatchPipeline) verifySignaturesGPU(buf *GPUBuffer, result *BatchResu
 	_ = blsCount
 }
 
-// verifyECDSABatchGPU performs batch ECDSA verification on GPU.
+// verifyECDSABatchGPU verifies all ECDSA signatures in the buffer. The
+// accel package does not yet expose a batch ECDSA kernel, so each signature
+// is verified on CPU and the result is written into buf.validFlags.
 func (p *GPUBatchPipeline) verifyECDSABatchGPU(buf *GPUBuffer) int {
 	count := 0
 	for i := 0; i < buf.count; i++ {
-		if buf.sigTypes[i] == SigECDSA {
-			count++
+		if buf.sigTypes[i] != SigECDSA {
+			continue
 		}
+		buf.validFlags[i] = verifyECDSA(buf.txHashes[i][:], buf.signatures[i], buf.publicKeys[i])
+		count++
 	}
-	// GPU kernel call would go here
 	return count
 }
 
-// verifyEd25519BatchGPU performs batch Ed25519 verification on GPU.
+// verifyEd25519BatchGPU verifies all Ed25519 signatures in the buffer using
+// the standard library's batch-friendly verifier. Results are written into
+// buf.validFlags.
 func (p *GPUBatchPipeline) verifyEd25519BatchGPU(buf *GPUBuffer) int {
 	count := 0
 	for i := 0; i < buf.count; i++ {
-		if buf.sigTypes[i] == SigEd25519 {
-			count++
+		if buf.sigTypes[i] != SigEd25519 {
+			continue
 		}
+		buf.validFlags[i] = verifyEd25519(buf.txHashes[i][:], buf.signatures[i], buf.publicKeys[i])
+		count++
 	}
-	// GPU kernel call would go here
 	return count
 }
 
-// verifyBLSBatchGPU performs batch BLS verification on GPU.
-// BLS signatures are aggregatable, so we can verify multiple at once.
+// verifyBLSBatchGPU performs batch BLS verification on the accel backend.
+// BLS signatures are aggregatable; accel.BLSBatchVerify dispatches to CUDA
+// / Metal / WebGPU / CPU depending on what the runtime detected. Below the
+// BLSBatchVerifyThreshold the pipeline falls back to per-signature CPU
+// verify (see verifySignaturesCPU).
 func (p *GPUBatchPipeline) verifyBLSBatchGPU(buf *GPUBuffer) int {
-	count := 0
+	indices := make([]int, 0, buf.count)
+	pks := make([][]byte, 0, buf.count)
+	sigs := make([][]byte, 0, buf.count)
+	msgs := make([][]byte, 0, buf.count)
 	for i := 0; i < buf.count; i++ {
-		if buf.sigTypes[i] == SigBLS {
-			count++
+		if buf.sigTypes[i] != SigBLS {
+			continue
 		}
+		indices = append(indices, i)
+		pks = append(pks, buf.publicKeys[i])
+		sigs = append(sigs, buf.signatures[i])
+		hash := buf.txHashes[i]
+		msgs = append(msgs, hash[:])
 	}
-	// GPU kernel for BLS pairing operations
-	return count
+	if len(indices) == 0 {
+		return 0
+	}
+
+	results, err := accel.BLSBatchVerify(pks, sigs, msgs)
+	if err != nil || len(results) != len(indices) {
+		// Fall back to single-sig BLS verify on each transaction.
+		for i, idx := range indices {
+			buf.validFlags[idx] = verifyBLS(buf.txHashes[idx][:], sigs[i], pks[i])
+		}
+		return len(indices)
+	}
+	for i, idx := range indices {
+		buf.validFlags[idx] = results[i]
+	}
+	return len(indices)
 }
 
 // downloadResults copies verification results from GPU to CPU.
@@ -904,8 +936,10 @@ func verifyMLDSA(hash, sig, pubkey []byte) bool {
 	return pk.VerifySignature(hash, sig)
 }
 
-// gpuAvailable checks if GPU acceleration is available.
-// Returns false to use CPU fallback - GPU support requires luxcpp/gpu binding.
+// gpuAvailable returns true iff at least one accel backend (CUDA / Metal /
+// WebGPU / CPU) reports a usable device. Wired to luxfi/accel.Available so
+// the pipeline only takes the GPU path when the C library reports capacity
+// to dispatch a kernel.
 func gpuAvailable() bool {
-	return false
+	return accel.Available()
 }

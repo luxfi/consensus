@@ -738,3 +738,57 @@ func TestCredentialValidationErrorMessage(t *testing.T) {
 		t.Errorf("unexpected: %s", e.Error())
 	}
 }
+
+// --- FinalityWitnesses parallel-witness model ---
+
+func TestPolicyWitnessesRoundtrip(t *testing.T) {
+	cases := []struct {
+		policy   PolicyID
+		expected FinalityWitnesses
+	}{
+		{PolicyQuorum, WitnessP},
+		{PolicyPQ, WitnessP | WitnessQ},
+		{PolicyPZ, WitnessP | WitnessZ},
+		{PolicyQuantum, WitnessP | WitnessQ | WitnessZ},
+	}
+	for _, c := range cases {
+		got := c.policy.Witnesses()
+		if got != c.expected {
+			t.Errorf("policy %d witnesses=%b want %b", c.policy, got, c.expected)
+		}
+		if PolicyForWitnesses(got) != c.policy {
+			t.Errorf("policy %d roundtrip failed: PolicyForWitnesses(%b)=%d", c.policy, got, PolicyForWitnesses(got))
+		}
+		if err := got.Validate(); err != nil {
+			t.Errorf("policy %d witnesses must validate: %v", c.policy, err)
+		}
+	}
+}
+
+func TestFinalityWitnessesValidate(t *testing.T) {
+	if err := FinalityWitnesses(0).Validate(); err == nil {
+		t.Error("empty witness set must require P")
+	}
+	if err := WitnessQ.Validate(); err == nil {
+		t.Error("Q without P must fail")
+	}
+	if err := (WitnessP | 0x80).Validate(); err == nil {
+		t.Error("unknown bit must fail")
+	}
+	if err := WitnessP.Validate(); err != nil {
+		t.Errorf("WitnessP alone must validate: %v", err)
+	}
+}
+
+func TestFinalityWitnessesHas(t *testing.T) {
+	full := WitnessP | WitnessQ | WitnessZ
+	if !full.Has(WitnessP) {
+		t.Error("PQZ must contain P")
+	}
+	if !full.Has(WitnessQ | WitnessZ) {
+		t.Error("PQZ must contain QZ")
+	}
+	if WitnessP.Has(WitnessQ) {
+		t.Error("P must not contain Q")
+	}
+}
