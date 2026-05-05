@@ -17,6 +17,7 @@ import (
 // ConsensusEngine implements post-quantum consensus combining classical and quantum-resistant security
 type ConsensusEngine struct {
 	params   config.Parameters
+	pqMode   config.PQMode
 	quasar   *quasar.BLS
 	finality chan FinalityEvent
 	mu       sync.RWMutex
@@ -29,6 +30,9 @@ type ConsensusEngine struct {
 	// Cryptography
 	certGen *CertificateGenerator
 }
+
+// PQMode returns the post-quantum signature mode this engine was built with.
+func (e *ConsensusEngine) PQMode() config.PQMode { return e.pqMode }
 
 // FinalityEvent represents a finalized block with quantum-resistant proofs.
 // Carries all three components for parallel verification: classical BLS,
@@ -100,11 +104,18 @@ func (s *memoryStore) Children(id quasar.VertexID) []quasar.VertexID {
 // NewConsensus creates a new post-quantum consensus engine.
 // Uses in-memory storage suitable for single-node operation.
 // For distributed deployment, inject a persistent Store implementation.
+//
+// The engine honours params.PQMode (and the LUX_CONSENSUS_PQ_MODE env
+// override) to select which signature layers are active. Only the BLS
+// fast path is wired today; PQ paths are ready for the signer hookup.
 func NewConsensus(params config.Parameters) *ConsensusEngine {
 	store := &memoryStore{}
 
+	mode, _ := config.PQModeFromEnv(params.PQMode)
+
 	return &ConsensusEngine{
 		params:    params,
+		pqMode:    mode,
 		quasar:    quasar.NewBLS(params, store),
 		finality:  make(chan FinalityEvent, 100),
 		finalized: make(map[ids.ID]bool),
