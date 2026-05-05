@@ -1,8 +1,7 @@
 # Lux Consensus -- Agent Knowledge Base
 
-**Last Updated**: 2026-04-12
 **Repository**: github.com/luxfi/consensus
-**Latest Tag**: v1.22.84
+**Latest Tag**: v1.22.85
 **Go**: 1.26.1
 
 ## Quasar Family of Consensus
@@ -63,6 +62,33 @@ Modes (each layer independently toggleable):
 
 `IsTripleMode()` checks all three signing layers.
 Crypto: `luxfi/crypto/bls`, `luxfi/crypto/mldsa`, `luxfi/ringtail/threshold`.
+
+### PQ Mode Selection
+
+`config/pq_mode.go` defines the configurable PQ mode enum, selectable via
+the `LUX_CONSENSUS_PQ_MODE` env var or `Parameters.PQMode` field:
+
+| Mode | Value | Description |
+|------|-------|-------------|
+| `BLSOnly` | bls | Classical fast path, smallest cert |
+| `BLSPlusMLDSA` | bls-mldsa | BLS + per-validator ML-DSA-65 |
+| `BLSPlusRingtail` | bls-rt | BLS + Ringtail 2-round threshold |
+| `BLSPlusGroth16` | bls-z | BLS + Z-Chain Groth16 rollup (placeholder) |
+| `TripleQuantum` | triple | All three layers active |
+
+`engine/pq.NewConsensus` resolves the mode via `config.PQModeFromEnv` and
+exposes `PQMode()` getter. `bench/pq_modes_bench_test.go` covers all modes
+with real signing (real BLS aggregate, real ML-DSA-65, real Ringtail
+2-round threshold).
+
+Bench (Apple M1, n=21):
+
+| Mode | Sign | Agg | Verify | Cert | Storage 10K |
+|------|------|-----|--------|------|-------------|
+| bls | 312µs | 8.6ms | 714µs | 123 B | 1.17 MB |
+| bls-mldsa | 369µs | 8.5ms | 3.4ms | 69 KB | 665 MB |
+| bls-rt | 39ms | 3.3s | 1.6ms | 33 KB | 318 MB |
+| triple | 40ms | 3.3s | 4.3ms | 102 KB | 981 MB |
 
 ### Chain Separation for Threshold Cryptography
 
