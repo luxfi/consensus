@@ -6,6 +6,7 @@ package wire
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"time"
 )
 
@@ -161,7 +162,8 @@ const (
 	// PolicyNone - no finality required (K=1 self-sequencing)
 	PolicyNone PolicyID = 0
 
-	// PolicyQuorum - threshold signature (3/5, 2/3, etc.)
+	// PolicyQuorum - threshold signature (3/5, 2/3, etc.).
+	// Witness set: {P}. P-Chain BLS only, the default.
 	PolicyQuorum PolicyID = 1
 
 	// PolicySampleConvergence - metastable sampling (large N)
@@ -170,9 +172,105 @@ const (
 	// PolicyL1Inclusion - external chain inclusion (OP Stack)
 	PolicyL1Inclusion PolicyID = 3
 
-	// PolicyQuantum - BLS + Ringtail post-quantum
+	// PolicyQuantum - parallel-witness PQ finality, witness set {P, Q, Z}.
+	// Maximum security level: P-Chain BLS + Q-Chain Ringtail + Z-Chain MLDSAGroth16.
+	// All three witnesses run in parallel.
 	PolicyQuantum PolicyID = 4
+
+	// PolicyPQ - parallel-witness finality, witness set {P, Q}.
+	// P-Chain BLS + Q-Chain Ringtail threshold. No Z-Chain rollup.
+	PolicyPQ PolicyID = 5
+
+	// PolicyPZ - parallel-witness finality, witness set {P, Z}.
+	// P-Chain BLS + Z-Chain MLDSAGroth16 rollup. No Q-Chain ceremony.
+	PolicyPZ PolicyID = 6
 )
+
+// =============================================================================
+// PARALLEL-WITNESS FINALITY MODEL (LP-020 Quasar)
+// =============================================================================
+//
+// Lux finality is layered, parallel witnesses. P-Chain BLS is always required.
+// Q-Chain (Ringtail threshold) and Z-Chain (MLDSAGroth16 rollup) are
+// independently toggleable parallel witnesses producing additional finality
+// artifacts at the same round-rate as P. Adding witnesses does not increase
+// per-block latency, only parallel verification cost.
+// =============================================================================
+
+// FinalityWitnesses is a bitset selecting which parallel finality witnesses
+// must sign each round. WitnessP is always required.
+type FinalityWitnesses uint8
+
+const (
+	// WitnessP - P-Chain BLS aggregate. Always required.
+	WitnessP FinalityWitnesses = 1 << 0
+	// WitnessQ - Q-Chain Ringtail threshold (Module-LWE, eprint 2024/1113).
+	WitnessQ FinalityWitnesses = 1 << 1
+	// WitnessZ - Z-Chain MLDSAGroth16 rollup (per-validator ML-DSA-65
+	// aggregated via Groth16 SNARK).
+	WitnessZ FinalityWitnesses = 1 << 2
+)
+
+// Witnesses returns the FinalityWitnesses bitset for a given PolicyID.
+// Returns 0 for non-witnessed policies (None, Sample, L1).
+func (p PolicyID) Witnesses() FinalityWitnesses {
+	switch p {
+	case PolicyQuorum:
+		return WitnessP
+	case PolicyPQ:
+		return WitnessP | WitnessQ
+	case PolicyPZ:
+		return WitnessP | WitnessZ
+	case PolicyQuantum:
+		return WitnessP | WitnessQ | WitnessZ
+	default:
+		return 0
+	}
+}
+
+// PolicyForWitnesses returns the canonical PolicyID for a witness set.
+// Valid sets: {P}, {P,Q}, {P,Z}, {P,Q,Z}. Returns PolicyNone if invalid
+// (WitnessP missing, or unknown bits set).
+func PolicyForWitnesses(w FinalityWitnesses) PolicyID {
+	if w&WitnessP == 0 {
+		return PolicyNone
+	}
+	switch w {
+	case WitnessP:
+		return PolicyQuorum
+	case WitnessP | WitnessQ:
+		return PolicyPQ
+	case WitnessP | WitnessZ:
+		return PolicyPZ
+	case WitnessP | WitnessQ | WitnessZ:
+		return PolicyQuantum
+	default:
+		return PolicyNone
+	}
+}
+
+// Has reports whether w includes every witness in required.
+func (w FinalityWitnesses) Has(required FinalityWitnesses) bool {
+	return w&required == required
+}
+
+// Validate returns nil iff WitnessP is set and no unknown bits are present.
+func (w FinalityWitnesses) Validate() error {
+	if w&WitnessP == 0 {
+		return ErrWitnessPRequired
+	}
+	if w & ^(WitnessP|WitnessQ|WitnessZ) != 0 {
+		return ErrWitnessUnknown
+	}
+	return nil
+}
+
+// ErrWitnessPRequired is returned when a witness set lacks the mandatory
+// P-Chain BLS witness.
+var ErrWitnessPRequired = errors.New("WitnessP required: P-Chain BLS is the always-on finality witness")
+
+// ErrWitnessUnknown is returned when a witness set contains undefined bits.
+var ErrWitnessUnknown = errors.New("witness set contains unknown bits")
 
 // Certificate is the proof of finalized agreement
 type Certificate struct {

@@ -792,6 +792,21 @@ type AggregatedSignature struct {
 	IsThreshold        bool
 }
 
+// AnyValidatorID returns any configured validator ID, or "" if none.
+// Used by drivers that need to drive the signer for a single contributor
+// (e.g. PostQuantum.GenerateQuantumProof).
+func (s *signer) AnyValidatorID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for id := range s.blsSigners {
+		return id
+	}
+	for id := range s.blsKeys {
+		return id
+	}
+	return ""
+}
+
 // GetActiveValidatorCount returns the number of active validators.
 func (s *signer) GetActiveValidatorCount() int {
 	s.mu.RLock()

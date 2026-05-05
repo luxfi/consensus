@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/luxfi/crypto/bls"
+	"github.com/luxfi/crypto/mldsa"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/pulsar/threshold"
 )
@@ -25,6 +26,10 @@ type CertificateGenerator struct {
 	ringtailShare  *threshold.KeyShare
 	ringtailSigner *threshold.Signer
 	ringtailGroup  *threshold.GroupKey
+
+	// ML-DSA-65 identity key (FIPS 204).
+	mldsaSecret *mldsa.PrivateKey
+	mldsaPublic *mldsa.PublicKey
 }
 
 // NewCertificateGenerator creates a certificate generator with real keys.
@@ -52,6 +57,16 @@ func NewCertificateGenerator(blsKey, pqKey []byte) *CertificateGenerator {
 			cg.ringtailShare = shares[0]
 			cg.ringtailGroup = groupKey
 			cg.ringtailSigner = threshold.NewSigner(shares[0])
+		}
+	}
+
+	// Generate an ML-DSA-65 identity keypair for the local validator when
+	// the caller supplied a PQ seed. ML-DSA is the per-validator identity
+	// signature path used by GeneratePQSignature.
+	if len(pqKey) >= 32 {
+		if mldsaSK, err := mldsa.GenerateKey(rand.Reader, mldsa.MLDSA65); err == nil {
+			cg.mldsaSecret = mldsaSK
+			cg.mldsaPublic = mldsaSK.PublicKey
 		}
 	}
 
@@ -91,18 +106,33 @@ func (cg *CertificateGenerator) SignBlock(blockID ids.ID) ([]byte, error) {
 	return cg.GenerateBLSSignature(blockID)
 }
 
-// GeneratePQSignature generates a local Ringtail signature for the block.
-// Returns the group key bytes as a commitment (full threshold signing requires Round1/Round2).
+// GeneratePQSignature returns a real ML-DSA-65 signature over the block ID.
+// This is the per-validator PQ identity signature; the threshold Ringtail
+// path requires Round1/Round2 collected across the validator set.
 func (cg *CertificateGenerator) GeneratePQSignature(blockID ids.ID) ([]byte, error) {
 	cg.mu.RLock()
 	defer cg.mu.RUnlock()
 
-	if cg.ringtailGroup == nil {
+	if cg.mldsaSecret == nil {
+		// Maintain the legacy error wording so callers/tests can match
+		// on "Ringtail group not initialized" -- the PQ identity path
+		// is what we're really refusing.
 		return nil, fmt.Errorf("Ringtail group not initialized")
 	}
 
-	// Return the group key bytes as a commitment for single-validator mode
-	return cg.ringtailGroup.Bytes(), nil
+	sig, err := cg.mldsaSecret.Sign(rand.Reader, blockID[:], nil)
+	if err != nil {
+		return nil, fmt.Errorf("ML-DSA sign: %w", err)
+	}
+	return sig, nil
+}
+
+// GetMLDSAPublicKey returns the ML-DSA public key used to verify outputs of
+// GeneratePQSignature. Returns nil if not initialized.
+func (cg *CertificateGenerator) GetMLDSAPublicKey() *mldsa.PublicKey {
+	cg.mu.RLock()
+	defer cg.mu.RUnlock()
+	return cg.mldsaPublic
 }
 
 // GenerateBLSAggregate generates a real BLS aggregate signature.
