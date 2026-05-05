@@ -11,9 +11,9 @@ require (
 	github.com/luxfi/crypto v1.17.43
 	github.com/luxfi/database v1.17.42
 	github.com/luxfi/ids v1.2.9
-	github.com/luxfi/lattice/v7 v7.0.1
+	github.com/luxfi/lattice/v7 v7.1.0
 	github.com/luxfi/log v1.4.1
-	github.com/luxfi/math v1.2.3
+	github.com/luxfi/math v1.4.0
 	github.com/luxfi/metric v1.5.0
 	github.com/luxfi/p2p v1.18.9
 	github.com/luxfi/pulsar v0.1.0-rc1-pq-consensus-freeze
