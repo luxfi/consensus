@@ -21,7 +21,7 @@ Consensus and cert generation happen in the same gossip.
 1. **Zero extra rounds** — sigs piggyback on the queries that were happening anyway.
 2. **No separate VRF needed** — committee is implicitly "whoever my photon sampled across the converging rounds."
 3. **Natural fit with DAG** — each DAG vertex carries its own signed query accumulator. Certs bubble up the DAG just like votes.
-4. **Probabilistic sampling** — different validators see slightly different committees (as in Avalanche). Metastable means that once enough converge, the decision is locked with exponentially decaying disagreement probability.
+4. **Probabilistic sampling** — different validators see slightly different committees (as in the original Avalanche metastable family, prior art for Quasar). Metastable means that once enough converge, the decision is locked with exponentially decaying disagreement probability.
 5. **Scale invariance** — `k=20` (photon default) is independent of total network size.
 
 ## Protocol sketch
@@ -50,7 +50,7 @@ The cert is compiled by the block proposer (or any aggregator) from the signed q
 
 ## Security argument
 
-The classical Avalanche argument says that after β rounds with metastable threshold `α > k/2`, the probability of a safety failure decays as `negl(β)` assuming < 1/3 Byzantine stake.
+The classical Avalanche metastable argument (academic prior art) says that after β rounds with metastable threshold `α > k/2`, the probability of a safety failure decays as `negl(β)` assuming < 1/3 Byzantine stake. The same bound holds for Quasar's Wave/Photon path.
 
 **With signed queries:** a Byzantine validator can't forge a signed query from an honest peer. So a valid cert implicitly proves that the accumulation happened honestly — every signature is a cryptographic commitment to the responder's preference at some round.
 
@@ -66,7 +66,7 @@ Forging the cert requires forging ML-DSA signatures for > 2k/3 of the entries in
 | β rounds to converge | β (≈ 15 for 10⁻⁹ safety) | parallel across validators |
 | Finality cert | 0 extra | emitted when metastable threshold reached |
 
-Total rounds to finality: **β** (same as vanilla Avalanche). Extra rounds for cert generation: **0**.
+Total rounds to finality: **β** (same as the academic vanilla Avalanche prior-art bound). Extra rounds for cert generation: **0**.
 
 ## Concrete sizing
 
@@ -138,6 +138,6 @@ For k=32 sampling with β=15 rounds, expected unique signers ≈ 50-80.
 ## References
 
 - Existing Quasar family: `~/work/lux/consensus/protocol/{photon,wave,flare,focus,horizon,ray,nova,nebula,prism,quasar}`
-- Avalanche/Snowman metastable family
+- Avalanche/Snowman metastable family (academic prior art; superseded by Quasar/Nova per LP-020, LP-134)
 - LP-045 hierarchical quorum certs
 - `~/work/lux/proofs/pq-finality-no-bls.tex`
