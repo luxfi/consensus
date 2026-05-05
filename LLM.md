@@ -88,6 +88,25 @@ Bench (Apple M1, n=21):
 | bls | 312µs | 8.6ms | 714µs | 123 B | 1.17 MB |
 | bls-mldsa | 369µs | 8.5ms | 3.4ms | 69 KB | 665 MB |
 | bls-rt | 39ms | 3.3s | 1.6ms | 33 KB | 318 MB |
+
+The Corona layer is implemented by **Pulsar** (`github.com/luxfi/pulsar/threshold`)
+— Lux's variant with DKG2 (`pulsar/dkg2/`) and Pulsar-SHA3 hash suite
+(`pulsar/hash/sp800_185.go`, KMAC over cSHAKE256). Pulsar params are
+byte-identical to the original Corona: M=8, N=7, LogN=8 (ring degree
+256), Q=0x1000000004A01 (48-bit NTT-friendly prime), Dbar=48, Kappa=23.
+
+Cert-size honest accounting (production params, classical 2^142 /
+quantum 2^130 security):
+- Signature = (C: 1 ring.Poly) + (Z: Vector[ring.Poly] len 8) +
+  (Delta: Vector[ring.Poly] len 8) = 17 polys × 256 coeffs × 8 bytes
+  raw ≈ 34816 B; measured 33052 B native binary, 33221 B gob (gob
+  bloat is only 1.01x — see `cert_size_compare_test.go`). Native
+  encoder ships in `protocol/quasar/corona_gob.go` (replaces gob).
+- 10K certs ≈ 315 MB native, 317 MB gob.
+- The earlier "10 MB / 10K = 1 KB / cert" claim was a different
+  parameter sweep (smaller ring + smaller Q) — would lose ~20 bits
+  classical and ~15 bits quantum security. Not interchangeable with
+  Pulsar production.
 | triple | 40ms | 3.3s | 4.3ms | 102 KB | 981 MB |
 
 ### Chain Separation for Threshold Cryptography
