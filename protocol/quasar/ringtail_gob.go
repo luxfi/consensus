@@ -3,32 +3,100 @@
 package quasar
 
 import (
-	"bytes"
-	"encoding/gob"
+	"encoding/binary"
+	"fmt"
 
+	"github.com/luxfi/lattice/v7/ring"
+	"github.com/luxfi/lattice/v7/utils/structs"
 	ringtailThreshold "github.com/luxfi/pulsar/threshold"
 )
 
-// ringtailGobEncode serializes a Ringtail threshold signature using gob.
-// Returns nil on encoder error; callers treat that as "no signature available".
+// ringtailGobEncode serializes a Pulsar threshold signature using the
+// native ring.Poly / structs.Vector binary encoders. The legacy name
+// ringtailGobEncode is preserved for caller compatibility — actual
+// encoding is no longer gob-based. gob added ~10x overhead via reflection
+// type metadata; the native path is the raw NTT-coefficient stream
+// matching the on-disk Pulsar KAT format.
+//
+// Wire layout (length-prefixed concatenation):
+//
+//	[4-byte BE C_len ][C bytes ]
+//	[4-byte BE Z_len ][Z bytes ]
+//	[4-byte BE Delta_len][Delta bytes]
+//
+// Returns nil on encoder error; callers treat nil as "no signature
+// available" and the round driver falls back to the next-lower witness
+// level.
 func ringtailGobEncode(sig *ringtailThreshold.Signature) []byte {
 	if sig == nil {
 		return nil
 	}
-	var buf bytes.Buffer
-	if err := gob.NewEncoder(&buf).Encode(sig); err != nil {
+	cb, err := sig.C.MarshalBinary()
+	if err != nil {
 		return nil
 	}
-	return buf.Bytes()
+	zb, err := sig.Z.MarshalBinary()
+	if err != nil {
+		return nil
+	}
+	db, err := sig.Delta.MarshalBinary()
+	if err != nil {
+		return nil
+	}
+	out := make([]byte, 0, 12+len(cb)+len(zb)+len(db))
+	var hdr [4]byte
+	binary.BigEndian.PutUint32(hdr[:], uint32(len(cb)))
+	out = append(out, hdr[:]...)
+	out = append(out, cb...)
+	binary.BigEndian.PutUint32(hdr[:], uint32(len(zb)))
+	out = append(out, hdr[:]...)
+	out = append(out, zb...)
+	binary.BigEndian.PutUint32(hdr[:], uint32(len(db)))
+	out = append(out, hdr[:]...)
+	out = append(out, db...)
+	return out
 }
 
 // ringtailGobDecode is the inverse of ringtailGobEncode.
 func ringtailGobDecode(data []byte) (*ringtailThreshold.Signature, error) {
-	if len(data) == 0 {
+	if len(data) < 12 {
 		return nil, ErrCertCorrupt
 	}
 	out := &ringtailThreshold.Signature{}
-	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(out); err != nil {
+
+	off := 0
+	readField := func(unmarshal func([]byte) error) error {
+		if off+4 > len(data) {
+			return ErrCertCorrupt
+		}
+		n := binary.BigEndian.Uint32(data[off : off+4])
+		off += 4
+		if off+int(n) > len(data) {
+			return ErrCertCorrupt
+		}
+		if err := unmarshal(data[off : off+int(n)]); err != nil {
+			return fmt.Errorf("%w: %v", ErrCertCorrupt, err)
+		}
+		off += int(n)
+		return nil
+	}
+
+	if err := readField(func(b []byte) error {
+		out.C = ring.Poly{}
+		return out.C.UnmarshalBinary(b)
+	}); err != nil {
+		return nil, err
+	}
+	if err := readField(func(b []byte) error {
+		out.Z = structs.Vector[ring.Poly]{}
+		return out.Z.UnmarshalBinary(b)
+	}); err != nil {
+		return nil, err
+	}
+	if err := readField(func(b []byte) error {
+		out.Delta = structs.Vector[ring.Poly]{}
+		return out.Delta.UnmarshalBinary(b)
+	}); err != nil {
 		return nil, err
 	}
 	return out, nil
