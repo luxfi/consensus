@@ -1,7 +1,6 @@
 # Quasar Consensus — Measured Benchmarks
 
 **Hardware**: Apple M1 Max (10 cores, darwin/arm64)
-**Date**: 2026-04-13
 **Build**: Go 1.26.1, CPU path only (no `-tags accel` / no CGO GPU)
 
 All numbers below are raw `go test -bench` output. Reproduce with the commands
