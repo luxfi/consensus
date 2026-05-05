@@ -43,6 +43,37 @@ Each cryptographic layer is independently toggleable:
 `IsTripleMode()` returns true when all three paths are configured.
 `TripleSignRound1` runs BLS + Corona + ML-DSA signing in parallel goroutines.
 
+### PQ Mode Selection (Configurable)
+
+The active mode is selectable at runtime via `config.PQMode` or the
+`LUX_CONSENSUS_PQ_MODE` env var. Defined in `config/pq_mode.go`:
+
+| Mode | Env value | Maps to wire policy |
+|------|-----------|---------------------|
+| `BLSOnly` | `bls` | `PolicyQuorum` |
+| `BLSPlusMLDSA` | `bls-mldsa` | `PolicyPQ` |
+| `BLSPlusCorona` | `bls-rt` | `PolicyPZ` |
+| `BLSPlusGroth16` | `bls-z` | `PolicyQuantum` (placeholder) |
+| `TripleQuantum` | `triple` | `PolicyQuantum` |
+
+Run `bench/pq_modes_bench_test.go` for measured per-mode signing /
+aggregation / verify costs and cert sizes. Storage and cert size
+trade-offs:
+
+| Mode | Sign | Agg | Verify | Cert | Storage 10K |
+|------|------|-----|--------|------|-------------|
+| bls | 312 µs | 8.6 ms | 714 µs | 123 B | 1.17 MB |
+| bls-mldsa | 369 µs | 8.5 ms | 3.4 ms | 69 KB | 665 MB |
+| bls-rt | 39 ms | 3.3 s | 1.6 ms | 33 KB | 318 MB |
+| triple | 40 ms | 3.3 s | 4.3 ms | 102 KB | 981 MB |
+
+Corona / triple include the full 2-round Pulsar threshold protocol
+(`github.com/luxfi/pulsar/threshold` — Pulsar is Lux's variant with
+DKG2 and Pulsar-SHA3 hash suite). Production parameters M=8, N=7,
+LogN=8 (ring degree 256), Q=2^48-ish: classical 2^142, quantum 2^130.
+Cert-size floor of ~33 KB is set by the (C, Z, Delta) ring polynomials;
+`protocol/quasar/cert_size_compare_test.go` measures and verifies this.
+
 ## Architecture
 
 ```
