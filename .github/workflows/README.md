@@ -48,10 +48,10 @@ This workflow ensures ALL SDKs are tested against their **actual capabilities** 
 
 **Why**: Rust wraps C, so can't be faster than C (21K/sec). Any benchmark >100K/sec is measuring wrong thing.
 
-#### 5. C++ SDK ⚠️ Snowball Only
+#### 5. C++ SDK ⚠️ Wave Only
 - **Tests**: 2/3 tests (stubs expected to fail)
 - **Verifies**:
-  - Only Snowball implemented
+  - Only Wave implemented
   - Chain/DAG/PQ return nullptr (stubs)
 
 **Why**: C++ has one working algorithm, rest are TODOs.
@@ -135,7 +135,7 @@ When Rust stops using C FFI and implements natively:
 - Benchmarks can exceed C SDK performance
 
 #### ✅ C++ Implements Chain/DAG/PQ
-When C++ adds real implementations beyond Snowball:
+When C++ adds real implementations beyond Wave:
 - Remove nullptr checks
 - Add algorithm-specific tests
 - Update status table
