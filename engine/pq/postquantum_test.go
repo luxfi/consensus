@@ -111,44 +111,55 @@ func TestPostQuantumVerifyQuantumSignature(t *testing.T) {
 	signature := []byte("test signature")
 	publicKey := []byte("test public key")
 
+	// Without verify keys attached, real verification refuses to run.
 	err := pq.VerifyQuantumSignature(message, signature, publicKey)
+	require.Error(t, err)
 
-	require.NoError(t, err)
+	// With keys + a malformed (non-QuasarCert) signature, must also fail.
+	_, signer := newTestSigner(t)
+	pq.AttachSigner(signer)
+	pq.AttachVerifyKeys(testBLSAggKey(t), nil, nil)
+	err = pq.VerifyQuantumSignature(message, signature, publicKey)
+	require.Error(t, err)
 }
 
 func TestPostQuantumVerifyQuantumSignatureEmpty(t *testing.T) {
 	pq := New()
+	pq.AttachVerifyKeys(testBLSAggKey(t), nil, nil)
 
-	// Test with empty inputs
 	err := pq.VerifyQuantumSignature(nil, nil, nil)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	err = pq.VerifyQuantumSignature([]byte{}, []byte{}, []byte{})
-	require.NoError(t, err)
+	require.Error(t, err)
 }
 
 func TestPostQuantumGenerateQuantumProof(t *testing.T) {
 	pq := New()
+	_, signer := newTestSigner(t)
+	pq.AttachSigner(signer)
+
 	ctx := context.Background()
 	blockID := ids.GenerateTestID()
 
 	proof, err := pq.GenerateQuantumProof(ctx, blockID)
-
 	require.NoError(t, err)
-	require.NotNil(t, proof)
-	require.Empty(t, proof) // Current implementation returns empty
+	require.NotEmpty(t, proof)
+	require.Equal(t, byte(0x04), proof[0]) // CertSchemeQuasar
 }
 
 func TestPostQuantumGenerateQuantumProofMultiple(t *testing.T) {
 	pq := New()
+	_, signer := newTestSigner(t)
+	pq.AttachSigner(signer)
+
 	ctx := context.Background()
 
-	// Generate proofs for multiple blocks
 	for i := 0; i < 10; i++ {
 		blockID := ids.GenerateTestID()
 		proof, err := pq.GenerateQuantumProof(ctx, blockID)
 		require.NoError(t, err)
-		require.NotNil(t, proof)
+		require.NotEmpty(t, proof)
 	}
 }
 
@@ -171,12 +182,21 @@ func TestPostQuantumInterfaceCompliance(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, health)
 
+	// Without keys/signer attached, both must fail-closed.
 	err = engine.VerifyQuantumSignature([]byte("msg"), []byte("sig"), []byte("key"))
-	require.NoError(t, err)
+	require.Error(t, err)
+
+	_, err = engine.GenerateQuantumProof(ctx, ids.GenerateTestID())
+	require.Error(t, err)
+
+	// After attaching, both must succeed structurally.
+	_, signer := newTestSigner(t)
+	pq.AttachSigner(signer)
+	pq.AttachVerifyKeys(testBLSAggKey(t), nil, nil)
 
 	proof, err := engine.GenerateQuantumProof(ctx, ids.GenerateTestID())
 	require.NoError(t, err)
-	require.NotNil(t, proof)
+	require.NotEmpty(t, proof)
 
 	err = engine.Stop(ctx)
 	require.NoError(t, err)
@@ -199,8 +219,9 @@ func TestPostQuantumContextCancellation(t *testing.T) {
 	_, err = pq.HealthCheck(ctx)
 	require.NoError(t, err)
 
+	// With no signer attached, GenerateQuantumProof refuses to run.
 	_, err = pq.GenerateQuantumProof(ctx, ids.GenerateTestID())
-	require.NoError(t, err)
+	require.Error(t, err)
 }
 
 func BenchmarkPostQuantumStart(b *testing.B) {
