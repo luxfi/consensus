@@ -205,7 +205,7 @@ commands.
 | Quasar | QuantumHash | 435 ns |
 | Quasar | Validator add | 328 us |
 
-### QuasarCert Components (measured 2026-04-13)
+### QuasarCert Components (measured CPU path)
 
 Per-component CPU costs for QuasarCert production and verification:
 
