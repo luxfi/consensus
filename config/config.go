@@ -36,6 +36,18 @@ type Parameters struct {
 	BlockTime             time.Duration // For compatibility
 	RoundTO               time.Duration // For compatibility
 	GasLimit              uint64        // Per-block gas limit (0 = use chain default)
+
+	// PQMode selects which post-quantum signature paths the engine runs
+	// alongside BLS. Zero value (PQModeBLSOnly) preserves the classical
+	// fast path. See pq_mode.go for the full enum.
+	PQMode PQMode
+}
+
+// WithPQMode returns a copy of Parameters with the given PQ mode set.
+// Use config.PQModeFromEnv to honour the LUX_CONSENSUS_PQ_MODE override.
+func (p Parameters) WithPQMode(m PQMode) Parameters {
+	p.PQMode = m
+	return p
 }
 
 // DefaultParams returns default parameters with 69% threshold
