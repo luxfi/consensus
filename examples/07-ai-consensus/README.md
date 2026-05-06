@@ -150,7 +150,7 @@ Phase 2: AI Validation
 
 Phase 3: Vote Broadcast
 → Broadcasting vote via QZMQ...
-✓ Vote sent with Dilithium signature
+✓ Vote sent with ML-DSA signature
 
 Phase 4: Learning
 ✓ Training from consensus outcome
@@ -276,7 +276,7 @@ agent.SyncSharedMemory(ctx)
 ✅ **Quantum-Resistant**: All network communication via QZMQ  
 ✅ **Byzantine Fault Tolerant**: Handles up to (n-1)/3 malicious nodes  
 ✅ **AI-Verified**: Every proposal validated by multiple AI agents  
-✅ **Cryptographically Provable**: Dilithium signatures on all messages  
+✅ **Cryptographically Provable**: ML-DSA signatures on all messages  
 ✅ **Forward Secure**: Past consensus cannot be compromised  
 
 ## Customization
