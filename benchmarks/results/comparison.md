@@ -139,9 +139,9 @@ BenchmarkSigmoid-10                214260781      5.600 ns/op      0 B/op    0 a
 ### Network Performance (QZMQ)
 
 **Quantum-Secure Messaging:**
-- **Signature (Dilithium)**: 0.3ms
+- **Signature (ML-DSA)**: 0.3ms
 - **Verification**: 0.2ms
-- **Encryption (Kyber)**: 1.2ms
+- **Encryption (ML-KEM)**: 1.2ms
 - **Decryption**: 1.1ms
 - **Total Overhead**: ~2.6ms per message
 
