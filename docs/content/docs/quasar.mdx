@@ -87,7 +87,7 @@ func (q *Quasar) ProcessPhaseII(ctx context.Context, block *Block) error {
 | Validator-BLS | bls12-381 | Fast finality votes | `$HOME/.lux/bls.key` |
 | Validator-PQ | lattice | PQ finality shares | `$HOME/.lux/rt.key` |
 | Wallet (EVM) | secp256k1 or Lamport | User tx signatures | In wallet |
-| Wallet (X-Chain) | secp256k1 or Dilithium | UTXO locking | In wallet |
+| Wallet (X-Chain) | secp256k1 or ML-DSA | UTXO locking | In wallet |
 
 The same `rt.key` registered on Q-Chain is reused by all chains.
 

@@ -80,7 +80,7 @@ All implementations support these consensus engines (Quasar family):
 1. **Wave** - Threshold voting with fast probabilistic consensus (production)
 2. **Nova** - Linear chain consensus (wraps Ray sub-protocol)
 3. **Nebula** - DAG consensus with safe-prefix commit (wraps Field sub-protocol)
-4. **PostQuantum** - Quantum-resistant consensus with BLS + Ringtail + ML-DSA
+4. **PostQuantum** - Quantum-resistant consensus with BLS + Pulsar + ML-DSA
 5. **Chain** - Linear chain consensus for ordered blocks
 6. **DAG** - Full directed acyclic graph consensus
 
