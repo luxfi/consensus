@@ -99,7 +99,7 @@ The final cert includes sigs from every validator that appeared in at least one 
 This is larger than the fixed k=128 cert (310 kB). Trade-off: we save the separate VRF + committee-signing protocol and get consensus + cert in a single pass.
 
 Compression options:
-- **Per-epoch Corona** over converging signers (off the hot path)
+- **Per-epoch Pulsar** over converging signers (off the hot path)
 - **Per-era Z-chain Groth16** proof over epoch certs
 
 ## How it extends the existing protocols

@@ -9,7 +9,7 @@ Quasar is Lux's unified consensus protocol that combines multiple cutting-edge c
 1. **Fast Probabilistic Consensus (FPC)** - Prevents stuck states with dynamic thresholds
 2. **Wave Protocol** - Metastable convergence through repeated sampling
 3. **Horizon/Flare** - DAG-based finality detection
-4. **Post-Quantum Signatures** - Corona lattice + BLS fusion
+4. **Post-Quantum Signatures** - Pulsar lattice + BLS fusion
 
 Together, these achieve **2-round quantum finality in <1 second**.
 
@@ -83,7 +83,7 @@ Visualizes the complete 2-round protocol:
 **Round 2 (~300ms): Quantum Finality**
 - Horizon finality detection
 - Flare certificate verification
-- Corona post-quantum signatures
+- Pulsar post-quantum signatures
 - Event horizon advancement
 
 **Total: <1 second with quantum resistance**
@@ -132,8 +132,8 @@ Horizon/Flare detect finality in parallel DAG:
 
 ### Quantum Resistance
 
-Corona provides post-quantum security:
-- Lattice-based cryptography (NTRU/Kyber family)
+Pulsar provides post-quantum security:
+- Lattice-based cryptography (NTRU/ML-KEM family)
 - Fused with BLS for 2-round finality
 - Resistant to Shor's algorithm (quantum attacks)
 
@@ -150,7 +150,7 @@ Quasar Protocol
     └── Round 2: Quantum Finality
         ├── Horizon (reachability analysis)
         ├── Flare (certificate verification)
-        └── Corona (PQ signatures)
+        └── Pulsar (PQ signatures)
 ```
 
 ## Performance
