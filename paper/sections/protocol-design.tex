@@ -124,20 +124,20 @@ Lux Nebula forgoes the single-chain restriction to allow a DAG of transactions/b
 
 \subsection{Quasar – P-Chain Post-Quantum Finality}
 
-Lux Quasar operates as the Platform Chain (P-Chain) that provides post-quantum finality for both Nova and Nebula consensus modes. Quasar merges Ringtail threshold signatures with BLS aggregation to achieve quantum-resistant unified finality across the entire network.
+Lux Quasar operates as the Platform Chain (P-Chain) that provides post-quantum finality for both Nova and Nebula consensus modes. Quasar merges Pulsar threshold signatures with BLS aggregation to achieve quantum-resistant unified finality across the entire network.
 
 \textbf{P-Chain Architecture}: Quasar functions as the meta-consensus layer:
 \begin{itemize}
 \item \textbf{Validator Set Management}: P-Chain maintains the canonical validator set for all consensus instances
 \item \textbf{Cross-Chain Finality}: Checkpoints finalize state across Nova chains and Nebula DAGs
-\item \textbf{Threshold Coordination}: Combines Ringtail (post-quantum threshold) with BLS (classical aggregation) for hybrid security
+\item \textbf{Threshold Coordination}: Combines Pulsar (post-quantum threshold) with BLS (classical aggregation) for hybrid security
 \end{itemize}
 
-\textbf{Ringtail + BLS Fusion}: The signature scheme combines:
+\textbf{Pulsar + BLS Fusion}: The signature scheme combines:
 \begin{itemize}
-\item \textbf{Ringtail}: Post-quantum threshold signatures for quantum-resistant finality
+\item \textbf{Pulsar}: Post-quantum threshold signatures for quantum-resistant finality
 \item \textbf{BLS}: Classical signature aggregation for efficiency in benign conditions
-\item \textbf{Hybrid Mode}: Classical BLS for speed, Ringtail checkpoints for quantum security
+\item \textbf{Hybrid Mode}: Classical BLS for speed, Pulsar checkpoints for quantum security
 \end{itemize}
 
 \textbf{Event Horizon Finality}: Quasar establishes event horizons using the Horizon ordering algorithm:
@@ -145,7 +145,7 @@ Lux Quasar operates as the Platform Chain (P-Chain) that provides post-quantum f
 \item \textbf{Event Horizon}: A finality boundary beyond which no events can affect the committed state
 \item \textbf{Horizon Ordering}: Canonical ordering of vertices that have crossed the event horizon
 \item \textbf{Reachability Analysis}: Uses DAG reachability to determine which vertices are beyond the horizon
-\item \textbf{P-Chain Checkpoints}: Event horizons are signed with Ringtail + BLS for quantum-resistant finality
+\item \textbf{P-Chain Checkpoints}: Event horizons are signed with Pulsar + BLS for quantum-resistant finality
 \end{itemize}
 
 \textbf{Unified Cross-Chain Finality}: Quasar event horizons provide:
