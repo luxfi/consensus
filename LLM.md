@@ -25,7 +25,7 @@ post-quantum finality. All sub-protocols live in `protocol/`.
 | `nova` | Linear chain mode (wraps ray) | `Nova[T]` |
 | `nebula` | DAG mode (wraps field) | `Nebula[V]` |
 | `chain` | Block interface primitives | `Block`, `ChainState` |
-| `quasar` | BLS + Ringtail + ML-DSA threshold signing | `signer`, `BLS`, `EpochManager`, `BundleSigner` |
+| `quasar` | BLS + Pulsar + ML-DSA threshold signing | `signer`, `BLS`, `EpochManager`, `BundleSigner` |
 
 ### Consensus Flow
 
@@ -40,7 +40,7 @@ post-quantum finality. All sub-protocols live in `protocol/`.
 ```go
 type QuasarCert struct {
     BLS        []byte  // BLS12-381 aggregate, 48 bytes classical fast path
-    Ringtail   []byte  // Ring-LWE threshold (PQ), O(1) after DKG
+    Pulsar   []byte  // Ring-LWE threshold (PQ), O(1) after DKG
     MLDSAProof []byte  // Z-Chain Groth16 rolling up N × ML-DSA identity sigs, ~192 bytes
     Epoch      uint64
     Finality   time.Time
@@ -52,12 +52,12 @@ type QuasarCert struct {
 |-------|--------|----------|----------|---------|
 | BLS | BLS12-381 aggregate | co-CDH | 48 B | 48 B |
 | ML-DSA | ML-DSA-65 (FIPS 204) | Module-LWE + MSIS | ~3309 B per validator | 192 B (Groth16) |
-| Ringtail | Ring-LWE threshold | Module-LWE | O(1) after DKG | variable |
+| Pulsar | Ring-LWE threshold | Module-LWE | O(1) after DKG | variable |
 
 Modes (each layer independently toggleable):
 - BLS-only: classical fast path
-- BLS + Ringtail: dual PQ
-- BLS + Ringtail + ML-DSA: full Quasar (`TripleSignRound1`)
+- BLS + Pulsar: dual PQ
+- BLS + Pulsar + ML-DSA: full Quasar (`TripleSignRound1`)
 - Full Quasar + Z-Chain ZKP: production mode (succinct certificate)
 
 `IsTripleMode()` checks all three signing layers.
@@ -72,13 +72,13 @@ the `LUX_CONSENSUS_PQ_MODE` env var or `Parameters.PQMode` field:
 |------|-------|-------------|
 | `BLSOnly` | bls | Classical fast path, smallest cert |
 | `BLSPlusMLDSA` | bls-mldsa | BLS + per-validator ML-DSA-65 |
-| `BLSPlusRingtail` | bls-rt | BLS + Ringtail 2-round threshold |
+| `BLSPlusRingtail` | bls-rt | BLS + Pulsar 2-round threshold |
 | `BLSPlusGroth16` | bls-z | BLS + Z-Chain Groth16 rollup (placeholder) |
 | `TripleQuantum` | triple | All three layers active |
 
 `engine/pq.NewConsensus` resolves the mode via `config.PQModeFromEnv` and
 exposes `PQMode()` getter. `bench/pq_modes_bench_test.go` covers all modes
-with real signing (real BLS aggregate, real ML-DSA-65, real Ringtail
+with real signing (real BLS aggregate, real ML-DSA-65, real Pulsar
 2-round threshold).
 
 Bench (Apple M1, n=21):
@@ -89,10 +89,10 @@ Bench (Apple M1, n=21):
 | bls-mldsa | 369µs | 8.5ms | 3.4ms | 69 KB | 665 MB |
 | bls-rt | 39ms | 3.3s | 1.6ms | 33 KB | 318 MB |
 
-The Ringtail layer is implemented by **Pulsar** (`github.com/luxfi/pulsar/threshold`)
+The Pulsar layer is implemented by **Pulsar** (`github.com/luxfi/pulsar/threshold`)
 — Lux's variant with DKG2 (`pulsar/dkg2/`) and Pulsar-SHA3 hash suite
 (`pulsar/hash/sp800_185.go`, KMAC over cSHAKE256). Pulsar params are
-byte-identical to the original Ringtail: M=8, N=7, LogN=8 (ring degree
+byte-identical to the original Pulsar: M=8, N=7, LogN=8 (ring degree
 256), Q=0x1000000004A01 (48-bit NTT-friendly prime), Dbar=48, Kappa=23.
 
 Cert-size honest accounting (production params, classical 2^142 /
@@ -117,8 +117,8 @@ that feed it are split across the primary network chains:
 | Chain | Role |
 |-------|------|
 | **X-Chain** | *Verifies* already-signed UTXOs via Fx plugins (secp256k1fx, mldsafx, slhdsafx, ed25519fx, secp256r1fx...). Does not run MPC ceremonies. |
-| **Q-Chain** | Runs the Ringtail 2-round threshold for *consensus only* (this repo's `protocol/quasar/` emits those rounds). Not a general MPC host. |
-| **T-Chain** | Runs *all* MPC ceremonies: CGGMP21, FROST, Ringtail (general), TFHE. The signing partner for cross-chain custody. |
+| **Q-Chain** | Runs the Pulsar 2-round threshold for *consensus only* (this repo's `protocol/quasar/` emits those rounds). Not a general MPC host. |
+| **T-Chain** | Runs *all* MPC ceremonies: CGGMP21, FROST, Pulsar (general), TFHE. The signing partner for cross-chain custody. |
 | **Z-Chain** | Rolls N per-validator ML-DSA identity sigs into a single 192-byte Groth16 proof per epoch (the `MLDSAProof` field). |
 
 **Why `MLDSAProof` and not `ThresholdMLDSA`**: threshold ML-DSA has no FIPS
@@ -142,7 +142,7 @@ The paper + proof sketch carry the soundness/liveness/PQ-safety arguments:
     amortized to ~2^20 via shared-matrix optimization for n=21 validators)
   - App C — Static vs adaptive corruption (Fischlin / erasure hybrids)
   - App D — Trusted-setup ceremony (Bowe-Gabizon-Miers), PLONK upgrade path
-  - App E — Ringtail parameter tightness: classical 2^142, quantum 2^130 via
+  - App E — Pulsar parameter tightness: classical 2^142, quantum 2^130 via
     BDGL sieving + Grover speedup
 
 ### Domain separation
@@ -220,12 +220,12 @@ Per-component CPU costs for QuasarCert production and verification:
 | ML-DSA-65 verify (via Fx) | 254 us | `utxo/mldsafx BenchmarkMLDSA65Verify` |
 | ML-DSA-65 verify (cached) | 3 us | `utxo/mldsafx BenchmarkMLDSA65VerifyCached` |
 | SLH-DSA-192f verify | 1.92 ms | `utxo/slhdsafx BenchmarkSLH192fVerify` |
-| Quasar full block (BLS+ML-DSA+Ringtail) | 1.85 ms | `protocol/quasar BenchmarkQuasarBlockProcessing` |
+| Quasar full block (BLS+ML-DSA+Pulsar) | 1.85 ms | `protocol/quasar BenchmarkQuasarBlockProcessing` |
 
 **QuasarCert verify (approx CPU, single cert, n=21 validators):**
 - BLS aggregate verify: ~875 us (constant in signer count)
 - Groth16 proof verify: ~1-3 ms (pairing-dominated, not yet in our bench harness — see App B of proof sketch)
-- Ringtail threshold verify: variable, amortized O(1) after DKG
+- Pulsar threshold verify: variable, amortized O(1) after DKG
 - Total: ~2-5 ms per cert, GPU batch can amortize 10-100x across certs
 
 **Note on the stale 357 us claim in older papers:** The "357 us epoch finality"
@@ -286,7 +286,7 @@ Run: `GOWORK=off go test -v -run TestLuxVsAvalanche_EndToEnd -bench=. ./bench/`
 
 ### Test Status
 - All tests pass except `TestQuantumBundle_ChainIntegrity` which is flaky
-  (Ringtail threshold signing nondeterminism -- passes on retry)
+  (Pulsar threshold signing nondeterminism -- passes on retry)
 - Build: `GOWORK=off go build ./...`
 - Tests: `GOWORK=off go test -count=1 -short -timeout 300s ./...`
 
