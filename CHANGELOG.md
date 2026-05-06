@@ -27,8 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Quantum-Resistant Integration
 - OP Stack quantum finality integration example (`examples/op_stack_quantum_integration.go`)
 - Post-quantum cryptographic proofs:
-  - ML-DSA-65 (Dilithium) digital signatures
-  - ML-KEM-1024 (Kyber) key encapsulation
+  - ML-DSA-65 digital signatures
+  - ML-KEM-1024 key encapsulation
   - Quantum-resistant Merkle tree implementation
 - Layer 2 rollup integration with quantum-resistant finality guarantees
 
@@ -103,8 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - Quantum-resistant cryptography integration for Layer 2 rollups
-- Post-quantum signature schemes (Dilithium)
-- Post-quantum key encapsulation (Kyber)
+- Post-quantum signature schemes (ML-DSA)
+- Post-quantum key encapsulation (ML-KEM)
 
 ---
 

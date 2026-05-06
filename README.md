@@ -27,7 +27,7 @@ post-quantum finality via three independent cryptographic signing paths.
 | **Flare** | DAG certificate/skip detection via 2f+1 quorum | `protocol/flare` |
 | **Ray** | Linear chain finality driver: Wave + Focus + Sink | `protocol/ray` |
 | **Field** | DAG finality driver: Wave + safe-prefix commit | `protocol/field` |
-| **Quasar** | BLS + Corona + ML-DSA threshold signing, epoch management | `protocol/quasar` |
+| **Quasar** | BLS + Pulsar + ML-DSA threshold signing, epoch management | `protocol/quasar` |
 
 ### Signing Modes
 
@@ -37,11 +37,11 @@ Each cryptographic layer is independently toggleable:
 |------|--------|----------|
 | BLS-only | BLS12-381 threshold | Fastest classical consensus |
 | BLS + ML-DSA | BLS + FIPS 204 ML-DSA-65 | Dual with PQ identity proof |
-| BLS + Corona | BLS + Ring-LWE 2-round threshold | Dual with PQ threshold proof |
-| BLS + Corona + ML-DSA | All three in parallel | Full Quasar (triple mode) |
+| BLS + Pulsar | BLS + Ring-LWE 2-round threshold | Dual with PQ threshold proof |
+| BLS + Pulsar + ML-DSA | All three in parallel | Full Quasar (triple mode) |
 
 `IsTripleMode()` returns true when all three paths are configured.
-`TripleSignRound1` runs BLS + Corona + ML-DSA signing in parallel goroutines.
+`TripleSignRound1` runs BLS + Pulsar + ML-DSA signing in parallel goroutines.
 
 ### PQ Mode Selection (Configurable)
 
@@ -67,7 +67,7 @@ trade-offs:
 | bls-rt | 39 ms | 3.3 s | 1.6 ms | 33 KB | 318 MB |
 | triple | 40 ms | 3.3 s | 4.3 ms | 102 KB | 981 MB |
 
-Corona / triple include the full 2-round Pulsar threshold protocol
+Pulsar / triple include the full 2-round Pulsar threshold protocol
 (`github.com/luxfi/pulsar/threshold` — Pulsar is Lux's variant with
 DKG2 and Pulsar-SHA3 hash suite). Production parameters M=8, N=7,
 LogN=8 (ring degree 256), Q=2^48-ish: classical 2^142, quantum 2^130.
@@ -91,7 +91,7 @@ consensus/
     nova/         Linear chain consensus mode
     nebula/       DAG consensus mode
     chain/        Block interface primitives
-    quasar/       BLS + Corona + ML-DSA threshold signing
+    quasar/       BLS + Pulsar + ML-DSA threshold signing
   engine/         Consensus engine (Chain, DAG, PQ wrappers)
   core/           Core types, DAG structures
   types/          Block, Vote, Config, Bag
@@ -122,7 +122,7 @@ Photon (select committee) -> Wave (threshold vote per frontier vertex)
 After consensus decision, the Quasar signing layer produces threshold certificates:
 
 1. BLS: single-round threshold share via `crypto/threshold`
-2. Corona: 2-round Ring-LWE threshold via `luxfi/corona/threshold`
+2. Pulsar: 2-round Ring-LWE threshold via `luxfi/corona/threshold`
 3. ML-DSA-65: single-round FIPS 204 identity signature
 
 All three run in parallel. A block is quantum-final when all configured certificate
@@ -134,7 +134,7 @@ layers are valid.
 |-------|----------|---------|
 | Node-ID | Ed25519 | P2P transport auth |
 | Validator-BLS | BLS12-381 | Classical finality votes |
-| Validator-PQ | Corona (Ring-LWE) | PQ finality shares |
+| Validator-PQ | Pulsar (Ring-LWE) | PQ finality shares |
 | Validator-ID | ML-DSA-65 (FIPS 204) | PQ identity attestation |
 | Wallet (EVM) | secp256k1 | User transaction signatures |
 | Wallet (X-Chain) | secp256k1 | UTXO locking |
@@ -205,7 +205,7 @@ GOWORK=off go test -bench=. ./bench/
 
 1. **Pre-quantum**: Attacker must corrupt >= 1/3 stake to fork
 2. **Q-day (BLS broken)**: Lattice certificates prevent unsafe finalization
-3. **Post-quantum**: Security rests on Module-LWE (Corona) + Module-LWE/SIS (ML-DSA)
+3. **Post-quantum**: Security rests on Module-LWE (Pulsar) + Module-LWE/SIS (ML-DSA)
 
 ## License
 
