@@ -119,7 +119,7 @@ When `engine/dag/engine.go` exceeds 100 LOC and stops returning nil:
 #### ✅ Go PQ Gets Real Certificates
 When `engine/pq/consensus.go` removes mock certificates:
 - Remove mock certificate check
-- Add ML-DSA/Kyber integration tests
+- Add ML-DSA/ML-KEM integration tests
 - Update summary to show PQ as production ready
 
 #### ✅ C SDK Implements Consensus

@@ -171,7 +171,7 @@ ring-call benchmarks currently crash with a pre-existing nil-pointer in
 | BLS aggregation | 1 × (21 × 53 us) | 1.11 ms |
 | Per-validator ML-DSA sign | 21 × 495 us | 10.4 ms total (parallel: 495 us wall) |
 | Z-Chain Groth16 prover | 1 × ~400 ms | 400 ms CPU / 5-15 ms GPU (est) |
-| Corona round | 1 × variable | ~ms range |
+| Pulsar round | 1 × variable | ~ms range |
 | **Total wall-clock** | | **~400-500 ms CPU** (Groth16-dominated) |
 
 **Per-cert verification (light client):**
@@ -180,7 +180,7 @@ ring-call benchmarks currently crash with a pre-existing nil-pointer in
 |-----------|------|
 | BLS aggregated verify (100 signers) | 875 us (constant) |
 | Groth16 verify (3 pairings on BLS12-381) | ~1-3 ms CPU, ~200-500 us GPU |
-| Corona verify | variable |
+| Pulsar verify | variable |
 | **Total** | **~2-5 ms CPU** |
 
 This supersedes the `357 us` claim in older papers. Stale sections to
