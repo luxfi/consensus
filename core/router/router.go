@@ -57,7 +57,7 @@ type InboundHandler interface {
 
 // ExternalHandler handles messages from external chains
 type ExternalHandler interface {
-	Connected(nodeID ids.NodeID, nodeVersion interface{}, subnetID ids.ID)
+	Connected(nodeID ids.NodeID, nodeVersion interface{}, chainID ids.ID)
 	Disconnected(nodeID ids.NodeID)
 	HandleInbound(context.Context, Message) error
 }
