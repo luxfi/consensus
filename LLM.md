@@ -111,6 +111,8 @@ quantum 2^130 security):
 
 ### Chain Separation for Threshold Cryptography
 
+**Per LP-134**: T-Chain MPC and FHE roles (originally per LP-7330) are split into M-Chain and F-Chain. T-Chain is reserved for `teleportvm` (LP-6332).
+
 Quasar consensus lives here in `consensus/`, but the threshold-crypto ceremonies
 that feed it are split across the primary network chains:
 
@@ -118,7 +120,9 @@ that feed it are split across the primary network chains:
 |-------|------|
 | **X-Chain** | *Verifies* already-signed UTXOs via Fx plugins (secp256k1fx, mldsafx, slhdsafx, ed25519fx, secp256r1fx...). Does not run MPC ceremonies. |
 | **Q-Chain** | Runs the Pulsar 2-round threshold for *consensus only* (this repo's `protocol/quasar/` emits those rounds). Not a general MPC host. |
-| **T-Chain** | Runs *all* MPC ceremonies: CGGMP21, FROST, Pulsar (general), TFHE. The signing partner for cross-chain custody. |
+| **M-Chain** | (was T-Chain MPC per LP-7330; superseded by LP-134) Runs MPC ceremonies (CGGMP21, FROST, Pulsar-general) for bridge custody of external wallets. |
+| **F-Chain** | (was T-Chain FHE per LP-7330; superseded by LP-134) Runs TFHE bootstrap-key generation and FHE compute (encrypted EVM). |
+| **T-Chain** | Now reserved for `teleportvm` (LP-6332): unified bridge + relay + oracle. |
 | **Z-Chain** | Rolls N per-validator ML-DSA identity sigs into a single 192-byte Groth16 proof per epoch (the `MLDSAProof` field). |
 
 **Why `MLDSAProof` and not `ThresholdMLDSA`**: threshold ML-DSA has no FIPS
