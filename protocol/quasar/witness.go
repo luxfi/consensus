@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/luxfi/crypto/bls"
-	"github.com/luxfi/crypto/ipa/banderwagon"
+	"github.com/luxfi/crypto/banderwagon"
 )
 
 // VerkleWitness provides hyper-efficient state verification

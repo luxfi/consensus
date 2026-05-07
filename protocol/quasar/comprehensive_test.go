@@ -11,7 +11,7 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/crypto/bls"
-	"github.com/luxfi/crypto/ipa/banderwagon"
+	"github.com/luxfi/crypto/banderwagon"
 	"github.com/luxfi/crypto/threshold"
 )
 
