@@ -6,7 +6,7 @@ import (
 	"crypto/subtle"
 	"testing"
 
-	"github.com/luxfi/crypto/ipa/banderwagon"
+	"github.com/luxfi/crypto/banderwagon"
 	"github.com/stretchr/testify/require"
 )
 
