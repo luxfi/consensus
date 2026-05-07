@@ -18,7 +18,7 @@ require (
 	github.com/luxfi/p2p v1.18.9
 	github.com/luxfi/pulsar v0.1.0-rc1-pq-consensus-freeze
 	github.com/luxfi/runtime v1.0.0
-	github.com/luxfi/threshold v0.1.0-rc1-pq-consensus-freeze
+	github.com/luxfi/threshold v1.6.7
 	github.com/luxfi/validators v1.0.0
 	github.com/luxfi/version v1.0.1
 	github.com/luxfi/warp v1.18.5
@@ -148,7 +148,5 @@ exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824
 // ~/work/lux/consensus/CROSS-REPO-VERSION-PIN.md for the canonical commit
 // SHA → tag mapping.
 replace github.com/luxfi/pulsar => ../pulsar // pinned to v0.1.0-rc1-pq-consensus-freeze; see go-mod-pin.md
-
-replace github.com/luxfi/threshold => ../threshold // pinned to v0.1.0-rc1-pq-consensus-freeze; see go-mod-pin.md
 
 replace github.com/luxfi/lens => ../lens // pinned to v0.1.0-rc1-pq-consensus-freeze; see go-mod-pin.md
