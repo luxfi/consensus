@@ -229,8 +229,8 @@ func TestF70b_RoundDigest_LastByteOfEachRootBound(t *testing.T) {
 // tag, plus the structural shape of the QBlock struct. Any future diff
 // that drops a field or changes the tag is caught here.
 func TestF74_QBlock_TranscriptBindsEveryAxis(t *testing.T) {
-	if qBlockTranscriptCustomization != "PULSAR-M-Q-BLOCK" {
-		t.Errorf("QBlock transcript customization is %q; expected PULSAR-M-Q-BLOCK",
+	if qBlockTranscriptCustomization != "QUASAR-Q-BLOCK-V1" {
+		t.Errorf("QBlock transcript customization is %q; expected QUASAR-Q-BLOCK-V1",
 			qBlockTranscriptCustomization)
 	}
 	if qBlockProtocolTag != "Q-Chain" {
