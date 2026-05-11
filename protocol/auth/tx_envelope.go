@@ -65,7 +65,7 @@ const txAuthProtocolTag = "Lux/TxAuth/v1"
 //	Version         envelope-format version; bumped on incompatible
 //	                layout changes. Current value: 1.
 //	ProfileID       ChainSecurityProfile this envelope was produced
-//	                under (config.ProfileLuxStrictPQ / Permissive / FIPS).
+//	                under (config.ProfileStrictPQ / Permissive / FIPS).
 //	ChainID         L1/L2 chain identifier (cross-chain replay seal).
 //	NetworkID       mainnet/testnet/devnet (cross-network replay seal).
 //	AccountID       48-byte PQ AccountID of the originator. Equals

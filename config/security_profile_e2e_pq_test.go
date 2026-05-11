@@ -405,15 +405,15 @@ func TestRecoverySchemeID_IsStateless(t *testing.T) {
 // ChainSecurityProfile.Validate — E2E PQ axis enforcement
 // =============================================================================
 
-// TestChainSecurityProfile_Validate_LuxStrictPQ_RejectsECDSAWallets proves
+// TestChainSecurityProfile_Validate_StrictPQ_RejectsECDSAWallets proves
 // the strict-PQ profile refuses a wallet scheme set to the 0x90 classical
 // marker. Two-stage check: setting WalletSchemeECDSAUnsafe directly is
 // refused by validatePolicy's IsForbiddenInPQMode gate; setting
 // ForbidECDSAWallets=false (and keeping the lattice wallet scheme) is
 // refused by the operator-policy check.
-func TestChainSecurityProfile_Validate_LuxStrictPQ_RejectsECDSAWallets(t *testing.T) {
+func TestChainSecurityProfile_Validate_StrictPQ_RejectsECDSAWallets(t *testing.T) {
 	// Case 1: classical scheme byte on the wire.
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.WalletSchemeID = WalletSchemeECDSAUnsafe
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with WalletSchemeECDSAUnsafe returned %v; want ErrProfileFieldInvalid", err)
@@ -422,67 +422,67 @@ func TestChainSecurityProfile_Validate_LuxStrictPQ_RejectsECDSAWallets(t *testin
 	// Case 2: Forbid bit cleared while the scheme stays lattice. The
 	// operator-policy gate must catch the cleared bit on a strict-PQ
 	// profile even though the scheme itself is lattice.
-	q := LuxStrictPQ()
+	q := StrictPQ()
 	q.ForbidECDSAWallets = false
 	if err := q.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with ForbidECDSAWallets=false returned %v; want ErrProfileFieldInvalid", err)
 	}
 }
 
-// TestChainSecurityProfile_Validate_LuxStrictPQ_RejectsX25519KEM proves the
+// TestChainSecurityProfile_Validate_StrictPQ_RejectsX25519KEM proves the
 // strict-PQ profile refuses both classical KEM scheme bytes and a cleared
 // ForbidClassicalKEM bit.
-func TestChainSecurityProfile_Validate_LuxStrictPQ_RejectsX25519KEM(t *testing.T) {
-	p := LuxStrictPQ()
+func TestChainSecurityProfile_Validate_StrictPQ_RejectsX25519KEM(t *testing.T) {
+	p := StrictPQ()
 	p.KeyExchangeID = KeyExchangeX25519Unsafe
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with KeyExchangeX25519Unsafe returned %v; want ErrProfileFieldInvalid", err)
 	}
 
-	q := LuxStrictPQ()
+	q := StrictPQ()
 	q.HighValueKEM = KeyExchangeX25519Unsafe
 	if err := q.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with HighValueKEM=KeyExchangeX25519Unsafe returned %v; want ErrProfileFieldInvalid", err)
 	}
 
-	r := LuxStrictPQ()
+	r := StrictPQ()
 	r.ForbidClassicalKEM = false
 	if err := r.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with ForbidClassicalKEM=false returned %v; want ErrProfileFieldInvalid", err)
 	}
 }
 
-// TestChainSecurityProfile_Validate_LuxStrictPQ_RejectsECDSATxScheme covers
+// TestChainSecurityProfile_Validate_StrictPQ_RejectsECDSATxScheme covers
 // the tx axis explicitly so an audit reader sees the gate is per-axis.
-func TestChainSecurityProfile_Validate_LuxStrictPQ_RejectsECDSATxScheme(t *testing.T) {
-	p := LuxStrictPQ()
+func TestChainSecurityProfile_Validate_StrictPQ_RejectsECDSATxScheme(t *testing.T) {
+	p := StrictPQ()
 	p.TxSchemeID = TxSchemeECDSAUnsafe
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with TxSchemeECDSAUnsafe returned %v; want ErrProfileFieldInvalid", err)
 	}
 }
 
-// TestChainSecurityProfile_Validate_LuxStrictPQ_RejectsBLSContractAuth proves
+// TestChainSecurityProfile_Validate_StrictPQ_RejectsBLSContractAuth proves
 // the strict-PQ profile refuses classical BLS aggregates at the contract
 // authorisation layer.
-func TestChainSecurityProfile_Validate_LuxStrictPQ_RejectsBLSContractAuth(t *testing.T) {
-	p := LuxStrictPQ()
+func TestChainSecurityProfile_Validate_StrictPQ_RejectsBLSContractAuth(t *testing.T) {
+	p := StrictPQ()
 	p.ContractAuthID = ContractAuthBLSUnsafe
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with ContractAuthBLSUnsafe returned %v; want ErrProfileFieldInvalid", err)
 	}
 
-	q := LuxStrictPQ()
+	q := StrictPQ()
 	q.ForbidBLSContractAuth = false
 	if err := q.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with ForbidBLSContractAuth=false returned %v; want ErrProfileFieldInvalid", err)
 	}
 }
 
-// TestChainSecurityProfile_Validate_LuxStrictPQ_RequiresTypedTxAuth proves
+// TestChainSecurityProfile_Validate_StrictPQ_RequiresTypedTxAuth proves
 // strict-PQ demands the typed-auth byte on the wire.
-func TestChainSecurityProfile_Validate_LuxStrictPQ_RequiresTypedTxAuth(t *testing.T) {
-	p := LuxStrictPQ()
+func TestChainSecurityProfile_Validate_StrictPQ_RequiresTypedTxAuth(t *testing.T) {
+	p := StrictPQ()
 	p.RequireTypedTxAuth = false
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with RequireTypedTxAuth=false returned %v; want ErrProfileFieldInvalid", err)
@@ -501,7 +501,7 @@ func TestChainSecurityProfile_Validate_LuxStrictPQ_RequiresTypedTxAuth(t *testin
 // and the Pulsar-M-65 negative case.
 func TestChainSecurityProfile_Validate_RecoverySchemeNone_RequiresMLDSA87(t *testing.T) {
 	// Strict-PQ is at HighValue=Pulsar-M-87 → RecoverySchemeNone is OK.
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.RecoverySchemeID = RecoverySchemeNone
 	if err := p.Validate(); err != nil {
 		t.Errorf("Validate() with RecoverySchemeNone + HighValue=Pulsar-M-87 returned %v; want nil", err)
@@ -511,7 +511,7 @@ func TestChainSecurityProfile_Validate_RecoverySchemeNone_RequiresMLDSA87(t *tes
 	// NIST PQ Cat 3 (acceptable for high-value finality) but the
 	// recovery-fallback rule demands Cat 5, so the cross-axis gate
 	// trips.
-	q := LuxStrictPQ()
+	q := StrictPQ()
 	q.HighValueSchemeID = SigSchemePulsarM65
 	q.RecoverySchemeID = RecoverySchemeNone
 	if err := q.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
@@ -546,7 +546,7 @@ func TestChainSecurityProfile_Validate_RejectsInvalidEnumZeros(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			p := LuxStrictPQ()
+			p := StrictPQ()
 			c.mutate(p)
 			if err := p.Validate(); !errors.Is(err, ErrProfileFieldUnset) {
 				t.Errorf("Validate() with %s=Invalid returned %v; want ErrProfileFieldUnset",
@@ -573,7 +573,7 @@ func TestChainSecurityProfile_Validate_RejectsUnknownEnumByte(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			p := LuxStrictPQ()
+			p := StrictPQ()
 			c.mutate(p)
 			if err := p.Validate(); !errors.Is(err, ErrProfileFieldUnknown) {
 				t.Errorf("Validate() with %s=0x77 returned %v; want ErrProfileFieldUnknown",
@@ -583,37 +583,37 @@ func TestChainSecurityProfile_Validate_RejectsUnknownEnumByte(t *testing.T) {
 	}
 }
 
-// TestChainSecurityProfile_LuxPermissive_AllowsExperiments proves the
+// TestChainSecurityProfile_Permissive_AllowsExperiments proves the
 // permissive profile accepts the same lattice defaults as strict-PQ but
 // keeps the new Forbid* bits cleared and RequireTypedTxAuth false.
-func TestChainSecurityProfile_LuxPermissive_AllowsExperiments(t *testing.T) {
-	p := LuxPermissive()
+func TestChainSecurityProfile_Permissive_AllowsExperiments(t *testing.T) {
+	p := Permissive()
 	if err := p.Validate(); err != nil {
-		t.Fatalf("LuxPermissive().Validate() = %v; want nil", err)
+		t.Fatalf("Permissive().Validate() = %v; want nil", err)
 	}
 	if p.ForbidECDSAWallets {
-		t.Errorf("LuxPermissive() must NOT set ForbidECDSAWallets")
+		t.Errorf("Permissive() must NOT set ForbidECDSAWallets")
 	}
 	if p.ForbidECDSAContractAuth {
-		t.Errorf("LuxPermissive() must NOT set ForbidECDSAContractAuth")
+		t.Errorf("Permissive() must NOT set ForbidECDSAContractAuth")
 	}
 	if p.ForbidBLSContractAuth {
-		t.Errorf("LuxPermissive() must NOT set ForbidBLSContractAuth")
+		t.Errorf("Permissive() must NOT set ForbidBLSContractAuth")
 	}
 	if p.ForbidClassicalKEM {
-		t.Errorf("LuxPermissive() must NOT set ForbidClassicalKEM")
+		t.Errorf("Permissive() must NOT set ForbidClassicalKEM")
 	}
 	if p.RequireTypedTxAuth {
-		t.Errorf("LuxPermissive() must NOT require typed tx auth")
+		t.Errorf("Permissive() must NOT require typed tx auth")
 	}
 	if p.WalletSchemeID != WalletSchemeMLDSA65 {
-		t.Errorf("LuxPermissive().WalletSchemeID = %s; want ml-dsa-65", p.WalletSchemeID.String())
+		t.Errorf("Permissive().WalletSchemeID = %s; want ml-dsa-65", p.WalletSchemeID.String())
 	}
 }
 
 // TestChainSecurityProfile_ForkClassicalCompatUnsafe_AcceptsClassical proves
 // the fork profile passes Validate even with every new axis pinned to
-// the 0x90 classical marker. Only LuxStrictPQ and LuxFIPS enforce the
+// the 0x90 classical marker. Only StrictPQ and FIPS enforce the
 // strict-PQ refusals; the fork is allowed to opt out.
 func TestChainSecurityProfile_ForkClassicalCompatUnsafe_AcceptsClassical(t *testing.T) {
 	if err := ForkClassicalCompatUnsafeProfile.Validate(); err != nil {
@@ -643,7 +643,7 @@ func TestChainSecurityProfile_ForkClassicalCompatUnsafe_AcceptsClassical(t *test
 // validateStructural pass succeeds) while still being a distinct value
 // from the canonical profile.
 func TestChainSecurityProfile_ComputeHash_BindsNewFields(t *testing.T) {
-	baseHash, err := LuxStrictPQ().ComputeHash()
+	baseHash, err := StrictPQ().ComputeHash()
 	if err != nil {
 		t.Fatalf("base: %v", err)
 	}
@@ -670,7 +670,7 @@ func TestChainSecurityProfile_ComputeHash_BindsNewFields(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			mutated := LuxStrictPQ()
+			mutated := StrictPQ()
 			c.mutate(mutated)
 			got, err := mutated.ComputeHash()
 			if err != nil {
@@ -684,7 +684,7 @@ func TestChainSecurityProfile_ComputeHash_BindsNewFields(t *testing.T) {
 }
 
 // =============================================================================
-// Golden vector — the re-pinned canonical LuxStrictPQ profile hash.
+// Golden vector — the re-pinned canonical StrictPQ profile hash.
 //
 // The hash binds every field of ChainSecurityProfile under the
 // TupleHash256 / cSHAKE256 customisation "LUX-CHAIN-SECURITY-PROFILE-V1".
@@ -701,24 +701,24 @@ func TestChainSecurityProfile_ComputeHash_BindsNewFields(t *testing.T) {
 // the SAME COMMIT that landed the schema change.
 // =============================================================================
 
-// luxStrictPQGoldenHashHex is the pinned hex of LuxStrictPQ.ComputeHash().
-// Re-pinned after extending ChainSecurityProfile with the E2E PQ axes
-// (WalletSchemeID, TxSchemeID, ContractAuthID, KeyExchangeID,
-// HighValueKEM, RecoverySchemeID + the four Forbid* bits + RequireTypedTxAuth).
-const luxStrictPQGoldenHashHex = "93efd103aaf4b85eb2ea37b451da5a8f6e36af0745b80837c1942ffd4be9eead59c22fc191298b381ee0a4b0323bfcd0"
+// strictPQGoldenHashHex is the pinned hex of StrictPQ.ComputeHash().
+// Re-pinned after ProfileName rename (LUX_STRICT_PQ → STRICT_PQ) — the
+// rename drops the legacy Lux qualifier from the canonical PQ profile
+// since PQ mode is binary and no longer family-branded.
+const strictPQGoldenHashHex = "9b34c4e42f969a25a5fc39936edac7e49d5ef1bee10e58b5a44fb1a8a4a633dce793c787c5bd6cf00ea83dccb0eb7584"
 
-// TestChainSecurityProfile_GoldenVector_LuxStrictPQ pins the canonical
-// LuxStrictPQ profile hash. A failing test means either the canonical
+// TestChainSecurityProfile_GoldenVector_StrictPQ pins the canonical
+// StrictPQ profile hash. A failing test means either the canonical
 // profile changed, the encoding changed, or both — every such change
 // MUST be intentional and re-pinned here in the same commit.
-func TestChainSecurityProfile_GoldenVector_LuxStrictPQ(t *testing.T) {
-	got, err := LuxStrictPQ().ComputeHash()
+func TestChainSecurityProfile_GoldenVector_StrictPQ(t *testing.T) {
+	got, err := StrictPQ().ComputeHash()
 	if err != nil {
 		t.Fatalf("ComputeHash: %v", err)
 	}
 	gotHex := hex.EncodeToString(got[:])
-	if gotHex != luxStrictPQGoldenHashHex {
-		t.Errorf("LuxStrictPQ.ComputeHash() golden vector drift.\n got: %s\nwant: %s\nIf the schema change is intentional, re-pin luxStrictPQGoldenHashHex to the 'got' value above.",
-			gotHex, luxStrictPQGoldenHashHex)
+	if gotHex != strictPQGoldenHashHex {
+		t.Errorf("StrictPQ.ComputeHash() golden vector drift.\n got: %s\nwant: %s\nIf the schema change is intentional, re-pin strictPQGoldenHashHex to the 'got' value above.",
+			gotHex, strictPQGoldenHashHex)
 	}
 }

@@ -13,7 +13,7 @@ import (
 // TestContractAuthProfile_Validate_HappyPath — every action pinned at
 // a PQ scheme under a strict-PQ chain validates cleanly.
 func TestContractAuthProfile_Validate_HappyPath(t *testing.T) {
-	chain := config.LuxStrictPQ()
+	chain := config.StrictPQ()
 	c := &ContractAuthProfile{
 		AdminSchemeID:   ContractAuthMLDSA87,
 		UpgradeSchemeID: ContractAuthMLDSA87,
@@ -30,7 +30,7 @@ func TestContractAuthProfile_Validate_HappyPath(t *testing.T) {
 // strict-PQ chain refuses ANY classical scheme regardless of the
 // contract's AllowClassical flag.
 func TestContractAuthProfile_Validate_RejectsClassicalUnderStrictPQ(t *testing.T) {
-	chain := config.LuxStrictPQ()
+	chain := config.StrictPQ()
 
 	// Trying each per-action field with the classical marker MUST fail.
 	cases := []struct {
@@ -75,7 +75,7 @@ func TestContractAuthProfile_Validate_RejectsClassicalUnderStrictPQ(t *testing.T
 // TestContractAuthProfile_Validate_RejectsFIPSClassical — FIPS profile
 // also refuses classical regardless of AllowClassical.
 func TestContractAuthProfile_Validate_RejectsFIPSClassical(t *testing.T) {
-	chain := config.LuxFIPS()
+	chain := config.FIPS()
 	c := &ContractAuthProfile{
 		AdminSchemeID:   ContractAuthECDSASecp256k1Legacy,
 		UpgradeSchemeID: ContractAuthMLDSA65,
@@ -92,7 +92,7 @@ func TestContractAuthProfile_Validate_RejectsFIPSClassical(t *testing.T) {
 // — under a permissive chain profile, classical schemes pass ONLY when
 // AllowClassical=true.
 func TestContractAuthProfile_Validate_PermissiveAllowsClassicalOnlyWithFlag(t *testing.T) {
-	chain := config.LuxPermissive()
+	chain := config.Permissive()
 
 	// Without flag — refused.
 	cNoFlag := &ContractAuthProfile{
@@ -117,7 +117,7 @@ func TestContractAuthProfile_Validate_PermissiveAllowsClassicalOnlyWithFlag(t *t
 // TestContractAuthProfile_Validate_RejectsUnsetScheme — None on any
 // action is a typed error.
 func TestContractAuthProfile_Validate_RejectsUnsetScheme(t *testing.T) {
-	chain := config.LuxStrictPQ()
+	chain := config.StrictPQ()
 	cases := []struct {
 		name string
 		mut  func(*ContractAuthProfile)
@@ -146,7 +146,7 @@ func TestContractAuthProfile_Validate_RejectsUnsetScheme(t *testing.T) {
 // TestContractAuthProfile_Validate_RejectsUnknownScheme — an out-of-band
 // byte (not in the defined enum set) is refused.
 func TestContractAuthProfile_Validate_RejectsUnknownScheme(t *testing.T) {
-	chain := config.LuxStrictPQ()
+	chain := config.StrictPQ()
 	c := &ContractAuthProfile{
 		AdminSchemeID:   ContractAuthID(0x7F), // unknown
 		UpgradeSchemeID: ContractAuthMLDSA65,
@@ -161,7 +161,7 @@ func TestContractAuthProfile_Validate_RejectsUnknownScheme(t *testing.T) {
 // TestContractAuthProfile_Validate_RejectsNilArguments — nil receiver
 // or nil chain profile are typed errors.
 func TestContractAuthProfile_Validate_RejectsNilArguments(t *testing.T) {
-	chain := config.LuxStrictPQ()
+	chain := config.StrictPQ()
 
 	var nilProfile *ContractAuthProfile
 	if err := nilProfile.Validate(chain); !errors.Is(err, ErrContractAuthNilProfile) {

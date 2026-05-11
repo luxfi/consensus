@@ -77,7 +77,7 @@ func validBlock() *QBlock {
 		Height:                    100,
 		RoundOrView:               7,
 		ParentQBlockHash:          b32(0x01),
-		LuxStateRoot:              b48(0x02),
+		StateRoot:              b48(0x02),
 		ZChainStateRoot:           b48(0x03),
 		ValidatorSetRoot:          b48(0x04),
 		CommitteeRoot:             b48(0x05),
@@ -177,8 +177,8 @@ func TestQBlock_MarshalRoundTrip(t *testing.T) {
 	if got.ParentQBlockHash != orig.ParentQBlockHash {
 		t.Errorf("ParentQBlockHash mismatch")
 	}
-	if got.LuxStateRoot != orig.LuxStateRoot {
-		t.Errorf("LuxStateRoot mismatch")
+	if got.StateRoot != orig.StateRoot {
+		t.Errorf("StateRoot mismatch")
 	}
 	if got.ZChainStateRoot != orig.ZChainStateRoot {
 		t.Errorf("ZChainStateRoot mismatch")
@@ -282,8 +282,8 @@ func TestQBlock_TranscriptHash_BindsEveryField(t *testing.T) {
 		{"RoundOrView", func(b *QBlock) { b.RoundOrView++ }},
 		{"ParentQBlockHash[0]", func(b *QBlock) { b.ParentQBlockHash[0]++ }},
 		{"ParentQBlockHash[31]", func(b *QBlock) { b.ParentQBlockHash[31]++ }},
-		{"LuxStateRoot[0]", func(b *QBlock) { b.LuxStateRoot[0]++ }},
-		{"LuxStateRoot[47]", func(b *QBlock) { b.LuxStateRoot[47]++ }},
+		{"StateRoot[0]", func(b *QBlock) { b.StateRoot[0]++ }},
+		{"StateRoot[47]", func(b *QBlock) { b.StateRoot[47]++ }},
 		{"ZChainStateRoot[0]", func(b *QBlock) { b.ZChainStateRoot[0]++ }},
 		{"ZChainStateRoot[47]", func(b *QBlock) { b.ZChainStateRoot[47]++ }},
 		{"ValidatorSetRoot[0]", func(b *QBlock) { b.ValidatorSetRoot[0]++ }},
