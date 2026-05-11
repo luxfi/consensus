@@ -689,11 +689,58 @@ func TestProfileByID_HanzoStrictPQ(t *testing.T) {
 	}
 }
 
-// TestStrictPQProfiles_AllFieldsByteIdentical proves Lux, Zoo, and Hanzo
-// strict-PQ profiles agree byte-for-byte on every field except ProfileID,
-// ProfileName, and ProfileHash. This is the cross-network coherence
-// invariant: a Zoo or Hanzo deployment cannot accidentally weaken the
-// strict-PQ posture relative to canonical Lux.
+// TestProfileByID_QuasarStrictPQ mirrors the Zoo / Hanzo tests for the
+// Quasar strict-PQ profile (a.k.a. Annulus) — the canonical end-to-end
+// strict-PQ envelope new chains pin at genesis going forward.
+func TestProfileByID_QuasarStrictPQ(t *testing.T) {
+	p, err := ProfileByID(ProfileQuasarStrictPQ)
+	if err != nil {
+		t.Fatalf("ProfileByID(ProfileQuasarStrictPQ) returned %v; want nil", err)
+	}
+	if p == nil {
+		t.Fatalf("ProfileByID(ProfileQuasarStrictPQ) returned nil profile")
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatalf("QuasarStrictPQ.Validate() returned %v; want nil", err)
+	}
+	if p.ProfileID != uint32(ProfileQuasarStrictPQ) {
+		t.Errorf("QuasarStrictPQ.ProfileID = %d, want %d", p.ProfileID, ProfileQuasarStrictPQ)
+	}
+	if p.ProfileName != ProfileNameQuasarStrictPQ {
+		t.Errorf("QuasarStrictPQ.ProfileName = %q, want %q", p.ProfileName, ProfileNameQuasarStrictPQ)
+	}
+}
+
+// TestAnnulusAliasesQuasar pins the alias contract: ProfileAnnulusStrictPQ
+// and AnnulusStrictPQ() must resolve to the same byte and the same
+// profile as the canonical Quasar names.
+func TestAnnulusAliasesQuasar(t *testing.T) {
+	if ProfileAnnulusStrictPQ != ProfileQuasarStrictPQ {
+		t.Fatalf("ProfileAnnulusStrictPQ=0x%02x != ProfileQuasarStrictPQ=0x%02x — alias broken",
+			uint8(ProfileAnnulusStrictPQ), uint8(ProfileQuasarStrictPQ))
+	}
+	if ProfileNameAnnulusStrictPQ != ProfileNameQuasarStrictPQ {
+		t.Fatalf("ProfileNameAnnulusStrictPQ=%q != ProfileNameQuasarStrictPQ=%q — alias broken",
+			ProfileNameAnnulusStrictPQ, ProfileNameQuasarStrictPQ)
+	}
+	q := QuasarStrictPQ()
+	a := AnnulusStrictPQ()
+	if q.ProfileID != a.ProfileID {
+		t.Errorf("Quasar.ProfileID=%d != Annulus.ProfileID=%d", q.ProfileID, a.ProfileID)
+	}
+	if q.ProfileName != a.ProfileName {
+		t.Errorf("Quasar.ProfileName=%q != Annulus.ProfileName=%q", q.ProfileName, a.ProfileName)
+	}
+	if q.ProfileHash != a.ProfileHash {
+		t.Errorf("Quasar.ProfileHash != Annulus.ProfileHash — alias drift")
+	}
+}
+
+// TestStrictPQProfiles_AllFieldsByteIdentical proves Lux, Zoo, Hanzo, and
+// Annulus strict-PQ profiles agree byte-for-byte on every field except
+// ProfileID, ProfileName, and ProfileHash. This is the cross-network
+// coherence invariant: a Zoo / Hanzo / Annulus deployment cannot
+// accidentally weaken the strict-PQ posture relative to canonical Lux.
 //
 // The check compares every primitive / slice / boolean field explicitly
 // rather than reflect.DeepEqual on the whole struct so a failure names
@@ -712,6 +759,7 @@ func TestStrictPQProfiles_AllFieldsByteIdentical(t *testing.T) {
 	}{
 		{"zoo", zoo, uint32(ProfileZooStrictPQ), "ZOO_STRICT_PQ"},
 		{"hanzo", hanzo, uint32(ProfileHanzoStrictPQ), "HANZO_STRICT_PQ"},
+		{"quasar", QuasarStrictPQ(), uint32(ProfileQuasarStrictPQ), ProfileNameQuasarStrictPQ},
 	}
 
 	for _, c := range cases {
