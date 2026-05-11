@@ -99,11 +99,16 @@ func TestVerifyPQFinality_PulsarM_TamperedSignatureRejected(t *testing.T) {
 	}
 }
 
-// TestVerifyPQFinality_BitCountAlone_DoesNotPass is the canonical
-// F109 anti-regression: a "signature" of all 0xFF bytes that satisfies
-// the bit-count pre-filter MUST be refused by the real verifier. If
-// this test ever passes by accepting the dummy, F109 has re-opened.
-func TestVerifyPQFinality_BitCountAlone_DoesNotPass(t *testing.T) {
+// TestVerifyPQFinality_PulsarM_BitCountAlone_DoesNotPass is the
+// canonical F109 anti-regression. The earlier form of this test wired
+// an all-0xFF "signature" into the witness, but those bytes failed at
+// the FIPS 204 decoder *before* the lattice verify equation ran — so a
+// regression that broke only the verify equation could slip past. The
+// stronger form below builds a VALID Pulsar-M signature over message M1
+// and then mutates the witness to M2 (a different StateRoot) so the
+// signed digest no longer matches the witness's SigningDigest(). A
+// real lattice verifier MUST refuse; a bit-count tautology accepts.
+func TestVerifyPQFinality_PulsarM_BitCountAlone_DoesNotPass(t *testing.T) {
 	params := pulsarm.ParamsP65
 	priv, err := pulsarm.GenerateKey(params, rand.Reader)
 	if err != nil {
@@ -113,23 +118,40 @@ func TestVerifyPQFinality_BitCountAlone_DoesNotPass(t *testing.T) {
 	w := NewVerkleWitness(1)
 	w.BindPQGroupKey(priv.Pub.Bytes)
 
+	// M1 — the witness we actually sign.
 	witness := &WitnessProof{
 		Commitment:   make([]byte, 32),
 		Path:         make([]byte, 16),
 		OpeningProof: make([]byte, 48),
 		RingtailBits: []byte{0xFF}, // 8 bits set — bit-count would pass at any threshold ≤ 8
-		PQSignature:  make([]byte, params.SignatureSize),
 		BlockHeight:  100,
 		StateRoot:    make([]byte, 32),
 		Timestamp:    1700000000,
 	}
-	for i := range witness.PQSignature {
-		witness.PQSignature[i] = 0xFF
+	for i := range witness.StateRoot {
+		witness.StateRoot[i] = byte(i)
+	}
+
+	digestM1 := witness.SigningDigest()
+	sig, err := pulsarm.Sign(params, priv, digestM1[:], []byte(signingDigestCustomization), true, rand.Reader)
+	if err != nil {
+		t.Fatalf("pulsarm.Sign: %v", err)
+	}
+	witness.PQSignature = sig.Bytes
+
+	// Swap the message: mutate StateRoot so SigningDigest now yields
+	// M2 ≠ M1. The signature still decodes (it's a genuine Pulsar-M
+	// signature), the bit-count pre-filter still passes (RingtailBits
+	// untouched), but the lattice verify equation MUST reject.
+	witness.StateRoot[0] ^= 0x01
+	digestM2 := witness.SigningDigest()
+	if digestM1 == digestM2 {
+		t.Fatal("test bug: StateRoot mutation did not change SigningDigest")
 	}
 
 	err = w.verifyPQFinality(witness, priv.Pub.Bytes, mldsa.MLDSA65)
 	if err == nil {
-		t.Fatal("verifyPQFinality accepted an all-0xFF non-signature with high bit-count: F109 regressed")
+		t.Fatal("verifyPQFinality accepted a valid signature over a different message: F109 regressed")
 	}
 	if !errors.Is(err, ErrPulsarMVerifyFail) {
 		t.Fatalf("expected ErrPulsarMVerifyFail, got: %v", err)
