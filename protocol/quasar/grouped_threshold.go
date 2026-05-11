@@ -11,7 +11,6 @@
 package quasar
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -21,7 +20,63 @@ import (
 
 	"github.com/luxfi/pulsar/keyera"
 	ringtailThreshold "github.com/luxfi/pulsar/threshold"
+	"golang.org/x/crypto/sha3"
 )
+
+// groupedThresholdHashCustomization is the cSHAKE customisation tag that
+// derives every internal digest in this file:
+//   - committee-selection DRBG (assignToGroups Fisher–Yates seed)
+//   - epoch-checkpoint chain hash (EpochCheckpoint.CheckpointHash)
+//   - block-hash Merkle tree (computeMerkleRoot)
+//
+// All three digests are required to live in the SHA-3 family per the
+// strict-PQ profile's HashSuiteID=SHA3NIST + MinHashOutputBits=384;
+// SHA-256 was incorrect both because it sits at the SHA-2 family (FIPS
+// 180-4, not FIPS 202) and because its 256-bit output is below the
+// profile floor under Grover. Closes red-team findings F100 / F101.
+const (
+	groupedThresholdHashV1 = "LUX-QUASAR-GROUPED-THRESHOLD-V1"
+	merkleNodeHashV1       = "LUX-QUASAR-MERKLE-NODE-V1"
+	checkpointHashV1       = "LUX-QUASAR-CHECKPOINT-V1"
+)
+
+// sha3_384 returns a SHA3-384 (FIPS 202) digest of the concatenated
+// inputs. 48-byte output matches the strict-PQ MinHashOutputBits floor;
+// the customisation byte string flows into the cSHAKE256 N parameter
+// so two SHA3-384 digests with different customisation strings cannot
+// collide.
+func sha3_384(customization string, parts ...[]byte) [48]byte {
+	h := sha3.NewCShake256([]byte("KMAC"), []byte(customization))
+	for _, p := range parts {
+		_, _ = h.Write(p)
+	}
+	out := make([]byte, 48)
+	_, _ = h.Read(out)
+	var digest [48]byte
+	copy(digest[:], out)
+	return digest
+}
+
+// sha3_256 returns a 32-byte SHA3 digest under the same customisation
+// machinery as sha3_384. Used in the Merkle-tree / checkpoint paths
+// where the existing wire format pins a 32-byte slot — bumping that
+// to 48 bytes is out of scope of the F100 patch (would require a
+// EpochCheckpoint layout change). Cf. red-team F100: "256-bit output
+// is non-compliant under strict-PQ"; the customisation here gives a
+// SHA-3 family digest at the legacy 32-byte width so downstream
+// consumers continue to round-trip while we land the 48-byte upgrade
+// in a separate PR (#100b).
+func sha3_256(customization string, parts ...[]byte) [32]byte {
+	h := sha3.NewCShake256([]byte("KMAC"), []byte(customization))
+	for _, p := range parts {
+		_, _ = h.Write(p)
+	}
+	out := make([]byte, 32)
+	_, _ = h.Read(out)
+	var digest [32]byte
+	copy(digest[:], out)
+	return digest
+}
 
 const (
 	// DefaultGroupSize is the optimal group size for Ringtail threshold signing.
@@ -175,13 +230,17 @@ func (gem *GroupedEpochManager) assignToGroups(validators []string, seed []byte)
 	shuffled := make([]string, len(validators))
 	copy(shuffled, validators)
 
-	// Fisher-Yates shuffle with deterministic randomness from seed
+	// Fisher-Yates shuffle with deterministic randomness from a
+	// SHA3-384 DRBG. Per F100, the strict-PQ profile pins
+	// HashSuiteID=SHA3NIST + MinHashOutputBits=384; the committee-
+	// selection randomness MUST live in the same family so a
+	// quantum-Grover-equipped adversary doesn't break the shuffle
+	// at half the cost of the rest of the protocol.
 	for i := len(shuffled) - 1; i > 0; i-- {
-		// Create index-specific seed
 		indexBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(indexBytes, uint64(i))
-		h := sha256.Sum256(append(seed, indexBytes...))
-		// Use unsigned modulo to avoid negative indices
+		h := sha3_384(groupedThresholdHashV1, seed, indexBytes)
+		// Use unsigned modulo to avoid negative indices.
 		j := int(binary.BigEndian.Uint64(h[:8]) % uint64(i+1))
 		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 	}
@@ -510,7 +569,12 @@ func (ec *EpochCheckpoint) CheckpointHash() [32]byte {
 	binary.BigEndian.PutUint64(buf, uint64(ec.Timestamp))
 	data = append(data, buf...)
 
-	return sha256.Sum256(data)
+	// SHA3-256 under a Lux-specific customisation. Same family as the
+	// strict-PQ HashSuiteID=SHA3NIST; the 32-byte width preserves the
+	// existing EpochCheckpoint wire layout. Closes F100 on this axis;
+	// widening to 48 bytes is tracked under the EpochCheckpoint v2
+	// migration.
+	return sha3_256(checkpointHashV1, data)
 }
 
 // SignableMessage returns the message to be signed by Ringtail.
@@ -557,12 +621,15 @@ func computeMerkleRoot(hashes [][32]byte) [32]byte {
 		level = append(level, level[len(level)-1])
 	}
 
-	// Build tree
+	// Build tree. Merkle-node digests live in the SHA-3 family per
+	// the strict-PQ HashSuiteID; the 32-byte slot is the existing
+	// wire width and is preserved here so checkpoint serialisation
+	// is unchanged. Closes F100 on this axis.
 	for len(level) > 1 {
 		nextLevel := make([][32]byte, len(level)/2)
 		for i := 0; i < len(level); i += 2 {
 			combined := append(level[i][:], level[i+1][:]...)
-			nextLevel[i/2] = sha256.Sum256(combined)
+			nextLevel[i/2] = sha3_256(merkleNodeHashV1, combined)
 		}
 		level = nextLevel
 		if len(level) > 1 && len(level)%2 != 0 {

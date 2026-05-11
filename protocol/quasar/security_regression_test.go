@@ -1,12 +1,12 @@
 package quasar
 
 import (
-	"crypto/sha256"
 	"crypto/subtle"
 	"testing"
 
 	"github.com/luxfi/crypto/banderwagon"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/sha3"
 )
 
 // TestF002_ConstantTimeProofComparison verifies that witness proof verification
@@ -14,17 +14,25 @@ import (
 // bytes.Equal which leaks timing information about matching prefix length.
 //
 // Regression test for F-002 from the Dragonfire security review.
+//
+// The proof primitive migrated from sha256 to SHA3-cSHAKE256 (48-byte
+// output, FIPS 202 family) per red-team F100; this test re-derives the
+// expected proof under the new primitive so the verification path stays
+// covered.
 func TestF002_ConstantTimeProofComparison(t *testing.T) {
 	// Create a known commitment using the same pattern as witness.go
 	var commitment banderwagon.Element
 	path := []byte("test-path-for-witness-verification")
 
-	// Compute the expected proof (same as verifyIPAOpening internals)
-	hasher := sha256.New()
+	// Compute the expected proof (same as verifyIPAOpening internals):
+	// cSHAKE256 / KMAC256 with the customisation tag witness.go pins,
+	// 48-byte (SHA3-384 width) output.
+	h := sha3.NewCShake256([]byte("KMAC"), []byte("LUX-VERKLE-IPA-PROOF-V1"))
 	commitmentBytes := commitment.Bytes()
-	hasher.Write(commitmentBytes[:])
-	hasher.Write(path)
-	correctProof := hasher.Sum(nil)
+	_, _ = h.Write(commitmentBytes[:])
+	_, _ = h.Write(path)
+	correctProof := make([]byte, 48)
+	_, _ = h.Read(correctProof)
 
 	// Correct proof should verify
 	require.True(t, verifyIPAOpening(&commitment, path, correctProof),
