@@ -14,7 +14,7 @@ import (
 // AccountID without coordinating randomness.
 func TestDeriveAccountID_Deterministic(t *testing.T) {
 	pubkey := bytes.Repeat([]byte{0xAB}, 1952) // ML-DSA-65 pubkey size
-	profileID := uint32(0x01)                  // LuxStrictPQ
+	profileID := uint32(0x01)                  // StrictPQ
 	chainID := uint32(43114)
 	scheme := WalletSchemeMLDSA65
 
@@ -37,8 +37,8 @@ func TestDeriveAccountID_Deterministic(t *testing.T) {
 // TestDeriveAccountID_DistinctProfilesSameKey — the SAME (chainID,
 // scheme, pubkey) on DIFFERENT profileIDs MUST yield DIFFERENT
 // AccountIDs. Closes the cross-profile replay class — a wallet
-// registered on the LuxStrictPQ profile cannot be impersonated on the
-// LuxFIPS or LuxPermissive profile even with the same pubkey.
+// registered on the StrictPQ profile cannot be impersonated on the
+// FIPS or Permissive profile even with the same pubkey.
 func TestDeriveAccountID_DistinctProfilesSameKey(t *testing.T) {
 	pubkey := bytes.Repeat([]byte{0x42}, 1952)
 	chainID := uint32(43114)
