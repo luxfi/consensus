@@ -32,7 +32,7 @@ import (
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	coronaThreshold "github.com/luxfi/pulsar/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // =============================================================================

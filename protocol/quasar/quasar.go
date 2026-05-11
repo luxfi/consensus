@@ -21,7 +21,7 @@ import (
 	// `coronaThreshold` identifier so this file's signing routines
 	// (Round1/Round2/Finalize) stay byte-stable while the underlying
 	// types come from pulsar/threshold.
-	coronaThreshold "github.com/luxfi/pulsar/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // Buffer pools for hot paths - reduces GC pressure during signing/verification

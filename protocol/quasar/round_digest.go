@@ -213,7 +213,7 @@ var ErrRoundDigestZeroField = errors.New(
 
 // tupleHash256RoundDigest computes TupleHash256(parts, outLen, customization)
 // per NIST SP 800-185 §5. The implementation mirrors the FIPS-aligned
-// primitive in github.com/luxfi/pulsar/hash/sp800_185.go; vendored here
+// primitive in github.com/luxfi/corona/hash/sp800_185.go; vendored here
 // to keep consensus below pulsar in the module dependency graph.
 //
 // TupleHash256 differs from naïve cSHAKE256(concat(parts)) in that each

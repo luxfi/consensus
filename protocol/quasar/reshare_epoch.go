@@ -20,7 +20,7 @@ package quasar
 // ActivationMessagePersonalization is the canonical signing prefix
 // for post-reshare activation certificates. Mirrors
 // `ActivationMessage.SignableBytes()` in
-// `github.com/luxfi/pulsar/reshare/activation.go`. Re-exported here
+// `github.com/luxfi/corona/reshare/activation.go`. Re-exported here
 // so the consensus layer can name the prefix at the call site without
 // a transitive Pulsar import.
 const ActivationMessagePersonalization = "QUASAR-PULSAR-ACTIVATE-v1"
