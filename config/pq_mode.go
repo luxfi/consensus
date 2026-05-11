@@ -913,13 +913,34 @@ func (c ContractAuthID) IsForbiddenInPQMode() bool {
 // axis: a KEM provides confidentiality, not authenticity. Strict-PQ
 // chains pin a lattice KEM (ML-KEM, FIPS 203) and refuse classical
 // X25519 via ChainSecurityProfile.ForbidClassicalKEM.
+//
+// F103 KEM semantics — chain-wide vs TLS-layer:
+//
+// The profile field names the post-quantum KEM component that MUST be
+// present on the wire. A peer-to-peer TLS handshake is permitted to
+// negotiate the IANA-registered hybrid X25519MLKEM768 (0x11ec) as the
+// curve preference: the hybrid is STRICTLY STRONGER than pure
+// ML-KEM-768 (an attacker must break BOTH X25519 AND ML-KEM to derive
+// the session key) and is the format real-world TLS 1.3 stacks
+// implement today. The profile's KeyExchangeMLKEM768 value therefore
+// reads as "the ML-KEM-768 component is present", not "X25519 is
+// forbidden in this layer". ForbidClassicalKEM remains the gate that
+// refuses a pure-classical curve (e.g. an X25519-only handshake) at
+// the application layer; it does NOT refuse a hybrid that includes
+// ML-KEM-768.
+//
+// Forks that pin a strictly-pure ML-KEM-768 TLS posture do so by
+// overriding the chain's KeyExchangeID, NOT by adding a separate
+// "pure vs hybrid" enum byte: every additional axis is an additional
+// downstream verifier obligation, and the audit signed off on the
+// single-byte KeyExchangeID surface.
 type KeyExchangeID uint8
 
 const (
 	KeyExchangeInvalid      KeyExchangeID = 0x00
-	KeyExchangeMLKEM768     KeyExchangeID = 0x01 // FIPS 203 Cat 3 (production default)
+	KeyExchangeMLKEM768     KeyExchangeID = 0x01 // FIPS 203 Cat 3 (production default; hybrid X25519MLKEM768 also acceptable at TLS layer)
 	KeyExchangeMLKEM1024    KeyExchangeID = 0x02 // FIPS 203 Cat 5 (high-value)
-	KeyExchangeX25519Unsafe KeyExchangeID = 0x90 // classical X25519; refused in strict-PQ
+	KeyExchangeX25519Unsafe KeyExchangeID = 0x90 // pure classical X25519; refused in strict-PQ via ForbidClassicalKEM
 )
 
 // String returns the canonical wire name.
