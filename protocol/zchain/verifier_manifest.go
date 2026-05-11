@@ -92,9 +92,9 @@ type VerifierManifest struct {
 	// so the verifier identity ships its own truth alongside the
 	// envelope's claim. Mismatch is NOT itself a verification failure
 	// (some profiles tolerate it), but audit tooling flags the gap.
-	UsesPairings             bool
-	UsesKZG                  bool
-	UsesTrustedSetup         bool
+	UsesPairings              bool
+	UsesKZG                   bool
+	UsesTrustedSetup          bool
 	UsesClassicalSNARKWrapper bool
 }
 
@@ -202,9 +202,9 @@ func isAllowedBackendFormatPair(backend config.ProofBackendID, format config.Pro
 // per-envelope verification uses Lookup. There is no Unregister and
 // no Replace — the registry is monotonic for the process lifetime.
 type VerifierManifestRegistry struct {
-	mu       sync.RWMutex
-	byID     map[config.VerifierID]*VerifierManifest
-	logger   log.Logger
+	mu     sync.RWMutex
+	byID   map[config.VerifierID]*VerifierManifest
+	logger log.Logger
 }
 
 // NewVerifierManifestRegistry returns a fresh empty registry. Pass a

@@ -28,30 +28,30 @@ import (
 // existing errors are never renamed (their wire-equivalent identity
 // is "the typed error a strict-PQ verifier returned for rule N").
 var (
-	ErrZProofProfileIDMismatch              = errors.New("zchain: proof.ProfileID does not match profile.ProfileID")
-	ErrZProofHashSuiteMismatch              = errors.New("zchain: proof.HashSuiteID does not match profile.HashSuiteID")
-	ErrZProofPolicyMismatch                 = errors.New("zchain: proof.ProofPolicyID does not match profile.ProofPolicyID")
-	ErrZProofBackendForbidden               = errors.New("zchain: proof.ProofBackendID is not in profile.AllowedBackends")
-	ErrZProofFormatForbidden                = errors.New("zchain: proof.ProofFormatID is not in profile.AllowedFormats")
-	ErrZProofSoundnessTooLow                = errors.New("zchain: proof.SoundnessBitsClaimed below profile.MinSoundnessBits")
-	ErrZProofHashOutputTooShort             = errors.New("zchain: proof.HashOutputBits below profile.MinHashOutputBits")
-	ErrZProofTransparentRequired            = errors.New("zchain: profile.RequireTransparent demands proof.TransparentSetup=true")
-	ErrZProofPairingsForbidden              = errors.New("zchain: profile.ForbidPairings demands proof.UsesPairings=false")
-	ErrZProofKZGForbidden                   = errors.New("zchain: profile.ForbidKZG demands proof.UsesKZG=false")
-	ErrZProofTrustedSetupForbidden          = errors.New("zchain: profile.ForbidTrustedSetup demands proof.UsesTrustedSetup=false")
-	ErrZProofClassicalSNARKForbidden        = errors.New("zchain: profile.ForbidClassicalSNARK demands proof.UsesClassicalSNARKWrapper=false")
-	ErrZProofVerifierUnknown                = errors.New("zchain: VerifierManifestRegistry has no manifest for proof.VerifierID")
+	ErrZProofProfileIDMismatch               = errors.New("zchain: proof.ProfileID does not match profile.ProfileID")
+	ErrZProofHashSuiteMismatch               = errors.New("zchain: proof.HashSuiteID does not match profile.HashSuiteID")
+	ErrZProofPolicyMismatch                  = errors.New("zchain: proof.ProofPolicyID does not match profile.ProofPolicyID")
+	ErrZProofBackendForbidden                = errors.New("zchain: proof.ProofBackendID is not in profile.AllowedBackends")
+	ErrZProofFormatForbidden                 = errors.New("zchain: proof.ProofFormatID is not in profile.AllowedFormats")
+	ErrZProofSoundnessTooLow                 = errors.New("zchain: proof.SoundnessBitsClaimed below profile.MinSoundnessBits")
+	ErrZProofHashOutputTooShort              = errors.New("zchain: proof.HashOutputBits below profile.MinHashOutputBits")
+	ErrZProofTransparentRequired             = errors.New("zchain: profile.RequireTransparent demands proof.TransparentSetup=true")
+	ErrZProofPairingsForbidden               = errors.New("zchain: profile.ForbidPairings demands proof.UsesPairings=false")
+	ErrZProofKZGForbidden                    = errors.New("zchain: profile.ForbidKZG demands proof.UsesKZG=false")
+	ErrZProofTrustedSetupForbidden           = errors.New("zchain: profile.ForbidTrustedSetup demands proof.UsesTrustedSetup=false")
+	ErrZProofClassicalSNARKForbidden         = errors.New("zchain: profile.ForbidClassicalSNARK demands proof.UsesClassicalSNARKWrapper=false")
+	ErrZProofVerifierUnknown                 = errors.New("zchain: VerifierManifestRegistry has no manifest for proof.VerifierID")
 	ErrZProofVerifierManifestBackendMismatch = errors.New("zchain: VerifierManifest.BackendID does not match proof.ProofBackendID")
-	ErrZProofProgramHashMismatch            = errors.New("zchain: VerifierManifest.ProgramOrAirHash does not match proof.ProgramOrAirHash")
-	ErrZProofVerifierKeyMismatch            = errors.New("zchain: VerifierManifest.VerifierKeyHash does not match proof.VerifierKeyHash")
-	ErrZProofPublicInputsMismatch           = errors.New("zchain: HashZPublicInputs(input) does not match proof.PublicInputsHash")
-	ErrZProofVerifierManifestFormatMismatch = errors.New("zchain: VerifierManifest.ProofFormatID does not match proof.ProofFormatID")
-	ErrZProofVerifierManifestPolicyMismatch = errors.New("zchain: VerifierManifest.SupportsPolicyIDs does not include proof.ProofPolicyID")
-	ErrZProofNilProfile                     = errors.New("zchain: nil ChainSecurityProfile")
-	ErrZProofNilRegistry                    = errors.New("zchain: nil VerifierManifestRegistry")
-	ErrZProofNilInput                       = errors.New("zchain: nil ZPublicInputs")
-	ErrZProofNilProof                       = errors.New("zchain: nil ZProofEnvelope")
-	ErrZProofBackendVerifyFailed            = errors.New("zchain: backend verifier returned false")
+	ErrZProofProgramHashMismatch             = errors.New("zchain: VerifierManifest.ProgramOrAirHash does not match proof.ProgramOrAirHash")
+	ErrZProofVerifierKeyMismatch             = errors.New("zchain: VerifierManifest.VerifierKeyHash does not match proof.VerifierKeyHash")
+	ErrZProofPublicInputsMismatch            = errors.New("zchain: HashZPublicInputs(input) does not match proof.PublicInputsHash")
+	ErrZProofVerifierManifestFormatMismatch  = errors.New("zchain: VerifierManifest.ProofFormatID does not match proof.ProofFormatID")
+	ErrZProofVerifierManifestPolicyMismatch  = errors.New("zchain: VerifierManifest.SupportsPolicyIDs does not include proof.ProofPolicyID")
+	ErrZProofNilProfile                      = errors.New("zchain: nil ChainSecurityProfile")
+	ErrZProofNilRegistry                     = errors.New("zchain: nil VerifierManifestRegistry")
+	ErrZProofNilInput                        = errors.New("zchain: nil ZPublicInputs")
+	ErrZProofNilProof                        = errors.New("zchain: nil ZProofEnvelope")
+	ErrZProofBackendVerifyFailed             = errors.New("zchain: backend verifier returned false")
 )
 
 // BackendVerifier is the interface that a backend implementation
@@ -67,10 +67,10 @@ var (
 //     manifest by the caller)
 //
 // All the implementation needs to do is:
-//   1. Parse proof.ProofBytes under manifest.ProofFormatID.
-//   2. Run the cryptographic verifier.
-//   3. Return true iff the proof verifies under (publicInputs,
-//      manifest.VerifierKeyHash, manifest.ProgramOrAirHash).
+//  1. Parse proof.ProofBytes under manifest.ProofFormatID.
+//  2. Run the cryptographic verifier.
+//  3. Return true iff the proof verifies under (publicInputs,
+//     manifest.VerifierKeyHash, manifest.ProgramOrAirHash).
 //
 // No I/O. No network. Constant-time on accepted vs rejected inputs.
 type BackendVerifier interface {
@@ -101,22 +101,22 @@ func (f BackendVerifierFunc) Verify(
 //
 // Checks (in order, all fail-closed):
 //
-//   1. proof.ProfileID == profile.ProfileID
-//   2. proof.HashSuiteID == profile.HashSuiteID
-//   3. proof.ProofPolicyID == profile.ProofPolicyID
-//   4. profile.AllowsBackend(proof.ProofBackendID)
-//   5. profile.AllowsFormat(proof.ProofFormatID)
-//   6. proof.SoundnessBitsClaimed >= profile.MinSoundnessBits
-//   7. proof.HashOutputBits >= profile.MinHashOutputBits
-//   8. profile.RequireTransparent ⇒ proof.TransparentSetup
-//   9. profile.ForbidPairings/KZG/TrustedSetup/ClassicalSNARK contradictions
+//  1. proof.ProfileID == profile.ProfileID
+//  2. proof.HashSuiteID == profile.HashSuiteID
+//  3. proof.ProofPolicyID == profile.ProofPolicyID
+//  4. profile.AllowsBackend(proof.ProofBackendID)
+//  5. profile.AllowsFormat(proof.ProofFormatID)
+//  6. proof.SoundnessBitsClaimed >= profile.MinSoundnessBits
+//  7. proof.HashOutputBits >= profile.MinHashOutputBits
+//  8. profile.RequireTransparent ⇒ proof.TransparentSetup
+//  9. profile.ForbidPairings/KZG/TrustedSetup/ClassicalSNARK contradictions
 //  10. manifest := registry.Lookup(proof.VerifierID); not-exists ⇒ reject
 //  11. manifest.BackendID == proof.ProofBackendID
 //  12. manifest.ProgramOrAirHash == proof.ProgramOrAirHash
 //  13. manifest.VerifierKeyHash == proof.VerifierKeyHash
 //  14. HashZPublicInputs(input) == proof.PublicInputsHash
 //  15. Dispatch backend verifier (mock returns nil if no backend bound
-//      under the dev build tag; production build requires a real binding).
+//     under the dev build tag; production build requires a real binding).
 //
 // The function performs no other work; consumers wrap higher-level
 // policy on top of it (e.g. Q-Chain AcceptQBlock binds Z-Chain proof

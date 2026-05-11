@@ -324,8 +324,8 @@ func (h *Certifier) realCert(ctx context.Context, s *signer, block *Block, valid
 	}
 
 	cert := &QuasarCert{
-		BLS:        append([]byte(nil), sig.BLS...),
-		Ringtail:   nil, // Ringtail Round 1 commitment is not a verifiable
+		BLS:      append([]byte(nil), sig.BLS...),
+		Ringtail: nil, // Ringtail Round 1 commitment is not a verifiable
 		// signature on its own; aggregation/Round2 is run by the
 		// consensus driver. We leave Ringtail empty here -- it's wired
 		// at the higher protocol layer (epoch.go BundleSigner).
