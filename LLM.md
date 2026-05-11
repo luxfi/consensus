@@ -310,7 +310,7 @@ Run: `GOWORK=off go test -v -run TestLuxVsAvalanche_EndToEnd -bench=. ./bench/`
 
 ### ValidatorSchemeID — cross-axis NodeIDScheme gate
 
-`config/validator_scheme.go` (v1.23.3) owns the rule that pins which
+`config/validator_scheme.go` (v1.23.4) owns the rule that pins which
 `NodeIDScheme` byte a peer / proposer / validator / mempool sender
 MUST present on this chain.
 
