@@ -185,8 +185,8 @@ const (
 	VerifierStwoCircleSTARKPQ    VerifierID = 0x0024
 
 	// Dev-only verifiers.
-	VerifierSP1CoreSTARKDev   VerifierID = 0x0070
-	VerifierRISC0RawSTARKDev  VerifierID = 0x0071
+	VerifierSP1CoreSTARKDev  VerifierID = 0x0070
+	VerifierRISC0RawSTARKDev VerifierID = 0x0071
 )
 
 // String returns the canonical wire name.
