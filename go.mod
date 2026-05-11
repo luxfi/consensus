@@ -16,7 +16,7 @@ require (
 	github.com/luxfi/math v1.4.0
 	github.com/luxfi/metric v1.5.0
 	github.com/luxfi/p2p v1.18.9
-	github.com/luxfi/pulsar v0.1.0-rc1-pq-consensus-freeze
+	github.com/luxfi/pulsar v0.1.5
 	github.com/luxfi/runtime v1.0.0
 	github.com/luxfi/threshold v1.6.7
 	github.com/luxfi/validators v1.0.0
@@ -27,6 +27,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0
+	golang.org/x/crypto v0.49.0
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -84,7 +85,7 @@ require (
 	github.com/luxfi/constants v1.4.3 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
 	github.com/luxfi/geth v1.16.73 // indirect
-	github.com/luxfi/lens v0.1.0-rc1-pq-consensus-freeze // indirect
+	github.com/luxfi/lens v0.1.3 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.0 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
@@ -121,7 +122,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.40.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
 	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
@@ -138,15 +138,8 @@ exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 
 exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
 
-// Local replace directives for the LSS-Pulsar / LSS-Lens cutover. Pulsar
-// and Lens have no remote yet; the threshold repo's lss_pulsar /
-// lss_lens adapters likewise live in our local tree. These pin the
-// consensus build to the in-tree source of truth and MUST be retained
-// until the repos publish tagged releases.
-// Local-dev replace directives. Tagged versions above pin the
-// March 3, 2026 PQ Consensus Architecture Freeze. See
-// ~/work/lux/consensus/CROSS-REPO-VERSION-PIN.md for the canonical commit
-// SHA → tag mapping.
-replace github.com/luxfi/pulsar => ../pulsar // pinned to v0.1.0-rc1-pq-consensus-freeze; see go-mod-pin.md
-
-replace github.com/luxfi/lens => ../lens // pinned to v0.1.0-rc1-pq-consensus-freeze; see go-mod-pin.md
+// luxfi/pulsar and luxfi/lens are now consumed via published tags
+// (pulsar v0.1.5, lens v0.1.3). Local replace directives were removed
+// so CI can fetch modules from proxy.golang.org without sibling clones.
+// See CROSS-REPO-VERSION-PIN.md for the SHA → tag mapping at the
+// March 3, 2026 PQ Consensus Architecture Freeze.
