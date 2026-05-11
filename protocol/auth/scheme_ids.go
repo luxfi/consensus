@@ -39,7 +39,11 @@
 
 package auth
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/luxfi/consensus/config"
+)
 
 // WalletSchemeID is the wire byte that identifies the signature scheme a
 // user's externally-owned account (EOA) signs transactions with.
@@ -248,49 +252,30 @@ func (c ContractAuthID) IsLegacyClassical() bool {
 // ephemeral channel keys (encrypted RPC, account-level encryption,
 // channel rekey).
 //
-// Numbering:
+// Canonical numbering lives in config.KeyExchangeID:
 //
-//	0x00 — None
-//	0x10 — X25519 legacy classical (forbidden in strict-PQ)
-//	0x50..0x5F — ML-KEM FIPS 203 family:
-//	             0x51 = ML-KEM-512  (NIST Cat 1)
-//	             0x52 = ML-KEM-768  (NIST Cat 3, production default)
-//	             0x53 = ML-KEM-1024 (NIST Cat 5)
-type KeyExchangeID uint8
+//	0x00 — Invalid / unspecified
+//	0x01 — ML-KEM-768  (FIPS 203 Cat 3, production default)
+//	0x02 — ML-KEM-1024 (FIPS 203 Cat 5, high-value)
+//	0x90 — X25519Unsafe (classical, refused in strict-PQ)
+//
+// This package's KeyExchangeID is a type alias of config.KeyExchangeID
+// so wire bytes, String(), IsPostQuantum() and IsForbiddenInPQMode() are
+// shared across the auth and config packages. ML-KEM-512 (NIST Cat 1)
+// is intentionally absent — it sits below the strict-PQ floor and was
+// reserved-but-unused in earlier drafts.
+//
+// Closes the "three disjoint KEM ID registries" drift the spec/code
+// audit named under Bug 3: auth, config, and node/network/kem now all
+// resolve to the same byte values.
+type KeyExchangeID = config.KeyExchangeID
 
 const (
-	KeyExchangeNone         KeyExchangeID = 0x00
-	KeyExchangeX25519Legacy KeyExchangeID = 0x10
-	KeyExchangeMLKEM512     KeyExchangeID = 0x51
-	KeyExchangeMLKEM768     KeyExchangeID = 0x52 // production default
-	KeyExchangeMLKEM1024    KeyExchangeID = 0x53
+	KeyExchangeInvalid      = config.KeyExchangeInvalid
+	KeyExchangeMLKEM768     = config.KeyExchangeMLKEM768  // 0x01 — production default
+	KeyExchangeMLKEM1024    = config.KeyExchangeMLKEM1024 // 0x02 — high-value
+	KeyExchangeX25519Unsafe = config.KeyExchangeX25519Unsafe
 )
-
-// String returns the canonical wire name.
-func (k KeyExchangeID) String() string {
-	switch k {
-	case KeyExchangeNone:
-		return "none"
-	case KeyExchangeX25519Legacy:
-		return "x25519-legacy"
-	case KeyExchangeMLKEM512:
-		return "ml-kem-512"
-	case KeyExchangeMLKEM768:
-		return "ml-kem-768"
-	case KeyExchangeMLKEM1024:
-		return "ml-kem-1024"
-	default:
-		return fmt.Sprintf("key-exchange(0x%02x)", uint8(k))
-	}
-}
-
-// IsPostQuantum reports whether this KEM is admissible under strict-PQ.
-// X25519 legacy returns false; ML-KEM family returns true.
-func (k KeyExchangeID) IsPostQuantum() bool {
-	return k == KeyExchangeMLKEM512 ||
-		k == KeyExchangeMLKEM768 ||
-		k == KeyExchangeMLKEM1024
-}
 
 // RecoverySchemeID is the wire byte that identifies the account recovery
 // scheme (social recovery, threshold guardians, time-locked PQ recovery).
