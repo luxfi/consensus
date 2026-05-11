@@ -367,10 +367,13 @@ func (v *VerkleWitness) fullVerification(witness *WitnessProof) error {
 
 	// Strict-PQ refuses the BLS aggregate path. Closes F107: any
 	// classical pairing-based aggregate is forbidden by the
-	// ForbidPairings invariant of LuxStrictPQ.
+	// ForbidPairings invariant of every strict-PQ profile.
 	if profile != nil &&
 		(profile.ProfileID == uint32(config.ProfileLuxStrictPQ) ||
 			profile.ProfileID == uint32(config.ProfileLuxFIPS) ||
+			profile.ProfileID == uint32(config.ProfileZooStrictPQ) ||
+			profile.ProfileID == uint32(config.ProfileHanzoStrictPQ) ||
+			profile.ProfileID == uint32(config.ProfileQuasarStrictPQ) ||
 			profile.ForbidPairings) {
 		return errors.New("strict-PQ profile forbids BLS-aggregate fallback verification")
 	}
@@ -595,6 +598,9 @@ func (v *VerkleWitness) verifyBLSAggregate(aggSig []byte, validatorSet []byte) e
 	if profile != nil &&
 		(profile.ProfileID == uint32(config.ProfileLuxStrictPQ) ||
 			profile.ProfileID == uint32(config.ProfileLuxFIPS) ||
+			profile.ProfileID == uint32(config.ProfileZooStrictPQ) ||
+			profile.ProfileID == uint32(config.ProfileHanzoStrictPQ) ||
+			profile.ProfileID == uint32(config.ProfileQuasarStrictPQ) ||
 			profile.ForbidPairings) {
 		return ErrBLSForbiddenUnderStrictPQ
 	}
