@@ -18,9 +18,9 @@ func TestProfileID_String(t *testing.T) {
 		want string
 	}{
 		{ProfileNone, "none"},
-		{ProfileLuxStrictPQ, "lux-strict-pq"},
-		{ProfileLuxPermissive, "lux-permissive"},
-		{ProfileLuxFIPS, "lux-fips"},
+		{ProfileStrictPQ, "strict-pq"},
+		{ProfilePermissive, "permissive"},
+		{ProfileFIPS, "fips"},
 	}
 	for _, c := range cases {
 		if got := c.id.String(); got != c.want {
@@ -98,57 +98,57 @@ func TestVerifierID_String(t *testing.T) {
 	}
 }
 
-// TestLuxStrictPQ_Validate ensures the canonical strict-PQ profile passes
+// TestStrictPQ_Validate ensures the canonical strict-PQ profile passes
 // every internal invariant. Failure here means we shipped an invalid
 // production profile — a hard refusal at genesis-load.
-func TestLuxStrictPQ_Validate(t *testing.T) {
-	p := LuxStrictPQ()
+func TestStrictPQ_Validate(t *testing.T) {
+	p := StrictPQ()
 	if err := p.Validate(); err != nil {
-		t.Fatalf("LuxStrictPQ().Validate() returned %v; want nil", err)
+		t.Fatalf("StrictPQ().Validate() returned %v; want nil", err)
 	}
-	if p.ProfileID != uint32(ProfileLuxStrictPQ) {
-		t.Errorf("LuxStrictPQ().ProfileID = %d, want %d", p.ProfileID, ProfileLuxStrictPQ)
+	if p.ProfileID != uint32(ProfileStrictPQ) {
+		t.Errorf("StrictPQ().ProfileID = %d, want %d", p.ProfileID, ProfileStrictPQ)
 	}
-	if p.ProfileName != "LUX_STRICT_PQ" {
-		t.Errorf("LuxStrictPQ().ProfileName = %q, want %q", p.ProfileName, "LUX_STRICT_PQ")
+	if p.ProfileName != ProfileNameStrictPQ {
+		t.Errorf("StrictPQ().ProfileName = %q, want %q", p.ProfileName, ProfileNameStrictPQ)
 	}
 	if p.HashSuiteID != HashSuiteSHA3NIST {
-		t.Errorf("LuxStrictPQ().HashSuiteID = %s, want sha3-nist", p.HashSuiteID.String())
+		t.Errorf("StrictPQ().HashSuiteID = %s, want sha3-nist", p.HashSuiteID.String())
 	}
 	if p.ProofPolicyID != ProofPolicySTARKFRISHA3PQ {
-		t.Errorf("LuxStrictPQ().ProofPolicyID = %s, want stark-fri-sha3-pq", p.ProofPolicyID.String())
+		t.Errorf("StrictPQ().ProofPolicyID = %s, want stark-fri-sha3-pq", p.ProofPolicyID.String())
 	}
 	if !p.RequireTransparent {
-		t.Errorf("LuxStrictPQ().RequireTransparent = false, want true")
+		t.Errorf("StrictPQ().RequireTransparent = false, want true")
 	}
 	if !p.ForbidPairings || !p.ForbidKZG || !p.ForbidTrustedSetup ||
 		!p.ForbidClassicalSNARKs || !p.ForbidDevProofs || !p.ForbidFallbacks {
-		t.Errorf("LuxStrictPQ() must forbid every classical primitive AND dev proofs AND fallbacks; got pairings=%v kzg=%v trusted=%v snark=%v dev=%v fallback=%v",
+		t.Errorf("StrictPQ() must forbid every classical primitive AND dev proofs AND fallbacks; got pairings=%v kzg=%v trusted=%v snark=%v dev=%v fallback=%v",
 			p.ForbidPairings, p.ForbidKZG, p.ForbidTrustedSetup,
 			p.ForbidClassicalSNARKs, p.ForbidDevProofs, p.ForbidFallbacks)
 	}
 }
 
-// TestLuxPermissive_Validate ensures the testnet profile passes Validate.
-// LuxPermissive must NOT set ForbidDevProofs (testnet uses dev backends).
-func TestLuxPermissive_Validate(t *testing.T) {
-	p := LuxPermissive()
+// TestPermissive_Validate ensures the testnet profile passes Validate.
+// Permissive must NOT set ForbidDevProofs (testnet uses dev backends).
+func TestPermissive_Validate(t *testing.T) {
+	p := Permissive()
 	if err := p.Validate(); err != nil {
-		t.Fatalf("LuxPermissive().Validate() returned %v; want nil", err)
+		t.Fatalf("Permissive().Validate() returned %v; want nil", err)
 	}
 	if p.ForbidDevProofs {
-		t.Errorf("LuxPermissive() must NOT forbid dev proofs (testnet uses them)")
+		t.Errorf("Permissive() must NOT forbid dev proofs (testnet uses them)")
 	}
 }
 
-// TestLuxFIPS_Validate ensures the FIPS profile passes and admits only P3Q.
-func TestLuxFIPS_Validate(t *testing.T) {
-	p := LuxFIPS()
+// TestFIPS_Validate ensures the FIPS profile passes and admits only P3Q.
+func TestFIPS_Validate(t *testing.T) {
+	p := FIPS()
 	if err := p.Validate(); err != nil {
-		t.Fatalf("LuxFIPS().Validate() returned %v; want nil", err)
+		t.Fatalf("FIPS().Validate() returned %v; want nil", err)
 	}
 	if len(p.AllowedProofBackends) != 1 || p.AllowedProofBackends[0] != ProofBackendP3QSTARKFRISHA3 {
-		t.Errorf("LuxFIPS() must allow only P3Q; got %v", p.AllowedProofBackends)
+		t.Errorf("FIPS() must allow only P3Q; got %v", p.AllowedProofBackends)
 	}
 }
 
@@ -167,9 +167,9 @@ func TestForkClassicalCompatUnsafe_Validate(t *testing.T) {
 			ForkClassicalCompatUnsafeProfile.ProfileID, ForkClassicalCompatUnsafeProfileID)
 	}
 	// Critical: the fork uses the keccak-merkle STARK policy so it MUST
-	// NOT collide with LuxStrictPQ's policy.
-	if ForkClassicalCompatUnsafeProfile.ProofPolicyID == LuxStrictPQProfile.ProofPolicyID {
-		t.Errorf("fork profile ProofPolicyID must NOT match LuxStrictPQ — that's the whole point")
+	// NOT collide with StrictPQ's policy.
+	if ForkClassicalCompatUnsafeProfile.ProofPolicyID == StrictPQProfile.ProofPolicyID {
+		t.Errorf("fork profile ProofPolicyID must NOT match StrictPQ — that's the whole point")
 	}
 }
 
@@ -200,7 +200,7 @@ func TestChainSecurityProfile_Validate_ZeroValue(t *testing.T) {
 // profile validator refuses a profile that pins a forbidden classical
 // policy.
 func TestChainSecurityProfile_Validate_RejectsForbiddenPolicy(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.ProofPolicyID = ProofPolicyGroth16BN254Forbid
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with Groth16 policy returned %v; want ErrProfileFieldInvalid", err)
@@ -210,7 +210,7 @@ func TestChainSecurityProfile_Validate_RejectsForbiddenPolicy(t *testing.T) {
 // TestChainSecurityProfile_Validate_RejectsForbiddenBackend proves the
 // validator refuses a profile that lists a forbidden backend.
 func TestChainSecurityProfile_Validate_RejectsForbiddenBackend(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.AllowedProofBackends = append(append([]ProofBackendID(nil), p.AllowedProofBackends...),
 		ProofBackendGroth16WrapForbid)
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
@@ -221,7 +221,7 @@ func TestChainSecurityProfile_Validate_RejectsForbiddenBackend(t *testing.T) {
 // TestChainSecurityProfile_Validate_RejectsForbiddenFormat mirrors the
 // backend check on the format axis.
 func TestChainSecurityProfile_Validate_RejectsForbiddenFormat(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.AllowedProofFormats = append(append([]ProofFormatID(nil), p.AllowedProofFormats...),
 		ProofFormatGroth16WrappedForbid)
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
@@ -232,7 +232,7 @@ func TestChainSecurityProfile_Validate_RejectsForbiddenFormat(t *testing.T) {
 // TestChainSecurityProfile_Validate_RejectsEmptyAllowlist proves an empty
 // backend allowlist is rejected.
 func TestChainSecurityProfile_Validate_RejectsEmptyAllowlist(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.AllowedProofBackends = nil
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldUnset) {
 		t.Errorf("Validate() with empty AllowedProofBackends returned %v; want ErrProfileFieldUnset", err)
@@ -243,7 +243,7 @@ func TestChainSecurityProfile_Validate_RejectsEmptyAllowlist(t *testing.T) {
 // with every Forbid* flag false is rejected — silently accepting weak
 // primitives is the operator footgun.
 func TestChainSecurityProfile_Validate_RejectsNoForbidFlags(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.ForbidPairings = false
 	p.ForbidKZG = false
 	p.ForbidTrustedSetup = false
@@ -258,7 +258,7 @@ func TestChainSecurityProfile_Validate_RejectsNoForbidFlags(t *testing.T) {
 // TestChainSecurityProfile_Validate_RejectsM44HighValue proves the
 // devnet-only Pulsar-M-44 cannot be the high-value scheme.
 func TestChainSecurityProfile_Validate_RejectsM44HighValue(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.HighValueSchemeID = SigSchemePulsarM44
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with HighValueSchemeID=Pulsar-M-44 returned %v; want ErrProfileFieldInvalid", err)
@@ -268,7 +268,7 @@ func TestChainSecurityProfile_Validate_RejectsM44HighValue(t *testing.T) {
 // TestChainSecurityProfile_Validate_RejectsRawMLDSAFinality proves raw
 // FIPS 204 ML-DSA cannot be the finality scheme — finality is threshold.
 func TestChainSecurityProfile_Validate_RejectsRawMLDSAFinality(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.FinalitySchemeID = SigSchemeMLDSA65
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with raw ML-DSA-65 finality returned %v; want ErrProfileFieldInvalid", err)
@@ -279,7 +279,7 @@ func TestChainSecurityProfile_Validate_RejectsRawMLDSAFinality(t *testing.T) {
 // Pulsar-M threshold cannot be the identity scheme — identity is
 // single-party.
 func TestChainSecurityProfile_Validate_RejectsThresholdIdentity(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.IdentitySchemeID = SigSchemePulsarM65
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with Pulsar-M-65 identity returned %v; want ErrProfileFieldInvalid", err)
@@ -289,7 +289,7 @@ func TestChainSecurityProfile_Validate_RejectsThresholdIdentity(t *testing.T) {
 // TestChainSecurityProfile_Validate_RejectsLowSoundness proves a soundness
 // floor below 128 bits is rejected.
 func TestChainSecurityProfile_Validate_RejectsLowSoundness(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.MinSoundnessBits = 127
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with MinSoundnessBits=127 returned %v; want ErrProfileFieldInvalid", err)
@@ -299,7 +299,7 @@ func TestChainSecurityProfile_Validate_RejectsLowSoundness(t *testing.T) {
 // TestChainSecurityProfile_Validate_RejectsLowHashWidth proves a hash
 // output width below 256 bits is rejected.
 func TestChainSecurityProfile_Validate_RejectsLowHashWidth(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.MinHashOutputBits = 255
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with MinHashOutputBits=255 returned %v; want ErrProfileFieldInvalid", err)
@@ -309,7 +309,7 @@ func TestChainSecurityProfile_Validate_RejectsLowHashWidth(t *testing.T) {
 // TestChainSecurityProfile_Validate_RejectsHashSuiteNone proves a locked
 // profile cannot carry HashSuiteNone.
 func TestChainSecurityProfile_Validate_RejectsHashSuiteNone(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.HashSuiteID = HashSuiteNone
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldUnset) {
 		t.Errorf("Validate() with HashSuiteNone returned %v; want ErrProfileFieldUnset", err)
@@ -319,7 +319,7 @@ func TestChainSecurityProfile_Validate_RejectsHashSuiteNone(t *testing.T) {
 // TestChainSecurityProfile_Validate_RejectsEmptyProfileName guards the
 // ProfileName invariant.
 func TestChainSecurityProfile_Validate_RejectsEmptyProfileName(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	p.ProfileName = ""
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldUnset) {
 		t.Errorf("Validate() with empty ProfileName returned %v; want ErrProfileFieldUnset", err)
@@ -333,36 +333,36 @@ func TestChainSecurityProfile_Validate_RejectsEmptyProfileName(t *testing.T) {
 // TestChainSecurityProfile_AllowsBackend pins the allow-list semantics
 // across the canonical profile.
 func TestChainSecurityProfile_AllowsBackend(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	for _, b := range p.AllowedProofBackends {
 		if !p.AllowsBackend(b) {
-			t.Errorf("LuxStrictPQ.AllowsBackend(%s) = false, want true", b.String())
+			t.Errorf("StrictPQ.AllowsBackend(%s) = false, want true", b.String())
 		}
 	}
 	if p.AllowsBackend(ProofBackendGroth16WrapForbid) {
-		t.Errorf("LuxStrictPQ.AllowsBackend(groth16-wrap) = true, want false")
+		t.Errorf("StrictPQ.AllowsBackend(groth16-wrap) = true, want false")
 	}
 	if p.AllowsBackend(ProofBackendNone) {
-		t.Errorf("LuxStrictPQ.AllowsBackend(None) = true, want false")
+		t.Errorf("StrictPQ.AllowsBackend(None) = true, want false")
 	}
 	if p.AllowsBackend(ProofBackendRISC0RawSTARKDev) {
-		t.Errorf("LuxStrictPQ.AllowsBackend(dev) = true; ForbidDevProofs must exclude")
+		t.Errorf("StrictPQ.AllowsBackend(dev) = true; ForbidDevProofs must exclude")
 	}
 }
 
 // TestChainSecurityProfile_AllowsFormat pins the format allow-list.
 func TestChainSecurityProfile_AllowsFormat(t *testing.T) {
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	for _, f := range p.AllowedProofFormats {
 		if !p.AllowsFormat(f) {
-			t.Errorf("LuxStrictPQ.AllowsFormat(%s) = false, want true", f.String())
+			t.Errorf("StrictPQ.AllowsFormat(%s) = false, want true", f.String())
 		}
 	}
 	if p.AllowsFormat(ProofFormatKZGWrappedForbid) {
-		t.Errorf("LuxStrictPQ.AllowsFormat(kzg-wrapped) = true, want false")
+		t.Errorf("StrictPQ.AllowsFormat(kzg-wrapped) = true, want false")
 	}
 	if p.AllowsFormat(ProofFormatNone) {
-		t.Errorf("LuxStrictPQ.AllowsFormat(None) = true, want false")
+		t.Errorf("StrictPQ.AllowsFormat(None) = true, want false")
 	}
 }
 
@@ -373,8 +373,8 @@ func TestChainSecurityProfile_AllowsFormat(t *testing.T) {
 // TestChainSecurityProfile_ComputeHash_Determinism proves the hash is a
 // function of the profile contents: equal profiles hash to equal bytes.
 func TestChainSecurityProfile_ComputeHash_Determinism(t *testing.T) {
-	a := LuxStrictPQ()
-	b := LuxStrictPQ()
+	a := StrictPQ()
+	b := StrictPQ()
 	ah, err := a.ComputeHash()
 	if err != nil {
 		t.Fatalf("ComputeHash(a): %v", err)
@@ -384,12 +384,12 @@ func TestChainSecurityProfile_ComputeHash_Determinism(t *testing.T) {
 		t.Fatalf("ComputeHash(b): %v", err)
 	}
 	if ah != bh {
-		t.Errorf("LuxStrictPQ() hashes inconsistently across calls: %x vs %x", ah, bh)
+		t.Errorf("StrictPQ() hashes inconsistently across calls: %x vs %x", ah, bh)
 	}
 	// And the well-known constant matches.
-	if ah != LuxStrictPQProfile.ProfileHash {
-		t.Errorf("LuxStrictPQ ComputeHash() differs from init-pinned ProfileHash: got %x want %x",
-			ah, LuxStrictPQProfile.ProfileHash)
+	if ah != StrictPQProfile.ProfileHash {
+		t.Errorf("StrictPQ ComputeHash() differs from init-pinned ProfileHash: got %x want %x",
+			ah, StrictPQProfile.ProfileHash)
 	}
 }
 
@@ -397,28 +397,28 @@ func TestChainSecurityProfile_ComputeHash_Determinism(t *testing.T) {
 // profile produces a non-zero hash. A zero hash indicates the
 // init-pinning logic ran but the actual digest computation broke.
 func TestChainSecurityProfile_ComputeHash_NonZero(t *testing.T) {
-	h, err := LuxStrictPQ().ComputeHash()
+	h, err := StrictPQ().ComputeHash()
 	if err != nil {
 		t.Fatalf("ComputeHash: %v", err)
 	}
 	var zero [48]byte
 	if h == zero {
-		t.Errorf("LuxStrictPQ ComputeHash() returned zero — digest function broken")
+		t.Errorf("StrictPQ ComputeHash() returned zero — digest function broken")
 	}
 }
 
 // TestChainSecurityProfile_ComputeHash_DistinguishesProfiles proves each
 // canonical profile maps to a distinct hash.
 func TestChainSecurityProfile_ComputeHash_DistinguishesProfiles(t *testing.T) {
-	hs, err := LuxStrictPQ().ComputeHash()
+	hs, err := StrictPQ().ComputeHash()
 	if err != nil {
 		t.Fatalf("strict: %v", err)
 	}
-	hp, err := LuxPermissive().ComputeHash()
+	hp, err := Permissive().ComputeHash()
 	if err != nil {
 		t.Fatalf("permissive: %v", err)
 	}
-	hf, err := LuxFIPS().ComputeHash()
+	hf, err := FIPS().ComputeHash()
 	if err != nil {
 		t.Fatalf("fips: %v", err)
 	}
@@ -431,9 +431,9 @@ func TestChainSecurityProfile_ComputeHash_DistinguishesProfiles(t *testing.T) {
 		name string
 		h    [48]byte
 	}{
-		{"LuxStrictPQ", hs},
-		{"LuxPermissive", hp},
-		{"LuxFIPS", hf},
+		{"StrictPQ", hs},
+		{"Permissive", hp},
+		{"FIPS", hf},
 		{"ForkClassicalCompatUnsafe", hfork},
 	}
 	for i := 0; i < len(all); i++ {
@@ -449,8 +449,8 @@ func TestChainSecurityProfile_ComputeHash_DistinguishesProfiles(t *testing.T) {
 // rearranging AllowedProofBackends / AllowedProofFormats does not change
 // the profile hash. Genesis-pinning must not depend on listing order.
 func TestChainSecurityProfile_ComputeHash_ListOrderInvariant(t *testing.T) {
-	a := LuxStrictPQ()
-	b := LuxStrictPQ()
+	a := StrictPQ()
+	b := StrictPQ()
 	// Reverse the allow-lists in b. Length matches; ComputeHash sorts.
 	rev := func(bs []ProofBackendID) []ProofBackendID {
 		out := append([]ProofBackendID(nil), bs...)
@@ -487,7 +487,7 @@ func TestChainSecurityProfile_ComputeHash_ListOrderInvariant(t *testing.T) {
 // last-line-of-defence against a future linter / refactor accidentally
 // dropping a field from ComputeHash.
 func TestChainSecurityProfile_ComputeHash_DiffersByField(t *testing.T) {
-	baseHash, err := LuxStrictPQ().ComputeHash()
+	baseHash, err := StrictPQ().ComputeHash()
 	if err != nil {
 		t.Fatalf("base: %v", err)
 	}
@@ -496,8 +496,8 @@ func TestChainSecurityProfile_ComputeHash_DiffersByField(t *testing.T) {
 		name   string
 		mutate func(p *ChainSecurityProfile)
 	}{
-		{"ProfileID", func(p *ChainSecurityProfile) { p.ProfileID = uint32(ProfileLuxPermissive) }},
-		{"ProfileName", func(p *ChainSecurityProfile) { p.ProfileName = "LUX_OTHER" }},
+		{"ProfileID", func(p *ChainSecurityProfile) { p.ProfileID = uint32(ProfilePermissive) }},
+		{"ProfileName", func(p *ChainSecurityProfile) { p.ProfileName = "OTHER" }},
 		{"HashSuiteID", func(p *ChainSecurityProfile) { p.HashSuiteID = HashSuiteBLAKE3Legacy }},
 		{"IdentitySchemeID", func(p *ChainSecurityProfile) { p.IdentitySchemeID = SigSchemeMLDSA87 }},
 		{"FinalitySchemeID", func(p *ChainSecurityProfile) { p.FinalitySchemeID = SigSchemePulsarM87 }},
@@ -530,7 +530,7 @@ func TestChainSecurityProfile_ComputeHash_DiffersByField(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			mutated := LuxStrictPQ()
+			mutated := StrictPQ()
 			c.mutate(mutated)
 			got, err := mutated.ComputeHash()
 			if err != nil {
@@ -553,12 +553,12 @@ func TestChainSecurityProfile_ComputeHash_RefusesInvalidProfile(t *testing.T) {
 	}
 }
 
-// TestLuxStrictPQProfile_NoOperatorFootguns walks every field of the
+// TestStrictPQProfile_NoOperatorFootguns walks every field of the
 // canonical strict-PQ profile and asserts it carries a definite,
 // audit-defensible value. The test is a tripwire against future
 // refactors that introduce zero-default branches into a "secure" profile.
-func TestLuxStrictPQProfile_NoOperatorFootguns(t *testing.T) {
-	p := LuxStrictPQProfile
+func TestStrictPQProfile_NoOperatorFootguns(t *testing.T) {
+	p := StrictPQProfile
 	if p.ProfileID == 0 {
 		t.Errorf("ProfileID is zero")
 	}
@@ -570,46 +570,46 @@ func TestLuxStrictPQProfile_NoOperatorFootguns(t *testing.T) {
 		t.Errorf("ProfileHash is zero — init() did not pin it")
 	}
 	if p.HashSuiteID != HashSuiteSHA3NIST {
-		t.Errorf("HashSuiteID = %s; LuxStrictPQ MUST be NIST-aligned", p.HashSuiteID.String())
+		t.Errorf("HashSuiteID = %s; StrictPQ MUST be NIST-aligned", p.HashSuiteID.String())
 	}
 	if p.IdentitySchemeID != SigSchemeMLDSA65 {
-		t.Errorf("IdentitySchemeID = %s; LuxStrictPQ pins ML-DSA-65", p.IdentitySchemeID.String())
+		t.Errorf("IdentitySchemeID = %s; StrictPQ pins ML-DSA-65", p.IdentitySchemeID.String())
 	}
 	if p.FinalitySchemeID != SigSchemePulsarM65 {
-		t.Errorf("FinalitySchemeID = %s; LuxStrictPQ pins Pulsar-M-65", p.FinalitySchemeID.String())
+		t.Errorf("FinalitySchemeID = %s; StrictPQ pins Pulsar-M-65", p.FinalitySchemeID.String())
 	}
 	if p.HighValueSchemeID != SigSchemePulsarM87 {
-		t.Errorf("HighValueSchemeID = %s; LuxStrictPQ pins Pulsar-M-87 for governance", p.HighValueSchemeID.String())
+		t.Errorf("HighValueSchemeID = %s; StrictPQ pins Pulsar-M-87 for governance", p.HighValueSchemeID.String())
 	}
 	if p.ProofPolicyID != ProofPolicySTARKFRISHA3PQ {
-		t.Errorf("ProofPolicyID = %s; LuxStrictPQ pins STARK_FRI_SHA3_PQ", p.ProofPolicyID.String())
+		t.Errorf("ProofPolicyID = %s; StrictPQ pins STARK_FRI_SHA3_PQ", p.ProofPolicyID.String())
 	}
 	if p.MinSoundnessBits < 128 {
-		t.Errorf("MinSoundnessBits=%d; LuxStrictPQ MUST pin ≥ 128", p.MinSoundnessBits)
+		t.Errorf("MinSoundnessBits=%d; StrictPQ MUST pin ≥ 128", p.MinSoundnessBits)
 	}
 	if p.MinHashOutputBits < 384 {
-		t.Errorf("MinHashOutputBits=%d; LuxStrictPQ MUST pin ≥ 384 (SHA3-384)", p.MinHashOutputBits)
+		t.Errorf("MinHashOutputBits=%d; StrictPQ MUST pin ≥ 384 (SHA3-384)", p.MinHashOutputBits)
 	}
 	if !p.RequireTransparent {
-		t.Errorf("RequireTransparent=false; LuxStrictPQ MUST demand transparent setup")
+		t.Errorf("RequireTransparent=false; StrictPQ MUST demand transparent setup")
 	}
 	if !p.ForbidPairings {
-		t.Errorf("ForbidPairings=false; LuxStrictPQ MUST forbid EC pairings")
+		t.Errorf("ForbidPairings=false; StrictPQ MUST forbid EC pairings")
 	}
 	if !p.ForbidKZG {
-		t.Errorf("ForbidKZG=false; LuxStrictPQ MUST forbid KZG commitments")
+		t.Errorf("ForbidKZG=false; StrictPQ MUST forbid KZG commitments")
 	}
 	if !p.ForbidTrustedSetup {
-		t.Errorf("ForbidTrustedSetup=false; LuxStrictPQ MUST forbid trusted setups")
+		t.Errorf("ForbidTrustedSetup=false; StrictPQ MUST forbid trusted setups")
 	}
 	if !p.ForbidClassicalSNARKs {
-		t.Errorf("ForbidClassicalSNARKs=false; LuxStrictPQ MUST forbid Groth16/PLONK wrappers")
+		t.Errorf("ForbidClassicalSNARKs=false; StrictPQ MUST forbid Groth16/PLONK wrappers")
 	}
 	if !p.ForbidDevProofs {
-		t.Errorf("ForbidDevProofs=false; LuxStrictPQ MUST forbid dev backends in production")
+		t.Errorf("ForbidDevProofs=false; StrictPQ MUST forbid dev backends in production")
 	}
 	if !p.ForbidFallbacks {
-		t.Errorf("ForbidFallbacks=false; LuxStrictPQ MUST refuse silent downgrade")
+		t.Errorf("ForbidFallbacks=false; StrictPQ MUST refuse silent downgrade")
 	}
 	// Every backend in the allowlist MUST be production-PQ.
 	for _, b := range p.AllowedProofBackends {
@@ -643,7 +643,7 @@ func TestLuxStrictPQProfile_NoOperatorFootguns(t *testing.T) {
 //
 // LP-168..179, ZIP-0809..0820, HIP-0085..0104 cite ProfileZooStrictPQ=0x04
 // and ProfileHanzoStrictPQ=0x05. These profiles MUST be byte-identical to
-// LuxStrictPQ on every security-relevant field; ProfileID and ProfileName
+// StrictPQ on every security-relevant field; ProfileID and ProfileName
 // are the only divergences allowed. Cross-network coherence holds iff the
 // three profiles share their forbid / scheme / floor surface.
 
@@ -664,8 +664,8 @@ func TestProfileByID_ZooStrictPQ(t *testing.T) {
 	if p.ProfileID != uint32(ProfileZooStrictPQ) {
 		t.Errorf("ZooStrictPQ.ProfileID = %d, want %d", p.ProfileID, ProfileZooStrictPQ)
 	}
-	if p.ProfileName != "ZOO_STRICT_PQ" {
-		t.Errorf("ZooStrictPQ.ProfileName = %q, want %q", p.ProfileName, "ZOO_STRICT_PQ")
+	if p.ProfileName != ProfileNameZooStrictPQ {
+		t.Errorf("ZooStrictPQ.ProfileName = %q, want %q", p.ProfileName, ProfileNameZooStrictPQ)
 	}
 }
 
@@ -684,71 +684,86 @@ func TestProfileByID_HanzoStrictPQ(t *testing.T) {
 	if p.ProfileID != uint32(ProfileHanzoStrictPQ) {
 		t.Errorf("HanzoStrictPQ.ProfileID = %d, want %d", p.ProfileID, ProfileHanzoStrictPQ)
 	}
-	if p.ProfileName != "HANZO_STRICT_PQ" {
-		t.Errorf("HanzoStrictPQ.ProfileName = %q, want %q", p.ProfileName, "HANZO_STRICT_PQ")
+	if p.ProfileName != ProfileNameHanzoStrictPQ {
+		t.Errorf("HanzoStrictPQ.ProfileName = %q, want %q", p.ProfileName, ProfileNameHanzoStrictPQ)
 	}
 }
 
-// TestProfileByID_QuasarStrictPQ mirrors the Zoo / Hanzo tests for the
-// Quasar strict-PQ profile (a.k.a. Annulus) — the canonical end-to-end
-// strict-PQ envelope new chains pin at genesis going forward.
-func TestProfileByID_QuasarStrictPQ(t *testing.T) {
-	p, err := ProfileByID(ProfileQuasarStrictPQ)
+// TestProfileByID_StrictPQ pins the canonical PQ profile lookup. PQ
+// mode is binary; ProfileStrictPQ (0x01, "STRICT_PQ") is the single
+// canonical strict-PQ profile every Lux chain pins at genesis.
+func TestProfileByID_StrictPQ(t *testing.T) {
+	p, err := ProfileByID(ProfileStrictPQ)
 	if err != nil {
-		t.Fatalf("ProfileByID(ProfileQuasarStrictPQ) returned %v; want nil", err)
+		t.Fatalf("ProfileByID(ProfileStrictPQ) returned %v; want nil", err)
 	}
 	if p == nil {
-		t.Fatalf("ProfileByID(ProfileQuasarStrictPQ) returned nil profile")
+		t.Fatalf("ProfileByID(ProfileStrictPQ) returned nil profile")
 	}
 	if err := p.Validate(); err != nil {
-		t.Fatalf("QuasarStrictPQ.Validate() returned %v; want nil", err)
+		t.Fatalf("StrictPQ.Validate() returned %v; want nil", err)
 	}
-	if p.ProfileID != uint32(ProfileQuasarStrictPQ) {
-		t.Errorf("QuasarStrictPQ.ProfileID = %d, want %d", p.ProfileID, ProfileQuasarStrictPQ)
+	if p.ProfileID != uint32(ProfileStrictPQ) {
+		t.Errorf("StrictPQ.ProfileID = %d, want %d", p.ProfileID, ProfileStrictPQ)
 	}
-	if p.ProfileName != ProfileNameQuasarStrictPQ {
-		t.Errorf("QuasarStrictPQ.ProfileName = %q, want %q", p.ProfileName, ProfileNameQuasarStrictPQ)
-	}
-}
-
-// TestAnnulusAliasesQuasar pins the alias contract: ProfileAnnulusStrictPQ
-// and AnnulusStrictPQ() must resolve to the same byte and the same
-// profile as the canonical Quasar names.
-func TestAnnulusAliasesQuasar(t *testing.T) {
-	if ProfileAnnulusStrictPQ != ProfileQuasarStrictPQ {
-		t.Fatalf("ProfileAnnulusStrictPQ=0x%02x != ProfileQuasarStrictPQ=0x%02x — alias broken",
-			uint8(ProfileAnnulusStrictPQ), uint8(ProfileQuasarStrictPQ))
-	}
-	if ProfileNameAnnulusStrictPQ != ProfileNameQuasarStrictPQ {
-		t.Fatalf("ProfileNameAnnulusStrictPQ=%q != ProfileNameQuasarStrictPQ=%q — alias broken",
-			ProfileNameAnnulusStrictPQ, ProfileNameQuasarStrictPQ)
-	}
-	q := QuasarStrictPQ()
-	a := AnnulusStrictPQ()
-	if q.ProfileID != a.ProfileID {
-		t.Errorf("Quasar.ProfileID=%d != Annulus.ProfileID=%d", q.ProfileID, a.ProfileID)
-	}
-	if q.ProfileName != a.ProfileName {
-		t.Errorf("Quasar.ProfileName=%q != Annulus.ProfileName=%q", q.ProfileName, a.ProfileName)
-	}
-	if q.ProfileHash != a.ProfileHash {
-		t.Errorf("Quasar.ProfileHash != Annulus.ProfileHash — alias drift")
+	if p.ProfileName != ProfileNameStrictPQ {
+		t.Errorf("StrictPQ.ProfileName = %q, want %q", p.ProfileName, ProfileNameStrictPQ)
 	}
 }
 
-// TestStrictPQProfiles_AllFieldsByteIdentical proves Lux, Zoo, Hanzo, and
-// Annulus strict-PQ profiles agree byte-for-byte on every field except
-// ProfileID, ProfileName, and ProfileHash. This is the cross-network
-// coherence invariant: a Zoo / Hanzo / Annulus deployment cannot
-// accidentally weaken the strict-PQ posture relative to canonical Lux.
+// TestIsPQ_StrictProfilesReturnTrue pins the IsPQ contract for the
+// canonical strict-PQ profile family. PQ mode is binary; every entry
+// here is a chain on the strict-PQ envelope.
+func TestIsPQ_StrictProfilesReturnTrue(t *testing.T) {
+	cases := []struct {
+		name string
+		p    *ChainSecurityProfile
+	}{
+		{"strict-pq", StrictPQ()},
+		{"fips", FIPS()},
+		{"zoo-strict", ZooStrictPQ()},
+		{"hanzo-strict", HanzoStrictPQ()},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if !c.p.IsPQ() {
+				t.Fatalf("%s.IsPQ() = false; want true", c.name)
+			}
+		})
+	}
+}
+
+// TestIsPQ_NonStrictReturnsFalse covers nil, permissive, and unknown
+// profiles — the negative side of the IsPQ contract.
+func TestIsPQ_NonStrictReturnsFalse(t *testing.T) {
+	var nilProfile *ChainSecurityProfile
+	if nilProfile.IsPQ() {
+		t.Fatalf("nil profile IsPQ() must be false")
+	}
+	if Permissive().IsPQ() {
+		t.Fatalf("Permissive IsPQ() must be false")
+	}
+	unknown := &ChainSecurityProfile{ProfileID: 0xFE}
+	if unknown.IsPQ() {
+		t.Fatalf("unknown ProfileID 0xFE IsPQ() must be false")
+	}
+}
+
+// TestStrictPQProfiles_AllFieldsByteIdentical proves canonical strict-PQ,
+// Zoo strict-PQ, and Hanzo strict-PQ profiles agree byte-for-byte on every
+// field except ProfileID, ProfileName, and ProfileHash. This is the
+// cross-network coherence invariant: a Zoo / Hanzo deployment cannot
+// accidentally weaken the strict-PQ posture relative to the canonical
+// strict-PQ profile.
 //
 // The check compares every primitive / slice / boolean field explicitly
 // rather than reflect.DeepEqual on the whole struct so a failure names
 // exactly which field diverged.
 func TestStrictPQProfiles_AllFieldsByteIdentical(t *testing.T) {
-	lux := LuxStrictPQ()
+	canonical := StrictPQ()
 	zoo := ZooStrictPQ()
 	hanzo := HanzoStrictPQ()
+	lux := canonical // local alias kept short for the symmetric drift checks below
 
 	cases := []struct {
 		name  string
@@ -757,9 +772,8 @@ func TestStrictPQProfiles_AllFieldsByteIdentical(t *testing.T) {
 		wantID   uint32
 		wantName string
 	}{
-		{"zoo", zoo, uint32(ProfileZooStrictPQ), "ZOO_STRICT_PQ"},
-		{"hanzo", hanzo, uint32(ProfileHanzoStrictPQ), "HANZO_STRICT_PQ"},
-		{"quasar", QuasarStrictPQ(), uint32(ProfileQuasarStrictPQ), ProfileNameQuasarStrictPQ},
+		{"zoo", zoo, uint32(ProfileZooStrictPQ), ProfileNameZooStrictPQ},
+		{"hanzo", hanzo, uint32(ProfileHanzoStrictPQ), ProfileNameHanzoStrictPQ},
 	}
 
 	for _, c := range cases {
@@ -875,18 +889,18 @@ func TestStrictPQProfiles_AllFieldsByteIdentical(t *testing.T) {
 // TestStrictPQProfiles_ProfileHashDiverges proves the canonical hash of
 // the three strict-PQ profiles is distinct — even though every other
 // field is byte-identical, the ProfileID+ProfileName binding produces
-// three distinct 48-byte commitments. A genesis pinned to LuxStrictPQ
+// three distinct 48-byte commitments. A genesis pinned to StrictPQ
 // rejects a cert envelope tagged with the Zoo profile hash and vice
 // versa; this is what closes cross-network replay.
 func TestStrictPQProfiles_ProfileHashDiverges(t *testing.T) {
-	lux := LuxStrictPQ()
+	strict := StrictPQ()
 	zoo := ZooStrictPQ()
 	hanzo := HanzoStrictPQ()
-	if lux.ProfileHash == zoo.ProfileHash {
-		t.Errorf("LuxStrictPQ.ProfileHash == ZooStrictPQ.ProfileHash; cross-network binding broken")
+	if strict.ProfileHash == zoo.ProfileHash {
+		t.Errorf("StrictPQ.ProfileHash == ZooStrictPQ.ProfileHash; cross-network binding broken")
 	}
-	if lux.ProfileHash == hanzo.ProfileHash {
-		t.Errorf("LuxStrictPQ.ProfileHash == HanzoStrictPQ.ProfileHash; cross-network binding broken")
+	if strict.ProfileHash == hanzo.ProfileHash {
+		t.Errorf("StrictPQ.ProfileHash == HanzoStrictPQ.ProfileHash; cross-network binding broken")
 	}
 	if zoo.ProfileHash == hanzo.ProfileHash {
 		t.Errorf("ZooStrictPQ.ProfileHash == HanzoStrictPQ.ProfileHash; cross-network binding broken")
@@ -897,7 +911,7 @@ func TestStrictPQProfiles_ProfileHashDiverges(t *testing.T) {
 		name string
 		h    [48]byte
 	}{
-		{"lux", lux.ProfileHash},
+		{"strict", strict.ProfileHash},
 		{"zoo", zoo.ProfileHash},
 		{"hanzo", hanzo.ProfileHash},
 	} {
