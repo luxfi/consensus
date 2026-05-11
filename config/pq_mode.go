@@ -187,7 +187,7 @@ const (
 	// HashSuiteBLAKE3Legacy — Corona academic profile and Pulsar's
 	// pre-pin legacy suite. BLAKE3 keyed XOF for every challenge / share
 	// / transcript binding (see github.com/luxfi/corona
-	// primitives/hash.go and github.com/luxfi/pulsar/hash/blake3.go).
+	// primitives/hash.go and github.com/luxfi/corona/hash/blake3.go).
 	// BLAKE3 is outside FIPS 202 and therefore non-normative for any
 	// NIST submission; the byte exists so legacy / academic / federation-
 	// MPC deployments can still emit a verifiable cert.
