@@ -265,25 +265,26 @@ func (m PQMode) HashProfile() string {
 //     per FIPS 204). Used when a per-validator signature appears in the
 //     cert without threshold aggregation (mldsa audit-grade fallback,
 //     identity attestations on Z-Chain, etc.).
+//
 //   - 0x50 block names the **Pulsar-M threshold variant** at the same
 //     parameter sets. The verification *relation* is FIPS 204 ML-DSA.Verify
 //     for both blocks, but the producing protocol differs (single-party
 //     vs threshold) and the wire intentionally separates them so a
 //     receiver knows which kernel emitted the bytes.
 //
-//	0x00       — None / unspecified (BLS-only certs do not commit to a sig scheme)
-//	0x10..0x1F — Classical (BLS-12-381 aggregate at 0x10)
-//	0x20..0x2F — Corona (academic R-LWE)
-//	0x30..0x3F — Pulsar.R (production R-LWE family)
-//	0x40..0x4F — Raw ML-DSA per FIPS 204 (single-party):
-//	               0x41 = ML-DSA-44 (NIST PQ Cat 2)
-//	               0x42 = ML-DSA-65 (NIST PQ Cat 3)
-//	               0x43 = ML-DSA-87 (NIST PQ Cat 5)
-//	0x50..0x5F — Pulsar-M threshold (M-LWE, FIPS 204-compatible):
-//	               0x51 = Pulsar-M-44 (NIST PQ Cat 2, devnet only)
-//	               0x52 = Pulsar-M-65 (NIST PQ Cat 3, **production default**)
-//	               0x53 = Pulsar-M-87 (NIST PQ Cat 5, high-value roots)
-//	0x60..      — reserved for future variants
+//     0x00       — None / unspecified (BLS-only certs do not commit to a sig scheme)
+//     0x10..0x1F — Classical (BLS-12-381 aggregate at 0x10)
+//     0x20..0x2F — Corona (academic R-LWE)
+//     0x30..0x3F — Pulsar.R (production R-LWE family)
+//     0x40..0x4F — Raw ML-DSA per FIPS 204 (single-party):
+//     0x41 = ML-DSA-44 (NIST PQ Cat 2)
+//     0x42 = ML-DSA-65 (NIST PQ Cat 3)
+//     0x43 = ML-DSA-87 (NIST PQ Cat 5)
+//     0x50..0x5F — Pulsar-M threshold (M-LWE, FIPS 204-compatible):
+//     0x51 = Pulsar-M-44 (NIST PQ Cat 2, devnet only)
+//     0x52 = Pulsar-M-65 (NIST PQ Cat 3, **production default**)
+//     0x53 = Pulsar-M-87 (NIST PQ Cat 5, high-value roots)
+//     0x60..      — reserved for future variants
 //
 // New entries claim the next free integer in their block and MUST land in
 // pq_mode_test.go before any code references them. Never reuse a retired ID.
