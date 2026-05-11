@@ -27,14 +27,23 @@ import (
 // RoundDigest is the 32-byte certificate subject for a consensus round.
 // See LP-020 §2.3 (Definition: Certificate Subject).
 //
-// TODO(driver): switch the consensus driver call site that builds
-// RoundDigest from an opaque sha256 / placeholder to ComputeRoundDigest
-// (round_digest.go) so the threshold sig binds HashSuiteID + SigSchemeID
-// + ProofSystemID + chainID + networkID + height + parent_state. The
-// driver currently passes RoundDigest into WitnessSet.Run as opaque
-// bytes; that input MUST come from ComputeRoundDigest for HIP-0077 F34
-// to fully close.
+// The canonical constructor is ComputeRoundDigest (round_digest.go),
+// which binds HashSuiteID + IdentitySchemeID + SigSchemeID + ProofPolicyID
+// + ProofBackendID + ProofFormatID + VerifierID + chainID + networkID +
+// epoch + height + parent_state + payload/DA/state/validator roots into
+// the digest via TupleHash256. WitnessSet.Run refuses the zero digest at
+// runtime, so callers cannot bypass the canonical constructor (HIP-0077
+// F34 closure).
 type RoundDigest [32]byte
+
+// IsZero reports whether the digest is all-zero, i.e. uninitialised. The
+// zero digest is never a valid certificate subject -- ComputeRoundDigest
+// itself refuses zero-value inputs and TupleHash256 never produces an
+// all-zero output for non-zero inputs.
+func (d RoundDigest) IsZero() bool {
+	var z RoundDigest
+	return d == z
+}
 
 // ErrWitnessUnavailable is returned by a witness producer when the underlying
 // chain cannot produce a witness for the given round (e.g. Q-Chain DKG not
@@ -158,6 +167,14 @@ type RoundWitnesses struct {
 func (ws WitnessSet) Run(ctx context.Context, digest RoundDigest, validatorMLDSAPubs [][]byte) (*RoundWitnesses, error) {
 	if ws.P == nil {
 		return nil, errors.New("WitnessSet: P producer required")
+	}
+	// Reject the all-zero digest: a valid RoundDigest is the
+	// TupleHash256 output of ComputeRoundDigest over non-zero
+	// security-relevant inputs. An all-zero digest is either an
+	// uninitialised buffer or a caller bypassing the canonical
+	// constructor -- both are protocol bugs.
+	if digest.IsZero() {
+		return nil, errors.New("WitnessSet: RoundDigest is zero; use ComputeRoundDigest to build the canonical subject")
 	}
 
 	type qz struct {
