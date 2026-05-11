@@ -133,17 +133,19 @@ func TestContractAuthID_String(t *testing.T) {
 	}
 }
 
-// TestKeyExchangeID_String pins the wire-name table.
+// TestKeyExchangeID_String pins the wire-name table. The KeyExchangeID
+// type is now an alias of config.KeyExchangeID, so String() comes from
+// config; this test pins the canonical names through the auth package's
+// re-exported constants.
 func TestKeyExchangeID_String(t *testing.T) {
 	cases := []struct {
 		id   KeyExchangeID
 		want string
 	}{
-		{KeyExchangeNone, "none"},
-		{KeyExchangeX25519Legacy, "x25519-legacy"},
-		{KeyExchangeMLKEM512, "ml-kem-512"},
+		{KeyExchangeInvalid, "invalid"},
 		{KeyExchangeMLKEM768, "ml-kem-768"},
 		{KeyExchangeMLKEM1024, "ml-kem-1024"},
+		{KeyExchangeX25519Unsafe, "x25519-unsafe-classical-forbidden-in-pq"},
 	}
 	for _, c := range cases {
 		if got := c.id.String(); got != c.want {
@@ -151,14 +153,21 @@ func TestKeyExchangeID_String(t *testing.T) {
 		}
 	}
 	// IsPostQuantum: ML-KEM family yes, X25519 no.
-	pq := []KeyExchangeID{KeyExchangeMLKEM512, KeyExchangeMLKEM768, KeyExchangeMLKEM1024}
+	pq := []KeyExchangeID{KeyExchangeMLKEM768, KeyExchangeMLKEM1024}
 	for _, k := range pq {
 		if !k.IsPostQuantum() {
 			t.Errorf("%s should IsPostQuantum", k)
 		}
 	}
-	if KeyExchangeX25519Legacy.IsPostQuantum() {
-		t.Error("X25519 legacy must not IsPostQuantum")
+	if KeyExchangeX25519Unsafe.IsPostQuantum() {
+		t.Error("X25519Unsafe must not IsPostQuantum")
+	}
+	// Canonical wire bytes — pins the Bug 3 fix at 0x01/0x02.
+	if uint8(KeyExchangeMLKEM768) != 0x01 {
+		t.Errorf("KeyExchangeMLKEM768 wire byte = 0x%02x, want 0x01", uint8(KeyExchangeMLKEM768))
+	}
+	if uint8(KeyExchangeMLKEM1024) != 0x02 {
+		t.Errorf("KeyExchangeMLKEM1024 wire byte = 0x%02x, want 0x02", uint8(KeyExchangeMLKEM1024))
 	}
 }
 
