@@ -22,9 +22,9 @@ const (
 // testProfile returns the locked strict-PQ profile used in every test.
 func testProfile(t *testing.T) *config.ChainSecurityProfile {
 	t.Helper()
-	p := config.LuxStrictPQ()
+	p := config.StrictPQ()
 	if err := p.Validate(); err != nil {
-		t.Fatalf("LuxStrictPQ().Validate(): %v", err)
+		t.Fatalf("StrictPQ().Validate(): %v", err)
 	}
 	return p
 }

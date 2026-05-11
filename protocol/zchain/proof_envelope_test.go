@@ -16,7 +16,7 @@ import (
 func fixtureEnvelope() *ZProofEnvelope {
 	return &ZProofEnvelope{
 		Version:              1,
-		ProfileID:            uint32(config.ProfileLuxStrictPQ),
+		ProfileID:            uint32(config.ProfileStrictPQ),
 		ChainID:              42,
 		NetworkID:            1,
 		Epoch:                7,
@@ -287,7 +287,7 @@ func TestHashZPublicInputs_NilPanics(t *testing.T) {
 func fixturePublicInputs() *ZPublicInputs {
 	return &ZPublicInputs{
 		Version:               1,
-		ProfileID:             uint32(config.ProfileLuxStrictPQ),
+		ProfileID:             uint32(config.ProfileStrictPQ),
 		NetworkID:             1,
 		ChainID:               42,
 		Epoch:                 7,
