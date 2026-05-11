@@ -1,7 +1,6 @@
 package quasar
 
 import (
-	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
 	"testing"
@@ -83,23 +82,18 @@ func TestCertBundle_VerifyPanics(t *testing.T) {
 	require.Panics(t, func() { cert.Verify(nil) }, "Verify must panic to enforce VerifyWithKeys usage")
 }
 
-// TestCertBundle_VerifyWithKeys_Regression tests cryptographic HMAC verification.
+// TestCertBundle_VerifyWithKeys_Regression tests cryptographic KMAC256 verification.
 func TestCertBundle_VerifyWithKeys_Regression(t *testing.T) {
 	blsKey := []byte("regression-bls-key-32bytes!!")
 	pqKey := []byte("regression-pq-key-32bytes!!!")
 	message := []byte("regression test")
 
-	blsMAC := hmac.New(sha256.New, blsKey)
-	blsMAC.Write(message)
-	pqMAC := hmac.New(sha256.New, pqKey)
-	pqMAC.Write(message)
-
 	cert := &CertBundle{
-		BLSAgg:  blsMAC.Sum(nil),
-		PQCert:  pqMAC.Sum(nil),
+		BLSAgg:  kmac256(blsKey, message, kmacMACOutLen, customQuasarEventHorizonBLSMAC),
+		PQCert:  kmac256(pqKey, message, kmacMACOutLen, customQuasarEventHorizonPQMAC),
 		Message: message,
 	}
-	require.True(t, cert.VerifyWithKeys(blsKey, pqKey), "valid cert passes HMAC check")
+	require.True(t, cert.VerifyWithKeys(blsKey, pqKey), "valid cert passes KMAC256 check")
 
 	// Nil cert fails
 	var nilCert *CertBundle
