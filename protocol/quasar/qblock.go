@@ -97,6 +97,12 @@ type QBlock struct {
 // tag for the canonical Pulsar-M signing transcript. The tag is the schema
 // identity; changing it produces a transcript stream that does not collide
 // with any prior signature.
+//
+// Tag is wire-format-stable; do NOT rename even after the family rebrand
+// (Pulsar-M → Pulsar). The byte string `PULSAR-M-Q-BLOCK` is part of
+// every prior Q-Block signature's transcript — renaming it invalidates
+// every historical cert. The string is a cryptographic constant, not
+// user-facing prose; downstream rebrands MUST keep it byte-identical.
 const qBlockTranscriptCustomization = "PULSAR-M-Q-BLOCK"
 
 // qBlockProtocolTag is the in-band redundant protocol tag for the
