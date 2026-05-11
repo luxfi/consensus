@@ -40,7 +40,7 @@ import (
 )
 
 // Canonical MAC byte width — 48 bytes (SHA3-384 width). Matches
-// MinHashOutputBits=384 on the LuxStrictPQ profile and keeps the MAC
+// MinHashOutputBits=384 on the StrictPQ profile and keeps the MAC
 // width orthogonal to anything in the SHA-2 family (whose
 // distinguishing output sizes are 32 / 64).
 const kmacMACOutLen = 48
@@ -103,7 +103,7 @@ func macEqual(a, b []byte) bool {
 
 // strictPQRejectsLegacyMAC reports whether a profile forbids accepting
 // a MAC byte string of legacy width (32 bytes — HMAC-SHA256 output).
-// LuxStrictPQ / LuxFIPS profiles set HashSuiteID = HashSuiteSHA3NIST,
+// StrictPQ / FIPS profiles set HashSuiteID = HashSuiteSHA3NIST,
 // at which point only KMAC256 widths (48 bytes) are admissible.
 //
 // A nil profile defaults to permissive: lets legacy bytes through so

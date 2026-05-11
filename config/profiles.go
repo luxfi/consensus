@@ -19,7 +19,7 @@
 
 package config
 
-// LuxStrictPQProfile is the canonical Lux mainnet locked profile. NIST-
+// StrictPQProfile is the canonical Lux mainnet locked profile. NIST-
 // aligned PQ across every axis: SHA3-NIST + STARK_FRI_SHA3_PQ identified
 // proofs, raw ML-DSA-65 identity, Pulsar-M-65 finality with M-87 reserved
 // for high-value roots. Five production STARK backends; no dev backends;
@@ -30,9 +30,9 @@ package config
 // every cert envelope binds the same hash.
 //
 // ProfileHash is computed in init() — see the bottom of this file.
-var LuxStrictPQProfile = ChainSecurityProfile{
-	ProfileID:         uint32(ProfileLuxStrictPQ),
-	ProfileName:       "LUX_STRICT_PQ",
+var StrictPQProfile = ChainSecurityProfile{
+	ProfileID:         uint32(ProfileStrictPQ),
+	ProfileName:       ProfileNameStrictPQ,
 	HashSuiteID:       HashSuiteSHA3NIST,
 	IdentitySchemeID:  SigSchemeMLDSA65,
 	FinalitySchemeID:  SigSchemePulsarM65,
@@ -80,7 +80,7 @@ var LuxStrictPQProfile = ChainSecurityProfile{
 	RequireTypedTxAuth:      true,
 }
 
-// LuxPermissiveProfile is the testnet/devnet profile. Accepts the strict-PQ
+// PermissiveProfile is the testnet/devnet profile. Accepts the strict-PQ
 // production backends plus the dev backends (RISC0_RAW_STARK_DEV,
 // SP1_CORE_STARK_DEV) so iteration is possible without lying about
 // security level. Still refuses classical wrappers and trusted-setup
@@ -88,9 +88,9 @@ var LuxStrictPQProfile = ChainSecurityProfile{
 //
 // NOT a Lux strict-PQ profile. Marketing as such is forbidden by
 // `ForbidDevProofs == false`.
-var LuxPermissiveProfile = ChainSecurityProfile{
-	ProfileID:         uint32(ProfileLuxPermissive),
-	ProfileName:       "LUX_PERMISSIVE",
+var PermissiveProfile = ChainSecurityProfile{
+	ProfileID:         uint32(ProfilePermissive),
+	ProfileName:       ProfileNamePermissive,
 	HashSuiteID:       HashSuiteSHA3NIST,
 	IdentitySchemeID:  SigSchemeMLDSA65,
 	FinalitySchemeID:  SigSchemePulsarM65,
@@ -142,19 +142,19 @@ var LuxPermissiveProfile = ChainSecurityProfile{
 	RequireTypedTxAuth:      false,
 }
 
-// LuxFIPSProfile is the FIPS-204-only profile. Drops Pulsar-M (production
+// FIPSProfile is the FIPS-204-only profile. Drops Pulsar-M (production
 // fork of Corona; not yet FIPS-approved) — but the profile still has to
 // satisfy `FinalitySchemeID.IsPulsarM()`, so for FIPS deployments the
 // chain DOES use Pulsar-M (FIPS 204-compatible output) at M-65 and M-87.
 // Only the canonical P3Q STARK/FRI/SHA3 backend is admitted.
 //
-// Note: this profile is named LUX_FIPS for marketing but the actual
-// FIPS-only protocol stance the LuxFIPS deployment ships is documented
-// per HIP-0077 §"FIPS profile". This struct is the consensus-layer
-// allow-list; the larger FIPS posture lives in the operator manifest.
-var LuxFIPSProfile = ChainSecurityProfile{
-	ProfileID:         uint32(ProfileLuxFIPS),
-	ProfileName:       "LUX_FIPS",
+// Note: this profile is named FIPS but the actual FIPS-only protocol
+// stance the FIPS deployment ships is documented per HIP-0077 §"FIPS
+// profile". This struct is the consensus-layer allow-list; the larger
+// FIPS posture lives in the operator manifest.
+var FIPSProfile = ChainSecurityProfile{
+	ProfileID:         uint32(ProfileFIPS),
+	ProfileName:       ProfileNameFIPS,
 	HashSuiteID:       HashSuiteSHA3NIST,
 	IdentitySchemeID:  SigSchemeMLDSA65,
 	FinalitySchemeID:  SigSchemePulsarM65,
@@ -176,7 +176,7 @@ var LuxFIPSProfile = ChainSecurityProfile{
 	ForbidDevProofs:       true,
 	ForbidFallbacks:       true,
 
-	// E2E PQ axes — identical to LuxStrictPQ. FIPS deployments demand
+	// E2E PQ axes — identical to StrictPQ. FIPS deployments demand
 	// every E2E layer sit inside FIPS 203/204/205; the canonical FIPS
 	// scheme set is the same as the strict-PQ set.
 	WalletSchemeID:          WalletSchemeMLDSA65,
@@ -268,73 +268,48 @@ var ForkClassicalCompatUnsafeProfile = ChainSecurityProfile{
 }
 
 // ZooStrictPQProfile is the canonical Zoo mainnet locked profile. Byte-
-// identical to LuxStrictPQProfile except for ProfileID (0x04) and
+// identical to StrictPQProfile except for ProfileID (0x04) and
 // ProfileName ("ZOO_STRICT_PQ"). Cited by LP-168..179, ZIP-0809..0820.
 //
 // Byte-identicality is the cross-network coherence invariant: a Zoo
 // validator running ZooStrictPQProfile and a Lux validator running
-// LuxStrictPQProfile accept the same set of cryptographic primitives,
+// StrictPQProfile accept the same set of cryptographic primitives,
 // soundness floors, forbid bits, and E2E PQ axes. The ProfileID byte is
 // what distinguishes them on the wire; the ProfileHash diverges only
 // because of that byte (plus the name string), not because of any
 // security-relevant field.
 //
 // ProfileHash is computed in init().
-var ZooStrictPQProfile = strictPQProfileTemplate(uint32(ProfileZooStrictPQ), "ZOO_STRICT_PQ")
+var ZooStrictPQProfile = strictPQProfileTemplate(uint32(ProfileZooStrictPQ), ProfileNameZooStrictPQ)
 
 // HanzoStrictPQProfile is the canonical Hanzo mainnet locked profile.
-// Byte-identical to LuxStrictPQProfile except for ProfileID (0x05) and
+// Byte-identical to StrictPQProfile except for ProfileID (0x05) and
 // ProfileName ("HANZO_STRICT_PQ"). Cited by HIP-0085..0104.
 //
 // Same cross-network coherence invariant as ZooStrictPQProfile.
 //
 // ProfileHash is computed in init().
-var HanzoStrictPQProfile = strictPQProfileTemplate(uint32(ProfileHanzoStrictPQ), "HANZO_STRICT_PQ")
-
-// QuasarStrictPQProfile is the canonical end-to-end strict-PQ profile.
-// Quasar is the Lux PQ stack; this profile is its strict-PQ envelope
-// (a.k.a. "Annulus" in architectural prose) — the ring around the
-// legacy stack that binds Pulsar-M finality, Z-Chain authorization
-// proofs, ML-DSA identities, ML-KEM channels, SHA3_NIST transcripts, and
-// STARK/FRI proof backends into one fail-closed cryptographic system.
-// Byte-identical to LuxStrictPQProfile except for ProfileID (0x06) and
-// ProfileName ("QUASAR_STRICT_PQ").
-//
-// New chains pin this profile at genesis going forward. The existing
-// LuxStrictPQProfile (0x01) and its Zoo/Hanzo siblings remain valid for
-// chains pinned before this byte was claimed.
-//
-// Same cross-network coherence invariant as ZooStrictPQProfile: every
-// security-relevant field is templated from LuxStrictPQProfile so a new
-// strict-PQ axis added there is picked up automatically here.
-//
-// ProfileHash is computed in init().
-var QuasarStrictPQProfile = strictPQProfileTemplate(uint32(ProfileQuasarStrictPQ), ProfileNameQuasarStrictPQ)
-
-// AnnulusStrictPQProfile is the legacy alias for QuasarStrictPQProfile.
-// Annulus is the strict-PQ boundary of the Quasar stack; the names are
-// interchangeable. Kept so older imports keep building.
-var AnnulusStrictPQProfile = QuasarStrictPQProfile
+var HanzoStrictPQProfile = strictPQProfileTemplate(uint32(ProfileHanzoStrictPQ), ProfileNameHanzoStrictPQ)
 
 // strictPQProfileTemplate returns a ChainSecurityProfile that is byte-
-// identical to LuxStrictPQProfile except for ProfileID and ProfileName.
+// identical to StrictPQProfile except for ProfileID and ProfileName.
 // One template, three call sites (Lux/Zoo/Hanzo). Closes the
-// drift-by-copy class: a new strict-PQ field added to LuxStrictPQ is
+// drift-by-copy class: a new strict-PQ field added to StrictPQ is
 // picked up automatically by every cross-network sibling.
 //
-// The function takes a fresh copy of LuxStrictPQProfile and overrides
+// The function takes a fresh copy of StrictPQProfile and overrides
 // only the two identity fields. ProfileHash is intentionally zeroed
 // because the canonical hash is computed in init() after every profile
 // is constructed.
 func strictPQProfileTemplate(profileID uint32, profileName string) ChainSecurityProfile {
-	p := LuxStrictPQProfile
+	p := StrictPQProfile
 	p.ProfileID = profileID
 	p.ProfileName = profileName
 	p.ProfileHash = [48]byte{}
 	// Slice fields must be copied so a mutation through one profile's
 	// AllowedProofBackends does not silently mutate the sibling's.
-	p.AllowedProofBackends = append([]ProofBackendID(nil), LuxStrictPQProfile.AllowedProofBackends...)
-	p.AllowedProofFormats = append([]ProofFormatID(nil), LuxStrictPQProfile.AllowedProofFormats...)
+	p.AllowedProofBackends = append([]ProofBackendID(nil), StrictPQProfile.AllowedProofBackends...)
+	p.AllowedProofFormats = append([]ProofFormatID(nil), StrictPQProfile.AllowedProofFormats...)
 	return p
 }
 
@@ -347,14 +322,10 @@ func strictPQProfileTemplate(profileID uint32, profileName string) ChainSecurity
 // the failing profile so a misconfiguration is immediate and visible in
 // the boot log.
 func init() {
-	LuxStrictPQProfile.ProfileHash = LuxStrictPQProfile.MustComputeHash()
-	LuxPermissiveProfile.ProfileHash = LuxPermissiveProfile.MustComputeHash()
-	LuxFIPSProfile.ProfileHash = LuxFIPSProfile.MustComputeHash()
+	StrictPQProfile.ProfileHash = StrictPQProfile.MustComputeHash()
+	PermissiveProfile.ProfileHash = PermissiveProfile.MustComputeHash()
+	FIPSProfile.ProfileHash = FIPSProfile.MustComputeHash()
 	ForkClassicalCompatUnsafeProfile.ProfileHash = ForkClassicalCompatUnsafeProfile.MustComputeHash()
 	ZooStrictPQProfile.ProfileHash = ZooStrictPQProfile.MustComputeHash()
 	HanzoStrictPQProfile.ProfileHash = HanzoStrictPQProfile.MustComputeHash()
-	QuasarStrictPQProfile.ProfileHash = QuasarStrictPQProfile.MustComputeHash()
-	// AnnulusStrictPQProfile aliases QuasarStrictPQProfile; re-pin its
-	// hash from the canonical value so the two stay in sync.
-	AnnulusStrictPQProfile = QuasarStrictPQProfile
 }

@@ -19,7 +19,7 @@ import (
 func canonicalTxAuth() *TxAuthEnvelope {
 	return &TxAuthEnvelope{
 		Version:          1,
-		ProfileID:        config.ProfileLuxStrictPQ,
+		ProfileID:        config.ProfileStrictPQ,
 		ChainID:          43114,
 		NetworkID:        1,
 		AccountID:        [48]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48},
@@ -55,7 +55,7 @@ func TestTxAuthEnvelope_SigningDigest_BindsEveryField(t *testing.T) {
 		mut  func(*TxAuthEnvelope)
 	}{
 		{"Version", func(e *TxAuthEnvelope) { e.Version = 99 }},
-		{"ProfileID", func(e *TxAuthEnvelope) { e.ProfileID = config.ProfileLuxPermissive }},
+		{"ProfileID", func(e *TxAuthEnvelope) { e.ProfileID = config.ProfilePermissive }},
 		{"ChainID", func(e *TxAuthEnvelope) { e.ChainID = 1 }},
 		{"NetworkID", func(e *TxAuthEnvelope) { e.NetworkID = 5 }},
 		{"AccountID", func(e *TxAuthEnvelope) { e.AccountID[0] ^= 0xFF }},
@@ -286,13 +286,13 @@ func stubSigVerifier(returnOK bool) SignatureVerifierFn {
 	}
 }
 
-// strictPQProfile returns a fresh ProfileLuxStrictPQ for tests.
+// strictPQProfile returns a fresh ProfileStrictPQ for tests.
 func strictPQProfile() *config.ChainSecurityProfile {
-	return config.LuxStrictPQ()
+	return config.StrictPQ()
 }
 
 // TestVerifyTxAuthEnvelope_HappyPath — a synthetic ML-DSA-65 wallet
-// signing under LuxStrictPQ verifies cleanly. The signature itself is
+// signing under StrictPQ verifies cleanly. The signature itself is
 // stubbed (the actual ML-DSA verifier lives in luxfi/pulsar and is
 // injected by coreth at runtime).
 func TestVerifyTxAuthEnvelope_HappyPath(t *testing.T) {
@@ -398,7 +398,7 @@ func TestVerifyTxAuthEnvelope_RejectsProfileMismatch(t *testing.T) {
 	pubkey := bytes.Repeat([]byte{0x66}, 1952)
 	env := canonicalTxAuth()
 	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
-	env.ProfileID = config.ProfileLuxPermissive // mismatch
+	env.ProfileID = config.ProfilePermissive // mismatch
 
 	err := VerifyTxAuthEnvelope(
 		profile,
