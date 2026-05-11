@@ -11,6 +11,21 @@ import (
 	"github.com/luxfi/consensus/config"
 )
 
+// testNonZeroDigest returns a fixed non-zero RoundDigest for tests
+// that just need a valid (non-zero) subject. Production code MUST
+// build the digest via ComputeRoundDigest; this helper bypasses that
+// constructor only because the surrounding test isolates a different
+// behaviour (witness floor, hash-suite propagation) and not the
+// digest construction itself.
+func testNonZeroDigest() RoundDigest {
+	return RoundDigest{
+		0xfe, 0xed, 0xfa, 0xce, 0xde, 0xad, 0xbe, 0xef,
+		0xfe, 0xed, 0xfa, 0xce, 0xde, 0xad, 0xbe, 0xef,
+		0xfe, 0xed, 0xfa, 0xce, 0xde, 0xad, 0xbe, 0xef,
+		0xfe, 0xed, 0xfa, 0xce, 0xde, 0xad, 0xbe, 0xef,
+	}
+}
+
 // fakeP always succeeds (we want to isolate Q/Z floor behaviour).
 type fakeP struct{}
 
@@ -51,7 +66,7 @@ func (goodZ) Witness(ctx context.Context, digest RoundDigest, vk [][]byte) ([]by
 // produce a downgraded bundle without error.
 func TestRun_LegacyBestEffort_NoFloor(t *testing.T) {
 	ws := WitnessSet{P: fakeP{}, Q: failQ{}, Z: failZ{}}
-	rw, err := ws.Run(context.Background(), RoundDigest{}, nil)
+	rw, err := ws.Run(context.Background(), testNonZeroDigest(), nil)
 	if err != nil {
 		t.Fatalf("legacy mode: unexpected error: %v", err)
 	}
@@ -73,7 +88,7 @@ func TestRun_QuasarFloor_RefusesWhenZFails(t *testing.T) {
 		Z:         failZ{},
 		MinPolicy: 4, // PolicyQuantum
 	}
-	_, err := ws.Run(context.Background(), RoundDigest{}, nil)
+	_, err := ws.Run(context.Background(), testNonZeroDigest(), nil)
 	if !errors.Is(err, ErrWitnessFloorBreached) {
 		t.Fatalf("expected ErrWitnessFloorBreached, got: %v", err)
 	}
@@ -89,7 +104,7 @@ func TestRun_QuasarFloor_RefusesWhenQFails(t *testing.T) {
 		Z:         goodZ{},
 		MinPolicy: 4, // PolicyQuantum
 	}
-	_, err := ws.Run(context.Background(), RoundDigest{}, nil)
+	_, err := ws.Run(context.Background(), testNonZeroDigest(), nil)
 	if !errors.Is(err, ErrWitnessFloorBreached) {
 		t.Fatalf("expected ErrWitnessFloorBreached, got: %v", err)
 	}
@@ -104,7 +119,7 @@ func TestRun_QuasarFloor_AcceptsWhenBothPresent(t *testing.T) {
 		Z:         goodZ{},
 		MinPolicy: 4, // PolicyQuantum
 	}
-	rw, err := ws.Run(context.Background(), RoundDigest{}, nil)
+	rw, err := ws.Run(context.Background(), testNonZeroDigest(), nil)
 	if err != nil {
 		t.Fatalf("expected success, got: %v", err)
 	}
@@ -122,7 +137,7 @@ func TestRun_PulsarFloor_AcceptsPQ(t *testing.T) {
 		Z:         nil, // explicitly unconfigured
 		MinPolicy: 5,   // PolicyPQ
 	}
-	rw, err := ws.Run(context.Background(), RoundDigest{}, nil)
+	rw, err := ws.Run(context.Background(), testNonZeroDigest(), nil)
 	if err != nil {
 		t.Fatalf("expected success, got: %v", err)
 	}
@@ -139,7 +154,7 @@ func TestRun_PulsarFloor_RefusesWhenQFails(t *testing.T) {
 		Q:         failQ{},
 		MinPolicy: 5, // PolicyPQ
 	}
-	_, err := ws.Run(context.Background(), RoundDigest{}, nil)
+	_, err := ws.Run(context.Background(), testNonZeroDigest(), nil)
 	if !errors.Is(err, ErrWitnessFloorBreached) {
 		t.Fatalf("expected ErrWitnessFloorBreached, got: %v", err)
 	}
@@ -153,7 +168,7 @@ func TestRun_BLSFloor_AlwaysAccepts(t *testing.T) {
 		P:         fakeP{},
 		MinPolicy: 1, // PolicyQuorum
 	}
-	_, err := ws.Run(context.Background(), RoundDigest{}, nil)
+	_, err := ws.Run(context.Background(), testNonZeroDigest(), nil)
 	if err != nil {
 		t.Fatalf("BLS floor: unexpected error: %v", err)
 	}
@@ -181,7 +196,7 @@ func TestRun_PropagatesHashSuiteID_FromMode(t *testing.T) {
 	}
 	for _, c := range cases {
 		ws := WitnessSet{P: fakeP{}, Mode: c.mode}
-		rw, err := ws.Run(context.Background(), RoundDigest{}, nil)
+		rw, err := ws.Run(context.Background(), testNonZeroDigest(), nil)
 		if err != nil {
 			t.Fatalf("mode=%s: unexpected error: %v", c.mode, err)
 		}
@@ -199,7 +214,7 @@ func TestRun_PropagatesHashSuiteID_FromMode(t *testing.T) {
 // shape. New code MUST set Mode explicitly.
 func TestRun_HashSuiteID_DefaultsToNoneWhenModeUnset(t *testing.T) {
 	ws := WitnessSet{P: fakeP{}} // Mode zero-valued
-	rw, err := ws.Run(context.Background(), RoundDigest{}, nil)
+	rw, err := ws.Run(context.Background(), testNonZeroDigest(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
