@@ -534,7 +534,7 @@ func BenchmarkMLDSAVerification(b *testing.B) {
 // =============================================================================
 
 // NOTE: Post-quantum threshold benchmarks live in the Pulsar package at
-// github.com/luxfi/pulsar/threshold. The quasar package uses that real
+// github.com/luxfi/corona/threshold. The quasar package uses that real
 // implementation via the Signer type in quasar.go.
 
 // =============================================================================
