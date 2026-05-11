@@ -50,6 +50,26 @@ func (p Parameters) WithPQMode(m PQMode) Parameters {
 	return p
 }
 
+// PostQuantum reports whether this Parameters carries any PQ witness set
+// on top of the classical BLS aggregate (i.e. PQMode != BLSOnly).
+// Mirrors the simple boolean knob exposed to operators who don't want to
+// pick a witness set explicitly.
+func (p Parameters) PostQuantum() bool {
+	return p.PQMode.IsPostQuantum()
+}
+
+// WithPostQuantum collapses the five-way enum onto a boolean:
+//
+//	true  -> PQModeTripleQuantum   // strongest available
+//	false -> PQModeBLSOnly         // classical fast path
+//
+// For middle-ground modes (BLSPlusMLDSA, BLSPlusRingtail, BLSPlusGroth16),
+// call WithPQMode directly with the desired constant.
+func (p Parameters) WithPostQuantum(on bool) Parameters {
+	p.PQMode = PQModeFromBool(on)
+	return p
+}
+
 // DefaultParams returns default parameters with 69% threshold
 func DefaultParams() Parameters {
 	return Parameters{
