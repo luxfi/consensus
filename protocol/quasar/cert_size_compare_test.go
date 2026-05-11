@@ -7,7 +7,7 @@ import (
 	"encoding/gob"
 	"testing"
 
-	ringtailThreshold "github.com/luxfi/pulsar/threshold"
+	ringtailThreshold "github.com/luxfi/corona/threshold"
 )
 
 // TestRingtailCertSize_BinaryVsGob measures the on-wire Pulsar/Ringtail

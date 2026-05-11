@@ -13,7 +13,7 @@ import (
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	ringtailThreshold "github.com/luxfi/pulsar/threshold"
+	ringtailThreshold "github.com/luxfi/corona/threshold"
 )
 
 // maxCandidates is the upper bound on tracked candidates per policy instance.
