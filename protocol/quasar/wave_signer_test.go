@@ -14,12 +14,12 @@ import (
 	"github.com/luxfi/pulsar-m/ref/go/pkg/pulsarm"
 )
 
-// TestLuxRoundSigner_RunLuxRound_ProducesFIPS204Verifiable runs a
+// TestRoundSigner_RunRound_ProducesFIPS204Verifiable runs a
 // minimal Lux round at (K, T) = (3, 2): three sampled validators
 // produce one FIPS 204 ML-DSA signature on a round item, which
 // verifies under unmodified pulsarm.VerifyCtx (i.e. FIPS 204
 // ML-DSA.Verify with the precompile ctx).
-func TestLuxRoundSigner_RunLuxRound_ProducesFIPS204Verifiable(t *testing.T) {
+func TestRoundSigner_RunRound_ProducesFIPS204Verifiable(t *testing.T) {
 	params := pulsarm.MustParamsFor(pulsarm.ModeP65)
 
 	// Build a (3, 2) DKG using pulsarm directly to set up the
@@ -65,7 +65,7 @@ func TestLuxRoundSigner_RunLuxRound_ProducesFIPS204Verifiable(t *testing.T) {
 	}
 	groupPK := outs[0].GroupPubkey
 
-	// Build the LuxRoundSigner's share map keyed by ids.NodeID.
+	// Build the RoundSigner's share map keyed by ids.NodeID.
 	shares := make(map[ids.NodeID]*pulsarm.KeyShare, n)
 	pool := make([]ids.NodeID, n)
 	for i := 0; i < n; i++ {
@@ -76,7 +76,7 @@ func TestLuxRoundSigner_RunLuxRound_ProducesFIPS204Verifiable(t *testing.T) {
 	}
 
 	ctxBytes := []byte("lux-evm-precompile-pulsar-v1")
-	signer := &LuxRoundSigner{
+	signer := &RoundSigner{
 		Params:        params,
 		Cut:           prism.NewUniformCut(pool),
 		K:             3,
@@ -87,16 +87,16 @@ func TestLuxRoundSigner_RunLuxRound_ProducesFIPS204Verifiable(t *testing.T) {
 
 	// Drive one Lux round.
 	item := []byte("lux-round smoke test item")
-	res, err := signer.RunLuxRound(context.Background(), item)
+	res, err := signer.RunRound(context.Background(), item)
 	if err != nil {
-		t.Fatalf("RunLuxRound: %v", err)
+		t.Fatalf("RunRound: %v", err)
 	}
 
 	// The result must verify under unmodified FIPS 204 ML-DSA.Verify
 	// with the precompile ctx -- this is the Class N1 manifesto in
 	// effect end-to-end through the Wave-driver adapter.
 	if err := pulsarm.VerifyCtx(params, groupPK, item, ctxBytes, res.Signature); err != nil {
-		t.Fatalf("FIPS 204 verify (with precompile ctx) on LuxRoundSigner output: %v", err)
+		t.Fatalf("FIPS 204 verify (with precompile ctx) on RoundSigner output: %v", err)
 	}
 
 	// Signature must NOT verify under a different ctx -- proves ctx
