@@ -861,7 +861,7 @@ func TestSigner_GetActiveValidatorCount(t *testing.T) {
 // =============================================================================
 //
 // NOTE: Post-quantum threshold crypto is tested in the Pulsar package at
-// github.com/luxfi/pulsar/threshold. The quasar package uses that real
+// github.com/luxfi/corona/threshold. The quasar package uses that real
 // implementation via the Signer type in quasar.go. Tests for threshold
 // signing are in quasar_test.go and epoch_test.go.
 

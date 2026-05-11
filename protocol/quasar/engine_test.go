@@ -405,7 +405,7 @@ func BenchmarkCertVerifyWithKeys(b *testing.B) {
 }
 
 // NOTE: Post-quantum threshold crypto tests live in the Pulsar package at
-// github.com/luxfi/pulsar/threshold. The quasar package uses that real
+// github.com/luxfi/corona/threshold. The quasar package uses that real
 // implementation via the Signer type in quasar.go.
 
 func TestBundle(t *testing.T) {
