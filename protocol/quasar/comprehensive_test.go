@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/banderwagon"
+	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/threshold"
 )
 
@@ -89,8 +89,8 @@ func TestBLS_GenerateBLSAggregate_WithKey(t *testing.T) {
 	if len(result) == 0 {
 		t.Error("expected non-empty BLS aggregate with key")
 	}
-	if len(result) != 32 { // SHA256 output
-		t.Errorf("expected 32 bytes, got %d", len(result))
+	if len(result) != kmacMACOutLen { // KMAC256 canonical width (re-pinned from 32 after HMAC-SHA256 → KMAC256 migration)
+		t.Errorf("expected %d bytes, got %d", kmacMACOutLen, len(result))
 	}
 }
 
@@ -111,8 +111,8 @@ func TestBLS_GeneratePQCertificate_WithKey(t *testing.T) {
 	if len(result) == 0 {
 		t.Error("expected non-empty PQ certificate with key")
 	}
-	if len(result) != 32 { // SHA256 output
-		t.Errorf("expected 32 bytes, got %d", len(result))
+	if len(result) != kmacMACOutLen { // KMAC256 canonical width (re-pinned from 32 after HMAC-SHA256 → KMAC256 migration)
+		t.Errorf("expected %d bytes, got %d", kmacMACOutLen, len(result))
 	}
 }
 
@@ -270,8 +270,10 @@ func TestBLS_CreateHorizonSignature(t *testing.T) {
 		t.Error("expected non-empty signature")
 	}
 
-	// Fusion signature: 32-byte BLS hash + 32-byte PQ hash = 64 bytes
-	expectedLen := 64
+	// Fusion signature under KMAC256: kmacMACOutLen-byte BLS half +
+	// kmacMACOutLen-byte PQ half = 2 * kmacMACOutLen bytes total.
+	// Re-pinned from 64 after the HMAC-SHA256 → KMAC256 migration.
+	expectedLen := 2 * kmacMACOutLen
 	if len(sig) != expectedLen {
 		t.Errorf("expected signature length %d, got %d", expectedLen, len(sig))
 	}
@@ -883,8 +885,8 @@ func TestQuasarCert_Verify(t *testing.T) {
 		{
 			name: "empty BLS",
 			cert: &QuasarCert{
-				BLS: nil,
-				MLDSAProof:   []byte{1, 2, 3},
+				BLS:        nil,
+				MLDSAProof: []byte{1, 2, 3},
 			},
 			validators: []string{"v1"},
 			want:       false,
@@ -892,8 +894,8 @@ func TestQuasarCert_Verify(t *testing.T) {
 		{
 			name: "empty PQ",
 			cert: &QuasarCert{
-				BLS: []byte{1, 2, 3},
-				MLDSAProof:   nil,
+				BLS:        []byte{1, 2, 3},
+				MLDSAProof: nil,
 			},
 			validators: []string{"v1"},
 			want:       false,
@@ -901,8 +903,8 @@ func TestQuasarCert_Verify(t *testing.T) {
 		{
 			name: "non-empty cert without crypto verification returns false",
 			cert: &QuasarCert{
-				BLS:  []byte{1, 2, 3},
-				MLDSAProof:    []byte{4, 5, 6},
+				BLS:        []byte{1, 2, 3},
+				MLDSAProof: []byte{4, 5, 6},
 				Validators: 0,
 			},
 			validators: []string{"v1", "v2"},
@@ -931,11 +933,11 @@ func TestBlock_Fields(t *testing.T) {
 		Timestamp: now,
 		Data:      []byte("test data"),
 		Cert: &QuasarCert{
-			BLS:      []byte{7, 8, 9},
-			MLDSAProof:        []byte{10, 11, 12},
+			BLS:        []byte{7, 8, 9},
+			MLDSAProof: []byte{10, 11, 12},
 			Validators: 1,
-			Epoch:    100,
-			Finality: now,
+			Epoch:      100,
+			Finality:   now,
 		},
 	}
 
@@ -1742,7 +1744,7 @@ func TestCertBundle_VerifyWithKeys(t *testing.T) {
 	}
 }
 
-func TestCertBundle_HMACDifferentKeys(t *testing.T) {
+func TestCertBundle_KMAC256DifferentKeys(t *testing.T) {
 	cfg := config.DefaultParams()
 
 	// Two BLS instances with different keys
@@ -1759,14 +1761,14 @@ func TestCertBundle_HMACDifferentKeys(t *testing.T) {
 	sig2 := q2.generateBLSAggregate(blockID, votes)
 
 	if string(sig1) == string(sig2) {
-		t.Error("different keys must produce different HMAC outputs")
+		t.Error("different keys must produce different KMAC256 outputs")
 	}
 
 	pq1 := q1.generatePQCertificate(blockID, votes)
 	pq2 := q2.generatePQCertificate(blockID, votes)
 
 	if string(pq1) == string(pq2) {
-		t.Error("different PQ keys must produce different HMAC outputs")
+		t.Error("different PQ keys must produce different KMAC256 outputs")
 	}
 }
 
@@ -1784,21 +1786,25 @@ func TestCertBundle_MessageDigestStored(t *testing.T) {
 		t.Fatal("expected non-nil cert")
 	}
 
+	// Vote digest is cSHAKE256 → 32 bytes (unchanged).
 	if len(cert.Message) != 32 {
 		t.Errorf("expected 32-byte message digest, got %d", len(cert.Message))
 	}
 
-	if len(cert.BLSAgg) != 32 {
-		t.Errorf("expected 32-byte BLS HMAC, got %d", len(cert.BLSAgg))
+	// Canonical KMAC256 width is kmacMACOutLen (48 bytes, SHA3-384 width).
+	// Re-pinned after the HMAC-SHA256 → KMAC256 migration.
+	if len(cert.BLSAgg) != kmacMACOutLen {
+		t.Errorf("expected %d-byte BLS KMAC256, got %d", kmacMACOutLen, len(cert.BLSAgg))
 	}
 
-	if len(cert.PQCert) != 32 {
-		t.Errorf("expected 32-byte PQ HMAC, got %d", len(cert.PQCert))
+	if len(cert.PQCert) != kmacMACOutLen {
+		t.Errorf("expected %d-byte PQ KMAC256, got %d", kmacMACOutLen, len(cert.PQCert))
 	}
 
-	// BLS and PQ certs must differ (different keys)
+	// BLS and PQ MACs must differ — they use distinct keys AND distinct
+	// SP 800-185 customizations, so two ways of being independent.
 	if string(cert.BLSAgg) == string(cert.PQCert) {
-		t.Error("BLS and PQ HMAC outputs should differ (different keys)")
+		t.Error("BLS and PQ KMAC256 outputs should differ (different keys and customizations)")
 	}
 }
 
