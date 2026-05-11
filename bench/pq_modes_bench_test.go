@@ -16,7 +16,7 @@
 //	GOWORK=off go test -bench=BenchmarkPQModes -benchmem -benchtime=10x ./bench/...
 //
 // The bench prints a summary table at the end. Modes blocked on yet-to-land
-// Z-Chain Groth16 wiring (PQModeBLSPlusGroth16) are reported as
+// Z-Chain Groth16 wiring (PQModeQuasar) are reported as
 // "n/a -- pending implementation" rather than fabricated.
 package bench
 
@@ -202,7 +202,7 @@ func BenchmarkPQModes_BLSOnly(b *testing.B) {
 			}
 
 			report(b, &modeMetrics{
-				mode:      config.PQModeBLSOnly,
+				mode:      config.PQModeBLS,
 				n:         n,
 				signNs:    signNs,
 				aggNs:     aggNs,
@@ -287,7 +287,7 @@ func BenchmarkPQModes_BLSPlusMLDSA(b *testing.B) {
 			}
 
 			report(b, &modeMetrics{
-				mode:      config.PQModeBLSPlusMLDSA,
+				mode:      config.PQModeMLDSA,
 				n:         n,
 				signNs:    signNs,
 				aggNs:     aggNs,
@@ -483,7 +483,7 @@ func BenchmarkPQModes_BLSPlusRingtail(b *testing.B) {
 			}
 
 			report(b, &modeMetrics{
-				mode:      config.PQModeBLSPlusRingtail,
+				mode:      config.PQModeRingtail,
 				n:         n,
 				signNs:    signNs,
 				aggNs:     aggNsPerPass,
@@ -525,7 +525,7 @@ func BenchmarkPQModes_BLSPlusGroth16(b *testing.B) {
 			}
 
 			report(b, &modeMetrics{
-				mode:      config.PQModeBLSPlusGroth16,
+				mode:      config.PQModeQuasar,
 				n:         n,
 				certBytes: len(certBytes),
 				pending:   "Z-Chain Groth16 prover not wired",
@@ -631,7 +631,7 @@ func BenchmarkPQModes_TripleQuantum(b *testing.B) {
 			}
 
 			report(b, &modeMetrics{
-				mode:      config.PQModeTripleQuantum,
+				mode:      config.PQModeQuasar,
 				n:         n,
 				signNs:    signNs,
 				aggNs:     aggNs,
