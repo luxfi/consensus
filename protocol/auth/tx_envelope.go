@@ -69,7 +69,7 @@ const txAuthProtocolTag = "Lux/TxAuth/v1"
 //	ChainID         L1/L2 chain identifier (cross-chain replay seal).
 //	NetworkID       mainnet/testnet/devnet (cross-network replay seal).
 //	AccountID       48-byte PQ AccountID of the originator. Equals
-//	                DeriveAccountID(ChainID, WalletSchemeID, pubkey).
+//	                DeriveAccountID(ProfileID, ChainID, WalletSchemeID, pubkey).
 //	Nonce           per-account monotonic counter (intra-chain replay seal).
 //	ExpiryHeight    block height after which the envelope is rejected.
 //	                Set to math.MaxUint64 for "never expire" (discouraged).
@@ -380,9 +380,9 @@ type CurrentHeightFn func() uint64
 //  3. Profile/suite: env.HashSuiteID matches profile.HashSuiteID.
 //  4. Profile/id: env.ProfileID matches profile.ProfileID.
 //  5. Expiry: env.ExpiryHeight > currentHeight (when currentHeight > 0).
-//  6. AccountID derivation: DeriveAccountID(env.ChainID, env.WalletSchemeID,
-//     pubkey) MUST equal env.AccountID. Closes the "wrong key for the
-//     account" attack class deterministically.
+//  6. AccountID derivation: DeriveAccountID(env.ProfileID, env.ChainID,
+//     env.WalletSchemeID, pubkey) MUST equal env.AccountID. Closes the
+//     "wrong key for the account" attack class deterministically.
 //  7. AccountStateRoot: env.AccountStateRoot equals the chain's current
 //     AccountStateRoot for this account.
 //  8. Signature: SignatureVerifierFn returns true on
@@ -470,8 +470,10 @@ func VerifyTxAuthEnvelope(
 	// 7. AccountID derivation. Closes the "wrong key for the account"
 	// class: even if a verifier somehow got handed a foreign pubkey, the
 	// derived AccountID would not match env.AccountID and the envelope
-	// would be rejected.
-	derivedAccountID := DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	// would be rejected. The derivation binds the profile byte first so
+	// the same wallet cannot pose as the same account across two
+	// profiles (cross-profile replay class).
+	derivedAccountID := DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 	if derivedAccountID != env.AccountID {
 		return fmt.Errorf("%w: derived=%x env=%x",
 			ErrTxAuthAccountIDMismatch,
