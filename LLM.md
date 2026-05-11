@@ -308,6 +308,26 @@ Run: `GOWORK=off go test -v -run TestLuxVsAvalanche_EndToEnd -bench=. ./bench/`
 - `github.com/luxfi/ids` -- ID types
 - `github.com/luxfi/version` -- Version management
 
+### ValidatorSchemeID — cross-axis NodeIDScheme gate
+
+`config/validator_scheme.go` (v1.23.3) owns the rule that pins which
+`NodeIDScheme` byte a peer / proposer / validator / mempool sender
+MUST present on this chain.
+
+- `ChainSecurityProfile.ValidatorSchemeID()` reads through
+  `IdentitySchemeID` (one byte, one source of truth). Returns
+  `SigSchemeMLDSA65` (0x42) on the canonical strict-PQ profile.
+- `ChainSecurityProfile.AcceptsValidatorScheme(presented, classicalCompatUnsafe)`
+  is the cross-axis check the node-side `peer.SchemeGate` funnels every
+  inbound NodeID through. Strict-PQ profiles refuse classical
+  (0x90) regardless of the operator flag (defence-in-depth); permissive
+  profiles honour the flag.
+- `ErrValidatorSchemeMismatch` is the typed error consumers match
+  against; mirrors `ids.ErrNodeIDSchemeMismatch` at the wire-decode layer.
+
+The wire bytes are shared with `luxfi/ids.NodeIDScheme`. A test pins
+the alignment in literal form so a renumber in either enum trips CI.
+
 ### Bag Package
 Canonical location: `types/bag`. All repos should import from here.
 
