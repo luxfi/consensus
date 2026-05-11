@@ -11,7 +11,7 @@ import (
 
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	coronaThreshold "github.com/luxfi/pulsar/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // Block represents a finalized block in the Quasar consensus.

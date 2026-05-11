@@ -11,7 +11,7 @@ import (
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
 	"github.com/luxfi/ids"
-	coronaThreshold "github.com/luxfi/pulsar/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // Engine defines the post-quantum consensus engine
