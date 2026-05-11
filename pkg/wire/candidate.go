@@ -272,6 +272,108 @@ var ErrWitnessPRequired = errors.New("WitnessP required: P-Chain BLS is the alwa
 // ErrWitnessUnknown is returned when a witness set contains undefined bits.
 var ErrWitnessUnknown = errors.New("witness set contains unknown bits")
 
+// HashSuiteID identifies which hash family a Quasar finality certificate was
+// produced under. It is a separate axis from PolicyID: Pulsar (SHA3_NIST)
+// and Corona (BLAKE3-legacy) share PolicyPQ (5) but use different hash
+// kernels. PolicyID alone is therefore insufficient to know which verifier to
+// instantiate — the receiver must consult HashSuiteID.
+//
+// HashSuiteID is bound into the cert transcript (see TranscriptHash) so any
+// post-signing mutation of the byte changes the digest the threshold
+// signature covers; cross-suite confusion attacks fail on signature verify,
+// not just on a string/byte-equality check.
+//
+// Closes HIP-0077 red-review F1: silent finality forks between hash-profile
+// islands sharing the same PolicyID. Mirrors the Warp 2.0 envelope pattern
+// (lux/warp/envelope.go HashSuiteID) at the consensus layer so the two
+// envelopes don't drift.
+//
+// **Numbering is NIST-aligned.** SHA3_NIST is the normative entry (0x01),
+// BLAKE3 is non-normative legacy (0x02), and SHAKE256 does not get its own
+// ID because SHAKE256 is FIPS 202 and therefore part of SHA3_NIST.
+// Numbering is open-ended; future hash families claim the next free ID
+// and pin it in a config table-driven test. Never reuse a retired ID.
+//
+// Wire-side values must match config.HashSuiteID exactly (the producer
+// surfaces config.HashSuiteID through RoundWitnesses; the cert assembler
+// stamps the envelope with `wire.HashSuiteID(rw.HashSuiteID)`).
+type HashSuiteID uint8
+
+const (
+	// HashSuiteNone — no hash-family commitment. Used by BLS-only certs and
+	// by intermediate states that haven't been signed under any PQ kernel.
+	HashSuiteNone HashSuiteID = 0x00
+
+	// HashSuiteSHA3NIST — the normative SP 800-185 hash family: SHAKE256 +
+	// cSHAKE256 + KMAC256 + TupleHash256 (FIPS 202 + NIST SP 800-185).
+	// Pulsar / Quasar / raw ML-DSA-65 all sign under this suite.
+	HashSuiteSHA3NIST HashSuiteID = 0x01
+
+	// HashSuiteBLAKE3Legacy — Corona academic profile and Pulsar's pre-pin
+	// legacy suite. BLAKE3 is outside FIPS 202 and non-normative for any
+	// NIST submission; the byte exists so legacy / academic / federation-MPC
+	// deployments can still emit a verifiable cert.
+	HashSuiteBLAKE3Legacy HashSuiteID = 0x02
+)
+
+// String returns the canonical lower-case name of the hash suite.
+func (h HashSuiteID) String() string {
+	switch h {
+	case HashSuiteNone:
+		return "none"
+	case HashSuiteSHA3NIST:
+		return "sha3-nist"
+	case HashSuiteBLAKE3Legacy:
+		return "blake3-legacy"
+	default:
+		return "hash-suite(unknown)"
+	}
+}
+
+// SigSchemeID identifies which threshold signature scheme produced the
+// threshold-layer signature in this certificate. Orthogonal to PolicyID
+// and HashSuiteID; bound into the transcript so a flipped byte breaks
+// signature verification.
+//
+// Numbering blocks: 0x00 None / 0x10..0x1F classical (BLS) / 0x20..0x2F
+// Corona / 0x30..0x3F Pulsar.R / 0x40..0x4F Pulsar.M (low nibble pins
+// the parameter set).
+//
+// Wire-side values must match config.SigSchemeID exactly.
+type SigSchemeID uint8
+
+const (
+	SigSchemeNone             SigSchemeID = 0x00
+	SigSchemeBLS12381         SigSchemeID = 0x10
+	SigSchemeCoronaAcademic SigSchemeID = 0x20
+	SigSchemePulsarR          SigSchemeID = 0x30
+	SigSchemePulsarM44        SigSchemeID = 0x41
+	SigSchemePulsarM65        SigSchemeID = 0x42 // production default
+	SigSchemePulsarM87        SigSchemeID = 0x43
+)
+
+// String returns the canonical wire name of the signature scheme.
+func (s SigSchemeID) String() string {
+	switch s {
+	case SigSchemeNone:
+		return "none"
+	case SigSchemeBLS12381:
+		return "bls12-381"
+	case SigSchemeCoronaAcademic:
+		return "corona-academic"
+	case SigSchemePulsarR:
+		return "pulsar-r"
+	case SigSchemePulsarM44:
+		return "pulsar-m-44"
+	case SigSchemePulsarM65:
+		return "pulsar-m-65"
+	case SigSchemePulsarM87:
+		return "pulsar-m-87"
+	default:
+		return "sig-scheme(unknown)"
+	}
+}
+
 // Certificate is the proof of finalized agreement
 type Certificate struct {
 	// CandidateID is what was finalized
@@ -282,6 +384,13 @@ type Certificate struct {
 
 	// PolicyID identifies how finality was achieved
 	PolicyID PolicyID `json:"policy_id"`
+
+	// HashSuiteID identifies which hash family this cert was produced under.
+	// Bound into TranscriptHash so post-sign mutation breaks signature
+	// verification — see HIP-0077 F1 fix and TranscriptHash below. Zero is
+	// the explicit "no hash-family commitment" value (PolicyQuorum / BLS-only
+	// certs); non-zero modes MUST set this to match the producing PQMode.
+	HashSuiteID HashSuiteID `json:"hash_suite_id"`
 
 	// Proof is policy-specific (scheme-tagged bytes)
 	// For Quorum: aggregated signature + signer bitmap
@@ -296,7 +405,9 @@ type Certificate struct {
 	TimestampMs int64 `json:"timestamp_ms"`
 }
 
-// NewCertificate creates a certificate
+// NewCertificate creates a certificate. HashSuiteID defaults to HashSuiteNone;
+// callers using PolicyPQ / PolicyPZ / PolicyQuantum MUST set it explicitly to
+// match the producing PQMode (config.PQMode.HashSuiteID()).
 func NewCertificate(candidateID CandidateID, height uint64, policy PolicyID, proof []byte) *Certificate {
 	return &Certificate{
 		CandidateID: candidateID,
@@ -305,6 +416,68 @@ func NewCertificate(candidateID CandidateID, height uint64, policy PolicyID, pro
 		Proof:       proof,
 		TimestampMs: time.Now().UnixMilli(),
 	}
+}
+
+// NewCertificateWithSuite creates a certificate with an explicit HashSuiteID.
+// Use this from PQ producers to bind the suite into the cert at construction
+// time; callers using BLS-only PolicyQuorum can pass HashSuiteNone or use the
+// HashSuiteID-free NewCertificate.
+func NewCertificateWithSuite(candidateID CandidateID, height uint64, policy PolicyID, suite HashSuiteID, proof []byte) *Certificate {
+	return &Certificate{
+		CandidateID: candidateID,
+		Height:      height,
+		PolicyID:    policy,
+		HashSuiteID: suite,
+		Proof:       proof,
+		TimestampMs: time.Now().UnixMilli(),
+	}
+}
+
+// TranscriptHash returns the 32-byte digest that bound this certificate at
+// signing time. The hash binds every envelope field that fixes the cert's
+// meaning — including HashSuiteID — so that flipping the suite byte after
+// signing changes the digest the threshold signature covers and the
+// signature fails to verify.
+//
+// Layout (big-endian, length-prefixed where variable):
+//
+//	"LuxCertTranscript/v1" || domain-sep
+//	candidate_id (32 B)
+//	height       (uint64 BE, 8 B)
+//	policy_id    (uint16 BE, 2 B)
+//	hash_suite   (uint8,     1 B)
+//	proof_len    (uint32 BE, 4 B) || proof
+//	signers_len  (uint32 BE, 4 B) || signers
+//
+// TimestampMs is deliberately excluded: it is informational metadata, not
+// part of the agreement that the signature covers.
+func (c *Certificate) TranscriptHash() [32]byte {
+	h := sha256.New()
+	h.Write([]byte("LuxCertTranscript/v1"))
+	h.Write(c.CandidateID[:])
+
+	var u64 [8]byte
+	binary.BigEndian.PutUint64(u64[:], c.Height)
+	h.Write(u64[:])
+
+	var u16 [2]byte
+	binary.BigEndian.PutUint16(u16[:], uint16(c.PolicyID))
+	h.Write(u16[:])
+
+	h.Write([]byte{byte(c.HashSuiteID)})
+
+	var u32 [4]byte
+	binary.BigEndian.PutUint32(u32[:], uint32(len(c.Proof)))
+	h.Write(u32[:])
+	h.Write(c.Proof)
+
+	binary.BigEndian.PutUint32(u32[:], uint32(len(c.Signers)))
+	h.Write(u32[:])
+	h.Write(c.Signers)
+
+	var out [32]byte
+	copy(out[:], h.Sum(nil))
+	return out
 }
 
 // =============================================================================

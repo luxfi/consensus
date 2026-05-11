@@ -19,10 +19,21 @@ package quasar
 import (
 	"context"
 	"errors"
+	"fmt"
+
+	"github.com/luxfi/consensus/config"
 )
 
 // RoundDigest is the 32-byte certificate subject for a consensus round.
 // See LP-020 §2.3 (Definition: Certificate Subject).
+//
+// TODO(driver): switch the consensus driver call site that builds
+// RoundDigest from an opaque sha256 / placeholder to ComputeRoundDigest
+// (round_digest.go) so the threshold sig binds HashSuiteID + SigSchemeID
+// + ProofSystemID + chainID + networkID + height + parent_state. The
+// driver currently passes RoundDigest into WitnessSet.Run as opaque
+// bytes; that input MUST come from ComputeRoundDigest for HIP-0077 F34
+// to fully close.
 type RoundDigest [32]byte
 
 // ErrWitnessUnavailable is returned by a witness producer when the underlying
@@ -72,11 +83,49 @@ type ZWitnessProducer interface {
 // and/or Z producers are valid; the driver simply skips them and produces
 // the corresponding lower-level certificate (PolicyQuorum, PolicyPQ, or
 // PolicyPZ instead of PolicyQuantum).
+//
+// MinPolicy pins the lowest finality policy this set is willing to emit.
+// Run() refuses to return a witness bundle below this floor — even if all
+// optional producers fail. This closes the silent-downgrade attack
+// (HIP-0077 red-review F2): a malicious operator advertising "quasar" in
+// genesis but installing a broken Z producer would otherwise emit
+// PolicyPQ certs the network thinks are PolicyQuantum.
+//
+// MinPolicy = 0 (PolicyUnspecified) preserves the legacy "best-effort
+// downgrade" behaviour for callers that haven't migrated yet. Production
+// chains MUST set this to match their declared PQMode.
 type WitnessSet struct {
 	P PWitnessProducer
 	Q QWitnessProducer // optional
 	Z ZWitnessProducer // optional
+
+	// MinPolicy is the lowest acceptable finality policy ID. Zero = unset.
+	// Mapping (mirrors config.PQMode.PolicyID()):
+	//   1 = PolicyQuorum   (BLS only — bls mode)
+	//   5 = PolicyPQ       (BLS + Q witness — pulsar / corona mode)
+	//   6 = PolicyPZ       (BLS + Z witness — mldsa fallback path)
+	//   4 = PolicyQuantum  (BLS + Q + Z — quasar mode)
+	MinPolicy uint16
+
+	// Mode is the configured PQMode the cert envelope produced by Run() will
+	// carry. Run() copies config.PQMode.HashSuiteID() into RoundWitnesses so
+	// the downstream cert assembler can stamp the envelope's HashSuiteID
+	// byte and bind it into the transcript signed by the threshold layer.
+	// Zero (PQModeBLS) is the default and means HashSuiteNone on the wire,
+	// matching the legacy BLS-only cert shape.
+	//
+	// HIP-0077 §"Lux consensus PQ modes" red-review F1: Pulsar and Corona
+	// share PolicyID 5 but use different hash kernels (SHA-3 vs BLAKE3); a
+	// cert that does not carry HashSuiteID is undecodable by a verifier
+	// built against the other kernel.
+	Mode config.PQMode
 }
+
+// ErrWitnessFloorBreached is returned by Run when the produced witness
+// bundle would not satisfy WitnessSet.MinPolicy. Surfaces what's missing
+// so the operator can see WHY the round was refused (Q failed? Z failed?
+// both?) rather than chasing a downgraded cert through observability.
+var ErrWitnessFloorBreached = errors.New("witness producer floor breached: refusing to emit downgraded cert")
 
 // RoundWitnesses is the result of running a WitnessSet for one round.
 // Q and/or Z may be nil if their producer was disabled, returned
@@ -86,12 +135,24 @@ type RoundWitnesses struct {
 	PSigners []byte
 	Q        []byte // nil if no Q producer or unavailable
 	Z        []byte // nil if no Z producer or unavailable
+
+	// HashSuiteID is the hash-family byte the cert envelope produced from
+	// this bundle MUST carry. Derived from WitnessSet.Mode at Run() time;
+	// receivers consult this to know which hash kernel to instantiate when
+	// verifying the cert. Bound into Certificate.TranscriptHash() so a
+	// mutation post-signing breaks signature verification.
+	HashSuiteID config.HashSuiteID
 }
 
 // Run executes the configured witness producers in parallel against digest.
-// P is mandatory: a P failure aborts the round. Q and Z run concurrently;
-// if either returns ErrWitnessUnavailable (or any error), its slot is left
-// nil and the round still finalizes at the next-lower witness level.
+// P is mandatory: a P failure aborts the round. Q and Z run concurrently.
+//
+// If WitnessSet.MinPolicy is set, Run REFUSES to emit a bundle whose actual
+// witness set falls below that floor — even if it could produce a valid
+// downgraded cert. This is the explicit anti-silent-downgrade defence
+// (HIP-0077 §"PQ defaults": Quasar MUST NOT auto-degrade to MLDSA when an
+// operator declared Quasar). When MinPolicy = 0, legacy best-effort
+// behaviour applies: missing optional witnesses just become nil slots.
 //
 // The caller is responsible for bounding ctx with the round window.
 func (ws WitnessSet) Run(ctx context.Context, digest RoundDigest, validatorMLDSAPubs [][]byte) (*RoundWitnesses, error) {
@@ -132,14 +193,70 @@ func (ws WitnessSet) Run(ctx context.Context, digest RoundDigest, validatorMLDSA
 	q := <-qch
 	z := <-zch
 
-	out := &RoundWitnesses{PSig: pSig, PSigners: pSigners}
+	out := &RoundWitnesses{
+		PSig:        pSig,
+		PSigners:    pSigners,
+		HashSuiteID: ws.Mode.HashSuiteID(),
+	}
 	if q.err == nil {
 		out.Q = q.sig
 	}
 	if z.err == nil {
 		out.Z = z.sig
 	}
+
+	// Enforce the minimum-policy floor BEFORE returning. Effective policy is
+	// derived from which witnesses we actually have:
+	//   only P                     -> PolicyQuorum   (1)
+	//   P + Q                      -> PolicyPQ       (5)
+	//   P + Z                      -> PolicyPZ       (6)
+	//   P + Q + Z                  -> PolicyQuantum  (4)
+	// (Numerically lower IDs are not strictly weaker — PolicyQuantum=4 is
+	// the strongest; ordering for "floor" semantics is below in policyAtLeast.)
+	effective := effectivePolicyID(out)
+	if ws.MinPolicy != 0 && !policyAtLeast(effective, ws.MinPolicy) {
+		return nil, fmt.Errorf("%w: declared floor=%d, produced=%d (Q=%v Z=%v); Q.err=%v Z.err=%v",
+			ErrWitnessFloorBreached, ws.MinPolicy, effective,
+			out.Q != nil, out.Z != nil, q.err, z.err)
+	}
 	return out, nil
+}
+
+// effectivePolicyID returns the wire policy ID implied by which witnesses
+// the bundle actually carries. Mirrors config.PQMode.PolicyID() inverse.
+func effectivePolicyID(rw *RoundWitnesses) uint16 {
+	hasQ := rw.Q != nil
+	hasZ := rw.Z != nil
+	switch {
+	case hasQ && hasZ:
+		return 4 // PolicyQuantum
+	case hasQ:
+		return 5 // PolicyPQ
+	case hasZ:
+		return 6 // PolicyPZ
+	default:
+		return 1 // PolicyQuorum
+	}
+}
+
+// policyAtLeast returns true iff effective ≥ floor in security strength.
+// Strength ordering (strongest → weakest):
+//
+//	PolicyQuantum (4) > PolicyPZ (6) ≈ PolicyPQ (5) > PolicyQuorum (1)
+//
+// PolicyPZ and PolicyPQ are incomparable in absolute strength (different
+// witness families), so a floor of one does not satisfy the other. The
+// only floor a Quasar-mode chain can declare is PolicyQuantum; a Pulsar-
+// mode chain declares PolicyPQ; an MLDSA-mode chain declares PolicyPZ.
+func policyAtLeast(effective, floor uint16) bool {
+	if effective == floor {
+		return true
+	}
+	// Quantum dominates everything below it in this lattice.
+	if effective == 4 {
+		return true
+	}
+	return false
 }
 
 // DisabledZWitnessProducer is the explicit "no Z lane" sentinel producer.
