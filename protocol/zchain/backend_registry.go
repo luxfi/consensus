@@ -23,12 +23,12 @@ import (
 // concrete drivers at init() time without consensus depending on them
 // at compile time.
 //
-// Production builds (build tag `production`) require a binding for
-// every VerifierID a strict-PQ verifier might dispatch; the absence
-// of a binding is a hard error there. Dev builds (the default) treat
-// "no backend bound" as a check-15 no-op so test fixtures and
-// envelope-only validation paths exercise checks 1-14 without
-// requiring a full SP1 / RISC0 / P3Q backend in the loop.
+// VerifyZProofUnderProfile REQUIRES a binding for every VerifierID it
+// dispatches; the absence of a binding is a hard refusal at check 15.
+// There is no dev/production build-tag split — one canonical build.
+// Test fixtures that need a fake backend register a BackendVerifierFunc
+// from a *_test.go file (excluded from production binaries by Go's
+// standard rule), so the registration cannot leak into a release.
 
 // Typed binding errors.
 var (
