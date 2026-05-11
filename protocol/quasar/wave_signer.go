@@ -33,10 +33,10 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-// LuxRoundResult is the output of one Lux round of Pulsar threshold
+// RoundResult is the output of one Lux round of Pulsar threshold
 // signing: a FIPS 204 ML-DSA signature on the round item under the
 // committee's shared group public key.
-type LuxRoundResult struct {
+type RoundResult struct {
 	// Item is the item that was signed (the value passed to the Wave
 	// round).
 	Item []byte
@@ -52,9 +52,9 @@ type LuxRoundResult struct {
 	Committee []pulsarm.NodeID
 }
 
-// LuxRoundSigner drives one Lux round of Pulsar (T, K) threshold
+// RoundSigner drives one Lux round of Pulsar (T, K) threshold
 // signing using a Prism.Cut to pick the K-validator committee.
-type LuxRoundSigner struct {
+type RoundSigner struct {
 	Params    *pulsarm.Params
 	Cut       prism.Cut[ids.NodeID] // K-sampler over the validator pool
 	K         int                   // Sample size
@@ -71,21 +71,21 @@ type LuxRoundSigner struct {
 	PrecompileCtx []byte
 }
 
-// RunLuxRound performs one Lux round of Pulsar threshold signing.
+// RunRound performs one Lux round of Pulsar threshold signing.
 // Returns the FIPS 204 ML-DSA signature on item under the group
 // public key. The signature verifies through unmodified FIPS 204
 // ML-DSA.Verify(group_pk, item, signer.PrecompileCtx, sig).
-func (s *LuxRoundSigner) RunLuxRound(ctx context.Context, item []byte) (*LuxRoundResult, error) {
+func (s *RoundSigner) RunRound(ctx context.Context, item []byte) (*RoundResult, error) {
 	if s.Cut == nil {
-		return nil, errors.New("LuxRoundSigner: Cut is nil")
+		return nil, errors.New("RoundSigner: Cut is nil")
 	}
 	if s.K < s.Threshold || s.Threshold < 1 {
-		return nil, errors.New("LuxRoundSigner: invalid (T, K)")
+		return nil, errors.New("RoundSigner: invalid (T, K)")
 	}
 	// Sample K validators for this Lux round.
 	sampled := s.Cut.Sample(s.K)
 	if len(sampled) < s.Threshold {
-		return nil, errors.New("LuxRoundSigner: sample short of threshold")
+		return nil, errors.New("RoundSigner: sample short of threshold")
 	}
 
 	// Translate to Pulsar NodeIDs and collect shares.
@@ -105,7 +105,7 @@ func (s *LuxRoundSigner) RunLuxRound(ctx context.Context, item []byte) (*LuxRoun
 		}
 	}
 	if len(committee) < s.Threshold {
-		return nil, errors.New("LuxRoundSigner: too few shares to meet threshold")
+		return nil, errors.New("RoundSigner: too few shares to meet threshold")
 	}
 	// Take the first T as the signing quorum (deterministic; the
 	// Wave consumer can re-sample if a member is unavailable).
@@ -178,7 +178,7 @@ func (s *LuxRoundSigner) RunLuxRound(ctx context.Context, item []byte) (*LuxRoun
 		return nil, err
 	}
 
-	return &LuxRoundResult{
+	return &RoundResult{
 		Item:        item,
 		GroupPubkey: groupPK,
 		Signature:   sig,
