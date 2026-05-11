@@ -291,6 +291,31 @@ var ZooStrictPQProfile = strictPQProfileTemplate(uint32(ProfileZooStrictPQ), "ZO
 // ProfileHash is computed in init().
 var HanzoStrictPQProfile = strictPQProfileTemplate(uint32(ProfileHanzoStrictPQ), "HANZO_STRICT_PQ")
 
+// QuasarStrictPQProfile is the canonical end-to-end strict-PQ profile.
+// Quasar is the Lux PQ stack; this profile is its strict-PQ envelope
+// (a.k.a. "Annulus" in architectural prose) — the ring around the
+// legacy stack that binds Pulsar-M finality, Z-Chain authorization
+// proofs, ML-DSA identities, ML-KEM channels, SHA3_NIST transcripts, and
+// STARK/FRI proof backends into one fail-closed cryptographic system.
+// Byte-identical to LuxStrictPQProfile except for ProfileID (0x06) and
+// ProfileName ("QUASAR_STRICT_PQ").
+//
+// New chains pin this profile at genesis going forward. The existing
+// LuxStrictPQProfile (0x01) and its Zoo/Hanzo siblings remain valid for
+// chains pinned before this byte was claimed.
+//
+// Same cross-network coherence invariant as ZooStrictPQProfile: every
+// security-relevant field is templated from LuxStrictPQProfile so a new
+// strict-PQ axis added there is picked up automatically here.
+//
+// ProfileHash is computed in init().
+var QuasarStrictPQProfile = strictPQProfileTemplate(uint32(ProfileQuasarStrictPQ), ProfileNameQuasarStrictPQ)
+
+// AnnulusStrictPQProfile is the legacy alias for QuasarStrictPQProfile.
+// Annulus is the strict-PQ boundary of the Quasar stack; the names are
+// interchangeable. Kept so older imports keep building.
+var AnnulusStrictPQProfile = QuasarStrictPQProfile
+
 // strictPQProfileTemplate returns a ChainSecurityProfile that is byte-
 // identical to LuxStrictPQProfile except for ProfileID and ProfileName.
 // One template, three call sites (Lux/Zoo/Hanzo). Closes the
@@ -328,4 +353,8 @@ func init() {
 	ForkClassicalCompatUnsafeProfile.ProfileHash = ForkClassicalCompatUnsafeProfile.MustComputeHash()
 	ZooStrictPQProfile.ProfileHash = ZooStrictPQProfile.MustComputeHash()
 	HanzoStrictPQProfile.ProfileHash = HanzoStrictPQProfile.MustComputeHash()
+	QuasarStrictPQProfile.ProfileHash = QuasarStrictPQProfile.MustComputeHash()
+	// AnnulusStrictPQProfile aliases QuasarStrictPQProfile; re-pin its
+	// hash from the canonical value so the two stay in sync.
+	AnnulusStrictPQProfile = QuasarStrictPQProfile
 }
