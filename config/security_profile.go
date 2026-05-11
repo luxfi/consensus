@@ -48,24 +48,49 @@ import (
 // Numbering:
 //
 //	0x00 — None / unspecified (rejected by every strict verifier)
-//	0x01 — LuxStrictPQ   — Lux primary network, NIST-aligned PQ
-//	0x02 — LuxPermissive — testnet / devnet, accepts BLAKE3-legacy + dev backends
-//	0x03 — LuxFIPS       — FIPS-204 + FIPS-202 only, no Pulsar-M relaxations
-//	0x04 — ZooStrictPQ   — Zoo primary network; byte-identical to LuxStrictPQ
-//	                       except for ProfileID + ProfileName
-//	0x05 — HanzoStrictPQ — Hanzo primary network; byte-identical to LuxStrictPQ
-//	                       except for ProfileID + ProfileName
+//	0x01 — LuxStrictPQ      — Lux primary network, NIST-aligned PQ
+//	0x02 — LuxPermissive    — testnet / devnet, accepts BLAKE3-legacy + dev backends
+//	0x03 — LuxFIPS          — FIPS-204 + FIPS-202 only, no Pulsar-M relaxations
+//	0x04 — ZooStrictPQ      — Zoo primary network; byte-identical to LuxStrictPQ
+//	                          except for ProfileID + ProfileName
+//	0x05 — HanzoStrictPQ    — Hanzo primary network; byte-identical to LuxStrictPQ
+//	                          except for ProfileID + ProfileName
+//	0x06 — QuasarStrictPQ   — canonical end-to-end strict-PQ profile. Quasar
+//	                          is the Lux PQ stack; Annulus is its strict-PQ
+//	                          boundary --- the ring that excludes classical
+//	                          crypto and enforces SHA3_NIST, ML-DSA, Pulsar
+//	                          finality, STARK/FRI proofs, ML-KEM networking,
+//	                          and fail-closed verification. Byte-identical
+//	                          to LuxStrictPQ except for ProfileID +
+//	                          ProfileName.
 //	0x80..0xFF — reserved for downstream / white-label profiles (must register
 //	             with consensus team before claiming a byte).
 type ProfileID uint8
 
 const (
-	ProfileNone          ProfileID = 0x00
-	ProfileLuxStrictPQ   ProfileID = 0x01
-	ProfileLuxPermissive ProfileID = 0x02
-	ProfileLuxFIPS       ProfileID = 0x03
-	ProfileZooStrictPQ   ProfileID = 0x04
-	ProfileHanzoStrictPQ ProfileID = 0x05
+	ProfileNone           ProfileID = 0x00
+	ProfileLuxStrictPQ    ProfileID = 0x01
+	ProfileLuxPermissive  ProfileID = 0x02
+	ProfileLuxFIPS        ProfileID = 0x03
+	ProfileZooStrictPQ    ProfileID = 0x04
+	ProfileHanzoStrictPQ  ProfileID = 0x05
+	ProfileQuasarStrictPQ ProfileID = 0x06
+
+	// ProfileAnnulusStrictPQ is the legacy alias for ProfileQuasarStrictPQ.
+	// Annulus is the strict-PQ *boundary* of the Quasar stack, not a
+	// separate profile. The canonical profile name string is
+	// "QUASAR_STRICT_PQ"; older callers may pass "ANNULUS_STRICT_PQ" and
+	// resolve to the same byte (0x06).
+	ProfileAnnulusStrictPQ = ProfileQuasarStrictPQ
+)
+
+// Canonical profile-name strings. The Quasar names are canonical; the
+// Annulus and legacy Lux names alias to them so downstream chain configs
+// and existing tests keep building.
+const (
+	ProfileNameQuasarStrictPQ  = "QUASAR_STRICT_PQ"
+	ProfileNameAnnulusStrictPQ = ProfileNameQuasarStrictPQ
+	ProfileNameLuxStrictPQ     = ProfileNameQuasarStrictPQ
 )
 
 // String returns the canonical lowercase profile name.
@@ -83,6 +108,8 @@ func (p ProfileID) String() string {
 		return "zoo-strict-pq"
 	case ProfileHanzoStrictPQ:
 		return "hanzo-strict-pq"
+	case ProfileQuasarStrictPQ:
+		return "quasar-strict-pq"
 	default:
 		return fmt.Sprintf("profile(0x%02x)", uint8(p))
 	}
@@ -738,17 +765,20 @@ func (p *ChainSecurityProfile) validatePolicy() error {
 	// otherwise pass the "at-least-one" gate.
 	//
 	// Strict-PQ class membership:
-	//   ProfileLuxStrictPQ   (0x01)
-	//   ProfileLuxFIPS       (0x03) — FIPS is a stricter superset of strict-PQ
-	//   ProfileZooStrictPQ   (0x04) — byte-identical to LuxStrictPQ
-	//   ProfileHanzoStrictPQ (0x05) — byte-identical to LuxStrictPQ
+	//   ProfileLuxStrictPQ     (0x01)
+	//   ProfileLuxFIPS         (0x03) — FIPS is a stricter superset of strict-PQ
+	//   ProfileZooStrictPQ     (0x04) — byte-identical to LuxStrictPQ
+	//   ProfileHanzoStrictPQ   (0x05) — byte-identical to LuxStrictPQ
+	//   ProfileAnnulusStrictPQ (0x06) — canonical end-to-end strict-PQ; the
+	//                                   eclipse layer over the prior stack
 	//
-	// All four ride the same gate so a Zoo/Hanzo deployment cannot
-	// accidentally relax a Forbid* bit relative to canonical Lux.
+	// All ride the same gate so a sibling deployment cannot accidentally
+	// relax a Forbid* bit relative to canonical Lux.
 	if p.ProfileID == uint32(ProfileLuxStrictPQ) ||
 		p.ProfileID == uint32(ProfileLuxFIPS) ||
 		p.ProfileID == uint32(ProfileZooStrictPQ) ||
-		p.ProfileID == uint32(ProfileHanzoStrictPQ) {
+		p.ProfileID == uint32(ProfileHanzoStrictPQ) ||
+		p.ProfileID == uint32(ProfileAnnulusStrictPQ) {
 		if !p.ForbidPairings {
 			return fmt.Errorf("%w: strict-PQ profile must set ForbidPairings=true", ErrProfileFieldInvalid)
 		}
@@ -1052,6 +1082,8 @@ func ProfileByID(id ProfileID) (*ChainSecurityProfile, error) {
 		return ZooStrictPQ(), nil
 	case ProfileHanzoStrictPQ:
 		return HanzoStrictPQ(), nil
+	case ProfileQuasarStrictPQ:
+		return QuasarStrictPQ(), nil
 	case ProfileNone:
 		return nil, fmt.Errorf("%w: ProfileNone is not a valid profile", ErrProfileUnknown)
 	default:
@@ -1100,4 +1132,31 @@ func ZooStrictPQ() *ChainSecurityProfile {
 func HanzoStrictPQ() *ChainSecurityProfile {
 	p := HanzoStrictPQProfile
 	return &p
+}
+
+// QuasarStrictPQ returns a fresh pointer copy of QuasarStrictPQProfile.
+// Quasar is the Lux PQ stack; this profile is its strict-PQ envelope —
+// the canonical end-to-end strict-PQ posture binding Pulsar-M finality,
+// Z-Chain auth proofs, ML-DSA identities, ML-KEM channels, SHA3_NIST
+// transcripts, and STARK/FRI proof backends into one fail-closed
+// cryptographic system. Byte-identical to LuxStrictPQ except for
+// ProfileID (0x06) and ProfileName ("QUASAR_STRICT_PQ").
+//
+// "Annulus" (the strict-PQ ring around the legacy stack) is the
+// architectural name for this envelope; AnnulusStrictPQ() is a legacy
+// alias returning the same profile.
+//
+// This is the profile new chains pin at genesis going forward;
+// LuxStrictPQ (0x01) remains valid for chains pinned before this byte
+// was claimed.
+func QuasarStrictPQ() *ChainSecurityProfile {
+	p := QuasarStrictPQProfile
+	return &p
+}
+
+// AnnulusStrictPQ is the legacy alias for QuasarStrictPQ. Annulus is the
+// strict-PQ boundary of the Quasar stack; the two names resolve to the
+// same profile (ProfileID 0x06, ProfileName "QUASAR_STRICT_PQ").
+func AnnulusStrictPQ() *ChainSecurityProfile {
+	return QuasarStrictPQ()
 }
