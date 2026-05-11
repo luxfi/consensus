@@ -2,8 +2,6 @@ package quasar
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"testing"
 	"time"
 
@@ -194,15 +192,10 @@ func TestCertBundle_VerifyWithKeys_Engine(t *testing.T) {
 	pqKey := []byte("test-pq-key-32-bytes-long!!!")
 	message := []byte("test message")
 
-	// Create valid cert using HMAC
-	blsMAC := hmac.New(sha256.New, blsKey)
-	blsMAC.Write(message)
-	pqMAC := hmac.New(sha256.New, pqKey)
-	pqMAC.Write(message)
-
+	// Build a valid cert under KMAC256 with the canonical customizations.
 	cert := &CertBundle{
-		BLSAgg:  blsMAC.Sum(nil),
-		PQCert:  pqMAC.Sum(nil),
+		BLSAgg:  kmac256(blsKey, message, kmacMACOutLen, customQuasarEventHorizonBLSMAC),
+		PQCert:  kmac256(pqKey, message, kmacMACOutLen, customQuasarEventHorizonPQMAC),
 		Message: message,
 	}
 
@@ -252,8 +245,8 @@ func TestBlock(t *testing.T) {
 		Hash:      "0xabc123",
 		Timestamp: time.Now(),
 		Cert: &QuasarCert{
-			BLS: []byte("bls"),
-			MLDSAProof:   []byte("pq"),
+			BLS:        []byte("bls"),
+			MLDSAProof: []byte("pq"),
 		},
 	}
 
@@ -334,8 +327,8 @@ func TestQuantumFinality_Integration(t *testing.T) {
 		Hash:      proposal,
 		Timestamp: time.Now(),
 		Cert: &QuasarCert{
-			BLS: cert.BLSAgg,
-			MLDSAProof:   cert.PQCert,
+			BLS:        cert.BLSAgg,
+			MLDSAProof: cert.PQCert,
 		},
 	}
 
@@ -399,14 +392,9 @@ func BenchmarkCertVerifyWithKeys(b *testing.B) {
 	pqKey := []byte("bench-pq-key-32-bytes-long!!!")
 	message := []byte("benchmark message")
 
-	blsMAC := hmac.New(sha256.New, blsKey)
-	blsMAC.Write(message)
-	pqMAC := hmac.New(sha256.New, pqKey)
-	pqMAC.Write(message)
-
 	cert := &CertBundle{
-		BLSAgg:  blsMAC.Sum(nil),
-		PQCert:  pqMAC.Sum(nil),
+		BLSAgg:  kmac256(blsKey, message, kmacMACOutLen, customQuasarEventHorizonBLSMAC),
+		PQCert:  kmac256(pqKey, message, kmacMACOutLen, customQuasarEventHorizonPQMAC),
 		Message: message,
 	}
 
