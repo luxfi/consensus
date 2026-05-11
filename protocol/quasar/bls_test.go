@@ -1,8 +1,6 @@
 package quasar
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
 	"testing"
 )
 
@@ -30,14 +28,9 @@ func TestCertBundle_VerifyWithKeys_Valid(t *testing.T) {
 	pqKey := []byte("pq-key-for-testing-32-bytes!!")
 	message := []byte("test-message-data")
 
-	blsMAC := hmac.New(sha256.New, blsKey)
-	blsMAC.Write(message)
-	pqMAC := hmac.New(sha256.New, pqKey)
-	pqMAC.Write(message)
-
 	cert := &CertBundle{
-		BLSAgg:  blsMAC.Sum(nil),
-		PQCert:  pqMAC.Sum(nil),
+		BLSAgg:  kmac256(blsKey, message, kmacMACOutLen, customQuasarEventHorizonBLSMAC),
+		PQCert:  kmac256(pqKey, message, kmacMACOutLen, customQuasarEventHorizonPQMAC),
 		Message: message,
 	}
 
