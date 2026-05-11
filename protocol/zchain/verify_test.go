@@ -13,7 +13,7 @@ import (
 // happyPathBundle is the canonical fixture used by every test below.
 // It holds:
 //
-//   - profile:   LuxStrictPQ
+//   - profile:   StrictPQ
 //   - registry:  one manifest under VerifierP3QSTARKFRISHA3PQ
 //   - input:     canonical ZPublicInputs (every root populated)
 //   - envelope:  ZProofEnvelope wired to the manifest + input
@@ -47,9 +47,9 @@ func newHappyPathBundle(t *testing.T) *happyPathBundle {
 		t.Fatalf("RegisterBackendVerifier(fake P3Q backend): %v", err)
 	}
 
-	profile := config.LuxStrictPQ()
+	profile := config.StrictPQ()
 	if err := profile.Validate(); err != nil {
-		t.Fatalf("LuxStrictPQ() failed validate: %v", err)
+		t.Fatalf("StrictPQ() failed validate: %v", err)
 	}
 
 	registry := NewVerifierManifestRegistry(nil)
@@ -129,7 +129,7 @@ func padBytes48(b byte) [48]byte {
 }
 
 // TestVerifyZProofUnderProfile_HappyPath proves a fully-correct
-// LuxStrictPQ envelope (ML-DSA-65 / Pulsar-M-65 / STARK_FRI_SHA3_PQ)
+// StrictPQ envelope (ML-DSA-65 / Pulsar-M-65 / STARK_FRI_SHA3_PQ)
 // passes every check and returns nil. Dev-build path: no backend
 // binding required.
 func TestVerifyZProofUnderProfile_HappyPath(t *testing.T) {
@@ -188,7 +188,7 @@ func TestVerifyZProofUnderProfile_RejectsMissingBackendBinding(t *testing.T) {
 // TestVerifyZProofUnderProfile_RejectsProfileIDMismatch — check 1.
 func TestVerifyZProofUnderProfile_RejectsProfileIDMismatch(t *testing.T) {
 	b := newHappyPathBundle(t)
-	b.proof.ProfileID = uint32(config.ProfileLuxPermissive)
+	b.proof.ProfileID = uint32(config.ProfilePermissive)
 	err := VerifyZProofUnderProfile(b.profile, b.registry, b.input, b.proof)
 	if !errors.Is(err, ErrZProofProfileIDMismatch) {
 		t.Errorf("got %v; want ErrZProofProfileIDMismatch", err)
@@ -218,7 +218,7 @@ func TestVerifyZProofUnderProfile_RejectsPolicyMismatch(t *testing.T) {
 // TestVerifyZProofUnderProfile_RejectsBackendNotInProfile — check 4.
 func TestVerifyZProofUnderProfile_RejectsBackendNotInProfile(t *testing.T) {
 	b := newHappyPathBundle(t)
-	// Use the forbidden Groth16-wrap backend — not in LuxStrictPQ's allow list.
+	// Use the forbidden Groth16-wrap backend — not in StrictPQ's allow list.
 	b.proof.ProofBackendID = config.ProofBackendGroth16WrapForbid
 	err := VerifyZProofUnderProfile(b.profile, b.registry, b.input, b.proof)
 	if !errors.Is(err, ErrZProofBackendForbidden) {
@@ -323,7 +323,7 @@ func TestVerifyZProofUnderProfile_RejectsUnknownVerifier(t *testing.T) {
 // manifest registered under VerifierP3Q claims BackendID=P3Q; the
 // envelope now claims SP1 backend. Verifier surfaces
 // ErrZProofVerifierManifestBackendMismatch (provided SP1 is also in
-// the profile's AllowedBackends, which LuxStrictPQ has).
+// the profile's AllowedBackends, which StrictPQ has).
 func TestVerifyZProofUnderProfile_RejectsManifestBackendMismatch(t *testing.T) {
 	b := newHappyPathBundle(t)
 	b.proof.ProofBackendID = config.ProofBackendSP1CompressedSTARK
@@ -410,7 +410,7 @@ func TestVerifyZProofUnderProfile_NilGuards(t *testing.T) {
 }
 
 // TestVerifyZProofUnderProfile_RejectsBackendNotInProfile_DevBackend
-// proves a dev backend (SP1CoreSTARKDev) is not admitted on LuxStrictPQ
+// proves a dev backend (SP1CoreSTARKDev) is not admitted on StrictPQ
 // even though it is post-quantum: the profile lists production backends only.
 func TestVerifyZProofUnderProfile_RejectsBackendNotInProfile_DevBackend(t *testing.T) {
 	b := newHappyPathBundle(t)
