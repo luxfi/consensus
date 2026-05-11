@@ -30,7 +30,7 @@ var (
 	// ErrBLSForbiddenUnderStrictPQ is returned when verifyBLSAggregate
 	// is invoked while a strict-PQ profile is active. The BLS aggregate
 	// path is callable only under ForkClassicalCompatUnsafe; under
-	// LuxStrictPQ / LuxFIPS it is a hard refusal. Closes F107.
+	// StrictPQ / FIPS it is a hard refusal. Closes F107.
 	ErrBLSForbiddenUnderStrictPQ = errors.New("quasar: BLS aggregate verification is forbidden under strict-PQ profile")
 )
 
@@ -369,11 +369,10 @@ func (v *VerkleWitness) fullVerification(witness *WitnessProof) error {
 	// classical pairing-based aggregate is forbidden by the
 	// ForbidPairings invariant of every strict-PQ profile.
 	if profile != nil &&
-		(profile.ProfileID == uint32(config.ProfileLuxStrictPQ) ||
-			profile.ProfileID == uint32(config.ProfileLuxFIPS) ||
+		(profile.ProfileID == uint32(config.ProfileStrictPQ) ||
+			profile.ProfileID == uint32(config.ProfileFIPS) ||
 			profile.ProfileID == uint32(config.ProfileZooStrictPQ) ||
 			profile.ProfileID == uint32(config.ProfileHanzoStrictPQ) ||
-			profile.ProfileID == uint32(config.ProfileQuasarStrictPQ) ||
 			profile.ForbidPairings) {
 		return errors.New("strict-PQ profile forbids BLS-aggregate fallback verification")
 	}
@@ -572,7 +571,7 @@ func (v *VerkleWitness) cacheWitness(witness *WitnessProof) {
 
 // verifyBLSAggregate verifies BLS aggregate signature for the legacy
 // classical-compat path. Refuses under strict-PQ profiles — every call
-// site that operates under LuxStrictPQ / LuxFIPS / a profile that
+// site that operates under StrictPQ / FIPS / a profile that
 // pins ForbidPairings MUST take the verifyPQFinality path instead.
 //
 // The function is callable ONLY under the ForkClassicalCompatUnsafe
@@ -596,11 +595,10 @@ func (v *VerkleWitness) verifyBLSAggregate(aggSig []byte, validatorSet []byte) e
 	profile := v.profile
 	v.mu.RUnlock()
 	if profile != nil &&
-		(profile.ProfileID == uint32(config.ProfileLuxStrictPQ) ||
-			profile.ProfileID == uint32(config.ProfileLuxFIPS) ||
+		(profile.ProfileID == uint32(config.ProfileStrictPQ) ||
+			profile.ProfileID == uint32(config.ProfileFIPS) ||
 			profile.ProfileID == uint32(config.ProfileZooStrictPQ) ||
 			profile.ProfileID == uint32(config.ProfileHanzoStrictPQ) ||
-			profile.ProfileID == uint32(config.ProfileQuasarStrictPQ) ||
 			profile.ForbidPairings) {
 		return ErrBLSForbiddenUnderStrictPQ
 	}

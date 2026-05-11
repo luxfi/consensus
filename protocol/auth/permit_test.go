@@ -17,7 +17,7 @@ import (
 func canonicalPermit() *PQPermit {
 	return &PQPermit{
 		Version:           1,
-		ProfileID:         config.ProfileLuxStrictPQ,
+		ProfileID:         config.ProfileStrictPQ,
 		ChainID:           43114,
 		VerifyingContract: [48]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48},
 		OwnerAccountID:    [48]byte{49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96},
@@ -43,7 +43,7 @@ func TestPQPermit_Digest_BindsEveryField(t *testing.T) {
 		mut  func(*PQPermit)
 	}{
 		{"Version", func(p *PQPermit) { p.Version = 99 }},
-		{"ProfileID", func(p *PQPermit) { p.ProfileID = config.ProfileLuxPermissive }},
+		{"ProfileID", func(p *PQPermit) { p.ProfileID = config.ProfilePermissive }},
 		{"ChainID", func(p *PQPermit) { p.ChainID = 1 }},
 		{"VerifyingContract", func(p *PQPermit) { p.VerifyingContract[0] ^= 0xFF }},
 		{"OwnerAccountID", func(p *PQPermit) { p.OwnerAccountID[0] ^= 0xFF }},
@@ -88,7 +88,7 @@ func TestPQPermit_Digest_Deterministic(t *testing.T) {
 // TestPQPermit_Verify_HappyPath — well-formed permit verifies cleanly
 // when the injected signature verifier returns true.
 func TestPQPermit_Verify_HappyPath(t *testing.T) {
-	profile := config.LuxStrictPQ()
+	profile := config.StrictPQ()
 	permit := canonicalPermit()
 	pubkey := bytes.Repeat([]byte{0x77}, 1952)
 
@@ -101,7 +101,7 @@ func TestPQPermit_Verify_HappyPath(t *testing.T) {
 // TestPQPermit_Verify_RejectsNilArguments — nil receivers / missing
 // verifier / nil profile are typed errors.
 func TestPQPermit_Verify_RejectsNilArguments(t *testing.T) {
-	profile := config.LuxStrictPQ()
+	profile := config.StrictPQ()
 	permit := canonicalPermit()
 	pubkey := bytes.Repeat([]byte{0x11}, 1952)
 
@@ -120,7 +120,7 @@ func TestPQPermit_Verify_RejectsNilArguments(t *testing.T) {
 // AuthSchemeID under any profile is refused. The strict-PQ check
 // piggy-backs on IsPostQuantum.
 func TestPQPermit_Verify_RejectsClassicalScheme(t *testing.T) {
-	profile := config.LuxStrictPQ()
+	profile := config.StrictPQ()
 	permit := canonicalPermit()
 	permit.AuthSchemeID = ContractAuthECDSASecp256k1Legacy
 
@@ -134,7 +134,7 @@ func TestPQPermit_Verify_RejectsClassicalScheme(t *testing.T) {
 // TestPQPermit_Verify_RejectsHashSuiteMismatch — permit.HashSuiteID
 // must match profile.HashSuiteID.
 func TestPQPermit_Verify_RejectsHashSuiteMismatch(t *testing.T) {
-	profile := config.LuxStrictPQ() // pins SHA3_NIST
+	profile := config.StrictPQ() // pins SHA3_NIST
 	permit := canonicalPermit()
 	permit.HashSuiteID = config.HashSuiteBLAKE3Legacy
 
@@ -148,9 +148,9 @@ func TestPQPermit_Verify_RejectsHashSuiteMismatch(t *testing.T) {
 // TestPQPermit_Verify_RejectsProfileMismatch — permit.ProfileID must
 // match profile.ProfileID.
 func TestPQPermit_Verify_RejectsProfileMismatch(t *testing.T) {
-	profile := config.LuxStrictPQ()
+	profile := config.StrictPQ()
 	permit := canonicalPermit()
-	permit.ProfileID = config.ProfileLuxFIPS
+	permit.ProfileID = config.ProfileFIPS
 
 	pubkey := bytes.Repeat([]byte{0xFF}, 1952)
 	err := VerifyPQPermit(profile, permit, pubkey, stubSigVerifier(true))
@@ -162,7 +162,7 @@ func TestPQPermit_Verify_RejectsProfileMismatch(t *testing.T) {
 // TestPQPermit_Verify_RejectsInvalidSignature — sigVerifier returning
 // false is surfaced as ErrPQPermitSignatureInvalid.
 func TestPQPermit_Verify_RejectsInvalidSignature(t *testing.T) {
-	profile := config.LuxStrictPQ()
+	profile := config.StrictPQ()
 	permit := canonicalPermit()
 	pubkey := bytes.Repeat([]byte{0x88}, 1952)
 
@@ -175,7 +175,7 @@ func TestPQPermit_Verify_RejectsInvalidSignature(t *testing.T) {
 // TestPQPermit_Verify_RejectsEmptyOwnerPubkey — caller passing an empty
 // pubkey is refused before sigVerifier is invoked.
 func TestPQPermit_Verify_RejectsEmptyOwnerPubkey(t *testing.T) {
-	profile := config.LuxStrictPQ()
+	profile := config.StrictPQ()
 	permit := canonicalPermit()
 
 	sigCalled := false
@@ -193,7 +193,7 @@ func TestPQPermit_Verify_RejectsEmptyOwnerPubkey(t *testing.T) {
 
 // TestPQPermit_Verify_RejectsVersionZero — Version=0 is unsupported.
 func TestPQPermit_Verify_RejectsVersionZero(t *testing.T) {
-	profile := config.LuxStrictPQ()
+	profile := config.StrictPQ()
 	permit := canonicalPermit()
 	permit.Version = 0
 

@@ -30,17 +30,17 @@ import (
 //   * Field names: AllowedProofBackends / AllowedProofFormats
 //   * Forbid flag: ForbidClassicalSNARKs (plural s)
 //   * Profile constants live in profiles.go (not yet written): the
-//     functions LuxStrictPQ() / LuxPermissive() / LuxFIPS() each
-//     `return &LuxStrictPQProfile` / `&LuxPermissiveProfile` / etc.
+//     functions StrictPQ() / Permissive() / FIPS() each
+//     `return &StrictPQProfile` / `&PermissiveProfile` / etc.
 //   * ProfileID is a uint32 field in ChainSecurityProfile (line 254);
-//     the constants ProfileLuxStrictPQ (line 60) are typed ProfileID
+//     the constants ProfileStrictPQ (line 60) are typed ProfileID
 //     (uint8). The constants are not assignable to the field.
 //   * ComputeHash returns ([48]byte, error)
 //
 // The Blue agent producing security_profile_test.go used schema B:
 //   * Field names: AllowedBackends / AllowedFormats
 //   * Forbid flag: ForbidClassicalSNARK (no s)
-//   * Tests `if p.ProfileID != ProfileLuxStrictPQ` directly (compile
+//   * Tests `if p.ProfileID != ProfileStrictPQ` directly (compile
 //     error: uint32 vs ProfileID)
 //   * Calls `ErrProfileForbiddenPolicy` (not defined; only
 //     ErrProfileFieldInvalid is exported)
@@ -64,8 +64,8 @@ import (
 //   * Profile constants typed ProfileID (uint8); the struct field is
 //     also ProfileID (the type). Do NOT make the struct field uint32 —
 //     that is a category error.
-//   * Add profiles.go with the canonical LuxStrictPQProfile /
-//     LuxPermissiveProfile / LuxFIPSProfile constants, computed once
+//   * Add profiles.go with the canonical StrictPQProfile /
+//     PermissiveProfile / FIPSProfile constants, computed once
 //     via MustComputeHash at package init.
 //   * Add error variables ErrProfileForbiddenPolicy /
 //     ErrProfileForbiddenBackend / ErrProfileForbiddenFormat /
@@ -87,41 +87,41 @@ func TestF51_PackageBuilds(t *testing.T) {
 
 // =============================================================================
 // F52 — ChainSecurityProfile.Validate exists, but the canonical
-// LuxStrictPQ constructor that should satisfy it cannot be called
-// (LuxStrictPQProfile constant not defined; profiles.go missing).
+// StrictPQ constructor that should satisfy it cannot be called
+// (StrictPQProfile constant not defined; profiles.go missing).
 // =============================================================================
 //
 // SEVERITY: critical
 //
-// security_profile.go:724 reads `p := LuxStrictPQProfile; return &p`
-// but the constant LuxStrictPQProfile is not defined anywhere in the
+// security_profile.go:724 reads `p := StrictPQProfile; return &p`
+// but the constant StrictPQProfile is not defined anywhere in the
 // package. The locked-profile architecture's single source of truth
 // for "this is what mainnet runs" is therefore vapourware. Any caller
 // that thinks they have the canonical profile in hand is actually
 // holding a nil-dereference panic waiting to happen.
 //
 // FIX: write profiles.go that defines:
-//   var LuxStrictPQProfile = ChainSecurityProfile{ /* all fields */ }
-//   var LuxPermissiveProfile = ChainSecurityProfile{ /* all fields */ }
-//   var LuxFIPSProfile = ChainSecurityProfile{ /* all fields */ }
+//   var StrictPQProfile = ChainSecurityProfile{ /* all fields */ }
+//   var PermissiveProfile = ChainSecurityProfile{ /* all fields */ }
+//   var FIPSProfile = ChainSecurityProfile{ /* all fields */ }
 // Then call MustComputeHash on each at init time and write the
 // returned hash back into ProfileHash so the constant carries its
 // own pinned hash for genesis comparison.
 func TestF52_CanonicalProfilesExist(t *testing.T) {
 	// We try to obtain each canonical profile; any panic / nil here
 	// is the finding's proof. Use defer/recover to capture the panic
-	// because LuxStrictPQ() panics when LuxStrictPQProfile is missing
+	// because StrictPQ() panics when StrictPQProfile is missing
 	// (it's a typed-undefined-identifier compile error in fact, so
 	// this test would not link; but assuming it links the panic check
 	// is the runtime guard).
 	defer func() {
 		if r := recover(); r != nil {
-			t.Fatalf("LuxStrictPQ() panicked: %v; finding F52 unfixed", r)
+			t.Fatalf("StrictPQ() panicked: %v; finding F52 unfixed", r)
 		}
 	}()
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	if p == nil {
-		t.Fatal("LuxStrictPQ() returned nil; finding F52 unfixed")
+		t.Fatal("StrictPQ() returned nil; finding F52 unfixed")
 	}
 }
 
@@ -210,8 +210,8 @@ func TestF54_Validate_CrossAxisHashSuiteVsFinality(t *testing.T) {
 // MUST forbid every classical primitive.
 //
 // FIX: split the validator into "strict-PQ requires every Forbid* bit
-// set true" (when ProfileID == ProfileLuxStrictPQ) vs "permissive may
-// have only ForbidFallbacks set" (when ProfileLuxPermissive). The
+// set true" (when ProfileID == ProfileStrictPQ) vs "permissive may
+// have only ForbidFallbacks set" (when ProfilePermissive). The
 // profile-class determines which forbids are mandatory.
 func TestF55_Validate_StrictPQDemandsEveryForbidBit(t *testing.T) {
 	p := tryGetLuxStrictPQ(t)
@@ -366,12 +366,12 @@ func TestF59_VerifierID_HasIsZeroPredicate(t *testing.T) {
 // that returns the canonical profile for the ID or refuses with
 // ErrProfileUnknown. Make every other call site dispatch through it.
 func TestF60_ProfileByID_Exists(t *testing.T) {
-	p, err := callProfileByID(ProfileLuxStrictPQ)
+	p, err := callProfileByID(ProfileStrictPQ)
 	if err != nil {
-		t.Fatalf("ProfileByID(ProfileLuxStrictPQ) errored: %v; finding F60 unfixed", err)
+		t.Fatalf("ProfileByID(ProfileStrictPQ) errored: %v; finding F60 unfixed", err)
 	}
 	if p == nil {
-		t.Fatalf("ProfileByID(ProfileLuxStrictPQ) returned nil; finding F60 unfixed")
+		t.Fatalf("ProfileByID(ProfileStrictPQ) returned nil; finding F60 unfixed")
 	}
 	if _, err := callProfileByID(ProfileNone); err == nil {
 		t.Errorf("ProfileByID(ProfileNone) accepted; should refuse; finding F60 unfixed")
@@ -389,10 +389,10 @@ func tryGetLuxStrictPQ(t *testing.T) *ChainSecurityProfile {
 	t.Helper()
 	defer func() {
 		if r := recover(); r != nil {
-			t.Logf("LuxStrictPQ() panicked: %v — F52 unfixed", r)
+			t.Logf("StrictPQ() panicked: %v — F52 unfixed", r)
 		}
 	}()
-	return LuxStrictPQ()
+	return StrictPQ()
 }
 
 func reverseBackends(in []ProofBackendID) []ProofBackendID {

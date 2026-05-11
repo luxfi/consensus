@@ -56,7 +56,7 @@ type QBlock struct {
 	// root is 48 bytes (BLS12-381 G1 / KZG commitment width) so the same
 	// field can carry either a hash digest or a commitment without an
 	// envelope-format split.
-	LuxStateRoot       [48]byte
+	StateRoot       [48]byte
 	ZChainStateRoot    [48]byte
 	ValidatorSetRoot   [48]byte
 	CommitteeRoot      [48]byte
@@ -156,7 +156,7 @@ func (b *QBlock) TranscriptHash() [32]byte {
 		b.ParentQBlockHash[:],
 		b.PayloadRoot[:],
 		b.DARoot[:],
-		b.LuxStateRoot[:],
+		b.StateRoot[:],
 		b.ZChainStateRoot[:],
 		b.ValidatorSetRoot[:],
 		b.CommitteeRoot[:],
@@ -236,7 +236,7 @@ func (b *QBlock) Marshal() ([]byte, error) {
 	buf = appendU64(buf, b.Height)
 	buf = appendU32(buf, b.RoundOrView)
 	buf = append(buf, b.ParentQBlockHash[:]...)
-	buf = append(buf, b.LuxStateRoot[:]...)
+	buf = append(buf, b.StateRoot[:]...)
 	buf = append(buf, b.ZChainStateRoot[:]...)
 	buf = append(buf, b.ValidatorSetRoot[:]...)
 	buf = append(buf, b.CommitteeRoot[:]...)
@@ -285,7 +285,7 @@ func UnmarshalQBlock(data []byte) (*QBlock, error) {
 	if err = r.read32(&b.ParentQBlockHash); err != nil {
 		return nil, err
 	}
-	if err = r.read48(&b.LuxStateRoot); err != nil {
+	if err = r.read48(&b.StateRoot); err != nil {
 		return nil, err
 	}
 	if err = r.read48(&b.ZChainStateRoot); err != nil {
