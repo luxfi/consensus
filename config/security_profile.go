@@ -51,6 +51,10 @@ import (
 //	0x01 — LuxStrictPQ   — Lux primary network, NIST-aligned PQ
 //	0x02 — LuxPermissive — testnet / devnet, accepts BLAKE3-legacy + dev backends
 //	0x03 — LuxFIPS       — FIPS-204 + FIPS-202 only, no Pulsar-M relaxations
+//	0x04 — ZooStrictPQ   — Zoo primary network; byte-identical to LuxStrictPQ
+//	                       except for ProfileID + ProfileName
+//	0x05 — HanzoStrictPQ — Hanzo primary network; byte-identical to LuxStrictPQ
+//	                       except for ProfileID + ProfileName
 //	0x80..0xFF — reserved for downstream / white-label profiles (must register
 //	             with consensus team before claiming a byte).
 type ProfileID uint8
@@ -60,6 +64,8 @@ const (
 	ProfileLuxStrictPQ   ProfileID = 0x01
 	ProfileLuxPermissive ProfileID = 0x02
 	ProfileLuxFIPS       ProfileID = 0x03
+	ProfileZooStrictPQ   ProfileID = 0x04
+	ProfileHanzoStrictPQ ProfileID = 0x05
 )
 
 // String returns the canonical lowercase profile name.
@@ -73,6 +79,10 @@ func (p ProfileID) String() string {
 		return "lux-permissive"
 	case ProfileLuxFIPS:
 		return "lux-fips"
+	case ProfileZooStrictPQ:
+		return "zoo-strict-pq"
+	case ProfileHanzoStrictPQ:
+		return "hanzo-strict-pq"
 	default:
 		return fmt.Sprintf("profile(0x%02x)", uint8(p))
 	}
@@ -726,7 +736,19 @@ func (p *ChainSecurityProfile) validatePolicy() error {
 	// fallback only. Closes F55: a "strict-PQ" profile that left
 	// ForbidPairings/KZG/TrustedSetup/ClassicalSNARKs false would
 	// otherwise pass the "at-least-one" gate.
-	if p.ProfileID == uint32(ProfileLuxStrictPQ) || p.ProfileID == uint32(ProfileLuxFIPS) {
+	//
+	// Strict-PQ class membership:
+	//   ProfileLuxStrictPQ   (0x01)
+	//   ProfileLuxFIPS       (0x03) — FIPS is a stricter superset of strict-PQ
+	//   ProfileZooStrictPQ   (0x04) — byte-identical to LuxStrictPQ
+	//   ProfileHanzoStrictPQ (0x05) — byte-identical to LuxStrictPQ
+	//
+	// All four ride the same gate so a Zoo/Hanzo deployment cannot
+	// accidentally relax a Forbid* bit relative to canonical Lux.
+	if p.ProfileID == uint32(ProfileLuxStrictPQ) ||
+		p.ProfileID == uint32(ProfileLuxFIPS) ||
+		p.ProfileID == uint32(ProfileZooStrictPQ) ||
+		p.ProfileID == uint32(ProfileHanzoStrictPQ) {
 		if !p.ForbidPairings {
 			return fmt.Errorf("%w: strict-PQ profile must set ForbidPairings=true", ErrProfileFieldInvalid)
 		}
@@ -1026,6 +1048,10 @@ func ProfileByID(id ProfileID) (*ChainSecurityProfile, error) {
 		return LuxPermissive(), nil
 	case ProfileLuxFIPS:
 		return LuxFIPS(), nil
+	case ProfileZooStrictPQ:
+		return ZooStrictPQ(), nil
+	case ProfileHanzoStrictPQ:
+		return HanzoStrictPQ(), nil
 	case ProfileNone:
 		return nil, fmt.Errorf("%w: ProfileNone is not a valid profile", ErrProfileUnknown)
 	default:
@@ -1051,9 +1077,27 @@ func LuxPermissive() *ChainSecurityProfile {
 	return &p
 }
 
-// LuxFIPS returns a fresh pointer copy of the LuxFIPS profile constant
+// LuxFIPS returns a fresh pointer copy of the LuxFIPSProfile constant
 // defined in profiles.go. Strictest FIPS-aligned profile.
 func LuxFIPS() *ChainSecurityProfile {
 	p := LuxFIPSProfile
+	return &p
+}
+
+// ZooStrictPQ returns a fresh pointer copy of ZooStrictPQProfile. The
+// returned value is byte-identical to LuxStrictPQ except for ProfileID
+// (0x04) and ProfileName ("ZOO_STRICT_PQ"). Used by Zoo primary network
+// validators; LP-168..179, ZIP-0809..0820 cite this profile.
+func ZooStrictPQ() *ChainSecurityProfile {
+	p := ZooStrictPQProfile
+	return &p
+}
+
+// HanzoStrictPQ returns a fresh pointer copy of HanzoStrictPQProfile.
+// Byte-identical to LuxStrictPQ except for ProfileID (0x05) and
+// ProfileName ("HANZO_STRICT_PQ"). Used by Hanzo primary network
+// validators; HIP-0085..0104 cite this profile.
+func HanzoStrictPQ() *ChainSecurityProfile {
+	p := HanzoStrictPQProfile
 	return &p
 }
