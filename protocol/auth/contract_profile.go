@@ -104,11 +104,15 @@ func (c *ContractAuthProfile) Validate(chainProfile *config.ChainSecurityProfile
 	}
 
 	// 3. Strict-PQ chain profile refuses classical schemes regardless of
-	// AllowClassical. ProfileLuxStrictPQ / ProfileLuxFIPS are the two
-	// canonical strict profiles; a downstream / white-label strict
-	// profile MAY set the same ID block in its ProfileID field.
+	// AllowClassical. ProfileLuxStrictPQ / ProfileLuxFIPS / ProfileZooStrictPQ
+	// / ProfileHanzoStrictPQ / ProfileQuasarStrictPQ are the canonical
+	// strict profiles; a downstream / white-label strict profile MAY set
+	// the same ID block in its ProfileID field.
 	chainStrict := chainProfile.ProfileID == uint32(config.ProfileLuxStrictPQ) ||
-		chainProfile.ProfileID == uint32(config.ProfileLuxFIPS)
+		chainProfile.ProfileID == uint32(config.ProfileLuxFIPS) ||
+		chainProfile.ProfileID == uint32(config.ProfileZooStrictPQ) ||
+		chainProfile.ProfileID == uint32(config.ProfileHanzoStrictPQ) ||
+		chainProfile.ProfileID == uint32(config.ProfileQuasarStrictPQ)
 
 	checkLegacy := func(label string, s ContractAuthID) error {
 		if !s.IsLegacyClassical() {
