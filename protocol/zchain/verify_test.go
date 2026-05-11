@@ -33,6 +33,20 @@ func newHappyPathBundle(t *testing.T) *happyPathBundle {
 	// leak BackendVerifier bindings into each other.
 	resetBackendVerifiersForTest()
 
+	// VerifyZProofUnderProfile now REQUIRES a backend binding for
+	// every VerifierID at check 15 — there is no dev-mode bypass.
+	// Tests that exercise checks 1–14 register a permissive fake
+	// backend here; tests that want to assert a specific check-15
+	// outcome (false / error / missing binding) override or reset.
+	if err := RegisterBackendVerifier(
+		config.VerifierP3QSTARKFRISHA3PQ,
+		BackendVerifierFunc(func(_ *VerifierManifest, _ *ZPublicInputs, _ *ZProofEnvelope) (bool, error) {
+			return true, nil
+		}),
+	); err != nil {
+		t.Fatalf("RegisterBackendVerifier(fake P3Q backend): %v", err)
+	}
+
 	profile := config.LuxStrictPQ()
 	if err := profile.Validate(); err != nil {
 		t.Fatalf("LuxStrictPQ() failed validate: %v", err)
@@ -126,18 +140,11 @@ func TestVerifyZProofUnderProfile_HappyPath(t *testing.T) {
 }
 
 // TestVerifyZProofUnderProfile_HappyPath_WithBoundBackend exercises check 15
-// when a backend is bound. The fake backend returns true; the verifier
-// should pass.
+// when a backend is bound. newHappyPathBundle already registers a fake
+// backend that returns (true, nil); this test confirms the happy path
+// passes end-to-end with that binding.
 func TestVerifyZProofUnderProfile_HappyPath_WithBoundBackend(t *testing.T) {
 	b := newHappyPathBundle(t)
-	if err := RegisterBackendVerifier(
-		config.VerifierP3QSTARKFRISHA3PQ,
-		BackendVerifierFunc(func(_ *VerifierManifest, _ *ZPublicInputs, _ *ZProofEnvelope) (bool, error) {
-			return true, nil
-		}),
-	); err != nil {
-		t.Fatalf("RegisterBackendVerifier: %v", err)
-	}
 	if err := VerifyZProofUnderProfile(b.profile, b.registry, b.input, b.proof); err != nil {
 		t.Fatalf("happy path with bound backend returned %v; want nil", err)
 	}
@@ -145,8 +152,11 @@ func TestVerifyZProofUnderProfile_HappyPath_WithBoundBackend(t *testing.T) {
 
 // TestVerifyZProofUnderProfile_BackendReturnsFalse proves check 15
 // surfaces a backend-false outcome as ErrZProofBackendVerifyFailed.
+// Overrides the default permissive fake backend with one that returns
+// (false, nil).
 func TestVerifyZProofUnderProfile_BackendReturnsFalse(t *testing.T) {
 	b := newHappyPathBundle(t)
+	resetBackendVerifiersForTest()
 	if err := RegisterBackendVerifier(
 		config.VerifierP3QSTARKFRISHA3PQ,
 		BackendVerifierFunc(func(_ *VerifierManifest, _ *ZPublicInputs, _ *ZProofEnvelope) (bool, error) {
@@ -158,6 +168,20 @@ func TestVerifyZProofUnderProfile_BackendReturnsFalse(t *testing.T) {
 	err := VerifyZProofUnderProfile(b.profile, b.registry, b.input, b.proof)
 	if !errors.Is(err, ErrZProofBackendVerifyFailed) {
 		t.Errorf("backend-false case returned %v; want ErrZProofBackendVerifyFailed", err)
+	}
+}
+
+// TestVerifyZProofUnderProfile_RejectsMissingBackendBinding proves
+// check 15 hard-refuses an envelope whose VerifierID has no backend
+// bound — there is no dev-mode bypass. Closes F96.
+func TestVerifyZProofUnderProfile_RejectsMissingBackendBinding(t *testing.T) {
+	b := newHappyPathBundle(t)
+	// Wipe every binding; the envelope still names a valid VerifierID
+	// but no BackendVerifier is bound for it.
+	resetBackendVerifiersForTest()
+	err := VerifyZProofUnderProfile(b.profile, b.registry, b.input, b.proof)
+	if !errors.Is(err, ErrZProofBackendVerifyFailed) {
+		t.Errorf("missing backend binding returned %v; want ErrZProofBackendVerifyFailed", err)
 	}
 }
 
