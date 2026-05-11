@@ -300,8 +300,8 @@ func TestVerifyTxAuthEnvelope_HappyPath(t *testing.T) {
 	profile := strictPQProfile()
 
 	env := canonicalTxAuth()
-	// AccountID MUST be derived from (chainID, scheme, pubkey).
-	env.AccountID = DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	// AccountID MUST be derived from (profileID, chainID, scheme, pubkey).
+	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 
 	currentASR := env.AccountStateRoot // happy path: envelope matches chain state
 
@@ -343,7 +343,7 @@ func TestVerifyTxAuthEnvelope_RejectsExpiredHeight(t *testing.T) {
 	profile := strictPQProfile()
 	pubkey := bytes.Repeat([]byte{0x88}, 1952)
 	env := canonicalTxAuth()
-	env.AccountID = DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 	env.ExpiryHeight = 100
 
 	err := VerifyTxAuthEnvelope(
@@ -376,7 +376,7 @@ func TestVerifyTxAuthEnvelope_RejectsHashSuiteMismatch(t *testing.T) {
 	profile := strictPQProfile() // pins HashSuiteSHA3NIST
 	pubkey := bytes.Repeat([]byte{0x55}, 1952)
 	env := canonicalTxAuth()
-	env.AccountID = DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 	env.HashSuiteID = config.HashSuiteBLAKE3Legacy
 
 	err := VerifyTxAuthEnvelope(
@@ -397,7 +397,7 @@ func TestVerifyTxAuthEnvelope_RejectsProfileMismatch(t *testing.T) {
 	profile := strictPQProfile()
 	pubkey := bytes.Repeat([]byte{0x66}, 1952)
 	env := canonicalTxAuth()
-	env.AccountID = DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 	env.ProfileID = config.ProfileLuxPermissive // mismatch
 
 	err := VerifyTxAuthEnvelope(
@@ -421,7 +421,7 @@ func TestVerifyTxAuthEnvelope_RejectsAccountIDMismatch(t *testing.T) {
 	wrongPubkey := bytes.Repeat([]byte{0x22}, 1952)
 
 	env := canonicalTxAuth()
-	env.AccountID = DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 
 	err := VerifyTxAuthEnvelope(
 		profile,
@@ -442,7 +442,7 @@ func TestVerifyTxAuthEnvelope_RejectsStaleAccountStateRoot(t *testing.T) {
 	profile := strictPQProfile()
 	pubkey := bytes.Repeat([]byte{0x99}, 1952)
 	env := canonicalTxAuth()
-	env.AccountID = DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 
 	freshASR := env.AccountStateRoot
 	freshASR[0] ^= 0xFF // chain-side root differs from envelope's
@@ -465,7 +465,7 @@ func TestVerifyTxAuthEnvelope_RejectsInvalidSignature(t *testing.T) {
 	profile := strictPQProfile()
 	pubkey := bytes.Repeat([]byte{0xAA}, 1952)
 	env := canonicalTxAuth()
-	env.AccountID = DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 
 	err := VerifyTxAuthEnvelope(
 		profile,
@@ -485,7 +485,7 @@ func TestVerifyTxAuthEnvelope_RejectsEmptySignature(t *testing.T) {
 	profile := strictPQProfile()
 	pubkey := bytes.Repeat([]byte{0xBB}, 1952)
 	env := canonicalTxAuth()
-	env.AccountID = DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 	env.Signature = nil
 
 	sigCalled := false
@@ -536,7 +536,7 @@ func TestVerifyTxAuthEnvelope_RejectsVersionZero(t *testing.T) {
 	profile := strictPQProfile()
 	pubkey := bytes.Repeat([]byte{0xCC}, 1952)
 	env := canonicalTxAuth()
-	env.AccountID = DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 	env.Version = 0
 
 	err := VerifyTxAuthEnvelope(
@@ -554,7 +554,7 @@ func TestVerifyTxAuthEnvelope_RejectsFutureVersion(t *testing.T) {
 	profile := strictPQProfile()
 	pubkey := bytes.Repeat([]byte{0xDD}, 1952)
 	env := canonicalTxAuth()
-	env.AccountID = DeriveAccountID(env.ChainID, env.WalletSchemeID, pubkey)
+	env.AccountID = DeriveAccountID(uint32(env.ProfileID), env.ChainID, env.WalletSchemeID, pubkey)
 	env.Version = math.MaxUint16
 
 	err := VerifyTxAuthEnvelope(
