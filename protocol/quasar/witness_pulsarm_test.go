@@ -163,7 +163,7 @@ func TestVerifyPQFinality_PulsarM_BitCountAlone_DoesNotPass(t *testing.T) {
 // signature validity. Closes F107.
 func TestVerifyBLSAggregate_RefusedUnderStrictPQ(t *testing.T) {
 	w := NewVerkleWitness(1)
-	w.SetProfile(config.LuxStrictPQ())
+	w.SetProfile(config.StrictPQ())
 
 	// 48 bytes of zeros — would fail curve-point check anyway, but the
 	// strict-PQ refusal must fire FIRST (typed sentinel).

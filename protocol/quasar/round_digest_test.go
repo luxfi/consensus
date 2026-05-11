@@ -32,7 +32,7 @@ type canonicalRoundDigestInputs struct {
 	parentQBlockHash  [32]byte
 	payloadRoot       [48]byte
 	daRoot            [48]byte
-	luxStateRoot      [48]byte
+	sourceStateRoot      [48]byte
 	zchainStateRoot   [48]byte
 	validatorSetRoot  [48]byte
 	committeeRoot     [48]byte
@@ -70,7 +70,7 @@ func canonical() canonicalRoundDigestInputs {
 		parentQBlockHash:  ps,
 		payloadRoot:       mk48(0x10),
 		daRoot:            mk48(0x18),
-		luxStateRoot:      mk48(0x20),
+		sourceStateRoot:      mk48(0x20),
 		zchainStateRoot:   mk48(0x30),
 		validatorSetRoot:  mk48(0x40),
 		committeeRoot:     mk48(0x50),
@@ -92,7 +92,7 @@ func compute(t *testing.T, in canonicalRoundDigestInputs) RoundDigest {
 		in.parentQBlockHash,
 		in.payloadRoot,
 		in.daRoot,
-		in.luxStateRoot,
+		in.sourceStateRoot,
 		in.zchainStateRoot,
 		in.validatorSetRoot,
 		in.committeeRoot,
@@ -151,7 +151,7 @@ func TestComputeRoundDigest_BindsEveryField(t *testing.T) {
 		"payloadRoot[47]":       func(x *canonicalRoundDigestInputs) { x.payloadRoot[47] ^= 1 },
 		"daRoot[0]":             func(x *canonicalRoundDigestInputs) { x.daRoot[0] ^= 1 },
 		"daRoot[47]":            func(x *canonicalRoundDigestInputs) { x.daRoot[47] ^= 1 },
-		"luxStateRoot[0]":       func(x *canonicalRoundDigestInputs) { x.luxStateRoot[0] ^= 1 },
+		"sourceStateRoot[0]":       func(x *canonicalRoundDigestInputs) { x.sourceStateRoot[0] ^= 1 },
 		"zchainStateRoot[0]":    func(x *canonicalRoundDigestInputs) { x.zchainStateRoot[0] ^= 1 },
 		"validatorSetRoot[0]":   func(x *canonicalRoundDigestInputs) { x.validatorSetRoot[0] ^= 1 },
 		"committeeRoot[0]":      func(x *canonicalRoundDigestInputs) { x.committeeRoot[0] ^= 1 },
@@ -252,7 +252,7 @@ func TestComputeRoundDigest_FixedHashFamily(t *testing.T) {
 		in.parentQBlockHash[:],
 		in.payloadRoot[:],
 		in.daRoot[:],
-		in.luxStateRoot[:],
+		in.sourceStateRoot[:],
 		in.zchainStateRoot[:],
 		in.validatorSetRoot[:],
 		in.committeeRoot[:],
