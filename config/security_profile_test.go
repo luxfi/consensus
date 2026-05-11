@@ -636,3 +636,242 @@ func TestLuxStrictPQProfile_NoOperatorFootguns(t *testing.T) {
 		t.Errorf("AllowedProofFormats is empty")
 	}
 }
+
+// =============================================================================
+// Cross-network strict-PQ profiles (Zoo, Hanzo)
+// =============================================================================
+//
+// LP-168..179, ZIP-0809..0820, HIP-0085..0104 cite ProfileZooStrictPQ=0x04
+// and ProfileHanzoStrictPQ=0x05. These profiles MUST be byte-identical to
+// LuxStrictPQ on every security-relevant field; ProfileID and ProfileName
+// are the only divergences allowed. Cross-network coherence holds iff the
+// three profiles share their forbid / scheme / floor surface.
+
+// TestProfileByID_ZooStrictPQ proves the canonical lookup returns the Zoo
+// profile, that it validates, and that ProfileID/ProfileName are the
+// expected values.
+func TestProfileByID_ZooStrictPQ(t *testing.T) {
+	p, err := ProfileByID(ProfileZooStrictPQ)
+	if err != nil {
+		t.Fatalf("ProfileByID(ProfileZooStrictPQ) returned %v; want nil", err)
+	}
+	if p == nil {
+		t.Fatalf("ProfileByID(ProfileZooStrictPQ) returned nil profile")
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatalf("ZooStrictPQ.Validate() returned %v; want nil", err)
+	}
+	if p.ProfileID != uint32(ProfileZooStrictPQ) {
+		t.Errorf("ZooStrictPQ.ProfileID = %d, want %d", p.ProfileID, ProfileZooStrictPQ)
+	}
+	if p.ProfileName != "ZOO_STRICT_PQ" {
+		t.Errorf("ZooStrictPQ.ProfileName = %q, want %q", p.ProfileName, "ZOO_STRICT_PQ")
+	}
+}
+
+// TestProfileByID_HanzoStrictPQ mirrors the Zoo test for the Hanzo profile.
+func TestProfileByID_HanzoStrictPQ(t *testing.T) {
+	p, err := ProfileByID(ProfileHanzoStrictPQ)
+	if err != nil {
+		t.Fatalf("ProfileByID(ProfileHanzoStrictPQ) returned %v; want nil", err)
+	}
+	if p == nil {
+		t.Fatalf("ProfileByID(ProfileHanzoStrictPQ) returned nil profile")
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatalf("HanzoStrictPQ.Validate() returned %v; want nil", err)
+	}
+	if p.ProfileID != uint32(ProfileHanzoStrictPQ) {
+		t.Errorf("HanzoStrictPQ.ProfileID = %d, want %d", p.ProfileID, ProfileHanzoStrictPQ)
+	}
+	if p.ProfileName != "HANZO_STRICT_PQ" {
+		t.Errorf("HanzoStrictPQ.ProfileName = %q, want %q", p.ProfileName, "HANZO_STRICT_PQ")
+	}
+}
+
+// TestStrictPQProfiles_AllFieldsByteIdentical proves Lux, Zoo, and Hanzo
+// strict-PQ profiles agree byte-for-byte on every field except ProfileID,
+// ProfileName, and ProfileHash. This is the cross-network coherence
+// invariant: a Zoo or Hanzo deployment cannot accidentally weaken the
+// strict-PQ posture relative to canonical Lux.
+//
+// The check compares every primitive / slice / boolean field explicitly
+// rather than reflect.DeepEqual on the whole struct so a failure names
+// exactly which field diverged.
+func TestStrictPQProfiles_AllFieldsByteIdentical(t *testing.T) {
+	lux := LuxStrictPQ()
+	zoo := ZooStrictPQ()
+	hanzo := HanzoStrictPQ()
+
+	cases := []struct {
+		name  string
+		other *ChainSecurityProfile
+		// wantID/wantName are the only fields allowed to differ.
+		wantID   uint32
+		wantName string
+	}{
+		{"zoo", zoo, uint32(ProfileZooStrictPQ), "ZOO_STRICT_PQ"},
+		{"hanzo", hanzo, uint32(ProfileHanzoStrictPQ), "HANZO_STRICT_PQ"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.other.ProfileID != c.wantID {
+				t.Errorf("%s.ProfileID = %d, want %d", c.name, c.other.ProfileID, c.wantID)
+			}
+			if c.other.ProfileName != c.wantName {
+				t.Errorf("%s.ProfileName = %q, want %q", c.name, c.other.ProfileName, c.wantName)
+			}
+			// Every other field MUST equal Lux's value.
+			if c.other.HashSuiteID != lux.HashSuiteID {
+				t.Errorf("%s.HashSuiteID drift: got %s, want %s", c.name, c.other.HashSuiteID, lux.HashSuiteID)
+			}
+			if c.other.IdentitySchemeID != lux.IdentitySchemeID {
+				t.Errorf("%s.IdentitySchemeID drift: got %s, want %s", c.name, c.other.IdentitySchemeID, lux.IdentitySchemeID)
+			}
+			if c.other.FinalitySchemeID != lux.FinalitySchemeID {
+				t.Errorf("%s.FinalitySchemeID drift: got %s, want %s", c.name, c.other.FinalitySchemeID, lux.FinalitySchemeID)
+			}
+			if c.other.HighValueSchemeID != lux.HighValueSchemeID {
+				t.Errorf("%s.HighValueSchemeID drift: got %s, want %s", c.name, c.other.HighValueSchemeID, lux.HighValueSchemeID)
+			}
+			if c.other.ProofPolicyID != lux.ProofPolicyID {
+				t.Errorf("%s.ProofPolicyID drift: got %s, want %s", c.name, c.other.ProofPolicyID, lux.ProofPolicyID)
+			}
+			if len(c.other.AllowedProofBackends) != len(lux.AllowedProofBackends) {
+				t.Errorf("%s.AllowedProofBackends length drift: got %d, want %d",
+					c.name, len(c.other.AllowedProofBackends), len(lux.AllowedProofBackends))
+			} else {
+				for i := range lux.AllowedProofBackends {
+					if c.other.AllowedProofBackends[i] != lux.AllowedProofBackends[i] {
+						t.Errorf("%s.AllowedProofBackends[%d] drift: got %s, want %s",
+							c.name, i, c.other.AllowedProofBackends[i], lux.AllowedProofBackends[i])
+					}
+				}
+			}
+			if len(c.other.AllowedProofFormats) != len(lux.AllowedProofFormats) {
+				t.Errorf("%s.AllowedProofFormats length drift: got %d, want %d",
+					c.name, len(c.other.AllowedProofFormats), len(lux.AllowedProofFormats))
+			} else {
+				for i := range lux.AllowedProofFormats {
+					if c.other.AllowedProofFormats[i] != lux.AllowedProofFormats[i] {
+						t.Errorf("%s.AllowedProofFormats[%d] drift: got %s, want %s",
+							c.name, i, c.other.AllowedProofFormats[i], lux.AllowedProofFormats[i])
+					}
+				}
+			}
+			if c.other.MinSoundnessBits != lux.MinSoundnessBits {
+				t.Errorf("%s.MinSoundnessBits drift: got %d, want %d", c.name, c.other.MinSoundnessBits, lux.MinSoundnessBits)
+			}
+			if c.other.MinHashOutputBits != lux.MinHashOutputBits {
+				t.Errorf("%s.MinHashOutputBits drift: got %d, want %d", c.name, c.other.MinHashOutputBits, lux.MinHashOutputBits)
+			}
+			if c.other.RequireTransparent != lux.RequireTransparent {
+				t.Errorf("%s.RequireTransparent drift: got %v, want %v", c.name, c.other.RequireTransparent, lux.RequireTransparent)
+			}
+			if c.other.ForbidPairings != lux.ForbidPairings {
+				t.Errorf("%s.ForbidPairings drift: got %v, want %v", c.name, c.other.ForbidPairings, lux.ForbidPairings)
+			}
+			if c.other.ForbidKZG != lux.ForbidKZG {
+				t.Errorf("%s.ForbidKZG drift: got %v, want %v", c.name, c.other.ForbidKZG, lux.ForbidKZG)
+			}
+			if c.other.ForbidTrustedSetup != lux.ForbidTrustedSetup {
+				t.Errorf("%s.ForbidTrustedSetup drift: got %v, want %v", c.name, c.other.ForbidTrustedSetup, lux.ForbidTrustedSetup)
+			}
+			if c.other.ForbidClassicalSNARKs != lux.ForbidClassicalSNARKs {
+				t.Errorf("%s.ForbidClassicalSNARKs drift: got %v, want %v", c.name, c.other.ForbidClassicalSNARKs, lux.ForbidClassicalSNARKs)
+			}
+			if c.other.ForbidDevProofs != lux.ForbidDevProofs {
+				t.Errorf("%s.ForbidDevProofs drift: got %v, want %v", c.name, c.other.ForbidDevProofs, lux.ForbidDevProofs)
+			}
+			if c.other.ForbidFallbacks != lux.ForbidFallbacks {
+				t.Errorf("%s.ForbidFallbacks drift: got %v, want %v", c.name, c.other.ForbidFallbacks, lux.ForbidFallbacks)
+			}
+			if c.other.WalletSchemeID != lux.WalletSchemeID {
+				t.Errorf("%s.WalletSchemeID drift: got %s, want %s", c.name, c.other.WalletSchemeID, lux.WalletSchemeID)
+			}
+			if c.other.TxSchemeID != lux.TxSchemeID {
+				t.Errorf("%s.TxSchemeID drift: got %s, want %s", c.name, c.other.TxSchemeID, lux.TxSchemeID)
+			}
+			if c.other.ContractAuthID != lux.ContractAuthID {
+				t.Errorf("%s.ContractAuthID drift: got %s, want %s", c.name, c.other.ContractAuthID, lux.ContractAuthID)
+			}
+			if c.other.KeyExchangeID != lux.KeyExchangeID {
+				t.Errorf("%s.KeyExchangeID drift: got %s, want %s", c.name, c.other.KeyExchangeID, lux.KeyExchangeID)
+			}
+			if c.other.HighValueKEM != lux.HighValueKEM {
+				t.Errorf("%s.HighValueKEM drift: got %s, want %s", c.name, c.other.HighValueKEM, lux.HighValueKEM)
+			}
+			if c.other.RecoverySchemeID != lux.RecoverySchemeID {
+				t.Errorf("%s.RecoverySchemeID drift: got %s, want %s", c.name, c.other.RecoverySchemeID, lux.RecoverySchemeID)
+			}
+			if c.other.ForbidECDSAWallets != lux.ForbidECDSAWallets {
+				t.Errorf("%s.ForbidECDSAWallets drift: got %v, want %v", c.name, c.other.ForbidECDSAWallets, lux.ForbidECDSAWallets)
+			}
+			if c.other.ForbidECDSAContractAuth != lux.ForbidECDSAContractAuth {
+				t.Errorf("%s.ForbidECDSAContractAuth drift: got %v, want %v", c.name, c.other.ForbidECDSAContractAuth, lux.ForbidECDSAContractAuth)
+			}
+			if c.other.ForbidBLSContractAuth != lux.ForbidBLSContractAuth {
+				t.Errorf("%s.ForbidBLSContractAuth drift: got %v, want %v", c.name, c.other.ForbidBLSContractAuth, lux.ForbidBLSContractAuth)
+			}
+			if c.other.ForbidClassicalKEM != lux.ForbidClassicalKEM {
+				t.Errorf("%s.ForbidClassicalKEM drift: got %v, want %v", c.name, c.other.ForbidClassicalKEM, lux.ForbidClassicalKEM)
+			}
+			if c.other.RequireTypedTxAuth != lux.RequireTypedTxAuth {
+				t.Errorf("%s.RequireTypedTxAuth drift: got %v, want %v", c.name, c.other.RequireTypedTxAuth, lux.RequireTypedTxAuth)
+			}
+		})
+	}
+}
+
+// TestStrictPQProfiles_ProfileHashDiverges proves the canonical hash of
+// the three strict-PQ profiles is distinct — even though every other
+// field is byte-identical, the ProfileID+ProfileName binding produces
+// three distinct 48-byte commitments. A genesis pinned to LuxStrictPQ
+// rejects a cert envelope tagged with the Zoo profile hash and vice
+// versa; this is what closes cross-network replay.
+func TestStrictPQProfiles_ProfileHashDiverges(t *testing.T) {
+	lux := LuxStrictPQ()
+	zoo := ZooStrictPQ()
+	hanzo := HanzoStrictPQ()
+	if lux.ProfileHash == zoo.ProfileHash {
+		t.Errorf("LuxStrictPQ.ProfileHash == ZooStrictPQ.ProfileHash; cross-network binding broken")
+	}
+	if lux.ProfileHash == hanzo.ProfileHash {
+		t.Errorf("LuxStrictPQ.ProfileHash == HanzoStrictPQ.ProfileHash; cross-network binding broken")
+	}
+	if zoo.ProfileHash == hanzo.ProfileHash {
+		t.Errorf("ZooStrictPQ.ProfileHash == HanzoStrictPQ.ProfileHash; cross-network binding broken")
+	}
+	// Every hash must be non-zero (init() ran).
+	var zero [48]byte
+	for _, c := range []struct {
+		name string
+		h    [48]byte
+	}{
+		{"lux", lux.ProfileHash},
+		{"zoo", zoo.ProfileHash},
+		{"hanzo", hanzo.ProfileHash},
+	} {
+		if c.h == zero {
+			t.Errorf("%s.ProfileHash is zero — init() did not run", c.name)
+		}
+	}
+}
+
+// TestProfileID_String_CrossNetwork pins the wire-name strings for the
+// two new cross-network profiles.
+func TestProfileID_String_CrossNetwork(t *testing.T) {
+	cases := []struct {
+		id   ProfileID
+		want string
+	}{
+		{ProfileZooStrictPQ, "zoo-strict-pq"},
+		{ProfileHanzoStrictPQ, "hanzo-strict-pq"},
+	}
+	for _, c := range cases {
+		if got := c.id.String(); got != c.want {
+			t.Errorf("ProfileID(%d).String() = %q, want %q", c.id, got, c.want)
+		}
+	}
+}
