@@ -90,7 +90,7 @@ func TestQuasarEventHorizonMAC_UsesKMAC256_UnderStrictPQ(t *testing.T) {
 	if err := q.Initialize(nil, blsKey, pqKey); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
-	q.SetProfile(config.LuxStrictPQ())
+	q.SetProfile(config.StrictPQ())
 
 	// Build a vote map that crosses the alpha threshold.
 	votes := map[string]int{"alpha-block": 18, "beta-block": 2}
@@ -121,7 +121,7 @@ func TestQuasarEventHorizonMAC_UsesKMAC256_UnderStrictPQ(t *testing.T) {
 	if !cert.VerifyWithKeys(blsKey, pqKey) {
 		t.Error("VerifyWithKeys rejected a freshly-emitted KMAC256 cert")
 	}
-	if !cert.VerifyWithKeysUnderProfile(blsKey, pqKey, config.LuxStrictPQ()) {
+	if !cert.VerifyWithKeysUnderProfile(blsKey, pqKey, config.StrictPQ()) {
 		t.Error("VerifyWithKeysUnderProfile rejected a canonical-width KMAC256 cert under strict-PQ")
 	}
 }
@@ -163,13 +163,13 @@ func TestConsensusMAC_RejectsHMACSHA256_UnderStrictPQ(t *testing.T) {
 	}
 
 	// Strict-PQ profile MUST refuse the legacy 32-byte bytes outright.
-	strictPQ := config.LuxStrictPQ()
+	strictPQ := config.StrictPQ()
 	if legacy.VerifyWithKeysUnderProfile(blsKey, pqKey, strictPQ) {
 		t.Fatal("strict-PQ profile MUST reject HMAC-SHA256-width (32-byte) MACs")
 	}
 
 	// FIPS profile (also pins SHA3-NIST) MUST also refuse.
-	if legacy.VerifyWithKeysUnderProfile(blsKey, pqKey, config.LuxFIPS()) {
+	if legacy.VerifyWithKeysUnderProfile(blsKey, pqKey, config.FIPS()) {
 		t.Fatal("FIPS profile MUST reject HMAC-SHA256-width (32-byte) MACs")
 	}
 
