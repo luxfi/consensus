@@ -7,7 +7,7 @@ import (
 	"encoding/gob"
 	"testing"
 
-	coronaThreshold "github.com/luxfi/pulsar/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // TestCoronaCertSize_BinaryVsGob measures the on-wire Pulsar/Corona
