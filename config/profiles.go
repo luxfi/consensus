@@ -267,6 +267,52 @@ var ForkClassicalCompatUnsafeProfile = ChainSecurityProfile{
 	RequireTypedTxAuth:      false,
 }
 
+// ZooStrictPQProfile is the canonical Zoo mainnet locked profile. Byte-
+// identical to LuxStrictPQProfile except for ProfileID (0x04) and
+// ProfileName ("ZOO_STRICT_PQ"). Cited by LP-168..179, ZIP-0809..0820.
+//
+// Byte-identicality is the cross-network coherence invariant: a Zoo
+// validator running ZooStrictPQProfile and a Lux validator running
+// LuxStrictPQProfile accept the same set of cryptographic primitives,
+// soundness floors, forbid bits, and E2E PQ axes. The ProfileID byte is
+// what distinguishes them on the wire; the ProfileHash diverges only
+// because of that byte (plus the name string), not because of any
+// security-relevant field.
+//
+// ProfileHash is computed in init().
+var ZooStrictPQProfile = strictPQProfileTemplate(uint32(ProfileZooStrictPQ), "ZOO_STRICT_PQ")
+
+// HanzoStrictPQProfile is the canonical Hanzo mainnet locked profile.
+// Byte-identical to LuxStrictPQProfile except for ProfileID (0x05) and
+// ProfileName ("HANZO_STRICT_PQ"). Cited by HIP-0085..0104.
+//
+// Same cross-network coherence invariant as ZooStrictPQProfile.
+//
+// ProfileHash is computed in init().
+var HanzoStrictPQProfile = strictPQProfileTemplate(uint32(ProfileHanzoStrictPQ), "HANZO_STRICT_PQ")
+
+// strictPQProfileTemplate returns a ChainSecurityProfile that is byte-
+// identical to LuxStrictPQProfile except for ProfileID and ProfileName.
+// One template, three call sites (Lux/Zoo/Hanzo). Closes the
+// drift-by-copy class: a new strict-PQ field added to LuxStrictPQ is
+// picked up automatically by every cross-network sibling.
+//
+// The function takes a fresh copy of LuxStrictPQProfile and overrides
+// only the two identity fields. ProfileHash is intentionally zeroed
+// because the canonical hash is computed in init() after every profile
+// is constructed.
+func strictPQProfileTemplate(profileID uint32, profileName string) ChainSecurityProfile {
+	p := LuxStrictPQProfile
+	p.ProfileID = profileID
+	p.ProfileName = profileName
+	p.ProfileHash = [48]byte{}
+	// Slice fields must be copied so a mutation through one profile's
+	// AllowedProofBackends does not silently mutate the sibling's.
+	p.AllowedProofBackends = append([]ProofBackendID(nil), LuxStrictPQProfile.AllowedProofBackends...)
+	p.AllowedProofFormats = append([]ProofFormatID(nil), LuxStrictPQProfile.AllowedProofFormats...)
+	return p
+}
+
 // init computes and pins ProfileHash for every canonical profile. Runs
 // at package load; a build whose canonical profiles fail Validate cannot
 // initialise and therefore cannot ship. This is the genesis-pinning
@@ -280,4 +326,6 @@ func init() {
 	LuxPermissiveProfile.ProfileHash = LuxPermissiveProfile.MustComputeHash()
 	LuxFIPSProfile.ProfileHash = LuxFIPSProfile.MustComputeHash()
 	ForkClassicalCompatUnsafeProfile.ProfileHash = ForkClassicalCompatUnsafeProfile.MustComputeHash()
+	ZooStrictPQProfile.ProfileHash = ZooStrictPQProfile.MustComputeHash()
+	HanzoStrictPQProfile.ProfileHash = HanzoStrictPQProfile.MustComputeHash()
 }
