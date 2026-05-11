@@ -62,6 +62,22 @@ var LuxStrictPQProfile = ChainSecurityProfile{
 	ForbidClassicalSNARKs: true,
 	ForbidDevProofs:       true,
 	ForbidFallbacks:       true,
+
+	// E2E PQ axes. Wallet / tx / contract-auth pinned at ML-DSA-65 (FIPS
+	// 204 Cat 3), KEM at ML-KEM-768 with ML-KEM-1024 reserved for
+	// high-value, recovery at SLH-DSA-192 (FIPS 205 Cat 3 stateless
+	// backstop). Every classical 0x90 primitive is refused on every axis.
+	WalletSchemeID:          WalletSchemeMLDSA65,
+	TxSchemeID:              TxSchemeMLDSA65,
+	ContractAuthID:          ContractAuthMLDSA65,
+	KeyExchangeID:           KeyExchangeMLKEM768,
+	HighValueKEM:            KeyExchangeMLKEM1024,
+	RecoverySchemeID:        RecoverySchemeSLHDSA192,
+	ForbidECDSAWallets:      true,
+	ForbidECDSAContractAuth: true,
+	ForbidBLSContractAuth:   true,
+	ForbidClassicalKEM:      true,
+	RequireTypedTxAuth:      true,
 }
 
 // LuxPermissiveProfile is the testnet/devnet profile. Accepts the strict-PQ
@@ -107,6 +123,23 @@ var LuxPermissiveProfile = ChainSecurityProfile{
 	ForbidClassicalSNARKs: true,
 	ForbidDevProofs:       false, // dev backends OK on testnet/devnet
 	ForbidFallbacks:       false, // fallbacks OK on testnet/devnet
+
+	// E2E PQ axes — same lattice scheme defaults as strict-PQ but the
+	// Forbid* bits are left false so experimental classical primitives
+	// can ride alongside the lattice path on a permissive testnet.
+	// RequireTypedTxAuth stays false so legacy testnet clients without
+	// the typed-auth byte still round-trip.
+	WalletSchemeID:          WalletSchemeMLDSA65,
+	TxSchemeID:              TxSchemeMLDSA65,
+	ContractAuthID:          ContractAuthMLDSA65,
+	KeyExchangeID:           KeyExchangeMLKEM768,
+	HighValueKEM:            KeyExchangeMLKEM1024,
+	RecoverySchemeID:        RecoverySchemeSLHDSA192,
+	ForbidECDSAWallets:      false,
+	ForbidECDSAContractAuth: false,
+	ForbidBLSContractAuth:   false,
+	ForbidClassicalKEM:      false,
+	RequireTypedTxAuth:      false,
 }
 
 // LuxFIPSProfile is the FIPS-204-only profile. Drops Pulsar-M (production
@@ -142,6 +175,21 @@ var LuxFIPSProfile = ChainSecurityProfile{
 	ForbidClassicalSNARKs: true,
 	ForbidDevProofs:       true,
 	ForbidFallbacks:       true,
+
+	// E2E PQ axes — identical to LuxStrictPQ. FIPS deployments demand
+	// every E2E layer sit inside FIPS 203/204/205; the canonical FIPS
+	// scheme set is the same as the strict-PQ set.
+	WalletSchemeID:          WalletSchemeMLDSA65,
+	TxSchemeID:              TxSchemeMLDSA65,
+	ContractAuthID:          ContractAuthMLDSA65,
+	KeyExchangeID:           KeyExchangeMLKEM768,
+	HighValueKEM:            KeyExchangeMLKEM1024,
+	RecoverySchemeID:        RecoverySchemeSLHDSA192,
+	ForbidECDSAWallets:      true,
+	ForbidECDSAContractAuth: true,
+	ForbidBLSContractAuth:   true,
+	ForbidClassicalKEM:      true,
+	RequireTypedTxAuth:      true,
 }
 
 // ForkClassicalCompatUnsafeProfileID is the wire byte for the
@@ -199,6 +247,24 @@ var ForkClassicalCompatUnsafeProfile = ChainSecurityProfile{
 	ForbidClassicalSNARKs: true, // even the fork refuses Groth16/PLONK wrappers
 	ForbidDevProofs:       true,
 	ForbidFallbacks:       false, // forks may fall back; strict mainnet may not
+
+	// E2E PQ axes — the fork explicitly opts INTO classical primitives
+	// on every axis so existing EVM-classical wallets / contracts /
+	// session keys keep working. RecoverySchemeNone is permitted here
+	// because the high-value scheme is Pulsar-M-87 (Cat 5). Every
+	// Forbid* bit is false; RequireTypedTxAuth is false. A chain that
+	// pins this profile MUST NOT be marketed as Lux strict-PQ.
+	WalletSchemeID:          WalletSchemeECDSAUnsafe,
+	TxSchemeID:              TxSchemeECDSAUnsafe,
+	ContractAuthID:          ContractAuthECDSAUnsafe,
+	KeyExchangeID:           KeyExchangeX25519Unsafe,
+	HighValueKEM:            KeyExchangeX25519Unsafe,
+	RecoverySchemeID:        RecoverySchemeNone,
+	ForbidECDSAWallets:      false,
+	ForbidECDSAContractAuth: false,
+	ForbidBLSContractAuth:   false,
+	ForbidClassicalKEM:      false,
+	RequireTypedTxAuth:      false,
 }
 
 // init computes and pins ProfileHash for every canonical profile. Runs
