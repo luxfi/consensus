@@ -8,7 +8,7 @@ import (
 
 	"github.com/luxfi/lattice/v7/ring"
 	"github.com/luxfi/lattice/v7/utils/structs"
-	ringtailThreshold "github.com/luxfi/pulsar/threshold"
+	ringtailThreshold "github.com/luxfi/corona/threshold"
 )
 
 // ringtailGobEncode serializes a Pulsar threshold signature using the
