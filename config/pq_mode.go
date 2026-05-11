@@ -70,7 +70,10 @@ const (
 	// and proactive secret resharing for epoch validator rotation.
 	// Pulsar additionally ships a non-normative `Pulsar-BLAKE3` legacy
 	// suite for byte-equality regressions only.
-	// Suitable for open public chains and the Lux primary network.
+	// Suitable for open public chains with **same-committee** proactive
+	// resharing; cross-committee reshare in Pulsar v0.1 changes the
+	// master pubkey because the committee root is bound into the cSHAKE
+	// seed mix — cross-committee rotation is on the Pulsar v0.2 roadmap.
 	// Provided by `github.com/luxfi/pulsar`.
 	PQModePulsar
 
