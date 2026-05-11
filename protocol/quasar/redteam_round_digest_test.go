@@ -38,7 +38,7 @@ type roundDigestInputs struct {
 	parentQBlockHash [32]byte
 	payloadRoot      [48]byte
 	daRoot           [48]byte
-	luxStateRoot     [48]byte
+	sourceStateRoot     [48]byte
 	zchainStateRoot  [48]byte
 	validatorRoot    [48]byte
 	committeeRoot    [48]byte
@@ -65,7 +65,7 @@ func canonicalRoundDigest() roundDigestInputs {
 		parentQBlockHash: fillN32(0x01),
 		payloadRoot:      fillN48(0x02),
 		daRoot:           fillN48(0x03),
-		luxStateRoot:     fillN48(0x04),
+		sourceStateRoot:     fillN48(0x04),
 		zchainStateRoot:  fillN48(0x05),
 		validatorRoot:    fillN48(0x06),
 		committeeRoot:    fillN48(0x07),
@@ -88,7 +88,7 @@ func (in roundDigestInputs) compute() (RoundDigest, error) {
 		in.roundOrView,
 		in.parentQBlockHash,
 		in.payloadRoot, in.daRoot,
-		in.luxStateRoot, in.zchainStateRoot,
+		in.sourceStateRoot, in.zchainStateRoot,
 		in.validatorRoot, in.committeeRoot, in.dkgRoot,
 		in.groupPubKeyHash, in.bitmapCommit,
 	)
@@ -160,7 +160,7 @@ func TestF70_RoundDigest_BindsEveryAxis(t *testing.T) {
 		{"parentQBlockHash", func(in *roundDigestInputs) { in.parentQBlockHash[0] ^= 1 }},
 		{"payloadRoot", func(in *roundDigestInputs) { in.payloadRoot[0] ^= 1 }},
 		{"daRoot", func(in *roundDigestInputs) { in.daRoot[0] ^= 1 }},
-		{"luxStateRoot", func(in *roundDigestInputs) { in.luxStateRoot[0] ^= 1 }},
+		{"sourceStateRoot", func(in *roundDigestInputs) { in.sourceStateRoot[0] ^= 1 }},
 		{"zchainStateRoot", func(in *roundDigestInputs) { in.zchainStateRoot[0] ^= 1 }},
 		{"validatorRoot", func(in *roundDigestInputs) { in.validatorRoot[0] ^= 1 }},
 		{"committeeRoot", func(in *roundDigestInputs) { in.committeeRoot[0] ^= 1 }},
@@ -193,7 +193,7 @@ func TestF70b_RoundDigest_LastByteOfEachRootBound(t *testing.T) {
 		{"parentQBlockHash[31]", func(in *roundDigestInputs) { in.parentQBlockHash[31] ^= 1 }},
 		{"payloadRoot[47]", func(in *roundDigestInputs) { in.payloadRoot[47] ^= 1 }},
 		{"daRoot[47]", func(in *roundDigestInputs) { in.daRoot[47] ^= 1 }},
-		{"luxStateRoot[47]", func(in *roundDigestInputs) { in.luxStateRoot[47] ^= 1 }},
+		{"sourceStateRoot[47]", func(in *roundDigestInputs) { in.sourceStateRoot[47] ^= 1 }},
 		{"zchainStateRoot[47]", func(in *roundDigestInputs) { in.zchainStateRoot[47] ^= 1 }},
 		{"validatorRoot[47]", func(in *roundDigestInputs) { in.validatorRoot[47] ^= 1 }},
 		{"committeeRoot[47]", func(in *roundDigestInputs) { in.committeeRoot[47] ^= 1 }},
