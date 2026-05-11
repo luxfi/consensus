@@ -338,6 +338,83 @@ type ChainSecurityProfile struct {
 	// a missing preferred-backend artifact fails the round rather than
 	// silently downgrading.
 	ForbidFallbacks bool
+
+	// =========================================================================
+	// End-to-end PQ axes (HIP-0078 §"E2E PQ surface").
+	//
+	// The fields above pin the proof-system / threshold-finality posture.
+	// The fields below pin the wallet, transaction, contract-auth, KEM,
+	// and recovery axes. Each axis carries its own forbidden-primitive
+	// gate (Forbid* below) so a locked strict-PQ profile refuses
+	// classical leakage at every layer where a Z-Chain envelope is
+	// produced or consumed.
+	// =========================================================================
+
+	// WalletSchemeID pins the signature scheme accepted from wallets on
+	// this chain. Strict-PQ pins ML-DSA-65; the chain refuses ECDSA
+	// wallets via ForbidECDSAWallets.
+	WalletSchemeID WalletSchemeID
+
+	// TxSchemeID pins the signature scheme accepted on the outer
+	// transaction authorisation envelope. May differ from
+	// WalletSchemeID (a tx may be authorised by a session key rather
+	// than the wallet's identity key).
+	TxSchemeID TxSchemeID
+
+	// ContractAuthID pins the default authorisation primitive smart
+	// contracts use to gate calls on this chain. Contracts may opt into
+	// stronger primitives (e.g. high-value treasury uses
+	// ContractAuthMultisigMLDSA + ContractAuthMLDSA87) but anything
+	// outside the strict-PQ acceptable set is refused at the chain
+	// level via ForbidECDSAContractAuth / ForbidBLSContractAuth.
+	ContractAuthID ContractAuthID
+
+	// KeyExchangeID pins the default KEM used for session-key
+	// establishment and encrypted-state-transition envelopes. Strict-PQ
+	// pins ML-KEM-768; the chain refuses classical X25519 via
+	// ForbidClassicalKEM.
+	KeyExchangeID KeyExchangeID
+
+	// HighValueKEM pins the stronger KEM the chain uses for high-value
+	// operations (treasury withdrawals, governance roots, cross-chain
+	// bridge state). Strict-PQ pins ML-KEM-1024. Distinct from
+	// KeyExchangeID so the high-value cost is only paid for the
+	// operations that need it.
+	HighValueKEM KeyExchangeID
+
+	// RecoverySchemeID pins the signature scheme the chain's account-
+	// recovery / breakglass key signs under. Strict-PQ pins SLH-DSA-192
+	// (stateless hash-based backstop). RecoverySchemeNone is permitted
+	// only when HighValueSchemeID is Pulsar-M-87 / ML-DSA-87 — the
+	// high-value path then carries the strong fallback recovery would
+	// otherwise provide.
+	RecoverySchemeID RecoverySchemeID
+
+	// ForbidECDSAWallets refuses any wallet primitive in the 0x90
+	// classical block at this chain. Strict-PQ profiles set true.
+	ForbidECDSAWallets bool
+
+	// ForbidECDSAContractAuth refuses any contract-authorisation
+	// primitive that names classical ECDSA (ContractAuthECDSAUnsafe).
+	// Strict-PQ profiles set true.
+	ForbidECDSAContractAuth bool
+
+	// ForbidBLSContractAuth refuses any contract-authorisation
+	// primitive that names classical BLS aggregates
+	// (ContractAuthBLSUnsafe). Strict-PQ profiles set true.
+	ForbidBLSContractAuth bool
+
+	// ForbidClassicalKEM refuses any KEM primitive in the 0x90
+	// classical block (KeyExchangeX25519Unsafe). Strict-PQ profiles set
+	// true.
+	ForbidClassicalKEM bool
+
+	// RequireTypedTxAuth demands that every transaction authorisation
+	// envelope on this chain carry an explicit TxSchemeID byte (no
+	// implicit fallback to "the wallet scheme inferred from the
+	// public key"). Strict-PQ profiles set true so a receiver sees the
+	// auth primitive named on the wire.
+	RequireTypedTxAuth bool
 }
 
 // AllowsBackend reports whether b is in the profile's backend allowlist.
@@ -548,6 +625,93 @@ func (p *ChainSecurityProfile) validateStructural() error {
 			ErrProfileFieldInvalid)
 	}
 
+	// =========================================================================
+	// E2E PQ axes — each enum must be a known non-invalid value.
+	//
+	// Strict-mode policy (profile-class-specific refusal of the 0x90
+	// forbidden block) lives in validatePolicy below; here we only enforce
+	// "must be a known enum entry, not zero/Invalid". A profile that pins
+	// a 0x90 forbidden marker on these axes is still structurally well
+	// formed; the policy gate is what refuses it under strict-PQ.
+	// =========================================================================
+
+	switch p.WalletSchemeID {
+	case WalletSchemeMLDSA65, WalletSchemeMLDSA87, WalletSchemeECDSAUnsafe:
+		// allowed at the structural layer; policy gates ECDSA under strict-PQ
+	case WalletSchemeInvalid:
+		return fmt.Errorf("%w: WalletSchemeID is Invalid", ErrProfileFieldUnset)
+	default:
+		return fmt.Errorf("%w: WalletSchemeID=0x%02x is unknown",
+			ErrProfileFieldUnknown, uint8(p.WalletSchemeID))
+	}
+
+	switch p.TxSchemeID {
+	case TxSchemeMLDSA65, TxSchemeMLDSA87, TxSchemeECDSAUnsafe:
+	case TxSchemeInvalid:
+		return fmt.Errorf("%w: TxSchemeID is Invalid", ErrProfileFieldUnset)
+	default:
+		return fmt.Errorf("%w: TxSchemeID=0x%02x is unknown",
+			ErrProfileFieldUnknown, uint8(p.TxSchemeID))
+	}
+
+	switch p.ContractAuthID {
+	case ContractAuthZChainProof,
+		ContractAuthMultisigMLDSA,
+		ContractAuthSessionPQ,
+		ContractAuthMLDSA65,
+		ContractAuthMLDSA87,
+		ContractAuthECDSAUnsafe,
+		ContractAuthBLSUnsafe:
+	case ContractAuthInvalid:
+		return fmt.Errorf("%w: ContractAuthID is Invalid", ErrProfileFieldUnset)
+	default:
+		return fmt.Errorf("%w: ContractAuthID=0x%02x is unknown",
+			ErrProfileFieldUnknown, uint8(p.ContractAuthID))
+	}
+
+	switch p.KeyExchangeID {
+	case KeyExchangeMLKEM768, KeyExchangeMLKEM1024, KeyExchangeX25519Unsafe:
+	case KeyExchangeInvalid:
+		return fmt.Errorf("%w: KeyExchangeID is Invalid", ErrProfileFieldUnset)
+	default:
+		return fmt.Errorf("%w: KeyExchangeID=0x%02x is unknown",
+			ErrProfileFieldUnknown, uint8(p.KeyExchangeID))
+	}
+
+	switch p.HighValueKEM {
+	case KeyExchangeMLKEM768, KeyExchangeMLKEM1024, KeyExchangeX25519Unsafe:
+	case KeyExchangeInvalid:
+		return fmt.Errorf("%w: HighValueKEM is Invalid", ErrProfileFieldUnset)
+	default:
+		return fmt.Errorf("%w: HighValueKEM=0x%02x is unknown",
+			ErrProfileFieldUnknown, uint8(p.HighValueKEM))
+	}
+
+	switch p.RecoverySchemeID {
+	case RecoverySchemeSLHDSA128,
+		RecoverySchemeSLHDSA192,
+		RecoverySchemeSLHDSA256,
+		RecoverySchemeMLDSA87,
+		RecoverySchemeNone:
+	case RecoverySchemeInvalid:
+		return fmt.Errorf("%w: RecoverySchemeID is Invalid", ErrProfileFieldUnset)
+	default:
+		return fmt.Errorf("%w: RecoverySchemeID=0x%02x is unknown",
+			ErrProfileFieldUnknown, uint8(p.RecoverySchemeID))
+	}
+
+	// Cross-axis (structural): RecoverySchemeNone is only valid when the
+	// high-value scheme is Pulsar-M-87 or ML-DSA-87 — the high-value path
+	// then provides the strong fallback recovery would otherwise need.
+	// Lives in validateStructural (not validatePolicy) because the rule
+	// is a hard cross-axis presence check, not a profile-class policy.
+	if p.RecoverySchemeID == RecoverySchemeNone &&
+		p.HighValueSchemeID != SigSchemePulsarM87 &&
+		p.HighValueSchemeID != SigSchemeMLDSA87 {
+		return fmt.Errorf("%w: RecoverySchemeNone requires HighValueSchemeID ∈ {Pulsar-M-87, ML-DSA-87}; got %s",
+			ErrProfileFieldInvalid, p.HighValueSchemeID.String())
+	}
+
 	return nil
 }
 
@@ -580,6 +744,52 @@ func (p *ChainSecurityProfile) validatePolicy() error {
 		}
 		if !p.ForbidFallbacks {
 			return fmt.Errorf("%w: strict-PQ profile must set ForbidFallbacks=true", ErrProfileFieldInvalid)
+		}
+
+		// E2E PQ axes — strict-PQ refuses every 0x90 classical primitive
+		// on every axis. Each refusal names exactly which axis leaked,
+		// so an operator who misconfigures one cannot guess which gate
+		// caught it.
+		if !p.ForbidECDSAWallets {
+			return fmt.Errorf("%w: strict-PQ profile must set ForbidECDSAWallets=true", ErrProfileFieldInvalid)
+		}
+		if !p.ForbidECDSAContractAuth {
+			return fmt.Errorf("%w: strict-PQ profile must set ForbidECDSAContractAuth=true", ErrProfileFieldInvalid)
+		}
+		if !p.ForbidBLSContractAuth {
+			return fmt.Errorf("%w: strict-PQ profile must set ForbidBLSContractAuth=true", ErrProfileFieldInvalid)
+		}
+		if !p.ForbidClassicalKEM {
+			return fmt.Errorf("%w: strict-PQ profile must set ForbidClassicalKEM=true", ErrProfileFieldInvalid)
+		}
+		if !p.RequireTypedTxAuth {
+			return fmt.Errorf("%w: strict-PQ profile must set RequireTypedTxAuth=true", ErrProfileFieldInvalid)
+		}
+
+		// Strict-PQ also refuses any axis that names a classical primitive
+		// directly. The Forbid* bits above are the operator-visible
+		// policy; the checks below are the defence-in-depth gate against
+		// a profile whose Forbid bits are set true while one of the
+		// scheme bytes still names the 0x90 forbidden marker.
+		if p.WalletSchemeID.IsForbiddenInPQMode() {
+			return fmt.Errorf("%w: strict-PQ profile names forbidden WalletSchemeID=%s",
+				ErrProfileFieldInvalid, p.WalletSchemeID.String())
+		}
+		if p.TxSchemeID.IsForbiddenInPQMode() {
+			return fmt.Errorf("%w: strict-PQ profile names forbidden TxSchemeID=%s",
+				ErrProfileFieldInvalid, p.TxSchemeID.String())
+		}
+		if p.ContractAuthID.IsForbiddenInPQMode() {
+			return fmt.Errorf("%w: strict-PQ profile names forbidden ContractAuthID=%s",
+				ErrProfileFieldInvalid, p.ContractAuthID.String())
+		}
+		if p.KeyExchangeID.IsForbiddenInPQMode() {
+			return fmt.Errorf("%w: strict-PQ profile names forbidden KeyExchangeID=%s",
+				ErrProfileFieldInvalid, p.KeyExchangeID.String())
+		}
+		if p.HighValueKEM.IsForbiddenInPQMode() {
+			return fmt.Errorf("%w: strict-PQ profile names forbidden HighValueKEM=%s",
+				ErrProfileFieldInvalid, p.HighValueKEM.String())
 		}
 	}
 
@@ -659,6 +869,21 @@ func (p *ChainSecurityProfile) ComputeHash() ([48]byte, error) {
 		{boolByteProfile(p.ForbidClassicalSNARKs)},
 		{boolByteProfile(p.ForbidDevProofs)},
 		{boolByteProfile(p.ForbidFallbacks)},
+		// E2E PQ axes — appended in a fixed order so every field
+		// mutation is bound into the transcript. Adding a new field
+		// here changes every existing profile's hash; that is the
+		// correct behaviour for a hash-encoding extension.
+		{byte(p.WalletSchemeID)},
+		{byte(p.TxSchemeID)},
+		{byte(p.ContractAuthID)},
+		{byte(p.KeyExchangeID)},
+		{byte(p.HighValueKEM)},
+		{byte(p.RecoverySchemeID)},
+		{boolByteProfile(p.ForbidECDSAWallets)},
+		{boolByteProfile(p.ForbidECDSAContractAuth)},
+		{boolByteProfile(p.ForbidBLSContractAuth)},
+		{boolByteProfile(p.ForbidClassicalKEM)},
+		{boolByteProfile(p.RequireTypedTxAuth)},
 	}
 
 	// Inline SP 800-185 TupleHash256 → 48 bytes (384 bits). Mirrors the
