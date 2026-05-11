@@ -115,8 +115,15 @@ func (f BackendVerifierFunc) Verify(
 //  12. manifest.ProgramOrAirHash == proof.ProgramOrAirHash
 //  13. manifest.VerifierKeyHash == proof.VerifierKeyHash
 //  14. HashZPublicInputs(input) == proof.PublicInputsHash
-//  15. Dispatch backend verifier (mock returns nil if no backend bound
-//     under the dev build tag; production build requires a real binding).
+//  15. Dispatch backend verifier — the bound BackendVerifier must
+//     return (true, nil); the absence of a binding is a hard refusal.
+//     There is no "dev mode" bypass: every backend a chain verifies
+//     against MUST be registered (RegisterBackendVerifier) before its
+//     proof envelopes can be admitted. Test fixtures that want to
+//     exercise checks 1-14 without a real cryptographic backend
+//     register a BackendVerifierFunc that returns (true, nil) — that
+//     binding lives inside *_test.go files (excluded from production
+//     binaries by Go's standard rule), so there is no build-tag toggle.
 //
 // The function performs no other work; consumers wrap higher-level
 // policy on top of it (e.g. Q-Chain AcceptQBlock binds Z-Chain proof
@@ -239,21 +246,24 @@ func VerifyZProofUnderProfile(
 	}
 
 	// Check 15: backend dispatch. The backend verifier was registered
-	// at boot via RegisterBackendVerifier; in dev builds (build tag
-	// !production) the absence of a binding falls through to a no-op
-	// success so test fixtures don't need a full cryptographic
-	// implementation. Production builds REQUIRE a real binding;
-	// see verify_production.go.
-	if backend := lookupBackendVerifier(proof.VerifierID); backend != nil {
-		ok, err := backend.Verify(manifest, input, proof)
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrZProofBackendVerifyFailed, err)
-		}
-		if !ok {
-			return ErrZProofBackendVerifyFailed
-		}
-	} else if requireBackendBinding {
-		return fmt.Errorf("%w: no backend bound for %s", ErrZProofBackendVerifyFailed, proof.VerifierID.String())
+	// at boot via RegisterBackendVerifier; the absence of a binding is
+	// a hard refusal. One canonical build — no build-tag toggle, no
+	// "permissive dev mode": every chain that admits a ZProofEnvelope
+	// MUST have a backend bound for the corresponding VerifierID. Tests
+	// register a BackendVerifierFunc in *_test.go (excluded from
+	// production binaries) when they need to exercise checks 1-14
+	// without a full cryptographic backend.
+	backend := lookupBackendVerifier(proof.VerifierID)
+	if backend == nil {
+		return fmt.Errorf("%w: no backend bound for %s",
+			ErrZProofBackendVerifyFailed, proof.VerifierID.String())
+	}
+	ok, err := backend.Verify(manifest, input, proof)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrZProofBackendVerifyFailed, err)
+	}
+	if !ok {
+		return ErrZProofBackendVerifyFailed
 	}
 	return nil
 }
