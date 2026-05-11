@@ -99,11 +99,11 @@ type QBlock struct {
 // with any prior signature.
 //
 // Tag is wire-format-stable; do NOT rename even after the family rebrand
-// (Pulsar-M → Pulsar). The byte string `PULSAR-M-Q-BLOCK` is part of
+// (Pulsar-M → Pulsar). The byte string `QUASAR-Q-BLOCK-V1` is part of
 // every prior Q-Block signature's transcript — renaming it invalidates
 // every historical cert. The string is a cryptographic constant, not
 // user-facing prose; downstream rebrands MUST keep it byte-identical.
-const qBlockTranscriptCustomization = "PULSAR-M-Q-BLOCK"
+const qBlockTranscriptCustomization = "QUASAR-Q-BLOCK-V1"
 
 // qBlockProtocolTag is the in-band redundant protocol tag for the
 // transcript. Defence-in-depth so a cross-customization-collision attacker
@@ -112,7 +112,7 @@ const qBlockProtocolTag = "Q-Chain"
 
 // TranscriptHash returns the 32-byte digest the Pulsar-M threshold
 // signature signs over for this Q-Block. Computed as
-// TupleHash256(parts, customization="PULSAR-M-Q-BLOCK") per HIP-0079
+// TupleHash256(parts, customization="QUASAR-Q-BLOCK-V1") per HIP-0079
 // §"Canonical transcript binding".
 //
 // Binds every field listed in the spec; binds NO field not listed. Length
