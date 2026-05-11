@@ -722,3 +722,319 @@ func (m PQMode) SuitableForPublicChain() bool {
 		return false
 	}
 }
+
+// =============================================================================
+// End-to-end PQ enums (HIP-0078 §"E2E PQ surface").
+//
+// These five axes are orthogonal to the threshold / finality axis above:
+// they pin what the chain accepts at the **wallet**, **transaction
+// authorisation**, **contract authorisation**, **key exchange**, and
+// **recovery** layers respectively. Each axis carries its own forbidden
+// marker block (0x90+) so an audit pipeline can name a classical leakage
+// explicitly rather than detecting it by absence.
+//
+// Numbering convention shared across the five enums:
+//
+//	0x00       — Invalid / unspecified (rejected by every strict verifier)
+//	0x01..0x0F — KEM family (reserved on KeyExchangeID; unused on schemes)
+//	0x05..0x07 — SLH-DSA stateless backstop (RecoverySchemeID only)
+//	0x10..0x2F — Multi-party / proof-carrying composite schemes
+//	0x42..0x43 — ML-DSA-65 / ML-DSA-87 (FIPS 204 lattice signature)
+//	0x90..     — Forbidden in strict-PQ mode (ECDSA / X25519 / classical BLS)
+//	0xFF       — None sentinel (RecoverySchemeID only — high-value M-DSA-87
+//	             provides the backstop without a separate stateless scheme)
+//
+// Renumbering an existing entry breaks every state-root and envelope ever
+// signed under it. Adding an entry only requires a new free integer in the
+// appropriate block.
+// =============================================================================
+
+// WalletSchemeID identifies the signature scheme a wallet uses to sign
+// outbound transactions. The wallet axis is independent of validator
+// identity (IdentitySchemeID), threshold finality (SigSchemeID), and
+// contract authorisation (ContractAuthID) — a single chain may pin
+// different schemes per axis. Strict-PQ chains pin a lattice scheme here
+// and refuse ECDSA wallets via ChainSecurityProfile.ForbidECDSAWallets.
+type WalletSchemeID uint8
+
+const (
+	WalletSchemeInvalid     WalletSchemeID = 0x00
+	WalletSchemeMLDSA65     WalletSchemeID = 0x42 // FIPS 204 Cat 3 (production default)
+	WalletSchemeMLDSA87     WalletSchemeID = 0x43 // FIPS 204 Cat 5 (high-value)
+	WalletSchemeECDSAUnsafe WalletSchemeID = 0x90 // classical ECDSA; refused in strict-PQ
+)
+
+// String returns the canonical wire name.
+func (w WalletSchemeID) String() string {
+	switch w {
+	case WalletSchemeInvalid:
+		return "invalid"
+	case WalletSchemeMLDSA65:
+		return "ml-dsa-65"
+	case WalletSchemeMLDSA87:
+		return "ml-dsa-87"
+	case WalletSchemeECDSAUnsafe:
+		return "ecdsa-unsafe-classical-forbidden-in-pq"
+	default:
+		return fmt.Sprintf("wallet-scheme(0x%02x)", uint8(w))
+	}
+}
+
+// IsPostQuantum reports whether this wallet scheme is acceptable in
+// strict-PQ mode. ML-DSA-65 and ML-DSA-87 qualify; classical ECDSA does
+// not.
+func (w WalletSchemeID) IsPostQuantum() bool {
+	return w == WalletSchemeMLDSA65 || w == WalletSchemeMLDSA87
+}
+
+// IsForbiddenInPQMode reports whether this wallet scheme carries the
+// explicit forbidden marker. Used by audit tooling to detect a
+// misconfiguration where a classical wallet would otherwise sneak past
+// a PQ-only deployment.
+func (w WalletSchemeID) IsForbiddenInPQMode() bool {
+	return w == WalletSchemeECDSAUnsafe
+}
+
+// TxSchemeID identifies the signature scheme a transaction's outer
+// authorisation envelope was signed under. Distinct from WalletSchemeID
+// (which names the wallet's identity key): tx auth may be delegated to
+// a session key, a typed multisig, or a wallet's primary key — the
+// scheme byte names the cryptographic primitive that produced the
+// signature on the wire.
+type TxSchemeID uint8
+
+const (
+	TxSchemeInvalid     TxSchemeID = 0x00
+	TxSchemeMLDSA65     TxSchemeID = 0x42
+	TxSchemeMLDSA87     TxSchemeID = 0x43
+	TxSchemeECDSAUnsafe TxSchemeID = 0x90
+)
+
+// String returns the canonical wire name.
+func (t TxSchemeID) String() string {
+	switch t {
+	case TxSchemeInvalid:
+		return "invalid"
+	case TxSchemeMLDSA65:
+		return "ml-dsa-65"
+	case TxSchemeMLDSA87:
+		return "ml-dsa-87"
+	case TxSchemeECDSAUnsafe:
+		return "ecdsa-unsafe-classical-forbidden-in-pq"
+	default:
+		return fmt.Sprintf("tx-scheme(0x%02x)", uint8(t))
+	}
+}
+
+// IsPostQuantum reports whether this tx scheme is acceptable in
+// strict-PQ mode.
+func (t TxSchemeID) IsPostQuantum() bool {
+	return t == TxSchemeMLDSA65 || t == TxSchemeMLDSA87
+}
+
+// IsForbiddenInPQMode reports whether this tx scheme carries the
+// explicit forbidden marker.
+func (t TxSchemeID) IsForbiddenInPQMode() bool {
+	return t == TxSchemeECDSAUnsafe
+}
+
+// ContractAuthID identifies the authorisation primitive a smart contract
+// uses to gate a call. Broader than TxSchemeID: a contract may accept
+// raw lattice signatures, multi-party threshold signatures, session-
+// scoped capabilities, or Z-Chain validity proofs. The byte names the
+// kind; the contract's authoriser policy names which kinds it accepts.
+//
+// The 0x10–0x2F block covers composite primitives (multi-party,
+// proof-carrying); the 0x40 block mirrors raw FIPS 204 ML-DSA; the
+// 0x90+ block names classical primitives that are explicitly forbidden
+// in strict-PQ mode (ECDSA and classical BLS aggregates).
+type ContractAuthID uint8
+
+const (
+	ContractAuthInvalid       ContractAuthID = 0x00
+	ContractAuthZChainProof   ContractAuthID = 0x10 // Z-Chain validity proof
+	ContractAuthMultisigMLDSA ContractAuthID = 0x20 // threshold ML-DSA multisig
+	ContractAuthSessionPQ     ContractAuthID = 0x21 // PQ session capability
+	ContractAuthMLDSA65       ContractAuthID = 0x42
+	ContractAuthMLDSA87       ContractAuthID = 0x43
+	ContractAuthECDSAUnsafe   ContractAuthID = 0x90
+	ContractAuthBLSUnsafe     ContractAuthID = 0x91 // classical BLS aggregate
+)
+
+// String returns the canonical wire name.
+func (c ContractAuthID) String() string {
+	switch c {
+	case ContractAuthInvalid:
+		return "invalid"
+	case ContractAuthZChainProof:
+		return "z-chain-proof"
+	case ContractAuthMultisigMLDSA:
+		return "multisig-ml-dsa"
+	case ContractAuthSessionPQ:
+		return "session-pq"
+	case ContractAuthMLDSA65:
+		return "ml-dsa-65"
+	case ContractAuthMLDSA87:
+		return "ml-dsa-87"
+	case ContractAuthECDSAUnsafe:
+		return "ecdsa-unsafe-classical-forbidden-in-pq"
+	case ContractAuthBLSUnsafe:
+		return "bls-unsafe-classical-forbidden-in-pq"
+	default:
+		return fmt.Sprintf("contract-auth(0x%02x)", uint8(c))
+	}
+}
+
+// IsPostQuantum reports whether this contract-auth primitive is
+// acceptable in strict-PQ mode. Lattice signatures, lattice multisigs,
+// PQ session capabilities, and Z-Chain proofs qualify; classical ECDSA
+// and classical BLS aggregates do not.
+func (c ContractAuthID) IsPostQuantum() bool {
+	switch c {
+	case ContractAuthZChainProof,
+		ContractAuthMultisigMLDSA,
+		ContractAuthSessionPQ,
+		ContractAuthMLDSA65,
+		ContractAuthMLDSA87:
+		return true
+	}
+	return false
+}
+
+// IsForbiddenInPQMode reports whether this contract-auth primitive
+// carries the explicit forbidden marker.
+func (c ContractAuthID) IsForbiddenInPQMode() bool {
+	return c == ContractAuthECDSAUnsafe || c == ContractAuthBLSUnsafe
+}
+
+// KeyExchangeID identifies the KEM (Key Encapsulation Mechanism) used
+// for session key establishment, encrypted-state-transition envelopes,
+// and operator-to-operator key wrapping. Distinct from every signature
+// axis: a KEM provides confidentiality, not authenticity. Strict-PQ
+// chains pin a lattice KEM (ML-KEM, FIPS 203) and refuse classical
+// X25519 via ChainSecurityProfile.ForbidClassicalKEM.
+type KeyExchangeID uint8
+
+const (
+	KeyExchangeInvalid      KeyExchangeID = 0x00
+	KeyExchangeMLKEM768     KeyExchangeID = 0x01 // FIPS 203 Cat 3 (production default)
+	KeyExchangeMLKEM1024    KeyExchangeID = 0x02 // FIPS 203 Cat 5 (high-value)
+	KeyExchangeX25519Unsafe KeyExchangeID = 0x90 // classical X25519; refused in strict-PQ
+)
+
+// String returns the canonical wire name.
+func (k KeyExchangeID) String() string {
+	switch k {
+	case KeyExchangeInvalid:
+		return "invalid"
+	case KeyExchangeMLKEM768:
+		return "ml-kem-768"
+	case KeyExchangeMLKEM1024:
+		return "ml-kem-1024"
+	case KeyExchangeX25519Unsafe:
+		return "x25519-unsafe-classical-forbidden-in-pq"
+	default:
+		return fmt.Sprintf("key-exchange(0x%02x)", uint8(k))
+	}
+}
+
+// IsPostQuantum reports whether this KEM is acceptable in strict-PQ
+// mode. ML-KEM-768 and ML-KEM-1024 qualify; classical X25519 does not.
+func (k KeyExchangeID) IsPostQuantum() bool {
+	return k == KeyExchangeMLKEM768 || k == KeyExchangeMLKEM1024
+}
+
+// IsForbiddenInPQMode reports whether this KEM carries the explicit
+// forbidden marker.
+func (k KeyExchangeID) IsForbiddenInPQMode() bool {
+	return k == KeyExchangeX25519Unsafe
+}
+
+// RecoverySchemeID identifies the signature scheme used by the chain's
+// account-recovery / breakglass key. Two valid posture choices:
+//
+//   - A stateless hash-based scheme (SLH-DSA, FIPS 205) at parameter
+//     set 128 / 192 / 256. Stateless backstop: even if every lattice
+//     assumption falls, recovery still works.
+//   - ML-DSA-87 (FIPS 204 Cat 5). Acceptable ONLY when the chain's
+//     HighValueSchemeID is also ML-DSA-87 / Pulsar-M-87 — the
+//     high-value scheme then provides the strong-classical fallback
+//     that recovery would otherwise need.
+//   - RecoverySchemeNone is permitted iff HighValueSchemeID is
+//     ML-DSA-87 or Pulsar-M-87 (no stateless backstop required when
+//     the high-value path is already at Cat 5).
+type RecoverySchemeID uint8
+
+const (
+	RecoverySchemeInvalid   RecoverySchemeID = 0x00
+	RecoverySchemeSLHDSA128 RecoverySchemeID = 0x05 // FIPS 205 Cat 1
+	RecoverySchemeSLHDSA192 RecoverySchemeID = 0x06 // FIPS 205 Cat 3 (production default)
+	RecoverySchemeSLHDSA256 RecoverySchemeID = 0x07 // FIPS 205 Cat 5
+	RecoverySchemeMLDSA87   RecoverySchemeID = 0x43 // FIPS 204 Cat 5 (acceptable if HighValue is also Cat 5)
+	RecoverySchemeNone      RecoverySchemeID = 0xFF // permitted only when HighValue is Cat 5
+)
+
+// String returns the canonical wire name.
+func (r RecoverySchemeID) String() string {
+	switch r {
+	case RecoverySchemeInvalid:
+		return "invalid"
+	case RecoverySchemeSLHDSA128:
+		return "slh-dsa-128"
+	case RecoverySchemeSLHDSA192:
+		return "slh-dsa-192"
+	case RecoverySchemeSLHDSA256:
+		return "slh-dsa-256"
+	case RecoverySchemeMLDSA87:
+		return "ml-dsa-87"
+	case RecoverySchemeNone:
+		return "none"
+	default:
+		return fmt.Sprintf("recovery-scheme(0x%02x)", uint8(r))
+	}
+}
+
+// IsPostQuantum reports whether this recovery scheme is acceptable in
+// strict-PQ mode. SLH-DSA (stateless hash-based) and ML-DSA-87 qualify;
+// the None sentinel is policy-dependent (acceptable iff HighValue is
+// Cat 5) and returns true here so the post-quantum predicate stays
+// orthogonal to the cross-axis validity gate.
+func (r RecoverySchemeID) IsPostQuantum() bool {
+	switch r {
+	case RecoverySchemeSLHDSA128,
+		RecoverySchemeSLHDSA192,
+		RecoverySchemeSLHDSA256,
+		RecoverySchemeMLDSA87,
+		RecoverySchemeNone:
+		return true
+	}
+	return false
+}
+
+// IsForbiddenInPQMode reports whether this recovery scheme carries the
+// explicit forbidden marker. The current numbering reserves no 0x90+
+// recovery scheme — any classical recovery posture is simply absent
+// from the enum, so the predicate is trivially false today. Kept for
+// API symmetry with the other E2E enums and for future-proofing.
+func (r RecoverySchemeID) IsForbiddenInPQMode() bool {
+	return false
+}
+
+// IsStateless reports whether this recovery scheme is a stateless
+// hash-based signature (SLH-DSA / FIPS 205). True for the 0x05..0x07
+// block; false for ML-DSA-87 (lattice, stateful key tree implicit in
+// the protocol) and for the None sentinel.
+//
+// Audit tooling uses IsStateless to confirm a chain's breakglass key
+// has the strongest available standalone-of-lattice property: a
+// stateless hash-based recovery survives even a complete break of
+// lattice assumptions.
+func (r RecoverySchemeID) IsStateless() bool {
+	switch r {
+	case RecoverySchemeSLHDSA128,
+		RecoverySchemeSLHDSA192,
+		RecoverySchemeSLHDSA256:
+		return true
+	}
+	return false
+}
