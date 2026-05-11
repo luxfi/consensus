@@ -57,26 +57,12 @@ func sha3_384(customization string, parts ...[]byte) [48]byte {
 	return digest
 }
 
-// sha3_256 returns a 32-byte SHA3 digest under the same customisation
-// machinery as sha3_384. Used in the Merkle-tree / checkpoint paths
-// where the existing wire format pins a 32-byte slot — bumping that
-// to 48 bytes is out of scope of the F100 patch (would require a
-// EpochCheckpoint layout change). Cf. red-team F100: "256-bit output
-// is non-compliant under strict-PQ"; the customisation here gives a
-// SHA-3 family digest at the legacy 32-byte width so downstream
-// consumers continue to round-trip while we land the 48-byte upgrade
-// in a separate PR (#100b).
-func sha3_256(customization string, parts ...[]byte) [32]byte {
-	h := sha3.NewCShake256([]byte("KMAC"), []byte(customization))
-	for _, p := range parts {
-		_, _ = h.Write(p)
-	}
-	out := make([]byte, 32)
-	_, _ = h.Read(out)
-	var digest [32]byte
-	copy(digest[:], out)
-	return digest
-}
+// (F113) — the previous 32-byte sha3_256 helper has been removed. Every
+// digest inside this file lives in the SHA-3 family at the 48-byte width
+// the strict-PQ profile pins via MinHashOutputBits=384. The Merkle-tree
+// / checkpoint paths now use sha3_384 directly; the EpochCheckpoint wire
+// layout (MerkleRoot, PreviousAnchor) widens to [48]byte accordingly.
+// Forward-only — no live chain runs the strict-PQ profile yet.
 
 const (
 	// DefaultGroupSize is the optimal group size for Ringtail threshold signing.
@@ -535,13 +521,18 @@ func (gem *GroupedEpochManager) signWithGroup(
 // EpochCheckpoint represents a quantum-safe anchor for a range of blocks.
 // Created every epoch (10 min), contains Ringtail signature over block hashes.
 // Normal blocks use BLS for 500ms finality; checkpoints add quantum security.
+//
+// Wire layout (F113): MerkleRoot and PreviousAnchor are [48]byte SHA3-384
+// digests so the checkpoint chain honours the strict-PQ profile's
+// MinHashOutputBits=384 floor. Forward-only — no live chain runs strict-PQ
+// yet, so the prior [32]byte layout is not preserved.
 type EpochCheckpoint struct {
 	Epoch          uint64   // Epoch number
 	StartHeight    uint64   // First block in epoch
 	EndHeight      uint64   // Last block in epoch
 	BlockCount     int      // Number of blocks
-	MerkleRoot     [32]byte // Merkle root of block hashes
-	PreviousAnchor [32]byte // Previous checkpoint hash (chain of anchors)
+	MerkleRoot     [48]byte // SHA3-384 Merkle root of block hashes
+	PreviousAnchor [48]byte // SHA3-384 previous checkpoint hash (chain of anchors)
 	Timestamp      int64    // Unix timestamp
 
 	// Quantum-safe signature (Ringtail grouped threshold)
@@ -549,8 +540,13 @@ type EpochCheckpoint struct {
 }
 
 // CheckpointHash returns the hash of this checkpoint (for chaining).
-func (ec *EpochCheckpoint) CheckpointHash() [32]byte {
-	data := make([]byte, 0, 128)
+//
+// (F113) Output is SHA3-384 (48 bytes) under cSHAKE256 customisation
+// LUX-QUASAR-CHECKPOINT-V1. Honours the strict-PQ profile's
+// MinHashOutputBits=384 floor — Grover collision work on a 48-byte SHA-3
+// digest sits at 2^192, above the profile claim.
+func (ec *EpochCheckpoint) CheckpointHash() [48]byte {
+	data := make([]byte, 0, 144)
 
 	// Epoch + heights
 	buf := make([]byte, 8)
@@ -569,12 +565,7 @@ func (ec *EpochCheckpoint) CheckpointHash() [32]byte {
 	binary.BigEndian.PutUint64(buf, uint64(ec.Timestamp))
 	data = append(data, buf...)
 
-	// SHA3-256 under a Lux-specific customisation. Same family as the
-	// strict-PQ HashSuiteID=SHA3NIST; the 32-byte width preserves the
-	// existing EpochCheckpoint wire layout. Closes F100 on this axis;
-	// widening to 48 bytes is tracked under the EpochCheckpoint v2
-	// migration.
-	return sha3_256(checkpointHashV1, data)
+	return sha3_384(checkpointHashV1, data)
 }
 
 // SignableMessage returns the message to be signed by Ringtail.
@@ -585,11 +576,14 @@ func (ec *EpochCheckpoint) SignableMessage() string {
 
 // CreateEpochCheckpoint creates a new checkpoint for a range of blocks.
 // blockHashes should be ordered from StartHeight to EndHeight.
+//
+// (F113) blockHashes and previousAnchor are [48]byte SHA3-384 digests so
+// the checkpoint chain meets the strict-PQ MinHashOutputBits=384 floor.
 func CreateEpochCheckpoint(
 	epoch uint64,
 	startHeight, endHeight uint64,
-	blockHashes [][32]byte,
-	previousAnchor [32]byte,
+	blockHashes [][48]byte,
+	previousAnchor [48]byte,
 ) *EpochCheckpoint {
 	// Build Merkle root of block hashes
 	merkleRoot := computeMerkleRoot(blockHashes)
@@ -605,31 +599,31 @@ func CreateEpochCheckpoint(
 	}
 }
 
-// computeMerkleRoot computes a simple Merkle root over block hashes.
-func computeMerkleRoot(hashes [][32]byte) [32]byte {
+// computeMerkleRoot computes a Merkle root over [48]byte block hashes.
+//
+// (F113) Each internal node is a SHA3-384 digest under cSHAKE256
+// customisation LUX-QUASAR-MERKLE-NODE-V1; the 48-byte output honours
+// the strict-PQ MinHashOutputBits=384 floor.
+func computeMerkleRoot(hashes [][48]byte) [48]byte {
 	if len(hashes) == 0 {
-		return [32]byte{}
+		return [48]byte{}
 	}
 	if len(hashes) == 1 {
 		return hashes[0]
 	}
 
 	// Pad to even length
-	level := make([][32]byte, len(hashes))
+	level := make([][48]byte, len(hashes))
 	copy(level, hashes)
 	if len(level)%2 != 0 {
 		level = append(level, level[len(level)-1])
 	}
 
-	// Build tree. Merkle-node digests live in the SHA-3 family per
-	// the strict-PQ HashSuiteID; the 32-byte slot is the existing
-	// wire width and is preserved here so checkpoint serialisation
-	// is unchanged. Closes F100 on this axis.
 	for len(level) > 1 {
-		nextLevel := make([][32]byte, len(level)/2)
+		nextLevel := make([][48]byte, len(level)/2)
 		for i := 0; i < len(level); i += 2 {
 			combined := append(level[i][:], level[i+1][:]...)
-			nextLevel[i/2] = sha3_256(merkleNodeHashV1, combined)
+			nextLevel[i/2] = sha3_384(merkleNodeHashV1, combined)
 		}
 		level = nextLevel
 		if len(level) > 1 && len(level)%2 != 0 {
