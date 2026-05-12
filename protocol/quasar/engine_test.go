@@ -246,7 +246,7 @@ func TestBlock(t *testing.T) {
 		Timestamp: time.Now(),
 		Cert: &QuasarCert{
 			BLS:        []byte("bls"),
-			MLDSAProof: []byte("pq"),
+			MLDSARollup: []byte("pq"),
 		},
 	}
 
@@ -328,7 +328,7 @@ func TestQuantumFinality_Integration(t *testing.T) {
 		Timestamp: time.Now(),
 		Cert: &QuasarCert{
 			BLS:        cert.BLSAgg,
-			MLDSAProof: cert.PQCert,
+			MLDSARollup: cert.PQCert,
 		},
 	}
 
