@@ -55,7 +55,7 @@ type QBlock struct {
 	// root is 48 bytes (BLS12-381 G1 / KZG commitment width) so the same
 	// field can carry either a hash digest or a commitment without an
 	// envelope-format split.
-	StateRoot       [48]byte
+	StateRoot          [48]byte
 	ZChainStateRoot    [48]byte
 	ValidatorSetRoot   [48]byte
 	CommitteeRoot      [48]byte

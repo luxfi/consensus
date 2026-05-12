@@ -69,7 +69,7 @@ type QuantumBlock struct {
 	SourceBlocks  []*Block
 	QuantumHash   string
 	BLSSignature  []byte
-	CoronaProof []byte // ML-DSA signature
+	CoronaProof   []byte // ML-DSA signature
 	Timestamp     time.Time
 	CreatedAt     time.Time // When this block entered the pending set
 	ValidatorSigs map[string]*QuasarSig

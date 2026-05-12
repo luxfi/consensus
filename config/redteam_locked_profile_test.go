@@ -27,24 +27,24 @@ import (
 // SEVERITY: critical (blocker)
 //
 // The Blue agent producing security_profile.go used schema A:
-//   * Field names: AllowedProofBackends / AllowedProofFormats
-//   * Forbid flag: ForbidClassicalSNARKs (plural s)
-//   * Profile constants live in profiles.go (not yet written): the
+//   - Field names: AllowedProofBackends / AllowedProofFormats
+//   - Forbid flag: ForbidClassicalSNARKs (plural s)
+//   - Profile constants live in profiles.go (not yet written): the
 //     functions StrictPQ() / Permissive() / FIPS() each
 //     `return &StrictPQProfile` / `&PermissiveProfile` / etc.
-//   * ProfileID is a uint32 field in ChainSecurityProfile (line 254);
+//   - ProfileID is a uint32 field in ChainSecurityProfile (line 254);
 //     the constants ProfileStrictPQ (line 60) are typed ProfileID
 //     (uint8). The constants are not assignable to the field.
-//   * ComputeHash returns ([48]byte, error)
+//   - ComputeHash returns ([48]byte, error)
 //
 // The Blue agent producing security_profile_test.go used schema B:
-//   * Field names: AllowedBackends / AllowedFormats
-//   * Forbid flag: ForbidClassicalSNARK (no s)
-//   * Tests `if p.ProfileID != ProfileStrictPQ` directly (compile
+//   - Field names: AllowedBackends / AllowedFormats
+//   - Forbid flag: ForbidClassicalSNARK (no s)
+//   - Tests `if p.ProfileID != ProfileStrictPQ` directly (compile
 //     error: uint32 vs ProfileID)
-//   * Calls `ErrProfileForbiddenPolicy` (not defined; only
+//   - Calls `ErrProfileForbiddenPolicy` (not defined; only
 //     ErrProfileFieldInvalid is exported)
-//   * Calls `a.ComputeHash() != b.ComputeHash()` as a value comparison
+//   - Calls `a.ComputeHash() != b.ComputeHash()` as a value comparison
 //     (the new signature returns (val, err); compile error)
 //
 // Result: the package will not vet, will not build, will not test.
@@ -58,20 +58,20 @@ import (
 //
 // FIX: pick ONE schema and apply consistently. Production-grade
 // choice:
-//   * Plural collection names: AllowedProofBackends / AllowedProofFormats
-//   * Plural forbid name: ForbidClassicalSNARKs (matches every other
+//   - Plural collection names: AllowedProofBackends / AllowedProofFormats
+//   - Plural forbid name: ForbidClassicalSNARKs (matches every other
 //     plural collection)
-//   * Profile constants typed ProfileID (uint8); the struct field is
+//   - Profile constants typed ProfileID (uint8); the struct field is
 //     also ProfileID (the type). Do NOT make the struct field uint32 —
 //     that is a category error.
-//   * Add profiles.go with the canonical StrictPQProfile /
+//   - Add profiles.go with the canonical StrictPQProfile /
 //     PermissiveProfile / FIPSProfile constants, computed once
 //     via MustComputeHash at package init.
-//   * Add error variables ErrProfileForbiddenPolicy /
+//   - Add error variables ErrProfileForbiddenPolicy /
 //     ErrProfileForbiddenBackend / ErrProfileForbiddenFormat /
 //     ErrProfileStrictRequiresTransparent so callers can errors.Is
 //     against the specific failure.
-//   * ComputeHash returns ([48]byte, error); existing callers that
+//   - ComputeHash returns ([48]byte, error); existing callers that
 //     used the no-error variant get a compile-time fix-prompt.
 //
 // This file's tests assume the post-fix schema A names. Once the build
@@ -101,9 +101,11 @@ func TestF51_PackageBuilds(t *testing.T) {
 // holding a nil-dereference panic waiting to happen.
 //
 // FIX: write profiles.go that defines:
-//   var StrictPQProfile = ChainSecurityProfile{ /* all fields */ }
-//   var PermissiveProfile = ChainSecurityProfile{ /* all fields */ }
-//   var FIPSProfile = ChainSecurityProfile{ /* all fields */ }
+//
+//	var StrictPQProfile = ChainSecurityProfile{ /* all fields */ }
+//	var PermissiveProfile = ChainSecurityProfile{ /* all fields */ }
+//	var FIPSProfile = ChainSecurityProfile{ /* all fields */ }
+//
 // Then call MustComputeHash on each at init time and write the
 // returned hash back into ProfileHash so the constant carries its
 // own pinned hash for genesis comparison.
@@ -141,15 +143,16 @@ func TestF52_CanonicalProfilesExist(t *testing.T) {
 // the canonical strict-PQ profile to fail Validate at runtime.
 //
 // FIX: bulk-rename in security_profile_test.go (sed -i, not by hand):
-//   AllowedBackends → AllowedProofBackends
-//   AllowedFormats → AllowedProofFormats
-//   ForbidClassicalSNARK → ForbidClassicalSNARKs
-//   ErrProfileForbiddenPolicy → (define this var per F51 fix)
-//   ErrProfileForbiddenBackend → (define this var)
-//   ErrProfileForbiddenFormat → (define this var)
-//   ErrProfileStrictRequiresTransparent → (define this var)
-//   a.ComputeHash() != b.ComputeHash() → call .ComputeHash() with
-//     error handling, then compare hashes
+//
+//	AllowedBackends → AllowedProofBackends
+//	AllowedFormats → AllowedProofFormats
+//	ForbidClassicalSNARK → ForbidClassicalSNARKs
+//	ErrProfileForbiddenPolicy → (define this var per F51 fix)
+//	ErrProfileForbiddenBackend → (define this var)
+//	ErrProfileForbiddenFormat → (define this var)
+//	ErrProfileStrictRequiresTransparent → (define this var)
+//	a.ComputeHash() != b.ComputeHash() → call .ComputeHash() with
+//	  error handling, then compare hashes
 func TestF53_ValidateRejectsZeroProfile(t *testing.T) {
 	// A zero-init ChainSecurityProfile MUST fail Validate. The
 	// architecture says "Zero value = INVALID (never default-secure)."
