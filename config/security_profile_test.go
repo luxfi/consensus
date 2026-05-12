@@ -18,9 +18,11 @@ func TestProfileID_String(t *testing.T) {
 		want string
 	}{
 		{ProfileNone, "none"},
-		{ProfileStrictPQ, "strict-pq"},
+		{ProfileStrictPQ, "strict"},
 		{ProfilePermissive, "permissive"},
 		{ProfileFIPS, "fips"},
+		{ProfileHybridID, "hybrid"},
+		{ProfileClassicID, "classical"},
 	}
 	for _, c := range cases {
 		if got := c.id.String(); got != c.want {
