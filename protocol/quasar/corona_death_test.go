@@ -5,7 +5,7 @@
 // PQ-consensus architecture freeze, Quasar consumes its threshold
 // kernel through `luxfi/threshold` (which routes via the LSS
 // adapters to luxfi/pulsar and luxfi/lens). Direct imports of
-// `github.com/luxfi/corona/threshold` from this package are
+// `github.com/luxfi/nasua/threshold` from this package are
 // forbidden — they bypass the LSS lifecycle (Generation, snapshot
 // history, rollback) and skip the Pulsar key-era binding.
 //
@@ -27,7 +27,7 @@ import (
 )
 
 // TestNoCoronaDirectImport — fails if any non-test .go file in this
-// package imports `github.com/luxfi/corona/...` or invokes
+// package imports `github.com/luxfi/nasua/...` or invokes
 // corona.GenerateKeys (matched as a selector expression
 // `corona.GenerateKeys(...)` regardless of the package alias).
 //
@@ -47,13 +47,13 @@ func TestNoCoronaDirectImport(t *testing.T) {
 		t.Fatalf("no .go files found in %s", pkgDir)
 	}
 
-	const forbiddenImportPrefix = "github.com/luxfi/corona"
+	const forbiddenImportPrefix = "github.com/luxfi/nasua"
 
 	fset := token.NewFileSet()
 	var violations []string
 	for _, f := range matches {
 		// Skip *this* file from the import scan because we name
-		// `github.com/luxfi/corona` in this comment / string
+		// `github.com/luxfi/nasua` in this comment / string
 		// literals as part of the death-test guard — the regex /
 		// fixture below would match itself otherwise.
 		base := filepath.Base(f)
@@ -108,7 +108,7 @@ func TestNoCoronaDirectImport(t *testing.T) {
 			if !ok {
 				return true
 			}
-			if x.Name == "corona" && sel.Sel.Name == "GenerateKeys" {
+			if x.Name == "nasua" && sel.Sel.Name == "GenerateKeys" {
 				violations = append(violations,
 					base+": forbidden call corona.GenerateKeys")
 			}

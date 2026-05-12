@@ -483,7 +483,7 @@ func BenchmarkPQModes_BLSPlusCorona(b *testing.B) {
 			}
 
 			report(b, &modeMetrics{
-				mode:      config.PQModeCorona,
+				mode:      config.PQModeNasua,
 				n:         n,
 				signNs:    signNs,
 				aggNs:     aggNsPerPass,
