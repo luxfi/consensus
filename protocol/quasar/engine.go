@@ -343,7 +343,7 @@ func (h *Certifier) generateCert(block *Block) *QuasarCert {
 			// as "round did not finalise" rather than silently
 			// emitting a downgraded cert.
 			if demandsTriple {
-				if cert.Ringtail == nil || len(cert.MLDSAProof) == 0 || len(cert.BLS) == 0 {
+				if cert.Corona == nil || len(cert.MLDSARollup) == 0 || len(cert.BLS) == 0 {
 					return nil
 				}
 			}
@@ -373,11 +373,11 @@ func (h *Certifier) generateCert(block *Block) *QuasarCert {
 	pqData := sha256.Sum256(append(block.ID[:], block.ChainID[:]...))
 
 	return &QuasarCert{
-		BLS:        blsData[:],
-		MLDSAProof: pqData[:],
-		Epoch:      block.Height,
-		Finality:   time.Now(),
-		Validators: validatorCount,
+		BLS:         blsData[:],
+		MLDSARollup: pqData[:],
+		Epoch:       block.Height,
+		Finality:    time.Now(),
+		Validators:  validatorCount,
 	}
 }
 
@@ -425,10 +425,10 @@ func (h *Certifier) realCert(ctx context.Context, s *signer, block *Block, valid
 	}
 
 	cert := &QuasarCert{
-		BLS:      append([]byte(nil), sig.BLS...),
-		Ringtail: nil, // Ringtail Round 1 commitment is not a verifiable
+		BLS:    append([]byte(nil), sig.BLS...),
+		Corona: nil, // Corona Round 1 commitment is not a verifiable
 		// signature on its own; aggregation/Round2 is run by the
-		// consensus driver. We leave Ringtail empty here -- it's wired
+		// consensus driver. We leave Corona empty here -- it's wired
 		// at the higher protocol layer (epoch.go BundleSigner).
 		Epoch:      block.Height,
 		Finality:   time.Now(),
@@ -436,7 +436,7 @@ func (h *Certifier) realCert(ctx context.Context, s *signer, block *Block, valid
 	}
 
 	if len(sig.MLDSA) > 0 {
-		cert.MLDSAProof = EncodeMLDSASigs([][]byte{sig.MLDSA})
+		cert.MLDSARollup = EncodeMLDSASigs([][]byte{sig.MLDSA})
 	}
 
 	return cert

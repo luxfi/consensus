@@ -622,8 +622,8 @@ func (p *QuantumPolicy) MaybeFinalize(ctx context.Context, candidateID Candidate
 	// embed individual ML-DSA-65 signatures in MLDSAProof.
 	qc := &quasar.QuasarCert{
 		BLS:        concatSignatures(p.blsVotes[candidateID]),
-		Ringtail:   concatSignatures(p.pqVotes[candidateID]),
-		MLDSAProof: nil,
+		Corona:      concatSignatures(p.pqVotes[candidateID]),
+		MLDSARollup: nil,
 		Epoch:      candidate.Height,
 		Finality:   time.Now(),
 		Validators: blsCount,
@@ -681,7 +681,7 @@ func (p *QuantumPolicy) Verify(ctx context.Context, cert *Certificate) (bool, er
 		return false, nil
 	}
 	// Structural gate: BLS + Ringtail must be present for SigQuasar.
-	if len(qc.BLS) == 0 || len(qc.Ringtail) == 0 {
+	if len(qc.BLS) == 0 || len(qc.Corona) == 0 {
 		return false, nil
 	}
 	return true, nil

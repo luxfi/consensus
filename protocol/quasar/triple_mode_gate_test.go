@@ -74,7 +74,7 @@ func TestGenerateCert_RefusesPartialTriple_WithSigner_NoRingtail(t *testing.T) {
 	cert := c.generateCert(block)
 	if cert != nil {
 		t.Fatalf("strict-PQ profile + basic signer: expected nil cert, got Ringtail=%v MLDSAProof_len=%d",
-			cert.Ringtail, len(cert.MLDSAProof))
+			cert.Corona, len(cert.MLDSARollup))
 	}
 }
 
@@ -134,8 +134,8 @@ func TestGenerateCert_NilProfile_AcceptsPlaceholder(t *testing.T) {
 func TestQuasarCert_Verify_RejectsMissingRingtail(t *testing.T) {
 	cert := &QuasarCert{
 		BLS:        []byte("bls"),
-		Ringtail:   nil, // missing
-		MLDSAProof: []byte("mldsa"),
+		Corona:      nil, // missing
+		MLDSARollup: []byte("mldsa"),
 		Epoch:      1,
 		Finality:   time.Now(),
 		Validators: 1,
@@ -150,8 +150,8 @@ func TestQuasarCert_Verify_RejectsMissingRingtail(t *testing.T) {
 func TestQuasarCert_Verify_RejectsMissingMLDSA(t *testing.T) {
 	cert := &QuasarCert{
 		BLS:        []byte("bls"),
-		Ringtail:   []byte("rt"),
-		MLDSAProof: nil, // missing
+		Corona:      []byte("rt"),
+		MLDSARollup: nil, // missing
 		Epoch:      1,
 		Finality:   time.Now(),
 		Validators: 1,
@@ -165,8 +165,8 @@ func TestQuasarCert_Verify_RejectsMissingMLDSA(t *testing.T) {
 func TestQuasarCert_Verify_RejectsMissingBLS(t *testing.T) {
 	cert := &QuasarCert{
 		BLS:        nil, // missing
-		Ringtail:   []byte("rt"),
-		MLDSAProof: []byte("mldsa"),
+		Corona:      []byte("rt"),
+		MLDSARollup: []byte("mldsa"),
 		Epoch:      1,
 		Finality:   time.Now(),
 		Validators: 1,
