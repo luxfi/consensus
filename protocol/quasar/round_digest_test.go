@@ -24,6 +24,7 @@ type canonicalRoundDigestInputs struct {
 	proofBackend      config.ProofBackendID
 	proofFormat       config.ProofFormatID
 	verifierID        config.VerifierID
+	effectivePolicy   uint8 // BLOCKERS.md CR-12: bound into digest
 	networkID         uint32
 	chainID           uint32
 	epoch             uint64
@@ -62,6 +63,7 @@ func canonical() canonicalRoundDigestInputs {
 		proofBackend:      config.ProofBackendP3QSTARKFRISHA3,
 		proofFormat:       config.ProofFormatSTARKFRIBinaryV1,
 		verifierID:        config.VerifierP3QSTARKFRISHA3PQ,
+		effectivePolicy:   1, // PolicyQuorum non-zero baseline
 		networkID:         0xC0DE0001,
 		chainID:           0xDEADBEEF,
 		epoch:             0x1122334455667788,
@@ -86,6 +88,7 @@ func compute(t *testing.T, in canonicalRoundDigestInputs) RoundDigest {
 		in.profileID,
 		in.hashSuite, in.identityScheme, in.finalityScheme,
 		in.proofPolicy, in.proofBackend, in.proofFormat, in.verifierID,
+		in.effectivePolicy,
 		in.networkID, in.chainID,
 		in.epoch, in.height,
 		in.roundOrView,
@@ -244,6 +247,8 @@ func TestComputeRoundDigest_FixedHashFamily(t *testing.T) {
 		{byte(in.proofBackend)},
 		{byte(in.proofFormat)},
 		verifierBytes,
+		// BLOCKERS.md CR-12 mirror — must match production order.
+		{in.effectivePolicy},
 		netBytes,
 		chainBytes,
 		epochBytes,
