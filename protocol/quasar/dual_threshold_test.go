@@ -257,9 +257,9 @@ func TestDualSigningFlow(t *testing.T) {
 	// Verify Corona
 	rtValid := coronaThreshold.Verify(rtGroupKey, messageStr, rtSig)
 	require.True(t, rtValid, "Corona signature verification failed")
-	t.Log("  Corona: ✓ verified")
+	t.Log("  Corona:    ✓ verified")
 
 	t.Log("✓ Dual BLS + Corona signing flow complete")
 	t.Log("  - BLS: 1 round, aggregated, verified")
-	t.Log("  - Corona: 2 rounds, aggregated, verified (post-quantum)")
+	t.Log("  - Corona:    2 rounds, aggregated, verified (post-quantum)")
 }

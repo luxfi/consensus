@@ -54,8 +54,8 @@ func TestQuasarCert_RoundTrip_E2E(t *testing.T) {
 	//    end-to-end byte exercise; full aggregation is a higher-layer concern.
 	cert := &QuasarCert{
 		BLS:        append([]byte(nil), sig.BLS...),
-		Corona:   []byte{0x01}, // structural-only; cryptographic Corona is via coronaGobEncode of a real Signature
-		MLDSAProof: EncodeMLDSASigs([][]byte{sig.MLDSA}),
+		Corona:      []byte{0x01}, // structural-only; cryptographic Corona is via coronaGobEncode of a real Signature
+		MLDSARollup: EncodeMLDSASigs([][]byte{sig.MLDSA}),
 		Epoch:      1,
 		Finality:   time.Unix(1700000000, 0),
 		Validators: 3,
@@ -83,7 +83,7 @@ func TestQuasarCert_RoundTrip_E2E(t *testing.T) {
 	if string(got.Corona) != string(cert.Corona) {
 		t.Fatalf("Corona round-trip mismatch")
 	}
-	if string(got.MLDSAProof) != string(cert.MLDSAProof) {
+	if string(got.MLDSARollup) != string(cert.MLDSARollup) {
 		t.Fatalf("MLDSAProof round-trip mismatch")
 	}
 	if got.Epoch != cert.Epoch {
