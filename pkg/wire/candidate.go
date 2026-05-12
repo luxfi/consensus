@@ -441,7 +441,7 @@ func NewCertificateWithSuite(candidateID CandidateID, height uint64, policy Poli
 //
 // Layout (big-endian, length-prefixed where variable):
 //
-//	"LuxCertTranscript/v1" || domain-sep
+//	"CertTranscript/v1" || domain-sep
 //	candidate_id (32 B)
 //	height       (uint64 BE, 8 B)
 //	policy_id    (uint16 BE, 2 B)
@@ -453,7 +453,7 @@ func NewCertificateWithSuite(candidateID CandidateID, height uint64, policy Poli
 // part of the agreement that the signature covers.
 func (c *Certificate) TranscriptHash() [32]byte {
 	h := sha256.New()
-	h.Write([]byte("LuxCertTranscript/v1"))
+	h.Write([]byte("CertTranscript/v1"))
 	h.Write(c.CandidateID[:])
 
 	var u64 [8]byte
@@ -518,7 +518,7 @@ type AgreementState struct {
 // =============================================================================
 
 // NodeIDDomain is the canonical domain separator (matches node repo)
-const NodeIDDomain = "LuxNodeID/v1"
+const NodeIDDomain = "SignerNodeID/v1"
 
 // VoterID is a 32-byte voter identifier
 type VoterID [32]byte
