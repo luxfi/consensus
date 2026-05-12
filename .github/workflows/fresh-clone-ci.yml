@@ -7,6 +7,10 @@ name: Fresh-Clone CI
 # implementation"). Do not delete; do not merge with ci.yml — the value
 # is precisely that the runner has nothing cached.
 
+defaults:
+  run:
+    shell: bash
+
 on:
   push:
     branches: [main, dev]
