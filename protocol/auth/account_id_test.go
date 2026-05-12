@@ -15,7 +15,7 @@ import (
 func TestDeriveAccountID_Deterministic(t *testing.T) {
 	pubkey := bytes.Repeat([]byte{0xAB}, 1952) // ML-DSA-65 pubkey size
 	profileID := uint32(0x01)                  // StrictPQ
-	chainID := uint32(43114)
+	chainID := uint32(96369)
 	scheme := WalletSchemeMLDSA65
 
 	id1 := DeriveAccountID(profileID, chainID, scheme, pubkey)
@@ -41,7 +41,7 @@ func TestDeriveAccountID_Deterministic(t *testing.T) {
 // FIPS or Permissive profile even with the same pubkey.
 func TestDeriveAccountID_DistinctProfilesSameKey(t *testing.T) {
 	pubkey := bytes.Repeat([]byte{0x42}, 1952)
-	chainID := uint32(43114)
+	chainID := uint32(96369)
 	scheme := WalletSchemeMLDSA65
 
 	idStrict := DeriveAccountID(0x01, chainID, scheme, pubkey)
@@ -100,7 +100,7 @@ func TestDeriveAccountID_DistinctChainsSameKey(t *testing.T) {
 func TestDeriveAccountID_DistinctSchemesSameKey(t *testing.T) {
 	pubkey := bytes.Repeat([]byte{0x7E}, 1952)
 	profileID := uint32(0x01)
-	chainID := uint32(43114)
+	chainID := uint32(96369)
 
 	id44 := DeriveAccountID(profileID, chainID, WalletSchemeMLDSA44, pubkey)
 	id65 := DeriveAccountID(profileID, chainID, WalletSchemeMLDSA65, pubkey)
@@ -130,7 +130,7 @@ func TestDeriveAccountID_DistinctSchemesSameKey(t *testing.T) {
 // Basic collision-resistance smoke test.
 func TestDeriveAccountID_DistinctKeysSameChain(t *testing.T) {
 	profileID := uint32(0x01)
-	chainID := uint32(43114)
+	chainID := uint32(96369)
 	scheme := WalletSchemeMLDSA65
 
 	pkA := bytes.Repeat([]byte{0x01}, 1952)

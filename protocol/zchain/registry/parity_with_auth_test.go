@@ -39,30 +39,23 @@ func TestDeriveAccountID_MatchesRegistryDerivation(t *testing.T) {
 		pubkey    []byte
 	}{
 		{
-			name:      "lux-strict-pq mainnet ML-DSA-65",
+			name:      "strict-pq mainnet ML-DSA-65",
 			profileID: uint32(config.ProfileStrictPQ),
-			chainID:   43114,
+			chainID:   96369,
 			scheme:    config.WalletSchemeMLDSA65,
 			pubkey:    bytes.Repeat([]byte{0xAB}, 1952),
 		},
 		{
-			name:      "zoo-strict-pq mainnet ML-DSA-65",
-			profileID: uint32(config.ProfileZooStrictPQ),
-			chainID:   200200,
-			scheme:    config.WalletSchemeMLDSA65,
-			pubkey:    bytes.Repeat([]byte{0xCD}, 1952),
-		},
-		{
-			name:      "hanzo-strict-pq mainnet ML-DSA-87",
-			profileID: uint32(config.ProfileHanzoStrictPQ),
-			chainID:   300300,
+			name:      "strict-pq mainnet ML-DSA-87",
+			profileID: uint32(config.ProfileStrictPQ),
+			chainID:   96369,
 			scheme:    config.WalletSchemeMLDSA87,
 			pubkey:    bytes.Repeat([]byte{0xEF}, 2592),
 		},
 		{
-			name:      "lux-permissive testnet ML-DSA-65",
+			name:      "permissive testnet ML-DSA-65",
 			profileID: uint32(config.ProfilePermissive),
-			chainID:   43113,
+			chainID:   96368,
 			scheme:    config.WalletSchemeMLDSA65,
 			pubkey:    bytes.Repeat([]byte{0x42}, 1952),
 		},

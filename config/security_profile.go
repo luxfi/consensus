@@ -48,40 +48,34 @@ import (
 // Numbering:
 //
 //	0x00 — None / unspecified (rejected by every strict verifier)
-//	0x01 — StrictPQ         — canonical strict-PQ profile: NIST-aligned
-//	                          PQ across every axis. The single answer to
-//	                          "what does PQ mean?" — no family branding,
-//	                          no parallel byte for the same crypto.
-//	0x02 — Permissive       — testnet / devnet, accepts dev backends and
-//	                          permissive fallbacks alongside the strict-PQ
-//	                          primitives.
-//	0x03 — FIPS             — FIPS-204 / FIPS-205 only (P3Q backend
-//	                          single-allowed); strict superset of StrictPQ
-//	                          for FIPS-targeted deployments.
-//	0x04 — ZooStrictPQ      — Zoo primary network; byte-identical to
-//	                          StrictPQ except for ProfileID + ProfileName.
-//	0x05 — HanzoStrictPQ    — Hanzo primary network; byte-identical to
-//	                          StrictPQ except for ProfileID + ProfileName.
-//	0x80..0xFF — reserved for downstream / white-label profiles (must register
-//	             with consensus team before claiming a byte).
+//	0x01 — StrictPQ   — canonical strict-PQ profile: NIST-aligned PQ
+//	                    across every axis. The single answer to "what
+//	                    does PQ mean?" — every Lux-derived chain that
+//	                    declares strict-PQ pins this byte. Chain
+//	                    identity comes from chain genesis, not from a
+//	                    sibling profile byte.
+//	0x02 — Permissive — testnet / devnet, accepts dev backends and
+//	                    permissive fallbacks alongside the strict-PQ
+//	                    primitives.
+//	0x03 — FIPS       — FIPS-204 / FIPS-205 only (P3Q backend single-
+//	                    allowed); strict superset of StrictPQ for
+//	                    FIPS-targeted deployments.
+//	0x80..0xFF — reserved for downstream / white-label profiles (must
+//	             register with consensus team before claiming a byte).
 type ProfileID uint8
 
 const (
-	ProfileNone          ProfileID = 0x00
-	ProfileStrictPQ      ProfileID = 0x01
-	ProfilePermissive    ProfileID = 0x02
-	ProfileFIPS          ProfileID = 0x03
-	ProfileZooStrictPQ   ProfileID = 0x04
-	ProfileHanzoStrictPQ ProfileID = 0x05
+	ProfileNone       ProfileID = 0x00
+	ProfileStrictPQ   ProfileID = 0x01
+	ProfilePermissive ProfileID = 0x02
+	ProfileFIPS       ProfileID = 0x03
 )
 
 // Canonical profile-name strings.
 const (
-	ProfileNameStrictPQ      = "STRICT_PQ"
-	ProfileNamePermissive    = "PERMISSIVE"
-	ProfileNameFIPS          = "FIPS"
-	ProfileNameZooStrictPQ   = "ZOO_STRICT_PQ"
-	ProfileNameHanzoStrictPQ = "HANZO_STRICT_PQ"
+	ProfileNameStrictPQ   = "STRICT_PQ"
+	ProfileNamePermissive = "PERMISSIVE"
+	ProfileNameFIPS       = "FIPS"
 )
 
 // String returns the canonical lowercase profile name.
@@ -95,10 +89,6 @@ func (p ProfileID) String() string {
 		return "permissive"
 	case ProfileFIPS:
 		return "fips"
-	case ProfileZooStrictPQ:
-		return "zoo-strict-pq"
-	case ProfileHanzoStrictPQ:
-		return "hanzo-strict-pq"
 	default:
 		return fmt.Sprintf("profile(0x%02x)", uint8(p))
 	}
@@ -445,8 +435,8 @@ type ChainSecurityProfile struct {
 
 // IsPQ reports whether this profile is a strict-PQ profile. PQ mode is
 // binary: a chain is strict-PQ or it isn't — there is no relaxed-PQ.
-// All canonical strict-PQ profiles (StrictPQ, FIPS, Zoo, Hanzo) return
-// true; permissive and unknown profiles return false.
+// Canonical strict-PQ profiles (StrictPQ, FIPS) return true; permissive
+// and unknown profiles return false.
 //
 // This is the single canonical entry point for "is the chain on PQ?";
 // callers MUST go through IsPQ rather than open-coding the ProfileID
@@ -461,10 +451,7 @@ func (p *ChainSecurityProfile) IsPQ() bool {
 		return false
 	}
 	switch ProfileID(p.ProfileID) {
-	case ProfileStrictPQ,
-		ProfileFIPS,
-		ProfileZooStrictPQ,
-		ProfileHanzoStrictPQ:
+	case ProfileStrictPQ, ProfileFIPS:
 		return true
 	}
 	return false
@@ -781,17 +768,13 @@ func (p *ChainSecurityProfile) validatePolicy() error {
 	// otherwise pass the "at-least-one" gate.
 	//
 	// Strict-PQ class membership:
-	//   ProfileStrictPQ      (0x01) — canonical strict-PQ
-	//   ProfileFIPS          (0x03) — FIPS is a stricter superset of strict-PQ
-	//   ProfileZooStrictPQ   (0x04) — byte-identical to StrictPQ
-	//   ProfileHanzoStrictPQ (0x05) — byte-identical to StrictPQ
+	//   ProfileStrictPQ (0x01) — canonical strict-PQ
+	//   ProfileFIPS     (0x03) — FIPS is a stricter superset of strict-PQ
 	//
-	// All ride the same gate so a sibling deployment cannot accidentally
-	// relax a Forbid* bit relative to canonical strict-PQ.
+	// Both ride the same gate so a profile that pins one cannot
+	// accidentally relax a Forbid* bit relative to the other.
 	if p.ProfileID == uint32(ProfileStrictPQ) ||
-		p.ProfileID == uint32(ProfileFIPS) ||
-		p.ProfileID == uint32(ProfileZooStrictPQ) ||
-		p.ProfileID == uint32(ProfileHanzoStrictPQ) {
+		p.ProfileID == uint32(ProfileFIPS) {
 		if !p.ForbidPairings {
 			return fmt.Errorf("%w: strict-PQ profile must set ForbidPairings=true", ErrProfileFieldInvalid)
 		}
@@ -1091,10 +1074,6 @@ func ProfileByID(id ProfileID) (*ChainSecurityProfile, error) {
 		return Permissive(), nil
 	case ProfileFIPS:
 		return FIPS(), nil
-	case ProfileZooStrictPQ:
-		return ZooStrictPQ(), nil
-	case ProfileHanzoStrictPQ:
-		return HanzoStrictPQ(), nil
 	case ProfileNone:
 		return nil, fmt.Errorf("%w: ProfileNone is not a valid profile", ErrProfileUnknown)
 	default:
@@ -1107,7 +1086,9 @@ func ProfileByID(id ProfileID) (*ChainSecurityProfile, error) {
 // affecting other callers; the canonical immutable value lives in
 // profiles.go.
 //
-// This is the profile the canonical Z-Chain runs in production.
+// This is THE strict-PQ profile every Lux-derived chain pins. Chain
+// identity comes from chain genesis (chain ID, network ID, NodeID set)
+// — not from a sibling profile byte. One strict-PQ, one way.
 func StrictPQ() *ChainSecurityProfile {
 	p := StrictPQProfile
 	return &p
@@ -1124,24 +1105,6 @@ func Permissive() *ChainSecurityProfile {
 // defined in profiles.go. Strictest FIPS-aligned profile.
 func FIPS() *ChainSecurityProfile {
 	p := FIPSProfile
-	return &p
-}
-
-// ZooStrictPQ returns a fresh pointer copy of ZooStrictPQProfile. The
-// returned value is byte-identical to StrictPQ except for ProfileID
-// (0x04) and ProfileName ("ZOO_STRICT_PQ"). Used by Zoo primary network
-// validators; LP-168..179, ZIP-0809..0820 cite this profile.
-func ZooStrictPQ() *ChainSecurityProfile {
-	p := ZooStrictPQProfile
-	return &p
-}
-
-// HanzoStrictPQ returns a fresh pointer copy of HanzoStrictPQProfile.
-// Byte-identical to StrictPQ except for ProfileID (0x05) and
-// ProfileName ("HANZO_STRICT_PQ"). Used by Hanzo primary network
-// validators; HIP-0085..0104 cite this profile.
-func HanzoStrictPQ() *ChainSecurityProfile {
-	p := HanzoStrictPQProfile
 	return &p
 }
 

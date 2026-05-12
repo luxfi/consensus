@@ -371,8 +371,6 @@ func (v *VerkleWitness) fullVerification(witness *WitnessProof) error {
 	if profile != nil &&
 		(profile.ProfileID == uint32(config.ProfileStrictPQ) ||
 			profile.ProfileID == uint32(config.ProfileFIPS) ||
-			profile.ProfileID == uint32(config.ProfileZooStrictPQ) ||
-			profile.ProfileID == uint32(config.ProfileHanzoStrictPQ) ||
 			profile.ForbidPairings) {
 		return errors.New("strict-PQ profile forbids BLS-aggregate fallback verification")
 	}
@@ -597,8 +595,6 @@ func (v *VerkleWitness) verifyBLSAggregate(aggSig []byte, validatorSet []byte) e
 	if profile != nil &&
 		(profile.ProfileID == uint32(config.ProfileStrictPQ) ||
 			profile.ProfileID == uint32(config.ProfileFIPS) ||
-			profile.ProfileID == uint32(config.ProfileZooStrictPQ) ||
-			profile.ProfileID == uint32(config.ProfileHanzoStrictPQ) ||
 			profile.ForbidPairings) {
 		return ErrBLSForbiddenUnderStrictPQ
 	}
