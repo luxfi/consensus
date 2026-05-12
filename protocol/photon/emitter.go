@@ -66,14 +66,33 @@ func (e *UniformEmitter) Emit(msg interface{}) ([]types.NodeID, error) {
 	return shuffled[:k], nil
 }
 
-// cryptoRandInt returns a cryptographically secure random integer in [0, max).
+// cryptoRandInt returns a cryptographically secure random integer in
+// [0, max) — uniformly distributed. Closes BLOCKERS.md CR-13: prior
+// implementation used `binary.LittleEndian.Uint64(buf[:]) % uint64(max)`
+// which introduces modulo bias for non-power-of-2 max. Under the
+// nation-state grinding threat model, that bias was a structural
+// exploit on committee sampling (Pinkas-Reiter style).
+//
+// This implementation uses rejection sampling: read 8 bytes, reject
+// values in the high partial bucket, retry until the sample falls in
+// the perfectly-uniform range. Expected loops ~1.0–2.0 (never more
+// than 2.0 in expectation for any positive max).
 func cryptoRandInt(max int) int {
 	if max <= 0 {
 		return 0
 	}
+	// Bound to refuse: largest multiple of max <= 2^64. Values above
+	// this are biased and must be rejected.
+	limit := (^uint64(0) / uint64(max)) * uint64(max)
 	var buf [8]byte
-	_, _ = rand.Read(buf[:])
-	return int(binary.LittleEndian.Uint64(buf[:]) % uint64(max))
+	for {
+		_, _ = rand.Read(buf[:])
+		v := binary.LittleEndian.Uint64(buf[:])
+		if v < limit {
+			return int(v % uint64(max))
+		}
+		// Bias-region hit; resample.
+	}
 }
 
 // EmitTo emits a message to specific nodes

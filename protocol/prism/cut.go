@@ -57,14 +57,24 @@ func (c *UniformCut) Sample(k int) []types.NodeID {
 	return shuffled[:k]
 }
 
-// cryptoRandInt returns a cryptographically secure random integer in [0, max).
+// cryptoRandInt returns a cryptographically secure random integer in
+// [0, max) — uniformly distributed via rejection sampling. Closes
+// BLOCKERS.md CR-13. See protocol/photon/emitter.go for the same
+// rationale; both samplers were exploitable under nation-state
+// committee-grinding.
 func cryptoRandInt(max int) int {
 	if max <= 0 {
 		return 0
 	}
+	limit := (^uint64(0) / uint64(max)) * uint64(max)
 	var buf [8]byte
-	_, _ = rand.Read(buf[:])
-	return int(binary.LittleEndian.Uint64(buf[:]) % uint64(max))
+	for {
+		_, _ = rand.Read(buf[:])
+		v := binary.LittleEndian.Uint64(buf[:])
+		if v < limit {
+			return int(v % uint64(max))
+		}
+	}
 }
 
 // Luminance implements Cut interface

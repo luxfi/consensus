@@ -112,12 +112,21 @@ func (c *StakeWeightedCut) Luminance() Luminance {
 	}
 }
 
-// cryptoRandUint64 returns a cryptographically secure random uint64 in [0, max).
+// cryptoRandUint64 returns a cryptographically secure random uint64
+// in [0, max) — uniformly distributed via rejection sampling. Closes
+// BLOCKERS.md CR-13: the prior `% max` form was biased on non-power-of-2
+// stake totals, structurally exploitable by stake-weight grinding.
 func cryptoRandUint64(max uint64) uint64 {
 	if max <= 1 {
 		return 0
 	}
+	limit := (^uint64(0) / max) * max
 	var buf [8]byte
-	_, _ = rand.Read(buf[:])
-	return binary.LittleEndian.Uint64(buf[:]) % max
+	for {
+		_, _ = rand.Read(buf[:])
+		v := binary.LittleEndian.Uint64(buf[:])
+		if v < limit {
+			return v % max
+		}
+	}
 }
