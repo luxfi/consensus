@@ -10,23 +10,21 @@ import "fmt"
 // config selects one Profile; the wire byte that gets pinned into the
 // cert envelope is derived from the string at config-load time.
 //
-// Three values across the spectrum, in increasing enforcement
-// strictness:
+// Three canonical bundles. PQ mode is binary: a chain is strict (or
+// fips, the FIPS-aligned superset of strict) or it is permissive. There
+// is no "hybrid" / "bls" / "classical" pseudo-profile — chains that
+// genuinely need classical primitives pin
+// ForkClassicalCompatUnsafeProfile (0x80) at the byte layer and own the
+// audit consequence.
 //
-//	classical — no enforced refusals. ECDSA / X25519 / BLS permitted
-//	            at every layer. Legacy chains pre-PQ migration.
-//	hybrid    — BLS + PQ both required at the consensus / finality
-//	            layer; classical contract-auth still permitted at the
-//	            EVM precompile boundary. Transitional posture for a
-//	            chain migrating from classical into strict.
-//	strict    — refuses every classical primitive at every layer:
-//	            ecrecover, sha256, ripemd, blake2F, alt_bn128,
-//	            BLS12-381 pairings, KZG, X25519. Production chains.
-//
-// The name spectrum is intentionally not "PQ-prefixed" because the
-// distinctions cut across more than the post-quantum axis (proof
-// systems, hash suites, fallback policy, KEM choice). "Strict" is
-// about strictness of crypto-policy enforcement, not solely about PQ.
+//	strict     — refuses every classical primitive at every layer:
+//	             ecrecover, sha256, ripemd, blake2F, alt_bn128,
+//	             BLS12-381 pairings, KZG, X25519. Production PQ chains.
+//	permissive — testnet / devnet. Strict-PQ schemes still pinned, but
+//	             dev backends + fallbacks permitted. Never mainnet.
+//	fips       — strict + every primitive restricted to FIPS-203 / 204
+//	             / 205 with the canonical P3Q backend. FIPS-targeted
+//	             deployments.
 //
 // Operators write the string in config files; protocol layers that
 // need the wire byte call WireByte() (or read ProfileID off the
@@ -34,18 +32,18 @@ import "fmt"
 type Profile string
 
 const (
-	ProfileClassical Profile = "classical"
-	ProfileHybrid    Profile = "hybrid"
-	ProfileStrict    Profile = "strict"
+	ProfileStrict         Profile = "strict"
+	ProfilePermissiveName Profile = "permissive"
+	ProfileFIPSx          Profile = "fips"
 )
 
-// AllProfiles is the canonical list, ordered by increasing
-// enforcement strictness. Used by config-validator tooling to produce
-// "did you mean?" hints when an unknown profile is supplied.
+// AllProfiles is the canonical list, ordered by increasing enforcement
+// strictness. Used by config-validator tooling to produce "did you
+// mean?" hints when an unknown profile is supplied.
 var AllProfiles = []Profile{
-	ProfileClassical,
-	ProfileHybrid,
+	ProfilePermissiveName,
 	ProfileStrict,
+	ProfileFIPSx,
 }
 
 // String implements fmt.Stringer.
@@ -59,10 +57,15 @@ func (p Profile) IsValid() bool { _, err := p.Resolve(); return err == nil }
 // canonical entry point for "should this chain install AllForbidden()
 // at the EVM precompile boundary?".
 //
-// Strict returns true; Hybrid and Classical return false. Hybrid is
-// PQ-positive at the consensus layer but admits classical
-// contract-auth, so the EVM gate stays open under Hybrid.
-func (p Profile) IsStrict() bool { return p == ProfileStrict }
+// Strict and FIPS return true; Permissive returns false.
+func (p Profile) IsStrict() bool {
+	return p == ProfileStrict || p == ProfileFIPSx
+}
+
+// IsFIPS reports whether this profile additionally demands FIPS-only
+// primitives (Strict's PQ posture restricted to FIPS-204 / FIPS-205 /
+// FIPS-203 with the canonical P3Q backend).
+func (p Profile) IsFIPS() bool { return p == ProfileFIPSx }
 
 // Resolve returns the canonical ChainSecurityProfile for this Profile.
 // The returned profile passes Validate() by construction; the caller
@@ -75,14 +78,14 @@ func (p Profile) Resolve() (*ChainSecurityProfile, error) {
 	switch p {
 	case ProfileStrict:
 		return StrictPQ(), nil
-	case ProfileHybrid:
-		return Hybrid(), nil
-	case ProfileClassical:
-		return Classical(), nil
+	case ProfilePermissiveName:
+		return Permissive(), nil
+	case ProfileFIPSx:
+		return FIPS(), nil
 	case "":
-		return nil, fmt.Errorf("consensus profile is empty; must be one of: classical, hybrid, strict")
+		return nil, fmt.Errorf("consensus profile is empty; must be one of: permissive, strict, fips")
 	default:
-		return nil, fmt.Errorf("unknown consensus profile %q; must be one of: classical, hybrid, strict", string(p))
+		return nil, fmt.Errorf("unknown consensus profile %q; must be one of: permissive, strict, fips", string(p))
 	}
 }
 
@@ -118,22 +121,16 @@ func (p Profile) WireByte() uint8 {
 // Wire-byte mapping:
 //
 //	0x01 → "strict"
-//	0x04 → "hybrid"
-//	0x05 → "classical"
-//
-// Bytes 0x02 (legacy Permissive) and 0x03 (legacy FIPS) are not part
-// of the user-facing Profile spectrum; callers that pinned those
-// bytes can resolve via ProfileByID(ProfileID(b)) at the byte layer.
+//	0x02 → "permissive"
+//	0x03 → "fips"
 func ProfileFromWireByte(b uint8) (Profile, error) {
 	switch ProfileID(b) {
 	case ProfileStrictPQ:
 		return ProfileStrict, nil
-	}
-	if b == 0x04 {
-		return ProfileHybrid, nil
-	}
-	if b == 0x05 {
-		return ProfileClassical, nil
+	case ProfilePermissive:
+		return ProfilePermissiveName, nil
+	case ProfileFIPS:
+		return ProfileFIPSx, nil
 	}
 	return "", fmt.Errorf("unknown wire ProfileID byte 0x%02x", b)
 }
