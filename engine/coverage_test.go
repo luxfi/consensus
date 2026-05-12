@@ -257,7 +257,7 @@ func TestWithTransport(t *testing.T) {
 	}
 }
 
-// --- LuxConsensus ---
+// --- Driver ---
 
 func TestNewLuxConsensusWithTransport(t *testing.T) {
 	lc := NewLuxConsensus(3, 2, 2, WithTransport(nil))

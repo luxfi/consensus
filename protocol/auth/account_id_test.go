@@ -47,8 +47,7 @@ func TestDeriveAccountID_DistinctProfilesSameKey(t *testing.T) {
 	idStrict := DeriveAccountID(0x01, chainID, scheme, pubkey)
 	idPermissive := DeriveAccountID(0x02, chainID, scheme, pubkey)
 	idFIPS := DeriveAccountID(0x03, chainID, scheme, pubkey)
-	idZoo := DeriveAccountID(0x04, chainID, scheme, pubkey)
-	idHanzo := DeriveAccountID(0x05, chainID, scheme, pubkey)
+	idFork := DeriveAccountID(0x80, chainID, scheme, pubkey)
 
 	all := []struct {
 		name string
@@ -57,8 +56,7 @@ func TestDeriveAccountID_DistinctProfilesSameKey(t *testing.T) {
 		{"strict", idStrict},
 		{"permissive", idPermissive},
 		{"fips", idFIPS},
-		{"zoo", idZoo},
-		{"hanzo", idHanzo},
+		{"fork", idFork},
 	}
 	for i := range all {
 		for j := i + 1; j < len(all); j++ {
