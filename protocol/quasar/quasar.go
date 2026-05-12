@@ -29,9 +29,9 @@ var (
 	sigPool = sync.Pool{
 		New: func() any {
 			return &QuasarSig{
-				BLS:      make([]byte, 0, 96),
-				Corona:    make([]byte, 0, 4096),
-				MLDSA:    make([]byte, 0, 3309), // ML-DSA-65 sig size
+				BLS:    make([]byte, 0, 96),
+				Corona: make([]byte, 0, 4096),
+				MLDSA:  make([]byte, 0, 3309), // ML-DSA-65 sig size
 			}
 		},
 	}
@@ -91,7 +91,7 @@ type signer struct {
 type Validator struct {
 	ID          string
 	BLSPubKey   *bls.PublicKey
-	CoronaPub []byte           // Corona group public key contribution
+	CoronaPub   []byte           // Corona group public key contribution
 	MLDSAPubKey *mldsa.PublicKey // ML-DSA-65 identity key (nil if not configured)
 	Weight      uint64
 	Active      bool
@@ -126,15 +126,15 @@ func newSigner(thresholdVal int) (*signer, error) {
 	}
 
 	return &signer{
-		blsKeys:         make(map[string]*bls.SecretKey),
-		blsPubKeys:      make(map[string]*bls.PublicKey),
-		blsSigners:      make(map[string]threshold.Signer),
+		blsKeys:       make(map[string]*bls.SecretKey),
+		blsPubKeys:    make(map[string]*bls.PublicKey),
+		blsSigners:    make(map[string]threshold.Signer),
 		coronaSigners: make(map[string]*coronaThreshold.Signer),
 		coronaShares:  make(map[string]*coronaThreshold.KeyShare),
-		mldsaKeys:       make(map[string]*mldsa.PrivateKey),
-		mldsaPubKeys:    make(map[string]*mldsa.PublicKey),
-		validators:      make(map[string]*Validator),
-		threshold:       thresholdVal,
+		mldsaKeys:     make(map[string]*mldsa.PrivateKey),
+		mldsaPubKeys:  make(map[string]*mldsa.PublicKey),
+		validators:    make(map[string]*Validator),
+		threshold:     thresholdVal,
 	}, nil
 }
 
@@ -145,15 +145,15 @@ func newSignerWithDualThreshold(config SignerConfig) (*signer, error) {
 	}
 
 	h := &signer{
-		blsKeys:         make(map[string]*bls.SecretKey),
-		blsPubKeys:      make(map[string]*bls.PublicKey),
-		blsSigners:      make(map[string]threshold.Signer),
+		blsKeys:       make(map[string]*bls.SecretKey),
+		blsPubKeys:    make(map[string]*bls.PublicKey),
+		blsSigners:    make(map[string]threshold.Signer),
 		coronaSigners: make(map[string]*coronaThreshold.Signer),
 		coronaShares:  make(map[string]*coronaThreshold.KeyShare),
-		mldsaKeys:       make(map[string]*mldsa.PrivateKey),
-		mldsaPubKeys:    make(map[string]*mldsa.PublicKey),
-		validators:      make(map[string]*Validator),
-		threshold:       config.Threshold,
+		mldsaKeys:     make(map[string]*mldsa.PrivateKey),
+		mldsaPubKeys:  make(map[string]*mldsa.PublicKey),
+		validators:    make(map[string]*Validator),
+		threshold:     config.Threshold,
 	}
 
 	// Initialize BLS threshold scheme
@@ -234,10 +234,10 @@ func GenerateDualKeys(t, n int) (*SignerConfig, error) {
 	}
 
 	return &SignerConfig{
-		Threshold:        t,
-		TotalParties:     n,
-		BLSKeyShares:     blsShareMap,
-		BLSGroupKey:      blsGroupKey,
+		Threshold:      t,
+		TotalParties:   n,
+		BLSKeyShares:   blsShareMap,
+		BLSGroupKey:    blsGroupKey,
 		CoronaShares:   coronaShareMap,
 		CoronaGroupKey: coronaGroupKey,
 	}, nil
@@ -786,11 +786,11 @@ type QuasarSig struct {
 
 // AggregatedSignature contains aggregated signatures.
 type AggregatedSignature struct {
-	BLSAggregated      []byte
+	BLSAggregated    []byte
 	CoronaAggregated []byte
-	ValidatorIDs       []string
-	SignerCount        int
-	IsThreshold        bool
+	ValidatorIDs     []string
+	SignerCount      int
+	IsThreshold      bool
 }
 
 // AnyValidatorID returns any configured validator ID, or "" if none.
@@ -858,17 +858,17 @@ func newSignerWithThresholdConfig(config ThresholdConfig) (*signer, error) {
 	}
 
 	h := &signer{
-		blsKeys:         make(map[string]*bls.SecretKey),
-		blsPubKeys:      make(map[string]*bls.PublicKey),
-		blsSigners:      make(map[string]threshold.Signer),
+		blsKeys:       make(map[string]*bls.SecretKey),
+		blsPubKeys:    make(map[string]*bls.PublicKey),
+		blsSigners:    make(map[string]threshold.Signer),
 		coronaSigners: make(map[string]*coronaThreshold.Signer),
 		coronaShares:  make(map[string]*coronaThreshold.KeyShare),
-		mldsaKeys:       make(map[string]*mldsa.PrivateKey),
-		mldsaPubKeys:    make(map[string]*mldsa.PublicKey),
-		validators:      make(map[string]*Validator),
-		threshold:       config.Threshold,
-		blsScheme:       scheme,
-		blsGroupKey:     config.GroupKey,
+		mldsaKeys:     make(map[string]*mldsa.PrivateKey),
+		mldsaPubKeys:  make(map[string]*mldsa.PublicKey),
+		validators:    make(map[string]*Validator),
+		threshold:     config.Threshold,
+		blsScheme:     scheme,
+		blsGroupKey:   config.GroupKey,
 	}
 
 	if config.GroupKey != nil {

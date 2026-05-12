@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/protocol/quasar"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // maxCandidates is the upper bound on tracked candidates per policy instance.
@@ -621,12 +621,12 @@ func (p *QuantumPolicy) MaybeFinalize(ctx context.Context, candidateID Candidate
 	// per-validator share bytes so the wire layer is self-contained, and
 	// embed individual ML-DSA-65 signatures in MLDSAProof.
 	qc := &quasar.QuasarCert{
-		BLS:        concatSignatures(p.blsVotes[candidateID]),
+		BLS:         concatSignatures(p.blsVotes[candidateID]),
 		Corona:      concatSignatures(p.pqVotes[candidateID]),
 		MLDSARollup: nil,
-		Epoch:      candidate.Height,
-		Finality:   time.Now(),
-		Validators: blsCount,
+		Epoch:       candidate.Height,
+		Finality:    time.Now(),
+		Validators:  blsCount,
 	}
 
 	proofBytes, err := qc.MarshalBinary()
