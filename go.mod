@@ -10,7 +10,7 @@ require (
 	github.com/luxfi/accel v1.0.7
 	github.com/luxfi/bft v0.1.5
 	github.com/luxfi/corona v0.2.0
-	github.com/luxfi/crypto v1.18.4
+	github.com/luxfi/crypto v1.18.6
 	github.com/luxfi/database v1.18.3
 	github.com/luxfi/ids v1.2.9
 	github.com/luxfi/lattice/v7 v7.1.0
