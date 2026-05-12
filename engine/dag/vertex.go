@@ -37,7 +37,7 @@ type Vertex struct {
 
 	// Consensus state - using Lux consensus with Prism DAG protocol
 	mu           sync.RWMutex
-	luxConsensus *engine.LuxConsensus
+	driver *engine.Driver
 	accepted     bool
 	rejected     bool
 	processing   bool
@@ -245,15 +245,15 @@ func (v *Vertex) Children() []*Vertex {
 }
 
 // SetLuxConsensus sets the Lux consensus instance for this vertex
-func (v *Vertex) SetLuxConsensus(lc *engine.LuxConsensus) {
+func (v *Vertex) SetLuxConsensus(lc *engine.Driver) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	v.luxConsensus = lc
+	v.driver = lc
 }
 
-// LuxConsensus returns the Lux consensus instance
-func (v *Vertex) LuxConsensus() *engine.LuxConsensus {
+// Driver returns the Lux consensus instance
+func (v *Vertex) Driver() *engine.Driver {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	return v.luxConsensus
+	return v.driver
 }

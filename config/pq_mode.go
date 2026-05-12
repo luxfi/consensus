@@ -20,7 +20,7 @@
 //	BLS → Pulsar → Quasar    public chains (open validator set, epoch rotation)
 //	BLS → Corona           federation / bridge MPC (fixed dealer, no rotation)
 //
-// Quasar is the Hanzo-mesh default. Corona is for fixed federations only —
+// Quasar is the Lux-mesh default. Corona is for fixed federations only —
 // its trusted-dealer DKG is unsuitable for an open public chain. MLDSA is the
 // audit-grade fallback **and** the FIPS-approvable path: ML-DSA-65 (FIPS 204)
 // + SHAKE256 (FIPS 202) is the only mode where every PQ component sits inside
@@ -48,7 +48,7 @@ type PQMode uint8
 const (
 	// PQModeBLS — BLS aggregate only. 48-byte cert. Classical fast path,
 	// no PQ surface. Benchmarks and legacy testnets only; rejected on any
-	// production Hanzo mesh per HIP-0077.
+	// production Lux mesh per HIP-0077.
 	PQModeBLS PQMode = iota
 
 	// PQModeCorona — BLS + the academic Corona 2-round LWE threshold
@@ -81,7 +81,7 @@ const (
 	// anchored on Z-Chain. Two distinct lattice constructions backing
 	// each finality cert (Pulsar = R-LWE threshold; ML-DSA = MLWE per
 	// validator), both still constant-size in the cert. Strongest
-	// available; **Hanzo mesh default** per HIP-0077. Where the Z-Chain
+	// available; **Lux mesh default** per HIP-0077. Where the Z-Chain
 	// witness path is not yet wired in a given deployment, Quasar
 	// degrades to MLDSA semantics so the strong stance is preserved at
 	// higher bandwidth cost.
@@ -178,7 +178,7 @@ const (
 
 	// HashSuiteSHA3NIST — the normative SP 800-185 hash family:
 	// SHAKE256 + cSHAKE256 + KMAC256 + TupleHash256 (FIPS 202 +
-	// NIST SP 800-185). The canonical Hanzo-mesh and Lux primary-network
+	// NIST SP 800-185). The canonical Lux-mesh and Lux primary-network
 	// choice. Every NIST-track Pulsar variant (Pulsar.R production
 	// profile, Pulsar.M family) signs under this suite. ML-DSA-65 also
 	// rides here because SHAKE256 is FIPS 202 and not a separate family.
@@ -210,7 +210,7 @@ func (h HashSuiteID) String() string {
 }
 
 // IsNormative reports whether this hash suite is on the NIST-approved
-// algorithm path (FIPS 202 family). Production Hanzo meshes MUST emit
+// algorithm path (FIPS 202 family). Production Lux meshes MUST emit
 // only normative suites; legacy/academic suites are bridge-MPC + audit
 // fixtures only.
 func (h HashSuiteID) IsNormative() bool {
