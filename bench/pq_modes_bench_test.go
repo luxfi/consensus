@@ -276,7 +276,7 @@ func BenchmarkPQModes_BLSPlusMLDSA(b *testing.B) {
 
 			cert := &quasar.QuasarCert{
 				BLS:        blsAgg,
-				MLDSAProof: mldsaPayload,
+				MLDSARollup: mldsaPayload,
 				Epoch:      1,
 				Finality:   time.Now(),
 				Validators: n,
@@ -472,7 +472,7 @@ func BenchmarkPQModes_BLSPlusCorona(b *testing.B) {
 
 			cert := &quasar.QuasarCert{
 				BLS:        res.blsAgg,
-				Corona:   res.rtBytes,
+				Corona:      res.rtBytes,
 				Epoch:      1,
 				Finality:   time.Now(),
 				Validators: n,
@@ -514,7 +514,7 @@ func BenchmarkPQModes_BLSPlusGroth16(b *testing.B) {
 			groth16Placeholder := make([]byte, 192)
 			cert := &quasar.QuasarCert{
 				BLS:        blsAgg,
-				MLDSAProof: groth16Placeholder,
+				MLDSARollup: groth16Placeholder,
 				Epoch:      1,
 				Finality:   time.Now(),
 				Validators: n,
@@ -619,8 +619,8 @@ func BenchmarkPQModes_TripleQuantum(b *testing.B) {
 
 			cert := &quasar.QuasarCert{
 				BLS:        res.blsAgg,
-				Corona:   res.rtBytes,
-				MLDSAProof: mldsaPayload,
+				Corona:      res.rtBytes,
+				MLDSARollup: mldsaPayload,
 				Epoch:      1,
 				Finality:   time.Now(),
 				Validators: n,

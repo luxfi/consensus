@@ -622,8 +622,8 @@ func (p *QuantumPolicy) MaybeFinalize(ctx context.Context, candidateID Candidate
 	// embed individual ML-DSA-65 signatures in MLDSAProof.
 	qc := &quasar.QuasarCert{
 		BLS:        concatSignatures(p.blsVotes[candidateID]),
-		Corona:   concatSignatures(p.pqVotes[candidateID]),
-		MLDSAProof: nil,
+		Corona:      concatSignatures(p.pqVotes[candidateID]),
+		MLDSARollup: nil,
 		Epoch:      candidate.Height,
 		Finality:   time.Now(),
 		Validators: blsCount,

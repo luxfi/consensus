@@ -29,37 +29,93 @@ type Block struct {
 
 // QuasarCert is the finality certificate for Quasar consensus.
 //
-// Three signature layers, each already compact on its own except ML-DSA:
+// Architectural shape — read the cardinality, not a counting word:
 //
-//	BLS12-381  — classical aggregate (48 bytes, O(1) via native BLS aggregation)
-//	Corona   — lattice threshold signature (O(1) after DKG threshold signing)
-//	ML-DSA-65  — per-validator PQ identity (3309 bytes × N validators, O(N))
+//	BLS-12-381  — classical fast-path aggregate (48 B; pairing-based)
+//	Corona      — Ring-LWE threshold ML-DSA   (O(1) after DKG; FIPS 204 Class N1)
+//	Pulsar      — Module-LWE threshold ML-DSA (O(1) after DKG; FIPS 204 Class N1)
+//	MLDSARollup — per-validator ML-DSA-65 rolled into one STARK / Groth16 proof
 //
-// Z-Chain's sole job is to roll up ML-DSA × N into a single Groth16 SNARK:
+// Naming: the PQ-side is at most **Double Lattice** — Ring-LWE plus
+// Module-LWE. Calling the BLS+Corona+MLDSARollup composition "Triple
+// Quantum" is misleading because BLS is classical, not quantum. The
+// honest mode descriptor is "Classical + Double Lattice [+ Identity
+// Rollup]".
 //
-//	Statement: ∀ i ∈ [N]: ML-DSA.Verify(mldsa_pk_i, msg, mldsa_σ_i) = 1
-//	Output:    192-byte Groth16 proof (MLDSAProof)
+// Pure-PQ profile (no BLS, no classical curve in the validator path):
+// Corona + Pulsar (Double Lattice). Each layer is independently
+// FIPS 204 Class N1 (output verifies under the unmodified single-
+// party ML-DSA verifier). MLDSARollup is the identity attestation
+// layer, succinct via STARK (Z-Chain → P3Q).
 //
-// BLS and Corona don't need Z-Chain — they're already O(1).
+// Corona (academic R-LWE with trusted-dealer DKG) is NOT a
+// production option for an open public chain. Corona is the
+// production Ring-LWE library (Pedersen DKG over R_q + proactive
+// resharing; `luxfi/corona`). The historic field name "Corona"
+// in this struct refers to "the Ring-LWE threshold slot"; that
+// slot now carries Corona bytes. The field is renamed accordingly.
 //
-// Total cert size: 48 (BLS) + |Corona| + 192 (MLDSAProof), constant in N.
+// MLDSARollup is succinct: a single STARK/Groth16 proof attests
+// "∀ i ∈ [N]: ML-DSA.Verify(mldsa_pk_i, msg, mldsa_σ_i) = 1". Output
+// is one constant-size proof (192 B for Groth16, ~30 KB for a STARK
+// like P3Q), constant in validator count.
+//
+// Total cert size: 48 (BLS, optional) + |Corona| + |Pulsar| + |MLDSARollup|.
 type QuasarCert struct {
-	BLS        []byte    // BLS12-381 aggregate (48 bytes, classical)
-	Corona   []byte    // Corona lattice threshold sig (O(1) after DKG)
-	MLDSAProof []byte    // Z-Chain Groth16 rolling up N × ML-DSA identity sigs (192 bytes)
-	Epoch      uint64    // Epoch number
-	Finality   time.Time // Time of finality
-	Validators int       `json:"validators,omitempty"` // Count of signing validators
+	BLS         []byte    // BLS-12-381 aggregate (48 bytes, classical fast-path; empty in pure-PQ)
+	Corona      []byte    // Ring-LWE threshold sig (Corona; O(1) after DKG)
+	Pulsar      []byte    // Module-LWE threshold sig (Pulsar-M; O(1) after DKG; optional)
+	MLDSARollup []byte    // Succinct rollup of per-validator ML-DSA-65 (STARK or Groth16)
+	Epoch       uint64    // Epoch number
+	Finality    time.Time // Time of finality
+	Validators  int       `json:"validators,omitempty"` // Count of signing validators
 }
 
-// Verify checks structural presence of BLS and PQ certificates.
-// Use VerifyWithKeys for cryptographic verification. Returns true only if
-// all three signature fields are non-empty -- this is a fast structural gate.
+// IsDoubleLattice reports whether the cert carries both Ring-LWE
+// (Corona) and Module-LWE (Pulsar) threshold legs. This is the honest
+// post-quantum cardinality: two independent algebraic-lattice families,
+// each independently a FIPS 204 Class N1 threshold producer.
+//
+// BLS is irrelevant to this predicate by design — a pure-PQ cert has
+// no BLS bytes; a hybrid cert layers BLS over a Double-Lattice PQ
+// surface. Either way, the PQ-side cardinality is what IsDoubleLattice
+// names.
+func (c *QuasarCert) IsDoubleLattice() bool {
+	if c == nil {
+		return false
+	}
+	return len(c.Corona) > 0 && len(c.Pulsar) > 0
+}
+
+// HasClassicalFastPath reports whether the cert carries BLS bytes — the
+// optional classical aggregate that rides alongside the PQ surface on
+// chains that opt into the hybrid posture. Empty in pure-PQ mode.
+func (c *QuasarCert) HasClassicalFastPath() bool {
+	if c == nil {
+		return false
+	}
+	return len(c.BLS) > 0
+}
+
+// HasIdentityRollup reports whether the cert carries the
+// per-validator ML-DSA-65 identity attestation rolled up into a
+// succinct STARK/Groth16 proof.
+func (c *QuasarCert) HasIdentityRollup() bool {
+	if c == nil {
+		return false
+	}
+	return len(c.MLDSARollup) > 0
+}
+
+// Verify checks structural presence of the Quasar layers: BLS fast-path
+// + Corona (Ring-LWE) + MLDSARollup. Use VerifyWithRealKeys for
+// cryptographic verification. Returns false if any required slot is
+// empty — fast structural gate.
 func (c *QuasarCert) Verify(validators []string) bool {
 	if c == nil {
 		return false
 	}
-	if len(c.BLS) == 0 || len(c.Corona) == 0 || len(c.MLDSAProof) == 0 {
+	if len(c.BLS) == 0 || len(c.Corona) == 0 || len(c.MLDSARollup) == 0 {
 		return false
 	}
 	if c.Validators > 0 && len(validators) > 0 && len(validators) < c.Validators {
@@ -68,15 +124,15 @@ func (c *QuasarCert) Verify(validators []string) bool {
 	return true
 }
 
-// VerifyWithKeys is a back-compat structural check that mirrors the previous
-// API: returns false unless all three signature fields are present and the
-// provided opaque key material is non-empty. Real cryptographic verification
-// is in VerifyWithRealKeys.
+// VerifyWithKeys is a back-compat structural check that mirrors the
+// previous API: returns false unless BLS + Corona + MLDSARollup are
+// present and the provided opaque key material is non-empty. Real
+// cryptographic verification is in VerifyWithRealKeys.
 func (c *QuasarCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
 	if c == nil || len(groupKey) == 0 {
 		return false
 	}
-	if len(c.BLS) == 0 || len(c.Corona) == 0 || len(c.MLDSAProof) == 0 {
+	if len(c.BLS) == 0 || len(c.Corona) == 0 || len(c.MLDSARollup) == 0 {
 		return false
 	}
 	// The structural check passed; cryptographic verification requires
@@ -84,18 +140,22 @@ func (c *QuasarCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
 	return false
 }
 
-// VerifyWithRealKeys performs cryptographic verification of the certificate.
-// A Quasar cert is finalized iff all three components verify in parallel:
-//   - BLS12-381 aggregate against blsAggPubKey (classical, fast path)
-//   - Corona threshold sig against rtGroupKey (lattice PQ)
+// VerifyWithRealKeys performs cryptographic verification of the
+// certificate. A Quasar cert is finalised iff the configured layers
+// verify in parallel:
+//
+//   - BLS-12-381 aggregate against blsAggPubKey (classical fast path)
+//   - Corona (Ring-LWE threshold ML-DSA) against rtGroupKey (PQ)
 //   - Per-validator ML-DSA-65 sigs against mldsaPubKeys (FIPS 204 PQ)
 //
-// Defense in depth: classical AND two independent PQ schemes. Any single
-// scheme broken does not break finality.
+// Defence-in-depth posture is classical + (one or two PQ lattice
+// schemes) + identity rollup. Any single scheme broken does not break
+// finality.
 //
-// message is the digest the signers committed to. mldsaPubKeys may be nil
-// if MLDSAProof is empty (PQ rollup not yet wired). nil rtGroupKey skips
-// the Corona check (used when running in BLS-only mode).
+// message is the digest the signers committed to. mldsaPubKeys may be
+// nil if MLDSARollup is empty (rollup not yet wired). nil rtGroupKey
+// skips the Corona check (used when running in BLS-only mode or in a
+// Pulsar-only pure-PQ posture).
 func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.PublicKey, rtGroupKey *coronaThreshold.GroupKey, mldsaPubKeys []*mldsa.PublicKey) bool {
 	if c == nil || len(message) == 0 {
 		return false
@@ -116,8 +176,8 @@ func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.Public
 		return false
 	}
 
-	// 2. Corona threshold verify (PQ lattice). Optional: skipped when
-	//    rtGroupKey is nil (BLS-only mode).
+	// 2. Corona threshold verify (Ring-LWE PQ). Optional: skipped when
+	//    rtGroupKey is nil (BLS-only mode or Pulsar-only pure-PQ).
 	if rtGroupKey != nil {
 		if len(c.Corona) == 0 {
 			return false
@@ -131,20 +191,21 @@ func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.Public
 		}
 	}
 
-	// 3. ML-DSA-65 verify (PQ identity, FIPS 204). The MLDSAProof field
-	//    holds either a single Groth16 rollup (Z-Chain) or a concatenation
-	//    of per-validator ML-DSA-65 sigs. We support the per-validator path
-	//    here by serializing each sig with a 4-byte length prefix.
-	if len(c.MLDSAProof) > 0 {
+	// 3. ML-DSA-65 verify (PQ identity, FIPS 204). The MLDSARollup field
+	//    holds either a single STARK/Groth16 rollup (Z-Chain → P3Q) or a
+	//    concatenation of per-validator ML-DSA-65 sigs. We support the
+	//    per-validator path here by serialising each sig with a 4-byte
+	//    length prefix.
+	if len(c.MLDSARollup) > 0 {
 		if len(mldsaPubKeys) == 0 {
 			return false
 		}
-		sigs, err := decodeMLDSASigs(c.MLDSAProof)
+		sigs, err := decodeMLDSASigs(c.MLDSARollup)
 		if err != nil {
 			return false
 		}
-		// Need at least Validators good sigs. If MLDSAProof was a single
-		// Groth16 rollup, we'd verify it once; for now we require N sigs
+		// Need at least Validators good sigs. If MLDSARollup was a single
+		// succinct rollup, we'd verify it once; for now we require N sigs
 		// matching the public keys provided.
 		if len(sigs) > len(mldsaPubKeys) {
 			return false
@@ -186,7 +247,7 @@ func (c *QuasarCert) MarshalBinary() ([]byte, error) {
 		return nil, errors.New("quasar: signature too large")
 	}
 
-	out := make([]byte, 0, 1+2+len(c.BLS)+2+len(c.Corona)+4+len(c.MLDSAProof)+8+8+2)
+	out := make([]byte, 0, 1+2+len(c.BLS)+2+len(c.Corona)+4+len(c.MLDSARollup)+8+8+2)
 	out = append(out, CertSchemeQuasar)
 
 	var u16 [2]byte
@@ -201,9 +262,9 @@ func (c *QuasarCert) MarshalBinary() ([]byte, error) {
 	out = append(out, u16[:]...)
 	out = append(out, c.Corona...)
 
-	binary.BigEndian.PutUint32(u32[:], uint32(len(c.MLDSAProof)))
+	binary.BigEndian.PutUint32(u32[:], uint32(len(c.MLDSARollup)))
 	out = append(out, u32[:]...)
-	out = append(out, c.MLDSAProof...)
+	out = append(out, c.MLDSARollup...)
 
 	binary.BigEndian.PutUint64(u64[:], c.Epoch)
 	out = append(out, u64[:]...)
@@ -257,7 +318,7 @@ func (c *QuasarCert) UnmarshalBinary(data []byte) error {
 	if off+mldsaLen > len(data) {
 		return ErrCertCorrupt
 	}
-	c.MLDSAProof = append(c.MLDSAProof[:0], data[off:off+mldsaLen]...)
+	c.MLDSARollup = append(c.MLDSARollup[:0], data[off:off+mldsaLen]...)
 	off += mldsaLen
 
 	if off+8+8+2 > len(data) {
@@ -377,7 +438,7 @@ type CoronaSignature struct {
 // Per-validator (collected during consensus, NOT stored in block):
 //
 //	BLS:      sign with BLS key           → aggregate into 48 bytes (ECDL)
-//	Corona: sign with ring-LWE key      → PQ threshold proof (Module-LWE)
+//	Corona:    sign with ring-LWE key      → PQ threshold proof (Module-LWE)
 //	ML-DSA:   sign with ML-DSA-65 key     → PQ identity proof (Module-LWE + Module-SIS)
 //
 // In QuasarCert (stored in block header):
