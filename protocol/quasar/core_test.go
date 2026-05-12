@@ -122,7 +122,7 @@ func TestQuantumFinalityWithRingtail(t *testing.T) {
 	if len(sig.BLS) == 0 {
 		t.Error("BLS signature missing")
 	}
-	if len(sig.Ringtail) > 0 {
+	if len(sig.Corona) > 0 {
 		t.Log("Ringtail threshold signature present")
 	}
 

@@ -257,9 +257,9 @@ func TestDualSigningFlow(t *testing.T) {
 	// Verify Ringtail
 	rtValid := ringtailThreshold.Verify(rtGroupKey, messageStr, rtSig)
 	require.True(t, rtValid, "Ringtail signature verification failed")
-	t.Log("  Ringtail: ✓ verified")
+	t.Log("  Corona:    ✓ verified")
 
 	t.Log("✓ Dual BLS + Ringtail signing flow complete")
 	t.Log("  - BLS: 1 round, aggregated, verified")
-	t.Log("  - Ringtail: 2 rounds, aggregated, verified (post-quantum)")
+	t.Log("  - Corona:    2 rounds, aggregated, verified (post-quantum)")
 }

@@ -613,7 +613,7 @@ func TestQuasarConsensus_GenerateCert(t *testing.T) {
 		t.Error("expected non-empty BLS")
 	}
 
-	if len(cert.MLDSAProof) == 0 {
+	if len(cert.MLDSARollup) == 0 {
 		t.Error("expected non-empty PQ")
 	}
 
@@ -690,7 +690,7 @@ func TestSigner_VerifyQuasarSig_ValidatorNotFound(t *testing.T) {
 	sig := &QuasarSig{
 		ValidatorID: "nonexistent",
 		BLS:         []byte{1, 2, 3},
-		Ringtail:    []byte{4, 5, 6},
+		Corona:       []byte{4, 5, 6},
 	}
 
 	result := h.VerifyQuasarSig([]byte("test"), sig)
@@ -706,7 +706,7 @@ func TestSigner_VerifyQuasarSig_InvalidBLS(t *testing.T) {
 	sig := &QuasarSig{
 		ValidatorID: "v1",
 		BLS:         []byte{1, 2, 3}, // Invalid BLS bytes
-		Ringtail:    []byte{4, 5, 6},
+		Corona:       []byte{4, 5, 6},
 	}
 
 	result := h.VerifyQuasarSig([]byte("test"), sig)
@@ -886,7 +886,7 @@ func TestQuasarCert_Verify(t *testing.T) {
 			name: "empty BLS",
 			cert: &QuasarCert{
 				BLS:        nil,
-				MLDSAProof: []byte{1, 2, 3},
+				MLDSARollup: []byte{1, 2, 3},
 			},
 			validators: []string{"v1"},
 			want:       false,
@@ -895,7 +895,7 @@ func TestQuasarCert_Verify(t *testing.T) {
 			name: "empty PQ",
 			cert: &QuasarCert{
 				BLS:        []byte{1, 2, 3},
-				MLDSAProof: nil,
+				MLDSARollup: nil,
 			},
 			validators: []string{"v1"},
 			want:       false,
@@ -904,7 +904,7 @@ func TestQuasarCert_Verify(t *testing.T) {
 			name: "non-empty cert without crypto verification returns false",
 			cert: &QuasarCert{
 				BLS:        []byte{1, 2, 3},
-				MLDSAProof: []byte{4, 5, 6},
+				MLDSARollup: []byte{4, 5, 6},
 				Validators: 0,
 			},
 			validators: []string{"v1", "v2"},
@@ -934,7 +934,7 @@ func TestBlock_Fields(t *testing.T) {
 		Data:      []byte("test data"),
 		Cert: &QuasarCert{
 			BLS:        []byte{7, 8, 9},
-			MLDSAProof: []byte{10, 11, 12},
+			MLDSARollup: []byte{10, 11, 12},
 			Validators: 1,
 			Epoch:      100,
 			Finality:   now,
@@ -1867,7 +1867,7 @@ func TestSigner_AggregateSignatures_InvalidBLS(t *testing.T) {
 	sig := &QuasarSig{
 		ValidatorID: "v1",
 		BLS:         []byte{1, 2, 3}, // Invalid BLS bytes
-		Ringtail:    []byte{4, 5, 6},
+		Corona:       []byte{4, 5, 6},
 	}
 
 	_, err := h.AggregateSignatures([]byte("test"), []*QuasarSig{sig})
