@@ -18,7 +18,7 @@ import (
 //  4. Verify with the real signer's keys (must succeed).
 //  5. Verify with a different BLS aggregate key (must fail).
 func TestQuasarCert_RoundTrip_E2E(t *testing.T) {
-	// 1-of-1 BLS+Ringtail dual signer + ML-DSA via AddValidator.
+	// 1-of-1 BLS+Corona dual signer + ML-DSA via AddValidator.
 	cfg, err := GenerateDualKeys(1, 3)
 	if err != nil {
 		t.Fatalf("GenerateDualKeys: %v", err)
@@ -54,7 +54,7 @@ func TestQuasarCert_RoundTrip_E2E(t *testing.T) {
 	//    end-to-end byte exercise; full aggregation is a higher-layer concern.
 	cert := &QuasarCert{
 		BLS:        append([]byte(nil), sig.BLS...),
-		Corona:      []byte{0x01}, // structural-only; cryptographic Ringtail is via ringtailGobEncode of a real Signature
+		Corona:      []byte{0x01}, // structural-only; cryptographic Corona is via coronaGobEncode of a real Signature
 		MLDSARollup: EncodeMLDSASigs([][]byte{sig.MLDSA}),
 		Epoch:      1,
 		Finality:   time.Unix(1700000000, 0),
@@ -81,7 +81,7 @@ func TestQuasarCert_RoundTrip_E2E(t *testing.T) {
 		t.Fatalf("BLS round-trip mismatch")
 	}
 	if string(got.Corona) != string(cert.Corona) {
-		t.Fatalf("Ringtail round-trip mismatch")
+		t.Fatalf("Corona round-trip mismatch")
 	}
 	if string(got.MLDSARollup) != string(cert.MLDSARollup) {
 		t.Fatalf("MLDSAProof round-trip mismatch")

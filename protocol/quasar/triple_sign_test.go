@@ -1,5 +1,5 @@
 // Copyright (C) 2025, Lux Industries Inc. All rights reserved.
-// Tests for the Quasar signing path: BLS + Ringtail + ML-DSA.
+// Tests for the Quasar signing path: BLS + Corona + ML-DSA.
 
 package quasar
 
@@ -93,10 +93,10 @@ func TestTripleSignVerify(t *testing.T) {
 }
 
 // TestIsTripleMode verifies that IsTripleMode correctly reflects the
-// presence of all three signing paths: BLS threshold + Ringtail + ML-DSA.
+// presence of all three signing paths: BLS threshold + Corona + ML-DSA.
 func TestIsTripleMode(t *testing.T) {
 	// A basic signer with AddValidator has BLS (legacy) + ML-DSA but
-	// no threshold BLS signers and no Ringtail signers.
+	// no threshold BLS signers and no Corona signers.
 	basic, err := NewSigner(1)
 	if err != nil {
 		t.Fatalf("NewSigner: %v", err)
@@ -105,10 +105,10 @@ func TestIsTripleMode(t *testing.T) {
 		t.Fatalf("AddValidator: %v", err)
 	}
 	if basic.IsTripleMode() {
-		t.Fatal("basic signer should not be in triple mode (no threshold BLS, no Ringtail)")
+		t.Fatal("basic signer should not be in triple mode (no threshold BLS, no Corona)")
 	}
 
-	// A dual-threshold signer has BLS threshold + Ringtail but no ML-DSA.
+	// A dual-threshold signer has BLS threshold + Corona but no ML-DSA.
 	config, err := GenerateDualKeys(1, 3)
 	if err != nil {
 		t.Fatalf("GenerateDualKeys: %v", err)
@@ -122,18 +122,18 @@ func TestIsTripleMode(t *testing.T) {
 	}
 
 	// Adding validators with ML-DSA keys to the dual signer should enable
-	// triple mode (blsSigners + ringtailSigners + mldsaKeys all populated).
+	// triple mode (blsSigners + coronaSigners + mldsaKeys all populated).
 	for _, id := range []string{"v0", "v1", "v2"} {
 		if err := dual.AddValidator(id, 100); err != nil {
 			t.Fatalf("AddValidator(%s): %v", id, err)
 		}
 	}
 	if !dual.IsTripleMode() {
-		t.Fatal("signer with BLS threshold + Ringtail + ML-DSA should be in triple mode")
+		t.Fatal("signer with BLS threshold + Corona + ML-DSA should be in triple mode")
 	}
 }
 
-// TestTripleSignRound1 creates a full triple signer (BLS threshold + Ringtail +
+// TestTripleSignRound1 creates a full triple signer (BLS threshold + Corona +
 // ML-DSA) and calls TripleSignRound1 to verify all three fields are produced.
 func TestTripleSignRound1(t *testing.T) {
 	config, err := GenerateDualKeys(1, 3)
@@ -179,12 +179,12 @@ func TestTripleSignRound1(t *testing.T) {
 		t.Fatal("MLDSA field is empty after TripleSignRound1")
 	}
 
-	// Ringtail Round1 data must be present (for the 2-round continuation)
+	// Corona Round1 data must be present (for the 2-round continuation)
 	if round1Data == nil {
-		t.Fatal("Ringtail Round1Data is nil")
+		t.Fatal("Corona Round1Data is nil")
 	}
 	if len(round1Data.D) == 0 {
-		t.Fatal("Ringtail Round1Data.D is empty")
+		t.Fatal("Corona Round1Data.D is empty")
 	}
 
 	// Verify the signature is marked as threshold
