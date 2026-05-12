@@ -61,7 +61,7 @@ Modes (each layer independently toggleable):
 - Full Quasar + Z-Chain ZKP: production mode (succinct certificate)
 
 `IsTripleMode()` checks all three signing layers.
-Crypto: `luxfi/crypto/bls`, `luxfi/crypto/mldsa`, `luxfi/ringtail/threshold`.
+Crypto: `luxfi/crypto/bls`, `luxfi/crypto/mldsa`, `luxfi/corona/threshold`.
 
 ### PQ Mode Selection
 
@@ -303,7 +303,7 @@ Run: `GOWORK=off go test -v -run TestLuxVsAvalanche_EndToEnd -bench=. ./bench/`
 
 ### Dependencies (Critical)
 - `github.com/luxfi/crypto` -- BLS, ML-DSA, threshold signing
-- `github.com/luxfi/ringtail` -- Ring-LWE threshold signatures
+- `github.com/luxfi/corona` -- Ring-LWE threshold signatures
 - `github.com/luxfi/zap` -- Zero-copy wire protocol
 - `github.com/luxfi/ids` -- ID types
 - `github.com/luxfi/version` -- Version management
