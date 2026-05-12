@@ -72,7 +72,7 @@ the `LUX_CONSENSUS_PQ_MODE` env var or `Parameters.PQMode` field:
 |------|-------|-------------|
 | `BLSOnly` | bls | Classical fast path, smallest cert |
 | `BLSPlusMLDSA` | bls-mldsa | BLS + per-validator ML-DSA-65 |
-| `BLSPlusRingtail` | bls-rt | BLS + Pulsar 2-round threshold |
+| `BLSPlusCorona` | bls-rt | BLS + Pulsar 2-round threshold |
 | `BLSPlusGroth16` | bls-z | BLS + Z-Chain Groth16 rollup (placeholder) |
 | `TripleQuantum` | triple | All three layers active |
 
@@ -101,7 +101,7 @@ quantum 2^130 security):
   (Delta: Vector[ring.Poly] len 8) = 17 polys × 256 coeffs × 8 bytes
   raw ≈ 34816 B; measured 33052 B native binary, 33221 B gob (gob
   bloat is only 1.01x — see `cert_size_compare_test.go`). Native
-  encoder ships in `protocol/quasar/ringtail_gob.go` (replaces gob).
+  encoder ships in `protocol/quasar/corona_gob.go` (replaces gob).
 - 10K certs ≈ 315 MB native, 317 MB gob.
 - The earlier "10 MB / 10K = 1 KB / cert" claim was a different
   parameter sweep (smaller ring + smaller Q) — would lose ~20 bits
