@@ -374,8 +374,8 @@ func TestPopcount(t *testing.T) {
 		{0b1010, 4, 2},
 		{0b0000, 4, 0},
 		{0b11111111, 8, 8},
-		{0xFF, 4, 4},         // only lower 4 bits: 0b1111
-		{0xFFFF, 10, 10},     // lower 10 bits all set
+		{0xFF, 4, 4},     // only lower 4 bits: 0b1111
+		{0xFFFF, 10, 10}, // lower 10 bits all set
 		{0b1010101010, 10, 5},
 	}
 	for _, tt := range tests {
