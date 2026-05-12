@@ -238,7 +238,7 @@ func TestQuantumSecurityForAllChains(t *testing.T) {
 			t.Errorf("Validator %s missing BLS signature", validatorID)
 		}
 		// Ringtail signatures require threshold mode configuration
-		if len(sig.Ringtail) > 0 {
+		if len(sig.Corona) > 0 {
 			t.Logf("Validator %s has Ringtail threshold signature", validatorID)
 		}
 	}

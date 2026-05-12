@@ -35,15 +35,19 @@ type ConsensusEngine struct {
 func (e *ConsensusEngine) PQMode() config.PQMode { return e.pqMode }
 
 // FinalityEvent represents a finalized block with quantum-resistant proofs.
-// Carries all three components for parallel verification: classical BLS,
-// lattice Ringtail, and FIPS 204 ML-DSA. Defense in depth.
+// Carries the configured layers for parallel verification: classical
+// BLS fast-path, Corona (Ring-LWE) threshold, optional Pulsar (Module-
+// LWE) threshold, and the per-validator ML-DSA-65 identity rollup.
+// Defence in depth across one classical curve and (one or two) PQ
+// lattice families.
 type FinalityEvent struct {
-	Height     uint64
-	BlockID    ids.ID
-	Timestamp  time.Time
-	BLSProof   []byte // Classical BLS12-381 aggregate
-	Ringtail   []byte // Ringtail lattice threshold sig
-	MLDSAProof []byte // FIPS 204 ML-DSA proof
+	Height      uint64
+	BlockID     ids.ID
+	Timestamp   time.Time
+	BLSProof    []byte // Classical BLS-12-381 aggregate (optional)
+	Corona      []byte // Corona (Ring-LWE) threshold sig
+	Pulsar      []byte // Pulsar-M (Module-LWE) threshold sig (optional)
+	MLDSARollup []byte // Per-validator ML-DSA-65 rolled up via STARK/Groth16
 }
 
 // memoryStore is a simple in-memory implementation of dag.Store for P-Chain vertices
@@ -201,11 +205,11 @@ func (e *ConsensusEngine) ProcessBlock(ctx context.Context, blockID ids.ID, vote
 	// Emit finality event
 	select {
 	case e.finality <- FinalityEvent{
-		Height:     e.height,
-		BlockID:    blockID,
-		Timestamp:  time.Now(),
-		MLDSAProof: cert.PQCert,
-		BLSProof:   cert.BLSAgg,
+		Height:      e.height,
+		BlockID:     blockID,
+		Timestamp:   time.Now(),
+		MLDSARollup: cert.PQCert,
+		BLSProof:    cert.BLSAgg,
 	}:
 	case <-ctx.Done():
 		return ctx.Err()
@@ -238,19 +242,21 @@ func (e *ConsensusEngine) Height() uint64 {
 // blockToFinalityEvent converts a quasar.Block to a FinalityEvent
 func blockToFinalityEvent(block *quasar.Block) FinalityEvent {
 	blockID, _ := ids.FromString(block.Hash)
-	var mldsaProof, ringtail, blsProof []byte
+	var mldsaRollup, corona, pulsar, blsProof []byte
 	if block.Cert != nil {
-		mldsaProof = block.Cert.MLDSAProof
-		ringtail = block.Cert.Ringtail
+		mldsaRollup = block.Cert.MLDSARollup
+		corona = block.Cert.Corona
+		pulsar = block.Cert.Pulsar
 		blsProof = block.Cert.BLS
 	}
 	return FinalityEvent{
-		Height:     block.Height,
-		BlockID:    blockID,
-		Timestamp:  block.Timestamp,
-		MLDSAProof: mldsaProof,
-		Ringtail:   ringtail,
-		BLSProof:   blsProof,
+		Height:      block.Height,
+		BlockID:     blockID,
+		Timestamp:   block.Timestamp,
+		MLDSARollup: mldsaRollup,
+		Corona:      corona,
+		Pulsar:      pulsar,
+		BLSProof:    blsProof,
 	}
 }
 

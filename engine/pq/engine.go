@@ -175,7 +175,7 @@ func (pq *PostQuantum) GenerateQuantumProof(ctx context.Context, blockID ids.ID)
 		BLS: append([]byte(nil), sig.BLS...),
 	}
 	if len(sig.MLDSA) > 0 {
-		cert.MLDSAProof = quasar.EncodeMLDSASigs([][]byte{sig.MLDSA})
+		cert.MLDSARollup = quasar.EncodeMLDSASigs([][]byte{sig.MLDSA})
 	}
 	return cert.MarshalBinary()
 }
