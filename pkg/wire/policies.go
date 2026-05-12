@@ -534,7 +534,7 @@ func (p *QuantumPolicy) OnVote(ctx context.Context, vote *Vote) error {
 			p.blsVotes[vote.CandidateID] = make(map[VoterID][]byte)
 		}
 		p.blsVotes[vote.CandidateID][vote.VoterID] = vote.Signature[1:] // Skip scheme byte
-	case SigRingtail:
+	case SigCorona:
 		// Only allowed if requireRT is false
 		if p.pqVotes[vote.CandidateID] == nil {
 			p.pqVotes[vote.CandidateID] = make(map[VoterID][]byte)
@@ -585,8 +585,8 @@ func sigSchemeToString(scheme byte) string {
 		return "SigEd25519"
 	case SigBLS:
 		return "SigBLS"
-	case SigRingtail:
-		return "SigRingtail"
+	case SigCorona:
+		return "SigCorona"
 	case SigQuasar:
 		return "SigQuasar"
 	default:

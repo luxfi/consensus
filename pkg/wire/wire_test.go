@@ -426,7 +426,7 @@ func TestQuantumPolicyRTEnforcement(t *testing.T) {
 
 	// Test 2: Corona-only vote should also be rejected
 	rtVote := NewVote(candidate.ID, voter1, 0, true)
-	rtVote.Signature = []byte{SigRingtail, 4, 5, 6} // Corona only
+	rtVote.Signature = []byte{SigCorona, 4, 5, 6} // Corona only
 
 	err = policy.OnVote(ctx, rtVote)
 	if err == nil {
