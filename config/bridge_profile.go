@@ -405,7 +405,7 @@ func (p *BridgeProfile) RefusePairingPrecompile() error {
 		ErrBridgeProfileForbidden, p.Name)
 }
 
-// LuxStrictPQBridgeProfile is the canonical Lux strict-PQ bridge
+// StrictPQBridgeProfile is the canonical Lux strict-PQ bridge
 // posture. Both source and destination finalise under Pulsar-M-65
 // (NIST PQ Cat 3, FIPS 204-compatible threshold); the destination-side
 // verifier admits STARK/FRI/SHA-3-NIST proofs only; admin is ML-DSA-87
@@ -419,7 +419,7 @@ func (p *BridgeProfile) RefusePairingPrecompile() error {
 // methods consult it directly. Cross-chain code that wants to use a
 // classical primitive must pin BridgeClassicalCompat instead and
 // accept the non-E2E-PQ label.
-var LuxStrictPQBridgeProfile = BridgeProfile{
+var StrictPQBridgeProfile = BridgeProfile{
 	ProfileID:               uint32(BridgeProfileIDLuxStrictPQ),
 	Name:                    "LUX_STRICT_PQ_BRIDGE",
 	SourceFinalityScheme:    SigSchemePulsarM65,
@@ -442,7 +442,7 @@ var LuxStrictPQBridgeProfile = BridgeProfile{
 // non-E2E-PQ: PostQuantumEndToEnd=false and the gates allow every
 // classical primitive.
 //
-// A chain may pin LuxStrictPQ as its ChainSecurityProfile *and* operate
+// A chain may pin StrictPQ as its ChainSecurityProfile *and* operate
 // a BridgeClassicalCompat bridge to an external L1: the chain is still
 // strict-PQ, but the bridge into / out of it is labelled as the
 // classical-compat surface it actually is. Block-explorer metadata
@@ -485,6 +485,6 @@ func (p *BridgeProfile) MustValidate() {
 // panic message names the failing profile so a misconfiguration is
 // immediate and visible in the boot log.
 func init() {
-	LuxStrictPQBridgeProfile.MustValidate()
+	StrictPQBridgeProfile.MustValidate()
 	BridgeClassicalCompat.MustValidate()
 }

@@ -157,7 +157,7 @@ func TestVertexLuxConsensus(t *testing.T) {
 	id := ids.GenerateTestID()
 	vertex := NewVertex(id, nil, 0, 0, nil)
 
-	require.Nil(vertex.LuxConsensus())
+	require.Nil(vertex.Driver())
 
 	// SetLuxConsensus is tested via DAGConsensus.AddVertex
 }
