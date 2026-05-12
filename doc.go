@@ -43,7 +43,7 @@ Each cryptographic layer is independently toggleable:
 
   - BLS-only: fastest classical consensus (BLS12-381 threshold)
   - BLS + ML-DSA: dual with PQ identity proof (FIPS 204)
-  - BLS + Corona: dual with PQ threshold proof (Ring-LWE)
+  - BLS + Corona:    dual with PQ threshold proof (Ring-LWE)
   - BLS + Corona + ML-DSA: full Quasar (all three in parallel)
 
 # Testing

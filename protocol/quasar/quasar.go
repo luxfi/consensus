@@ -30,7 +30,7 @@ var (
 		New: func() any {
 			return &QuasarSig{
 				BLS:      make([]byte, 0, 96),
-				Corona: make([]byte, 0, 4096),
+				Corona:    make([]byte, 0, 4096),
 				MLDSA:    make([]byte, 0, 3309), // ML-DSA-65 sig size
 			}
 		},
@@ -55,7 +55,7 @@ var (
 //
 // Three independent signing paths:
 //   - BLS12-381: classical threshold signatures (ECDL hardness)
-//   - Corona: Ring-LWE 2-round threshold signatures (Module-LWE hardness)
+//   - Corona:    Ring-LWE 2-round threshold signatures (Module-LWE hardness)
 //   - ML-DSA-65: FIPS 204 post-quantum identity signatures (Module-LWE + Module-SIS)
 //
 // All three run in parallel via TripleSign. Each can be enabled independently.
@@ -315,7 +315,7 @@ func (s *signer) VerifyCoronaSignature(message string, sig *coronaThreshold.Sign
 
 // DualSignRound1 performs Round 1 of both BLS and Corona in parallel.
 // BLS: Computes signature share (single round)
-// Corona: Computes D matrix + MACs (Round 1 of 2)
+// Corona:    Computes D matrix + MACs (Round 1 of 2)
 func (s *signer) DualSignRound1(ctx context.Context, validatorID string, message []byte, sessionID int, prfKey []byte) (*QuasarSig, *coronaThreshold.Round1Data, error) {
 	s.mu.RLock()
 	blsSigner, hasBLS := s.blsSigners[validatorID]
@@ -381,7 +381,7 @@ func (s *signer) DualSignRound2(validatorID string, sessionID int, message strin
 
 // TripleSignRound1 performs Round 1 of all three signing paths in parallel:
 //   - BLS: threshold share (single round, complete)
-//   - Corona: Round 1 of 2-round protocol (D matrix + MACs)
+//   - Corona:    Round 1 of 2-round protocol (D matrix + MACs)
 //   - ML-DSA: full signature (single round, complete)
 //
 // Returns the QuasarSig with BLS + MLDSA filled, plus Corona Round1Data
@@ -775,9 +775,10 @@ func (s *signer) VerifyAggregatedSignatureWithContext(ctx context.Context, messa
 
 // QuasarSig contains BLS and optionally Corona signature data.
 type QuasarSig struct {
-	BLS         []byte // BLS12-381 signature (classical)
-	Corona    []byte // Corona Ring-LWE signature (PQ threshold)
-	MLDSA       []byte // ML-DSA-65 signature (PQ identity, FIPS 204)
+	BLS         []byte // BLS-12-381 aggregate (classical fast-path; empty in pure-PQ)
+	Corona      []byte // Corona (Ring-LWE) threshold signature
+	Pulsar      []byte // Pulsar-M (Module-LWE) threshold signature
+	MLDSA       []byte // Per-validator ML-DSA-65 (FIPS 204 identity attestation)
 	ValidatorID string
 	IsThreshold bool
 	SignerIndex int

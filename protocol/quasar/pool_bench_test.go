@@ -84,7 +84,7 @@ func BenchmarkAggregateSignatures(b *testing.B) {
 		// Copy to avoid pool reuse during benchmark
 		sigs[i] = &QuasarSig{
 			BLS:         append([]byte(nil), sig.BLS...),
-			Corona:    append([]byte(nil), sig.Corona...),
+			Corona:       append([]byte(nil), sig.Corona...),
 			ValidatorID: sig.ValidatorID,
 		}
 		ReleaseQuasarSig(sig)
@@ -126,7 +126,7 @@ func BenchmarkVerifyAggregatedSignature(b *testing.B) {
 		}
 		sigs[i] = &QuasarSig{
 			BLS:         append([]byte(nil), sig.BLS...),
-			Corona:    append([]byte(nil), sig.Corona...),
+			Corona:       append([]byte(nil), sig.Corona...),
 			ValidatorID: sig.ValidatorID,
 		}
 		ReleaseQuasarSig(sig)
@@ -173,7 +173,7 @@ func BenchmarkVerifyAggregatedSignatureParallel(b *testing.B) {
 		}
 		sigs[i] = &QuasarSig{
 			BLS:         append([]byte(nil), sig.BLS...),
-			Corona:    append([]byte(nil), sig.Corona...),
+			Corona:       append([]byte(nil), sig.Corona...),
 			ValidatorID: sig.ValidatorID,
 		}
 		ReleaseQuasarSig(sig)
