@@ -424,19 +424,19 @@ func TestQuantumPolicyRTEnforcement(t *testing.T) {
 		t.Errorf("Expected RTRequirementError, got %T", err)
 	}
 
-	// Test 2: Ringtail-only vote should also be rejected
+	// Test 2: Corona-only vote should also be rejected
 	rtVote := NewVote(candidate.ID, voter1, 0, true)
-	rtVote.Signature = []byte{SigRingtail, 4, 5, 6} // Ringtail only
+	rtVote.Signature = []byte{SigRingtail, 4, 5, 6} // Corona only
 
 	err = policy.OnVote(ctx, rtVote)
 	if err == nil {
-		t.Error("Ringtail-only vote should be rejected when RT is required")
+		t.Error("Corona-only vote should be rejected when RT is required")
 	}
 
 	// Test 3: Quasar (dual BLS+RT) vote should be accepted
 	// Format: [scheme][bls_len_hi][bls_len_lo][bls...][rt...]
 	blsSig := make([]byte, 96) // 96 byte BLS signature
-	rtSig := make([]byte, 100) // Ringtail signature
+	rtSig := make([]byte, 100) // Corona signature
 	quasarSig := make([]byte, 0)
 	quasarSig = append(quasarSig, SigQuasar)
 	quasarSig = append(quasarSig, byte(len(blsSig)>>8), byte(len(blsSig))) // BLS length

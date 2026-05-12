@@ -93,7 +93,7 @@ func BenchmarkBLSSigningVariableMessageSize(b *testing.B) {
 }
 
 // =============================================================================
-// Hybrid Signature Benchmarks (BLS + ML-DSA/Ringtail)
+// Hybrid Signature Benchmarks (BLS + ML-DSA/Corona)
 // =============================================================================
 
 func BenchmarkQuasarSigCreation(b *testing.B) {
@@ -454,7 +454,7 @@ func BenchmarkThresholdSigningOnly(b *testing.B) {
 }
 
 // =============================================================================
-// ML-DSA (Ringtail Post-Quantum) Benchmarks
+// ML-DSA (Corona Post-Quantum) Benchmarks
 // =============================================================================
 
 func BenchmarkMLDSAKeyGeneration(b *testing.B) {
@@ -530,7 +530,7 @@ func BenchmarkMLDSAVerification(b *testing.B) {
 }
 
 // =============================================================================
-// Ringtail Benchmarks (Reference)
+// Corona Benchmarks (Reference)
 // =============================================================================
 
 // NOTE: Post-quantum threshold benchmarks live in the Pulsar package at

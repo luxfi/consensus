@@ -9,7 +9,7 @@ import (
 )
 
 // TestHashSuiteID_StableIntegers locks the wire bytes. Pulsar (SHA3-NIST)
-// and Ringtail (BLAKE3-legacy) certs ship under PolicyPQ (5); HashSuiteID
+// and Corona (BLAKE3-legacy) certs ship under PolicyPQ (5); HashSuiteID
 // is the only signal of which kernel to verify under. Renumbering an
 // entry breaks every cert ever signed under that mode.
 //
@@ -33,7 +33,7 @@ func TestHashSuiteID_StableIntegers(t *testing.T) {
 }
 
 // TestSigSchemeID_StableIntegers locks the wire bytes for every defined
-// signature scheme. Numbering blocks: 0x10 BLS, 0x20 Ringtail, 0x30
+// signature scheme. Numbering blocks: 0x10 BLS, 0x20 Corona, 0x30
 // Pulsar.R, 0x40 Pulsar.M (low nibble = parameter set).
 func TestSigSchemeID_StableIntegers(t *testing.T) {
 	cases := []struct {
@@ -42,7 +42,7 @@ func TestSigSchemeID_StableIntegers(t *testing.T) {
 	}{
 		{SigSchemeNone, 0x00},
 		{SigSchemeBLS12381, 0x10},
-		{SigSchemeRingtailAcademic, 0x20},
+		{SigSchemeNasua, 0x20},
 		{SigSchemePulsarR, 0x30},
 		{SigSchemePulsarM44, 0x41},
 		{SigSchemePulsarM65, 0x42}, // production default
@@ -63,7 +63,7 @@ func TestSigSchemeID_String(t *testing.T) {
 	}{
 		{SigSchemeNone, "none"},
 		{SigSchemeBLS12381, "bls12-381"},
-		{SigSchemeRingtailAcademic, "ringtail-academic"},
+		{SigSchemeNasua, "nasua"},
 		{SigSchemePulsarR, "pulsar-r"},
 		{SigSchemePulsarM44, "pulsar-m-44"},
 		{SigSchemePulsarM65, "pulsar-m-65"},
@@ -125,13 +125,13 @@ func TestCertificate_TranscriptHash_BindsHashSuiteID(t *testing.T) {
 	candidateID := DeriveItemID([]byte("F1-cross-suite-confusion"))
 
 	pulsar := NewCertificateWithSuite(candidateID, 100, PolicyPQ, HashSuiteSHA3NIST, []byte("p"))
-	ringtail := NewCertificateWithSuite(candidateID, 100, PolicyPQ, HashSuiteBLAKE3Legacy, []byte("p"))
+	corona := NewCertificateWithSuite(candidateID, 100, PolicyPQ, HashSuiteBLAKE3Legacy, []byte("p"))
 
 	pulsarHash := pulsar.TranscriptHash()
-	ringtailHash := ringtail.TranscriptHash()
+	ringtailHash := corona.TranscriptHash()
 
 	if pulsarHash == ringtailHash {
-		t.Fatalf("transcript hash collides across HashSuiteID: Pulsar(SHA3-NIST) and Ringtail(BLAKE3-legacy) share PolicyPQ; F1 fix requires HashSuiteID to break the digest")
+		t.Fatalf("transcript hash collides across HashSuiteID: Pulsar(SHA3-NIST) and Corona(BLAKE3-legacy) share PolicyPQ; F1 fix requires HashSuiteID to break the digest")
 	}
 
 	// Sanity: flipping HashSuiteID alone (no other field change) MUST flip

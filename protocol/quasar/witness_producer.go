@@ -4,7 +4,7 @@
 // Parallel finality witness producers for Quasar (LP-020).
 //
 // Lux Quasar finality is layered, parallel witnesses. P-Chain BLS is the
-// always-on finality witness. Q-Chain (Ringtail threshold) and Z-Chain
+// always-on finality witness. Q-Chain (Corona threshold) and Z-Chain
 // (MLDSAGroth16 rollup) are independently toggleable parallel witnesses
 // that produce additional finality artifacts at the same round-rate as P.
 //
@@ -61,13 +61,13 @@ type PWitnessProducer interface {
 	Witness(ctx context.Context, digest RoundDigest) (sig []byte, signers []byte, err error)
 }
 
-// QWitnessProducer produces Q-Chain Ringtail threshold-signature witnesses.
+// QWitnessProducer produces Q-Chain Corona threshold-signature witnesses.
 //
 // The Q-Chain VM (chains/quantumvm) implements this by driving a 2-round
-// Ringtail threshold ceremony per consensus round once a t-of-n DKG has
+// Corona threshold ceremony per consensus round once a t-of-n DKG has
 // produced the combined public key recorded in qchain_ceremony_root.
 type QWitnessProducer interface {
-	// Witness returns a Ringtail threshold signature over the round digest,
+	// Witness returns a Corona threshold signature over the round digest,
 	// or ErrWitnessUnavailable if the ceremony fails or quorum is missed.
 	Witness(ctx context.Context, digest RoundDigest) ([]byte, error)
 }
@@ -112,7 +112,7 @@ type WitnessSet struct {
 	// MinPolicy is the lowest acceptable finality policy ID. Zero = unset.
 	// Mapping (mirrors config.PQMode.PolicyID()):
 	//   1 = PolicyQuorum   (BLS only — bls mode)
-	//   5 = PolicyPQ       (BLS + Q witness — pulsar / ringtail mode)
+	//   5 = PolicyPQ       (BLS + Q witness — pulsar / corona mode)
 	//   6 = PolicyPZ       (BLS + Z witness — mldsa fallback path)
 	//   4 = PolicyQuantum  (BLS + Q + Z — quasar mode)
 	MinPolicy uint16
@@ -124,7 +124,7 @@ type WitnessSet struct {
 	// Zero (PQModeBLS) is the default and means HashSuiteNone on the wire,
 	// matching the legacy BLS-only cert shape.
 	//
-	// HIP-0077 §"Lux consensus PQ modes" red-review F1: Pulsar and Ringtail
+	// HIP-0077 §"Lux consensus PQ modes" red-review F1: Pulsar and Corona
 	// share PolicyID 5 but use different hash kernels (SHA-3 vs BLAKE3); a
 	// cert that does not carry HashSuiteID is undecodable by a verifier
 	// built against the other kernel.

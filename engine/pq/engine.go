@@ -11,7 +11,7 @@ import (
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
 	"github.com/luxfi/ids"
-	ringtailThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // Engine defines the post-quantum consensus engine
@@ -45,10 +45,10 @@ type PostQuantum struct {
 	// produces a serialized QuasarCert via TripleSignRound1.
 	signer *quasar.Signer
 	// Verification keys, optional. When set, VerifyQuantumSignature
-	// performs real BLS+Ringtail+ML-DSA verification on a serialized
+	// performs real BLS+Corona+ML-DSA verification on a serialized
 	// QuasarCert.
 	blsAggKey   *bls.PublicKey
-	rtGroupKey  *ringtailThreshold.GroupKey
+	rtGroupKey  *coronaThreshold.GroupKey
 	mldsaPubKey *mldsa.PublicKey
 }
 
@@ -69,7 +69,7 @@ func (pq *PostQuantum) AttachSigner(s *quasar.Signer) {
 
 // AttachVerifyKeys wires real PQ verification keys. blsAggKey is required;
 // rtGroupKey and mldsaPubKey are optional (skipped if nil).
-func (pq *PostQuantum) AttachVerifyKeys(blsAggKey *bls.PublicKey, rtGroupKey *ringtailThreshold.GroupKey, mldsaPubKey *mldsa.PublicKey) {
+func (pq *PostQuantum) AttachVerifyKeys(blsAggKey *bls.PublicKey, rtGroupKey *coronaThreshold.GroupKey, mldsaPubKey *mldsa.PublicKey) {
 	pq.mu.Lock()
 	defer pq.mu.Unlock()
 	pq.blsAggKey = blsAggKey

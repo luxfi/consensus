@@ -32,7 +32,7 @@ import (
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	ringtailThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // =============================================================================
@@ -45,16 +45,16 @@ import (
 // per-validator linear paths (notably ML-DSA-65 = 3309 B per validator).
 var pqModesValidatorCounts = []int{4, 21, 64, 100}
 
-// pqModesRingtailCounts is the validator-set sizes used for Ringtail-bearing
+// pqModesRingtailCounts is the validator-set sizes used for Corona-bearing
 // modes. n=4 is excluded because the Ring-LWE rejection sampler is known
 // flaky at that group size (see consensus CLAUDE.md). n=100 is excluded
-// because a single full 2-round Ringtail signing pass takes 5+ minutes
+// because a single full 2-round Corona signing pass takes 5+ minutes
 // at that group size; the bench instead measures n in {21, 64} which is
 // where the shape of the cost curve is informative.
 var pqModesRingtailCounts = []int{21, 64}
 
 // ringtailMaxRetries bounds how many times we re-run Round1/Round2/Finalize
-// when verify fails (Ringtail rejection-sampling is nondeterministic).
+// when verify fails (Corona rejection-sampling is nondeterministic).
 const ringtailMaxRetries = 4
 
 // modeMetrics is the per-mode per-n result row aggregated by the suite.
@@ -299,17 +299,17 @@ func BenchmarkPQModes_BLSPlusMLDSA(b *testing.B) {
 }
 
 // =============================================================================
-// Mode 3: BLS + Ringtail (lattice threshold, O(1) cert in N)
+// Mode 3: BLS + Corona (lattice threshold, O(1) cert in N)
 // =============================================================================
 
-// ringtailFixture holds a fully-keyed Ringtail group plus a parallel BLS
+// ringtailFixture holds a fully-keyed Corona group plus a parallel BLS
 // keyset. We re-use the dual_threshold_test.go flow: GenerateDualKeys
-// gives us BLS-threshold + Ringtail-threshold shares for a (t, n) group,
+// gives us BLS-threshold + Corona-threshold shares for a (t, n) group,
 // and we drive Round1 / Round2 / Finalize to produce a real signature.
 type ringtailFixture struct {
 	cfg          *quasar.SignerConfig
 	signer       *quasar.Signer
-	rtSigners    []*ringtailThreshold.Signer
+	rtSigners    []*coronaThreshold.Signer
 	rtSignerIDs  []int
 	validatorIDs []string
 	blsVals      []blsValidator
@@ -328,13 +328,13 @@ func newRingtailFixture(t, n int) (*ringtailFixture, error) {
 	}
 
 	ids := make([]string, n)
-	rtSigners := make([]*ringtailThreshold.Signer, n)
+	rtSigners := make([]*coronaThreshold.Signer, n)
 	rtIDs := make([]int, n)
 	for i := 0; i < n; i++ {
 		id := fmt.Sprintf("v%d", i)
 		ids[i] = id
-		share := cfg.RingtailShares[id]
-		rtSigners[i] = ringtailThreshold.NewSigner(share)
+		share := cfg.CoronaShares[id]
+		rtSigners[i] = coronaThreshold.NewSigner(share)
 		rtIDs[i] = i
 	}
 
@@ -352,16 +352,16 @@ func newRingtailFixture(t, n int) (*ringtailFixture, error) {
 
 // signResult holds one full pass's outputs.
 type signResult struct {
-	rtSig    *ringtailThreshold.Signature
+	rtSig    *coronaThreshold.Signature
 	rtBytes  []byte
 	blsAgg   []byte
 	blsAggPK *bls.PublicKey
 }
 
-// signWithRetry re-runs signOnce until the produced Ringtail signature
+// signWithRetry re-runs signOnce until the produced Corona signature
 // verifies, up to ringtailMaxRetries attempts. Returns (result, attempts,
-// error). Used because Ringtail rejection sampling is nondeterministic.
-func (f *ringtailFixture) signWithRetry(msg []byte, prfKey []byte, groupKey *ringtailThreshold.GroupKey) (*signResult, int, error) {
+// error). Used because Corona rejection sampling is nondeterministic.
+func (f *ringtailFixture) signWithRetry(msg []byte, prfKey []byte, groupKey *coronaThreshold.GroupKey) (*signResult, int, error) {
 	var lastErr error
 	for i := 0; i < ringtailMaxRetries; i++ {
 		res, err := f.signOnce(msg, i+1, prfKey)
@@ -369,24 +369,24 @@ func (f *ringtailFixture) signWithRetry(msg []byte, prfKey []byte, groupKey *rin
 			lastErr = err
 			continue
 		}
-		if ringtailThreshold.Verify(groupKey, string(msg), res.rtSig) {
+		if coronaThreshold.Verify(groupKey, string(msg), res.rtSig) {
 			return res, i + 1, nil
 		}
-		lastErr = fmt.Errorf("Ringtail verify failed on attempt %d", i+1)
+		lastErr = fmt.Errorf("Corona verify failed on attempt %d", i+1)
 	}
 	return nil, ringtailMaxRetries, lastErr
 }
 
-// signOnce runs the Ringtail 2-round flow once and returns the resulting
+// signOnce runs the Corona 2-round flow once and returns the resulting
 // signature alongside the BLS aggregate over the same message.
 func (f *ringtailFixture) signOnce(msg []byte, sessionID int, prfKey []byte) (*signResult, error) {
-	round1 := make(map[int]*ringtailThreshold.Round1Data, f.n)
+	round1 := make(map[int]*coronaThreshold.Round1Data, f.n)
 	for _, s := range f.rtSigners {
 		d := s.Round1(sessionID, prfKey, f.rtSignerIDs)
 		round1[d.PartyID] = d
 	}
 
-	round2 := make(map[int]*ringtailThreshold.Round2Data, f.n)
+	round2 := make(map[int]*coronaThreshold.Round2Data, f.n)
 	for _, s := range f.rtSigners {
 		d, e := s.Round2(sessionID, string(msg), prfKey, f.rtSignerIDs, round1)
 		if e != nil {
@@ -400,9 +400,9 @@ func (f *ringtailFixture) signOnce(msg []byte, sessionID int, prfKey []byte) (*s
 		return nil, fmt.Errorf("Finalize: %w", e)
 	}
 
-	rtBytes := quasar.EncodeRingtailSig(rtSig)
+	rtBytes := quasar.EncodeCoronaSig(rtSig)
 	if rtBytes == nil {
-		return nil, fmt.Errorf("EncodeRingtailSig returned nil")
+		return nil, fmt.Errorf("EncodeCoronaSig returned nil")
 	}
 
 	blsAgg, blsAggPK := blsAggregateOnce(f.blsVals, msg)
@@ -422,7 +422,7 @@ func BenchmarkPQModes_BLSPlusRingtail(b *testing.B) {
 			}
 			fix, err := newRingtailFixture(t, n)
 			if err != nil {
-				b.Skipf("Ringtail fixture for n=%d failed: %v", n, err)
+				b.Skipf("Corona fixture for n=%d failed: %v", n, err)
 				return
 			}
 
@@ -432,16 +432,16 @@ func BenchmarkPQModes_BLSPlusRingtail(b *testing.B) {
 			// Pre-run with retry to build steady-state sig + BLS agg.
 			// This is also our aggregate-latency sample (one full pass).
 			aggStart := time.Now()
-			res, attempts, err := fix.signWithRetry(msg, prfKey, fix.cfg.RingtailGroupKey)
+			res, attempts, err := fix.signWithRetry(msg, prfKey, fix.cfg.CoronaGroupKey)
 			aggElapsed := time.Since(aggStart)
 			if err != nil {
-				b.Skipf("Ringtail signWithRetry exhausted (n=%d, attempts=%d): %v", n, attempts, err)
+				b.Skipf("Corona signWithRetry exhausted (n=%d, attempts=%d): %v", n, attempts, err)
 				return
 			}
 			// Per-pass latency = total / attempts (each attempt is one full sig).
 			aggNsPerPass := aggElapsed.Nanoseconds() / int64(attempts)
 
-			// Sign latency: per-validator BLS share + Ringtail Round1 share.
+			// Sign latency: per-validator BLS share + Corona Round1 share.
 			signNs := timeIt(b.N, func() {
 				var wg sync.WaitGroup
 				wg.Add(2)
@@ -456,7 +456,7 @@ func BenchmarkPQModes_BLSPlusRingtail(b *testing.B) {
 				wg.Wait()
 			})
 
-			// Verify latency: BLS aggregate verify + Ringtail Verify.
+			// Verify latency: BLS aggregate verify + Corona Verify.
 			parsedSig, err := bls.SignatureFromBytes(res.blsAgg)
 			if err != nil {
 				b.Fatal(err)
@@ -465,8 +465,8 @@ func BenchmarkPQModes_BLSPlusRingtail(b *testing.B) {
 				if !bls.Verify(res.blsAggPK, parsedSig, msg) {
 					b.Fatal("BLS verify failed")
 				}
-				if !ringtailThreshold.Verify(fix.cfg.RingtailGroupKey, string(msg), res.rtSig) {
-					b.Fatal("Ringtail verify failed")
+				if !coronaThreshold.Verify(fix.cfg.CoronaGroupKey, string(msg), res.rtSig) {
+					b.Fatal("Corona verify failed")
 				}
 			})
 
@@ -483,7 +483,7 @@ func BenchmarkPQModes_BLSPlusRingtail(b *testing.B) {
 			}
 
 			report(b, &modeMetrics{
-				mode:      config.PQModeRingtail,
+				mode:      config.PQModeNasua,
 				n:         n,
 				signNs:    signNs,
 				aggNs:     aggNsPerPass,
@@ -535,7 +535,7 @@ func BenchmarkPQModes_BLSPlusGroth16(b *testing.B) {
 }
 
 // =============================================================================
-// Mode 5: Triple Quantum (BLS + Ringtail + per-validator ML-DSA)
+// Mode 5: Triple Quantum (BLS + Corona + per-validator ML-DSA)
 // =============================================================================
 
 func BenchmarkPQModes_TripleQuantum(b *testing.B) {
@@ -551,7 +551,7 @@ func BenchmarkPQModes_TripleQuantum(b *testing.B) {
 			}
 			fix, err := newRingtailFixture(t, n)
 			if err != nil {
-				b.Skipf("Ringtail fixture for n=%d failed: %v", n, err)
+				b.Skipf("Corona fixture for n=%d failed: %v", n, err)
 				return
 			}
 			mlVals := makeMLDSAValidators(n)
@@ -560,10 +560,10 @@ func BenchmarkPQModes_TripleQuantum(b *testing.B) {
 
 			// Pre-build steady-state for verify (with retry)
 			aggStart := time.Now()
-			res, attempts, err := fix.signWithRetry(msg, prfKey, fix.cfg.RingtailGroupKey)
+			res, attempts, err := fix.signWithRetry(msg, prfKey, fix.cfg.CoronaGroupKey)
 			rtElapsed := time.Since(aggStart)
 			if err != nil {
-				b.Skipf("Ringtail signWithRetry exhausted (n=%d, attempts=%d): %v", n, attempts, err)
+				b.Skipf("Corona signWithRetry exhausted (n=%d, attempts=%d): %v", n, attempts, err)
 				return
 			}
 			mlSigs := make([][]byte, n)
@@ -575,11 +575,11 @@ func BenchmarkPQModes_TripleQuantum(b *testing.B) {
 				mlSigs[i] = s
 			}
 			mldsaPayload := quasar.EncodeMLDSASigs(mlSigs)
-			// Triple aggregate latency = Ringtail-per-pass + ML-DSA payload encode.
-			// ML-DSA encode is ns-cheap; Ringtail dominates.
+			// Triple aggregate latency = Corona-per-pass + ML-DSA payload encode.
+			// ML-DSA encode is ns-cheap; Corona dominates.
 			aggNs := rtElapsed.Nanoseconds() / int64(attempts)
 
-			// Sign latency: BLS share + Ringtail Round1 + ML-DSA sign in parallel.
+			// Sign latency: BLS share + Corona Round1 + ML-DSA sign in parallel.
 			signNs := timeIt(b.N, func() {
 				var wg sync.WaitGroup
 				wg.Add(3)
@@ -598,7 +598,7 @@ func BenchmarkPQModes_TripleQuantum(b *testing.B) {
 				wg.Wait()
 			})
 
-			// Verify latency: BLS + Ringtail + N ML-DSA verifies
+			// Verify latency: BLS + Corona + N ML-DSA verifies
 			parsedSig, err := bls.SignatureFromBytes(res.blsAgg)
 			if err != nil {
 				b.Fatal(err)
@@ -607,8 +607,8 @@ func BenchmarkPQModes_TripleQuantum(b *testing.B) {
 				if !bls.Verify(res.blsAggPK, parsedSig, msg) {
 					b.Fatal("BLS verify failed")
 				}
-				if !ringtailThreshold.Verify(fix.cfg.RingtailGroupKey, string(msg), res.rtSig) {
-					b.Fatal("Ringtail verify failed")
+				if !coronaThreshold.Verify(fix.cfg.CoronaGroupKey, string(msg), res.rtSig) {
+					b.Fatal("Corona verify failed")
 				}
 				for i := range mlVals {
 					if !mlVals[i].pk.Verify(msg, mlSigs[i], nil) {

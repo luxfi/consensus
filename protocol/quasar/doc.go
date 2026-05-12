@@ -2,7 +2,7 @@
 // cryptographic signing paths running in parallel:
 //
 //   - BLS12-381 threshold signatures — classical fast-path (ECDL hardness)
-//   - Ringtail (Ring-LWE) 2-round threshold — post-quantum lattice (Module-LWE)
+//   - Corona (Ring-LWE) 2-round threshold — post-quantum lattice (Module-LWE)
 //   - ML-DSA-65 (FIPS 204) identity signatures — post-quantum (Module-LWE + Module-SIS)
 //
 // Modes (each layer independently toggleable):
@@ -10,7 +10,7 @@
 //	BLS-only:                  fastest classical consensus
 //	BLS + ML-DSA:              dual PQ consensus (single-round PQ sigs)
 //	BLS + Corona:               dual PQ consensus (2-round threshold)
-//	BLS + Ringtail + ML-DSA:   Quasar (all three hardness assumptions)
+//	BLS + Corona + ML-DSA:   Quasar (all three hardness assumptions)
 //
 // Quasar signing via [signer.TripleSignRound1] runs all three paths in parallel.
 // An adversary must break ECDL AND Module-LWE AND Module-SIS simultaneously.
