@@ -52,7 +52,7 @@ The active mode is selectable at runtime via `config.PQMode` or the
 |------|-----------|---------------------|
 | `BLSOnly` | `bls` | `PolicyQuorum` |
 | `BLSPlusMLDSA` | `bls-mldsa` | `PolicyPQ` |
-| `BLSPlusRingtail` | `bls-rt` | `PolicyPZ` |
+| `BLSPlusCorona` | `bls-rt` | `PolicyPZ` |
 | `BLSPlusGroth16` | `bls-z` | `PolicyQuantum` (placeholder) |
 | `TripleQuantum` | `triple` | `PolicyQuantum` |
 
