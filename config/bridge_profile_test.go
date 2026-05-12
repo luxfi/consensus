@@ -33,7 +33,7 @@ func TestBridgeProfileID_String(t *testing.T) {
 // TestLuxStrictPQBridgeProfile_Fields pins every field of the canonical
 // strict-PQ bridge profile. Any rename / renumbering trips this test.
 func TestLuxStrictPQBridgeProfile_Fields(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	if p.ProfileID != 0x01 {
 		t.Errorf("ProfileID = 0x%x, want 0x01", p.ProfileID)
 	}
@@ -63,12 +63,12 @@ func TestLuxStrictPQBridgeProfile_Fields(t *testing.T) {
 	}
 }
 
-// TestBridgeProfile_LuxStrictPQ_AllForbidBitsTrue — every classical-allow
+// TestBridgeProfile_StrictPQ_AllForbidBitsTrue — every classical-allow
 // gate on the canonical strict-PQ profile MUST be false. The test name
 // matches the spec: pinning all `Allows*` to false is what makes the
 // profile E2E-PQ.
-func TestBridgeProfile_LuxStrictPQ_AllForbidBitsTrue(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+func TestBridgeProfile_StrictPQ_AllForbidBitsTrue(t *testing.T) {
+	p := StrictPQBridgeProfile
 	if p.AllowsClassicalAdmin {
 		t.Errorf("AllowsClassicalAdmin = true, want false on strict-PQ")
 	}
@@ -126,7 +126,7 @@ func TestBridgeProfile_PostQuantumEndToEnd_Inference(t *testing.T) {
 	// Baseline: the canonical strict-PQ profile — every field flipped to
 	// its strict-PQ value. computeImpliedPQ MUST return true.
 	base := func() BridgeProfile {
-		p := LuxStrictPQBridgeProfile
+		p := StrictPQBridgeProfile
 		return p
 	}
 
@@ -220,7 +220,7 @@ func TestBridgeProfile_PostQuantumEndToEnd_Inference(t *testing.T) {
 // declares PQ=true but pins BLS as a finality scheme MUST be rejected by
 // Validate.
 func TestBridgeProfile_Validate_LuxStrictPQRejectsBLS(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	p.SourceFinalityScheme = SigSchemeBLS12381
 	err := p.Validate()
 	if err == nil {
@@ -233,7 +233,7 @@ func TestBridgeProfile_Validate_LuxStrictPQRejectsBLS(t *testing.T) {
 
 // TestBridgeProfile_Validate_LuxStrictPQRejectsKZG — same, KZG flag.
 func TestBridgeProfile_Validate_LuxStrictPQRejectsKZG(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	p.AllowsKZGCommitment = true
 	err := p.Validate()
 	if err == nil {
@@ -246,7 +246,7 @@ func TestBridgeProfile_Validate_LuxStrictPQRejectsKZG(t *testing.T) {
 
 // TestBridgeProfile_Validate_LuxStrictPQRejectsGroth16 — same, Groth16 flag.
 func TestBridgeProfile_Validate_LuxStrictPQRejectsGroth16(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	p.AllowsGroth16Wrap = true
 	err := p.Validate()
 	if err == nil {
@@ -262,7 +262,7 @@ func TestBridgeProfile_Validate_LuxStrictPQRejectsGroth16(t *testing.T) {
 // rejected. This covers the proof-policy axis distinctly from the
 // Allows* flags above.
 func TestBridgeProfile_Validate_StrictPQRejectsClassicalProofPolicy(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	p.ProofPolicyID = ProofPolicyGroth16BN254Forbid
 	err := p.Validate()
 	if err == nil {
@@ -305,7 +305,7 @@ func TestBridgeProfile_Validate_RejectsMislabelledClassicalAsStrict(t *testing.T
 // inverse: a strict-PQ profile cannot be labelled non-PQ; operators
 // must use the explicit classical-compat profile.
 func TestBridgeProfile_Validate_RejectsMislabelledStrictAsClassical(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	p.PostQuantumEndToEnd = false
 	err := p.Validate()
 	if err == nil {
@@ -320,7 +320,7 @@ func TestBridgeProfile_Validate_RejectsMislabelledStrictAsClassical(t *testing.T
 // RefuseClassicalAdmin under the strict-PQ profile MUST return an
 // error; under classical-compat it MUST return nil.
 func TestBridgeProfile_RefuseClassicalAdmin_StrictPQRefuses(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	if err := p.RefuseClassicalAdmin(); err == nil {
 		t.Errorf("strict-PQ RefuseClassicalAdmin() = nil, want refusal")
 	} else if !errors.Is(err, ErrBridgeProfileForbidden) {
@@ -336,7 +336,7 @@ func TestBridgeProfile_RefuseClassicalAdmin_StrictPQRefuses(t *testing.T) {
 // TestBridgeProfile_RefuseBLSAggregate_StrictPQRefuses — same shape for
 // BLS aggregates.
 func TestBridgeProfile_RefuseBLSAggregate_StrictPQRefuses(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	if err := p.RefuseBLSAggregate(); err == nil {
 		t.Errorf("strict-PQ RefuseBLSAggregate() = nil, want refusal")
 	} else if !errors.Is(err, ErrBridgeProfileForbidden) {
@@ -351,7 +351,7 @@ func TestBridgeProfile_RefuseBLSAggregate_StrictPQRefuses(t *testing.T) {
 
 // TestBridgeProfile_RefuseKZGCommitment_StrictPQRefuses — KZG.
 func TestBridgeProfile_RefuseKZGCommitment_StrictPQRefuses(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	if err := p.RefuseKZGCommitment(); err == nil {
 		t.Errorf("strict-PQ RefuseKZGCommitment() = nil, want refusal")
 	} else if !errors.Is(err, ErrBridgeProfileForbidden) {
@@ -366,7 +366,7 @@ func TestBridgeProfile_RefuseKZGCommitment_StrictPQRefuses(t *testing.T) {
 
 // TestBridgeProfile_RefuseGroth16Wrap_StrictPQRefuses — Groth16.
 func TestBridgeProfile_RefuseGroth16Wrap_StrictPQRefuses(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	if err := p.RefuseGroth16Wrap(); err == nil {
 		t.Errorf("strict-PQ RefuseGroth16Wrap() = nil, want refusal")
 	} else if !errors.Is(err, ErrBridgeProfileForbidden) {
@@ -382,7 +382,7 @@ func TestBridgeProfile_RefuseGroth16Wrap_StrictPQRefuses(t *testing.T) {
 // TestBridgeProfile_RefusePairingPrecompile_StrictPQRefuses — pairing
 // precompile (EVM 0x08).
 func TestBridgeProfile_RefusePairingPrecompile_StrictPQRefuses(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	if err := p.RefusePairingPrecompile(); err == nil {
 		t.Errorf("strict-PQ RefusePairingPrecompile() = nil, want refusal")
 	} else if !errors.Is(err, ErrBridgeProfileForbidden) {
@@ -404,7 +404,7 @@ func TestBridgeWithdraw_RefusesECDSAUnderStrictPQ(t *testing.T) {
 	// Simulate the bridge code path: a withdraw handler receives an
 	// inbound ECDSA signature; it MUST consult RefuseClassicalAdmin
 	// before calling ecrecover.
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	if err := p.RefuseClassicalAdmin(); err == nil {
 		t.Fatalf("withdraw handler under strict-PQ did not refuse ECDSA — call site would invoke ecrecover")
 	}
@@ -446,7 +446,7 @@ func TestBridgeProfile_NilReceiver(t *testing.T) {
 // TestBridgeProfile_RequireAdminPQ_AcceptsPQAdmin — RequireAdminPQ
 // returns nil when the profile's BridgeAdminScheme is post-quantum.
 func TestBridgeProfile_RequireAdminPQ_AcceptsPQAdmin(t *testing.T) {
-	p := LuxStrictPQBridgeProfile
+	p := StrictPQBridgeProfile
 	if err := p.RequireAdminPQ(); err != nil {
 		t.Errorf("RequireAdminPQ on strict-PQ profile = %v, want nil", err)
 	}
@@ -456,7 +456,7 @@ func TestBridgeProfile_RequireAdminPQ_AcceptsPQAdmin(t *testing.T) {
 // matches the field. Pins the contract: callers MUST consult this
 // rather than re-derive.
 func TestBridgeProfile_IsPostQuantumEndToEnd_Accessor(t *testing.T) {
-	if !LuxStrictPQBridgeProfile.IsPostQuantumEndToEnd() {
+	if !StrictPQBridgeProfile.IsPostQuantumEndToEnd() {
 		t.Errorf("strict-PQ IsPostQuantumEndToEnd() = false, want true")
 	}
 	if BridgeClassicalCompat.IsPostQuantumEndToEnd() {

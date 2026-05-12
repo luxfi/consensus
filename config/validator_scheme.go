@@ -71,10 +71,10 @@ func (p *ChainSecurityProfile) ValidatorSchemeID() ValidatorSchemeID {
 //
 // classicalCompatUnsafe interacts with profile class as follows:
 //
-//   - strict-PQ profile (ProfileLuxStrictPQ / ProfileLuxFIPS):
+//   - strict-PQ profile (ProfileStrictPQ / ProfileFIPS):
 //     classicalCompatUnsafe MUST be false. The caller refuses the flag
 //     before reaching this gate.
-//   - permissive profile (ProfileLuxPermissive): classicalCompatUnsafe
+//   - permissive profile (ProfilePermissive): classicalCompatUnsafe
 //     MAY be true; the operator owns the decision.
 func (p *ChainSecurityProfile) AcceptsValidatorScheme(
 	presented SigSchemeID,
@@ -91,8 +91,8 @@ func (p *ChainSecurityProfile) AcceptsValidatorScheme(
 	if classicalCompatUnsafe && presented.IsClassicalCompatUnsafe() {
 		// Strict-PQ profiles refuse classical regardless of the flag.
 		// The flag's only effect is on permissive profiles.
-		if p.ProfileID == uint32(ProfileLuxStrictPQ) ||
-			p.ProfileID == uint32(ProfileLuxFIPS) {
+		if p.ProfileID == uint32(ProfileStrictPQ) ||
+			p.ProfileID == uint32(ProfileFIPS) {
 			return fmt.Errorf("%w: presented=%s pinned=%s; strict-PQ refuses classical even under LUX_CLASSICAL_COMPAT_UNSAFE",
 				ErrValidatorSchemeMismatch, presented.String(), pinned.String())
 		}

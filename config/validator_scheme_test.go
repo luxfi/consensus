@@ -16,7 +16,7 @@ import (
 func TestValidatorSchemeID_PinsIdentityScheme(t *testing.T) {
 	require := require.New(t)
 
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	require.Equal(p.IdentitySchemeID, p.ValidatorSchemeID())
 	require.Equal(SigSchemeMLDSA65, p.ValidatorSchemeID())
 }
@@ -26,7 +26,7 @@ func TestValidatorSchemeID_PinsIdentityScheme(t *testing.T) {
 func TestAcceptsValidatorScheme_Matched(t *testing.T) {
 	require := require.New(t)
 
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	require.NoError(p.AcceptsValidatorScheme(SigSchemeMLDSA65, false))
 }
 
@@ -37,7 +37,7 @@ func TestAcceptsValidatorScheme_Matched(t *testing.T) {
 func TestAcceptsValidatorScheme_StrictPQ_RejectsCrossPQScheme(t *testing.T) {
 	require := require.New(t)
 
-	p := LuxStrictPQ() // pins ML-DSA-65
+	p := StrictPQ() // pins ML-DSA-65
 	err := p.AcceptsValidatorScheme(SigSchemeMLDSA87, false)
 	require.ErrorIs(err, ErrValidatorSchemeMismatch)
 }
@@ -50,7 +50,7 @@ func TestAcceptsValidatorScheme_StrictPQ_RejectsCrossPQScheme(t *testing.T) {
 func TestAcceptsValidatorScheme_StrictPQ_RejectsClassicalEvenUnderUnsafeFlag(t *testing.T) {
 	require := require.New(t)
 
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	err := p.AcceptsValidatorScheme(sigSchemeSecp256k1Classical, true)
 	require.ErrorIs(err, ErrValidatorSchemeMismatch)
 }
@@ -62,7 +62,7 @@ func TestAcceptsValidatorScheme_StrictPQ_RejectsClassicalEvenUnderUnsafeFlag(t *
 func TestAcceptsValidatorScheme_Permissive_AcceptsClassicalUnderUnsafeFlag(t *testing.T) {
 	require := require.New(t)
 
-	p := LuxPermissive()
+	p := Permissive()
 
 	// Without the unsafe flag, classical is refused even on permissive.
 	err := p.AcceptsValidatorScheme(sigSchemeSecp256k1Classical, false)
@@ -79,7 +79,7 @@ func TestAcceptsValidatorScheme_Permissive_AcceptsClassicalUnderUnsafeFlag(t *te
 func TestAcceptsValidatorScheme_RejectsUnknownByte(t *testing.T) {
 	require := require.New(t)
 
-	p := LuxStrictPQ()
+	p := StrictPQ()
 	for _, bad := range []SigSchemeID{
 		SigSchemeNone,
 		SigSchemeBLS12381,
