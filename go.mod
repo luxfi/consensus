@@ -139,11 +139,14 @@ exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 
 exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
 
-// luxfi/pulsar and luxfi/lens are now consumed via published tags
-// (pulsar v0.1.5, lens v0.1.3). Local replace directives were removed
-// so CI can fetch modules from proxy.golang.org without sibling clones.
-// See CROSS-REPO-VERSION-PIN.md for the SHA → tag mapping at the
-// March 3, 2026 PQ Consensus Architecture Freeze.
+// Sibling crypto deps (corona, pulsar, threshold) use local replace
+// directives because the corona repo (R-LWE threshold, Lux fork)
+// lives only at ~/work/lux/corona — its upstream github.com/luxfi/corona
+// is not yet provisioned. Downstream consumers (evm, node, geth) MUST
+// either clone the corona/pulsar/threshold siblings, or use their own
+// local replace directives. See CROSS-REPO-VERSION-PIN.md for the
+// SHA → tag mapping at the March 3, 2026 PQ Consensus Architecture
+// Freeze.
 
 replace github.com/luxfi/corona => ../corona
 
