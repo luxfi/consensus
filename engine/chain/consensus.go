@@ -21,7 +21,7 @@ type Block struct {
 	data      []byte
 
 	// Consensus state - Photon -> Wave -> Focus finality
-	luxConsensus *engine.LuxConsensus
+	driver *engine.Driver
 	accepted     bool
 	rejected     bool
 
@@ -70,7 +70,7 @@ func (c *ChainConsensus) AddBlock(ctx context.Context, block *Block) error {
 	}
 
 	// Initialize Lux consensus for this block using Photon → Wave → Focus
-	block.luxConsensus = engine.NewLuxConsensus(c.k, c.alpha, c.beta)
+	block.driver = engine.NewLuxConsensus(c.k, c.alpha, c.beta)
 
 	// Add to blocks map
 	c.blocks[block.id] = block
@@ -95,14 +95,14 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept
 		return fmt.Errorf("block not found: %s", blockID)
 	}
 
-	if block.luxConsensus == nil {
+	if block.driver == nil {
 		return fmt.Errorf("block not initialized for consensus")
 	}
 
 	// Track both accept and reject votes
 	if accept {
 		block.acceptVotes++
-		block.luxConsensus.RecordVote(blockID)
+		block.driver.RecordVote(blockID)
 	} else {
 		block.rejectVotes++
 	}
@@ -153,10 +153,10 @@ func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) err
 			continue
 		}
 
-		if block.luxConsensus != nil {
+		if block.driver != nil {
 			blockResponses := map[ids.ID]int{blockID: votes}
-			shouldContinue := block.luxConsensus.Poll(blockResponses)
-			decided := block.luxConsensus.Decided()
+			shouldContinue := block.driver.Poll(blockResponses)
+			decided := block.driver.Decided()
 
 			// Check if block reached finality through Focus convergence
 			// AND we have sufficient accept votes (quorum reached)

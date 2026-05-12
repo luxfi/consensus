@@ -147,13 +147,13 @@ func (d *DAGConsensus) ProcessVote(ctx context.Context, vertexID ids.ID, accept 
 		return fmt.Errorf("vertex not found: %s", vertexID)
 	}
 
-	luxConsensus := vertex.LuxConsensus()
-	if luxConsensus == nil {
+	driver := vertex.Driver()
+	if driver == nil {
 		return fmt.Errorf("vertex not initialized for consensus")
 	}
 
 	if accept {
-		luxConsensus.RecordVote(vertexID)
+		driver.RecordVote(vertexID)
 	}
 
 	return nil
@@ -171,16 +171,16 @@ func (d *DAGConsensus) Poll(ctx context.Context, responses map[ids.ID]int) error
 			continue
 		}
 
-		luxConsensus := vertex.LuxConsensus()
-		if luxConsensus == nil {
+		driver := vertex.Driver()
+		if driver == nil {
 			continue
 		}
 
 		vertexResponses := map[ids.ID]int{vertexID: votes}
-		shouldContinue := luxConsensus.Poll(vertexResponses)
+		shouldContinue := driver.Poll(vertexResponses)
 
 		// Check if vertex reached finality through Prism DAG refraction
-		if !shouldContinue && luxConsensus.Decided() {
+		if !shouldContinue && driver.Decided() {
 			if err := vertex.Accept(ctx); err != nil {
 				return fmt.Errorf("failed to accept vertex: %w", err)
 			}

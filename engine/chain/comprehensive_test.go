@@ -53,7 +53,7 @@ func TestChainConsensusAddBlock(t *testing.T) {
 	require.Contains(consensus.tips, genesisID)
 
 	// Lux consensus should be initialized
-	require.NotNil(storedBlock.luxConsensus)
+	require.NotNil(storedBlock.driver)
 }
 
 // TestChainConsensusAddBlockDuplicate tests that adding duplicate blocks fails
@@ -159,13 +159,13 @@ func TestChainConsensusProcessVoteNilConsensus(t *testing.T) {
 
 	consensus := NewChainConsensus(3, 2, 2)
 
-	// Manually add block without initializing luxConsensus
+	// Manually add block without initializing driver
 	blockID := ids.GenerateTestID()
 	block := &Block{
 		id:           blockID,
 		parentID:     ids.Empty,
 		height:       0,
-		luxConsensus: nil, // intentionally nil
+		driver: nil, // intentionally nil
 	}
 	consensus.blocks[blockID] = block
 
@@ -914,7 +914,7 @@ func TestChainConsensusPollNilConsensus(t *testing.T) {
 	blockID := ids.GenerateTestID()
 	block := &Block{
 		id:           blockID,
-		luxConsensus: nil,
+		driver: nil,
 	}
 	consensus.blocks[blockID] = block
 
