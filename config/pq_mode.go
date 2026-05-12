@@ -51,7 +51,7 @@ const (
 	// production Lux mesh per HIP-0077.
 	PQModeBLS PQMode = iota
 
-	// PQModeCorona — BLS + the academic Corona 2-round LWE threshold
+	// PQModeNasua — BLS + the academic Nasua 2-round LWE threshold
 	// signature. Hash profile is **BLAKE3** (`primitives/hash.go` uses
 	// `github.com/zeebo/blake3` for every challenge / share / transcript
 	// binding). Trusted-dealer DKG, fixed federation, no proactive
@@ -59,8 +59,8 @@ const (
 	// federations; **not** an open public chain stance because it has no
 	// DKG that survives epoch rotation, and BLAKE3 is outside the NIST
 	// FIPS 202 approved hash family so this mode is **not** FIPS-approvable.
-	// Provided by `github.com/luxfi/corona` (academic port).
-	PQModeCorona
+	// Provided by `github.com/luxfi/nasua` (academic port).
+	PQModeNasua
 
 	// PQModePulsar — BLS + the Pulsar production fork of Corona. Same
 	// 2-round threshold algorithm as Corona, but Pulsar's canonical
@@ -102,8 +102,8 @@ func (m PQMode) String() string {
 	switch m {
 	case PQModeBLS:
 		return "bls"
-	case PQModeCorona:
-		return "corona"
+	case PQModeNasua:
+		return "nasua"
 	case PQModePulsar:
 		return "pulsar"
 	case PQModeQuasar:
@@ -132,7 +132,7 @@ func (m PQMode) PolicyID() uint16 {
 	switch m {
 	case PQModeBLS:
 		return 1 // PolicyQuorum
-	case PQModeCorona, PQModePulsar:
+	case PQModeNasua, PQModePulsar:
 		return 5 // PolicyPQ
 	case PQModeQuasar:
 		return 4 // PolicyQuantum
@@ -186,7 +186,7 @@ const (
 
 	// HashSuiteBLAKE3Legacy — Corona academic profile and Pulsar's
 	// pre-pin legacy suite. BLAKE3 keyed XOF for every challenge / share
-	// / transcript binding (see github.com/luxfi/corona
+	// / transcript binding (see github.com/luxfi/nasua
 	// primitives/hash.go and github.com/luxfi/corona/hash/blake3.go).
 	// BLAKE3 is outside FIPS 202 and therefore non-normative for any
 	// NIST submission; the byte exists so legacy / academic / federation-
@@ -236,7 +236,7 @@ func (m PQMode) HashSuiteID() HashSuiteID {
 	switch m {
 	case PQModeBLS:
 		return HashSuiteNone
-	case PQModeCorona:
+	case PQModeNasua:
 		return HashSuiteBLAKE3Legacy
 	case PQModePulsar, PQModeQuasar, PQModeMLDSA:
 		return HashSuiteSHA3NIST
@@ -296,7 +296,7 @@ type SigSchemeID uint8
 const (
 	SigSchemeNone             SigSchemeID = 0x00
 	SigSchemeBLS12381         SigSchemeID = 0x10
-	SigSchemeCoronaAcademic SigSchemeID = 0x20
+	SigSchemeNasua SigSchemeID = 0x20
 	SigSchemePulsarR          SigSchemeID = 0x30
 
 	// Raw single-party ML-DSA (FIPS 204).
@@ -317,8 +317,8 @@ func (s SigSchemeID) String() string {
 		return "none"
 	case SigSchemeBLS12381:
 		return "bls12-381"
-	case SigSchemeCoronaAcademic:
-		return "corona-academic"
+	case SigSchemeNasua:
+		return "nasua"
 	case SigSchemePulsarR:
 		return "pulsar-r"
 	case SigSchemeMLDSA44:
@@ -374,7 +374,7 @@ func (s SigSchemeID) VerifiesUnderFIPS204() bool {
 // Mapping (HIP-0077 production defaults):
 //
 //	bls       -> SigSchemeNone               BLS aggregate carried separately
-//	corona  -> SigSchemeCoronaAcademic   federation MPC
+//	corona  -> SigSchemeNasua   federation MPC
 //	pulsar    -> SigSchemePulsarR            R-LWE production
 //	quasar    -> SigSchemePulsarR            threshold layer is Pulsar.R; Z-Chain witness separate
 //	mldsa     -> SigSchemeMLDSA65            raw ML-DSA-65 (audit-grade); ops opt-in to Pulsar-M-65 explicitly
@@ -382,8 +382,8 @@ func (m PQMode) SigSchemeID() SigSchemeID {
 	switch m {
 	case PQModeBLS:
 		return SigSchemeNone
-	case PQModeCorona:
-		return SigSchemeCoronaAcademic
+	case PQModeNasua:
+		return SigSchemeNasua
 	case PQModePulsar, PQModeQuasar:
 		return SigSchemePulsarR
 	case PQModeMLDSA:
@@ -639,7 +639,7 @@ func (m PQMode) DKGRequired() string {
 	switch m {
 	case PQModeBLS, PQModeMLDSA:
 		return "none"
-	case PQModeCorona:
+	case PQModeNasua:
 		return "trusted-dealer" // unsuitable for open public chains
 	case PQModePulsar, PQModeQuasar:
 		return "pedersen-dkg-over-rq"
@@ -655,7 +655,7 @@ func (m PQMode) DKGRequired() string {
 //
 //	canonical                              aliases (component-named only)
 //	"bls"            (BLS)                 "classical", "bls-only"
-//	"corona"       (BLS + Corona)      "rt", "academic", "bls-rt", "bls-q", "sha256-rt"
+//	"nasua"       (BLS + Corona)      "rt", "academic", "bls-rt", "bls-q", "sha256-rt"
 //	"pulsar"         (BLS + Pulsar)        "sha3-rt", "production-rt", "bls-pulsar"
 //	"quasar"         (BLS + Pulsar + Z)    "rollup", "groth16", "zk",
 //	                                       "bls-z", "bls-zk", "bls-groth16",
@@ -665,8 +665,8 @@ func ParsePQMode(s string) (PQMode, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "", "bls", "bls-only", "classical":
 		return PQModeBLS, nil
-	case "corona", "rt", "academic", "bls-rt", "bls-q", "sha256-rt":
-		return PQModeCorona, nil
+	case "nasua", "rt", "academic", "bls-rt", "bls-q", "sha256-rt":
+		return PQModeNasua, nil
 	case "pulsar", "sha3-rt", "production-rt", "bls-pulsar":
 		return PQModePulsar, nil
 	case "quasar", "rollup", "groth16", "zk",
@@ -715,7 +715,7 @@ func (m PQMode) IsPostQuantum() bool {
 
 // SuitableForPublicChain reports whether the mode is appropriate for an
 // open public chain (epoch rotation, no trusted dealer). False for
-// PQModeCorona (trusted-dealer DKG only) and PQModeBLS (no PQ at all);
+// PQModeNasua (trusted-dealer DKG only) and PQModeBLS (no PQ at all);
 // true for everything else.
 func (m PQMode) SuitableForPublicChain() bool {
 	switch m {

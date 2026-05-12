@@ -189,7 +189,7 @@ func TestRun_PropagatesHashSuiteID_FromMode(t *testing.T) {
 		want config.HashSuiteID
 	}{
 		{config.PQModeBLS, config.HashSuiteNone},
-		{config.PQModeCorona, config.HashSuiteBLAKE3Legacy},
+		{config.PQModeNasua, config.HashSuiteBLAKE3Legacy},
 		{config.PQModePulsar, config.HashSuiteSHA3NIST},
 		{config.PQModeQuasar, config.HashSuiteSHA3NIST},
 		{config.PQModeMLDSA, config.HashSuiteSHA3NIST},

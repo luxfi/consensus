@@ -345,7 +345,7 @@ type SigSchemeID uint8
 const (
 	SigSchemeNone             SigSchemeID = 0x00
 	SigSchemeBLS12381         SigSchemeID = 0x10
-	SigSchemeCoronaAcademic SigSchemeID = 0x20
+	SigSchemeNasua SigSchemeID = 0x20
 	SigSchemePulsarR          SigSchemeID = 0x30
 	SigSchemePulsarM44        SigSchemeID = 0x41
 	SigSchemePulsarM65        SigSchemeID = 0x42 // production default
@@ -359,8 +359,8 @@ func (s SigSchemeID) String() string {
 		return "none"
 	case SigSchemeBLS12381:
 		return "bls12-381"
-	case SigSchemeCoronaAcademic:
-		return "corona-academic"
+	case SigSchemeNasua:
+		return "nasua"
 	case SigSchemePulsarR:
 		return "pulsar-r"
 	case SigSchemePulsarM44:
