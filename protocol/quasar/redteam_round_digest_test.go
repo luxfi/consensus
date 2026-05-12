@@ -39,7 +39,7 @@ type roundDigestInputs struct {
 	parentQBlockHash [32]byte
 	payloadRoot      [48]byte
 	daRoot           [48]byte
-	sourceStateRoot     [48]byte
+	sourceStateRoot  [48]byte
 	zchainStateRoot  [48]byte
 	validatorRoot    [48]byte
 	committeeRoot    [48]byte
@@ -67,7 +67,7 @@ func canonicalRoundDigest() roundDigestInputs {
 		parentQBlockHash: fillN32(0x01),
 		payloadRoot:      fillN48(0x02),
 		daRoot:           fillN48(0x03),
-		sourceStateRoot:     fillN48(0x04),
+		sourceStateRoot:  fillN48(0x04),
 		zchainStateRoot:  fillN48(0x05),
 		validatorRoot:    fillN48(0x06),
 		committeeRoot:    fillN48(0x07),

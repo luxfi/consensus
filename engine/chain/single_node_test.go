@@ -27,8 +27,11 @@ type testGossiper struct {
 	pushQueries int
 }
 
-func (g *testGossiper) GossipPut(_ ids.ID, _ ids.ID, _ []byte) int                    { return 0 }
-func (g *testGossiper) SendPushQuery(_ ids.ID, _ ids.ID, _ []byte, _ []ids.NodeID) int { g.pushQueries++; return 0 }
+func (g *testGossiper) GossipPut(_ ids.ID, _ ids.ID, _ []byte) int { return 0 }
+func (g *testGossiper) SendPushQuery(_ ids.ID, _ ids.ID, _ []byte, _ []ids.NodeID) int {
+	g.pushQueries++
+	return 0
+}
 func (g *testGossiper) SendPullQuery(_ ids.ID, _ ids.ID, _ ids.ID, _ []ids.NodeID) int { return 0 }
 func (g *testGossiper) SendVote(_ ids.ID, _ ids.NodeID, _ ids.ID) error                { return nil }
 

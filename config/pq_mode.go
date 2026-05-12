@@ -294,10 +294,10 @@ func (m PQMode) HashProfile() string {
 type SigSchemeID uint8
 
 const (
-	SigSchemeNone             SigSchemeID = 0x00
-	SigSchemeBLS12381         SigSchemeID = 0x10
-	SigSchemeNasua SigSchemeID = 0x20
-	SigSchemePulsarR          SigSchemeID = 0x30
+	SigSchemeNone     SigSchemeID = 0x00
+	SigSchemeBLS12381 SigSchemeID = 0x10
+	SigSchemeNasua    SigSchemeID = 0x20
+	SigSchemePulsarR  SigSchemeID = 0x30
 
 	// Raw single-party ML-DSA (FIPS 204).
 	SigSchemeMLDSA44 SigSchemeID = 0x41
