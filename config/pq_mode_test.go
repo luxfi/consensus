@@ -14,7 +14,7 @@ func TestPQMode_String(t *testing.T) {
 		name string
 	}{
 		{PQModeBLS, "bls"},
-		{PQModeRingtail, "ringtail"},
+		{PQModeNasua, "nasua"},
 		{PQModePulsar, "pulsar"},
 		{PQModeQuasar, "quasar"},
 		{PQModeMLDSA, "mldsa"},
@@ -29,7 +29,7 @@ func TestPQMode_String(t *testing.T) {
 // TestParsePQMode_Canonical accepts every canonical lower-case name.
 func TestParsePQMode_Canonical(t *testing.T) {
 	for _, m := range []PQMode{
-		PQModeBLS, PQModeRingtail, PQModePulsar, PQModeQuasar, PQModeMLDSA,
+		PQModeBLS, PQModeNasua, PQModePulsar, PQModeQuasar, PQModeMLDSA,
 	} {
 		got, err := ParsePQMode(m.String())
 		if err != nil {
@@ -56,11 +56,11 @@ func TestParsePQMode_Aliases(t *testing.T) {
 		{"bls-only", PQModeBLS},
 		{"classical", PQModeBLS},
 
-		// Ringtail (academic, BLAKE3, trusted dealer)
-		{"rt", PQModeRingtail},
-		{"academic", PQModeRingtail},
-		{"bls-rt", PQModeRingtail},
-		{"sha256-rt", PQModeRingtail},
+		// Corona (academic, BLAKE3, trusted dealer)
+		{"rt", PQModeNasua},
+		{"academic", PQModeNasua},
+		{"bls-rt", PQModeNasua},
+		{"sha256-rt", PQModeNasua},
 
 		// Pulsar (production fork, SHA-3, Pedersen DKG)
 		{"sha3-rt", PQModePulsar},
@@ -120,7 +120,7 @@ func TestPQMode_PolicyID(t *testing.T) {
 		want uint16
 	}{
 		{PQModeBLS, 1},      // PolicyQuorum
-		{PQModeRingtail, 5}, // PolicyPQ
+		{PQModeNasua, 5}, // PolicyPQ
 		{PQModePulsar, 5},   // PolicyPQ (same wire shape, SHA-3 negotiated out-of-band)
 		{PQModeQuasar, 4},   // PolicyQuantum
 		{PQModeMLDSA, 6},    // PolicyPZ
@@ -139,7 +139,7 @@ func TestPQMode_PolicyID(t *testing.T) {
 // NIST-aligned mapping (HIP-0077 §"Lux consensus PQ modes"):
 //
 //	bls       -> "none"            no hash-family commitment
-//	ringtail  -> "blake3-legacy"   academic kernel, non-normative
+//	corona  -> "blake3-legacy"   academic kernel, non-normative
 //	pulsar    -> "sha3-nist"       FIPS 202 + SP 800-185 (cSHAKE256 family)
 //	quasar    -> "sha3-nist"       same kernel as Pulsar
 //	mldsa     -> "sha3-nist"       ML-DSA-65 uses SHAKE256 (FIPS 202)
@@ -149,7 +149,7 @@ func TestPQMode_HashProfile(t *testing.T) {
 		want string
 	}{
 		{PQModeBLS, "none"},
-		{PQModeRingtail, "blake3-legacy"},
+		{PQModeNasua, "blake3-legacy"},
 		{PQModePulsar, "sha3-nist"},
 		{PQModeQuasar, "sha3-nist"},
 		{PQModeMLDSA, "sha3-nist"},
@@ -179,7 +179,7 @@ func TestPQMode_HashSuiteID(t *testing.T) {
 		want HashSuiteID
 	}{
 		{PQModeBLS, HashSuiteNone},                  // 0x00
-		{PQModeRingtail, HashSuiteBLAKE3Legacy},     // 0x02
+		{PQModeNasua, HashSuiteBLAKE3Legacy},     // 0x02
 		{PQModePulsar, HashSuiteSHA3NIST},           // 0x01
 		{PQModeQuasar, HashSuiteSHA3NIST},           // 0x01
 		{PQModeMLDSA, HashSuiteSHA3NIST},            // 0x01 (SHAKE256 ∈ FIPS 202)
@@ -255,7 +255,7 @@ func TestPQMode_SigSchemeID(t *testing.T) {
 		want SigSchemeID
 	}{
 		{PQModeBLS, SigSchemeNone},
-		{PQModeRingtail, SigSchemeRingtailAcademic},
+		{PQModeNasua, SigSchemeNasua},
 		{PQModePulsar, SigSchemePulsarR},
 		{PQModeQuasar, SigSchemePulsarR},
 		{PQModeMLDSA, SigSchemeMLDSA65}, // raw ML-DSA-65 default; ops opt-in to Pulsar-M-65
@@ -272,7 +272,7 @@ func TestPQMode_SigSchemeID(t *testing.T) {
 // numbering blocks. Renumbering breaks every cert ever emitted; new
 // schemes claim the next free integer in their block:
 //
-//	0x10 BLS / 0x20 Ringtail / 0x30 Pulsar.R / 0x40 raw ML-DSA / 0x50 Pulsar-M
+//	0x10 BLS / 0x20 Corona / 0x30 Pulsar.R / 0x40 raw ML-DSA / 0x50 Pulsar-M
 func TestSigSchemeID_StableIntegers(t *testing.T) {
 	cases := []struct {
 		scheme SigSchemeID
@@ -280,7 +280,7 @@ func TestSigSchemeID_StableIntegers(t *testing.T) {
 	}{
 		{SigSchemeNone, 0x00},
 		{SigSchemeBLS12381, 0x10},
-		{SigSchemeRingtailAcademic, 0x20},
+		{SigSchemeNasua, 0x20},
 		{SigSchemePulsarR, 0x30},
 		{SigSchemeMLDSA44, 0x41},
 		{SigSchemeMLDSA65, 0x42},
@@ -304,7 +304,7 @@ func TestSigSchemeID_String(t *testing.T) {
 	}{
 		{SigSchemeNone, "none"},
 		{SigSchemeBLS12381, "bls12-381"},
-		{SigSchemeRingtailAcademic, "ringtail-academic"},
+		{SigSchemeNasua, "nasua"},
 		{SigSchemePulsarR, "pulsar-r"},
 		{SigSchemeMLDSA44, "ml-dsa-44"},
 		{SigSchemeMLDSA65, "ml-dsa-65"},
@@ -331,7 +331,7 @@ func TestSigSchemeID_IsPulsarM(t *testing.T) {
 		}
 	}
 	notPulsarM := []SigSchemeID{
-		SigSchemeNone, SigSchemeBLS12381, SigSchemeRingtailAcademic,
+		SigSchemeNone, SigSchemeBLS12381, SigSchemeNasua,
 		SigSchemePulsarR,
 		SigSchemeMLDSA44, SigSchemeMLDSA65, SigSchemeMLDSA87,
 	}
@@ -352,7 +352,7 @@ func TestSigSchemeID_IsRawMLDSA(t *testing.T) {
 		}
 	}
 	notRaw := []SigSchemeID{
-		SigSchemeNone, SigSchemeBLS12381, SigSchemeRingtailAcademic, SigSchemePulsarR,
+		SigSchemeNone, SigSchemeBLS12381, SigSchemeNasua, SigSchemePulsarR,
 		SigSchemePulsarM44, SigSchemePulsarM65, SigSchemePulsarM87,
 	}
 	for _, s := range notRaw {
@@ -375,7 +375,7 @@ func TestSigSchemeID_VerifiesUnderFIPS204(t *testing.T) {
 		}
 	}
 	no := []SigSchemeID{
-		SigSchemeNone, SigSchemeBLS12381, SigSchemeRingtailAcademic, SigSchemePulsarR,
+		SigSchemeNone, SigSchemeBLS12381, SigSchemeNasua, SigSchemePulsarR,
 	}
 	for _, s := range no {
 		if s.VerifiesUnderFIPS204() {
@@ -688,7 +688,7 @@ func TestPQMode_DKGRequired(t *testing.T) {
 		want string
 	}{
 		{PQModeBLS, "none"},
-		{PQModeRingtail, "trusted-dealer"},
+		{PQModeNasua, "trusted-dealer"},
 		{PQModePulsar, "pedersen-dkg-over-rq"},
 		{PQModeQuasar, "pedersen-dkg-over-rq"},
 		{PQModeMLDSA, "none"},
@@ -702,14 +702,14 @@ func TestPQMode_DKGRequired(t *testing.T) {
 
 // TestPQMode_SuitableForPublicChain enforces HIP-0077 §"PQ defaults":
 // production Lux meshes accept Pulsar / Quasar / MLDSA. BLS (no PQ)
-// and Ringtail (trusted-dealer DKG) are rejected.
+// and Corona (trusted-dealer DKG) are rejected.
 func TestPQMode_SuitableForPublicChain(t *testing.T) {
 	cases := []struct {
 		mode PQMode
 		want bool
 	}{
 		{PQModeBLS, false},
-		{PQModeRingtail, false},
+		{PQModeNasua, false},
 		{PQModePulsar, true},
 		{PQModeQuasar, true},
 		{PQModeMLDSA, true},
@@ -738,7 +738,7 @@ func TestPQMode_IsPostQuantum(t *testing.T) {
 		want bool
 	}{
 		{PQModeBLS, false},
-		{PQModeRingtail, true},
+		{PQModeNasua, true},
 		{PQModePulsar, true},
 		{PQModeQuasar, true},
 		{PQModeMLDSA, true},

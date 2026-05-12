@@ -11,7 +11,7 @@ import (
 
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	ringtailThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // Block represents a finalized block in the Quasar consensus.
@@ -48,10 +48,10 @@ type Block struct {
 // party ML-DSA verifier). MLDSARollup is the identity attestation
 // layer, succinct via STARK (Z-Chain → P3Q).
 //
-// Ringtail (academic R-LWE with trusted-dealer DKG) is NOT a
+// Corona (academic R-LWE with trusted-dealer DKG) is NOT a
 // production option for an open public chain. Corona is the
 // production Ring-LWE library (Pedersen DKG over R_q + proactive
-// resharing; `luxfi/corona`). The historic field name "Ringtail"
+// resharing; `luxfi/corona`). The historic field name "Corona"
 // in this struct refers to "the Ring-LWE threshold slot"; that
 // slot now carries Corona bytes. The field is renamed accordingly.
 //
@@ -156,7 +156,7 @@ func (c *QuasarCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
 // nil if MLDSARollup is empty (rollup not yet wired). nil rtGroupKey
 // skips the Corona check (used when running in BLS-only mode or in a
 // Pulsar-only pure-PQ posture).
-func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.PublicKey, rtGroupKey *ringtailThreshold.GroupKey, mldsaPubKeys []*mldsa.PublicKey) bool {
+func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.PublicKey, rtGroupKey *coronaThreshold.GroupKey, mldsaPubKeys []*mldsa.PublicKey) bool {
 	if c == nil || len(message) == 0 {
 		return false
 	}
@@ -182,11 +182,11 @@ func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.Public
 		if len(c.Corona) == 0 {
 			return false
 		}
-		rtSig, err := decodeRingtailSig(c.Corona)
+		rtSig, err := decodeCoronaSig(c.Corona)
 		if err != nil {
 			return false
 		}
-		if !ringtailThreshold.Verify(rtGroupKey, string(message), rtSig) {
+		if !coronaThreshold.Verify(rtGroupKey, string(message), rtSig) {
 			return false
 		}
 	}
@@ -366,20 +366,20 @@ func decodeMLDSASigs(data []byte) ([][]byte, error) {
 	return out, nil
 }
 
-// EncodeRingtailSig serializes a Ringtail threshold signature using gob.
+// EncodeCoronaSig serializes a Corona threshold signature using gob.
 // Returns nil bytes on encode failure (caller treats as "no signature").
-func EncodeRingtailSig(sig *ringtailThreshold.Signature) []byte {
+func EncodeCoronaSig(sig *coronaThreshold.Signature) []byte {
 	if sig == nil {
 		return nil
 	}
-	return ringtailGobEncode(sig)
+	return coronaGobEncode(sig)
 }
 
-func decodeRingtailSig(data []byte) (*ringtailThreshold.Signature, error) {
+func decodeCoronaSig(data []byte) (*coronaThreshold.Signature, error) {
 	if len(data) == 0 {
 		return nil, ErrCertCorrupt
 	}
-	return ringtailGobDecode(data)
+	return coronaGobDecode(data)
 }
 
 // Engine is the main interface for quantum consensus.
@@ -422,14 +422,14 @@ type BLSSignature struct {
 	SignerIndex int    // Signer index in committee
 }
 
-// RingtailSignature contains a post-quantum Ringtail threshold signature.
+// RingtailSignature contains a post-quantum Corona threshold signature.
 // Quantum-safe path - used in parallel with BLSSignature.
 type RingtailSignature struct {
-	Signature   []byte // Ringtail (Ring-LWE) signature bytes
+	Signature   []byte // Corona (Ring-LWE) signature bytes
 	ValidatorID string // Signing validator
 	IsThreshold bool   // True if threshold signature
 	SignerIndex int    // Signer index in committee
-	Round       int    // Ringtail protocol round (1 or 2)
+	Round       int    // Corona protocol round (1 or 2)
 }
 
 // QuasarSignature bundles all three proof paths for quantum finality.
@@ -444,20 +444,20 @@ type RingtailSignature struct {
 // In QuasarCert (stored in block header):
 //
 //	BLS aggregate:  48 bytes
-//	PQ proof:       variable (aggregated Ringtail + ML-DSA, or future SNARK)
+//	PQ proof:       variable (aggregated Corona + ML-DSA, or future SNARK)
 type QuasarSignature struct {
 	BLS      *BLSSignature      // Classical fast path (aggregatable)
-	Ringtail *RingtailSignature // PQ anonymous path (ring-LWE threshold)
+	Corona *RingtailSignature // PQ anonymous path (ring-LWE threshold)
 	MLDSA    []byte             // PQ identity proof (ML-DSA-65, FIPS 204)
 }
 
-// RingtailRound1Data contains the output of Ringtail Round 1.
+// RingtailRound1Data contains the output of Corona Round 1.
 type RingtailRound1Data struct {
 	PartyID int
 }
 
 // Signer is the exported interface for the quantum signing engine.
-// It provides parallel BLS+Ringtail threshold signing for PQ-safe consensus.
+// It provides parallel BLS+Corona threshold signing for PQ-safe consensus.
 type Signer = signer
 
 // NewSigner creates a new quantum signer with the given threshold.

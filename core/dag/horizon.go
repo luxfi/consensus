@@ -240,7 +240,7 @@ type EventHorizon[V VID] struct {
 	Height uint64
 	// Validators that signed this horizon
 	Validators []string
-	// Post-quantum signature (Ringtail + BLS)
+	// Post-quantum signature (Corona + BLS)
 	Signature []byte
 }
 

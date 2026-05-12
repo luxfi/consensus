@@ -1,6 +1,6 @@
 // Copyright (C) 2025, Lux Industries Inc. All rights reserved.
 // Test BLS threshold signing for quantum-safe consensus.
-// Note: Full Ringtail integration requires multi-round protocol coordination.
+// Note: Full Corona integration requires multi-round protocol coordination.
 
 package quasar
 
@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/luxfi/crypto/threshold"
-	ringtailThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 	"github.com/stretchr/testify/require"
 )
 
@@ -154,19 +154,19 @@ func TestDualThresholdKeyGeneration(t *testing.T) {
 	config, err := GenerateDualThresholdKeys(2, 3)
 	require.NoError(t, err, "Failed to generate dual threshold keys")
 
-	// Verify both BLS and Ringtail keys were generated
+	// Verify both BLS and Corona keys were generated
 	require.NotNil(t, config.BLSGroupKey, "BLS group key should not be nil")
-	require.NotNil(t, config.RingtailGroupKey, "Ringtail group key should not be nil")
+	require.NotNil(t, config.CoronaGroupKey, "Corona group key should not be nil")
 	require.Len(t, config.BLSKeyShares, 3, "Should have 3 BLS key shares")
-	require.Len(t, config.RingtailShares, 3, "Should have 3 Ringtail key shares")
+	require.Len(t, config.CoronaShares, 3, "Should have 3 Corona key shares")
 
 	t.Logf("BLS group key: %d bytes", len(config.BLSGroupKey.Bytes()))
-	t.Logf("Ringtail group key: %d bytes", len(config.RingtailGroupKey.Bytes()))
+	t.Logf("Corona group key: %d bytes", len(config.CoronaGroupKey.Bytes()))
 
 	t.Log("✓ Dual threshold key generation works")
 }
 
-// TestDualSigningFlow tests the full BLS + Ringtail parallel signing flow.
+// TestDualSigningFlow tests the full BLS + Corona parallel signing flow.
 // This is how validators sign blocks in quantum-safe consensus.
 func TestDualSigningFlow(t *testing.T) {
 	// Generate dual keys (would be done at epoch start in production)
@@ -186,21 +186,21 @@ func TestDualSigningFlow(t *testing.T) {
 
 	validatorIDs := []string{"v0", "v1", "v2"}
 
-	// === ROUND 1: All validators compute BLS share + Ringtail D+MACs in parallel ===
-	t.Log("=== Round 1: BLS signing + Ringtail D matrices ===")
+	// === ROUND 1: All validators compute BLS share + Corona D+MACs in parallel ===
+	t.Log("=== Round 1: BLS signing + Corona D matrices ===")
 
 	blsSigs := make([]*QuasarSig, 3)
-	allRound1 := make(map[int]*ringtailThreshold.Round1Data)
+	allRound1 := make(map[int]*coronaThreshold.Round1Data)
 
 	for i, vid := range validatorIDs {
 		blsSig, rtRound1, err := h.DualSignRound1(ctx, vid, message, sessionID, prfKey)
 		require.NoError(t, err, "Round1 failed for %s", vid)
 		require.NotNil(t, blsSig, "BLS signature should not be nil")
-		require.NotNil(t, rtRound1, "Ringtail Round1 data should not be nil")
+		require.NotNil(t, rtRound1, "Corona Round1 data should not be nil")
 
 		blsSigs[i] = blsSig
 		allRound1[rtRound1.PartyID] = rtRound1
-		t.Logf("  %s: BLS share=%d bytes, Ringtail D=%dx%d", vid, len(blsSig.BLS), len(rtRound1.D), len(rtRound1.D[0]))
+		t.Logf("  %s: BLS share=%d bytes, Corona D=%dx%d", vid, len(blsSig.BLS), len(rtRound1.D), len(rtRound1.D[0]))
 	}
 
 	// === BLS IS DONE: Can aggregate immediately ===
@@ -215,24 +215,24 @@ func TestDualSigningFlow(t *testing.T) {
 	require.True(t, blsValid, "BLS signature verification failed")
 	t.Log("  BLS: ✓ verified")
 
-	// === Ringtail uses the native package directly for full 2-round flow ===
+	// === Corona uses the native package directly for full 2-round flow ===
 	// This demonstrates the protocol but in production would use consensus messages
-	t.Log("=== Ringtail 2-Round Protocol (via native package) ===")
+	t.Log("=== Corona 2-Round Protocol (via native package) ===")
 
-	// Use the native ringtail threshold package directly
-	rtShares := config.RingtailShares
-	rtGroupKey := config.RingtailGroupKey
+	// Use the native corona threshold package directly
+	rtShares := config.CoronaShares
+	rtGroupKey := config.CoronaGroupKey
 
-	signers := make([]*ringtailThreshold.Signer, 3)
+	signers := make([]*coronaThreshold.Signer, 3)
 	for i := 0; i < 3; i++ {
-		signers[i] = ringtailThreshold.NewSigner(rtShares[validatorIDs[i]])
+		signers[i] = coronaThreshold.NewSigner(rtShares[validatorIDs[i]])
 	}
 
 	signerIDs := []int{0, 1, 2}
 	messageStr := string(message)
 
 	// Round 1: All parties compute D + MACs
-	rtRound1Data := make(map[int]*ringtailThreshold.Round1Data)
+	rtRound1Data := make(map[int]*coronaThreshold.Round1Data)
 	for _, signer := range signers {
 		data := signer.Round1(sessionID, prfKey, signerIDs)
 		rtRound1Data[data.PartyID] = data
@@ -240,26 +240,26 @@ func TestDualSigningFlow(t *testing.T) {
 	t.Log("  Round1: D matrices computed")
 
 	// Round 2: All parties compute z shares
-	rtRound2Data := make(map[int]*ringtailThreshold.Round2Data)
+	rtRound2Data := make(map[int]*coronaThreshold.Round2Data)
 	for _, signer := range signers {
 		data, err := signer.Round2(sessionID, messageStr, prfKey, signerIDs, rtRound1Data)
-		require.NoError(t, err, "Ringtail Round2 failed")
+		require.NoError(t, err, "Corona Round2 failed")
 		rtRound2Data[data.PartyID] = data
 	}
 	t.Log("  Round2: z shares computed")
 
 	// Finalize: Any signer aggregates
 	rtSig, err := signers[0].Finalize(rtRound2Data)
-	require.NoError(t, err, "Ringtail finalization failed")
-	require.NotNil(t, rtSig, "Ringtail signature should not be nil")
+	require.NoError(t, err, "Corona finalization failed")
+	require.NotNil(t, rtSig, "Corona signature should not be nil")
 	t.Logf("  Finalize: Z=%d, Delta=%d", len(rtSig.Z), len(rtSig.Delta))
 
-	// Verify Ringtail
-	rtValid := ringtailThreshold.Verify(rtGroupKey, messageStr, rtSig)
-	require.True(t, rtValid, "Ringtail signature verification failed")
+	// Verify Corona
+	rtValid := coronaThreshold.Verify(rtGroupKey, messageStr, rtSig)
+	require.True(t, rtValid, "Corona signature verification failed")
 	t.Log("  Corona:    ✓ verified")
 
-	t.Log("✓ Dual BLS + Ringtail signing flow complete")
+	t.Log("✓ Dual BLS + Corona signing flow complete")
 	t.Log("  - BLS: 1 round, aggregated, verified")
 	t.Log("  - Corona:    2 rounds, aggregated, verified (post-quantum)")
 }

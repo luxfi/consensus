@@ -13,7 +13,7 @@ import (
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	ringtailThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // maxCandidates is the upper bound on tracked candidates per policy instance.
@@ -29,7 +29,7 @@ const maxCandidates = 100000
 // - QuorumPolicy: K=small threshold signature (3/5, 2/3)
 // - SamplePolicy: K=large metastable sampling
 // - L1Policy: K=external chain inclusion (OP Stack)
-// - QuantumPolicy: BLS + Ringtail post-quantum
+// - QuantumPolicy: BLS + Corona post-quantum
 // =============================================================================
 
 // =============================================================================
@@ -430,11 +430,11 @@ func (p *L1Policy) Verify(ctx context.Context, cert *Certificate) (bool, error) 
 }
 
 // =============================================================================
-// QUANTUM POLICY: BLS + Ringtail Post-Quantum
+// QUANTUM POLICY: BLS + Corona Post-Quantum
 // =============================================================================
 
-// QuantumPolicy combines BLS and Ringtail post-quantum signatures
-// SECURITY CRITICAL: All votes MUST include both BLS and Ringtail signatures.
+// QuantumPolicy combines BLS and Corona post-quantum signatures
+// SECURITY CRITICAL: All votes MUST include both BLS and Corona signatures.
 // Votes without dual signatures are rejected to ensure quantum-safe consensus.
 type QuantumPolicy struct {
 	mu         sync.RWMutex
@@ -442,11 +442,11 @@ type QuantumPolicy struct {
 	requireRT  bool // When true, RT signature is REQUIRED on all votes
 	candidates map[CandidateID]*Candidate
 	blsVotes   map[CandidateID]map[VoterID][]byte // BLS signatures
-	pqVotes    map[CandidateID]map[VoterID][]byte // Ringtail signatures
+	pqVotes    map[CandidateID]map[VoterID][]byte // Corona signatures
 	certs      map[CandidateID]*Certificate
 }
 
-// RTRequirementError is returned when Ringtail signature is missing but required
+// RTRequirementError is returned when Corona signature is missing but required
 type RTRequirementError struct {
 	Reason string
 }
@@ -455,7 +455,7 @@ func (e *RTRequirementError) Error() string {
 	return "RT signature required: " + e.Reason
 }
 
-// NewQuantumPolicy creates a quantum-safe BLS+Ringtail policy
+// NewQuantumPolicy creates a quantum-safe BLS+Corona policy
 // By default, RT signatures are REQUIRED for Q-Chain consensus security.
 func NewQuantumPolicy(threshold int) *QuantumPolicy {
 	return &QuantumPolicy{
@@ -520,10 +520,10 @@ func (p *QuantumPolicy) OnVote(ctx context.Context, vote *Vote) error {
 
 	scheme := vote.SignatureScheme()
 
-	// SECURITY: Enforce dual BLS+Ringtail requirement for quantum safety
+	// SECURITY: Enforce dual BLS+Corona requirement for quantum safety
 	if p.requireRT && scheme != SigQuasar {
 		return &RTRequirementError{
-			Reason: "Q-Chain requires dual BLS+Ringtail signature (SigQuasar), got scheme " + sigSchemeToString(scheme),
+			Reason: "Q-Chain requires dual BLS+Corona signature (SigQuasar), got scheme " + sigSchemeToString(scheme),
 		}
 	}
 
@@ -541,7 +541,7 @@ func (p *QuantumPolicy) OnVote(ctx context.Context, vote *Vote) error {
 		}
 		p.pqVotes[vote.CandidateID][vote.VoterID] = vote.Signature[1:]
 	case SigQuasar:
-		// Quasar vote contains both: [scheme][bls_len_hi][bls_len_lo][bls][ringtail]
+		// Quasar vote contains both: [scheme][bls_len_hi][bls_len_lo][bls][corona]
 		if len(vote.Signature) < 4 {
 			return &RTRequirementError{Reason: "malformed Quasar signature: too short"}
 		}
@@ -556,7 +556,7 @@ func (p *QuantumPolicy) OnVote(ctx context.Context, vote *Vote) error {
 		pqSig := vote.Signature[3+blsLen:]
 
 		if len(pqSig) == 0 {
-			return &RTRequirementError{Reason: "malformed Quasar signature: Ringtail component missing"}
+			return &RTRequirementError{Reason: "malformed Quasar signature: Corona component missing"}
 		}
 
 		if p.blsVotes[vote.CandidateID] == nil {
@@ -670,7 +670,7 @@ func concatSignatures(m map[VoterID][]byte) []byte {
 
 // Verify checks that the QuasarCert in cert.Proof is well-formed. Real
 // cryptographic verification requires the caller to supply the BLS aggregate
-// public key, the Ringtail group key, and the per-validator ML-DSA public
+// public key, the Corona group key, and the per-validator ML-DSA public
 // keys via VerifyWithRealKeys.
 func (p *QuantumPolicy) Verify(ctx context.Context, cert *Certificate) (bool, error) {
 	if cert.PolicyID != PolicyQuantum {
@@ -680,7 +680,7 @@ func (p *QuantumPolicy) Verify(ctx context.Context, cert *Certificate) (bool, er
 	if err := qc.UnmarshalBinary(cert.Proof); err != nil {
 		return false, nil
 	}
-	// Structural gate: BLS + Ringtail must be present for SigQuasar.
+	// Structural gate: BLS + Corona must be present for SigQuasar.
 	if len(qc.BLS) == 0 || len(qc.Corona) == 0 {
 		return false, nil
 	}
@@ -688,13 +688,13 @@ func (p *QuantumPolicy) Verify(ctx context.Context, cert *Certificate) (bool, er
 }
 
 // VerifyWithKeys performs cryptographic verification of the certificate
-// using the supplied BLS aggregate, Ringtail group, and ML-DSA validator
+// using the supplied BLS aggregate, Corona group, and ML-DSA validator
 // keys. Returns nil iff every embedded signature verifies against the
 // canonical message digest sha256(cert.CandidateID || cert.Height).
 func (p *QuantumPolicy) VerifyWithKeys(
 	cert *Certificate,
 	blsAggKey *bls.PublicKey,
-	rtGroupKey *ringtailThreshold.GroupKey,
+	rtGroupKey *coronaThreshold.GroupKey,
 	mldsaKeys []*mldsa.PublicKey,
 ) error {
 	if cert.PolicyID != PolicyQuantum {

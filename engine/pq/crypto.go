@@ -14,7 +14,7 @@ import (
 	"github.com/luxfi/corona/threshold"
 )
 
-// CertificateGenerator generates real BLS and Ringtail threshold signatures.
+// CertificateGenerator generates real BLS and Corona threshold signatures.
 type CertificateGenerator struct {
 	mu sync.RWMutex
 
@@ -22,7 +22,7 @@ type CertificateGenerator struct {
 	blsSecretKey *bls.SecretKey
 	blsPublicKey *bls.PublicKey
 
-	// Ringtail threshold signing
+	// Corona threshold signing
 	ringtailShare  *threshold.KeyShare
 	ringtailSigner *threshold.Signer
 	ringtailGroup  *threshold.GroupKey
@@ -34,7 +34,7 @@ type CertificateGenerator struct {
 
 // NewCertificateGenerator creates a certificate generator with real keys.
 // blsKey should be 32 bytes for BLS key derivation.
-// pqKey is used as seed for Ringtail threshold key generation.
+// pqKey is used as seed for Corona threshold key generation.
 func NewCertificateGenerator(blsKey, pqKey []byte) *CertificateGenerator {
 	cg := &CertificateGenerator{}
 
@@ -47,7 +47,7 @@ func NewCertificateGenerator(blsKey, pqKey []byte) *CertificateGenerator {
 		}
 	}
 
-	// Initialize Ringtail threshold signer (single-party for local signing)
+	// Initialize Corona threshold signer (single-party for local signing)
 	// For multi-party threshold, call InitializeThreshold with all shares
 	if len(pqKey) >= 32 {
 		// Generate a 2-of-3 threshold setup for demonstration
@@ -107,7 +107,7 @@ func (cg *CertificateGenerator) SignBlock(blockID ids.ID) ([]byte, error) {
 }
 
 // GeneratePQSignature returns a real ML-DSA-65 signature over the block ID.
-// This is the per-validator PQ identity signature; the threshold Ringtail
+// This is the per-validator PQ identity signature; the threshold Corona
 // path requires Round1/Round2 collected across the validator set.
 func (cg *CertificateGenerator) GeneratePQSignature(blockID ids.ID) ([]byte, error) {
 	cg.mu.RLock()
@@ -115,9 +115,9 @@ func (cg *CertificateGenerator) GeneratePQSignature(blockID ids.ID) ([]byte, err
 
 	if cg.mldsaSecret == nil {
 		// Maintain the legacy error wording so callers/tests can match
-		// on "Ringtail group not initialized" -- the PQ identity path
+		// on "Corona group not initialized" -- the PQ identity path
 		// is what we're really refusing.
-		return nil, fmt.Errorf("Ringtail group not initialized")
+		return nil, fmt.Errorf("Corona group not initialized")
 	}
 
 	sig, err := cg.mldsaSecret.Sign(rand.Reader, blockID[:], nil)
@@ -165,21 +165,21 @@ func (cg *CertificateGenerator) GenerateBLSAggregate(blockID ids.ID, signatures 
 	return bls.SignatureToBytes(aggSig), nil
 }
 
-// GeneratePQCertificate generates a real Ringtail threshold signature share.
+// GeneratePQCertificate generates a real Corona threshold signature share.
 // Returns the Round1 data that should be broadcast to other signers.
 func (cg *CertificateGenerator) GeneratePQCertificate(blockID ids.ID, sessionID int, prfKey []byte, signers []int) (*threshold.Round1Data, error) {
 	cg.mu.RLock()
 	defer cg.mu.RUnlock()
 
 	if cg.ringtailSigner == nil {
-		return nil, fmt.Errorf("Ringtail signer not initialized")
+		return nil, fmt.Errorf("Corona signer not initialized")
 	}
 
 	round1 := cg.ringtailSigner.Round1(sessionID, prfKey, signers)
 	return round1, nil
 }
 
-// CompleteRingtailRound2 performs round 2 of Ringtail signing.
+// CompleteRingtailRound2 performs round 2 of Corona signing.
 func (cg *CertificateGenerator) CompleteRingtailRound2(
 	sessionID int,
 	message string,
@@ -191,7 +191,7 @@ func (cg *CertificateGenerator) CompleteRingtailRound2(
 	defer cg.mu.RUnlock()
 
 	if cg.ringtailSigner == nil {
-		return nil, fmt.Errorf("Ringtail signer not initialized")
+		return nil, fmt.Errorf("Corona signer not initialized")
 	}
 
 	return cg.ringtailSigner.Round2(sessionID, message, prfKey, signers, round1Data)
@@ -203,7 +203,7 @@ func (cg *CertificateGenerator) FinalizeRingtailSignature(round2Data map[int]*th
 	defer cg.mu.RUnlock()
 
 	if cg.ringtailSigner == nil {
-		return nil, fmt.Errorf("Ringtail signer not initialized")
+		return nil, fmt.Errorf("Corona signer not initialized")
 	}
 
 	return cg.ringtailSigner.Finalize(round2Data)
@@ -220,7 +220,7 @@ func (cg *CertificateGenerator) GetBLSPublicKey() []byte {
 	return bls.PublicKeyToCompressedBytes(cg.blsPublicKey)
 }
 
-// GetRingtailGroupKey returns the Ringtail group public key.
+// GetRingtailGroupKey returns the Corona group public key.
 func (cg *CertificateGenerator) GetRingtailGroupKey() *threshold.GroupKey {
 	cg.mu.RLock()
 	defer cg.mu.RUnlock()
@@ -266,14 +266,14 @@ func VerifyBLSAggregate(msg []byte, aggSigBytes []byte, pubKeyBytes [][]byte) er
 	return nil
 }
 
-// VerifyPQCertificate verifies a Ringtail threshold signature.
+// VerifyPQCertificate verifies a Corona threshold signature.
 func VerifyPQCertificate(groupKey *threshold.GroupKey, message string, sig *threshold.Signature) error {
 	if groupKey == nil || sig == nil {
 		return fmt.Errorf("nil group key or signature")
 	}
 
 	if !threshold.Verify(groupKey, message, sig) {
-		return fmt.Errorf("Ringtail signature verification failed")
+		return fmt.Errorf("Corona signature verification failed")
 	}
 
 	return nil

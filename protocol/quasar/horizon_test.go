@@ -136,7 +136,7 @@ func TestQuantumSignatures(t *testing.T) {
 		t.Fatal("block not finalized")
 	}
 
-	t.Log("✓ Block finalized with hybrid signatures (BLS + Ringtail)")
+	t.Log("✓ Block finalized with hybrid signatures (BLS + Corona)")
 }
 
 func TestMultiChain(t *testing.T) {

@@ -10,7 +10,7 @@
 //
 //	mode      classical    threshold lattice          per-validator PQ        rollup             DKG required                          FIPS-approvable?
 //	bls       BLS-12-381   —                          —                       —                  —                                     no  (BLS not in FIPS 186)
-//	ringtail  BLS-12-381   Ringtail / BLAKE3          —                       —                  trusted dealer                        no  (BLAKE3 not in FIPS 202)
+//	corona  BLS-12-381   Corona / BLAKE3          —                       —                  trusted dealer                        no  (BLAKE3 not in FIPS 202)
 //	pulsar    BLS-12-381   Pulsar   / SHA-3 (SP-185)  —                       —                  Pedersen DKG over R_q + reshare       partial (BLS still classical)
 //	quasar    BLS-12-381   Pulsar   / SHA-3 (SP-185)  ML-DSA-65 (rolled)      Groth16 / BN254-Z  Pedersen DKG over R_q + reshare       no  (Groth16/BN254 classical, not FIPS)
 //	mldsa     BLS-12-381   —                          ML-DSA-65 raw (SHAKE)   —                  —                                     yes (drop BLS or use FIPS-approved aggregate)
@@ -18,14 +18,14 @@
 // Two production paths:
 //
 //	BLS → Pulsar → Quasar    public chains (open validator set, epoch rotation)
-//	BLS → Ringtail           federation / bridge MPC (fixed dealer, no rotation)
+//	BLS → Corona           federation / bridge MPC (fixed dealer, no rotation)
 //
-// Quasar is the Lux-mesh default. Ringtail is for fixed federations only —
+// Quasar is the Lux-mesh default. Corona is for fixed federations only —
 // its trusted-dealer DKG is unsuitable for an open public chain. MLDSA is the
 // audit-grade fallback **and** the FIPS-approvable path: ML-DSA-65 (FIPS 204)
 // + SHAKE256 (FIPS 202) is the only mode where every PQ component sits inside
 // the NIST-approved algorithm set. See HIP-0077 §"FIPS profile" for the full
-// drop-list (no Pulsar/Ringtail/Groth16/secp256k1) and the implementation
+// drop-list (no Pulsar/Corona/Groth16/secp256k1) and the implementation
 // switch needed.
 //
 // Pulsar vs Quasar in one sentence: Pulsar = BLS + one R-LWE threshold layer;
@@ -51,7 +51,7 @@ const (
 	// production Lux mesh per HIP-0077.
 	PQModeBLS PQMode = iota
 
-	// PQModeRingtail — BLS + the academic Ringtail 2-round LWE threshold
+	// PQModeNasua — BLS + the academic Nasua 2-round LWE threshold
 	// signature. Hash profile is **BLAKE3** (`primitives/hash.go` uses
 	// `github.com/zeebo/blake3` for every challenge / share / transcript
 	// binding). Trusted-dealer DKG, fixed federation, no proactive
@@ -59,14 +59,14 @@ const (
 	// federations; **not** an open public chain stance because it has no
 	// DKG that survives epoch rotation, and BLAKE3 is outside the NIST
 	// FIPS 202 approved hash family so this mode is **not** FIPS-approvable.
-	// Provided by `github.com/luxfi/ringtail` (academic port).
-	PQModeRingtail
+	// Provided by `github.com/luxfi/nasua` (academic port).
+	PQModeNasua
 
-	// PQModePulsar — BLS + the Pulsar production fork of Ringtail. Same
-	// 2-round threshold algorithm as Ringtail, but Pulsar's canonical
+	// PQModePulsar — BLS + the Pulsar production fork of Corona. Same
+	// 2-round threshold algorithm as Corona, but Pulsar's canonical
 	// hash profile is **SHA-3 (cSHAKE256 / KMAC256 / TupleHash256,
 	// FIPS 202 + NIST SP 800-185)** and Pulsar adds the production
-	// lifecycle Ringtail lacks: Pedersen DKG over R_q with proper hiding,
+	// lifecycle Corona lacks: Pedersen DKG over R_q with proper hiding,
 	// and proactive secret resharing for epoch validator rotation.
 	// Pulsar additionally ships a non-normative `Pulsar-BLAKE3` legacy
 	// suite for byte-equality regressions only.
@@ -102,8 +102,8 @@ func (m PQMode) String() string {
 	switch m {
 	case PQModeBLS:
 		return "bls"
-	case PQModeRingtail:
-		return "ringtail"
+	case PQModeNasua:
+		return "nasua"
 	case PQModePulsar:
 		return "pulsar"
 	case PQModeQuasar:
@@ -120,19 +120,19 @@ func (m PQMode) String() string {
 // Translation, kept here so we don't drag pkg/wire into config:
 //
 //	bls       -> 1 (PolicyQuorum)
-//	ringtail  -> 5 (PolicyPQ, P+Q witness set, SHA-256 profile)
+//	corona  -> 5 (PolicyPQ, P+Q witness set, SHA-256 profile)
 //	pulsar    -> 5 (PolicyPQ, P+Q witness set, SHA-3 profile)
 //	quasar    -> 4 (PolicyQuantum, P+Q+Z witness set)
 //	mldsa     -> 6 (PolicyPZ, P+Z witness set, per-validator ML-DSA)
 //
-// Ringtail and Pulsar share a wire PolicyID because the witness set on
+// Corona and Pulsar share a wire PolicyID because the witness set on
 // the wire is the same shape — the difference is the hash profile and
 // DKG path, both negotiated out-of-band at network setup.
 func (m PQMode) PolicyID() uint16 {
 	switch m {
 	case PQModeBLS:
 		return 1 // PolicyQuorum
-	case PQModeRingtail, PQModePulsar:
+	case PQModeNasua, PQModePulsar:
 		return 5 // PolicyPQ
 	case PQModeQuasar:
 		return 4 // PolicyQuantum
@@ -145,7 +145,7 @@ func (m PQMode) PolicyID() uint16 {
 
 // HashSuiteID is the wire byte that identifies which hash family a Quasar
 // finality certificate was produced under. It is a separate axis from
-// PolicyID: Pulsar and Ringtail share PolicyID 5 (P+Q witness set) but use
+// PolicyID: Pulsar and Corona share PolicyID 5 (P+Q witness set) but use
 // different hash families (SHA-3 vs BLAKE3), so the policy byte alone is
 // not enough for a receiver to know which kernel to instantiate.
 //
@@ -184,9 +184,9 @@ const (
 	// rides here because SHAKE256 is FIPS 202 and not a separate family.
 	HashSuiteSHA3NIST HashSuiteID = 0x01
 
-	// HashSuiteBLAKE3Legacy — Ringtail academic profile and Pulsar's
+	// HashSuiteBLAKE3Legacy — Corona academic profile and Pulsar's
 	// pre-pin legacy suite. BLAKE3 keyed XOF for every challenge / share
-	// / transcript binding (see github.com/luxfi/ringtail
+	// / transcript binding (see github.com/luxfi/nasua
 	// primitives/hash.go and github.com/luxfi/corona/hash/blake3.go).
 	// BLAKE3 is outside FIPS 202 and therefore non-normative for any
 	// NIST submission; the byte exists so legacy / academic / federation-
@@ -219,7 +219,7 @@ func (h HashSuiteID) IsNormative() bool {
 
 // HashSuiteID reports the wire HashSuiteID byte for this PQ mode. The
 // byte is the receiver's only signal of which hash kernel to instantiate
-// when verifying a cert built under this mode — Pulsar and Ringtail share
+// when verifying a cert built under this mode — Pulsar and Corona share
 // PolicyID 5, so PolicyID alone cannot distinguish them.
 //
 // Closes HIP-0077 red-review F1 (silent finality forks between
@@ -228,7 +228,7 @@ func (h HashSuiteID) IsNormative() bool {
 // Mapping:
 //
 //	bls       -> HashSuiteNone          (0x00)  no hash-family commitment
-//	ringtail  -> HashSuiteBLAKE3Legacy  (0x02)  academic profile, non-normative
+//	corona  -> HashSuiteBLAKE3Legacy  (0x02)  academic profile, non-normative
 //	pulsar    -> HashSuiteSHA3NIST      (0x01)  production profile (cSHAKE256 family)
 //	quasar    -> HashSuiteSHA3NIST      (0x01)  same threshold-layer kernel as Pulsar
 //	mldsa     -> HashSuiteSHA3NIST      (0x01)  ML-DSA-65 uses SHAKE256 (FIPS 202)
@@ -236,7 +236,7 @@ func (m PQMode) HashSuiteID() HashSuiteID {
 	switch m {
 	case PQModeBLS:
 		return HashSuiteNone
-	case PQModeRingtail:
+	case PQModeNasua:
 		return HashSuiteBLAKE3Legacy
 	case PQModePulsar, PQModeQuasar, PQModeMLDSA:
 		return HashSuiteSHA3NIST
@@ -277,7 +277,7 @@ func (m PQMode) HashProfile() string {
 //
 //     0x00       — None / unspecified (BLS-only certs do not commit to a sig scheme)
 //     0x10..0x1F — Classical (BLS-12-381 aggregate at 0x10)
-//     0x20..0x2F — Ringtail (academic R-LWE)
+//     0x20..0x2F — Corona (academic R-LWE)
 //     0x30..0x3F — Pulsar.R (production R-LWE family)
 //     0x40..0x4F — Raw ML-DSA per FIPS 204 (single-party):
 //     0x41 = ML-DSA-44 (NIST PQ Cat 2)
@@ -296,7 +296,7 @@ type SigSchemeID uint8
 const (
 	SigSchemeNone             SigSchemeID = 0x00
 	SigSchemeBLS12381         SigSchemeID = 0x10
-	SigSchemeRingtailAcademic SigSchemeID = 0x20
+	SigSchemeNasua SigSchemeID = 0x20
 	SigSchemePulsarR          SigSchemeID = 0x30
 
 	// Raw single-party ML-DSA (FIPS 204).
@@ -317,8 +317,8 @@ func (s SigSchemeID) String() string {
 		return "none"
 	case SigSchemeBLS12381:
 		return "bls12-381"
-	case SigSchemeRingtailAcademic:
-		return "ringtail-academic"
+	case SigSchemeNasua:
+		return "nasua"
 	case SigSchemePulsarR:
 		return "pulsar-r"
 	case SigSchemeMLDSA44:
@@ -374,7 +374,7 @@ func (s SigSchemeID) VerifiesUnderFIPS204() bool {
 // Mapping (HIP-0077 production defaults):
 //
 //	bls       -> SigSchemeNone               BLS aggregate carried separately
-//	ringtail  -> SigSchemeRingtailAcademic   federation MPC
+//	corona  -> SigSchemeNasua   federation MPC
 //	pulsar    -> SigSchemePulsarR            R-LWE production
 //	quasar    -> SigSchemePulsarR            threshold layer is Pulsar.R; Z-Chain witness separate
 //	mldsa     -> SigSchemeMLDSA65            raw ML-DSA-65 (audit-grade); ops opt-in to Pulsar-M-65 explicitly
@@ -382,8 +382,8 @@ func (m PQMode) SigSchemeID() SigSchemeID {
 	switch m {
 	case PQModeBLS:
 		return SigSchemeNone
-	case PQModeRingtail:
-		return SigSchemeRingtailAcademic
+	case PQModeNasua:
+		return SigSchemeNasua
 	case PQModePulsar, PQModeQuasar:
 		return SigSchemePulsarR
 	case PQModeMLDSA:
@@ -632,14 +632,14 @@ func (i IdentitySchemeID) IsFIPS204() bool {
 // and behaviour predicates.
 
 // DKGRequired reports whether an open public chain can run this mode.
-// Modes whose threshold layer relies on a trusted dealer (Ringtail) cannot;
+// Modes whose threshold layer relies on a trusted dealer (Corona) cannot;
 // modes with no threshold (BLS, MLDSA) are vacuously fine; modes with
 // proper DKG (Pulsar, Quasar) are the production target.
 func (m PQMode) DKGRequired() string {
 	switch m {
 	case PQModeBLS, PQModeMLDSA:
 		return "none"
-	case PQModeRingtail:
+	case PQModeNasua:
 		return "trusted-dealer" // unsuitable for open public chains
 	case PQModePulsar, PQModeQuasar:
 		return "pedersen-dkg-over-rq"
@@ -655,7 +655,7 @@ func (m PQMode) DKGRequired() string {
 //
 //	canonical                              aliases (component-named only)
 //	"bls"            (BLS)                 "classical", "bls-only"
-//	"ringtail"       (BLS + Ringtail)      "rt", "academic", "bls-rt", "bls-q", "sha256-rt"
+//	"nasua"       (BLS + Corona)      "rt", "academic", "bls-rt", "bls-q", "sha256-rt"
 //	"pulsar"         (BLS + Pulsar)        "sha3-rt", "production-rt", "bls-pulsar"
 //	"quasar"         (BLS + Pulsar + Z)    "rollup", "groth16", "zk",
 //	                                       "bls-z", "bls-zk", "bls-groth16",
@@ -665,8 +665,8 @@ func ParsePQMode(s string) (PQMode, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "", "bls", "bls-only", "classical":
 		return PQModeBLS, nil
-	case "ringtail", "rt", "academic", "bls-rt", "bls-q", "sha256-rt":
-		return PQModeRingtail, nil
+	case "nasua", "rt", "academic", "bls-rt", "bls-q", "sha256-rt":
+		return PQModeNasua, nil
 	case "pulsar", "sha3-rt", "production-rt", "bls-pulsar":
 		return PQModePulsar, nil
 	case "quasar", "rollup", "groth16", "zk",
@@ -699,7 +699,7 @@ func PQModeFromEnv(def PQMode) (PQMode, error) {
 //	true  -> PQModeQuasar   // BLS + Pulsar + Z-Chain Groth16(ML-DSA)
 //	false -> PQModeBLS      // classical fast path
 //
-// Use the explicit constants for the middle modes (Ringtail, Pulsar, MLDSA).
+// Use the explicit constants for the middle modes (Corona, Pulsar, MLDSA).
 func PQModeFromBool(postQuantum bool) PQMode {
 	if postQuantum {
 		return PQModeQuasar
@@ -715,7 +715,7 @@ func (m PQMode) IsPostQuantum() bool {
 
 // SuitableForPublicChain reports whether the mode is appropriate for an
 // open public chain (epoch rotation, no trusted dealer). False for
-// PQModeRingtail (trusted-dealer DKG only) and PQModeBLS (no PQ at all);
+// PQModeNasua (trusted-dealer DKG only) and PQModeBLS (no PQ at all);
 // true for everything else.
 func (m PQMode) SuitableForPublicChain() bool {
 	switch m {

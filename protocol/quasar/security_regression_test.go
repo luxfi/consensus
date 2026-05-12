@@ -66,8 +66,8 @@ func TestF002_ConstantTimeProofComparison(t *testing.T) {
 }
 
 // TestDualSignRound1_ErrorPropagation verifies that DualSignRound1
-// propagates errors from BOTH the BLS and Ringtail signing paths.
-// Previously, the Ringtail error was silently discarded (line 329).
+// propagates errors from BOTH the BLS and Corona signing paths.
+// Previously, the Corona error was silently discarded (line 329).
 //
 // Regression test for the silent error drop found during review analysis.
 func TestDualSignRound1_ErrorPropagation(t *testing.T) {

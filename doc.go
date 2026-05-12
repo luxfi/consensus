@@ -9,7 +9,7 @@ Lux blockchain network.
 
 The consensus system supports two modes -- linear chain (Nova, for P-Chain and
 C-Chain) and DAG (Nebula, for X-Chain) -- with optional post-quantum finality
-via BLS + Ringtail + ML-DSA threshold signing.
+via BLS + Corona + ML-DSA threshold signing.
 
 # Sub-Protocols
 
@@ -25,7 +25,7 @@ The Quasar family comprises:
   - flare:   DAG certificate/skip detection (2f+1 quorum)
   - ray:     Linear chain finality driver
   - field:   DAG finality driver with safe-prefix commit
-  - quasar:  BLS + Ringtail + ML-DSA parallel threshold signing
+  - quasar:  BLS + Corona + ML-DSA parallel threshold signing
 
 # Usage
 
@@ -44,7 +44,7 @@ Each cryptographic layer is independently toggleable:
   - BLS-only: fastest classical consensus (BLS12-381 threshold)
   - BLS + ML-DSA: dual with PQ identity proof (FIPS 204)
   - BLS + Corona:    dual with PQ threshold proof (Ring-LWE)
-  - BLS + Ringtail + ML-DSA: full Quasar (all three in parallel)
+  - BLS + Corona + ML-DSA: full Quasar (all three in parallel)
 
 # Testing
 

@@ -232,14 +232,14 @@ func TestQuantumSecurityForAllChains(t *testing.T) {
 
 	// Check signature components
 	// Note: Legacy AddValidator mode only creates BLS keys.
-	// Full dual BLS+Ringtail signing requires threshold mode with HybridConfig.
+	// Full dual BLS+Corona signing requires threshold mode with HybridConfig.
 	for validatorID, sig := range qBlock.ValidatorSigs {
 		if len(sig.BLS) == 0 {
 			t.Errorf("Validator %s missing BLS signature", validatorID)
 		}
-		// Ringtail signatures require threshold mode configuration
+		// Corona signatures require threshold mode configuration
 		if len(sig.Corona) > 0 {
-			t.Logf("Validator %s has Ringtail threshold signature", validatorID)
+			t.Logf("Validator %s has Corona threshold signature", validatorID)
 		}
 	}
 
