@@ -63,7 +63,7 @@ func (p Parameters) PostQuantum() bool {
 //	true  -> PQModeTripleQuantum   // strongest available
 //	false -> PQModeBLSOnly         // classical fast path
 //
-// For middle-ground modes (BLSPlusMLDSA, BLSPlusRingtail, BLSPlusGroth16),
+// For middle-ground modes (BLSPlusMLDSA, BLSPlusCorona, BLSPlusGroth16),
 // call WithPQMode directly with the desired constant.
 func (p Parameters) WithPostQuantum(on bool) Parameters {
 	p.PQMode = PQModeFromBool(on)

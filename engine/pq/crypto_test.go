@@ -25,7 +25,7 @@ func TestNewCertificateGenerator(t *testing.T) {
 	// Keys are now internal - verify they were initialized by checking derived values
 	require.NotNil(t, cg.blsSecretKey)
 	require.NotNil(t, cg.blsPublicKey)
-	require.NotNil(t, cg.ringtailGroup)
+	require.NotNil(t, cg.coronaGroup)
 }
 
 func TestNewCertificateGenerator_ShortKeys(t *testing.T) {
@@ -37,7 +37,7 @@ func TestNewCertificateGenerator_ShortKeys(t *testing.T) {
 
 	require.NotNil(t, cg)
 	require.Nil(t, cg.blsSecretKey) // Too short to initialize
-	require.Nil(t, cg.ringtailGroup)
+	require.Nil(t, cg.coronaGroup)
 }
 
 func TestGenerateBLSSignature(t *testing.T) {
@@ -255,19 +255,19 @@ func TestGetBLSPublicKey_NoKey(t *testing.T) {
 	require.Nil(t, pubKey)
 }
 
-func TestGetRingtailGroupKey(t *testing.T) {
+func TestGetCoronaGroupKey(t *testing.T) {
 	blsKey, pqKey := GenerateTestKeys()
 	cg := NewCertificateGenerator(blsKey, pqKey)
 
-	groupKey := cg.GetRingtailGroupKey()
+	groupKey := cg.GetCoronaGroupKey()
 
 	require.NotNil(t, groupKey)
 }
 
-func TestGetRingtailGroupKey_NoKey(t *testing.T) {
+func TestGetCoronaGroupKey_NoKey(t *testing.T) {
 	cg := NewCertificateGenerator(nil, nil)
 
-	groupKey := cg.GetRingtailGroupKey()
+	groupKey := cg.GetCoronaGroupKey()
 
 	require.Nil(t, groupKey)
 }
@@ -377,12 +377,12 @@ func TestInitializeThreshold(t *testing.T) {
 	cg := NewCertificateGenerator(blsKey, pqKey)
 
 	// Get the existing share
-	existingGroup := cg.GetRingtailGroupKey()
+	existingGroup := cg.GetCoronaGroupKey()
 	require.NotNil(t, existingGroup)
 
 	// The internal share should exist after construction
-	require.NotNil(t, cg.ringtailShare)
-	require.NotNil(t, cg.ringtailSigner)
+	require.NotNil(t, cg.coronaShare)
+	require.NotNil(t, cg.coronaSigner)
 }
 
 func BenchmarkGenerateBLSSignature(b *testing.B) {

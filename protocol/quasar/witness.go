@@ -85,7 +85,7 @@ type VerkleWitness struct {
 //
 // PQSignature is the load-bearing field: an ML-DSA-65 signature over
 // SigningDigest(witness) produced by the group key the verifier holds.
-// BLSAggregate / RingtailBits / ValidatorSet are legacy fields kept
+// BLSAggregate / CoronaBits / ValidatorSet are legacy fields kept
 // for wire compatibility with classical-compat deployments; under
 // strict-PQ the verifier ignores them.
 type WitnessProof struct {
@@ -100,9 +100,9 @@ type WitnessProof struct {
 	PQSignature []byte
 
 	// Legacy fields (classical-compat deployments). Strict-PQ
-	// verifiers refuse to consult RingtailBits / BLSAggregate.
+	// verifiers refuse to consult CoronaBits / BLSAggregate.
 	BLSAggregate []byte // Aggregated BLS signature
-	RingtailBits []byte // Bitfield of Corona signers
+	CoronaBits []byte // Bitfield of Corona signers
 	ValidatorSet []byte // Compressed validator set hash
 
 	// Block metadata
@@ -334,8 +334,8 @@ func (v *VerkleWitness) checkPQFinality(witness *WitnessProof) bool {
 	if witness == nil {
 		return false
 	}
-	ringtailCount := countSetBits(witness.RingtailBits)
-	return ringtailCount >= v.minThreshold
+	coronaCount := countSetBits(witness.CoronaBits)
+	return coronaCount >= v.minThreshold
 }
 
 // verifyVerkleCommitment does ultra-fast Verkle proof verification
@@ -381,7 +381,7 @@ func (v *VerkleWitness) fullVerification(witness *WitnessProof) error {
 	}
 
 	// Verify Corona threshold
-	if !v.verifyRingtailThreshold(witness.RingtailBits) {
+	if !v.verifyCoronaThreshold(witness.CoronaBits) {
 		return errors.New("corona threshold not met")
 	}
 
@@ -406,7 +406,7 @@ func (v *VerkleWitness) CreateWitness(
 	openingProof := createIPAProof(commitment, stateRoot)
 
 	// Compress Corona signers to bitfield
-	ringtailBits := compressToBitfield(coronaSigners)
+	coronaBits := compressToBitfield(coronaSigners)
 
 	// Create witness
 	commitmentBytes := commitment.Bytes()
@@ -415,7 +415,7 @@ func (v *VerkleWitness) CreateWitness(
 		Path:         compressPath(stateRoot),
 		OpeningProof: openingProof,
 		BLSAggregate: bls.SignatureToBytes(blsAgg),
-		RingtailBits: ringtailBits,
+		CoronaBits: coronaBits,
 		ValidatorSet: hashValidatorSet(),
 		BlockHeight:  height,
 		StateRoot:    stateRoot,
@@ -615,7 +615,7 @@ func (v *VerkleWitness) verifyBLSAggregate(aggSig []byte, validatorSet []byte) e
 	return nil
 }
 
-func (v *VerkleWitness) verifyRingtailThreshold(bits []byte) bool {
+func (v *VerkleWitness) verifyCoronaThreshold(bits []byte) bool {
 	count := countSetBits(bits)
 	return count >= v.minThreshold
 }
@@ -633,7 +633,7 @@ func (v *VerkleWitness) GetCachedWitness(stateRoot []byte) (*WitnessProof, bool)
 func (w *WitnessProof) Size() int {
 	return len(w.Commitment) + len(w.Path) + len(w.OpeningProof) +
 		len(w.PQSignature) +
-		len(w.BLSAggregate) + len(w.RingtailBits) + len(w.ValidatorSet) +
+		len(w.BLSAggregate) + len(w.CoronaBits) + len(w.ValidatorSet) +
 		8 + len(w.StateRoot) + 8 // BlockHeight + StateRoot + Timestamp
 }
 
@@ -659,8 +659,8 @@ func (w *WitnessProof) Compress() *CompressedWitness {
 
 	// Compress validator bits to uint32 (supports up to 32 validators)
 	var validatorBits uint32
-	for i := 0; i < len(w.RingtailBits) && i < 4; i++ {
-		validatorBits |= uint32(w.RingtailBits[i]) << (i * 8)
+	for i := 0; i < len(w.CoronaBits) && i < 4; i++ {
+		validatorBits |= uint32(w.CoronaBits[i]) << (i * 8)
 	}
 
 	return &CompressedWitness{
