@@ -576,7 +576,7 @@ github.com/luxfi/log v1.4.1
 github.com/luxfi/math v1.2.3
 github.com/luxfi/metric v1.5.0
 github.com/luxfi/p2p v1.18.9
-github.com/luxfi/ringtail v0.2.0
+github.com/luxfi/corona v0.2.0
 github.com/luxfi/runtime v1.0.0
 github.com/luxfi/validators v1.0.0
 github.com/luxfi/version v1.0.1

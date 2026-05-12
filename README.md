@@ -122,7 +122,7 @@ Photon (select committee) -> Wave (threshold vote per frontier vertex)
 After consensus decision, the Quasar signing layer produces threshold certificates:
 
 1. BLS: single-round threshold share via `crypto/threshold`
-2. Pulsar: 2-round Ring-LWE threshold via `luxfi/ringtail/threshold`
+2. Pulsar: 2-round Ring-LWE threshold via `luxfi/corona/threshold`
 3. ML-DSA-65: single-round FIPS 204 identity signature
 
 All three run in parallel. A block is quantum-final when all configured certificate
