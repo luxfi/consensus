@@ -73,7 +73,7 @@ func TestTripleSignVerify(t *testing.T) {
 		BLS:         sig.BLS,
 		ValidatorID: sig.ValidatorID,
 		IsThreshold: sig.IsThreshold,
-		SignerIndex:  sig.SignerIndex,
+		SignerIndex: sig.SignerIndex,
 	}
 	if !s.VerifyQuasarSig(msg, blsOnly) {
 		t.Fatal("BLS-only verification failed")
@@ -85,7 +85,7 @@ func TestTripleSignVerify(t *testing.T) {
 		MLDSA:       []byte("not-a-valid-mldsa-sig"),
 		ValidatorID: sig.ValidatorID,
 		IsThreshold: sig.IsThreshold,
-		SignerIndex:  sig.SignerIndex,
+		SignerIndex: sig.SignerIndex,
 	}
 	if s.VerifyQuasarSig(msg, corruptMLDSA) {
 		t.Fatal("verification should fail with corrupted MLDSA")

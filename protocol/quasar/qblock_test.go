@@ -77,7 +77,7 @@ func validBlock() *QBlock {
 		Height:                    100,
 		RoundOrView:               7,
 		ParentQBlockHash:          b32(0x01),
-		StateRoot:              b48(0x02),
+		StateRoot:                 b48(0x02),
 		ZChainStateRoot:           b48(0x03),
 		ValidatorSetRoot:          b48(0x04),
 		CommitteeRoot:             b48(0x05),
