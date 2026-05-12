@@ -69,7 +69,7 @@ type QuantumBlock struct {
 	SourceBlocks  []*Block
 	QuantumHash   string
 	BLSSignature  []byte
-	RingtailProof []byte // ML-DSA signature
+	CoronaProof []byte // ML-DSA signature
 	Timestamp     time.Time
 	CreatedAt     time.Time // When this block entered the pending set
 	ValidatorSigs map[string]*QuasarSig
@@ -870,12 +870,12 @@ func (q *Quasar) VerifyQuasarSig(message []byte, sig *QuasarSig) bool {
 }
 
 // CoronaRound1 executes Round 1 of the Corona threshold signing protocol.
-func (q *Quasar) CoronaRound1(validatorID string, sessionID int, prfKey []byte) (*RingtailRound1Data, error) {
+func (q *Quasar) CoronaRound1(validatorID string, sessionID int, prfKey []byte) (*CoronaRound1Data, error) {
 	data, err := q.signer.CoronaRound1(validatorID, sessionID, prfKey)
 	if err != nil {
 		return nil, err
 	}
-	return &RingtailRound1Data{PartyID: data.PartyID}, nil
+	return &CoronaRound1Data{PartyID: data.PartyID}, nil
 }
 
 // Internal helpers

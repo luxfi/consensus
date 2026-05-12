@@ -95,7 +95,7 @@ func TestQuasar(t *testing.T) {
 		processed, proofs, height)
 }
 
-func TestQuantumFinalityWithRingtail(t *testing.T) {
+func TestQuantumFinalityWithCorona(t *testing.T) {
 	// Test that Corona and BLS signatures work in parallel
 	qa, err := NewQuasar(2)
 	if err != nil {

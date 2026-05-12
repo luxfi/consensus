@@ -111,8 +111,8 @@ type SignerConfig struct {
 	CoronaGroupKey *coronaThreshold.GroupKey
 }
 
-// RingtailRound1State holds Round 1 data for all parties in a signing session.
-type RingtailRound1State struct {
+// CoronaRound1State holds Round 1 data for all parties in a signing session.
+type CoronaRound1State struct {
 	SessionID  int
 	PRFKey     []byte
 	SignerIDs  []int
@@ -225,12 +225,12 @@ func GenerateDualKeys(t, n int) (*SignerConfig, error) {
 
 	// Convert to maps keyed by validator ID
 	blsShareMap := make(map[string]threshold.KeyShare)
-	ringtailShareMap := make(map[string]*coronaThreshold.KeyShare)
+	coronaShareMap := make(map[string]*coronaThreshold.KeyShare)
 
 	for i := 0; i < n; i++ {
 		id := fmt.Sprintf("v%d", i)
 		blsShareMap[id] = blsShares[i]
-		ringtailShareMap[id] = coronaShares[i]
+		coronaShareMap[id] = coronaShares[i]
 	}
 
 	return &SignerConfig{
@@ -238,7 +238,7 @@ func GenerateDualKeys(t, n int) (*SignerConfig, error) {
 		TotalParties:     n,
 		BLSKeyShares:     blsShareMap,
 		BLSGroupKey:      blsGroupKey,
-		CoronaShares:   ringtailShareMap,
+		CoronaShares:   coronaShareMap,
 		CoronaGroupKey: coronaGroupKey,
 	}, nil
 }
@@ -301,8 +301,8 @@ func (s *signer) CoronaFinalize(validatorID string, round2Data map[int]*coronaTh
 	return signer.Finalize(round2Data)
 }
 
-// VerifyRingtailSignature verifies a Corona threshold signature.
-func (s *signer) VerifyRingtailSignature(message string, sig *coronaThreshold.Signature) bool {
+// VerifyCoronaSignature verifies a Corona threshold signature.
+func (s *signer) VerifyCoronaSignature(message string, sig *coronaThreshold.Signature) bool {
 	if s.coronaGroupKey == nil || sig == nil {
 		return false
 	}
@@ -319,10 +319,10 @@ func (s *signer) VerifyRingtailSignature(message string, sig *coronaThreshold.Si
 func (s *signer) DualSignRound1(ctx context.Context, validatorID string, message []byte, sessionID int, prfKey []byte) (*QuasarSig, *coronaThreshold.Round1Data, error) {
 	s.mu.RLock()
 	blsSigner, hasBLS := s.blsSigners[validatorID]
-	_, hasRingtail := s.coronaSigners[validatorID]
+	_, hasCorona := s.coronaSigners[validatorID]
 	s.mu.RUnlock()
 
-	if !hasBLS || !hasRingtail {
+	if !hasBLS || !hasCorona {
 		return nil, nil, errors.New("validator not configured for dual signing")
 	}
 
@@ -389,7 +389,7 @@ func (s *signer) DualSignRound2(validatorID string, sessionID int, message strin
 func (s *signer) TripleSignRound1(ctx context.Context, validatorID string, message []byte, sessionID int, prfKey []byte) (*QuasarSig, *coronaThreshold.Round1Data, error) {
 	s.mu.RLock()
 	blsSigner, hasBLS := s.blsSigners[validatorID]
-	_, hasRingtail := s.coronaSigners[validatorID]
+	_, hasCorona := s.coronaSigners[validatorID]
 	mldsaSK, hasMLDSA := s.mldsaKeys[validatorID]
 	s.mu.RUnlock()
 
@@ -409,7 +409,7 @@ func (s *signer) TripleSignRound1(ctx context.Context, validatorID string, messa
 	}
 
 	paths := 1 // BLS always
-	if hasRingtail {
+	if hasCorona {
 		paths++
 	}
 	if hasMLDSA {
@@ -424,7 +424,7 @@ func (s *signer) TripleSignRound1(ctx context.Context, validatorID string, messa
 	}()
 
 	// Path 2: Corona Round 1 (PQ lattice threshold)
-	if hasRingtail {
+	if hasCorona {
 		go func() {
 			defer wg.Done()
 			round1Data, rtErr = s.CoronaRound1(validatorID, sessionID, prfKey)
@@ -598,7 +598,7 @@ func (s *signer) VerifyQuasarSig(message []byte, sig *QuasarSig) bool {
 
 // VerifyQuasarSigWithContext verifies a signature.
 // Verifies all present paths: BLS (always), ML-DSA (when sig.MLDSA is non-empty).
-// Corona threshold verification is handled separately via VerifyRingtailSignature.
+// Corona threshold verification is handled separately via VerifyCoronaSignature.
 func (s *signer) VerifyQuasarSigWithContext(ctx context.Context, message []byte, sig *QuasarSig) bool {
 	if ctx.Err() != nil {
 		return false
@@ -787,7 +787,7 @@ type QuasarSig struct {
 // AggregatedSignature contains aggregated signatures.
 type AggregatedSignature struct {
 	BLSAggregated      []byte
-	RingtailAggregated []byte
+	CoronaAggregated []byte
 	ValidatorIDs       []string
 	SignerCount        int
 	IsThreshold        bool
