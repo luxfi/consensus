@@ -9,7 +9,7 @@
 //
 //	BLS-only:                  fastest classical consensus
 //	BLS + ML-DSA:              dual PQ consensus (single-round PQ sigs)
-//	BLS + Ringtail:            dual PQ consensus (2-round threshold)
+//	BLS + Corona:               dual PQ consensus (2-round threshold)
 //	BLS + Ringtail + ML-DSA:   Quasar (all three hardness assumptions)
 //
 // Quasar signing via [signer.TripleSignRound1] runs all three paths in parallel.
