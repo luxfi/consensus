@@ -30,6 +30,7 @@ type roundDigestInputs struct {
 	proofBackend     config.ProofBackendID
 	proofFormat      config.ProofFormatID
 	verifierID       config.VerifierID
+	effectivePolicy  uint8 // BLOCKERS.md CR-12
 	networkID        uint32
 	chainID          uint32
 	epoch            uint64
@@ -57,6 +58,7 @@ func canonicalRoundDigest() roundDigestInputs {
 		proofBackend:     config.ProofBackendP3QSTARKFRISHA3,
 		proofFormat:      config.ProofFormatP3QBinaryV1,
 		verifierID:       config.VerifierP3QSTARKFRISHA3PQ,
+		effectivePolicy:  1, // PolicyQuorum non-zero baseline
 		networkID:        0xC0DE0002,
 		chainID:          0xDEADBEEF,
 		epoch:            0x1122334455667788,
@@ -83,6 +85,7 @@ func (in roundDigestInputs) compute() (RoundDigest, error) {
 		in.profileID,
 		in.hashSuite, in.identityScheme, in.finalityScheme,
 		in.proofPolicy, in.proofBackend, in.proofFormat, in.verifierID,
+		in.effectivePolicy,
 		in.networkID, in.chainID,
 		in.epoch, in.height,
 		in.roundOrView,
