@@ -33,7 +33,7 @@ type quasarEngine struct {
 
 	// Consensus engine
 	certifier *Certifier
-	signer    *signer // real BLS+Ringtail+ML-DSA signer (optional, may be nil for legacy)
+	signer    *signer // real BLS+Corona+ML-DSA signer (optional, may be nil for legacy)
 
 	// Metrics
 	processed uint64
@@ -47,7 +47,7 @@ var (
 	// ErrPartialTripleCert is returned by generateCert when the chain's
 	// ChainSecurityProfile demands a triple-mode (P+Q+Z) certificate but
 	// the signer can't produce all three layers — typically because no
-	// validator is configured with Ringtail shares (the Q layer). Closes
+	// validator is configured with Corona shares (the Q layer). Closes
 	// CR-10: previously this path fell through to a SHA-256 placeholder
 	// and the engine would emit a cert the network believes is triple
 	// when it's only single-layer.
@@ -193,7 +193,7 @@ func (q *quasarEngine) processBlock(block *Block) {
 	}
 
 	// Vote-acceptance gate (CR-10): under a triple-mode profile the
-	// cert MUST carry every layer (BLS + Ringtail + MLDSAProof).
+	// cert MUST carry every layer (BLS + Corona + MLDSAProof).
 	// QuasarCert.Verify enforces that structural property; rejecting
 	// here keeps the cert-acceptance gate honest even if a future
 	// generateCert path forgets to refuse silently. Belt and braces.
@@ -241,7 +241,7 @@ func computeHash(block *Block) string {
 // Certifier handles certificate generation for the engine.
 //
 // When a Signer is attached via AttachSigner the certifier produces real
-// QuasarCerts (BLS share + ML-DSA sig + Ringtail Round 1 commitment). With
+// QuasarCerts (BLS share + ML-DSA sig + Corona Round 1 commitment). With
 // no signer, it falls back to deterministic SHA-256 commitments suitable
 // only for in-process unit tests.
 //
@@ -274,7 +274,7 @@ func newCertifier(threshold int) (*Certifier, error) {
 	}, nil
 }
 
-// AttachSigner wires a real BLS+Ringtail+ML-DSA signer into the certifier.
+// AttachSigner wires a real BLS+Corona+ML-DSA signer into the certifier.
 // After this call, generateCert produces real cryptographic certificates.
 func (h *Certifier) AttachSigner(ctx context.Context, s *signer) {
 	h.mu.Lock()
@@ -309,7 +309,7 @@ func (h *Certifier) validatorCount() int {
 }
 
 // generateCert creates a certificate for the given block. When a signer is
-// attached it returns a real QuasarCert (BLS share + ML-DSA sig + Ringtail
+// attached it returns a real QuasarCert (BLS share + ML-DSA sig + Corona
 // Round 1 commitment). Otherwise it falls back to SHA-256 placeholders for
 // in-process tests.
 //
@@ -329,10 +329,10 @@ func (h *Certifier) generateCert(block *Block) *QuasarCert {
 		if cert != nil {
 			// Under a triple-mode profile we MUST refuse a cert that
 			// doesn't carry every layer. The realCert path produces
-			// BLS + MLDSAProof but intentionally leaves Ringtail
+			// BLS + MLDSAProof but intentionally leaves Corona
 			// empty when this engine signs as a single participant
 			// (the Round-1 commitment isn't a verifiable sig on its
-			// own — the aggregated Ringtail signature lands here at
+			// own — the aggregated Corona signature lands here at
 			// the higher protocol layer, see epoch.go BundleSigner).
 			//
 			// Strict-PQ profiles can't emit such a cert. The right
@@ -456,7 +456,7 @@ func buildBlockMessage(block *Block) []byte {
 	return h.Sum(nil)
 }
 
-// buildPRFKey derives a per-block 32-byte PRF key for Ringtail signing.
+// buildPRFKey derives a per-block 32-byte PRF key for Corona signing.
 func buildPRFKey(block *Block) []byte {
 	h := sha256.Sum256(append(block.ID[:], block.ChainID[:]...))
 	return h[:]

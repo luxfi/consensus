@@ -143,7 +143,7 @@ var PermissiveProfile = ChainSecurityProfile{
 }
 
 // FIPSProfile is the FIPS-204-only profile. Drops Pulsar-M (production
-// fork of Ringtail; not yet FIPS-approved) — but the profile still has to
+// fork of Corona; not yet FIPS-approved) — but the profile still has to
 // satisfy `FinalitySchemeID.IsPulsarM()`, so for FIPS deployments the
 // chain DOES use Pulsar-M (FIPS 204-compatible output) at M-65 and M-87.
 // Only the canonical P3Q STARK/FRI/SHA3 backend is admitted.

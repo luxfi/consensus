@@ -13,7 +13,7 @@ import (
 // TestGenerateCert_RefusesPartialTriple is the CR-10 regression: under a
 // strict-PQ profile the certifier MUST NOT emit a single-layer cert.
 // The legacy SHA-256 placeholder path silently downgraded; the realCert
-// path with no Ringtail aggregate also downgraded. Both close here.
+// path with no Corona aggregate also downgraded. Both close here.
 func TestGenerateCert_RefusesPartialTriple(t *testing.T) {
 	c, err := newCertifier(1)
 	if err != nil {
@@ -40,7 +40,7 @@ func TestGenerateCert_RefusesPartialTriple(t *testing.T) {
 
 // TestGenerateCert_RefusesPartialTriple_WithSigner_NoRingtail proves
 // the realCert fallback path is also closed: a signer can produce a
-// BLS+MLDSA cert (Ringtail empty because aggregation is at the
+// BLS+MLDSA cert (Corona empty because aggregation is at the
 // BundleSigner layer), and under a triple-mode profile we MUST refuse
 // that single-layer artefact.
 func TestGenerateCert_RefusesPartialTriple_WithSigner_NoRingtail(t *testing.T) {
@@ -52,7 +52,7 @@ func TestGenerateCert_RefusesPartialTriple_WithSigner_NoRingtail(t *testing.T) {
 	c.AddValidator("v1", 1)
 
 	// Basic signer: AddValidator creates BLS + MLDSA keys but no
-	// Ringtail share. realCert will produce a cert with Ringtail=nil;
+	// Corona share. realCert will produce a cert with Corona=nil;
 	// the triple-mode gate MUST refuse it.
 	s, err := NewSigner(1)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestGenerateCert_RefusesPartialTriple_WithSigner_NoRingtail(t *testing.T) {
 
 	cert := c.generateCert(block)
 	if cert != nil {
-		t.Fatalf("strict-PQ profile + basic signer: expected nil cert, got Ringtail=%v MLDSAProof_len=%d",
+		t.Fatalf("strict-PQ profile + basic signer: expected nil cert, got Corona=%v MLDSAProof_len=%d",
 			cert.Corona, len(cert.MLDSARollup))
 	}
 }
@@ -141,12 +141,12 @@ func TestQuasarCert_Verify_RejectsMissingRingtail(t *testing.T) {
 		Validators: 1,
 	}
 	if cert.Verify(nil) {
-		t.Fatal("QuasarCert.Verify accepted cert with nil Ringtail")
+		t.Fatal("QuasarCert.Verify accepted cert with nil Corona")
 	}
 }
 
 // TestQuasarCert_Verify_RejectsMissingMLDSA — same shape for the MLDSA
-// layer. Tests for symmetry with the Ringtail case.
+// layer. Tests for symmetry with the Corona case.
 func TestQuasarCert_Verify_RejectsMissingMLDSA(t *testing.T) {
 	cert := &QuasarCert{
 		BLS:        []byte("bls"),
