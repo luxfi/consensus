@@ -702,10 +702,11 @@ func TestChainSecurityProfile_ComputeHash_BindsNewFields(t *testing.T) {
 // =============================================================================
 
 // strictPQGoldenHashHex is the pinned hex of StrictPQ.ComputeHash().
-// Re-pinned after ProfileName rename (LUX_STRICT_PQ → STRICT_PQ) — the
-// rename drops the legacy Lux qualifier from the canonical PQ profile
-// since PQ mode is binary and no longer family-branded.
-const strictPQGoldenHashHex = "9b34c4e42f969a25a5fc39936edac7e49d5ef1bee10e58b5a44fb1a8a4a633dce793c787c5bd6cf00ea83dccb0eb7584"
+// Re-pinned after ProfileName rename ("STRICT_PQ" → "STRICT"); the
+// rename drops the "PQ" suffix because the canonical spectrum
+// (classical, hybrid, strict) cuts across more than the PQ axis, and
+// the strictest posture is just called "strict".
+const strictPQGoldenHashHex = "cf3f2cd7b54cfc2cb88b741f38514c58aef7f7184379c7ea454e16c3e54f7d5b04aaafd3817db676d96099e1c2e1fd1c"
 
 // TestChainSecurityProfile_GoldenVector_StrictPQ pins the canonical
 // StrictPQ profile hash. A failing test means either the canonical

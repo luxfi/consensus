@@ -267,6 +267,118 @@ var ForkClassicalCompatUnsafeProfile = ChainSecurityProfile{
 	RequireTypedTxAuth:      false,
 }
 
+// HybridProfile is the transitional production posture: BLS + PQ both
+// required at the consensus / finality layer, classical contract-auth
+// permitted at the EVM precompile boundary. Used by chains migrating
+// from classical into strict without a hard fork — PQ witness + BLS
+// quorum land in the cert envelope side-by-side, while wallets and
+// dApps keep using ECDSA.
+//
+// ProfileID 0x04, name "HYBRID". ProfileHash computed in init().
+var HybridProfile = ChainSecurityProfile{
+	ProfileID:         uint32(ProfileHybridID),
+	ProfileName:       ProfileNameHybrid,
+	HashSuiteID:       HashSuiteSHA3NIST,
+	IdentitySchemeID:  SigSchemeMLDSA65,
+	FinalitySchemeID:  SigSchemePulsarM65,
+	HighValueSchemeID: SigSchemePulsarM87,
+	ProofPolicyID:     ProofPolicySTARKFRISHA3PQ,
+	AllowedProofBackends: []ProofBackendID{
+		ProofBackendSP1CompressedSTARK,
+		ProofBackendRISC0SuccinctSTARK,
+		ProofBackendP3QSTARKFRISHA3,
+		ProofBackendStoneCairoSTARK,
+		ProofBackendStwoCircleSTARK,
+	},
+	AllowedProofFormats: []ProofFormatID{
+		ProofFormatSTARKFRIBinaryV1,
+		ProofFormatSP1BinaryV1,
+		ProofFormatRISC0BinaryV1,
+		ProofFormatP3QBinaryV1,
+		ProofFormatStoneCairoBinaryV1,
+		ProofFormatStwoCircleBinaryV1,
+	},
+	MinSoundnessBits:      128,
+	MinHashOutputBits:     384,
+	RequireTransparent:    true,
+	ForbidPairings:        false, // BLS aggregate still active
+	ForbidKZG:             false,
+	ForbidTrustedSetup:    false,
+	ForbidClassicalSNARKs: false,
+	ForbidDevProofs:       true,
+	ForbidFallbacks:       false,
+
+	// E2E PQ axes — classical wallet/auth still permitted, PQ KEM
+	// required, recovery via SLH-DSA. RequireTypedTxAuth=true so a
+	// receiver always sees the auth primitive named on the wire.
+	WalletSchemeID:          WalletSchemeECDSAUnsafe,
+	TxSchemeID:              TxSchemeECDSAUnsafe,
+	ContractAuthID:          ContractAuthECDSAUnsafe,
+	KeyExchangeID:           KeyExchangeMLKEM768,
+	HighValueKEM:            KeyExchangeMLKEM1024,
+	RecoverySchemeID:        RecoverySchemeSLHDSA192,
+	ForbidECDSAWallets:      false,
+	ForbidECDSAContractAuth: false,
+	ForbidBLSContractAuth:   false,
+	ForbidClassicalKEM:      false,
+	RequireTypedTxAuth:      true,
+}
+
+// ClassicalProfile is the explicit "no PQ" stance — no enforced
+// refusals at any layer. Legacy chains pre-PQ migration pin this so
+// audit tooling can unambiguously identify the classical posture
+// (instead of inferring it from the absence of a profile).
+//
+// ProfileID 0x05, name "CLASSICAL". Distinct from
+// ForkClassicalCompatUnsafeProfile (0x80): Classical is the clean
+// "no PQ here" marker; the Fork-Classical-Compat-Unsafe byte is
+// reserved for downstream forks with an explicit anti-strict-PQ
+// stance flagged loudly in the profile name.
+//
+// ProfileHash computed in init().
+var ClassicalProfile = ChainSecurityProfile{
+	ProfileID:         uint32(ProfileClassicID),
+	ProfileName:       ProfileNameClassical,
+	HashSuiteID:       HashSuiteSHA3NIST,
+	IdentitySchemeID:  SigSchemeMLDSA65,
+	FinalitySchemeID:  SigSchemePulsarM65,
+	HighValueSchemeID: SigSchemePulsarM87,
+	ProofPolicyID:     ProofPolicySTARKFRISHA3PQ,
+	AllowedProofBackends: []ProofBackendID{
+		ProofBackendSP1CompressedSTARK,
+		ProofBackendRISC0SuccinctSTARK,
+		ProofBackendP3QSTARKFRISHA3,
+	},
+	AllowedProofFormats: []ProofFormatID{
+		ProofFormatSTARKFRIBinaryV1,
+		ProofFormatSP1BinaryV1,
+		ProofFormatRISC0BinaryV1,
+		ProofFormatP3QBinaryV1,
+	},
+	MinSoundnessBits:      128,
+	MinHashOutputBits:     384,
+	RequireTransparent:    false,
+	ForbidPairings:        false,
+	ForbidKZG:             false,
+	ForbidTrustedSetup:    false,
+	ForbidClassicalSNARKs: false,
+	ForbidDevProofs:       true, // dev backends still out — orthogonal to PQ stance
+	ForbidFallbacks:       false,
+
+	// E2E axes — every classical primitive permitted.
+	WalletSchemeID:          WalletSchemeECDSAUnsafe,
+	TxSchemeID:              TxSchemeECDSAUnsafe,
+	ContractAuthID:          ContractAuthECDSAUnsafe,
+	KeyExchangeID:           KeyExchangeX25519Unsafe,
+	HighValueKEM:            KeyExchangeX25519Unsafe,
+	RecoverySchemeID:        RecoverySchemeSLHDSA192,
+	ForbidECDSAWallets:      false,
+	ForbidECDSAContractAuth: false,
+	ForbidBLSContractAuth:   false,
+	ForbidClassicalKEM:      false,
+	RequireTypedTxAuth:      false,
+}
+
 // init computes and pins ProfileHash for every canonical profile. Runs
 // at package load; a build whose canonical profiles fail Validate cannot
 // initialise and therefore cannot ship. This is the genesis-pinning
@@ -280,4 +392,6 @@ func init() {
 	PermissiveProfile.ProfileHash = PermissiveProfile.MustComputeHash()
 	FIPSProfile.ProfileHash = FIPSProfile.MustComputeHash()
 	ForkClassicalCompatUnsafeProfile.ProfileHash = ForkClassicalCompatUnsafeProfile.MustComputeHash()
+	HybridProfile.ProfileHash = HybridProfile.MustComputeHash()
+	ClassicalProfile.ProfileHash = ClassicalProfile.MustComputeHash()
 }
