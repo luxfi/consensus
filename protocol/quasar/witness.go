@@ -14,7 +14,7 @@ import (
 	"github.com/luxfi/crypto/banderwagon"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	"github.com/luxfi/pulsar-m/ref/go/pkg/pulsarm"
+	"github.com/luxfi/pulsar/ref/go/pkg/pulsarm"
 	"golang.org/x/crypto/sha3"
 )
 
