@@ -128,9 +128,9 @@ func TestCertificate_TranscriptHash_BindsHashSuiteID(t *testing.T) {
 	corona := NewCertificateWithSuite(candidateID, 100, PolicyPQ, HashSuiteBLAKE3Legacy, []byte("p"))
 
 	pulsarHash := pulsar.TranscriptHash()
-	ringtailHash := corona.TranscriptHash()
+	coronaHash := corona.TranscriptHash()
 
-	if pulsarHash == ringtailHash {
+	if pulsarHash == coronaHash {
 		t.Fatalf("transcript hash collides across HashSuiteID: Pulsar(SHA3-NIST) and Corona(BLAKE3-legacy) share PolicyPQ; F1 fix requires HashSuiteID to break the digest")
 	}
 

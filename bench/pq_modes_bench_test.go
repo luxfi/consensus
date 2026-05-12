@@ -45,17 +45,17 @@ import (
 // per-validator linear paths (notably ML-DSA-65 = 3309 B per validator).
 var pqModesValidatorCounts = []int{4, 21, 64, 100}
 
-// pqModesRingtailCounts is the validator-set sizes used for Corona-bearing
+// pqModesCoronaCounts is the validator-set sizes used for Corona-bearing
 // modes. n=4 is excluded because the Ring-LWE rejection sampler is known
 // flaky at that group size (see consensus CLAUDE.md). n=100 is excluded
 // because a single full 2-round Corona signing pass takes 5+ minutes
 // at that group size; the bench instead measures n in {21, 64} which is
 // where the shape of the cost curve is informative.
-var pqModesRingtailCounts = []int{21, 64}
+var pqModesCoronaCounts = []int{21, 64}
 
-// ringtailMaxRetries bounds how many times we re-run Round1/Round2/Finalize
+// coronaMaxRetries bounds how many times we re-run Round1/Round2/Finalize
 // when verify fails (Corona rejection-sampling is nondeterministic).
-const ringtailMaxRetries = 4
+const coronaMaxRetries = 4
 
 // modeMetrics is the per-mode per-n result row aggregated by the suite.
 type modeMetrics struct {
@@ -302,11 +302,11 @@ func BenchmarkPQModes_BLSPlusMLDSA(b *testing.B) {
 // Mode 3: BLS + Corona (lattice threshold, O(1) cert in N)
 // =============================================================================
 
-// ringtailFixture holds a fully-keyed Corona group plus a parallel BLS
+// coronaFixture holds a fully-keyed Corona group plus a parallel BLS
 // keyset. We re-use the dual_threshold_test.go flow: GenerateDualKeys
 // gives us BLS-threshold + Corona-threshold shares for a (t, n) group,
 // and we drive Round1 / Round2 / Finalize to produce a real signature.
-type ringtailFixture struct {
+type coronaFixture struct {
 	cfg          *quasar.SignerConfig
 	signer       *quasar.Signer
 	rtSigners    []*coronaThreshold.Signer
@@ -317,7 +317,7 @@ type ringtailFixture struct {
 	n            int
 }
 
-func newRingtailFixture(t, n int) (*ringtailFixture, error) {
+func newCoronaFixture(t, n int) (*coronaFixture, error) {
 	cfg, err := quasar.GenerateDualKeys(t, n)
 	if err != nil {
 		return nil, fmt.Errorf("GenerateDualKeys(%d,%d): %w", t, n, err)
@@ -338,7 +338,7 @@ func newRingtailFixture(t, n int) (*ringtailFixture, error) {
 		rtIDs[i] = i
 	}
 
-	return &ringtailFixture{
+	return &coronaFixture{
 		cfg:          cfg,
 		signer:       s,
 		rtSigners:    rtSigners,
@@ -359,11 +359,11 @@ type signResult struct {
 }
 
 // signWithRetry re-runs signOnce until the produced Corona signature
-// verifies, up to ringtailMaxRetries attempts. Returns (result, attempts,
+// verifies, up to coronaMaxRetries attempts. Returns (result, attempts,
 // error). Used because Corona rejection sampling is nondeterministic.
-func (f *ringtailFixture) signWithRetry(msg []byte, prfKey []byte, groupKey *coronaThreshold.GroupKey) (*signResult, int, error) {
+func (f *coronaFixture) signWithRetry(msg []byte, prfKey []byte, groupKey *coronaThreshold.GroupKey) (*signResult, int, error) {
 	var lastErr error
-	for i := 0; i < ringtailMaxRetries; i++ {
+	for i := 0; i < coronaMaxRetries; i++ {
 		res, err := f.signOnce(msg, i+1, prfKey)
 		if err != nil {
 			lastErr = err
@@ -374,12 +374,12 @@ func (f *ringtailFixture) signWithRetry(msg []byte, prfKey []byte, groupKey *cor
 		}
 		lastErr = fmt.Errorf("Corona verify failed on attempt %d", i+1)
 	}
-	return nil, ringtailMaxRetries, lastErr
+	return nil, coronaMaxRetries, lastErr
 }
 
 // signOnce runs the Corona 2-round flow once and returns the resulting
 // signature alongside the BLS aggregate over the same message.
-func (f *ringtailFixture) signOnce(msg []byte, sessionID int, prfKey []byte) (*signResult, error) {
+func (f *coronaFixture) signOnce(msg []byte, sessionID int, prfKey []byte) (*signResult, error) {
 	round1 := make(map[int]*coronaThreshold.Round1Data, f.n)
 	for _, s := range f.rtSigners {
 		d := s.Round1(sessionID, prfKey, f.rtSignerIDs)
@@ -409,8 +409,8 @@ func (f *ringtailFixture) signOnce(msg []byte, sessionID int, prfKey []byte) (*s
 	return &signResult{rtSig: rtSig, rtBytes: rtBytes, blsAgg: blsAgg, blsAggPK: blsAggPK}, nil
 }
 
-func BenchmarkPQModes_BLSPlusRingtail(b *testing.B) {
-	for _, n := range pqModesRingtailCounts {
+func BenchmarkPQModes_BLSPlusCorona(b *testing.B) {
+	for _, n := range pqModesCoronaCounts {
 		n := n
 		b.Run(fmt.Sprintf("n%d", n), func(b *testing.B) {
 			t := (2*n + 2) / 3 // ~2/3 threshold (BFT)
@@ -420,7 +420,7 @@ func BenchmarkPQModes_BLSPlusRingtail(b *testing.B) {
 			if t >= n {
 				t = n - 1
 			}
-			fix, err := newRingtailFixture(t, n)
+			fix, err := newCoronaFixture(t, n)
 			if err != nil {
 				b.Skipf("Corona fixture for n=%d failed: %v", n, err)
 				return
@@ -539,7 +539,7 @@ func BenchmarkPQModes_BLSPlusGroth16(b *testing.B) {
 // =============================================================================
 
 func BenchmarkPQModes_TripleQuantum(b *testing.B) {
-	for _, n := range pqModesRingtailCounts {
+	for _, n := range pqModesCoronaCounts {
 		n := n
 		b.Run(fmt.Sprintf("n%d", n), func(b *testing.B) {
 			t := (2*n + 2) / 3
@@ -549,7 +549,7 @@ func BenchmarkPQModes_TripleQuantum(b *testing.B) {
 			if t >= n {
 				t = n - 1
 			}
-			fix, err := newRingtailFixture(t, n)
+			fix, err := newCoronaFixture(t, n)
 			if err != nil {
 				b.Skipf("Corona fixture for n=%d failed: %v", n, err)
 				return
