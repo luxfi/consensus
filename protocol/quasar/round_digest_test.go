@@ -33,7 +33,7 @@ type canonicalRoundDigestInputs struct {
 	parentQBlockHash  [32]byte
 	payloadRoot       [48]byte
 	daRoot            [48]byte
-	sourceStateRoot      [48]byte
+	sourceStateRoot   [48]byte
 	zchainStateRoot   [48]byte
 	validatorSetRoot  [48]byte
 	committeeRoot     [48]byte
@@ -72,7 +72,7 @@ func canonical() canonicalRoundDigestInputs {
 		parentQBlockHash:  ps,
 		payloadRoot:       mk48(0x10),
 		daRoot:            mk48(0x18),
-		sourceStateRoot:      mk48(0x20),
+		sourceStateRoot:   mk48(0x20),
 		zchainStateRoot:   mk48(0x30),
 		validatorSetRoot:  mk48(0x40),
 		committeeRoot:     mk48(0x50),
@@ -136,32 +136,32 @@ func TestComputeRoundDigest_BindsEveryField(t *testing.T) {
 
 	mutations := map[string]func(*canonicalRoundDigestInputs){
 		"profileID":            func(x *canonicalRoundDigestInputs) { x.profileID ^= 1 },
-		"hashSuite":             func(x *canonicalRoundDigestInputs) { x.hashSuite = config.HashSuiteBLAKE3Legacy },
+		"hashSuite":            func(x *canonicalRoundDigestInputs) { x.hashSuite = config.HashSuiteBLAKE3Legacy },
 		"identityScheme":       func(x *canonicalRoundDigestInputs) { x.identityScheme = config.IdentitySchemeMLDSA87 },
-		"finalityScheme":        func(x *canonicalRoundDigestInputs) { x.finalityScheme = config.SigSchemePulsarM87 },
-		"proofPolicy":           func(x *canonicalRoundDigestInputs) { x.proofPolicy = config.ProofPolicySTARKFRIKeccak },
-		"proofBackend":          func(x *canonicalRoundDigestInputs) { x.proofBackend = config.ProofBackendSP1CompressedSTARK },
-		"proofFormat":           func(x *canonicalRoundDigestInputs) { x.proofFormat = config.ProofFormatSP1BinaryV1 },
-		"verifierID":            func(x *canonicalRoundDigestInputs) { x.verifierID = config.VerifierSP1CompressedSTARKPQ },
-		"networkID":             func(x *canonicalRoundDigestInputs) { x.networkID ^= 1 },
-		"chainID":               func(x *canonicalRoundDigestInputs) { x.chainID ^= 1 },
-		"epoch":                 func(x *canonicalRoundDigestInputs) { x.epoch ^= 1 },
-		"height":                func(x *canonicalRoundDigestInputs) { x.height ^= 1 },
-		"roundOrView":           func(x *canonicalRoundDigestInputs) { x.roundOrView ^= 1 },
-		"parentQBlockHash[0]":   func(x *canonicalRoundDigestInputs) { x.parentQBlockHash[0] ^= 1 },
-		"parentQBlockHash[31]":  func(x *canonicalRoundDigestInputs) { x.parentQBlockHash[31] ^= 1 },
-		"payloadRoot[0]":        func(x *canonicalRoundDigestInputs) { x.payloadRoot[0] ^= 1 },
-		"payloadRoot[47]":       func(x *canonicalRoundDigestInputs) { x.payloadRoot[47] ^= 1 },
-		"daRoot[0]":             func(x *canonicalRoundDigestInputs) { x.daRoot[0] ^= 1 },
-		"daRoot[47]":            func(x *canonicalRoundDigestInputs) { x.daRoot[47] ^= 1 },
-		"sourceStateRoot[0]":       func(x *canonicalRoundDigestInputs) { x.sourceStateRoot[0] ^= 1 },
-		"zchainStateRoot[0]":    func(x *canonicalRoundDigestInputs) { x.zchainStateRoot[0] ^= 1 },
-		"validatorSetRoot[0]":   func(x *canonicalRoundDigestInputs) { x.validatorSetRoot[0] ^= 1 },
-		"committeeRoot[0]":      func(x *canonicalRoundDigestInputs) { x.committeeRoot[0] ^= 1 },
-		"dkgTranscriptRoot[0]":  func(x *canonicalRoundDigestInputs) { x.dkgTranscriptRoot[0] ^= 1 },
-		"groupPubKeyHash[0]":    func(x *canonicalRoundDigestInputs) { x.groupPubKeyHash[0] ^= 1 },
-		"signerSetCommit[0]":    func(x *canonicalRoundDigestInputs) { x.signerSetCommit[0] ^= 1 },
-		"signerSetCommit[47]":   func(x *canonicalRoundDigestInputs) { x.signerSetCommit[47] ^= 1 },
+		"finalityScheme":       func(x *canonicalRoundDigestInputs) { x.finalityScheme = config.SigSchemePulsarM87 },
+		"proofPolicy":          func(x *canonicalRoundDigestInputs) { x.proofPolicy = config.ProofPolicySTARKFRIKeccak },
+		"proofBackend":         func(x *canonicalRoundDigestInputs) { x.proofBackend = config.ProofBackendSP1CompressedSTARK },
+		"proofFormat":          func(x *canonicalRoundDigestInputs) { x.proofFormat = config.ProofFormatSP1BinaryV1 },
+		"verifierID":           func(x *canonicalRoundDigestInputs) { x.verifierID = config.VerifierSP1CompressedSTARKPQ },
+		"networkID":            func(x *canonicalRoundDigestInputs) { x.networkID ^= 1 },
+		"chainID":              func(x *canonicalRoundDigestInputs) { x.chainID ^= 1 },
+		"epoch":                func(x *canonicalRoundDigestInputs) { x.epoch ^= 1 },
+		"height":               func(x *canonicalRoundDigestInputs) { x.height ^= 1 },
+		"roundOrView":          func(x *canonicalRoundDigestInputs) { x.roundOrView ^= 1 },
+		"parentQBlockHash[0]":  func(x *canonicalRoundDigestInputs) { x.parentQBlockHash[0] ^= 1 },
+		"parentQBlockHash[31]": func(x *canonicalRoundDigestInputs) { x.parentQBlockHash[31] ^= 1 },
+		"payloadRoot[0]":       func(x *canonicalRoundDigestInputs) { x.payloadRoot[0] ^= 1 },
+		"payloadRoot[47]":      func(x *canonicalRoundDigestInputs) { x.payloadRoot[47] ^= 1 },
+		"daRoot[0]":            func(x *canonicalRoundDigestInputs) { x.daRoot[0] ^= 1 },
+		"daRoot[47]":           func(x *canonicalRoundDigestInputs) { x.daRoot[47] ^= 1 },
+		"sourceStateRoot[0]":   func(x *canonicalRoundDigestInputs) { x.sourceStateRoot[0] ^= 1 },
+		"zchainStateRoot[0]":   func(x *canonicalRoundDigestInputs) { x.zchainStateRoot[0] ^= 1 },
+		"validatorSetRoot[0]":  func(x *canonicalRoundDigestInputs) { x.validatorSetRoot[0] ^= 1 },
+		"committeeRoot[0]":     func(x *canonicalRoundDigestInputs) { x.committeeRoot[0] ^= 1 },
+		"dkgTranscriptRoot[0]": func(x *canonicalRoundDigestInputs) { x.dkgTranscriptRoot[0] ^= 1 },
+		"groupPubKeyHash[0]":   func(x *canonicalRoundDigestInputs) { x.groupPubKeyHash[0] ^= 1 },
+		"signerSetCommit[0]":   func(x *canonicalRoundDigestInputs) { x.signerSetCommit[0] ^= 1 },
+		"signerSetCommit[47]":  func(x *canonicalRoundDigestInputs) { x.signerSetCommit[47] ^= 1 },
 	}
 
 	for name, mut := range mutations {
