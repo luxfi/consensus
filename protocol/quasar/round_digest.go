@@ -97,6 +97,7 @@ func ComputeRoundDigest(
 	proofBackend config.ProofBackendID,
 	proofFormat config.ProofFormatID,
 	verifierID config.VerifierID,
+	effectivePolicy uint8, // BLOCKERS.md CR-12: bind effective policy byte
 	networkID, chainID uint32,
 	epoch, height uint64,
 	roundOrView uint32,
@@ -128,6 +129,10 @@ func ComputeRoundDigest(
 		return RoundDigest{}, fmt.Errorf("%w: proofFormat", ErrRoundDigestZeroField)
 	case verifierID == config.VerifierNone:
 		return RoundDigest{}, fmt.Errorf("%w: verifierID", ErrRoundDigestZeroField)
+	case effectivePolicy == 0:
+		// BLOCKERS.md CR-12: zero effective policy is the cross-policy
+		// replay attack vector. Refuse explicitly.
+		return RoundDigest{}, fmt.Errorf("%w: effectivePolicy", ErrRoundDigestZeroField)
 	case networkID == 0:
 		return RoundDigest{}, fmt.Errorf("%w: networkID", ErrRoundDigestZeroField)
 	case chainID == 0:
@@ -169,6 +174,13 @@ func ComputeRoundDigest(
 		{byte(proofBackend)},
 		{byte(proofFormat)},
 		verifierBytes,
+		// BLOCKERS.md CR-12 closure — bind effective policy byte into
+		// the digest. Without this, an adversary could sign a Round R
+		// as PolicyPQ (P+Q witnesses) and strip the Q witness on
+		// retransmit, presenting the bare P witness as a PolicyQuorum
+		// cert under an identical digest. The policy byte must be in
+		// the transcript so the verifier-side policy floor enforces.
+		{effectivePolicy},
 		netBytes,
 		chainBytes,
 		epochBytes,
