@@ -38,12 +38,12 @@ func TestGenerateCert_RefusesPartialTriple(t *testing.T) {
 	}
 }
 
-// TestGenerateCert_RefusesPartialTriple_WithSigner_NoRingtail proves
+// TestGenerateCert_RefusesPartialTriple_WithSigner_NoCorona proves
 // the realCert fallback path is also closed: a signer can produce a
 // BLS+MLDSA cert (Corona empty because aggregation is at the
 // BundleSigner layer), and under a triple-mode profile we MUST refuse
 // that single-layer artefact.
-func TestGenerateCert_RefusesPartialTriple_WithSigner_NoRingtail(t *testing.T) {
+func TestGenerateCert_RefusesPartialTriple_WithSigner_NoCorona(t *testing.T) {
 	c, err := newCertifier(1)
 	if err != nil {
 		t.Fatalf("newCertifier: %v", err)
@@ -127,11 +127,11 @@ func TestGenerateCert_NilProfile_AcceptsPlaceholder(t *testing.T) {
 	}
 }
 
-// TestQuasarCert_Verify_RejectsMissingRingtail proves the structural
+// TestQuasarCert_Verify_RejectsMissingCorona proves the structural
 // gate at the vote-acceptance layer: cert.Verify() refuses a cert that
 // doesn't carry every layer, so a single-layer cert is rejected even
 // if generateCert somehow emits it.
-func TestQuasarCert_Verify_RejectsMissingRingtail(t *testing.T) {
+func TestQuasarCert_Verify_RejectsMissingCorona(t *testing.T) {
 	cert := &QuasarCert{
 		BLS:        []byte("bls"),
 		Corona:      nil, // missing
