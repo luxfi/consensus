@@ -119,11 +119,11 @@ func TestPQMode_PolicyID(t *testing.T) {
 		mode PQMode
 		want uint16
 	}{
-		{PQModeBLS, 1},      // PolicyQuorum
-		{PQModeNasua, 5}, // PolicyPQ
-		{PQModePulsar, 5},   // PolicyPQ (same wire shape, SHA-3 negotiated out-of-band)
-		{PQModeQuasar, 4},   // PolicyQuantum
-		{PQModeMLDSA, 6},    // PolicyPZ
+		{PQModeBLS, 1},    // PolicyQuorum
+		{PQModeNasua, 5},  // PolicyPQ
+		{PQModePulsar, 5}, // PolicyPQ (same wire shape, SHA-3 negotiated out-of-band)
+		{PQModeQuasar, 4}, // PolicyQuantum
+		{PQModeMLDSA, 6},  // PolicyPZ
 	}
 	for _, c := range cases {
 		if got := c.mode.PolicyID(); got != c.want {
@@ -178,11 +178,11 @@ func TestPQMode_HashSuiteID(t *testing.T) {
 		mode PQMode
 		want HashSuiteID
 	}{
-		{PQModeBLS, HashSuiteNone},                  // 0x00
-		{PQModeNasua, HashSuiteBLAKE3Legacy},     // 0x02
-		{PQModePulsar, HashSuiteSHA3NIST},           // 0x01
-		{PQModeQuasar, HashSuiteSHA3NIST},           // 0x01
-		{PQModeMLDSA, HashSuiteSHA3NIST},            // 0x01 (SHAKE256 ∈ FIPS 202)
+		{PQModeBLS, HashSuiteNone},           // 0x00
+		{PQModeNasua, HashSuiteBLAKE3Legacy}, // 0x02
+		{PQModePulsar, HashSuiteSHA3NIST},    // 0x01
+		{PQModeQuasar, HashSuiteSHA3NIST},    // 0x01
+		{PQModeMLDSA, HashSuiteSHA3NIST},     // 0x01 (SHAKE256 ∈ FIPS 202)
 	}
 	for _, c := range cases {
 		if got := c.mode.HashSuiteID(); got != c.want {

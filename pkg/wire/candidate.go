@@ -125,11 +125,11 @@ type Vote struct {
 
 // Signature scheme tags
 const (
-	SigNone     byte = 0x00
-	SigEd25519  byte = 0x01
-	SigBLS      byte = 0x02
-	SigCorona byte = 0x03
-	SigQuasar   byte = 0x04 // BLS + Corona (Quasar protocol)
+	SigNone    byte = 0x00
+	SigEd25519 byte = 0x01
+	SigBLS     byte = 0x02
+	SigCorona  byte = 0x03
+	SigQuasar  byte = 0x04 // BLS + Corona (Quasar protocol)
 )
 
 // NewVote creates a vote with current timestamp
@@ -343,13 +343,13 @@ func (h HashSuiteID) String() string {
 type SigSchemeID uint8
 
 const (
-	SigSchemeNone             SigSchemeID = 0x00
-	SigSchemeBLS12381         SigSchemeID = 0x10
-	SigSchemeNasua SigSchemeID = 0x20
-	SigSchemePulsarR          SigSchemeID = 0x30
-	SigSchemePulsarM44        SigSchemeID = 0x41
-	SigSchemePulsarM65        SigSchemeID = 0x42 // production default
-	SigSchemePulsarM87        SigSchemeID = 0x43
+	SigSchemeNone      SigSchemeID = 0x00
+	SigSchemeBLS12381  SigSchemeID = 0x10
+	SigSchemeNasua     SigSchemeID = 0x20
+	SigSchemePulsarR   SigSchemeID = 0x30
+	SigSchemePulsarM44 SigSchemeID = 0x41
+	SigSchemePulsarM65 SigSchemeID = 0x42 // production default
+	SigSchemePulsarM87 SigSchemeID = 0x43
 )
 
 // String returns the canonical wire name of the signature scheme.

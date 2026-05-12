@@ -30,9 +30,9 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/protocol/quasar"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // =============================================================================
@@ -61,10 +61,10 @@ const coronaMaxRetries = 4
 type modeMetrics struct {
 	mode      config.PQMode
 	n         int
-	signNs    int64 // ns per validator-sign call (real measurement)
-	aggNs     int64 // ns to aggregate N shares
-	verifyNs  int64 // ns per cert verify
-	certBytes int   // serialized cert size
+	signNs    int64  // ns per validator-sign call (real measurement)
+	aggNs     int64  // ns to aggregate N shares
+	verifyNs  int64  // ns per cert verify
+	certBytes int    // serialized cert size
 	pending   string // non-empty -> mode is not yet implemented
 }
 
@@ -275,11 +275,11 @@ func BenchmarkPQModes_BLSPlusMLDSA(b *testing.B) {
 			})
 
 			cert := &quasar.QuasarCert{
-				BLS:        blsAgg,
+				BLS:         blsAgg,
 				MLDSARollup: mldsaPayload,
-				Epoch:      1,
-				Finality:   time.Now(),
-				Validators: n,
+				Epoch:       1,
+				Finality:    time.Now(),
+				Validators:  n,
 			}
 			certBytes, err := cert.MarshalBinary()
 			if err != nil {
@@ -472,7 +472,7 @@ func BenchmarkPQModes_BLSPlusCorona(b *testing.B) {
 
 			cert := &quasar.QuasarCert{
 				BLS:        res.blsAgg,
-				Corona:      res.rtBytes,
+				Corona:     res.rtBytes,
 				Epoch:      1,
 				Finality:   time.Now(),
 				Validators: n,
@@ -513,11 +513,11 @@ func BenchmarkPQModes_BLSPlusGroth16(b *testing.B) {
 			// Cert wire size: BLS aggregate (48 B) + 192 B Groth16 placeholder.
 			groth16Placeholder := make([]byte, 192)
 			cert := &quasar.QuasarCert{
-				BLS:        blsAgg,
+				BLS:         blsAgg,
 				MLDSARollup: groth16Placeholder,
-				Epoch:      1,
-				Finality:   time.Now(),
-				Validators: n,
+				Epoch:       1,
+				Finality:    time.Now(),
+				Validators:  n,
 			}
 			certBytes, err := cert.MarshalBinary()
 			if err != nil {
@@ -618,12 +618,12 @@ func BenchmarkPQModes_TripleQuantum(b *testing.B) {
 			})
 
 			cert := &quasar.QuasarCert{
-				BLS:        res.blsAgg,
+				BLS:         res.blsAgg,
 				Corona:      res.rtBytes,
 				MLDSARollup: mldsaPayload,
-				Epoch:      1,
-				Finality:   time.Now(),
-				Validators: n,
+				Epoch:       1,
+				Finality:    time.Now(),
+				Validators:  n,
 			}
 			certBytes, err := cert.MarshalBinary()
 			if err != nil {

@@ -690,7 +690,7 @@ func TestSigner_VerifyQuasarSig_ValidatorNotFound(t *testing.T) {
 	sig := &QuasarSig{
 		ValidatorID: "nonexistent",
 		BLS:         []byte{1, 2, 3},
-		Corona:       []byte{4, 5, 6},
+		Corona:      []byte{4, 5, 6},
 	}
 
 	result := h.VerifyQuasarSig([]byte("test"), sig)
@@ -706,7 +706,7 @@ func TestSigner_VerifyQuasarSig_InvalidBLS(t *testing.T) {
 	sig := &QuasarSig{
 		ValidatorID: "v1",
 		BLS:         []byte{1, 2, 3}, // Invalid BLS bytes
-		Corona:       []byte{4, 5, 6},
+		Corona:      []byte{4, 5, 6},
 	}
 
 	result := h.VerifyQuasarSig([]byte("test"), sig)
@@ -885,7 +885,7 @@ func TestQuasarCert_Verify(t *testing.T) {
 		{
 			name: "empty BLS",
 			cert: &QuasarCert{
-				BLS:        nil,
+				BLS:         nil,
 				MLDSARollup: []byte{1, 2, 3},
 			},
 			validators: []string{"v1"},
@@ -894,7 +894,7 @@ func TestQuasarCert_Verify(t *testing.T) {
 		{
 			name: "empty PQ",
 			cert: &QuasarCert{
-				BLS:        []byte{1, 2, 3},
+				BLS:         []byte{1, 2, 3},
 				MLDSARollup: nil,
 			},
 			validators: []string{"v1"},
@@ -903,9 +903,9 @@ func TestQuasarCert_Verify(t *testing.T) {
 		{
 			name: "non-empty cert without crypto verification returns false",
 			cert: &QuasarCert{
-				BLS:        []byte{1, 2, 3},
+				BLS:         []byte{1, 2, 3},
 				MLDSARollup: []byte{4, 5, 6},
-				Validators: 0,
+				Validators:  0,
 			},
 			validators: []string{"v1", "v2"},
 			want:       false, // Verify() always returns false; use VerifyWithKeys
@@ -933,11 +933,11 @@ func TestBlock_Fields(t *testing.T) {
 		Timestamp: now,
 		Data:      []byte("test data"),
 		Cert: &QuasarCert{
-			BLS:        []byte{7, 8, 9},
+			BLS:         []byte{7, 8, 9},
 			MLDSARollup: []byte{10, 11, 12},
-			Validators: 1,
-			Epoch:      100,
-			Finality:   now,
+			Validators:  1,
+			Epoch:       100,
+			Finality:    now,
 		},
 	}
 
@@ -1052,7 +1052,7 @@ func TestWitnessProof_Size(t *testing.T) {
 		Path:         make([]byte, 16),
 		OpeningProof: make([]byte, 32),
 		BLSAggregate: make([]byte, 96),
-		CoronaBits: make([]byte, 4),
+		CoronaBits:   make([]byte, 4),
 		ValidatorSet: make([]byte, 32),
 		BlockHeight:  100,
 		StateRoot:    make([]byte, 32),
@@ -1093,7 +1093,7 @@ func TestWitnessProof_Compress(t *testing.T) {
 	w := &WitnessProof{
 		Commitment:   make([]byte, 32),
 		OpeningProof: make([]byte, 32),
-		CoronaBits: []byte{0xFF, 0x0F, 0x00, 0x01},
+		CoronaBits:   []byte{0xFF, 0x0F, 0x00, 0x01},
 		BlockHeight:  0x12345678,
 		Timestamp:    0xFEDCBA98,
 	}
@@ -1346,7 +1346,7 @@ func TestVerkleWitness_VerifyStateTransition(t *testing.T) {
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		CoronaBits: []byte{0x01}, // 1 signer meets threshold of 1
+		CoronaBits:   []byte{0x01}, // 1 signer meets threshold of 1
 		BlockHeight:  100,
 		StateRoot:    stateRoot,
 	}
@@ -1364,7 +1364,7 @@ func TestVerkleWitness_VerifyStateTransition_InvalidCommitment(t *testing.T) {
 		Commitment:   []byte{1, 2, 3}, // Invalid commitment bytes
 		Path:         []byte{4, 5, 6},
 		OpeningProof: []byte{7, 8, 9},
-		CoronaBits: []byte{0x01},
+		CoronaBits:   []byte{0x01},
 	}
 
 	err := w.VerifyStateTransition(witness)
@@ -1393,7 +1393,7 @@ func TestVerkleWitness_BatchVerify(t *testing.T) {
 			Commitment:   commitmentBytes[:],
 			Path:         path,
 			OpeningProof: openingProof,
-			CoronaBits: []byte{0x01},
+			CoronaBits:   []byte{0x01},
 			StateRoot:    stateRoot,
 		}
 	}
@@ -1421,7 +1421,7 @@ func TestVerkleWitness_BatchVerify_WithInvalid(t *testing.T) {
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		CoronaBits: []byte{0x01},
+		CoronaBits:   []byte{0x01},
 		StateRoot:    stateRoot,
 	}
 
@@ -1430,7 +1430,7 @@ func TestVerkleWitness_BatchVerify_WithInvalid(t *testing.T) {
 		Commitment:   []byte{1, 2, 3}, // Invalid
 		Path:         []byte{4, 5, 6},
 		OpeningProof: []byte{7, 8, 9},
-		CoronaBits: []byte{0x01},
+		CoronaBits:   []byte{0x01},
 	}
 
 	witnesses := []*WitnessProof{validWitness, invalidWitness}
@@ -1471,7 +1471,7 @@ func TestVerkleWitness_FullVerification(t *testing.T) {
 		Path:         path,
 		OpeningProof: openingProof,
 		BLSAggregate: blsSigBytes,
-		CoronaBits: []byte{0x01},
+		CoronaBits:   []byte{0x01},
 		ValidatorSet: []byte{5, 6, 7, 8},
 		BlockHeight:  100,
 		StateRoot:    stateRoot,
@@ -1507,7 +1507,7 @@ func TestVerkleWitness_FullVerification_InsufficientThreshold(t *testing.T) {
 		Path:         path,
 		OpeningProof: openingProof,
 		BLSAggregate: blsSig,       // Valid-length signature
-		CoronaBits: []byte{0x01}, // Only 1 signer, need 5
+		CoronaBits:   []byte{0x01}, // Only 1 signer, need 5
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
 	}
@@ -1867,7 +1867,7 @@ func TestSigner_AggregateSignatures_InvalidBLS(t *testing.T) {
 	sig := &QuasarSig{
 		ValidatorID: "v1",
 		BLS:         []byte{1, 2, 3}, // Invalid BLS bytes
-		Corona:       []byte{4, 5, 6},
+		Corona:      []byte{4, 5, 6},
 	}
 
 	_, err := h.AggregateSignatures([]byte("test"), []*QuasarSig{sig})
@@ -2355,7 +2355,7 @@ func TestVerkleWitness_VerifyVerkleCommitment_InvalidOpeningProof(t *testing.T) 
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: []byte{1, 2, 3, 4, 5}, // Wrong proof
-		CoronaBits: []byte{0x01},
+		CoronaBits:   []byte{0x01},
 		StateRoot:    stateRoot,
 	}
 
@@ -2684,7 +2684,7 @@ func TestVerkleWitness_FullVerification_CoronaThresholdNotMet(t *testing.T) {
 		Path:         path,
 		OpeningProof: openingProof,
 		BLSAggregate: blsSig,       // Valid-length signature
-		CoronaBits: []byte{0x01}, // Only 1 signer, need 10
+		CoronaBits:   []byte{0x01}, // Only 1 signer, need 10
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
 	}
@@ -2866,7 +2866,7 @@ func TestVerkleWitness_VerifyStateTransition_FastPath(t *testing.T) {
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		CoronaBits: []byte{0x01}, // 1 signer meets threshold
+		CoronaBits:   []byte{0x01}, // 1 signer meets threshold
 		StateRoot:    stateRoot,
 	}
 
@@ -2898,7 +2898,7 @@ func TestVerkleWitness_VerifyStateTransition_SlowPath(t *testing.T) {
 		Path:         path,
 		OpeningProof: openingProof,
 		BLSAggregate: blsSigBytes,
-		CoronaBits: []byte{0x01}, // 1 signer meets threshold
+		CoronaBits:   []byte{0x01}, // 1 signer meets threshold
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
 	}

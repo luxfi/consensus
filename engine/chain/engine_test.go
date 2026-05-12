@@ -1401,10 +1401,10 @@ func TestSlashing_SlashingDBAccessor(t *testing.T) {
 
 // failingBuildVM fails BuildBlock N times then succeeds.
 type failingBuildVM struct {
-	failCount      int
-	callCount      int
-	blocks         []*mockBlock
-	preferenceID   ids.ID
+	failCount        int
+	callCount        int
+	blocks           []*mockBlock
+	preferenceID     ids.ID
 	setPreferenceErr error
 }
 

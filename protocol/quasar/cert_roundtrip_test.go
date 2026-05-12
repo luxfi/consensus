@@ -53,12 +53,12 @@ func TestQuasarCert_RoundTrip_E2E(t *testing.T) {
 	// 2. Build QuasarCert. We embed the BLS share as the BLS field for
 	//    end-to-end byte exercise; full aggregation is a higher-layer concern.
 	cert := &QuasarCert{
-		BLS:        append([]byte(nil), sig.BLS...),
+		BLS:         append([]byte(nil), sig.BLS...),
 		Corona:      []byte{0x01}, // structural-only; cryptographic Corona is via coronaGobEncode of a real Signature
 		MLDSARollup: EncodeMLDSASigs([][]byte{sig.MLDSA}),
-		Epoch:      1,
-		Finality:   time.Unix(1700000000, 0),
-		Validators: 3,
+		Epoch:       1,
+		Finality:    time.Unix(1700000000, 0),
+		Validators:  3,
 	}
 
 	// 3. Marshal / unmarshal round-trip.
@@ -121,9 +121,9 @@ func TestQuasarCert_UnmarshalCorrupt(t *testing.T) {
 	cases := [][]byte{
 		nil,
 		{},
-		{0x00},                                 // wrong scheme
-		{CertSchemeQuasar},                     // truncated header
-		{CertSchemeQuasar, 0x00, 0xFF},         // BLS length exceeds buffer
+		{0x00},                         // wrong scheme
+		{CertSchemeQuasar},             // truncated header
+		{CertSchemeQuasar, 0x00, 0xFF}, // BLS length exceeds buffer
 		append([]byte{CertSchemeQuasar}, make([]byte, 4)...), // still truncated
 	}
 	for i, c := range cases {

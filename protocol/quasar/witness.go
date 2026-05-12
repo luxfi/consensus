@@ -102,7 +102,7 @@ type WitnessProof struct {
 	// Legacy fields (classical-compat deployments). Strict-PQ
 	// verifiers refuse to consult CoronaBits / BLSAggregate.
 	BLSAggregate []byte // Aggregated BLS signature
-	CoronaBits []byte // Bitfield of Corona signers
+	CoronaBits   []byte // Bitfield of Corona signers
 	ValidatorSet []byte // Compressed validator set hash
 
 	// Block metadata
@@ -415,7 +415,7 @@ func (v *VerkleWitness) CreateWitness(
 		Path:         compressPath(stateRoot),
 		OpeningProof: openingProof,
 		BLSAggregate: bls.SignatureToBytes(blsAgg),
-		CoronaBits: coronaBits,
+		CoronaBits:   coronaBits,
 		ValidatorSet: hashValidatorSet(),
 		BlockHeight:  height,
 		StateRoot:    stateRoot,

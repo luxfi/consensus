@@ -8,8 +8,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/luxfi/crypto/threshold"
 	coronaThreshold "github.com/luxfi/corona/threshold"
+	"github.com/luxfi/crypto/threshold"
 	"github.com/stretchr/testify/require"
 )
 
