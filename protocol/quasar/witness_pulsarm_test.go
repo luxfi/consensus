@@ -35,7 +35,7 @@ func TestVerifyPQFinality_PulsarM_RealVerifyAccepts(t *testing.T) {
 		Commitment:   make([]byte, 32),
 		Path:         make([]byte, 16),
 		OpeningProof: make([]byte, 48),
-		RingtailBits: []byte{0x01},
+		CoronaBits: []byte{0x01},
 		BlockHeight:  100,
 		StateRoot:    make([]byte, 32),
 		Timestamp:    1700000000,
@@ -73,7 +73,7 @@ func TestVerifyPQFinality_PulsarM_TamperedSignatureRejected(t *testing.T) {
 		Commitment:   make([]byte, 32),
 		Path:         make([]byte, 16),
 		OpeningProof: make([]byte, 48),
-		RingtailBits: []byte{0x01},
+		CoronaBits: []byte{0x01},
 		BlockHeight:  100,
 		StateRoot:    make([]byte, 32),
 		Timestamp:    1700000000,
@@ -123,7 +123,7 @@ func TestVerifyPQFinality_PulsarM_BitCountAlone_DoesNotPass(t *testing.T) {
 		Commitment:   make([]byte, 32),
 		Path:         make([]byte, 16),
 		OpeningProof: make([]byte, 48),
-		RingtailBits: []byte{0xFF}, // 8 bits set — bit-count would pass at any threshold ≤ 8
+		CoronaBits: []byte{0xFF}, // 8 bits set — bit-count would pass at any threshold ≤ 8
 		BlockHeight:  100,
 		StateRoot:    make([]byte, 32),
 		Timestamp:    1700000000,
@@ -141,7 +141,7 @@ func TestVerifyPQFinality_PulsarM_BitCountAlone_DoesNotPass(t *testing.T) {
 
 	// Swap the message: mutate StateRoot so SigningDigest now yields
 	// M2 ≠ M1. The signature still decodes (it's a genuine Pulsar-M
-	// signature), the bit-count pre-filter still passes (RingtailBits
+	// signature), the bit-count pre-filter still passes (CoronaBits
 	// untouched), but the lattice verify equation MUST reject.
 	witness.StateRoot[0] ^= 0x01
 	digestM2 := witness.SigningDigest()

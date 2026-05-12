@@ -26,7 +26,7 @@ import (
 	"testing"
 )
 
-// TestNoRingtailDirectImport — fails if any non-test .go file in this
+// TestNoCoronaDirectImport — fails if any non-test .go file in this
 // package imports `github.com/luxfi/nasua/...` or invokes
 // corona.GenerateKeys (matched as a selector expression
 // `corona.GenerateKeys(...)` regardless of the package alias).
@@ -34,7 +34,7 @@ import (
 // Test files (*_test.go) are scanned too — the corona kernel is
 // equally forbidden from package tests so the cutover doesn't slip
 // back through a "just for the test" import.
-func TestNoRingtailDirectImport(t *testing.T) {
+func TestNoCoronaDirectImport(t *testing.T) {
 	pkgDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("os.Getwd: %v", err)
@@ -57,7 +57,7 @@ func TestNoRingtailDirectImport(t *testing.T) {
 		// literals as part of the death-test guard — the regex /
 		// fixture below would match itself otherwise.
 		base := filepath.Base(f)
-		if base == "ringtail_death_test.go" {
+		if base == "corona_death_test.go" {
 			continue
 		}
 
@@ -86,7 +86,7 @@ func TestNoRingtailDirectImport(t *testing.T) {
 	// dot-imported alias, which we reject below by name.
 	for _, f := range matches {
 		base := filepath.Base(f)
-		if base == "ringtail_death_test.go" {
+		if base == "corona_death_test.go" {
 			continue
 		}
 		src, err := os.ReadFile(f)
