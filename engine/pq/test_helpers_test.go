@@ -10,7 +10,7 @@ import (
 )
 
 // newTestSigner returns a Quasar signer with a single configured validator
-// covering BLS + Ringtail + ML-DSA. The first return is the validator ID
+// covering BLS + Corona + ML-DSA. The first return is the validator ID
 // chosen, the second is the signer ready for TripleSignRound1.
 func newTestSigner(t *testing.T) (string, *quasar.Signer) {
 	t.Helper()

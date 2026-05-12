@@ -33,7 +33,7 @@ type Quasar struct {
 	// Quantum consensus engine - the event horizon
 	signer *signer
 
-	// Epoch-based Ringtail key management
+	// Epoch-based Corona key management
 	// Keys rotate when validator set changes (max 1x per hour)
 	epochManager *EpochManager
 
@@ -309,7 +309,7 @@ func (q *Quasar) ReceiveVote(quantumHash string, validatorID string, sig *Quasar
 // Caller must hold q.mu.
 //
 // Under a strict-PQ / FIPS profile (CR-10) every accepted vote MUST be
-// triple-layer: BLS share + MLDSA per-validator sig. (The Ringtail
+// triple-layer: BLS share + MLDSA per-validator sig. (The Corona
 // aggregate is produced at the higher BundleSigner layer over the
 // pending block once threshold is met; per-validator votes contribute
 // only the BLS share and MLDSA identity sig.) Profile-driven, not
@@ -434,7 +434,7 @@ func (q *Quasar) finalizeQuantumEpoch() {
 
 	_ = sha256.Sum256([]byte(epochData))
 
-	// Generate quantum proof (BLS aggregated + Ringtail)
+	// Generate quantum proof (BLS aggregated + Corona)
 	// Aggregation of multi-validator proofs is handled by the Signer
 	q.quantumProofs++
 
@@ -508,7 +508,7 @@ func (q *Quasar) VerifyQuantumFinalityWithContext(ctx context.Context, blockHash
 		return false
 	}
 
-	// Verify both BLS and Ringtail signatures
+	// Verify both BLS and Corona signatures
 	for validatorID, sig := range qBlock.ValidatorSigs {
 		// Check context periodically during loop
 		if ctx.Err() != nil {
@@ -628,11 +628,11 @@ func (q *Quasar) GetRegisteredChains() []string {
 
 // ============================================================================
 // Epoch-Based Validator Management
-// BLS and Ringtail validator sets are kept synchronized.
-// Ringtail keys rotate at most once per hour when validator set changes.
+// BLS and Corona validator sets are kept synchronized.
+// Corona keys rotate at most once per hour when validator set changes.
 // ============================================================================
 
-// InitializeValidators sets up the initial validator set with both BLS and Ringtail keys.
+// InitializeValidators sets up the initial validator set with both BLS and Corona keys.
 // This should be called once at genesis or node startup.
 func (q *Quasar) InitializeValidators(validatorIDs []string) error {
 	q.mu.Lock()
@@ -649,18 +649,18 @@ func (q *Quasar) InitializeValidators(validatorIDs []string) error {
 		}
 	}
 
-	// Initialize Ringtail epoch with same validator set
+	// Initialize Corona epoch with same validator set
 	_, err := q.epochManager.InitializeEpoch(validatorIDs)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Ringtail epoch: %w", err)
+		return fmt.Errorf("failed to initialize Corona epoch: %w", err)
 	}
 
-	fmt.Printf("[QUASAR] Initialized %d validators with BLS + Ringtail (epoch 0)\n", len(validatorIDs))
+	fmt.Printf("[QUASAR] Initialized %d validators with BLS + Corona (epoch 0)\n", len(validatorIDs))
 	return nil
 }
 
-// UpdateValidatorSet updates the validator set, rotating Ringtail keys if needed.
-// Returns true if Ringtail keys were rotated.
+// UpdateValidatorSet updates the validator set, rotating Corona keys if needed.
+// Returns true if Corona keys were rotated.
 // Rate-limited to at most 1 rotation per hour.
 func (q *Quasar) UpdateValidatorSet(validatorIDs []string) (rotated bool, err error) {
 	q.mu.Lock()
@@ -695,11 +695,11 @@ func (q *Quasar) UpdateValidatorSet(validatorIDs []string) (rotated bool, err er
 		}
 	}
 
-	// Attempt to rotate Ringtail keys (will fail if rate-limited or unchanged)
+	// Attempt to rotate Corona keys (will fail if rate-limited or unchanged)
 	_, err = q.epochManager.RotateEpoch(validatorIDs, false)
 	if err == nil {
 		rotated = true
-		fmt.Printf("[QUASAR] Rotated Ringtail keys to epoch %d for %d validators\n",
+		fmt.Printf("[QUASAR] Rotated Corona keys to epoch %d for %d validators\n",
 			q.epochManager.GetCurrentEpoch(), len(validatorIDs))
 	} else if errors.Is(err, ErrEpochRateLimited) || errors.Is(err, ErrNoValidatorChange) {
 		// Not an error - just rate limited or no change
@@ -726,7 +726,7 @@ func (q *Quasar) AddValidator(validatorID string, weight uint64) (rotated bool, 
 		validators = append(validators, validatorID)
 	}
 
-	// Attempt Ringtail rotation
+	// Attempt Corona rotation
 	_, err = q.epochManager.RotateEpoch(validators, false)
 	if err == nil {
 		rotated = true
@@ -756,7 +756,7 @@ func (q *Quasar) RemoveValidator(validatorID string) (rotated bool, err error) {
 	// Get remaining validators
 	validators := q.getActiveValidatorIDsLocked()
 
-	// Attempt Ringtail rotation
+	// Attempt Corona rotation
 	_, err = q.epochManager.RotateEpoch(validators, false)
 	if err == nil {
 		rotated = true
@@ -771,7 +771,7 @@ func (q *Quasar) RemoveValidator(validatorID string) (rotated bool, err error) {
 	return rotated, err
 }
 
-// ForceEpochRotation forces Ringtail key rotation if minimum time has passed.
+// ForceEpochRotation forces Corona key rotation if minimum time has passed.
 // Use this for periodic security refreshes even without validator changes.
 func (q *Quasar) ForceEpochRotation() (rotated bool, err error) {
 	q.mu.Lock()
@@ -783,7 +783,7 @@ func (q *Quasar) ForceEpochRotation() (rotated bool, err error) {
 		return false, err
 	}
 	if rotated {
-		fmt.Printf("[QUASAR] Force-rotated Ringtail keys to epoch %d\n", keys.Epoch)
+		fmt.Printf("[QUASAR] Force-rotated Corona keys to epoch %d\n", keys.Epoch)
 	}
 
 	// Also attempt rotation if rate limit allows
@@ -804,7 +804,7 @@ func (q *Quasar) GetEpochStats() EpochStats {
 	return q.epochManager.Stats()
 }
 
-// GetCurrentEpoch returns the current Ringtail epoch number.
+// GetCurrentEpoch returns the current Corona epoch number.
 func (q *Quasar) GetCurrentEpoch() uint64 {
 	return q.epochManager.GetCurrentEpoch()
 }
@@ -849,7 +849,7 @@ func (q *Quasar) IsThresholdMode() bool {
 	return q.signer.IsThresholdMode()
 }
 
-// IsDualThresholdMode returns true if the signer is in dual threshold mode (BLS + Ringtail).
+// IsDualThresholdMode returns true if the signer is in dual threshold mode (BLS + Corona).
 func (q *Quasar) IsDualThresholdMode() bool {
 	return q.signer.IsDualThresholdMode()
 }
@@ -869,9 +869,9 @@ func (q *Quasar) VerifyQuasarSig(message []byte, sig *QuasarSig) bool {
 	return q.signer.VerifyQuasarSig(message, sig)
 }
 
-// RingtailRound1 executes Round 1 of the Ringtail threshold signing protocol.
-func (q *Quasar) RingtailRound1(validatorID string, sessionID int, prfKey []byte) (*RingtailRound1Data, error) {
-	data, err := q.signer.RingtailRound1(validatorID, sessionID, prfKey)
+// CoronaRound1 executes Round 1 of the Corona threshold signing protocol.
+func (q *Quasar) CoronaRound1(validatorID string, sessionID int, prfKey []byte) (*RingtailRound1Data, error) {
+	data, err := q.signer.CoronaRound1(validatorID, sessionID, prfKey)
 	if err != nil {
 		return nil, err
 	}

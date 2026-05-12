@@ -1,10 +1,10 @@
 // Copyright (C) 2025, Lux Industries Inc All rights reserved.
 // Grouped threshold signatures for scaling to 10,000+ validators.
-// Uses probabilistic consensus to parallelize Ringtail signing.
+// Uses probabilistic consensus to parallelize Corona signing.
 //
 // PERFORMANCE MODEL:
 //   - BLS signs every block → 500ms finality (metastable consensus)
-//   - Ringtail signs epoch checkpoints only → every 10 minutes
+//   - Corona signs epoch checkpoints only → every 10 minutes
 //   - Epoch checkpoint = hash of all block hashes in epoch
 //   - Provides quantum-safe anchor without slowing block production
 
@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/luxfi/corona/keyera"
-	ringtailThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -65,8 +65,8 @@ func sha3_384(customization string, parts ...[]byte) [48]byte {
 // Forward-only — no live chain runs the strict-PQ profile yet.
 
 const (
-	// DefaultGroupSize is the optimal group size for Ringtail threshold signing.
-	// Ringtail scales O(n²), so small groups are critical for performance:
+	// DefaultGroupSize is the optimal group size for Corona threshold signing.
+	// Corona scales O(n²), so small groups are critical for performance:
 	//   n=3: 243ms, n=10: 1.1s, n=21: 3.4s, n=100: 53s
 	// Groups of 3 with 2-of-3 threshold provides 243ms signing.
 	DefaultGroupSize = 3
@@ -89,7 +89,7 @@ var (
 
 // GroupedEpochManager extends EpochManager with grouped threshold signing.
 // Instead of one global threshold key, validators are split into groups,
-// each with their own Ringtail keys. This enables parallel signing and
+// each with their own Corona keys. This enables parallel signing and
 // scales to 10,000+ validators with constant signing time.
 type GroupedEpochManager struct {
 	*EpochManager
@@ -109,21 +109,21 @@ type GroupedEpochManager struct {
 	epochSeed []byte
 }
 
-// ValidatorGroup holds the Ringtail keys for a single group of validators.
+// ValidatorGroup holds the Corona keys for a single group of validators.
 type ValidatorGroup struct {
 	Index      int
 	Validators []string
 	Threshold  int
-	GroupKey   *ringtailThreshold.GroupKey
-	Shares     map[string]*ringtailThreshold.KeyShare
-	Signers    map[string]*ringtailThreshold.Signer
+	GroupKey   *coronaThreshold.GroupKey
+	Shares     map[string]*coronaThreshold.KeyShare
+	Signers    map[string]*coronaThreshold.Signer
 }
 
 // GroupedSignature holds signatures from multiple groups.
 type GroupedSignature struct {
 	Epoch           uint64
 	Message         string
-	GroupSignatures map[int]*ringtailThreshold.Signature // group index -> signature
+	GroupSignatures map[int]*coronaThreshold.Signature // group index -> signature
 	SignedGroups    []int
 }
 
@@ -193,7 +193,7 @@ func (gem *GroupedEpochManager) InitializeGroupedEpoch(validators []string, epoc
 	}
 
 	// Generate keys for each group
-	// Note: Ringtail keygen uses global random state, so we run sequentially
+	// Note: Corona keygen uses global random state, so we run sequentially
 	// The keygen is fast enough (~3ms per group) that this is acceptable
 	for i, groupValidators := range groups {
 		group, err := gem.generateGroupKeys(i, groupValidators)
@@ -280,14 +280,14 @@ func (gem *GroupedEpochManager) generateGroupKeys(index int, validators []string
 		Validators: validators,
 		Threshold:  t,
 		GroupKey:   era.GroupKey,
-		Shares:     make(map[string]*ringtailThreshold.KeyShare),
-		Signers:    make(map[string]*ringtailThreshold.Signer),
+		Shares:     make(map[string]*coronaThreshold.KeyShare),
+		Signers:    make(map[string]*coronaThreshold.Signer),
 	}
 
 	for _, v := range validators {
 		share := era.State.Shares[v]
 		group.Shares[v] = share
-		group.Signers[v] = ringtailThreshold.NewSigner(share)
+		group.Signers[v] = coronaThreshold.NewSigner(share)
 	}
 
 	return group, nil
@@ -305,8 +305,8 @@ func (gem *GroupedEpochManager) GetValidatorGroup(validatorID string) (int, erro
 	return idx, nil
 }
 
-// GetGroupSigner returns the Ringtail signer for a validator in their group.
-func (gem *GroupedEpochManager) GetGroupSigner(validatorID string) (*ringtailThreshold.Signer, int, error) {
+// GetGroupSigner returns the Corona signer for a validator in their group.
+func (gem *GroupedEpochManager) GetGroupSigner(validatorID string) (*coronaThreshold.Signer, int, error) {
 	gem.mu.RLock()
 	defer gem.mu.RUnlock()
 
@@ -337,7 +337,7 @@ func (gem *GroupedEpochManager) GetGroupValidators(groupIndex int) ([]string, er
 }
 
 // GetGroupKey returns the group's public key.
-func (gem *GroupedEpochManager) GetGroupKey(groupIndex int) (*ringtailThreshold.GroupKey, error) {
+func (gem *GroupedEpochManager) GetGroupKey(groupIndex int) (*coronaThreshold.GroupKey, error) {
 	gem.mu.RLock()
 	defer gem.mu.RUnlock()
 
@@ -366,7 +366,7 @@ func (gem *GroupedEpochManager) VerifyGroupedSignature(gs *GroupedSignature) (bo
 		}
 
 		group := gem.groups[groupIdx]
-		if ringtailThreshold.Verify(group.GroupKey, gs.Message, sig) {
+		if coronaThreshold.Verify(group.GroupKey, gs.Message, sig) {
 			validGroups++
 		}
 	}
@@ -416,11 +416,11 @@ func (gem *GroupedEpochManager) ParallelGroupSign(
 	message string,
 	prfKey []byte,
 	signersByGroup map[int][]string, // group -> participating validators
-) (map[int]*ringtailThreshold.Signature, error) {
+) (map[int]*coronaThreshold.Signature, error) {
 	gem.mu.RLock()
 	defer gem.mu.RUnlock()
 
-	results := make(map[int]*ringtailThreshold.Signature)
+	results := make(map[int]*coronaThreshold.Signature)
 	var resultsMu sync.Mutex
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(signersByGroup))
@@ -464,14 +464,14 @@ func (gem *GroupedEpochManager) ParallelGroupSign(
 	return results, nil
 }
 
-// signWithGroup runs the 2-round Ringtail protocol for a single group.
+// signWithGroup runs the 2-round Corona protocol for a single group.
 func (gem *GroupedEpochManager) signWithGroup(
 	groupIdx int,
 	sessionID int,
 	message string,
 	prfKey []byte,
 	signerIDs []string,
-) (*ringtailThreshold.Signature, error) {
+) (*coronaThreshold.Signature, error) {
 	group := gem.groups[groupIdx]
 
 	// Build signer index list
@@ -486,7 +486,7 @@ func (gem *GroupedEpochManager) signWithGroup(
 	sort.Ints(signerIndices)
 
 	// Round 1: Collect D matrices
-	round1Data := make(map[int]*ringtailThreshold.Round1Data)
+	round1Data := make(map[int]*coronaThreshold.Round1Data)
 	for _, vid := range signerIDs {
 		signer := group.Signers[vid]
 		r1 := signer.Round1(sessionID, prfKey, signerIndices)
@@ -494,7 +494,7 @@ func (gem *GroupedEpochManager) signWithGroup(
 	}
 
 	// Round 2: Compute z shares
-	round2Data := make(map[int]*ringtailThreshold.Round2Data)
+	round2Data := make(map[int]*coronaThreshold.Round2Data)
 	for _, vid := range signerIDs {
 		signer := group.Signers[vid]
 		r2, err := signer.Round2(sessionID, message, prfKey, signerIndices, round1Data)
@@ -519,7 +519,7 @@ func (gem *GroupedEpochManager) signWithGroup(
 // ============================================================================
 
 // EpochCheckpoint represents a quantum-safe anchor for a range of blocks.
-// Created every epoch (10 min), contains Ringtail signature over block hashes.
+// Created every epoch (10 min), contains Corona signature over block hashes.
 // Normal blocks use BLS for 500ms finality; checkpoints add quantum security.
 //
 // Wire layout (F113): MerkleRoot and PreviousAnchor are [48]byte SHA3-384
@@ -535,7 +535,7 @@ type EpochCheckpoint struct {
 	PreviousAnchor [48]byte // SHA3-384 previous checkpoint hash (chain of anchors)
 	Timestamp      int64    // Unix timestamp
 
-	// Quantum-safe signature (Ringtail grouped threshold)
+	// Quantum-safe signature (Corona grouped threshold)
 	Signature *GroupedSignature
 }
 
@@ -568,7 +568,7 @@ func (ec *EpochCheckpoint) CheckpointHash() [48]byte {
 	return sha3_384(checkpointHashV1, data)
 }
 
-// SignableMessage returns the message to be signed by Ringtail.
+// SignableMessage returns the message to be signed by Corona.
 func (ec *EpochCheckpoint) SignableMessage() string {
 	hash := ec.CheckpointHash()
 	return fmt.Sprintf("QUASAR-CHECKPOINT-v1:%x", hash)
@@ -634,7 +634,7 @@ func computeMerkleRoot(hashes [][48]byte) [48]byte {
 	return level[0]
 }
 
-// SignCheckpoint signs an epoch checkpoint using grouped Ringtail.
+// SignCheckpoint signs an epoch checkpoint using grouped Corona.
 // This runs asynchronously - doesn't block normal block production.
 func (gem *GroupedEpochManager) SignCheckpoint(
 	checkpoint *EpochCheckpoint,
@@ -658,7 +658,7 @@ func (gem *GroupedEpochManager) SignCheckpoint(
 	return nil
 }
 
-// VerifyCheckpoint verifies a checkpoint's Ringtail signature.
+// VerifyCheckpoint verifies a checkpoint's Corona signature.
 func (gem *GroupedEpochManager) VerifyCheckpoint(checkpoint *EpochCheckpoint) (bool, error) {
 	if checkpoint.Signature == nil {
 		return false, errors.New("checkpoint has no signature")

@@ -857,7 +857,7 @@ func TestSigner_GetActiveValidatorCount(t *testing.T) {
 }
 
 // =============================================================================
-// Ringtail Tests
+// Corona Tests
 // =============================================================================
 //
 // NOTE: Post-quantum threshold crypto is tested in the Pulsar package at
@@ -1308,14 +1308,14 @@ func TestVerkleWitness_CreateWitness(t *testing.T) {
 	}
 
 	if len(witness.RingtailBits) == 0 {
-		t.Error("expected non-empty ringtail bits")
+		t.Error("expected non-empty corona bits")
 	}
 
-	// Check ringtail bits match signers
+	// Check corona bits match signers
 	expectedBits := compressToBitfield(signers)
 	for i := range expectedBits {
 		if witness.RingtailBits[i] != expectedBits[i] {
-			t.Error("ringtail bits mismatch")
+			t.Error("corona bits mismatch")
 		}
 	}
 }
@@ -2691,7 +2691,7 @@ func TestVerkleWitness_FullVerification_RingtailThresholdNotMet(t *testing.T) {
 
 	err := w.VerifyStateTransition(witness)
 	if err == nil {
-		t.Error("expected error for insufficient ringtail threshold")
+		t.Error("expected error for insufficient corona threshold")
 	}
 }
 

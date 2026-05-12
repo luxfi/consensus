@@ -36,7 +36,7 @@ var (
 
 // VerkleWitness provides hyper-efficient state verification.
 //
-// "PQ finality" used to mean "the Ringtail bitfield carries enough
+// "PQ finality" used to mean "the Corona bitfield carries enough
 // set bits"; that is a bit-count tautology with zero cryptographic
 // content. The current implementation REQUIRES a real ML-DSA-65
 // (Pulsar-M-65 wire format) signature over a canonical signing digest
@@ -102,7 +102,7 @@ type WitnessProof struct {
 	// Legacy fields (classical-compat deployments). Strict-PQ
 	// verifiers refuse to consult RingtailBits / BLSAggregate.
 	BLSAggregate []byte // Aggregated BLS signature
-	RingtailBits []byte // Bitfield of Ringtail signers
+	RingtailBits []byte // Bitfield of Corona signers
 	ValidatorSet []byte // Compressed validator set hash
 
 	// Block metadata
@@ -324,7 +324,7 @@ func pulsarModeFromMLDSAMode(m mldsa.Mode) (pulsarm.Mode, error) {
 }
 
 // checkPQFinality is the structural pre-filter: counts set bits in
-// the Ringtail bitfield against the configured threshold. NOT a
+// the Corona bitfield against the configured threshold. NOT a
 // cryptographic check on its own — strict-PQ paths additionally call
 // verifyPQFinality which performs real ML-DSA-65 signature
 // verification. Kept as a public-shaped helper because the bit-count
@@ -380,9 +380,9 @@ func (v *VerkleWitness) fullVerification(witness *WitnessProof) error {
 		return err
 	}
 
-	// Verify Ringtail threshold
+	// Verify Corona threshold
 	if !v.verifyRingtailThreshold(witness.RingtailBits) {
-		return errors.New("ringtail threshold not met")
+		return errors.New("corona threshold not met")
 	}
 
 	// Verify Verkle commitment
@@ -393,7 +393,7 @@ func (v *VerkleWitness) fullVerification(witness *WitnessProof) error {
 func (v *VerkleWitness) CreateWitness(
 	stateRoot []byte,
 	blsAgg *bls.Signature,
-	ringtailSigners []bool,
+	coronaSigners []bool,
 	height uint64,
 ) (*WitnessProof, error) {
 	// Create Verkle commitment
@@ -405,8 +405,8 @@ func (v *VerkleWitness) CreateWitness(
 	// Create opening proof (IPA)
 	openingProof := createIPAProof(commitment, stateRoot)
 
-	// Compress Ringtail signers to bitfield
-	ringtailBits := compressToBitfield(ringtailSigners)
+	// Compress Corona signers to bitfield
+	ringtailBits := compressToBitfield(coronaSigners)
 
 	// Create witness
 	commitmentBytes := commitment.Bytes()

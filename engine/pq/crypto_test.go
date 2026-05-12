@@ -98,7 +98,7 @@ func TestGeneratePQSignature_NoKey(t *testing.T) {
 
 	require.Error(t, err)
 	require.Nil(t, sig)
-	require.Contains(t, err.Error(), "Ringtail group not initialized")
+	require.Contains(t, err.Error(), "Corona group not initialized")
 }
 
 func TestGenerateBLSAggregate(t *testing.T) {
@@ -179,7 +179,7 @@ func TestGeneratePQCertificate_NoSigner(t *testing.T) {
 	_, err := cg.GeneratePQCertificate(blockID, 1, nil, nil)
 
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "Ringtail signer not initialized")
+	require.Contains(t, err.Error(), "Corona signer not initialized")
 }
 
 func TestVerifyBLSAggregate(t *testing.T) {
