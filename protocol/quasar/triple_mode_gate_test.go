@@ -133,12 +133,12 @@ func TestGenerateCert_NilProfile_AcceptsPlaceholder(t *testing.T) {
 // if generateCert somehow emits it.
 func TestQuasarCert_Verify_RejectsMissingCorona(t *testing.T) {
 	cert := &QuasarCert{
-		BLS:        []byte("bls"),
+		BLS:         []byte("bls"),
 		Corona:      nil, // missing
 		MLDSARollup: []byte("mldsa"),
-		Epoch:      1,
-		Finality:   time.Now(),
-		Validators: 1,
+		Epoch:       1,
+		Finality:    time.Now(),
+		Validators:  1,
 	}
 	if cert.Verify(nil) {
 		t.Fatal("QuasarCert.Verify accepted cert with nil Corona")
@@ -149,12 +149,12 @@ func TestQuasarCert_Verify_RejectsMissingCorona(t *testing.T) {
 // layer. Tests for symmetry with the Corona case.
 func TestQuasarCert_Verify_RejectsMissingMLDSA(t *testing.T) {
 	cert := &QuasarCert{
-		BLS:        []byte("bls"),
+		BLS:         []byte("bls"),
 		Corona:      []byte("rt"),
 		MLDSARollup: nil, // missing
-		Epoch:      1,
-		Finality:   time.Now(),
-		Validators: 1,
+		Epoch:       1,
+		Finality:    time.Now(),
+		Validators:  1,
 	}
 	if cert.Verify(nil) {
 		t.Fatal("QuasarCert.Verify accepted cert with nil MLDSAProof")
@@ -164,12 +164,12 @@ func TestQuasarCert_Verify_RejectsMissingMLDSA(t *testing.T) {
 // TestQuasarCert_Verify_RejectsMissingBLS — same shape for BLS.
 func TestQuasarCert_Verify_RejectsMissingBLS(t *testing.T) {
 	cert := &QuasarCert{
-		BLS:        nil, // missing
+		BLS:         nil, // missing
 		Corona:      []byte("rt"),
 		MLDSARollup: []byte("mldsa"),
-		Epoch:      1,
-		Finality:   time.Now(),
-		Validators: 1,
+		Epoch:       1,
+		Finality:    time.Now(),
+		Validators:  1,
 	}
 	if cert.Verify(nil) {
 		t.Fatal("QuasarCert.Verify accepted cert with nil BLS")

@@ -9,9 +9,9 @@ import (
 	"errors"
 	"time"
 
+	coronaThreshold "github.com/luxfi/corona/threshold"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
 // Block represents a finalized block in the Quasar consensus.
@@ -446,9 +446,9 @@ type CoronaSignature struct {
 //	BLS aggregate:  48 bytes
 //	PQ proof:       variable (aggregated Corona + ML-DSA, or future SNARK)
 type QuasarSignature struct {
-	BLS      *BLSSignature      // Classical fast path (aggregatable)
+	BLS    *BLSSignature    // Classical fast path (aggregatable)
 	Corona *CoronaSignature // PQ anonymous path (ring-LWE threshold)
-	MLDSA    []byte             // PQ identity proof (ML-DSA-65, FIPS 204)
+	MLDSA  []byte           // PQ identity proof (ML-DSA-65, FIPS 204)
 }
 
 // CoronaRound1Data contains the output of Corona Round 1.

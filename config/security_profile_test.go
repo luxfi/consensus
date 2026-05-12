@@ -714,4 +714,3 @@ func TestStrictPQProfile_ProfileHashIsStable(t *testing.T) {
 		t.Fatalf("ComputeHash drift: got %x, want pinned %x", computed[:], strict.ProfileHash[:])
 	}
 }
-
