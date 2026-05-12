@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/luxfi/consensus/config"
 )
 
 // Quasar is the supermassive black hole at the center of the blockchain galaxy
@@ -49,6 +51,12 @@ type Quasar struct {
 
 	// Context for starting chain processors
 	ctx context.Context
+
+	// profile, when non-nil and strict-PQ / FIPS, demands triple-mode
+	// vote acceptance: addVoteLocked refuses any per-validator sig that
+	// doesn't carry both BLS and MLDSA layers. Closes CR-10 at the
+	// vote-accept layer (cert.Verify() closes it at finalisation).
+	profile *config.ChainSecurityProfile
 }
 
 // ChainBlock is an alias for Block used in chain-specific submission methods.
@@ -299,6 +307,13 @@ func (q *Quasar) ReceiveVote(quantumHash string, validatorID string, sig *Quasar
 
 // addVoteLocked adds a vote and finalizes the block if threshold is met.
 // Caller must hold q.mu.
+//
+// Under a strict-PQ / FIPS profile (CR-10) every accepted vote MUST be
+// triple-layer: BLS share + MLDSA per-validator sig. (The Ringtail
+// aggregate is produced at the higher BundleSigner layer over the
+// pending block once threshold is met; per-validator votes contribute
+// only the BLS share and MLDSA identity sig.) Profile-driven, not
+// heuristic — a non-strict profile preserves the legacy path.
 func (q *Quasar) addVoteLocked(quantumHash string, validatorID string, sig *QuasarSig) bool {
 	// Already finalized -- nothing to do
 	if _, exists := q.finalizedBlocks[quantumHash]; exists {
@@ -308,6 +323,22 @@ func (q *Quasar) addVoteLocked(quantumHash string, validatorID string, sig *Quas
 	qBlock, exists := q.pendingBlocks[quantumHash]
 	if !exists {
 		return false
+	}
+
+	// Triple-mode gate: under strict-PQ the per-validator sig MUST
+	// carry every layer the profile demands. Reject silently-downgraded
+	// votes BEFORE running signature verification (cheaper to detect a
+	// structural deficiency than a forged BLS share).
+	if q.demandsTripleLocked() {
+		if !q.signer.IsTripleMode() {
+			// Signer is not even configured for triple-mode. Under a
+			// strict profile this is a hard misconfiguration; refuse
+			// every vote until the signer is fixed.
+			return false
+		}
+		if sig == nil || len(sig.BLS) == 0 || len(sig.MLDSA) == 0 {
+			return false
+		}
 	}
 
 	// Verify the signature before accepting
@@ -328,6 +359,24 @@ func (q *Quasar) addVoteLocked(quantumHash string, validatorID string, sig *Quas
 	}
 
 	return true
+}
+
+// demandsTripleLocked reports whether the bound profile requires triple-mode
+// votes. Caller MUST hold q.mu (read or write).
+func (q *Quasar) demandsTripleLocked() bool {
+	return q.profile != nil && q.profile.IsPQ()
+}
+
+// SetProfile binds a ChainSecurityProfile to this Quasar instance. When
+// the profile is strict-PQ or FIPS, addVoteLocked refuses any vote whose
+// QuasarSig does not carry every layer the profile demands. Closes CR-10
+// at the vote-accept layer.
+//
+// Nil profile preserves legacy behaviour (any vote-shape accepted).
+func (q *Quasar) SetProfile(profile *config.ChainSecurityProfile) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.profile = profile
 }
 
 // GetPendingCount returns the number of blocks awaiting threshold signatures.
