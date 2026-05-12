@@ -11,8 +11,10 @@ import (
 	"context"
 	"errors"
 
+	luxbft "github.com/luxfi/bft"
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/engine"
+	bftengine "github.com/luxfi/consensus/engine/bft"
 	"github.com/luxfi/consensus/engine/interfaces"
 	"github.com/luxfi/consensus/runtime"
 	"github.com/luxfi/consensus/types"
@@ -133,6 +135,53 @@ func NewPQ(cfg Config) Engine {
 // NewPQEngine creates a new PQ consensus engine with default config.
 func NewPQEngine() Engine {
 	return NewPQ(DefaultConfig())
+}
+
+// BFT is the consensus-toolkit's view of a luxfi/bft Epoch engine —
+// epoch-based leader-rotation BFT (Simplex/HotStuff family). Sibling
+// to NewChain / NewDAG / NewPQ; the four factories pick across four
+// orthogonal consensus paradigms.
+//
+// Type alias here so callers can name a *BFT without reaching into
+// the engine/bft subpackage.
+type BFT = bftengine.Engine
+
+// BFTConfig re-exports luxbft.EpochConfig for callers that want to
+// build a BFT engine from the consensus root facade. Every field is
+// owned by the application (Storage, Communication, Signer,
+// BlockBuilder, WAL) — the consensus toolkit only wires the lifecycle.
+type BFTConfig = luxbft.EpochConfig
+
+// NewBFT constructs a BFT consensus engine. The application supplies a
+// fully-wired BFTConfig (Storage, Communication, Signer, etc.); this
+// factory takes ownership of the resulting Epoch's lifecycle and
+// exposes it through the consensus.Engine surface.
+//
+// Returns the engine and any construction error from luxbft.NewEpoch.
+// On success the engine is NOT started — call Start(ctx, requestID)
+// once you've wired up message routing.
+//
+// Orthogonal to PQ profile / threshold-kernel selection: a BFT engine
+// under a strict-PQ profile with Pulsar-M-65 finality is a valid
+// production combination (leader-rotation ordering, PQ-threshold
+// cert envelope).
+func NewBFT(cfg BFTConfig) (*BFT, error) {
+	epoch, err := luxbft.NewEpoch(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return bftengine.NewEngine(epoch), nil
+}
+
+// MustNewBFT is the panic-on-error form of NewBFT. Use only when the
+// EpochConfig is hard-coded / canonical and a construction failure is
+// a build bug, not a runtime condition.
+func MustNewBFT(cfg BFTConfig) *BFT {
+	e, err := NewBFT(cfg)
+	if err != nil {
+		panic("consensus.MustNewBFT: " + err.Error())
+	}
+	return e
 }
 
 // NewBlock creates a new block with default values
