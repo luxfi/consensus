@@ -522,7 +522,7 @@ func TestQuasar_UpdateValidatorSet(t *testing.T) {
 	t.Log("Updated validator set: v2->inactive, added v3, v4")
 }
 
-func TestQuasar_ValidatorSetSync_BLSAndRingtail(t *testing.T) {
+func TestQuasar_ValidatorSetSync_BLSAndCorona(t *testing.T) {
 	q, err := NewQuasar(2)
 	require.NoError(t, err)
 

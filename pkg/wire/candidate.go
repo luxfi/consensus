@@ -128,7 +128,7 @@ const (
 	SigNone     byte = 0x00
 	SigEd25519  byte = 0x01
 	SigBLS      byte = 0x02
-	SigRingtail byte = 0x03
+	SigCorona byte = 0x03
 	SigQuasar   byte = 0x04 // BLS + Corona (Quasar protocol)
 )
 

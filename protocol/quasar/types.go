@@ -414,7 +414,7 @@ type Stats struct {
 }
 
 // BLSSignature contains a classical BLS threshold signature.
-// Fast path for consensus - used in parallel with RingtailSignature.
+// Fast path for consensus - used in parallel with CoronaSignature.
 type BLSSignature struct {
 	Signature   []byte // BLS signature bytes
 	ValidatorID string // Signing validator
@@ -422,9 +422,9 @@ type BLSSignature struct {
 	SignerIndex int    // Signer index in committee
 }
 
-// RingtailSignature contains a post-quantum Corona threshold signature.
+// CoronaSignature contains a post-quantum Corona threshold signature.
 // Quantum-safe path - used in parallel with BLSSignature.
-type RingtailSignature struct {
+type CoronaSignature struct {
 	Signature   []byte // Corona (Ring-LWE) signature bytes
 	ValidatorID string // Signing validator
 	IsThreshold bool   // True if threshold signature
@@ -447,12 +447,12 @@ type RingtailSignature struct {
 //	PQ proof:       variable (aggregated Corona + ML-DSA, or future SNARK)
 type QuasarSignature struct {
 	BLS      *BLSSignature      // Classical fast path (aggregatable)
-	Corona *RingtailSignature // PQ anonymous path (ring-LWE threshold)
+	Corona *CoronaSignature // PQ anonymous path (ring-LWE threshold)
 	MLDSA    []byte             // PQ identity proof (ML-DSA-65, FIPS 204)
 }
 
-// RingtailRound1Data contains the output of Corona Round 1.
-type RingtailRound1Data struct {
+// CoronaRound1Data contains the output of Corona Round 1.
+type CoronaRound1Data struct {
 	PartyID int
 }
 

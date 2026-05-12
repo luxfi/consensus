@@ -10,12 +10,12 @@ import (
 	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
-// TestRingtailCertSize_BinaryVsGob measures the on-wire Pulsar/Corona
+// TestCoronaCertSize_BinaryVsGob measures the on-wire Pulsar/Corona
 // signature size produced by the native binary encoder vs the legacy gob
 // encoder, for the production parameter set (M=8, N=7, LogN=8 -> ring
 // degree 256, Q=0x1000000004A01 48-bit prime). Reports per-cert and
 // 10K-cert storage so we can see the gob -> native delta.
-func TestRingtailCertSize_BinaryVsGob(t *testing.T) {
+func TestCoronaCertSize_BinaryVsGob(t *testing.T) {
 	cfg, err := GenerateDualKeys(2, 3)
 	if err != nil {
 		t.Fatalf("GenerateDualKeys: %v", err)
