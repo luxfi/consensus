@@ -102,7 +102,8 @@ type ZWitnessProducer interface {
 //
 // MinPolicy = 0 (PolicyUnspecified) preserves the legacy "best-effort
 // downgrade" behaviour for callers that haven't migrated yet. Production
-// chains MUST set this to match their declared PQMode.
+// chains MUST set MinPolicy explicitly — go through NewWitnessSet to get
+// it derived from the chain's ChainSecurityProfile in one place.
 type WitnessSet struct {
 	P PWitnessProducer
 	Q QWitnessProducer // optional
@@ -293,4 +294,77 @@ type DisabledZWitnessProducer struct{}
 // uniformly with the rest of the optional-lane fallback path.
 func (DisabledZWitnessProducer) Witness(ctx context.Context, digest RoundDigest, validatorMLDSAPubs [][]byte) ([]byte, error) {
 	return nil, ErrWitnessUnavailable
+}
+
+// ErrNilProfile is returned by NewWitnessSet when the caller supplies a nil
+// profile. Closes CR-4: the zero-value WitnessSet (MinPolicy=0) was the
+// silent-downgrade attack surface. Routing every production caller through
+// NewWitnessSet ensures MinPolicy is derived from a vetted profile.
+var ErrNilProfile = errors.New("WitnessSet: nil ChainSecurityProfile")
+
+// NewWitnessSet constructs a WitnessSet whose MinPolicy floor and Mode are
+// derived from the chain's ChainSecurityProfile. This is the single
+// canonical entry point for production callers; the zero-value literal
+// WitnessSet{} (MinPolicy=0) is reserved for legacy / test paths that
+// have not migrated yet and is the source of the silent-downgrade attack
+// CR-4 closes.
+//
+// MinPolicy is pinned from the profile:
+//
+//	StrictPQ / FIPS   -> PolicyQuantum (4)  — refuses any cert below P+Q+Z
+//	Permissive        -> PolicyQuorum  (1)  — testnet/devnet, BLS-only OK
+//	(other / unknown) -> error
+//
+// Mode follows the profile's finality scheme: strict-PQ / FIPS chains
+// declare PQModeQuasar (P+Q+Z, SHA-3 hash suite); permissive declares
+// PQModeBLS. Operators that need a different finality posture (e.g.
+// Pulsar-only on a strict chain) construct the WitnessSet directly and
+// own the audit consequence.
+//
+// The constructor copies the supplied P/Q/Z producers in; nil Q or Z is
+// admissible at a permissive floor but a strict-PQ profile WITH a nil
+// Q or Z producer at construction will still produce a WitnessSet whose
+// Run() refuses every round under floor — this is intentional. The right
+// way to deploy a strict-PQ chain without one of the optional witnesses
+// is to lower the profile, not to install a nil producer.
+func NewWitnessSet(profile *config.ChainSecurityProfile, p PWitnessProducer, q QWitnessProducer, z ZWitnessProducer) (WitnessSet, error) {
+	if profile == nil {
+		return WitnessSet{}, ErrNilProfile
+	}
+	if p == nil {
+		return WitnessSet{}, errors.New("WitnessSet: P witness producer is required")
+	}
+
+	floor, mode, err := minPolicyForProfile(profile)
+	if err != nil {
+		return WitnessSet{}, err
+	}
+
+	return WitnessSet{
+		P:         p,
+		Q:         q,
+		Z:         z,
+		MinPolicy: floor,
+		Mode:      mode,
+	}, nil
+}
+
+// minPolicyForProfile maps a chain-wide security profile to the WitnessSet
+// floor and Mode the producer layer must enforce. One mapping, one place:
+// every call site that asks "what witness floor does this profile imply?"
+// goes through here so a profile-class renumber lands in exactly one diff.
+func minPolicyForProfile(profile *config.ChainSecurityProfile) (uint16, config.PQMode, error) {
+	switch config.ProfileID(profile.ProfileID) {
+	case config.ProfileStrictPQ, config.ProfileFIPS:
+		// Strict-PQ + FIPS chains pin Quasar: all three witnesses
+		// required. Cert envelope advertises SHA-3 NIST hash suite.
+		return 4, config.PQModeQuasar, nil
+	case config.ProfilePermissive:
+		// Permissive testnet/devnet: P alone suffices. BLS-only cert.
+		return 1, config.PQModeBLS, nil
+	case config.ProfileNone:
+		return 0, config.PQModeBLS, fmt.Errorf("%w: ProfileNone has no witness floor", config.ErrProfileFieldUnset)
+	default:
+		return 0, config.PQModeBLS, fmt.Errorf("WitnessSet: unknown ProfileID 0x%02x", uint8(profile.ProfileID))
+	}
 }
