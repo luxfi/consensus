@@ -68,9 +68,9 @@ const accountIDCustomization = "LUX_ACCOUNT_ID_V1"
 //
 // Profile separation: profile_id is bound first so the same wallet
 // keypair yields distinct AccountIDs on the strict-PQ vs permissive
-// profile (and across Lux / Zoo / Hanzo strict-PQ siblings). A chain
-// operator who migrates a key across profiles MUST re-register; the
-// AccountIDs do not match. This closes the cross-profile replay class.
+// profile (and across distinct ProfileIDs in any profile family). A
+// chain operator who migrates a key across profiles MUST re-register;
+// the AccountIDs do not match. This closes the cross-profile replay class.
 //
 // Chain separation: chain_id closes the "cross-chain pubkey reuse"
 // attack class — an attacker who finds a pubkey collision on one chain

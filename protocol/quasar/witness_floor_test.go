@@ -161,7 +161,7 @@ func TestRun_PulsarFloor_RefusesWhenQFails(t *testing.T) {
 }
 
 // TestRun_BLSFloor_AlwaysAccepts — chains that declared BLS-only mode
-// finalise on P alone. (Hanzo mesh refuses this in production policy,
+// finalise on P alone. (Lux mesh refuses this in production policy,
 // but the consensus engine must support it for benchmarks/legacy.)
 func TestRun_BLSFloor_AlwaysAccepts(t *testing.T) {
 	ws := WitnessSet{
