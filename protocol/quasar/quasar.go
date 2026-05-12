@@ -17,7 +17,7 @@ import (
 	_ "github.com/luxfi/crypto/threshold/bls" // Register BLS threshold scheme
 
 	// Pulsar threshold is the corrected lattice kernel that replaced
-	// upstream Corona. Type aliasing preserves the historical
+	// upstream Nasua. Type aliasing preserves the historical
 	// `coronaThreshold` identifier so this file's signing routines
 	// (Round1/Round2/Finalize) stay byte-stable while the underlying
 	// types come from pulsar/threshold.
