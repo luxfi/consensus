@@ -8,12 +8,12 @@ import (
 
 	"github.com/luxfi/lattice/v7/ring"
 	"github.com/luxfi/lattice/v7/utils/structs"
-	ringtailThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 )
 
-// ringtailGobEncode serializes a Pulsar threshold signature using the
+// coronaGobEncode serializes a Pulsar threshold signature using the
 // native ring.Poly / structs.Vector binary encoders. The legacy name
-// ringtailGobEncode is preserved for caller compatibility — actual
+// coronaGobEncode is preserved for caller compatibility — actual
 // encoding is no longer gob-based. gob added ~10x overhead via reflection
 // type metadata; the native path is the raw NTT-coefficient stream
 // matching the on-disk Pulsar KAT format.
@@ -27,7 +27,7 @@ import (
 // Returns nil on encoder error; callers treat nil as "no signature
 // available" and the round driver falls back to the next-lower witness
 // level.
-func ringtailGobEncode(sig *ringtailThreshold.Signature) []byte {
+func coronaGobEncode(sig *coronaThreshold.Signature) []byte {
 	if sig == nil {
 		return nil
 	}
@@ -57,12 +57,12 @@ func ringtailGobEncode(sig *ringtailThreshold.Signature) []byte {
 	return out
 }
 
-// ringtailGobDecode is the inverse of ringtailGobEncode.
-func ringtailGobDecode(data []byte) (*ringtailThreshold.Signature, error) {
+// coronaGobDecode is the inverse of coronaGobEncode.
+func coronaGobDecode(data []byte) (*coronaThreshold.Signature, error) {
 	if len(data) < 12 {
 		return nil, ErrCertCorrupt
 	}
-	out := &ringtailThreshold.Signature{}
+	out := &coronaThreshold.Signature{}
 
 	off := 0
 	readField := func(unmarshal func([]byte) error) error {

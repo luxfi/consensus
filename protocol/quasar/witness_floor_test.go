@@ -181,7 +181,7 @@ func TestRun_BLSFloor_AlwaysAccepts(t *testing.T) {
 // transcript.
 //
 // HIP-0077 §"Lux consensus PQ modes" red-review F1. Without this, a Pulsar
-// (SHA-3) producer and a Ringtail (BLAKE3) producer at the same PolicyID 5
+// (SHA-3) producer and a Corona (BLAKE3) producer at the same PolicyID 5
 // emit indistinguishable certs and the receiver picks the wrong kernel.
 func TestRun_PropagatesHashSuiteID_FromMode(t *testing.T) {
 	cases := []struct {
@@ -189,7 +189,7 @@ func TestRun_PropagatesHashSuiteID_FromMode(t *testing.T) {
 		want config.HashSuiteID
 	}{
 		{config.PQModeBLS, config.HashSuiteNone},
-		{config.PQModeRingtail, config.HashSuiteBLAKE3Legacy},
+		{config.PQModeNasua, config.HashSuiteBLAKE3Legacy},
 		{config.PQModePulsar, config.HashSuiteSHA3NIST},
 		{config.PQModeQuasar, config.HashSuiteSHA3NIST},
 		{config.PQModeMLDSA, config.HashSuiteSHA3NIST},

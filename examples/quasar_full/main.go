@@ -168,7 +168,7 @@ func demonstrateQuasarFlow() {
 	fmt.Println("  ├─────────────────────────────────────────┤")
 	fmt.Println("  │ • Horizon DAG finality detection         │")
 	fmt.Println("  │ • Flare certificate verification (≥2f+1) │")
-	fmt.Println("  │ • Ringtail lattice signatures (PQ)       │")
+	fmt.Println("  │ • Corona lattice signatures (PQ)       │")
 	fmt.Println("  │ • Event horizon advancement              │")
 	fmt.Println("  └─────────────────────────────────────────┘")
 	fmt.Println()
@@ -180,7 +180,7 @@ func demonstrateQuasarFlow() {
 	fmt.Println("    ✓ Safety: No conflicting finalization")
 	fmt.Println("    ✓ Liveness: Sub-second finality")
 	fmt.Println("    ✓ Byzantine Tolerance: f < n/3")
-	fmt.Println("    ✓ Quantum Resistance: Ringtail + BLS")
+	fmt.Println("    ✓ Quantum Resistance: Corona + BLS")
 	fmt.Println()
 }
 

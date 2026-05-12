@@ -96,13 +96,13 @@ func TestQuasar(t *testing.T) {
 }
 
 func TestQuantumFinalityWithRingtail(t *testing.T) {
-	// Test that Ringtail and BLS signatures work in parallel
+	// Test that Corona and BLS signatures work in parallel
 	qa, err := NewQuasar(2)
 	if err != nil {
 		t.Fatalf("Failed to create quantum aggregator: %v", err)
 	}
 
-	// Add validator with both BLS and Ringtail keys
+	// Add validator with both BLS and Corona keys
 	err = qa.InitializeValidators([]string{"validator1", "validator2", "validator3"})
 	if err != nil {
 		t.Fatalf("Failed to initialize validators: %v", err)
@@ -111,19 +111,19 @@ func TestQuantumFinalityWithRingtail(t *testing.T) {
 	// Create a test message
 	message := []byte("Test quantum finality message")
 
-	// Sign with Quasar (BLS + Ringtail + ML-DSA)
+	// Sign with Quasar (BLS + Corona + ML-DSA)
 	sig, err := qa.SignMessage("validator1", message)
 	if err != nil {
 		t.Fatalf("Failed to sign message: %v", err)
 	}
 
 	// Verify BLS signature is present
-	// Note: Ringtail requires dual threshold mode with SignerConfig
+	// Note: Corona requires dual threshold mode with SignerConfig
 	if len(sig.BLS) == 0 {
 		t.Error("BLS signature missing")
 	}
 	if len(sig.Corona) > 0 {
-		t.Log("Ringtail threshold signature present")
+		t.Log("Corona threshold signature present")
 	}
 
 	// Verify Quasar signature
@@ -131,7 +131,7 @@ func TestQuantumFinalityWithRingtail(t *testing.T) {
 		t.Error("Failed to verify Quasar signature")
 	}
 
-	t.Log("Ringtail + BLS parallel consensus test passed")
+	t.Log("Corona + BLS parallel consensus test passed")
 }
 
 func TestQuantumEpochFinalization(t *testing.T) {

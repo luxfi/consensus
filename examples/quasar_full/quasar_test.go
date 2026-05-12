@@ -174,7 +174,7 @@ func TestEventHorizon(t *testing.T) {
 			Checkpoint: genesis,
 			Height:     0,
 			Validators: []string{"validator_set_0"},
-			Signature:  []byte("ringtail+bls_sig_0"),
+			Signature:  []byte("corona+bls_sig_0"),
 		},
 	}
 

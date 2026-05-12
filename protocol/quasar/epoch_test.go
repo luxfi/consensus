@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	ringtailThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 	"github.com/stretchr/testify/require"
 )
 
@@ -191,21 +191,21 @@ func TestEpochManager_FullSigningFlow(t *testing.T) {
 	require.NotNil(t, signer1)
 	require.NotNil(t, signer2)
 
-	// Run 2-round Ringtail protocol
+	// Run 2-round Corona protocol
 	sessionID := 1
 	prfKey := []byte("prf-key-for-epoch-signing-test!")
 	signerIDs := []int{0, 1, 2}
 	message := "epoch 0 block hash"
 
 	// Round 1
-	round1Data := make(map[int]*ringtailThreshold.Round1Data)
+	round1Data := make(map[int]*coronaThreshold.Round1Data)
 	round1Data[0] = signer0.Round1(sessionID, prfKey, signerIDs)
 	round1Data[1] = signer1.Round1(sessionID, prfKey, signerIDs)
 	round1Data[2] = signer2.Round1(sessionID, prfKey, signerIDs)
 	t.Log("Round 1 complete: D matrices computed")
 
 	// Round 2
-	round2Data := make(map[int]*ringtailThreshold.Round2Data)
+	round2Data := make(map[int]*coronaThreshold.Round2Data)
 	r2_0, err := signer0.Round2(sessionID, message, prfKey, signerIDs, round1Data)
 	require.NoError(t, err)
 	round2Data[0] = r2_0
@@ -249,12 +249,12 @@ func TestEpochManager_CrossEpochVerification(t *testing.T) {
 	signer2 := keys0.Signers["v2"]
 
 	// Complete 2-round protocol
-	round1Data := make(map[int]*ringtailThreshold.Round1Data)
+	round1Data := make(map[int]*coronaThreshold.Round1Data)
 	round1Data[0] = signer0.Round1(sessionID, prfKey, signerIDs)
 	round1Data[1] = signer1.Round1(sessionID, prfKey, signerIDs)
 	round1Data[2] = signer2.Round1(sessionID, prfKey, signerIDs)
 
-	round2Data := make(map[int]*ringtailThreshold.Round2Data)
+	round2Data := make(map[int]*coronaThreshold.Round2Data)
 	r2_0, _ := signer0.Round2(sessionID, message, prfKey, signerIDs, round1Data)
 	r2_1, _ := signer1.Round2(sessionID, message, prfKey, signerIDs, round1Data)
 	r2_2, _ := signer2.Round2(sessionID, message, prfKey, signerIDs, round1Data)
@@ -414,7 +414,7 @@ func TestQuasar_InitializeValidators(t *testing.T) {
 	// Verify BLS validators were added
 	require.Equal(t, 3, q.GetActiveValidatorCount())
 
-	// Verify Ringtail epoch was initialized
+	// Verify Corona epoch was initialized
 	require.Equal(t, uint64(0), q.GetCurrentEpoch())
 
 	stats := q.GetEpochStats()
@@ -422,7 +422,7 @@ func TestQuasar_InitializeValidators(t *testing.T) {
 	require.Equal(t, 3, stats.ValidatorCount)
 	require.Equal(t, 2, stats.Threshold)
 
-	t.Logf("Initialized %d validators with BLS + Ringtail", stats.ValidatorCount)
+	t.Logf("Initialized %d validators with BLS + Corona", stats.ValidatorCount)
 }
 
 func TestQuasar_AddValidator_WithRotation(t *testing.T) {
@@ -530,12 +530,12 @@ func TestQuasar_ValidatorSetSync_BLSAndRingtail(t *testing.T) {
 	err = q.InitializeValidators(validators)
 	require.NoError(t, err)
 
-	// Verify both BLS and Ringtail have same validator count
+	// Verify both BLS and Corona have same validator count
 	blsCount := q.GetActiveValidatorCount()
 	epochKeys := q.epochManager.GetCurrentKeys()
 	rtCount := len(epochKeys.ValidatorSet)
 
-	require.Equal(t, blsCount, rtCount, "BLS and Ringtail should have same validator count")
+	require.Equal(t, blsCount, rtCount, "BLS and Corona should have same validator count")
 	require.Equal(t, 3, blsCount)
 
 	// Verify threshold is synchronized
@@ -564,13 +564,13 @@ func TestQuasar_EpochSigningAfterRotation(t *testing.T) {
 	message := "block signed in epoch 0"
 
 	// 2-round protocol
-	round1Data := make(map[int]*ringtailThreshold.Round1Data)
+	round1Data := make(map[int]*coronaThreshold.Round1Data)
 	for _, vid := range validators {
 		signer := keys0.Signers[vid]
 		round1Data[keys0.Shares[vid].Index] = signer.Round1(sessionID, prfKey, signerIDs)
 	}
 
-	round2Data := make(map[int]*ringtailThreshold.Round2Data)
+	round2Data := make(map[int]*coronaThreshold.Round2Data)
 	for _, vid := range validators {
 		signer := keys0.Signers[vid]
 		r2, err := signer.Round2(sessionID, message, prfKey, signerIDs, round1Data)
