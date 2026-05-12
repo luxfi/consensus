@@ -26,6 +26,12 @@
 // A BFT engine under a strict profile with Pulsar-M-65 finality is a
 // valid production combination: leader-rotation ordering with
 // PQ-threshold-signed cert envelopes.
+//
+// CR-11 PQ envelope enforcement: under a strict-PQ / FIPS profile,
+// NewEngineWithProfile refuses any bft.Signer that doesn't satisfy the
+// PQSigner marker. The check is structural at construction — a
+// misconfigured chain fails to launch rather than running an Ed25519
+// leader-rotation chain that believes it's PQ-signed.
 package bft
 
 import (
@@ -35,7 +41,64 @@ import (
 	"time"
 
 	"github.com/luxfi/bft"
+
+	"github.com/luxfi/consensus/config"
 )
+
+// PQSigner is the marker interface a bft.Signer implements to declare
+// itself PQ-grade for CR-11. Implementations sign with a lattice scheme
+// (ML-DSA-65 / Pulsar-M-65) rather than classical Ed25519 / ECDSA.
+//
+// Any concrete PQ signer in luxfi/* embeds this interface or implements
+// it directly. The marker has zero runtime cost — it's a compile-time
+// assertion that the operator wired in a vetted PQ signer.
+//
+// Implementations live in caller code (the node-side adapter that
+// constructs the bft.Epoch). The wrapper here only checks the type
+// at construction; it does not produce signatures itself.
+type PQSigner interface {
+	bft.Signer
+
+	// PQSchemeID returns the wire byte identifying which lattice scheme
+	// this signer emits (ML-DSA-65, ML-DSA-87, Pulsar-M-65, ...). Bound
+	// into the cert transcript by the BFT layer's vote/finalisation
+	// path so a flipped byte breaks signature verification.
+	PQSchemeID() config.SigSchemeID
+}
+
+// PQVerifier is the marker interface a bft.SignatureVerifier implements
+// to declare itself PQ-grade. Pair to PQSigner — chain operators that
+// pin a strict-PQ profile must wire both sides.
+type PQVerifier interface {
+	bft.SignatureVerifier
+
+	// PQSchemeID returns the wire byte identifying which lattice scheme
+	// this verifier accepts. MUST match the Signer's scheme on a single
+	// chain — the adapter checks both bytes at construction.
+	PQSchemeID() config.SigSchemeID
+}
+
+// ErrClassicalSignerUnderStrictPQ is returned by NewEngineWithProfile
+// when the chain's ChainSecurityProfile is strict-PQ or FIPS but the
+// bft.Signer wired into the Epoch is not a PQSigner. Closes CR-11:
+// previously the wrapper accepted any Signer/Verifier and ran the
+// epoch with an Ed25519 leader-rotation kernel even on a strict-PQ
+// chain.
+var ErrClassicalSignerUnderStrictPQ = errors.New(
+	"engine/bft: strict-PQ profile refuses a classical bft.Signer; install a PQSigner")
+
+// ErrClassicalVerifierUnderStrictPQ mirrors ErrClassicalSignerUnderStrictPQ
+// for the verifier side. Returned when the bft.SignatureVerifier does
+// not implement PQVerifier under a strict-PQ profile.
+var ErrClassicalVerifierUnderStrictPQ = errors.New(
+	"engine/bft: strict-PQ profile refuses a classical bft.SignatureVerifier; install a PQVerifier")
+
+// ErrPQSchemeMismatch is returned when both sides implement PQSigner /
+// PQVerifier but advertise different SigSchemeIDs. A chain MUST sign
+// and verify under the same scheme; a mismatch is a misconfiguration
+// the adapter surfaces at construction.
+var ErrPQSchemeMismatch = errors.New(
+	"engine/bft: PQSigner and PQVerifier advertise different SigSchemeIDs")
 
 // Engine is the consensus-toolkit-facing wrapper around a bft.Epoch.
 // Constructed via NewEngine; the returned value satisfies
@@ -58,6 +121,11 @@ type Engine struct {
 //
 // Returns nil if epoch is nil — every other call site assumes the
 // embedded epoch is non-nil after construction.
+//
+// NewEngine performs no PQ-envelope check. Production callers under a
+// strict-PQ profile MUST use NewEngineWithProfile, which refuses a
+// classical bft.Signer at construction (CR-11). NewEngine is the
+// non-strict / legacy / test path.
 func NewEngine(epoch *bft.Epoch) *Engine {
 	if epoch == nil {
 		return nil
@@ -66,6 +134,59 @@ func NewEngine(epoch *bft.Epoch) *Engine {
 		epoch:  epoch,
 		stopCh: make(chan struct{}),
 	}
+}
+
+// NewEngineWithProfile wraps a bft.Epoch as a consensus.Engine while
+// enforcing the chain's ChainSecurityProfile at construction (CR-11).
+//
+// Under a strict-PQ / FIPS profile the embedded epoch's Signer and
+// SignatureVerifier MUST satisfy PQSigner / PQVerifier — i.e. produce
+// and accept lattice signatures (ML-DSA-65 / Pulsar-M-65), not
+// classical Ed25519. A misconfiguration surfaces as a typed error here,
+// not as silently classical signatures riding on a strict-PQ chain.
+//
+// Non-strict profiles (Permissive, nil) preserve the existing path:
+// any Signer / Verifier is admitted.
+//
+// Returns nil + ErrNilEpoch when epoch is nil; nil + the strict-PQ
+// sentinel when the profile demands PQ and the signer/verifier is
+// classical; otherwise a wrapper ready for Start.
+func NewEngineWithProfile(epoch *bft.Epoch, profile *config.ChainSecurityProfile) (*Engine, error) {
+	if epoch == nil {
+		return nil, ErrNilEpoch
+	}
+
+	// Non-strict profiles preserve the legacy admission rules.
+	if profile == nil || !profile.IsPQ() {
+		return &Engine{
+			epoch:  epoch,
+			stopCh: make(chan struct{}),
+		}, nil
+	}
+
+	// Strict-PQ / FIPS: refuse any classical signer or verifier.
+	pqSigner, sok := epoch.Signer.(PQSigner)
+	if !sok {
+		return nil, ErrClassicalSignerUnderStrictPQ
+	}
+	pqVerifier, vok := epoch.Verifier.(PQVerifier)
+	if !vok {
+		return nil, ErrClassicalVerifierUnderStrictPQ
+	}
+
+	// Both sides are PQ — but they must advertise the SAME scheme.
+	// A signer at ML-DSA-65 with a verifier at ML-DSA-87 is a
+	// misconfiguration; sign/verify will fail at runtime, but the
+	// adapter catches it now so chains fail to launch rather than
+	// crash on first vote.
+	if pqSigner.PQSchemeID() != pqVerifier.PQSchemeID() {
+		return nil, ErrPQSchemeMismatch
+	}
+
+	return &Engine{
+		epoch:  epoch,
+		stopCh: make(chan struct{}),
+	}, nil
 }
 
 // ErrNilEpoch is returned by Start when the wrapper holds no Epoch.
