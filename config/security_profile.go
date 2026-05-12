@@ -69,17 +69,13 @@ const (
 	ProfileStrictPQ   ProfileID = 0x01
 	ProfilePermissive ProfileID = 0x02
 	ProfileFIPS       ProfileID = 0x03
-	ProfileHybridID   ProfileID = 0x04
-	ProfileClassicID  ProfileID = 0x05
 )
 
-// Canonical profile-name strings (wire-form).
+// Canonical profile-name strings (wire-form). One byte = one name.
 const (
 	ProfileNameStrictPQ   = "STRICT"
 	ProfileNamePermissive = "PERMISSIVE"
 	ProfileNameFIPS       = "FIPS"
-	ProfileNameHybrid     = "HYBRID"
-	ProfileNameClassical  = "CLASSICAL"
 )
 
 // String returns the canonical lowercase profile name.
@@ -93,10 +89,6 @@ func (p ProfileID) String() string {
 		return "permissive"
 	case ProfileFIPS:
 		return "fips"
-	case ProfileHybridID:
-		return "hybrid"
-	case ProfileClassicID:
-		return "classical"
 	default:
 		return fmt.Sprintf("profile(0x%02x)", uint8(p))
 	}
@@ -1082,10 +1074,6 @@ func ProfileByID(id ProfileID) (*ChainSecurityProfile, error) {
 		return Permissive(), nil
 	case ProfileFIPS:
 		return FIPS(), nil
-	case ProfileHybridID:
-		return Hybrid(), nil
-	case ProfileClassicID:
-		return Classical(), nil
 	case ProfileNone:
 		return nil, fmt.Errorf("%w: ProfileNone is not a valid profile", ErrProfileUnknown)
 	default:
@@ -1117,24 +1105,6 @@ func Permissive() *ChainSecurityProfile {
 // defined in profiles.go. Strictest FIPS-aligned profile.
 func FIPS() *ChainSecurityProfile {
 	p := FIPSProfile
-	return &p
-}
-
-// Hybrid returns a fresh pointer copy of HybridProfile. BLS + PQ both
-// required at the consensus / finality layer; classical contract-auth
-// still permitted at the EVM precompile boundary. Transitional posture
-// for a chain migrating from classical into strict.
-func Hybrid() *ChainSecurityProfile {
-	p := HybridProfile
-	return &p
-}
-
-// Classical returns a fresh pointer copy of ClassicalProfile. No
-// enforced refusals — ECDSA / X25519 / BLS permitted everywhere. Legacy
-// chains pre-PQ migration; this is the explicit "no PQ" stance audit
-// tooling can pin against.
-func Classical() *ChainSecurityProfile {
-	p := ClassicalProfile
 	return &p
 }
 
