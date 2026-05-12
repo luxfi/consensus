@@ -162,10 +162,10 @@ func TestChainConsensusProcessVoteNilConsensus(t *testing.T) {
 	// Manually add block without initializing driver
 	blockID := ids.GenerateTestID()
 	block := &Block{
-		id:           blockID,
-		parentID:     ids.Empty,
-		height:       0,
-		driver: nil, // intentionally nil
+		id:       blockID,
+		parentID: ids.Empty,
+		height:   0,
+		driver:   nil, // intentionally nil
 	}
 	consensus.blocks[blockID] = block
 
@@ -913,7 +913,7 @@ func TestChainConsensusPollNilConsensus(t *testing.T) {
 	// Add block without consensus
 	blockID := ids.GenerateTestID()
 	block := &Block{
-		id:           blockID,
+		id:     blockID,
 		driver: nil,
 	}
 	consensus.blocks[blockID] = block

@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/luxfi/corona/threshold"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/corona/threshold"
 )
 
 // CertificateGenerator generates real BLS and Corona threshold signatures.
