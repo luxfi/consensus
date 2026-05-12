@@ -301,8 +301,8 @@ func TestThresholdAlwaysInRange(t *testing.T) {
 
 	kValues := []int{1, 2, 3, 10, 50, 100, 1000, 10000}
 	for _, k := range kValues {
-		lo := int(thetaMin * float64(k))        // floor
-		hi := int(thetaMax*float64(k)) + 1       // ceiling with margin
+		lo := int(thetaMin * float64(k))   // floor
+		hi := int(thetaMax*float64(k)) + 1 // ceiling with margin
 
 		for phase := uint64(0); phase < 200; phase++ {
 			threshold := s.SelectThreshold(phase, k)

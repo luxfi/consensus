@@ -118,9 +118,9 @@ func TestRealThresholdSig_Accepted(t *testing.T) {
 // garbage BLS and PQ bytes is rejected by VerifyWithKeys.
 func TestQuasarCert_GarbageBytes_Rejected(t *testing.T) {
 	cert := &QuasarCert{
-		BLS:        []byte{0x01},
-		MLDSARollup:    []byte{0x01},
-		Validators: 1,
+		BLS:         []byte{0x01},
+		MLDSARollup: []byte{0x01},
+		Validators:  1,
 	}
 
 	// Verify with any key must return false -- bytes don't match any valid sig
@@ -144,8 +144,8 @@ func TestQuasarCert_NilCert_Rejected(t *testing.T) {
 // TestQuasarCert_EmptyBLS_Rejected proves empty BLS field is rejected.
 func TestQuasarCert_EmptyBLS_Rejected(t *testing.T) {
 	cert := &QuasarCert{
-		BLS: []byte{},
-		MLDSARollup:   []byte{0x01, 0x02},
+		BLS:         []byte{},
+		MLDSARollup: []byte{0x01, 0x02},
 	}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("key")),
 		"QuasarCert with empty BLS must return false")
@@ -154,8 +154,8 @@ func TestQuasarCert_EmptyBLS_Rejected(t *testing.T) {
 // TestQuasarCert_EmptyPQ_Rejected proves empty PQ field is rejected.
 func TestQuasarCert_EmptyPQ_Rejected(t *testing.T) {
 	cert := &QuasarCert{
-		BLS: []byte{0x01, 0x02},
-		MLDSARollup:   []byte{},
+		BLS:         []byte{0x01, 0x02},
+		MLDSARollup: []byte{},
 	}
 	require.False(t, cert.VerifyWithKeys([]byte("key"), []byte("key")),
 		"QuasarCert with empty PQ must return false")
