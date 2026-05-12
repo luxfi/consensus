@@ -282,11 +282,11 @@ func TestProcessBlockEmptyCertificates(t *testing.T) {
 
 func TestFinalityEventFields(t *testing.T) {
 	event := FinalityEvent{
-		Height:    100,
-		BlockID:   ids.GenerateTestID(),
-		Timestamp: time.Now(),
-		MLDSARollup:   []byte("pq-proof"),
-		BLSProof:  []byte("bls-proof"),
+		Height:      100,
+		BlockID:     ids.GenerateTestID(),
+		Timestamp:   time.Now(),
+		MLDSARollup: []byte("pq-proof"),
+		BLSProof:    []byte("bls-proof"),
 	}
 
 	require.Equal(t, uint64(100), event.Height)
@@ -471,7 +471,7 @@ func TestBlockToFinalityEvent(t *testing.T) {
 				Height:    100,
 				Timestamp: testTime,
 				Cert: &quasar.QuasarCert{
-					BLS:     []byte("bls-proof-data"),
+					BLS:         []byte("bls-proof-data"),
 					MLDSARollup: []byte("pq-proof-data"),
 				},
 			},
@@ -496,7 +496,7 @@ func TestBlockToFinalityEvent(t *testing.T) {
 				Height:    75,
 				Timestamp: testTime,
 				Cert: &quasar.QuasarCert{
-					BLS:     []byte{},
+					BLS:         []byte{},
 					MLDSARollup: []byte{},
 				},
 			},
@@ -612,7 +612,7 @@ func TestSetFinalizedCallbackInvocation(t *testing.T) {
 		Height:    42,
 		Timestamp: time.Now(),
 		Cert: &quasar.QuasarCert{
-			BLS:     []byte("test-bls"),
+			BLS:         []byte("test-bls"),
 			MLDSARollup: []byte("test-pq"),
 		},
 	}

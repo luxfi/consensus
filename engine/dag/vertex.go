@@ -36,11 +36,11 @@ type Vertex struct {
 	outputs []UTXO // UTXOs created by this vertex's transactions
 
 	// Consensus state - using Lux consensus with Prism DAG protocol
-	mu           sync.RWMutex
-	driver *engine.Driver
-	accepted     bool
-	rejected     bool
-	processing   bool
+	mu         sync.RWMutex
+	driver     *engine.Driver
+	accepted   bool
+	rejected   bool
+	processing bool
 
 	// Dependencies tracking
 	parents  []*Vertex

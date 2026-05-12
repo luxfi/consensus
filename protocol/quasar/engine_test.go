@@ -245,7 +245,7 @@ func TestBlock(t *testing.T) {
 		Hash:      "0xabc123",
 		Timestamp: time.Now(),
 		Cert: &QuasarCert{
-			BLS:        []byte("bls"),
+			BLS:         []byte("bls"),
 			MLDSARollup: []byte("pq"),
 		},
 	}
@@ -327,7 +327,7 @@ func TestQuantumFinality_Integration(t *testing.T) {
 		Hash:      proposal,
 		Timestamp: time.Now(),
 		Cert: &QuasarCert{
-			BLS:        cert.BLSAgg,
+			BLS:         cert.BLSAgg,
 			MLDSARollup: cert.PQCert,
 		},
 	}

@@ -21,9 +21,9 @@ type Block struct {
 	data      []byte
 
 	// Consensus state - Photon -> Wave -> Focus finality
-	driver *engine.Driver
-	accepted     bool
-	rejected     bool
+	driver   *engine.Driver
+	accepted bool
+	rejected bool
 
 	// Vote tracking for rejection support
 	acceptVotes int
