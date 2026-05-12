@@ -8,7 +8,7 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
 	github.com/luxfi/accel v1.0.7
-	github.com/luxfi/corona v0.1.0-rc1-pq-consensus-freeze
+	github.com/luxfi/corona v0.2.0
 	github.com/luxfi/crypto v1.18.4
 	github.com/luxfi/database v1.18.3
 	github.com/luxfi/ids v1.2.9
@@ -17,7 +17,7 @@ require (
 	github.com/luxfi/math v1.4.0
 	github.com/luxfi/metric v1.5.0
 	github.com/luxfi/p2p v1.18.9
-	github.com/luxfi/pulsar-m v0.1.0
+	github.com/luxfi/pulsar v1.0.0
 	github.com/luxfi/runtime v1.0.0
 	github.com/luxfi/threshold v1.6.7
 	github.com/luxfi/validators v1.0.0
