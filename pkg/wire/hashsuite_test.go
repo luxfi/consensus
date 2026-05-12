@@ -42,7 +42,7 @@ func TestSigSchemeID_StableIntegers(t *testing.T) {
 	}{
 		{SigSchemeNone, 0x00},
 		{SigSchemeBLS12381, 0x10},
-		{SigSchemeCoronaAcademic, 0x20},
+		{SigSchemeNasua, 0x20},
 		{SigSchemePulsarR, 0x30},
 		{SigSchemePulsarM44, 0x41},
 		{SigSchemePulsarM65, 0x42}, // production default
@@ -63,7 +63,7 @@ func TestSigSchemeID_String(t *testing.T) {
 	}{
 		{SigSchemeNone, "none"},
 		{SigSchemeBLS12381, "bls12-381"},
-		{SigSchemeCoronaAcademic, "corona-academic"},
+		{SigSchemeNasua, "nasua"},
 		{SigSchemePulsarR, "pulsar-r"},
 		{SigSchemePulsarM44, "pulsar-m-44"},
 		{SigSchemePulsarM65, "pulsar-m-65"},
