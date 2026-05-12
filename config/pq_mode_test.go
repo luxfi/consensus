@@ -230,7 +230,7 @@ func TestHashSuiteID_String(t *testing.T) {
 	}
 }
 
-// TestHashSuiteID_IsNormative — production Hanzo meshes accept only
+// TestHashSuiteID_IsNormative — production Lux meshes accept only
 // FIPS-aligned suites. Non-normative suites may emit certs but not on
 // any NIST-track production network.
 func TestHashSuiteID_IsNormative(t *testing.T) {
@@ -701,7 +701,7 @@ func TestPQMode_DKGRequired(t *testing.T) {
 }
 
 // TestPQMode_SuitableForPublicChain enforces HIP-0077 §"PQ defaults":
-// production Hanzo meshes accept Pulsar / Quasar / MLDSA. BLS (no PQ)
+// production Lux meshes accept Pulsar / Quasar / MLDSA. BLS (no PQ)
 // and Ringtail (trusted-dealer DKG) are rejected.
 func TestPQMode_SuitableForPublicChain(t *testing.T) {
 	cases := []struct {

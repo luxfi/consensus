@@ -18,8 +18,7 @@
 // byte therefore breaks signature verification at the threshold layer,
 // not just at the receiver envelope-comparison layer.
 //
-// See ~/work/hanzo/hips/HIPs/hip-0079-q-chain-finality-blocks.md and
-// HIP-0077 red-review F34.
+// See LP-0079 (q-chain finality blocks) and LP-0077 red-review F34.
 
 package quasar
 
