@@ -5,13 +5,13 @@
 // PQ-consensus architecture freeze, Quasar consumes its threshold
 // kernel through `luxfi/threshold` (which routes via the LSS
 // adapters to luxfi/pulsar and luxfi/lens). Direct imports of
-// `github.com/luxfi/ringtail/threshold` from this package are
+// `github.com/luxfi/nasua/threshold` from this package are
 // forbidden — they bypass the LSS lifecycle (Generation, snapshot
 // history, rollback) and skip the Pulsar key-era binding.
 //
 // This test asserts that no .go file inside this package directly
-// references the ringtail import path or invokes ringtail.GenerateKeys.
-// Transitive ringtail dependencies via threshold's own existing
+// references the corona import path or invokes corona.GenerateKeys.
+// Transitive corona dependencies via threshold's own existing
 // imports are fine; the rule applies to source-level direct use only.
 
 package quasar
@@ -27,11 +27,11 @@ import (
 )
 
 // TestNoRingtailDirectImport — fails if any non-test .go file in this
-// package imports `github.com/luxfi/ringtail/...` or invokes
-// ringtail.GenerateKeys (matched as a selector expression
-// `ringtail.GenerateKeys(...)` regardless of the package alias).
+// package imports `github.com/luxfi/nasua/...` or invokes
+// corona.GenerateKeys (matched as a selector expression
+// `corona.GenerateKeys(...)` regardless of the package alias).
 //
-// Test files (*_test.go) are scanned too — the ringtail kernel is
+// Test files (*_test.go) are scanned too — the corona kernel is
 // equally forbidden from package tests so the cutover doesn't slip
 // back through a "just for the test" import.
 func TestNoRingtailDirectImport(t *testing.T) {
@@ -47,13 +47,13 @@ func TestNoRingtailDirectImport(t *testing.T) {
 		t.Fatalf("no .go files found in %s", pkgDir)
 	}
 
-	const forbiddenImportPrefix = "github.com/luxfi/ringtail"
+	const forbiddenImportPrefix = "github.com/luxfi/nasua"
 
 	fset := token.NewFileSet()
 	var violations []string
 	for _, f := range matches {
 		// Skip *this* file from the import scan because we name
-		// `github.com/luxfi/ringtail` in this comment / string
+		// `github.com/luxfi/nasua` in this comment / string
 		// literals as part of the death-test guard — the regex /
 		// fixture below would match itself otherwise.
 		base := filepath.Base(f)
@@ -79,10 +79,10 @@ func TestNoRingtailDirectImport(t *testing.T) {
 	}
 
 	// Second pass: full AST parse (not imports-only) to catch
-	// `ringtail.GenerateKeys(...)` selector expressions that survive
+	// `corona.GenerateKeys(...)` selector expressions that survive
 	// even when the import is renamed/aliased. We scan only the
 	// files whose imports passed the first pass — if a file has no
-	// ringtail import, it can still call ringtail.GenerateKeys via a
+	// corona import, it can still call corona.GenerateKeys via a
 	// dot-imported alias, which we reject below by name.
 	for _, f := range matches {
 		base := filepath.Base(f)
@@ -108,16 +108,16 @@ func TestNoRingtailDirectImport(t *testing.T) {
 			if !ok {
 				return true
 			}
-			if x.Name == "ringtail" && sel.Sel.Name == "GenerateKeys" {
+			if x.Name == "nasua" && sel.Sel.Name == "GenerateKeys" {
 				violations = append(violations,
-					base+": forbidden call ringtail.GenerateKeys")
+					base+": forbidden call corona.GenerateKeys")
 			}
 			return true
 		})
 	}
 
 	if len(violations) > 0 {
-		t.Fatalf("Quasar must not import ringtail directly after the "+
+		t.Fatalf("Quasar must not import corona directly after the "+
 			"Mar-3-2026 PQ-consensus architecture freeze. The kernel "+
 			"is consumed via github.com/luxfi/threshold (LSS-Pulsar "+
 			"and LSS-Lens adapters) only.\n\nViolations:\n  %s",

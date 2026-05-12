@@ -38,7 +38,7 @@ import (
 	"github.com/luxfi/corona/primitives"
 	pulsarReshare "github.com/luxfi/corona/reshare"
 	pulsarSign "github.com/luxfi/corona/sign"
-	ringtailThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/corona/threshold"
 
 	"github.com/luxfi/lattice/v7/ring"
 
@@ -135,7 +135,7 @@ type EpochManager struct {
 // EpochKeys holds the per-epoch Pulsar share state for a specific epoch.
 //
 // GroupKey is preserved across every Reshare within a key era. Shares
-// rotate. Signers wrap each share for the 2-round Pulsar (Ringtail)
+// rotate. Signers wrap each share for the 2-round Pulsar (Corona)
 // signing protocol.
 //
 // Naming note: this type was historically called EpochKeys when each
@@ -151,9 +151,9 @@ type EpochKeys struct {
 	ValidatorSet []string
 	Threshold    int
 	TotalParties int
-	GroupKey     *ringtailThreshold.GroupKey
-	Shares       map[string]*ringtailThreshold.KeyShare
-	Signers      map[string]*ringtailThreshold.Signer
+	GroupKey     *coronaThreshold.GroupKey
+	Shares       map[string]*coronaThreshold.KeyShare
+	Signers      map[string]*coronaThreshold.Signer
 
 	// LSS lifecycle fields. Generation increments by one on every
 	// successful Reshare under the same KeyEraID. RollbackFrom is
@@ -369,8 +369,8 @@ func (em *EpochManager) GetCurrentEpoch() uint64 {
 	return em.currentEpoch
 }
 
-// GetSigner returns the Ringtail signer for a validator in the current epoch.
-func (em *EpochManager) GetSigner(validatorID string) (*ringtailThreshold.Signer, error) {
+// GetSigner returns the Corona signer for a validator in the current epoch.
+func (em *EpochManager) GetSigner(validatorID string) (*coronaThreshold.Signer, error) {
 	em.mu.RLock()
 	defer em.mu.RUnlock()
 
@@ -387,7 +387,7 @@ func (em *EpochManager) GetSigner(validatorID string) (*ringtailThreshold.Signer
 }
 
 // GetSignerForEpoch returns the signer for a validator in a specific epoch.
-func (em *EpochManager) GetSignerForEpoch(validatorID string, epoch uint64) (*ringtailThreshold.Signer, error) {
+func (em *EpochManager) GetSignerForEpoch(validatorID string, epoch uint64) (*coronaThreshold.Signer, error) {
 	em.mu.RLock()
 	defer em.mu.RUnlock()
 
@@ -404,8 +404,8 @@ func (em *EpochManager) GetSignerForEpoch(validatorID string, epoch uint64) (*ri
 	return signer, nil
 }
 
-// VerifySignatureForEpoch verifies a Ringtail signature using the epoch's keys.
-func (em *EpochManager) VerifySignatureForEpoch(message string, sig *ringtailThreshold.Signature, epoch uint64) bool {
+// VerifySignatureForEpoch verifies a Corona signature using the epoch's keys.
+func (em *EpochManager) VerifySignatureForEpoch(message string, sig *coronaThreshold.Signature, epoch uint64) bool {
 	em.mu.RLock()
 	keys, exists := em.epochHistory[epoch]
 	em.mu.RUnlock()
@@ -414,7 +414,7 @@ func (em *EpochManager) VerifySignatureForEpoch(message string, sig *ringtailThr
 		return false
 	}
 
-	return ringtailThreshold.Verify(keys.GroupKey, message, sig)
+	return coronaThreshold.Verify(keys.GroupKey, message, sig)
 }
 
 // TimeUntilNextRotation returns how long until the next rotation is allowed.
@@ -515,7 +515,7 @@ func (em *EpochManager) reshareEpochKeys(epoch uint64, validators []string, thre
 			Epoch:        era.State.Epoch,
 			Validators:   era.State.Validators,
 			Threshold:    era.State.Threshold,
-			Shares:       map[string]*ringtailThreshold.KeyShare{v: share},
+			Shares:       map[string]*coronaThreshold.KeyShare{v: share},
 		}
 		oldConfigs[party.ID(v)] = &lss.PulsarConfig{State: perParty, PartyID: party.ID(v)}
 	}
@@ -542,7 +542,7 @@ func (em *EpochManager) reshareEpochKeys(epoch uint64, validators []string, thre
 		nextEpoch        uint64
 		nextThreshold    int
 	)
-	combinedShares := make(map[string]*ringtailThreshold.KeyShare, len(newPartyIDs))
+	combinedShares := make(map[string]*coronaThreshold.KeyShare, len(newPartyIDs))
 	for _, id := range newPartyIDs {
 		cfg := newConfigs[id]
 		if cfg == nil || cfg.State == nil {
@@ -590,7 +590,7 @@ func (em *EpochManager) reshareEpochKeys(epoch uint64, validators []string, thre
 // EpochShareState plus the era's persistent GroupKey. The Signers map
 // wraps each share for the 2-round Pulsar signing protocol, byte-stable
 // with the historical EpochKeys layout.
-func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, threshold int, state *keyera.EpochShareState, gk *ringtailThreshold.GroupKey) *EpochKeys {
+func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, threshold int, state *keyera.EpochShareState, gk *coronaThreshold.GroupKey) *EpochKeys {
 	now := time.Now()
 	keys := &EpochKeys{
 		Epoch:        epoch,
@@ -600,8 +600,8 @@ func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, th
 		Threshold:    threshold,
 		TotalParties: len(validators),
 		GroupKey:     gk,
-		Shares:       make(map[string]*ringtailThreshold.KeyShare, len(validators)),
-		Signers:      make(map[string]*ringtailThreshold.Signer, len(validators)),
+		Shares:       make(map[string]*coronaThreshold.KeyShare, len(validators)),
+		Signers:      make(map[string]*coronaThreshold.Signer, len(validators)),
 		KeyEraID:     state.KeyEraID,
 		Generation:   state.Generation,
 		RollbackFrom: state.RollbackFrom,
@@ -609,7 +609,7 @@ func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, th
 	for _, v := range validators {
 		share := state.Shares[v]
 		keys.Shares[v] = share
-		keys.Signers[v] = ringtailThreshold.NewSigner(share)
+		keys.Signers[v] = coronaThreshold.NewSigner(share)
 	}
 	return keys
 }
@@ -632,16 +632,16 @@ func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, th
 // (chainID, groupID), the era lineage (KeyEraID), and the
 // generation/epoch tuple so that a malicious proposer cannot replay an
 // activation cert across chains, eras, or generations.
-func (em *EpochManager) verifyActivationLocked(gk *ringtailThreshold.GroupKey, oldState, newState *keyera.EpochShareState) error {
+func (em *EpochManager) verifyActivationLocked(gk *coronaThreshold.GroupKey, oldState, newState *keyera.EpochShareState) error {
 	// Threshold-sign the activation message under the new committee.
-	signers := make([]*ringtailThreshold.Signer, 0, len(newState.Validators))
+	signers := make([]*coronaThreshold.Signer, 0, len(newState.Validators))
 	signerIndices := make([]int, 0, len(newState.Validators))
 	for _, v := range newState.Validators {
 		share, ok := newState.Shares[v]
 		if !ok {
 			return fmt.Errorf("activation: missing share for new validator %s", v)
 		}
-		signers = append(signers, ringtailThreshold.NewSigner(share))
+		signers = append(signers, coronaThreshold.NewSigner(share))
 		signerIndices = append(signerIndices, share.Index)
 	}
 
@@ -672,13 +672,13 @@ func (em *EpochManager) verifyActivationLocked(gk *ringtailThreshold.GroupKey, o
 	const sessionID = 0
 	prfKey := derivePRFKey(em.chainID, em.groupID, newState.KeyEraID, newState.Generation, newState.Epoch)
 
-	round1 := make(map[int]*ringtailThreshold.Round1Data, len(signers))
+	round1 := make(map[int]*coronaThreshold.Round1Data, len(signers))
 	for _, s := range signers {
 		// Round1 sets PartyID from the underlying share index.
 		r1 := s.Round1(sessionID, prfKey, signerIndices)
 		round1[r1.PartyID] = r1
 	}
-	round2 := make(map[int]*ringtailThreshold.Round2Data, len(signers))
+	round2 := make(map[int]*coronaThreshold.Round2Data, len(signers))
 	for _, s := range signers {
 		r2, err := s.Round2(sessionID, string(msg), prfKey, signerIndices, round1)
 		if err != nil {
@@ -707,7 +707,7 @@ func (em *EpochManager) verifyActivationLocked(gk *ringtailThreshold.GroupKey, o
 		// The Signature reference is captured here; ActivationCert's
 		// opaque bytes are unused in the in-process path.
 		_ = message
-		return ringtailThreshold.Verify(gk, string(msg), sig)
+		return coronaThreshold.Verify(gk, string(msg), sig)
 	}
 	if err := pulsarReshare.VerifyActivation(cert, localTranscriptHash, localExchangeHash, nil, verifier); err != nil {
 		return err
@@ -744,7 +744,7 @@ func hashValidatorSetForActivation(validators []string) [32]byte {
 // hashGroupKey returns a stable 32-byte digest of a Pulsar GroupKey for
 // transcript binding. The current public Bytes() method returns a
 // short-form summary; we wrap it in SHA-256 for fixed width.
-func hashGroupKey(gk *ringtailThreshold.GroupKey) [32]byte {
+func hashGroupKey(gk *coronaThreshold.GroupKey) [32]byte {
 	h := sha256.New()
 	h.Write([]byte("quasar.group-key.v1"))
 	if gk != nil {
@@ -838,9 +838,9 @@ func (em *EpochManager) timeUntilNextRotationLocked() time.Duration {
 //                   |_____________________________________|
 //                                    |
 //   Quantum Layer:              [QB1: Merkle(B1-B6)]--------[QB2: Merkle(B7-B12)]
-//                                    |  3-second interval, async Ringtail signing
+//                                    |  3-second interval, async Corona signing
 //
-// NTT Ringtail benchmarks (IEEE S&P 2025):
+// NTT Corona benchmarks (IEEE S&P 2025):
 //   - 0.6s online signing phase (2-round protocol)
 //   - 2.5s total including offline prep across 5 continents
 //   - Our 3-second interval provides comfortable margin
@@ -860,8 +860,8 @@ type QuantumBundle struct {
 	PreviousHash [32]byte   // Previous bundle hash (chain linkage)
 	Timestamp    int64      // Unix timestamp
 
-	// Ringtail threshold signature (post-quantum secure)
-	Signature *ringtailThreshold.Signature
+	// Corona threshold signature (post-quantum secure)
+	Signature *coronaThreshold.Signature
 }
 
 // Hash returns the hash of this bundle for chain linkage.
@@ -896,14 +896,14 @@ func (qb *QuantumBundle) Hash() [32]byte {
 	return result
 }
 
-// SignableMessage returns the message for Ringtail signing.
+// SignableMessage returns the message for Corona signing.
 func (qb *QuantumBundle) SignableMessage() string {
 	hash := qb.Hash()
 	return fmt.Sprintf("QUASAR-QB-v1:%x", hash)
 }
 
 // BundleSigner handles creating and verifying 3-second quantum bundles.
-// Bundles accumulate multiple BLS blocks and sign them with Ringtail.
+// Bundles accumulate multiple BLS blocks and sign them with Corona.
 type BundleSigner struct {
 	em         *EpochManager
 	lastBundle *QuantumBundle
@@ -996,7 +996,7 @@ func (bs *BundleSigner) LastBundle() *QuantumBundle {
 	return bs.lastBundle
 }
 
-// SignBundle performs the 2-round Pulsar (Ringtail) signing for a
+// SignBundle performs the 2-round Pulsar (Corona) signing for a
 // bundle. Runs the full threshold signing protocol with the
 // participating validators.
 //
@@ -1042,7 +1042,7 @@ func (bs *BundleSigner) SignBundle(
 	message := bundle.SignableMessage()
 
 	// Round 1: Collect commitments
-	round1Data := make(map[int]*ringtailThreshold.Round1Data)
+	round1Data := make(map[int]*coronaThreshold.Round1Data)
 	for _, v := range participatingValidators {
 		signer, ok := subsetSigners[v]
 		if !ok {
@@ -1053,7 +1053,7 @@ func (bs *BundleSigner) SignBundle(
 	}
 
 	// Round 2: Generate signature shares
-	round2Data := make(map[int]*ringtailThreshold.Round2Data)
+	round2Data := make(map[int]*coronaThreshold.Round2Data)
 	for _, v := range participatingValidators {
 		signer, ok := subsetSigners[v]
 		if !ok {
@@ -1090,7 +1090,7 @@ func (bs *BundleSigner) SignBundle(
 //
 // Side effects: this allocates one KeyShare clone and one Signer per
 // participating validator. The original epoch state is not mutated.
-func newSubsetSigners(keys *EpochKeys, participating []string, signerIndices []int) (map[string]*ringtailThreshold.Signer, error) {
+func newSubsetSigners(keys *EpochKeys, participating []string, signerIndices []int) (map[string]*coronaThreshold.Signer, error) {
 	if len(participating) == 0 {
 		return nil, errors.New("no participating validators")
 	}
@@ -1106,7 +1106,7 @@ func newSubsetSigners(keys *EpochKeys, participating []string, signerIndices []i
 		indexToSlot[idx] = slot
 	}
 
-	out := make(map[string]*ringtailThreshold.Signer, len(participating))
+	out := make(map[string]*coronaThreshold.Signer, len(participating))
 	for _, v := range participating {
 		share, ok := keys.Shares[v]
 		if !ok {
@@ -1122,12 +1122,12 @@ func newSubsetSigners(keys *EpochKeys, participating []string, signerIndices []i
 		r.MForm(newLambda, newLambda)
 		cloned := *share
 		cloned.Lambda = newLambda
-		out[v] = ringtailThreshold.NewSigner(&cloned)
+		out[v] = coronaThreshold.NewSigner(&cloned)
 	}
 	return out, nil
 }
 
-// VerifyBundle verifies a quantum bundle's Ringtail signature.
+// VerifyBundle verifies a quantum bundle's Corona signature.
 func (bs *BundleSigner) VerifyBundle(bundle *QuantumBundle) bool {
 	if bundle.Signature == nil {
 		return false
@@ -1146,7 +1146,7 @@ func (bs *BundleSigner) VerifyBundle(bundle *QuantumBundle) bool {
 	}
 
 	message := bundle.SignableMessage()
-	return ringtailThreshold.Verify(keys.GroupKey, message, bundle.Signature)
+	return coronaThreshold.Verify(keys.GroupKey, message, bundle.Signature)
 }
 
 // ComputeMerkleRoot computes a Merkle root over block hashes.

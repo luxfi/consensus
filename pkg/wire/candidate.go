@@ -116,7 +116,7 @@ type Vote struct {
 	Preference bool `json:"preference"`
 
 	// Signature is scheme-tagged: first byte indicates scheme
-	// 0x00 = none, 0x01 = Ed25519, 0x02 = BLS, 0x03 = Ringtail, 0x04 = Quasar
+	// 0x00 = none, 0x01 = Ed25519, 0x02 = BLS, 0x03 = Corona, 0x04 = Quasar
 	Signature []byte `json:"signature,omitempty"`
 
 	// TimestampMs for ordering
@@ -129,7 +129,7 @@ const (
 	SigEd25519  byte = 0x01
 	SigBLS      byte = 0x02
 	SigRingtail byte = 0x03
-	SigQuasar   byte = 0x04 // BLS + Ringtail (Quasar protocol)
+	SigQuasar   byte = 0x04 // BLS + Corona (Quasar protocol)
 )
 
 // NewVote creates a vote with current timestamp
@@ -173,12 +173,12 @@ const (
 	PolicyL1Inclusion PolicyID = 3
 
 	// PolicyQuantum - parallel-witness PQ finality, witness set {P, Q, Z}.
-	// Maximum security level: P-Chain BLS + Q-Chain Ringtail + Z-Chain MLDSAGroth16.
+	// Maximum security level: P-Chain BLS + Q-Chain Corona + Z-Chain MLDSAGroth16.
 	// All three witnesses run in parallel.
 	PolicyQuantum PolicyID = 4
 
 	// PolicyPQ - parallel-witness finality, witness set {P, Q}.
-	// P-Chain BLS + Q-Chain Ringtail threshold. No Z-Chain rollup.
+	// P-Chain BLS + Q-Chain Corona threshold. No Z-Chain rollup.
 	PolicyPQ PolicyID = 5
 
 	// PolicyPZ - parallel-witness finality, witness set {P, Z}.
@@ -191,7 +191,7 @@ const (
 // =============================================================================
 //
 // Lux finality is layered, parallel witnesses. P-Chain BLS is always required.
-// Q-Chain (Ringtail threshold) and Z-Chain (MLDSAGroth16 rollup) are
+// Q-Chain (Corona threshold) and Z-Chain (MLDSAGroth16 rollup) are
 // independently toggleable parallel witnesses producing additional finality
 // artifacts at the same round-rate as P. Adding witnesses does not increase
 // per-block latency, only parallel verification cost.
@@ -204,7 +204,7 @@ type FinalityWitnesses uint8
 const (
 	// WitnessP - P-Chain BLS aggregate. Always required.
 	WitnessP FinalityWitnesses = 1 << 0
-	// WitnessQ - Q-Chain Ringtail threshold (Module-LWE, eprint 2024/1113).
+	// WitnessQ - Q-Chain Corona threshold (Module-LWE, eprint 2024/1113).
 	WitnessQ FinalityWitnesses = 1 << 1
 	// WitnessZ - Z-Chain MLDSAGroth16 rollup (per-validator ML-DSA-65
 	// aggregated via Groth16 SNARK).
@@ -274,7 +274,7 @@ var ErrWitnessUnknown = errors.New("witness set contains unknown bits")
 
 // HashSuiteID identifies which hash family a Quasar finality certificate was
 // produced under. It is a separate axis from PolicyID: Pulsar (SHA3_NIST)
-// and Ringtail (BLAKE3-legacy) share PolicyPQ (5) but use different hash
+// and Corona (BLAKE3-legacy) share PolicyPQ (5) but use different hash
 // kernels. PolicyID alone is therefore insufficient to know which verifier to
 // instantiate — the receiver must consult HashSuiteID.
 //
@@ -309,7 +309,7 @@ const (
 	// Pulsar / Quasar / raw ML-DSA-65 all sign under this suite.
 	HashSuiteSHA3NIST HashSuiteID = 0x01
 
-	// HashSuiteBLAKE3Legacy — Ringtail academic profile and Pulsar's pre-pin
+	// HashSuiteBLAKE3Legacy — Corona academic profile and Pulsar's pre-pin
 	// legacy suite. BLAKE3 is outside FIPS 202 and non-normative for any
 	// NIST submission; the byte exists so legacy / academic / federation-MPC
 	// deployments can still emit a verifiable cert.
@@ -336,7 +336,7 @@ func (h HashSuiteID) String() string {
 // signature verification.
 //
 // Numbering blocks: 0x00 None / 0x10..0x1F classical (BLS) / 0x20..0x2F
-// Ringtail / 0x30..0x3F Pulsar.R / 0x40..0x4F Pulsar.M (low nibble pins
+// Corona / 0x30..0x3F Pulsar.R / 0x40..0x4F Pulsar.M (low nibble pins
 // the parameter set).
 //
 // Wire-side values must match config.SigSchemeID exactly.
@@ -345,7 +345,7 @@ type SigSchemeID uint8
 const (
 	SigSchemeNone             SigSchemeID = 0x00
 	SigSchemeBLS12381         SigSchemeID = 0x10
-	SigSchemeRingtailAcademic SigSchemeID = 0x20
+	SigSchemeNasua SigSchemeID = 0x20
 	SigSchemePulsarR          SigSchemeID = 0x30
 	SigSchemePulsarM44        SigSchemeID = 0x41
 	SigSchemePulsarM65        SigSchemeID = 0x42 // production default
@@ -359,8 +359,8 @@ func (s SigSchemeID) String() string {
 		return "none"
 	case SigSchemeBLS12381:
 		return "bls12-381"
-	case SigSchemeRingtailAcademic:
-		return "ringtail-academic"
+	case SigSchemeNasua:
+		return "nasua"
 	case SigSchemePulsarR:
 		return "pulsar-r"
 	case SigSchemePulsarM44:

@@ -1,5 +1,5 @@
 // Copyright (C) 2025, Lux Industries Inc All rights reserved.
-// Async quantum bundle production - runs Ringtail signing without blocking BLS.
+// Async quantum bundle production - runs Corona signing without blocking BLS.
 //
 // Architecture (parallel execution):
 //   BLS Layer:     [B1]--[B2]--[B3]--[B4]--[B5]--[B6]--[B7]--[B8]--[B9]--...
@@ -7,9 +7,9 @@
 //                   |_____________________________________|
 //                                    |
 //   Quantum Layer:              [QB1: Merkle(B1-B6)]--------[QB2: Merkle(B7-B12)]
-//                                    |  3-second interval, async Ringtail signing
+//                                    |  3-second interval, async Corona signing
 //
-// NTT Ringtail benchmarks (IEEE S&P 2025):
+// NTT Corona benchmarks (IEEE S&P 2025):
 //   - 0.6s online signing phase (2-round protocol)
 //   - 2.5s total including offline prep across 5 continents
 //   - Our 3-second interval provides comfortable margin
@@ -22,7 +22,7 @@ import (
 )
 
 // AsyncBundleSigner wraps BundleSigner with async signing capabilities.
-// BLS block production continues uninterrupted during Ringtail signing.
+// BLS block production continues uninterrupted during Corona signing.
 type AsyncBundleSigner struct {
 	signer *BundleSigner
 
