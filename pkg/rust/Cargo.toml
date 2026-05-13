@@ -2,9 +2,19 @@
 name = "lux-consensus"
 version = "1.22.0"
 edition = "2021"
-description = "Lux Consensus SDK - Pure Rust BFT consensus with GPU acceleration"
-license = "MIT"
+description = "Lux Consensus SDK — pure-Rust Quasar BFT (Wave/FPC/Photon/Focus) with BLS12-381 and optional GPU acceleration"
+license-file = "LICENSE"
 repository = "https://github.com/luxfi/consensus"
+homepage = "https://lux.network"
+readme = "README.md"
+keywords = ["consensus", "blockchain", "bft", "quasar", "lux"]
+categories = ["cryptography", "algorithms", "network-programming"]
+authors = ["Lux Industries Inc."]
+exclude = ["tests/*.old", "target/"]
+
+[package.metadata.docs.rs]
+no-default-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 hex = "0.4"
