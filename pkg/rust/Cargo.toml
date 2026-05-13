@@ -1,13 +1,13 @@
 [package]
 name = "lux-consensus"
-version = "1.22.0"
+version = "1.22.1"
 edition = "2021"
-description = "Lux Consensus SDK — pure-Rust Quasar BFT (Wave/FPC/Photon/Focus) with BLS12-381 and optional GPU acceleration"
+description = "Lux Consensus SDK — pure-Rust Quasar post-quantum probabilistic consensus (Wave / FPC / Photon / Focus / Quasar PQ finality via hybrid BLS12-381 + Ringtail = P3Q)"
 license-file = "LICENSE"
 repository = "https://github.com/luxfi/consensus"
 homepage = "https://lux.network"
 readme = "README.md"
-keywords = ["consensus", "blockchain", "bft", "quasar", "lux"]
+keywords = ["consensus", "post-quantum", "quasar", "probabilistic", "lux"]
 categories = ["cryptography", "algorithms", "network-programming"]
 authors = ["Lux Industries Inc."]
 exclude = ["tests/*.old", "target/"]
