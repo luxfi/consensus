@@ -1,6 +1,6 @@
 module github.com/luxfi/consensus/examples/quasar_full
 
-go 1.26.1
+go 1.26.3
 
 require (
 	github.com/luxfi/consensus v1.22.84
