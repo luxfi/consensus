@@ -662,14 +662,14 @@ func TestQuantumPolicyUnknownSchemeRTNotRequired(t *testing.T) {
 	}
 }
 
-func TestQuantumPolicyRingtailOnlyRTNotRequired(t *testing.T) {
+func TestQuantumPolicyCoronaOnlyRTNotRequired(t *testing.T) {
 	policy := NewQuantumPolicyWithOptions(1, false)
 	ctx := context.Background()
 	c := NewCandidate([]byte("d"), []byte("p"), EmptyCandidateID, 1)
 	policy.OnCandidate(ctx, c)
 
 	vote := NewVote(c.ID, DeriveVoterID("a", []byte("v")), 0, true)
-	vote.Signature = []byte{SigRingtail, 4, 5, 6}
+	vote.Signature = []byte{SigCorona, 4, 5, 6}
 	err := policy.OnVote(ctx, vote)
 	if err != nil {
 		t.Errorf("RT-only vote should be accepted when RT not required: %v", err)
@@ -686,7 +686,7 @@ func TestSigSchemeToString(t *testing.T) {
 		{SigNone, "SigNone"},
 		{SigEd25519, "SigEd25519"},
 		{SigBLS, "SigBLS"},
-		{SigRingtail, "SigRingtail"},
+		{SigCorona, "SigCorona"},
 		{SigQuasar, "SigQuasar"},
 		{0xFF, "Unknown"},
 	}

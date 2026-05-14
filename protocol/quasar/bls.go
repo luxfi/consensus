@@ -5,9 +5,9 @@
 // providing cryptographically sound message authentication for the event horizon.
 //
 // IMPORTANT: This is NOT the threshold signature implementation.
-// For real cryptographic threshold signatures (BLS + Ringtail), see:
+// For real cryptographic threshold signatures (BLS + Corona), see:
 //   - quasar.go: Signer struct with github.com/luxfi/crypto/bls integration
-//   - epoch.go: Pulsar threshold signing via github.com/luxfi/pulsar/threshold (Ringtail-equivalent kernel)
+//   - epoch.go: Pulsar threshold signing via github.com/luxfi/pulsar/threshold (Corona-equivalent kernel)
 //
 // The BLS struct here handles DAG vertex ordering and event horizon
 // establishment, which operates independently of block finality signatures.
@@ -42,7 +42,7 @@ type CertBundle struct {
 }
 
 // Verify is removed. Use VerifyWithKeys for cryptographic HMAC verification.
-// For full threshold BLS + Ringtail verification, see quasar.go
+// For full threshold BLS + Corona verification, see quasar.go
 // signer.VerifyAggregatedSignature and epoch.go VerifySignatureForEpoch.
 func (c *CertBundle) Verify(_ []string) bool {
 	panic("CertBundle.Verify is removed: use VerifyWithKeys for cryptographic verification")
@@ -51,9 +51,9 @@ func (c *CertBundle) Verify(_ []string) bool {
 // VerifyWithKeys verifies both HMAC-SHA256 certificates against the provided keys.
 // Returns true only if both the BLS and PQ HMACs are valid for the stored message.
 //
-// For full threshold BLS + Ringtail signature verification, see:
+// For full threshold BLS + Corona signature verification, see:
 //   - quasar.go: signer.VerifyAggregatedSignature (BLS threshold)
-//   - epoch.go: EpochManager.VerifySignatureForEpoch (Ringtail threshold)
+//   - epoch.go: EpochManager.VerifySignatureForEpoch (Corona threshold)
 func (c *CertBundle) VerifyWithKeys(blsKey, pqKey []byte) bool {
 	if c == nil || len(c.BLSAgg) == 0 || len(c.PQCert) == 0 || len(c.Message) == 0 {
 		return false
@@ -151,8 +151,8 @@ func (q *BLS) generateBLSAggregate(blockID ids.ID, votes map[string]int) []byte 
 // keyed with the validator's PQ key material. This binds the block ID and votes
 // to the key using a cryptographically sound MAC construction.
 //
-// For full Ringtail threshold signatures, see:
-//   - quasar.go: signer.RingtailRound1/Round2/Finalize (2-round protocol)
+// For full Corona threshold signatures, see:
+//   - quasar.go: signer.CoronaRound1/Round2/Finalize (2-round protocol)
 //   - epoch.go: EpochManager.VerifySignatureForEpoch (via github.com/luxfi/pulsar/threshold)
 func (q *BLS) generatePQCertificate(blockID ids.ID, votes map[string]int) []byte {
 	if len(q.pqKey) == 0 {
@@ -243,7 +243,7 @@ func (q *BLS) phaseII(votes map[string]int, proposal string) *CertBundle {
 
 // EstablishHorizon creates a new event horizon for BLS finality
 func (q *BLS) EstablishHorizon(ctx context.Context, checkpoint VertexID, validators []string) (*dag.EventHorizon[VertexID], error) {
-	// Compute new event horizon using Ringtail + BLS signatures
+	// Compute new event horizon using Corona + BLS signatures
 	horizon := dag.EventHorizon[VertexID]{
 		Checkpoint: checkpoint,
 		Height:     uint64(len(q.horizons)) + 1,
@@ -286,7 +286,7 @@ func (q *BLS) GetLatestHorizon() *dag.EventHorizon[VertexID] {
 // createHorizonSignature creates a local attestation for the event horizon checkpoint.
 // Uses HMAC-SHA256 keyed with blsKey and pqKey for cryptographically sound binding.
 //
-// For full threshold signatures with real BLS + Ringtail, see:
+// For full threshold signatures with real BLS + Corona, see:
 //   - quasar.go: signer.AggregateSignatures (BLS threshold via github.com/luxfi/crypto/bls)
 //   - epoch.go: BundleSigner.SignBundle (Pulsar 2-round via github.com/luxfi/pulsar/threshold)
 func (q *BLS) createHorizonSignature(checkpoint VertexID, validators []string) []byte {

@@ -36,13 +36,13 @@ func (e *ConsensusEngine) PQMode() config.PQMode { return e.pqMode }
 
 // FinalityEvent represents a finalized block with quantum-resistant proofs.
 // Carries all three components for parallel verification: classical BLS,
-// lattice Ringtail, and FIPS 204 ML-DSA. Defense in depth.
+// lattice Corona, and FIPS 204 ML-DSA. Defense in depth.
 type FinalityEvent struct {
 	Height     uint64
 	BlockID    ids.ID
 	Timestamp  time.Time
 	BLSProof   []byte // Classical BLS12-381 aggregate
-	Ringtail   []byte // Ringtail lattice threshold sig
+	Corona   []byte // Corona lattice threshold sig
 	MLDSAProof []byte // FIPS 204 ML-DSA proof
 }
 
@@ -238,10 +238,10 @@ func (e *ConsensusEngine) Height() uint64 {
 // blockToFinalityEvent converts a quasar.Block to a FinalityEvent
 func blockToFinalityEvent(block *quasar.Block) FinalityEvent {
 	blockID, _ := ids.FromString(block.Hash)
-	var mldsaProof, ringtail, blsProof []byte
+	var mldsaProof, corona, blsProof []byte
 	if block.Cert != nil {
 		mldsaProof = block.Cert.MLDSAProof
-		ringtail = block.Cert.Ringtail
+		corona = block.Cert.Corona
 		blsProof = block.Cert.BLS
 	}
 	return FinalityEvent{
@@ -249,7 +249,7 @@ func blockToFinalityEvent(block *quasar.Block) FinalityEvent {
 		BlockID:    blockID,
 		Timestamp:  block.Timestamp,
 		MLDSAProof: mldsaProof,
-		Ringtail:   ringtail,
+		Corona:   corona,
 		BLSProof:   blsProof,
 	}
 }

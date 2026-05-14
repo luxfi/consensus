@@ -639,7 +639,7 @@ func TestQuasarThroughput(t *testing.T) {
 
 // --- Quasar Consensus Tests ---
 
-// TestQuasarConsensusBasic tests BLS + Ringtail + ML-DSA certificate generation
+// TestQuasarConsensusBasic tests BLS + Corona + ML-DSA certificate generation
 func TestQuasarConsensusBasic(t *testing.T) {
 	require := require.New(t)
 

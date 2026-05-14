@@ -31,7 +31,7 @@ type quasarEngine struct {
 
 	// Consensus engine
 	certifier *Certifier
-	signer    *signer // real BLS+Ringtail+ML-DSA signer (optional, may be nil for legacy)
+	signer    *signer // real BLS+Corona+ML-DSA signer (optional, may be nil for legacy)
 
 	// Metrics
 	processed uint64
@@ -209,7 +209,7 @@ func computeHash(block *Block) string {
 // Certifier handles certificate generation for the engine.
 //
 // When a Signer is attached via AttachSigner the certifier produces real
-// QuasarCerts (BLS share + ML-DSA sig + Ringtail Round 1 commitment). With
+// QuasarCerts (BLS share + ML-DSA sig + Corona Round 1 commitment). With
 // no signer, it falls back to deterministic SHA-256 commitments suitable
 // only for in-process unit tests.
 type Certifier struct {
@@ -231,7 +231,7 @@ func newCertifier(threshold int) (*Certifier, error) {
 	}, nil
 }
 
-// AttachSigner wires a real BLS+Ringtail+ML-DSA signer into the certifier.
+// AttachSigner wires a real BLS+Corona+ML-DSA signer into the certifier.
 // After this call, generateCert produces real cryptographic certificates.
 func (h *Certifier) AttachSigner(ctx context.Context, s *signer) {
 	h.mu.Lock()
@@ -247,7 +247,7 @@ func (h *Certifier) validatorCount() int {
 }
 
 // generateCert creates a certificate for the given block. When a signer is
-// attached it returns a real QuasarCert (BLS share + ML-DSA sig + Ringtail
+// attached it returns a real QuasarCert (BLS share + ML-DSA sig + Corona
 // Round 1 commitment). Otherwise it falls back to SHA-256 placeholders for
 // in-process tests.
 func (h *Certifier) generateCert(block *Block) *QuasarCert {
@@ -325,9 +325,9 @@ func (h *Certifier) realCert(ctx context.Context, s *signer, block *Block, valid
 
 	cert := &QuasarCert{
 		BLS:      append([]byte(nil), sig.BLS...),
-		Ringtail: nil, // Ringtail Round 1 commitment is not a verifiable
+		Corona: nil, // Corona Round 1 commitment is not a verifiable
 		// signature on its own; aggregation/Round2 is run by the
-		// consensus driver. We leave Ringtail empty here -- it's wired
+		// consensus driver. We leave Corona empty here -- it's wired
 		// at the higher protocol layer (epoch.go BundleSigner).
 		Epoch:      block.Height,
 		Finality:   time.Now(),
@@ -355,7 +355,7 @@ func buildBlockMessage(block *Block) []byte {
 	return h.Sum(nil)
 }
 
-// buildPRFKey derives a per-block 32-byte PRF key for Ringtail signing.
+// buildPRFKey derives a per-block 32-byte PRF key for Corona signing.
 func buildPRFKey(block *Block) []byte {
 	h := sha256.Sum256(append(block.ID[:], block.ChainID[:]...))
 	return h[:]
