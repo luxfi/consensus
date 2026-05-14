@@ -3,7 +3,7 @@
 Pure-Rust SDK for the Lux **Quasar** consensus stack — Wave threshold voting,
 FPC (Fast Probabilistic Consensus), Photon validator sampling, Focus
 confidence accumulation, and post-quantum hybrid finality via BLS12-381 +
-Corona.
+Pulsar (Module-LWE threshold, FIPS 204 byte-equal).
 
 ## Features
 
