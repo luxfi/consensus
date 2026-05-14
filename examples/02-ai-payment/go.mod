@@ -1,6 +1,6 @@
 module github.com/luxfi/consensus/examples/02-ai-payment
 
-go 1.26.1
+go 1.26.3
 
 require github.com/luxfi/consensus v1.22.84
 
@@ -17,7 +17,7 @@ require (
 	github.com/luxfi/ids v1.2.9 // indirect
 	github.com/luxfi/lattice/v7 v7.0.0 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
-	github.com/luxfi/ringtail v0.2.0 // indirect
+	github.com/luxfi/corona v0.2.0 // indirect
 	github.com/montanaflynn/stats v0.8.2 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect

@@ -688,7 +688,7 @@ func TestSigner_VerifyQuasarSig_ValidatorNotFound(t *testing.T) {
 	sig := &QuasarSig{
 		ValidatorID: "nonexistent",
 		BLS:         []byte{1, 2, 3},
-		Ringtail:    []byte{4, 5, 6},
+		Corona:    []byte{4, 5, 6},
 	}
 
 	result := h.VerifyQuasarSig([]byte("test"), sig)
@@ -704,7 +704,7 @@ func TestSigner_VerifyQuasarSig_InvalidBLS(t *testing.T) {
 	sig := &QuasarSig{
 		ValidatorID: "v1",
 		BLS:         []byte{1, 2, 3}, // Invalid BLS bytes
-		Ringtail:    []byte{4, 5, 6},
+		Corona:    []byte{4, 5, 6},
 	}
 
 	result := h.VerifyQuasarSig([]byte("test"), sig)
@@ -855,7 +855,7 @@ func TestSigner_GetActiveValidatorCount(t *testing.T) {
 }
 
 // =============================================================================
-// Ringtail Tests
+// Corona Tests
 // =============================================================================
 //
 // NOTE: Post-quantum threshold crypto is tested in the Pulsar package at
@@ -1050,7 +1050,7 @@ func TestWitnessProof_Size(t *testing.T) {
 		Path:         make([]byte, 16),
 		OpeningProof: make([]byte, 32),
 		BLSAggregate: make([]byte, 96),
-		RingtailBits: make([]byte, 4),
+		CoronaBits: make([]byte, 4),
 		ValidatorSet: make([]byte, 32),
 		BlockHeight:  100,
 		StateRoot:    make([]byte, 32),
@@ -1091,7 +1091,7 @@ func TestWitnessProof_Compress(t *testing.T) {
 	w := &WitnessProof{
 		Commitment:   make([]byte, 32),
 		OpeningProof: make([]byte, 32),
-		RingtailBits: []byte{0xFF, 0x0F, 0x00, 0x01},
+		CoronaBits: []byte{0xFF, 0x0F, 0x00, 0x01},
 		BlockHeight:  0x12345678,
 		Timestamp:    0xFEDCBA98,
 	}
@@ -1193,7 +1193,7 @@ func TestVerkleWitness_CheckPQFinality(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			witness := &WitnessProof{RingtailBits: tt.bits}
+			witness := &WitnessProof{CoronaBits: tt.bits}
 			got := w.checkPQFinality(witness)
 			if got != tt.want {
 				t.Errorf("checkPQFinality() = %v, want %v", got, tt.want)
@@ -1202,7 +1202,7 @@ func TestVerkleWitness_CheckPQFinality(t *testing.T) {
 	}
 }
 
-func TestVerkleWitness_VerifyRingtailThreshold(t *testing.T) {
+func TestVerkleWitness_VerifyCoronaThreshold(t *testing.T) {
 	w := NewVerkleWitness(2)
 
 	tests := []struct {
@@ -1215,9 +1215,9 @@ func TestVerkleWitness_VerifyRingtailThreshold(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := w.verifyRingtailThreshold(tt.bits)
+		got := w.verifyCoronaThreshold(tt.bits)
 		if got != tt.want {
-			t.Errorf("verifyRingtailThreshold(%v) = %v, want %v", tt.bits, got, tt.want)
+			t.Errorf("verifyCoronaThreshold(%v) = %v, want %v", tt.bits, got, tt.want)
 		}
 	}
 }
@@ -1305,15 +1305,15 @@ func TestVerkleWitness_CreateWitness(t *testing.T) {
 		t.Error("expected non-empty opening proof")
 	}
 
-	if len(witness.RingtailBits) == 0 {
-		t.Error("expected non-empty ringtail bits")
+	if len(witness.CoronaBits) == 0 {
+		t.Error("expected non-empty corona bits")
 	}
 
-	// Check ringtail bits match signers
+	// Check corona bits match signers
 	expectedBits := compressToBitfield(signers)
 	for i := range expectedBits {
-		if witness.RingtailBits[i] != expectedBits[i] {
-			t.Error("ringtail bits mismatch")
+		if witness.CoronaBits[i] != expectedBits[i] {
+			t.Error("corona bits mismatch")
 		}
 	}
 }
@@ -1344,7 +1344,7 @@ func TestVerkleWitness_VerifyStateTransition(t *testing.T) {
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		RingtailBits: []byte{0x01}, // 1 signer meets threshold of 1
+		CoronaBits: []byte{0x01}, // 1 signer meets threshold of 1
 		BlockHeight:  100,
 		StateRoot:    stateRoot,
 	}
@@ -1362,7 +1362,7 @@ func TestVerkleWitness_VerifyStateTransition_InvalidCommitment(t *testing.T) {
 		Commitment:   []byte{1, 2, 3}, // Invalid commitment bytes
 		Path:         []byte{4, 5, 6},
 		OpeningProof: []byte{7, 8, 9},
-		RingtailBits: []byte{0x01},
+		CoronaBits: []byte{0x01},
 	}
 
 	err := w.VerifyStateTransition(witness)
@@ -1391,7 +1391,7 @@ func TestVerkleWitness_BatchVerify(t *testing.T) {
 			Commitment:   commitmentBytes[:],
 			Path:         path,
 			OpeningProof: openingProof,
-			RingtailBits: []byte{0x01},
+			CoronaBits: []byte{0x01},
 			StateRoot:    stateRoot,
 		}
 	}
@@ -1419,7 +1419,7 @@ func TestVerkleWitness_BatchVerify_WithInvalid(t *testing.T) {
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		RingtailBits: []byte{0x01},
+		CoronaBits: []byte{0x01},
 		StateRoot:    stateRoot,
 	}
 
@@ -1428,7 +1428,7 @@ func TestVerkleWitness_BatchVerify_WithInvalid(t *testing.T) {
 		Commitment:   []byte{1, 2, 3}, // Invalid
 		Path:         []byte{4, 5, 6},
 		OpeningProof: []byte{7, 8, 9},
-		RingtailBits: []byte{0x01},
+		CoronaBits: []byte{0x01},
 	}
 
 	witnesses := []*WitnessProof{validWitness, invalidWitness}
@@ -1469,7 +1469,7 @@ func TestVerkleWitness_FullVerification(t *testing.T) {
 		Path:         path,
 		OpeningProof: openingProof,
 		BLSAggregate: blsSigBytes,
-		RingtailBits: []byte{0x01},
+		CoronaBits: []byte{0x01},
 		ValidatorSet: []byte{5, 6, 7, 8},
 		BlockHeight:  100,
 		StateRoot:    stateRoot,
@@ -1505,7 +1505,7 @@ func TestVerkleWitness_FullVerification_InsufficientThreshold(t *testing.T) {
 		Path:         path,
 		OpeningProof: openingProof,
 		BLSAggregate: blsSig,       // Valid-length signature
-		RingtailBits: []byte{0x01}, // Only 1 signer, need 5
+		CoronaBits: []byte{0x01}, // Only 1 signer, need 5
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
 	}
@@ -1861,7 +1861,7 @@ func TestSigner_AggregateSignatures_InvalidBLS(t *testing.T) {
 	sig := &QuasarSig{
 		ValidatorID: "v1",
 		BLS:         []byte{1, 2, 3}, // Invalid BLS bytes
-		Ringtail:    []byte{4, 5, 6},
+		Corona:    []byte{4, 5, 6},
 	}
 
 	_, err := h.AggregateSignatures([]byte("test"), []*QuasarSig{sig})
@@ -2349,7 +2349,7 @@ func TestVerkleWitness_VerifyVerkleCommitment_InvalidOpeningProof(t *testing.T) 
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: []byte{1, 2, 3, 4, 5}, // Wrong proof
-		RingtailBits: []byte{0x01},
+		CoronaBits: []byte{0x01},
 		StateRoot:    stateRoot,
 	}
 
@@ -2650,7 +2650,7 @@ func TestSigner_VerifyAggregatedSignature_BLSSignatureTamperedFail(t *testing.T)
 	}
 }
 
-func TestVerkleWitness_FullVerification_RingtailThresholdNotMet(t *testing.T) {
+func TestVerkleWitness_FullVerification_CoronaThresholdNotMet(t *testing.T) {
 	w := NewVerkleWitness(10) // High threshold
 	w.assumePQFinal = false   // Force full verification path
 
@@ -2678,14 +2678,14 @@ func TestVerkleWitness_FullVerification_RingtailThresholdNotMet(t *testing.T) {
 		Path:         path,
 		OpeningProof: openingProof,
 		BLSAggregate: blsSig,       // Valid-length signature
-		RingtailBits: []byte{0x01}, // Only 1 signer, need 10
+		CoronaBits: []byte{0x01}, // Only 1 signer, need 10
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
 	}
 
 	err := w.VerifyStateTransition(witness)
 	if err == nil {
-		t.Error("expected error for insufficient ringtail threshold")
+		t.Error("expected error for insufficient corona threshold")
 	}
 }
 
@@ -2860,7 +2860,7 @@ func TestVerkleWitness_VerifyStateTransition_FastPath(t *testing.T) {
 		Commitment:   commitmentBytes[:],
 		Path:         path,
 		OpeningProof: openingProof,
-		RingtailBits: []byte{0x01}, // 1 signer meets threshold
+		CoronaBits: []byte{0x01}, // 1 signer meets threshold
 		StateRoot:    stateRoot,
 	}
 
@@ -2892,7 +2892,7 @@ func TestVerkleWitness_VerifyStateTransition_SlowPath(t *testing.T) {
 		Path:         path,
 		OpeningProof: openingProof,
 		BLSAggregate: blsSigBytes,
-		RingtailBits: []byte{0x01}, // 1 signer meets threshold
+		CoronaBits: []byte{0x01}, // 1 signer meets threshold
 		ValidatorSet: []byte{5, 6, 7, 8},
 		StateRoot:    stateRoot,
 	}

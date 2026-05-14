@@ -122,7 +122,7 @@ func NewDAGEngine() Engine {
 }
 
 // NewPQ creates a new post-quantum consensus engine.
-// Uses Chain with Quasar protocol for BLS + Ringtail threshold signatures.
+// Uses Chain with Quasar protocol for BLS + Corona threshold signatures.
 func NewPQ(cfg Config) Engine {
 	// Configure for quantum-safe mode
 	pqCfg := cfg
