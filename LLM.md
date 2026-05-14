@@ -1,8 +1,57 @@
 # Lux Consensus -- Agent Knowledge Base
 
 **Repository**: github.com/luxfi/consensus
-**Latest Tag**: v1.22.85
+**Latest Tag**: v1.23.7
 **Go**: 1.26.1
+
+## Post-E2E-PQ State (current)
+
+This is the `consensus-auth` worktree of `luxfi/consensus`. Source under
+`config/`, `protocol/auth/`, `protocol/zchain/`, `protocol/quasar/` is
+the same tree as the canonical `consensus/` checkout — every section
+below describes the same package layout. Strict-PQ profile is the canon
+here; classical-compat is opt-in only via
+`ChainSecurityProfile.ForkClassicalCompatUnsafe`.
+
+- `config/security_profile.go` — `ChainSecurityProfile` with 11 E2E
+  fields (ProofPolicyID, ProofBackendID, ProofFormatID, VerifierID,
+  HashSuiteID, SigSchemeID, IdentitySchemeID, WalletSchemeID,
+  TxSchemeID, ContractSchemeID, KEMSchemeID, RecoverySchemeID).
+- `config/pq_mode.go` — `PQMode` enum (`bls`, `corona`, `pulsar`,
+  `quasar`, `mldsa`); `LUX_CONSENSUS_PQ_MODE` env knob. Canonical strict
+  default: `PQModeQuasar` resolved against `ProofPolicySTARKFRISHA3PQ`.
+- `config/validator_scheme.go` — `ValidatorSchemeID()` +
+  `AcceptsValidatorScheme(presented, classicalCompatUnsafe)` cross-axis
+  gate. Strict-PQ profiles refuse classical NodeIDScheme (0x90)
+  regardless of operator flag.
+- `protocol/auth/` — `TxAuthEnvelope`, `PQPermit`,
+  `ContractAuthProfile`, SP 800-185 TupleHash256 digest.
+- `protocol/zchain/` — `ZProofEnvelope`, `VerifierManifest`, per-backend
+  registry (P3Q / SP1 / RISC0 / Stone / Stwo) under
+  `ProofPolicySTARKFRISHA3PQ`.
+- `protocol/zchain/registry/` — `PQKeyRecord`, 5 ops
+  (`OpRegisterKey/Rotate/Revoke/AuthorizeSession/CommitTxAuthBatch`),
+  `ZRegistryRoots` (7-root TupleHash256 → `EpochCommitment`),
+  `VerifyAuthPassed` execution-hot-path verifier.
+- `protocol/quasar/qblock.go` — HIP-0079 Q-Chain finality block with a
+  single Pulsar-M threshold signature over the canonical transcript;
+  `NetworkPolicyStrictPQ` refuses any block whose `ProofPolicyID` is
+  not `ProofPolicySTARKFRISHA3PQ`, whose `HashSuiteID` is not
+  `HashSuiteSHA3NIST`, or whose `FinalitySchemeID` is not Pulsar-M-65
+  / Pulsar-M-87. Pulsar-M-44 is devnet-only.
+
+### Cross-repo dependencies (this repo → others)
+- `luxfi/crypto` → ML-DSA / SLH-DSA / Pulsar primitives
+- `luxfi/pulsar` → R-LWE threshold (Q-Chain consensus path)
+- `luxfi/pulsar-m` → M-LWE threshold ML-DSA (HIP-0079 finality)
+- `luxfi/p3q` → STARK / FRI proof substrate for Z-Chain
+  (`ProofBackendP3QSTARKFRISHA3`, 10 crates on crates.io)
+- `luxfi/threshold` → BLS / FROST / CGGMP21 wiring (classical-compat
+  only)
+- `luxfi/ids` → `NodeIDScheme` wire enum
+- `luxfi/zap` → wire protocol (not p2p)
+
+---
 
 ## Quasar Family of Consensus
 
@@ -35,46 +84,62 @@ post-quantum finality. All sub-protocols live in `protocol/`.
 
 ### Quasar Certificate
 
-`QuasarCert` (see `protocol/quasar/types.go:40`) is a 3-tuple:
+`QuasarCert` (see `protocol/quasar/types.go`) carries up to three witness
+slots; the canonical wire layout is fixed but the meaning of each slot
+depends on the security profile.
 
 ```go
 type QuasarCert struct {
-    BLS        []byte  // BLS12-381 aggregate, 48 bytes classical fast path
-    Pulsar   []byte  // Ring-LWE threshold (PQ), O(1) after DKG
-    MLDSAProof []byte  // Z-Chain Groth16 rolling up N × ML-DSA identity sigs, ~192 bytes
+    BLS        []byte    // Classical aggregate slot (refused under strict-PQ)
+    Corona   []byte    // Lattice threshold slot — under strict-PQ this is Pulsar / Pulsar-M
+    MLDSAProof []byte    // Z-Chain proof slot — see profile-dependent table below
     Epoch      uint64
     Finality   time.Time
     Validators int
 }
 ```
 
-| Layer | Scheme | Hardness | Raw Size | In Cert |
-|-------|--------|----------|----------|---------|
-| BLS | BLS12-381 aggregate | co-CDH | 48 B | 48 B |
-| ML-DSA | ML-DSA-65 (FIPS 204) | Module-LWE + MSIS | ~3309 B per validator | 192 B (Groth16) |
-| Pulsar | Ring-LWE threshold | Module-LWE | O(1) after DKG | variable |
+Profile-dependent semantics of each slot:
 
-Modes (each layer independently toggleable):
-- BLS-only: classical fast path
-- BLS + Pulsar: dual PQ
-- BLS + Pulsar + ML-DSA: full Quasar (`TripleSignRound1`)
-- Full Quasar + Z-Chain ZKP: production mode (succinct certificate)
+| Slot | Strict-PQ (`LUX_STRICT_E2E_PQ`) | Classical-compat (`ForkClassicalCompatUnsafe`) |
+|------|-------------------------------|------------------------------------------------|
+| `BLS` | refused (`verifyBLSAggregate` returns `ErrBLSForbiddenUnderStrictPQ`); BLS12-381 is not canonical under strict-PQ | 48-byte BLS12-381 aggregate (co-CDH) for legacy fast path only |
+| `Corona` | Pulsar (R-LWE threshold) for Q-Chain consensus OR Pulsar-M (M-LWE threshold, output verifies under unmodified FIPS 204 ML-DSA.Verify) for HIP-0079 Q-blocks | same as strict-PQ; threshold-lattice is the same layer either way |
+| `MLDSAProof` | `ZProofEnvelope` reference (see `protocol/zchain/proof_envelope.go`) — backend-agnostic STARK proof under `ProofPolicySTARKFRISHA3PQ` (0x10), produced by an `IsProductionPQ()` backend (RISC0 succinct, SP1 compressed, P3Q-SHA3, Stone, or Stwo) | legacy `PQModeQuasar` carried a ~192-byte Groth16 rollup of N × ML-DSA-65 verifications; that path is `BLSPlusGroth16`-era and is not produced on strict-PQ chains |
 
-`IsTripleMode()` checks all three signing layers.
-Crypto: `luxfi/crypto/bls`, `luxfi/crypto/mldsa`, `luxfi/corona/threshold`.
+The Q-Chain finality lane (HIP-0079) does not carry a per-validator
+ML-DSA roll-up at all — it rides a single Pulsar-M threshold signature
+over a `QBlock` transcript (see `protocol/quasar/qblock.go`). The
+`MLDSAProof` slot is used only by Z-Chain to anchor an `EpochCommitment`
+(7-root TupleHash256) produced by the registry; the proof system that
+produces that anchor is selected by `ProofBackendID` and gated by the
+profile's `ProofPolicyID`.
+
+Crypto: `luxfi/crypto/bls` (classical-compat only), `luxfi/crypto/mldsa`,
+`luxfi/pulsar/threshold` (R-LWE), `luxfi/pulsar-m` (M-LWE, FIPS 204
+output-interchangeable), `luxfi/p3q` (STARK/FRI proof substrate).
 
 ### PQ Mode Selection
 
 `config/pq_mode.go` defines the configurable PQ mode enum, selectable via
-the `LUX_CONSENSUS_PQ_MODE` env var or `Parameters.PQMode` field:
+the `LUX_CONSENSUS_PQ_MODE` env var or `Parameters.PQMode` field. Modes
+name a *threshold + identity* stack; the proof system that backs Z-Chain
+is a separate orthogonal axis (`ProofPolicyID` + `ProofBackendID` in
+`ChainSecurityProfile`).
 
-| Mode | Value | Description |
-|------|-------|-------------|
-| `BLSOnly` | bls | Classical fast path, smallest cert |
-| `BLSPlusMLDSA` | bls-mldsa | BLS + per-validator ML-DSA-65 |
-| `BLSPlusCorona` | bls-rt | BLS + Pulsar 2-round threshold |
-| `BLSPlusGroth16` | bls-z | BLS + Z-Chain Groth16 rollup (placeholder) |
-| `TripleQuantum` | triple | All three layers active |
+| Mode | Wire alias | Threshold + identity stack |
+|------|------------|----------------------------|
+| `PQModeBLS` | `bls` | BLS aggregate only (classical fast path; refused under strict-PQ) |
+| `PQModeCorona` | `corona` | BLS + Corona academic (BLAKE3); trusted-dealer DKG, federation-only |
+| `PQModePulsar` | `pulsar` | BLS + Pulsar.R (SHA-3 / SP 800-185); Pedersen DKG over R_q; public-chain ready |
+| `PQModeQuasar` | `quasar` | BLS + Pulsar + ML-DSA-65 with a Z-Chain rollup. Default since the Hanzo-mesh switch. **The shape of the rollup depends on the profile**: pre-HIP-0078 chains rolled N × ML-DSA into a 192-byte Groth16 proof; post-HIP-0078 strict-PQ chains pin `ProofPolicySTARKFRISHA3PQ` and roll the registry's EpochCommitment through a STARK backend (P3Q / SP1 / RISC0 / Stone / Stwo) — same Z-Chain anchor slot, post-quantum proof system. |
+| `PQModeMLDSA` | `mldsa` | BLS + per-validator raw ML-DSA-65 (audit grade, no threshold, no rollup). FIPS-approvable when BLS is dropped. |
+
+There is no `BLSPlusGroth16` constant in `config/pq_mode.go`; "Groth16"
+is the parse-alias for `PQModeQuasar` ("groth16", "bls-z", "bls-zk",
+"bls-groth16", "z-chain", "pulsar-z" all parse to `PQModeQuasar`),
+retained for one release for back-compat with older callers. Strict-PQ
+deployments resolve `PQModeQuasar` against a STARK backend, not Groth16.
 
 `engine/pq.NewConsensus` resolves the mode via `config.PQModeFromEnv` and
 exposes `PQMode()` getter. `bench/pq_modes_bench_test.go` covers all modes
@@ -123,13 +188,26 @@ that feed it are split across the primary network chains:
 | **M-Chain** | (was T-Chain MPC per LP-7330; superseded by LP-134) Runs MPC ceremonies (CGGMP21, FROST, Pulsar-general) for bridge custody of external wallets. |
 | **F-Chain** | (was T-Chain FHE per LP-7330; superseded by LP-134) Runs TFHE bootstrap-key generation and FHE compute (encrypted EVM). |
 | **T-Chain** | Now reserved for `teleportvm` (LP-6332): unified bridge + relay + oracle. |
-| **Z-Chain** | Rolls N per-validator ML-DSA identity sigs into a single 192-byte Groth16 proof per epoch (the `MLDSAProof` field). |
+| **Z-Chain** | Anchors a per-epoch `EpochCommitment` (7-root TupleHash256, see `protocol/zchain/registry/roots.go`). Under strict-PQ this is a STARK proof (`ProofPolicySTARKFRISHA3PQ` 0x10, produced by a P3Q / SP1 / RISC0 / Stone / Stwo backend) referenced via the `MLDSAProof` slot of QuasarCert. Pre-HIP-0078 chains carried a 192-byte Groth16 rollup of N × ML-DSA verifications in this slot; that path is not produced on strict-PQ chains. |
 
-**Why `MLDSAProof` and not `ThresholdMLDSA`**: threshold ML-DSA has no FIPS
-standard; research constructions hit a rejection-sampling circular dependency
-(see `~/work/lux/proofs/quasar-cert-soundness.tex` App. A). Quasar takes the
-non-threshold path — each validator signs individually, Z-Chain compresses via
-Groth16 over BLS12-381.
+**Why a Z-Chain rollup slot rather than `ThresholdMLDSA`**: threshold
+ML-DSA has no FIPS standard; research constructions hit a rejection-
+sampling circular dependency (see
+`~/work/lux/proofs/quasar-cert-soundness.tex` App. A). Quasar takes the
+non-threshold path — each validator signs individually, Z-Chain rolls
+the registry state into a single proof. Pre-HIP-0078 chains used
+Groth16 over BLS12-381 for that proof (~192 B, pairing-based,
+classical). Strict-PQ chains (post-HIP-0078) pin
+`ProofPolicySTARKFRISHA3PQ` and produce the rollup with a P3Q-family
+STARK backend (`luxfi/p3q@0.0.1`, 10 crates on crates.io); see
+`protocol/zchain/proof_envelope.go` for the `ZProofEnvelope` wire
+format and `protocol/zchain/backend_registry.go` for the dispatch into
+`IsProductionPQ()` backends.
+
+Pulsar-M (M-LWE threshold, output-interchangeable with FIPS 204
+ML-DSA.Verify) is a separate option for **Q-Chain finality** itself —
+see `protocol/quasar/qblock.go`, which signs the Q-block transcript with
+a single Pulsar-M threshold signature rather than N raw ML-DSA sigs.
 
 ### Formal Proofs (LP-105 + Proof Sketch)
 
@@ -141,13 +219,21 @@ The paper + proof sketch carry the soundness/liveness/PQ-safety arguments:
   - Thm 7.5 Soundness
   - Thm 7.6 Parallel Liveness
   - Thm 7.7 Post-Quantum Safety
-- `~/work/lux/proofs/quasar-cert-soundness.tex`:
-  - App B — ML-DSA-65 R1CS constraint count (~2^22.5 per verification; per-cert
-    amortized to ~2^20 via shared-matrix optimization for n=21 validators)
+- `~/work/lux/proofs/quasar-cert-soundness.tex` (pre-HIP-0078 / Groth16
+  era — kept verbatim as historical context for the soundness argument;
+  the constraint-count and trusted-setup appendices apply only to the
+  legacy Groth16 Z-Chain rollup, NOT to the strict-PQ STARK path that
+  replaces it):
+  - App B — ML-DSA-65 R1CS constraint count (~2^22.5 per verification;
+    per-cert amortized to ~2^20 via shared-matrix optimization for n=21
+    validators) [legacy Groth16 path only]
   - App C — Static vs adaptive corruption (Fischlin / erasure hybrids)
-  - App D — Trusted-setup ceremony (Bowe-Gabizon-Miers), PLONK upgrade path
-  - App E — Pulsar parameter tightness: classical 2^142, quantum 2^130 via
-    BDGL sieving + Grover speedup
+    [applies to both eras]
+  - App D — Trusted-setup ceremony (Bowe-Gabizon-Miers), PLONK upgrade
+    path [legacy Groth16 path only; strict-PQ uses transparent
+    FRI-based STARKs with no trusted setup]
+  - App E — Pulsar parameter tightness: classical 2^142, quantum 2^130
+    via BDGL sieving + Grover speedup [applies to both eras]
 
 ### Domain separation
 
@@ -227,18 +313,31 @@ Per-component CPU costs for QuasarCert production and verification:
 | Quasar full block (BLS+ML-DSA+Pulsar) | 1.85 ms | `protocol/quasar BenchmarkQuasarBlockProcessing` |
 
 **QuasarCert verify (approx CPU, single cert, n=21 validators):**
-- BLS aggregate verify: ~875 us (constant in signer count)
-- Groth16 proof verify: ~1-3 ms (pairing-dominated, not yet in our bench harness — see App B of proof sketch)
-- Pulsar threshold verify: variable, amortized O(1) after DKG
-- Total: ~2-5 ms per cert, GPU batch can amortize 10-100x across certs
+- BLS aggregate verify: ~875 us (classical-compat profile only —
+  refused under strict-PQ)
+- Z-Chain proof verify: profile-dependent. Under
+  `ProofPolicySTARKFRISHA3PQ` the cost is set by the backend
+  (`ProofBackendID`); the verifier-manifest dispatch in
+  `protocol/zchain/verifier_manifest.go` carries the per-backend gate.
+  Pre-HIP-0078 Groth16 was ~1-3 ms (pairing-dominated, not in this
+  repo's bench harness); STARK backends trade a larger proof for
+  transparent setup and PQ soundness.
+- Pulsar threshold verify: variable, amortized O(1) after DKG.
+- Total: ~2-5 ms per cert classical-compat, similar order under
+  strict-PQ depending on backend. GPU batch amortizes 10-100x across
+  certs.
 
-**Note on the stale 357 us claim in older papers:** The "357 us epoch finality"
-from earlier Lux drafts (lux-triple-proof-consensus, lux-master-security-model,
-lux-performance-security-tradeoffs) does not match any measured operation in
-the current code. Closest real candidates: BLS single keygen (350 us),
-ML-DSA-65 sign (495 us), Groth16 proof size is 192 B but prover time is
-~400 ms CPU / ~5-15 ms GPU for the full ML-DSA-65 verification circuit
-(App B). Papers should quote the measured 2-5 ms CPU QuasarCert verify.
+**Note on the stale 357 us claim in older papers:** The "357 us epoch
+finality" from earlier Lux drafts (lux-triple-proof-consensus,
+lux-master-security-model, lux-performance-security-tradeoffs) is
+pre-HIP-0077 era and does not match any measured operation in the
+current code. Closest real candidates: BLS single keygen (350 us),
+ML-DSA-65 sign (495 us). The Z-Chain rollup figures in older papers
+(192 B Groth16 proof / 400 ms CPU prover) describe the legacy
+PQModeQuasar witness path and do not apply to strict-PQ chains, which
+use a STARK proof system through P3Q / SP1 / RISC0 / Stone / Stwo.
+Papers should quote the measured 2-5 ms CPU QuasarCert verify and name
+the active `ProofPolicyID` + `ProofBackendID` explicitly.
 
 ### Signature Schemes Benchmark (crypto + utxo Fx)
 
