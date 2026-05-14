@@ -1,4 +1,5 @@
 #include "lux/mlx_consensus.hpp"
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -17,25 +18,24 @@ struct MLXConsensus::Impl {
     std::vector<Vote> cache;    // Vote cache
     bool profiling_enabled = false;
 
-    explicit Impl(const MLXConfig& config) {
-        // Initialize weights with small random values
-        weights = mx::random::normal({32, 64}, mx::float32);
-        biases = mx::zeros({64}, mx::float32);
-    }
+    explicit Impl(const MLXConfig& /*config*/)
+        : weights(mx::random::normal(mx::Shape{32, 64}, mx::float32)),
+          biases(mx::zeros(mx::Shape{64}, mx::float32)) {}
 };
 
 MLXConsensus::MLXConsensus(const MLXConfig& config)
     : pimpl_(std::make_unique<Impl>(config)), config_(config) {
 
     try {
-        // Check if GPU is available
+        // Check if GPU is available. mx::Device::gpu/cpu are static
+        // constexpr DeviceType values; the Device ctor takes a DeviceType.
         if (config.device_type == "gpu" && mx::metal::is_available()) {
-            mx::set_default_device(mx::Device::gpu());
+            mx::set_default_device(mx::Device(mx::Device::gpu));
             gpu_enabled_ = true;
             std::cout << "MLX GPU acceleration enabled\n";
             std::cout << "Device: " << get_device_name() << "\n";
         } else {
-            mx::set_default_device(mx::Device::cpu());
+            mx::set_default_device(mx::Device(mx::Device::cpu));
             gpu_enabled_ = false;
             std::cout << "MLX running in CPU mode\n";
         }
@@ -55,8 +55,10 @@ size_t MLXConsensus::process_votes_batch(std::span<const Vote> votes) {
     }
 
     try {
-        // Convert votes to MLX array
-        mx::array input;
+        // Convert votes to MLX array. mx::array has no default ctor;
+        // preprocess_batch builds and returns it via an out-param using
+        // move-assignment from a freshly constructed array.
+        mx::array input = mx::zeros(mx::Shape{1}, mx::float32);
         preprocess_batch(votes, input);
 
         // Run forward pass on GPU
@@ -73,26 +75,30 @@ size_t MLXConsensus::process_votes_batch(std::span<const Vote> votes) {
     }
 }
 
-std::vector<bool> MLXConsensus::validate_blocks_batch(std::span<const BlockID> blocks) {
-    std::vector<bool> results(blocks.size(), true);
+std::vector<bool> MLXConsensus::validate_blocks_batch(
+    std::span<const std::array<uint8_t, 32>> block_ids) {
+    std::vector<bool> results(block_ids.size(), true);
 
-    if (blocks.empty()) {
+    if (block_ids.empty()) {
         return results;
     }
 
     try {
         // Convert block IDs to array (32 bytes each)
         std::vector<float> data;
-        data.reserve(blocks.size() * 32);
+        data.reserve(block_ids.size() * 32);
 
-        for (const auto& block_id : blocks) {
+        for (const auto& block_id : block_ids) {
             for (size_t i = 0; i < 32; ++i) {
-                data.push_back(static_cast<float>(block_id.data[i]) / 255.0f);
+                data.push_back(static_cast<float>(block_id[i]) / 255.0f);
             }
         }
 
         // Create MLX array and run validation
-        auto input = mx::array(data.data(), {static_cast<int>(blocks.size()), 32}, mx::float32);
+        auto input = mx::array(
+            data.data(),
+            mx::Shape{static_cast<int>(block_ids.size()), 32},
+            mx::float32);
         auto output = forward_pass(input);
 
         // Evaluate results on GPU
@@ -100,7 +106,7 @@ std::vector<bool> MLXConsensus::validate_blocks_batch(std::span<const BlockID> b
 
         // Convert to bool vector
         auto output_data = output.data<float>();
-        for (size_t i = 0; i < blocks.size(); ++i) {
+        for (size_t i = 0; i < block_ids.size(); ++i) {
             results[i] = output_data[i] > 0.5f;
         }
     } catch (const std::exception& e) {
@@ -115,24 +121,34 @@ size_t MLXConsensus::get_gpu_memory_usage() const {
     if (!gpu_enabled_) {
         return 0;
     }
-    return mx::metal::get_active_memory();
+    // Memory accessors moved to mlx::core in current MLX.
+    return mx::get_active_memory();
 }
 
 size_t MLXConsensus::get_peak_gpu_memory() const {
     if (!gpu_enabled_) {
         return 0;
     }
-    return mx::metal::get_peak_memory();
+    return mx::get_peak_memory();
 }
 
 void MLXConsensus::reset_peak_memory() {
     if (gpu_enabled_) {
-        mx::metal::reset_peak_memory();
+        mx::reset_peak_memory();
     }
 }
 
 std::string MLXConsensus::get_device_name() const {
-    return mx::default_device().to_string();
+    // mlx::core::Device no longer exposes to_string(); derive a label
+    // from the active DeviceType.
+    const auto& dev = mx::default_device();
+    switch (dev.type) {
+        case mx::Device::DeviceType::gpu:
+            return "Apple GPU";
+        case mx::Device::DeviceType::cpu:
+            return "CPU";
+    }
+    return "Unknown";
 }
 
 void MLXConsensus::set_profiling(bool enable) {
@@ -149,20 +165,23 @@ void MLXConsensus::set_profiling(bool enable) {
 void MLXConsensus::preprocess_batch(std::span<const Vote> votes, mx::array& out) {
     // Convert votes to normalized float array
     std::vector<float> data;
-    data.reserve(votes.size() * 64); // 32 bytes voter + 32 bytes block
+    data.reserve(votes.size() * 64); // 32 bytes node + 32 bytes block
 
     for (const auto& vote : votes) {
-        // Voter ID (32 bytes)
+        // Node ID (32 bytes) — Vote::node_id is std::array<uint8_t, 32>
         for (size_t i = 0; i < 32; ++i) {
-            data.push_back(static_cast<float>(vote.voter_id.data[i]) / 255.0f);
+            data.push_back(static_cast<float>(vote.node_id[i]) / 255.0f);
         }
-        // Block ID (32 bytes)
+        // Block ID (32 bytes) — Vote::block_id is std::array<uint8_t, 32>
         for (size_t i = 0; i < 32; ++i) {
-            data.push_back(static_cast<float>(vote.block_id.data[i]) / 255.0f);
+            data.push_back(static_cast<float>(vote.block_id[i]) / 255.0f);
         }
     }
 
-    out = mx::array(data.data(), {static_cast<int>(votes.size()), 64}, mx::float32);
+    out = mx::array(
+        data.data(),
+        mx::Shape{static_cast<int>(votes.size()), 64},
+        mx::float32);
 }
 
 mx::array MLXConsensus::forward_pass(const mx::array& input) {
@@ -170,14 +189,16 @@ mx::array MLXConsensus::forward_pass(const mx::array& input) {
     // Layer 1: input * weights + bias
     auto layer1 = mx::matmul(input, pimpl_->weights) + pimpl_->biases;
 
-    // ReLU activation
-    auto activated = mx::maximum(layer1, 0.0f);
+    // ReLU activation. mx::maximum requires two arrays; wrap the scalar
+    // threshold in a 0-D array.
+    auto activated = mx::maximum(layer1, mx::array(0.0f));
 
     // Layer 2: reduce to single output per sample
     auto layer2 = mx::mean(activated, /* axis= */ 1);
 
-    // Sigmoid activation for final probability
-    auto output = 1.0f / (1.0f + mx::exp(-layer2));
+    // Sigmoid activation for final probability. operator/(double, array)
+    // and operator+(double, array) are defined; mix double literals only.
+    auto output = 1.0 / (1.0 + mx::exp(-layer2));
 
     // Force evaluation on GPU
     mx::eval(output);
