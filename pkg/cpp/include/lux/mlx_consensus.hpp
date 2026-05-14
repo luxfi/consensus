@@ -60,11 +60,12 @@ public:
     size_t process_votes_batch(std::span<const Vote> votes);
 
     /**
-     * @brief Validate a batch of blocks on GPU
-     * @param blocks Vector of blocks to validate
+     * @brief Validate a batch of block IDs on GPU
+     * @param block_ids Vector of 32-byte block IDs to validate
      * @return Vector of validation results (true = valid)
      */
-    std::vector<bool> validate_blocks_batch(std::span<const BlockID> blocks);
+    std::vector<bool> validate_blocks_batch(
+        std::span<const std::array<uint8_t, 32>> block_ids);
 
     /**
      * @brief Check if GPU is available and active
