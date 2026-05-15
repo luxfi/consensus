@@ -10,7 +10,7 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/crypto/mldsa"
-	"github.com/luxfi/pulsar/ref/go/pkg/pulsarm"
+	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
 )
 
 // TestVerifyPQFinality_PulsarM_RealVerifyAccepts proves that
@@ -20,10 +20,10 @@ import (
 // bit-counting; this test passes only when an actual lattice
 // signature math verification succeeds.
 func TestVerifyPQFinality_PulsarM_RealVerifyAccepts(t *testing.T) {
-	params := pulsarm.ParamsP65
-	priv, err := pulsarm.GenerateKey(params, rand.Reader)
+	params := pulsar.ParamsP65
+	priv, err := pulsar.GenerateKey(params, rand.Reader)
 	if err != nil {
-		t.Fatalf("pulsarm.GenerateKey: %v", err)
+		t.Fatalf("pulsar.GenerateKey: %v", err)
 	}
 
 	w := NewVerkleWitness(1)
@@ -45,9 +45,9 @@ func TestVerifyPQFinality_PulsarM_RealVerifyAccepts(t *testing.T) {
 	}
 
 	digest := witness.SigningDigest()
-	sig, err := pulsarm.Sign(params, priv, digest[:], []byte(signingDigestCustomization), true, rand.Reader)
+	sig, err := pulsar.Sign(params, priv, digest[:], []byte(signingDigestCustomization), true, rand.Reader)
 	if err != nil {
-		t.Fatalf("pulsarm.Sign: %v", err)
+		t.Fatalf("pulsar.Sign: %v", err)
 	}
 	witness.PQSignature = sig.Bytes
 
@@ -60,10 +60,10 @@ func TestVerifyPQFinality_PulsarM_RealVerifyAccepts(t *testing.T) {
 // tampered signature is refused by the real lattice verifier — the
 // load-bearing property that closes the F109 attack chain.
 func TestVerifyPQFinality_PulsarM_TamperedSignatureRejected(t *testing.T) {
-	params := pulsarm.ParamsP65
-	priv, err := pulsarm.GenerateKey(params, rand.Reader)
+	params := pulsar.ParamsP65
+	priv, err := pulsar.GenerateKey(params, rand.Reader)
 	if err != nil {
-		t.Fatalf("pulsarm.GenerateKey: %v", err)
+		t.Fatalf("pulsar.GenerateKey: %v", err)
 	}
 
 	w := NewVerkleWitness(1)
@@ -79,9 +79,9 @@ func TestVerifyPQFinality_PulsarM_TamperedSignatureRejected(t *testing.T) {
 		Timestamp:    1700000000,
 	}
 	digest := witness.SigningDigest()
-	sig, err := pulsarm.Sign(params, priv, digest[:], []byte(signingDigestCustomization), true, rand.Reader)
+	sig, err := pulsar.Sign(params, priv, digest[:], []byte(signingDigestCustomization), true, rand.Reader)
 	if err != nil {
-		t.Fatalf("pulsarm.Sign: %v", err)
+		t.Fatalf("pulsar.Sign: %v", err)
 	}
 
 	// Flip a byte mid-signature. A real lattice verifier MUST refuse;
@@ -109,10 +109,10 @@ func TestVerifyPQFinality_PulsarM_TamperedSignatureRejected(t *testing.T) {
 // signed digest no longer matches the witness's SigningDigest(). A
 // real lattice verifier MUST refuse; a bit-count tautology accepts.
 func TestVerifyPQFinality_PulsarM_BitCountAlone_DoesNotPass(t *testing.T) {
-	params := pulsarm.ParamsP65
-	priv, err := pulsarm.GenerateKey(params, rand.Reader)
+	params := pulsar.ParamsP65
+	priv, err := pulsar.GenerateKey(params, rand.Reader)
 	if err != nil {
-		t.Fatalf("pulsarm.GenerateKey: %v", err)
+		t.Fatalf("pulsar.GenerateKey: %v", err)
 	}
 
 	w := NewVerkleWitness(1)
@@ -133,9 +133,9 @@ func TestVerifyPQFinality_PulsarM_BitCountAlone_DoesNotPass(t *testing.T) {
 	}
 
 	digestM1 := witness.SigningDigest()
-	sig, err := pulsarm.Sign(params, priv, digestM1[:], []byte(signingDigestCustomization), true, rand.Reader)
+	sig, err := pulsar.Sign(params, priv, digestM1[:], []byte(signingDigestCustomization), true, rand.Reader)
 	if err != nil {
-		t.Fatalf("pulsarm.Sign: %v", err)
+		t.Fatalf("pulsar.Sign: %v", err)
 	}
 	witness.PQSignature = sig.Bytes
 

@@ -172,7 +172,7 @@ func TestF53_ValidateRejectsZeroProfile(t *testing.T) {
 // SEVERITY: medium
 //
 // A profile that combines HashSuiteBLAKE3Legacy with FinalitySchemeID
-// SigSchemePulsarM65 (SHA-3 internal) is type-valid (both are non-zero
+// SigSchemePulsar65 (SHA-3 internal) is type-valid (both are non-zero
 // and not forbidden in PQ mode per the current Validate). But Pulsar-M
 // produces SHA3 internally; binding BLAKE3 at the transcript layer and
 // SHA-3 at the signature kernel is a configuration inconsistency that
@@ -187,7 +187,7 @@ func TestF54_Validate_CrossAxisHashSuiteVsFinality(t *testing.T) {
 		t.Skip("skipped: depends on F52")
 	}
 	p.HashSuiteID = HashSuiteBLAKE3Legacy
-	p.FinalitySchemeID = SigSchemePulsarM65 // SHA-3 internal — mismatch
+	p.FinalitySchemeID = SigSchemePulsar65 // SHA-3 internal — mismatch
 	if err := p.Validate(); err == nil {
 		t.Errorf("Validate accepted BLAKE3 transcript + Pulsar-M-65 finality; finding F54 unfixed")
 	}
