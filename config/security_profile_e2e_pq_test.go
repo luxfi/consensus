@@ -512,7 +512,7 @@ func TestChainSecurityProfile_Validate_RecoverySchemeNone_RequiresMLDSA87(t *tes
 	// recovery-fallback rule demands Cat 5, so the cross-axis gate
 	// trips.
 	q := StrictPQ()
-	q.HighValueSchemeID = SigSchemePulsarM65
+	q.HighValueSchemeID = SigSchemePulsar65
 	q.RecoverySchemeID = RecoverySchemeNone
 	if err := q.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with RecoverySchemeNone + HighValue=Pulsar-M-65 returned %v; want ErrProfileFieldInvalid", err)
