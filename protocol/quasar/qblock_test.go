@@ -91,7 +91,7 @@ func validBlock() *QBlock {
 		VerifierID:                config.VerifierP3QSTARKFRISHA3PQ,
 		HashSuiteID:               config.HashSuiteSHA3NIST,
 		IdentitySchemeID:          config.IdentitySchemeMLDSA65,
-		FinalitySchemeID:          config.SigSchemePulsarM65,
+		FinalitySchemeID:          config.SigSchemePulsar65,
 		SignerBitmapCommitment:    b48(0xAA),
 		PulsarMThresholdSignature: append([]byte{0x55}, bytes.Repeat([]byte{0xaa}, 64)...),
 	}
@@ -105,7 +105,7 @@ func validCtx() AcceptanceContext {
 		Profile: SecurityProfile{
 			ProfileID:        canonicalProfileID,
 			HashSuiteID:      config.HashSuiteSHA3NIST,
-			FinalitySchemeID: config.SigSchemePulsarM65,
+			FinalitySchemeID: config.SigSchemePulsar65,
 			ProofPolicyID:    config.ProofPolicySTARKFRISHA3PQ,
 			ProofBackendID:   config.ProofBackendP3QSTARKFRISHA3,
 		},
@@ -300,7 +300,7 @@ func TestQBlock_TranscriptHash_BindsEveryField(t *testing.T) {
 		{"ProofBackendID", func(b *QBlock) { b.ProofBackendID = config.ProofBackendSP1CompressedSTARK }},
 		{"ProofFormatID", func(b *QBlock) { b.ProofFormatID = config.ProofFormatSP1BinaryV1 }},
 		{"VerifierID", func(b *QBlock) { b.VerifierID = config.VerifierSP1CompressedSTARKPQ }},
-		{"FinalitySchemeID", func(b *QBlock) { b.FinalitySchemeID = config.SigSchemePulsarM87 }},
+		{"FinalitySchemeID", func(b *QBlock) { b.FinalitySchemeID = config.SigSchemePulsar87 }},
 	}
 	for _, tc := range cases {
 		tc := tc
@@ -344,9 +344,9 @@ func TestAcceptQBlock_HappyPath(t *testing.T) {
 
 func TestAcceptQBlock_HappyPath_PulsarM87(t *testing.T) {
 	b := validBlock()
-	b.FinalitySchemeID = config.SigSchemePulsarM87
+	b.FinalitySchemeID = config.SigSchemePulsar87
 	ctx := validCtx()
-	ctx.Profile.FinalitySchemeID = config.SigSchemePulsarM87
+	ctx.Profile.FinalitySchemeID = config.SigSchemePulsar87
 	if err := AcceptQBlock(b, ctx); err != nil {
 		t.Fatalf("AcceptQBlock Pulsar-M-87 on mainnet: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestAcceptQBlock_RefusesHashSuiteMismatch(t *testing.T) {
 func TestAcceptQBlock_RefusesFinalitySchemeMismatch(t *testing.T) {
 	b := validBlock()
 	ctx := validCtx()
-	ctx.Profile.FinalitySchemeID = config.SigSchemePulsarM87
+	ctx.Profile.FinalitySchemeID = config.SigSchemePulsar87
 	if err := AcceptQBlock(b, ctx); !errors.Is(err, ErrQBlockFinalitySchemeMismatch) {
 		t.Fatalf("got %v, want ErrQBlockFinalitySchemeMismatch", err)
 	}
@@ -545,9 +545,9 @@ func TestAcceptQBlock_RefusesHashSuiteNone(t *testing.T) {
 
 func TestAcceptQBlock_RefusesPulsarM44OnMainnet(t *testing.T) {
 	b := validBlock()
-	b.FinalitySchemeID = config.SigSchemePulsarM44
+	b.FinalitySchemeID = config.SigSchemePulsar44
 	ctx := validCtx()
-	ctx.Profile.FinalitySchemeID = config.SigSchemePulsarM44
+	ctx.Profile.FinalitySchemeID = config.SigSchemePulsar44
 	err := AcceptQBlock(b, ctx)
 	if !errors.Is(err, ErrQBlockSigSchemeRefused) {
 		t.Fatalf("got %v, want ErrQBlockSigSchemeRefused", err)
@@ -556,9 +556,9 @@ func TestAcceptQBlock_RefusesPulsarM44OnMainnet(t *testing.T) {
 
 func TestAcceptQBlock_AcceptsPulsarM44OnPermissive(t *testing.T) {
 	b := validBlock()
-	b.FinalitySchemeID = config.SigSchemePulsarM44
+	b.FinalitySchemeID = config.SigSchemePulsar44
 	ctx := validCtx()
-	ctx.Profile.FinalitySchemeID = config.SigSchemePulsarM44
+	ctx.Profile.FinalitySchemeID = config.SigSchemePulsar44
 	ctx.NetworkPolicy = NetworkPolicyPermissive
 	if err := AcceptQBlock(b, ctx); err != nil {
 		t.Fatalf("AcceptQBlock permissive Pulsar-M-44: %v", err)
