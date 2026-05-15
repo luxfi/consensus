@@ -40,10 +40,10 @@ func TestLuxStrictPQBridgeProfile_Fields(t *testing.T) {
 	if p.Name != "LUX_STRICT_PQ_BRIDGE" {
 		t.Errorf("Name = %q, want LUX_STRICT_PQ_BRIDGE", p.Name)
 	}
-	if p.SourceFinalityScheme != SigSchemePulsarM65 {
+	if p.SourceFinalityScheme != SigSchemePulsar65 {
 		t.Errorf("SourceFinalityScheme = %s, want pulsar-m-65", p.SourceFinalityScheme)
 	}
-	if p.DestFinalityScheme != SigSchemePulsarM65 {
+	if p.DestFinalityScheme != SigSchemePulsar65 {
 		t.Errorf("DestFinalityScheme = %s, want pulsar-m-65", p.DestFinalityScheme)
 	}
 	if p.ProofPolicyID != ProofPolicySTARKFRISHA3PQ {
@@ -468,7 +468,7 @@ func TestBridgeProfile_IsPostQuantumEndToEnd_Accessor(t *testing.T) {
 // against representative wire bytes so any renumbering trips CI.
 func TestBridgeProfile_HelperPredicates(t *testing.T) {
 	// sigSchemeIsPostQuantum
-	if !sigSchemeIsPostQuantum(SigSchemePulsarM65) {
+	if !sigSchemeIsPostQuantum(SigSchemePulsar65) {
 		t.Errorf("sigSchemeIsPostQuantum(PulsarM65) = false, want true")
 	}
 	if !sigSchemeIsPostQuantum(SigSchemeMLDSA65) {
@@ -481,7 +481,7 @@ func TestBridgeProfile_HelperPredicates(t *testing.T) {
 	if !sigSchemeIsClassical(SigSchemeBLS12381) {
 		t.Errorf("sigSchemeIsClassical(BLS12381) = false, want true")
 	}
-	if sigSchemeIsClassical(SigSchemePulsarM65) {
+	if sigSchemeIsClassical(SigSchemePulsar65) {
 		t.Errorf("sigSchemeIsClassical(PulsarM65) = true, want false")
 	}
 }
