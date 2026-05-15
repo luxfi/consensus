@@ -84,7 +84,7 @@ func TestAcceptsValidatorScheme_RejectsUnknownByte(t *testing.T) {
 		SigSchemeNone,
 		SigSchemeBLS12381,
 		SigSchemeMLDSA44, // PQ-positive but Cat 2 only; not the pinned identity
-		SigSchemePulsarM65,
+		SigSchemePulsar65,
 		0x91, // 0x90+ but not the named classical byte
 	} {
 		err := p.AcceptsValidatorScheme(bad, true)
