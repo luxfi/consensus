@@ -2,7 +2,7 @@
 name = "lux-consensus"
 version = "1.22.1"
 edition = "2021"
-description = "Lux Consensus SDK — pure-Rust Quasar post-quantum probabilistic consensus (Wave / FPC / Photon / Focus / Quasar PQ finality via hybrid BLS12-381 + Ringtail = P3Q)"
+description = "Lux Consensus SDK — pure-Rust Quasar post-quantum probabilistic consensus (Wave / FPC / Photon / Focus / Quasar PQ finality via hybrid BLS12-381 + Pulsar = P3Q)"
 license-file = "LICENSE"
 repository = "https://github.com/luxfi/consensus"
 homepage = "https://lux.network"

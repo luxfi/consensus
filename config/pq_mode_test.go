@@ -285,9 +285,9 @@ func TestSigSchemeID_StableIntegers(t *testing.T) {
 		{SigSchemeMLDSA44, 0x41},
 		{SigSchemeMLDSA65, 0x42},
 		{SigSchemeMLDSA87, 0x43},
-		{SigSchemePulsarM44, 0x51},
-		{SigSchemePulsarM65, 0x52}, // production default
-		{SigSchemePulsarM87, 0x53},
+		{SigSchemePulsar44, 0x51},
+		{SigSchemePulsar65, 0x52}, // production default
+		{SigSchemePulsar87, 0x53},
 	}
 	for _, c := range cases {
 		if got := uint8(c.scheme); got != c.want {
@@ -309,9 +309,9 @@ func TestSigSchemeID_String(t *testing.T) {
 		{SigSchemeMLDSA44, "ml-dsa-44"},
 		{SigSchemeMLDSA65, "ml-dsa-65"},
 		{SigSchemeMLDSA87, "ml-dsa-87"},
-		{SigSchemePulsarM44, "pulsar-m-44"},
-		{SigSchemePulsarM65, "pulsar-m-65"},
-		{SigSchemePulsarM87, "pulsar-m-87"},
+		{SigSchemePulsar44, "pulsar-m-44"},
+		{SigSchemePulsar65, "pulsar-m-65"},
+		{SigSchemePulsar87, "pulsar-m-87"},
 	}
 	for _, c := range cases {
 		if got := c.scheme.String(); got != c.want {
@@ -324,7 +324,7 @@ func TestSigSchemeID_String(t *testing.T) {
 // everything else. Pulsar-M outputs verify under unmodified FIPS 204
 // ML-DSA.Verify but are produced by a threshold protocol.
 func TestSigSchemeID_IsPulsarM(t *testing.T) {
-	pulsarM := []SigSchemeID{SigSchemePulsarM44, SigSchemePulsarM65, SigSchemePulsarM87}
+	pulsarM := []SigSchemeID{SigSchemePulsar44, SigSchemePulsar65, SigSchemePulsar87}
 	for _, s := range pulsarM {
 		if !s.IsPulsarM() {
 			t.Errorf("%q must be Pulsar-M", s.String())
@@ -353,7 +353,7 @@ func TestSigSchemeID_IsRawMLDSA(t *testing.T) {
 	}
 	notRaw := []SigSchemeID{
 		SigSchemeNone, SigSchemeBLS12381, SigSchemeNasua, SigSchemePulsarR,
-		SigSchemePulsarM44, SigSchemePulsarM65, SigSchemePulsarM87,
+		SigSchemePulsar44, SigSchemePulsar65, SigSchemePulsar87,
 	}
 	for _, s := range notRaw {
 		if s.IsRawMLDSA() {
@@ -367,7 +367,7 @@ func TestSigSchemeID_IsRawMLDSA(t *testing.T) {
 func TestSigSchemeID_VerifiesUnderFIPS204(t *testing.T) {
 	yes := []SigSchemeID{
 		SigSchemeMLDSA44, SigSchemeMLDSA65, SigSchemeMLDSA87,
-		SigSchemePulsarM44, SigSchemePulsarM65, SigSchemePulsarM87,
+		SigSchemePulsar44, SigSchemePulsar65, SigSchemePulsar87,
 	}
 	for _, s := range yes {
 		if !s.VerifiesUnderFIPS204() {
@@ -769,5 +769,44 @@ func TestPQModeFromEnv(t *testing.T) {
 	}
 	if got != PQModeQuasar {
 		t.Errorf("env=garbage: fell back to %v, want PQModeQuasar (the supplied default)", got)
+	}
+}
+
+// TestPQModeFromEnv_UnprefixedPrecedence covers the unprefixed canonical
+// CONSENSUS_PQ_MODE env name added per the "drop LUX_ prefix" directive.
+// Verifies:
+//
+//  1. CONSENSUS_PQ_MODE alone is honoured.
+//  2. CONSENSUS_PQ_MODE wins when both are set (one way: the new way takes
+//     precedence).
+//  3. Only LUX_CONSENSUS_PQ_MODE set: legacy fallback still works.
+//  4. Both unset: default returned.
+func TestPQModeFromEnv_UnprefixedPrecedence(t *testing.T) {
+	// 1. CONSENSUS_PQ_MODE alone.
+	t.Setenv("CONSENSUS_PQ_MODE", "quasar")
+	t.Setenv("LUX_CONSENSUS_PQ_MODE", "")
+	if got, err := PQModeFromEnv(PQModeBLS); err != nil || got != PQModeQuasar {
+		t.Errorf("unprefixed alone: got (%v, %v), want (PQModeQuasar, nil)", got, err)
+	}
+
+	// 2. Both set — unprefixed wins.
+	t.Setenv("CONSENSUS_PQ_MODE", "quasar")
+	t.Setenv("LUX_CONSENSUS_PQ_MODE", "bls")
+	if got, err := PQModeFromEnv(PQModeMLDSA); err != nil || got != PQModeQuasar {
+		t.Errorf("both set: got (%v, %v), want (PQModeQuasar, nil) — unprefixed must win", got, err)
+	}
+
+	// 3. Only legacy LUX_ var set: fallback honoured.
+	t.Setenv("CONSENSUS_PQ_MODE", "")
+	t.Setenv("LUX_CONSENSUS_PQ_MODE", "pulsar")
+	if got, err := PQModeFromEnv(PQModeBLS); err != nil || got != PQModePulsar {
+		t.Errorf("legacy fallback: got (%v, %v), want (PQModePulsar, nil)", got, err)
+	}
+
+	// 4. Both unset: default returned.
+	t.Setenv("CONSENSUS_PQ_MODE", "")
+	t.Setenv("LUX_CONSENSUS_PQ_MODE", "")
+	if got, err := PQModeFromEnv(PQModeQuasar); err != nil || got != PQModeQuasar {
+		t.Errorf("both unset: got (%v, %v), want (PQModeQuasar, nil)", got, err)
 	}
 }

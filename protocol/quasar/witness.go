@@ -14,7 +14,7 @@ import (
 	"github.com/luxfi/crypto/banderwagon"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	"github.com/luxfi/pulsar/ref/go/pkg/pulsarm"
+	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -282,7 +282,7 @@ func (v *VerkleWitness) verifyPQFinality(
 	if err != nil {
 		return err
 	}
-	params, err := pulsarm.ParamsFor(pulsarMode)
+	params, err := pulsar.ParamsFor(pulsarMode)
 	if err != nil {
 		return err
 	}
@@ -293,11 +293,11 @@ func (v *VerkleWitness) verifyPQFinality(
 		return errors.New("PQ group public key has wrong size for declared mode")
 	}
 
-	pub := &pulsarm.PublicKey{Mode: pulsarMode, Bytes: append([]byte(nil), groupKey...)}
-	sig := &pulsarm.Signature{Mode: pulsarMode, Bytes: append([]byte(nil), witness.PQSignature...)}
+	pub := &pulsar.PublicKey{Mode: pulsarMode, Bytes: append([]byte(nil), groupKey...)}
+	sig := &pulsar.Signature{Mode: pulsarMode, Bytes: append([]byte(nil), witness.PQSignature...)}
 	digest := witness.SigningDigest()
 
-	if err := pulsarm.VerifyCtx(params, pub, digest[:], []byte(signingDigestCustomization), sig); err != nil {
+	if err := pulsar.VerifyCtx(params, pub, digest[:], []byte(signingDigestCustomization), sig); err != nil {
 		// Re-wrap with our exported sentinel so call sites can route
 		// on errors.Is(err, ErrPulsarMVerifyFail) without depending on
 		// the pulsarm error variants.
@@ -310,16 +310,16 @@ func (v *VerkleWitness) verifyPQFinality(
 // matching luxfi/pulsar-m.Mode. Single dispatch point so the rest of
 // the consensus code can keep its mldsa.Mode-typed configuration while
 // the cryptographic verifier lives in luxfi/pulsar-m.
-func pulsarModeFromMLDSAMode(m mldsa.Mode) (pulsarm.Mode, error) {
+func pulsarModeFromMLDSAMode(m mldsa.Mode) (pulsar.Mode, error) {
 	switch m {
 	case mldsa.MLDSA44:
-		return pulsarm.ModeP44, nil
+		return pulsar.ModeP44, nil
 	case mldsa.MLDSA65:
-		return pulsarm.ModeP65, nil
+		return pulsar.ModeP65, nil
 	case mldsa.MLDSA87:
-		return pulsarm.ModeP87, nil
+		return pulsar.ModeP87, nil
 	default:
-		return pulsarm.ModeUnspecified, errors.New("unknown ML-DSA mode")
+		return pulsar.ModeUnspecified, errors.New("unknown ML-DSA mode")
 	}
 }
 

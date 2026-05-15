@@ -221,8 +221,8 @@ func (em *EpochManager) InitializeEpoch(validators []string) (*EpochKeys, error)
 	era, err := keyera.Bootstrap(
 		em.threshold,
 		validators,
-		keyera.PulsarGroupID(0),
-		keyera.PulsarKeyEraID(1), // EraID 0 is reserved as "unset"
+		keyera.CoronaGroupID(0),
+		keyera.CoronaKeyEraID(1), // EraID 0 is reserved as "unset"
 		nil,                      // crypto/rand.Reader
 	)
 	if err != nil {
@@ -487,8 +487,8 @@ func (em *EpochManager) reshareEpochKeys(epoch uint64, validators []string, thre
 		era, err := keyera.Bootstrap(
 			threshold,
 			validators,
-			keyera.PulsarGroupID(0),
-			keyera.PulsarKeyEraID(1),
+			keyera.CoronaGroupID(0),
+			keyera.CoronaKeyEraID(1),
 			nil,
 		)
 		if err != nil {

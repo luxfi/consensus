@@ -259,7 +259,7 @@ func TestChainSecurityProfile_Validate_RejectsNoForbidFlags(t *testing.T) {
 // devnet-only Pulsar-M-44 cannot be the high-value scheme.
 func TestChainSecurityProfile_Validate_RejectsM44HighValue(t *testing.T) {
 	p := StrictPQ()
-	p.HighValueSchemeID = SigSchemePulsarM44
+	p.HighValueSchemeID = SigSchemePulsar44
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with HighValueSchemeID=Pulsar-M-44 returned %v; want ErrProfileFieldInvalid", err)
 	}
@@ -280,7 +280,7 @@ func TestChainSecurityProfile_Validate_RejectsRawMLDSAFinality(t *testing.T) {
 // single-party.
 func TestChainSecurityProfile_Validate_RejectsThresholdIdentity(t *testing.T) {
 	p := StrictPQ()
-	p.IdentitySchemeID = SigSchemePulsarM65
+	p.IdentitySchemeID = SigSchemePulsar65
 	if err := p.Validate(); !errors.Is(err, ErrProfileFieldInvalid) {
 		t.Errorf("Validate() with Pulsar-M-65 identity returned %v; want ErrProfileFieldInvalid", err)
 	}
@@ -500,8 +500,8 @@ func TestChainSecurityProfile_ComputeHash_DiffersByField(t *testing.T) {
 		{"ProfileName", func(p *ChainSecurityProfile) { p.ProfileName = "OTHER" }},
 		{"HashSuiteID", func(p *ChainSecurityProfile) { p.HashSuiteID = HashSuiteBLAKE3Legacy }},
 		{"IdentitySchemeID", func(p *ChainSecurityProfile) { p.IdentitySchemeID = SigSchemeMLDSA87 }},
-		{"FinalitySchemeID", func(p *ChainSecurityProfile) { p.FinalitySchemeID = SigSchemePulsarM87 }},
-		{"HighValueSchemeID", func(p *ChainSecurityProfile) { p.HighValueSchemeID = SigSchemePulsarM65 }},
+		{"FinalitySchemeID", func(p *ChainSecurityProfile) { p.FinalitySchemeID = SigSchemePulsar87 }},
+		{"HighValueSchemeID", func(p *ChainSecurityProfile) { p.HighValueSchemeID = SigSchemePulsar65 }},
 		// Mutating ProofPolicyID to STARK_FRI_Keccak keeps Validate happy
 		// (still PQ-positive, still not forbidden) and changes the hash.
 		{"ProofPolicyID", func(p *ChainSecurityProfile) { p.ProofPolicyID = ProofPolicySTARKFRIKeccak }},
@@ -575,10 +575,10 @@ func TestStrictPQProfile_NoOperatorFootguns(t *testing.T) {
 	if p.IdentitySchemeID != SigSchemeMLDSA65 {
 		t.Errorf("IdentitySchemeID = %s; StrictPQ pins ML-DSA-65", p.IdentitySchemeID.String())
 	}
-	if p.FinalitySchemeID != SigSchemePulsarM65 {
+	if p.FinalitySchemeID != SigSchemePulsar65 {
 		t.Errorf("FinalitySchemeID = %s; StrictPQ pins Pulsar-M-65", p.FinalitySchemeID.String())
 	}
-	if p.HighValueSchemeID != SigSchemePulsarM87 {
+	if p.HighValueSchemeID != SigSchemePulsar87 {
 		t.Errorf("HighValueSchemeID = %s; StrictPQ pins Pulsar-M-87 for governance", p.HighValueSchemeID.String())
 	}
 	if p.ProofPolicyID != ProofPolicySTARKFRISHA3PQ {
