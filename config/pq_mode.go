@@ -305,9 +305,9 @@ const (
 	SigSchemeMLDSA87 SigSchemeID = 0x43
 
 	// Pulsar-M threshold (M-LWE, output-interchangeable with FIPS 204).
-	SigSchemePulsarM44 SigSchemeID = 0x51
-	SigSchemePulsarM65 SigSchemeID = 0x52 // production default
-	SigSchemePulsarM87 SigSchemeID = 0x53
+	SigSchemePulsar44 SigSchemeID = 0x51
+	SigSchemePulsar65 SigSchemeID = 0x52 // production default
+	SigSchemePulsar87 SigSchemeID = 0x53
 )
 
 // String returns the canonical wire name of the signature scheme.
@@ -327,11 +327,11 @@ func (s SigSchemeID) String() string {
 		return "ml-dsa-65"
 	case SigSchemeMLDSA87:
 		return "ml-dsa-87"
-	case SigSchemePulsarM44:
+	case SigSchemePulsar44:
 		return "pulsar-m-44"
-	case SigSchemePulsarM65:
+	case SigSchemePulsar65:
 		return "pulsar-m-65"
-	case SigSchemePulsarM87:
+	case SigSchemePulsar87:
 		return "pulsar-m-87"
 	default:
 		return fmt.Sprintf("sig-scheme(0x%02x)", uint8(s))
@@ -343,9 +343,9 @@ func (s SigSchemeID) String() string {
 // ML-DSA.Verify; the threshold protocol that produced them is what this
 // flag separates from raw ML-DSA.
 func (s SigSchemeID) IsPulsarM() bool {
-	return s == SigSchemePulsarM44 ||
-		s == SigSchemePulsarM65 ||
-		s == SigSchemePulsarM87
+	return s == SigSchemePulsar44 ||
+		s == SigSchemePulsar65 ||
+		s == SigSchemePulsar87
 }
 
 // IsRawMLDSA reports whether this scheme is in the raw single-party
@@ -679,10 +679,20 @@ func ParsePQMode(s string) (PQMode, error) {
 	}
 }
 
-// PQModeFromEnv reads LUX_CONSENSUS_PQ_MODE and returns the resolved mode.
+// PQModeFromEnv resolves the consensus PQ mode from environment variables.
+//
+// Reads CONSENSUS_PQ_MODE first (canonical, unprefixed per the "drop the
+// LUX_ prefix" directive); falls through to the legacy LUX_CONSENSUS_PQ_MODE
+// for back-compat with running validators that still ship the old name in
+// their k8s manifests. If both are set, CONSENSUS_PQ_MODE wins (one way:
+// the new way takes precedence).
+//
 // Empty / unset returns the supplied default. Invalid values return def + error.
 func PQModeFromEnv(def PQMode) (PQMode, error) {
-	v := os.Getenv("LUX_CONSENSUS_PQ_MODE")
+	v := os.Getenv("CONSENSUS_PQ_MODE")
+	if v == "" {
+		v = os.Getenv("LUX_CONSENSUS_PQ_MODE")
+	}
 	if v == "" {
 		return def, nil
 	}
