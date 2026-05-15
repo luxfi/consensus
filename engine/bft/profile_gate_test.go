@@ -79,7 +79,7 @@ func minimalEpoch(s bft.Signer, v bft.SignatureVerifier) *bft.Epoch {
 // leader-rotation kernel on a strict-PQ chain is the silent-classical-
 // signing-under-PQ-banner attack.
 func TestBFTEngine_RefusesClassicalSignerUnderStrictPQ(t *testing.T) {
-	epoch := minimalEpoch(classicalSigner{}, pqVerifier{scheme: config.SigSchemePulsarM65})
+	epoch := minimalEpoch(classicalSigner{}, pqVerifier{scheme: config.SigSchemePulsar65})
 	_, err := NewEngineWithProfile(epoch, config.StrictPQ())
 	if !errors.Is(err, ErrClassicalSignerUnderStrictPQ) {
 		t.Fatalf("NewEngineWithProfile(strict, classical signer) = %v, want ErrClassicalSignerUnderStrictPQ", err)
@@ -91,7 +91,7 @@ func TestBFTEngine_RefusesClassicalSignerUnderStrictPQ(t *testing.T) {
 // PQ signer with a classical verifier still has the verify-path leaking
 // classical primitives; refuse it at construction.
 func TestBFTEngine_RefusesClassicalVerifierUnderStrictPQ(t *testing.T) {
-	epoch := minimalEpoch(pqSigner{scheme: config.SigSchemePulsarM65}, classicalVerifier{})
+	epoch := minimalEpoch(pqSigner{scheme: config.SigSchemePulsar65}, classicalVerifier{})
 	_, err := NewEngineWithProfile(epoch, config.StrictPQ())
 	if !errors.Is(err, ErrClassicalVerifierUnderStrictPQ) {
 		t.Fatalf("NewEngineWithProfile(strict, classical verifier) = %v, want ErrClassicalVerifierUnderStrictPQ", err)
@@ -101,7 +101,7 @@ func TestBFTEngine_RefusesClassicalVerifierUnderStrictPQ(t *testing.T) {
 // TestBFTEngine_RefusesClassicalSignerUnderFIPS — FIPS is the strict
 // superset; refuse classical signers there too.
 func TestBFTEngine_RefusesClassicalSignerUnderFIPS(t *testing.T) {
-	epoch := minimalEpoch(classicalSigner{}, pqVerifier{scheme: config.SigSchemePulsarM65})
+	epoch := minimalEpoch(classicalSigner{}, pqVerifier{scheme: config.SigSchemePulsar65})
 	_, err := NewEngineWithProfile(epoch, config.FIPS())
 	if !errors.Is(err, ErrClassicalSignerUnderStrictPQ) {
 		t.Fatalf("NewEngineWithProfile(fips, classical signer) = %v, want ErrClassicalSignerUnderStrictPQ", err)
@@ -112,8 +112,8 @@ func TestBFTEngine_RefusesClassicalSignerUnderFIPS(t *testing.T) {
 // verifier both implement the PQ marker and agree on scheme.
 func TestBFTEngine_AcceptsPQUnderStrictPQ(t *testing.T) {
 	epoch := minimalEpoch(
-		pqSigner{scheme: config.SigSchemePulsarM65},
-		pqVerifier{scheme: config.SigSchemePulsarM65},
+		pqSigner{scheme: config.SigSchemePulsar65},
+		pqVerifier{scheme: config.SigSchemePulsar65},
 	)
 	e, err := NewEngineWithProfile(epoch, config.StrictPQ())
 	if err != nil {
@@ -129,8 +129,8 @@ func TestBFTEngine_AcceptsPQUnderStrictPQ(t *testing.T) {
 // catches at construction.
 func TestBFTEngine_RefusesPQSchemeMismatch(t *testing.T) {
 	epoch := minimalEpoch(
-		pqSigner{scheme: config.SigSchemePulsarM65},
-		pqVerifier{scheme: config.SigSchemePulsarM87},
+		pqSigner{scheme: config.SigSchemePulsar65},
+		pqVerifier{scheme: config.SigSchemePulsar87},
 	)
 	_, err := NewEngineWithProfile(epoch, config.StrictPQ())
 	if !errors.Is(err, ErrPQSchemeMismatch) {

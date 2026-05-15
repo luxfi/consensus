@@ -4,7 +4,7 @@
 //! # Lux Consensus Rust SDK
 //!
 //! Complete Quasar consensus implementation with Wave, FPC, Photon, Focus protocols.
-//! Full post-quantum support via Ringtail hybrid signatures.
+//! Full post-quantum support via Pulsar (Module-LWE threshold) hybrid signatures.
 //!
 //! ## Features
 //!
@@ -12,7 +12,7 @@
 //! - **FPC**: Fast Probabilistic Consensus via PRF-derived thresholds
 //! - **Photon**: Light-based validator sampling with luminance tracking
 //! - **Focus**: Confidence accumulation through β consecutive rounds
-//! - **Quasar**: Post-quantum finality with hybrid BLS + Ringtail signatures
+//! - **Quasar**: Post-quantum finality with hybrid BLS + Pulsar signatures
 //!
 //! ## Example
 //!
