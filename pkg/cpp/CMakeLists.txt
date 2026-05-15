@@ -15,8 +15,24 @@ if(PkgConfig_FOUND)
     pkg_check_modules(ZEROMQ QUIET libzmq)
 endif()
 
-# Optional: Find MLX for GPU acceleration
+# Optional: Find MLX for GPU acceleration. Upstream MLXConfig.cmake
+# exports a lowercase imported target `mlx`, NOT `MLX::MLX`. We resolve
+# whichever is actually exported and fall back to disabling the GPU
+# path on hosts where MLX is partially installed (target absent).
+# Homebrew installs MLXConfig.cmake under /usr/local/share/cmake/MLX
+# (Intel) or /opt/homebrew/share/cmake/MLX (Apple Silicon); add both.
+list(APPEND CMAKE_PREFIX_PATH /usr/local /opt/homebrew)
 find_package(MLX QUIET)
+set(MLX_TARGET)
+if(TARGET MLX::MLX)
+    set(MLX_TARGET MLX::MLX)
+elseif(TARGET mlx)
+    set(MLX_TARGET mlx)
+endif()
+if(MLX_FOUND AND NOT MLX_TARGET)
+    set(MLX_FOUND FALSE)
+    message(STATUS "MLX detected but no imported target found; GPU path disabled.")
+endif()
 
 # Library sources (matching Go implementation structure)
 set(SOURCES
@@ -64,7 +80,7 @@ target_compile_options(lux_consensus PRIVATE
 # MLX support
 if(MLX_FOUND)
     target_compile_definitions(lux_consensus PUBLIC HAS_MLX)
-    target_link_libraries(lux_consensus PRIVATE MLX::MLX)
+    target_link_libraries(lux_consensus PRIVATE ${MLX_TARGET})
 endif()
 
 # Build examples (optional - may have linking issues)
