@@ -44,9 +44,9 @@ func TestSigSchemeID_StableIntegers(t *testing.T) {
 		{SigSchemeBLS12381, 0x10},
 		{SigSchemeNasua, 0x20},
 		{SigSchemePulsarR, 0x30},
-		{SigSchemePulsarM44, 0x41},
-		{SigSchemePulsarM65, 0x42}, // production default
-		{SigSchemePulsarM87, 0x43},
+		{SigSchemePulsar44, 0x41},
+		{SigSchemePulsar65, 0x42}, // production default
+		{SigSchemePulsar87, 0x43},
 	}
 	for _, c := range cases {
 		if uint8(c.scheme) != c.want {
@@ -65,9 +65,9 @@ func TestSigSchemeID_String(t *testing.T) {
 		{SigSchemeBLS12381, "bls12-381"},
 		{SigSchemeNasua, "nasua"},
 		{SigSchemePulsarR, "pulsar-r"},
-		{SigSchemePulsarM44, "pulsar-m-44"},
-		{SigSchemePulsarM65, "pulsar-m-65"},
-		{SigSchemePulsarM87, "pulsar-m-87"},
+		{SigSchemePulsar44, "pulsar-m-44"},
+		{SigSchemePulsar65, "pulsar-m-65"},
+		{SigSchemePulsar87, "pulsar-m-87"},
 	}
 	for _, c := range cases {
 		if got := c.scheme.String(); got != c.want {
