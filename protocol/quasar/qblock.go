@@ -570,7 +570,7 @@ func AcceptQBlock(b *QBlock, ctx AcceptanceContext) error {
 	switch ctx.NetworkPolicy {
 	case NetworkPolicyStrictPQ:
 		// Mainnet: Pulsar-M-65 or Pulsar-M-87 only. M-44 is devnet-only.
-		if b.FinalitySchemeID != config.SigSchemePulsarM65 && b.FinalitySchemeID != config.SigSchemePulsarM87 {
+		if b.FinalitySchemeID != config.SigSchemePulsar65 && b.FinalitySchemeID != config.SigSchemePulsar87 {
 			return fmt.Errorf("%w: strict-PQ accepts Pulsar-M-65/M-87, got %s",
 				ErrQBlockSigSchemeRefused, b.FinalitySchemeID.String())
 		}
