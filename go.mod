@@ -86,6 +86,7 @@ require (
 	github.com/luxfi/concurrent v0.0.3 // indirect
 	github.com/luxfi/constants v1.4.3 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
+	github.com/luxfi/crypto/ipa v1.2.4 // indirect
 	github.com/luxfi/geth v1.16.73 // indirect
 	github.com/luxfi/lens v0.1.3 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect

@@ -267,8 +267,8 @@ func (gem *GroupedEpochManager) generateGroupKeys(index int, validators []string
 	era, err := keyera.Bootstrap(
 		t,
 		validators,
-		keyera.PulsarGroupID(index),
-		keyera.PulsarKeyEraID(1),
+		keyera.CoronaGroupID(index),
+		keyera.CoronaKeyEraID(1),
 		nil,
 	)
 	if err != nil {
@@ -358,16 +358,34 @@ func (gem *GroupedEpochManager) VerifyGroupedSignature(gs *GroupedSignature) (bo
 			len(gs.GroupSignatures), gem.groupQuorum)
 	}
 
-	// Verify each group signature
-	validGroups := 0
+	// Verify all group signatures in parallel via coronaThreshold.VerifyBatch.
+	// Build (groupKey, message, sig) triples up-front; skip any signature
+	// whose groupIdx is out of bounds (treated as missing, not failed —
+	// the quorum check below decides liveness).
+	gks := make([]*coronaThreshold.GroupKey, 0, len(gs.GroupSignatures))
+	msgs := make([]string, 0, len(gs.GroupSignatures))
+	sigs := make([]*coronaThreshold.Signature, 0, len(gs.GroupSignatures))
 	for groupIdx, sig := range gs.GroupSignatures {
 		if groupIdx < 0 || groupIdx >= len(gem.groups) {
 			continue
 		}
+		gks = append(gks, gem.groups[groupIdx].GroupKey)
+		msgs = append(msgs, gs.Message)
+		sigs = append(sigs, sig)
+	}
 
-		group := gem.groups[groupIdx]
-		if coronaThreshold.Verify(group.GroupKey, gs.Message, sig) {
-			validGroups++
+	validGroups := 0
+	if len(sigs) > 0 {
+		results, err := coronaThreshold.VerifyBatch(gks, msgs, sigs)
+		if err != nil {
+			// Slice lens are equal by construction; surface unexpected
+			// errors closed.
+			return false, fmt.Errorf("VerifyGroupedSignature: %w", err)
+		}
+		for _, ok := range results {
+			if ok {
+				validGroups++
+			}
 		}
 	}
 

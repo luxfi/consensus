@@ -29,7 +29,7 @@ import (
 
 	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/pulsar/ref/go/pkg/pulsarm"
+	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -42,27 +42,27 @@ type RoundResult struct {
 	Item []byte
 	// GroupPubkey is the Pulsar group public key (FIPS 204 ML-DSA
 	// public key format) under which the signature verifies.
-	GroupPubkey *pulsarm.PublicKey
+	GroupPubkey *pulsar.PublicKey
 	// Signature is the FIPS 204 ML-DSA signature bytes -- byte-equal
 	// to what a single-party FIPS 204 signer would emit on the same
 	// (group pubkey, item) pair.
-	Signature *pulsarm.Signature
+	Signature *pulsar.Signature
 	// Committee is the K-validator sample that produced the
 	// signature, in canonical NodeID order.
-	Committee []pulsarm.NodeID
+	Committee []pulsar.NodeID
 }
 
 // RoundSigner drives one Lux round of Pulsar (T, K) threshold
 // signing using a Prism.Cut to pick the K-validator committee.
 type RoundSigner struct {
-	Params    *pulsarm.Params
+	Params    *pulsar.Params
 	Cut       prism.Cut[ids.NodeID] // K-sampler over the validator pool
 	K         int                   // Sample size
 	Threshold int                   // T -- minimum honest signers to combine
 	// Shares maps each potential validator NodeID to its Pulsar
 	// KeyShare. The K-sample pulls from this map; missing entries
 	// cause that validator to be skipped (it cannot contribute).
-	Shares map[ids.NodeID]*pulsarm.KeyShare
+	Shares map[ids.NodeID]*pulsar.KeyShare
 	// PrecompileCtx is the FIPS 204 context string the resulting
 	// signature is bound to. Pass `[]byte("lux-evm-precompile-pulsar-v1")`
 	// for on-chain Pulsar precompile verification; pass a different
@@ -89,10 +89,10 @@ func (s *RoundSigner) RunRound(ctx context.Context, item []byte) (*RoundResult, 
 	}
 
 	// Translate to Pulsar NodeIDs and collect shares.
-	committee := make([]pulsarm.NodeID, 0, len(sampled))
-	allShares := make([]*pulsarm.KeyShare, 0, len(sampled))
+	committee := make([]pulsar.NodeID, 0, len(sampled))
+	allShares := make([]*pulsar.KeyShare, 0, len(sampled))
 	for _, id := range sampled {
-		var pid pulsarm.NodeID
+		var pid pulsar.NodeID
 		copy(pid[:], id[:])
 		share, ok := s.Shares[id]
 		if !ok {
@@ -124,20 +124,20 @@ func (s *RoundSigner) RunRound(ctx context.Context, item []byte) (*RoundResult, 
 	h.Write(committee[0][:])
 	copy(sessionID[:], h.Sum(nil))
 
-	// Reverse map: pulsarm.NodeID -> ids.NodeID via byte copy, used
+	// Reverse map: pulsar.NodeID -> ids.NodeID via byte copy, used
 	// to look up the share-owner's KeyShare. Both types alias to a
 	// 32-byte array but Go's type system requires an explicit copy.
-	idsByPulsarID := make(map[pulsarm.NodeID]ids.NodeID, len(committee))
+	idsByPulsarID := make(map[pulsar.NodeID]ids.NodeID, len(committee))
 	for id := range s.Shares {
-		var pid pulsarm.NodeID
+		var pid pulsar.NodeID
 		copy(pid[:], id[:])
 		idsByPulsarID[pid] = id
 	}
 
 	// Spin up a ThresholdSigner per quorum member.
-	signers := make([]*pulsarm.ThresholdSigner, s.Threshold)
+	signers := make([]*pulsar.ThresholdSigner, s.Threshold)
 	for i := 0; i < s.Threshold; i++ {
-		ts, err := pulsarm.NewThresholdSigner(
+		ts, err := pulsar.NewThresholdSigner(
 			s.Params, sessionID, 0, quorum,
 			s.Shares[idsByPulsarID[quorum[i]]], item, rand.Reader,
 		)
@@ -148,7 +148,7 @@ func (s *RoundSigner) RunRound(ctx context.Context, item []byte) (*RoundResult, 
 	}
 
 	// Round 1 -- commits + MACs.
-	r1 := make([]*pulsarm.Round1Message, s.Threshold)
+	r1 := make([]*pulsar.Round1Message, s.Threshold)
 	for i, ts := range signers {
 		m, err := ts.Round1(item)
 		if err != nil {
@@ -158,7 +158,7 @@ func (s *RoundSigner) RunRound(ctx context.Context, item []byte) (*RoundResult, 
 	}
 
 	// Round 2 -- reveals.
-	r2 := make([]*pulsarm.Round2Message, s.Threshold)
+	r2 := make([]*pulsar.Round2Message, s.Threshold)
 	for i, ts := range signers {
 		m, _, err := ts.Round2(r1)
 		if err != nil {
@@ -170,7 +170,7 @@ func (s *RoundSigner) RunRound(ctx context.Context, item []byte) (*RoundResult, 
 	// Combine -- single FIPS 204 ML-DSA signature output. Pass the
 	// caller's precompile / verifier context so the signature is
 	// bound to its intended verifier.
-	sig, err := pulsarm.Combine(
+	sig, err := pulsar.Combine(
 		s.Params, groupPK, item, s.PrecompileCtx, false,
 		sessionID, 0, quorum, s.Threshold, r1, r2, allShares,
 	)

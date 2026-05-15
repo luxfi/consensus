@@ -589,7 +589,7 @@ func (p *ChainSecurityProfile) validateStructural() error {
 
 	// High-value scheme — Pulsar-M-65 or Pulsar-M-87 only. M-44 is
 	// devnet-only at NIST PQ Cat 2; high-value roots MUST sit at Cat 3+.
-	if p.HighValueSchemeID != SigSchemePulsarM65 && p.HighValueSchemeID != SigSchemePulsarM87 {
+	if p.HighValueSchemeID != SigSchemePulsar65 && p.HighValueSchemeID != SigSchemePulsar87 {
 		return fmt.Errorf("%w: HighValueSchemeID=%s — high-value roots require Pulsar-M-65 or Pulsar-M-87 (NIST PQ Cat 3+)",
 			ErrProfileFieldInvalid, p.HighValueSchemeID.String())
 	}
@@ -746,7 +746,7 @@ func (p *ChainSecurityProfile) validateStructural() error {
 	// Lives in validateStructural (not validatePolicy) because the rule
 	// is a hard cross-axis presence check, not a profile-class policy.
 	if p.RecoverySchemeID == RecoverySchemeNone &&
-		p.HighValueSchemeID != SigSchemePulsarM87 &&
+		p.HighValueSchemeID != SigSchemePulsar87 &&
 		p.HighValueSchemeID != SigSchemeMLDSA87 {
 		return fmt.Errorf("%w: RecoverySchemeNone requires HighValueSchemeID ∈ {Pulsar-M-87, ML-DSA-87}; got %s",
 			ErrProfileFieldInvalid, p.HighValueSchemeID.String())
