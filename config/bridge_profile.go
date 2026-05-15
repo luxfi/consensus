@@ -422,8 +422,8 @@ func (p *BridgeProfile) RefusePairingPrecompile() error {
 var StrictPQBridgeProfile = BridgeProfile{
 	ProfileID:               uint32(BridgeProfileIDLuxStrictPQ),
 	Name:                    "LUX_STRICT_PQ_BRIDGE",
-	SourceFinalityScheme:    SigSchemePulsarM65,
-	DestFinalityScheme:      SigSchemePulsarM65,
+	SourceFinalityScheme:    SigSchemePulsar65,
+	DestFinalityScheme:      SigSchemePulsar65,
 	ProofPolicyID:           ProofPolicySTARKFRISHA3PQ,
 	BridgeAdminScheme:       ContractAuthMLDSA87,
 	BridgePauseScheme:       ContractAuthMultisigMLDSA,
@@ -459,7 +459,7 @@ var BridgeClassicalCompat = BridgeProfile{
 	ProfileID:               uint32(BridgeProfileIDClassicalCompat),
 	Name:                    "BRIDGE_CLASSICAL_COMPAT_UNSAFE",
 	SourceFinalityScheme:    SigSchemeBLS12381, // classical aggregate (Ethereum / Avalanche)
-	DestFinalityScheme:      SigSchemePulsarM65,
+	DestFinalityScheme:      SigSchemePulsar65,
 	ProofPolicyID:           ProofPolicySTARKFRISHA3PQ, // destination-side verifier stays PQ
 	BridgeAdminScheme:       ContractAuthECDSAUnsafe,
 	BridgePauseScheme:       ContractAuthECDSAUnsafe,
