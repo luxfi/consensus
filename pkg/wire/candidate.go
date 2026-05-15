@@ -347,9 +347,9 @@ const (
 	SigSchemeBLS12381  SigSchemeID = 0x10
 	SigSchemeNasua     SigSchemeID = 0x20
 	SigSchemePulsarR   SigSchemeID = 0x30
-	SigSchemePulsarM44 SigSchemeID = 0x41
-	SigSchemePulsarM65 SigSchemeID = 0x42 // production default
-	SigSchemePulsarM87 SigSchemeID = 0x43
+	SigSchemePulsar44 SigSchemeID = 0x41
+	SigSchemePulsar65 SigSchemeID = 0x42 // production default
+	SigSchemePulsar87 SigSchemeID = 0x43
 )
 
 // String returns the canonical wire name of the signature scheme.
@@ -363,11 +363,11 @@ func (s SigSchemeID) String() string {
 		return "nasua"
 	case SigSchemePulsarR:
 		return "pulsar-r"
-	case SigSchemePulsarM44:
+	case SigSchemePulsar44:
 		return "pulsar-m-44"
-	case SigSchemePulsarM65:
+	case SigSchemePulsar65:
 		return "pulsar-m-65"
-	case SigSchemePulsarM87:
+	case SigSchemePulsar87:
 		return "pulsar-m-87"
 	default:
 		return "sig-scheme(unknown)"
