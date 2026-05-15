@@ -35,8 +35,8 @@ var StrictPQProfile = ChainSecurityProfile{
 	ProfileName:       ProfileNameStrictPQ,
 	HashSuiteID:       HashSuiteSHA3NIST,
 	IdentitySchemeID:  SigSchemeMLDSA65,
-	FinalitySchemeID:  SigSchemePulsarM65,
-	HighValueSchemeID: SigSchemePulsarM87,
+	FinalitySchemeID:  SigSchemePulsar65,
+	HighValueSchemeID: SigSchemePulsar87,
 	ProofPolicyID:     ProofPolicySTARKFRISHA3PQ,
 	AllowedProofBackends: []ProofBackendID{
 		ProofBackendSP1CompressedSTARK,
@@ -93,8 +93,8 @@ var PermissiveProfile = ChainSecurityProfile{
 	ProfileName:       ProfileNamePermissive,
 	HashSuiteID:       HashSuiteSHA3NIST,
 	IdentitySchemeID:  SigSchemeMLDSA65,
-	FinalitySchemeID:  SigSchemePulsarM65,
-	HighValueSchemeID: SigSchemePulsarM65,
+	FinalitySchemeID:  SigSchemePulsar65,
+	HighValueSchemeID: SigSchemePulsar65,
 	ProofPolicyID:     ProofPolicySTARKFRISHA3PQ,
 	AllowedProofBackends: []ProofBackendID{
 		ProofBackendSP1CompressedSTARK,
@@ -157,8 +157,8 @@ var FIPSProfile = ChainSecurityProfile{
 	ProfileName:       ProfileNameFIPS,
 	HashSuiteID:       HashSuiteSHA3NIST,
 	IdentitySchemeID:  SigSchemeMLDSA65,
-	FinalitySchemeID:  SigSchemePulsarM65,
-	HighValueSchemeID: SigSchemePulsarM87,
+	FinalitySchemeID:  SigSchemePulsar65,
+	HighValueSchemeID: SigSchemePulsar87,
 	ProofPolicyID:     ProofPolicySTARKFRISHA3PQ,
 	AllowedProofBackends: []ProofBackendID{
 		ProofBackendP3QSTARKFRISHA3,
@@ -224,8 +224,8 @@ var ForkClassicalCompatUnsafeProfile = ChainSecurityProfile{
 	ProfileName:       "FORK_CLASSICAL_COMPAT_UNSAFE",
 	HashSuiteID:       HashSuiteSHA3NIST,
 	IdentitySchemeID:  SigSchemeMLDSA65,
-	FinalitySchemeID:  SigSchemePulsarM65,
-	HighValueSchemeID: SigSchemePulsarM87,
+	FinalitySchemeID:  SigSchemePulsar65,
+	HighValueSchemeID: SigSchemePulsar87,
 	ProofPolicyID:     ProofPolicySTARKFRIKeccak,
 	AllowedProofBackends: []ProofBackendID{
 		ProofBackendP3QSTARKFRISHA3,
