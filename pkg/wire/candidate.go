@@ -343,10 +343,10 @@ func (h HashSuiteID) String() string {
 type SigSchemeID uint8
 
 const (
-	SigSchemeNone      SigSchemeID = 0x00
-	SigSchemeBLS12381  SigSchemeID = 0x10
-	SigSchemeNasua     SigSchemeID = 0x20
-	SigSchemePulsarR   SigSchemeID = 0x30
+	SigSchemeNone     SigSchemeID = 0x00
+	SigSchemeBLS12381 SigSchemeID = 0x10
+	SigSchemeNasua    SigSchemeID = 0x20
+	SigSchemePulsarR  SigSchemeID = 0x30
 	SigSchemePulsar44 SigSchemeID = 0x41
 	SigSchemePulsar65 SigSchemeID = 0x42 // production default
 	SigSchemePulsar87 SigSchemeID = 0x43
