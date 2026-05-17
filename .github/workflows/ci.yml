@@ -27,11 +27,25 @@ jobs:
 
 
       - name: Get dependencies
+        env:
+          GOWORK: 'off'
         run: go mod download
 
       - name: Run tests
         timeout-minutes: 20
+        env:
+          GOWORK: 'off'
         run: go test -v -race -timeout=15m -coverprofile=coverage.txt -covermode=atomic ./...
+
+      - name: Coverage floor gate (must stay ≥ 60%)
+        run: |
+          PCT=$(go tool cover -func=coverage.txt | tail -1 | awk '{print $3}' | tr -d '%')
+          DROP=$(awk -v p="$PCT" 'BEGIN { print (p < 60.0) ? 1 : 0 }')
+          if [ "$DROP" = "1" ]; then
+            echo "::error::Coverage dropped to $PCT% (floor 60%)"
+            exit 2
+          fi
+          echo "Coverage: $PCT% (floor 60%)"
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
