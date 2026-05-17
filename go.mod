@@ -9,7 +9,7 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 require (
 	github.com/luxfi/accel v1.0.7
 	github.com/luxfi/bft v0.1.5
-	github.com/luxfi/corona v0.3.0
+	github.com/luxfi/corona v0.4.0
 	github.com/luxfi/crypto v1.19.0
 	github.com/luxfi/database v1.18.3
 	github.com/luxfi/ids v1.2.9
@@ -18,7 +18,7 @@ require (
 	github.com/luxfi/math v1.4.0
 	github.com/luxfi/metric v1.5.0
 	github.com/luxfi/p2p v1.18.9
-	github.com/luxfi/pulsar v1.0.3
+	github.com/luxfi/pulsar v1.0.5
 	github.com/luxfi/runtime v1.0.0
 	github.com/luxfi/threshold v1.6.8
 	github.com/luxfi/validators v1.0.0
