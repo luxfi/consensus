@@ -103,9 +103,6 @@ type Runtime struct {
 	// WarpSigner provides BLS signing for Warp messages
 	WarpSigner WarpSigner
 
-	// NetworkUpgrades contains upgrade activation times
-	NetworkUpgrades NetworkUpgrades
-
 	// Lock for thread-safe access to runtime fields
 	Lock sync.RWMutex
 }
@@ -162,25 +159,6 @@ type SharedMemory interface {
 // Matches warp.Signer interface exactly.
 type WarpSigner = warp.Signer
 
-// NetworkUpgrades contains network upgrade activation times.
-// Matches upgrade.Config methods exactly.
-type NetworkUpgrades interface {
-	IsApricotPhase1Activated(timestamp time.Time) bool
-	IsApricotPhase2Activated(timestamp time.Time) bool
-	IsApricotPhase3Activated(timestamp time.Time) bool
-	IsApricotPhase4Activated(timestamp time.Time) bool
-	IsApricotPhase5Activated(timestamp time.Time) bool
-	IsApricotPhasePre6Activated(timestamp time.Time) bool
-	IsApricotPhase6Activated(timestamp time.Time) bool
-	IsApricotPhasePost6Activated(timestamp time.Time) bool
-	IsBanffActivated(timestamp time.Time) bool
-	IsCortinaActivated(timestamp time.Time) bool
-	IsDurangoActivated(timestamp time.Time) bool
-	IsEtnaActivated(timestamp time.Time) bool
-	IsFortunaActivated(timestamp time.Time) bool
-	IsGraniteActivated(timestamp time.Time) bool
-}
-
 // VMContext is an interface that VM contexts must implement
 // This allows different context types (node, plugin, etc.) to be used interchangeably
 type VMContext interface {
@@ -198,7 +176,6 @@ type VMContext interface {
 	GetValidatorState() interface{}
 	GetBCLookup() interface{}
 	GetWarpSigner() interface{}
-	GetNetworkUpgrades() interface{}
 }
 
 // runtimeKeyType is the context key type for storing Runtime
