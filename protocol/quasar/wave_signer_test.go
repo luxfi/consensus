@@ -22,7 +22,7 @@ import (
 func TestRoundSigner_RunRound_ProducesFIPS204Verifiable(t *testing.T) {
 	params := pulsar.MustParamsFor(pulsar.ModeP65)
 
-	// Build a (3, 2) DKG using pulsarm directly to set up the
+	// Build a (3, 2) DKG using pulsar directly to set up the
 	// per-validator KeyShares. This mirrors what a real Lux
 	// validator-set DKG ceremony would produce at the start of an
 	// epoch.
@@ -30,10 +30,27 @@ func TestRoundSigner_RunRound_ProducesFIPS204Verifiable(t *testing.T) {
 		{0x01, 0x00, 'V'}, {0x02, 0x00, 'V'}, {0x03, 0x00, 'V'},
 	}
 	const n, threshold = 3, 2
+
+	// Per-party long-term identity keys (v1.0.7 mandatory CR-6/8 closure).
+	identities := make(map[pulsar.NodeID]*pulsar.IdentityKey, n)
+	dirEntries := make(map[pulsar.NodeID]*pulsar.IdentityPublicKey, n)
+	for i := 0; i < n; i++ {
+		ik, err := pulsar.GenerateIdentity(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		identities[committee[i]] = ik
+		dirEntries[committee[i]] = ik.PublicKey()
+	}
+	directory, err := pulsar.NewIdentityDirectory(dirEntries)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	dkg := make([]*pulsar.DKGSession, n)
 	for i := 0; i < n; i++ {
 		rng := bytes.NewReader(append([]byte{byte(i)}, bytes.Repeat([]byte{0xDE, 0xAD}, 32)...))
-		s, err := pulsar.NewDKGSession(params, committee, threshold, committee[i], rng)
+		s, err := pulsar.NewDKGSession(params, committee, threshold, committee[i], identities[committee[i]], directory, rng)
 		if err != nil {
 			t.Fatal(err)
 		}
