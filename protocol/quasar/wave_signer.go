@@ -26,12 +26,58 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"io"
 
 	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
 	"golang.org/x/crypto/sha3"
 )
+
+// witnessQuorumSessionKeys synthesizes the per-signer session-key
+// maps that pulsar v1.0.7's NewThresholdSigner requires.
+//
+// Pulsar's protocol assumes each signer is a distinct node with a
+// long-term identity key; pairs derive symmetric session keys via
+// ML-KEM-768 + KMAC bound to (sessionID, transcript). The consensus
+// witness pattern runs all T threshold signers inside one
+// coordinator process (the RoundSigner): peer-to-peer envelope
+// encryption is degenerate because every "peer" is the same process,
+// but the v1.0.7 API still requires a non-nil session-key map.
+//
+// We synthesize fresh IdentityKeys per quorum member and derive the
+// pairwise symmetric keys exactly as a distributed run would. The
+// resulting keys are cryptographically valid; the witness pattern's
+// security model is "single trusted coordinator holds all shares"
+// regardless. Splitting the coordinator into K distinct nodes is the
+// general-case deployment (one validator per share) and reuses the
+// same key derivation path.
+func witnessQuorumSessionKeys(quorum []pulsar.NodeID, sessionID [16]byte, transcript []byte, rng io.Reader) (map[pulsar.NodeID]map[pulsar.NodeID][32]byte, error) {
+	keys := make(map[pulsar.NodeID]*pulsar.IdentityKey, len(quorum))
+	for _, id := range quorum {
+		ik, err := pulsar.GenerateIdentity(rng)
+		if err != nil {
+			return nil, err
+		}
+		keys[id] = ik
+	}
+	out := make(map[pulsar.NodeID]map[pulsar.NodeID][32]byte, len(quorum))
+	for _, id := range quorum {
+		out[id] = make(map[pulsar.NodeID][32]byte, len(quorum)-1)
+	}
+	for i := 0; i < len(quorum); i++ {
+		for j := i + 1; j < len(quorum); j++ {
+			a, b := quorum[i], quorum[j]
+			key, err := pulsar.SymmetricSession(a, keys[a], b, keys[b], sessionID, transcript)
+			if err != nil {
+				return nil, err
+			}
+			out[a][b] = key
+			out[b][a] = key
+		}
+	}
+	return out, nil
+}
 
 // RoundResult is the output of one Lux round of Pulsar threshold
 // signing: a FIPS 204 ML-DSA signature on the round item under the
@@ -134,12 +180,26 @@ func (s *RoundSigner) RunRound(ctx context.Context, item []byte) (*RoundResult, 
 		idsByPulsarID[pid] = id
 	}
 
+	// Derive the per-signer session-key maps (v1.0.7 identity stage).
+	// Transcript binding is (item || groupPK || committee-leader) so
+	// session keys differ across rounds even with the same sessionID.
+	transcript := make([]byte, 0, len(item)+len(groupPK.Bytes)+32)
+	transcript = append(transcript, item...)
+	transcript = append(transcript, groupPK.Bytes...)
+	transcript = append(transcript, committee[0][:]...)
+	witnessSK, err := witnessQuorumSessionKeys(quorum, sessionID, transcript, rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+
 	// Spin up a ThresholdSigner per quorum member.
 	signers := make([]*pulsar.ThresholdSigner, s.Threshold)
 	for i := 0; i < s.Threshold; i++ {
 		ts, err := pulsar.NewThresholdSigner(
 			s.Params, sessionID, 0, quorum,
-			s.Shares[idsByPulsarID[quorum[i]]], item, rand.Reader,
+			s.Shares[idsByPulsarID[quorum[i]]],
+			witnessSK[quorum[i]],
+			item, rand.Reader,
 		)
 		if err != nil {
 			return nil, err
