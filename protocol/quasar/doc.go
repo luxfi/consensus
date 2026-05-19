@@ -1,5 +1,17 @@
-// Package quasar implements Quasar consensus with up to three independent
-// cryptographic signing paths running in parallel:
+// Package quasar implements the consensus-engine binding for the
+// Lux Quasar PQ consensus suite. The brand-level spec — cert wire
+// format, profile registry (Pulsar / Aurora / Polaris), and
+// cross-primitive composition proofs — lives at the umbrella repo:
+//
+//	https://github.com/luxfi/quasar  (SPEC.md / PROFILES.md / PRIMITIVES.md)
+//
+// This package is the Go implementation that wires Quasar into the
+// linear-chain / DAG drivers (prism / photon / wave / focus /
+// horizon / flare). Cert format defined here MUST agree byte-for-byte
+// with luxfi/quasar SPEC.md §QuasarCert.
+//
+// Quasar consensus runs up to three independent cryptographic
+// signing paths in parallel:
 //
 //   - BLS12-381 threshold signatures — classical fast-path (ECDL hardness)
 //   - Corona (Ring-LWE) 2-round threshold — post-quantum lattice (Module-LWE)
