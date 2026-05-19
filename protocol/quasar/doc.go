@@ -1,7 +1,7 @@
-// Package quasar implements the consensus-engine binding for the
-// Lux Quasar PQ consensus suite. The brand-level spec — cert wire
-// format, profile registry (Pulsar / Aurora / Polaris), and
-// cross-primitive composition proofs — lives at the umbrella repo:
+// Package quasar implements the consensus-engine binding for Quasar
+// — the Lux PQ-finality singularity. The brand-level spec — cert
+// wire format, profile registry (Pulsar / Aurora / Polaris), and
+// cross-primitive composition proofs — lives at:
 //
 //	https://github.com/luxfi/quasar  (SPEC.md / PROFILES.md / PRIMITIVES.md)
 //
