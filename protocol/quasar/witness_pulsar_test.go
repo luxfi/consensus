@@ -94,8 +94,8 @@ func TestVerifyPQFinality_PulsarM_TamperedSignatureRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("verifyPQFinality accepted a tampered signature")
 	}
-	if !errors.Is(err, ErrPulsarMVerifyFail) {
-		t.Fatalf("expected ErrPulsarMVerifyFail, got: %v", err)
+	if !errors.Is(err, ErrPulsarVerifyFail) {
+		t.Fatalf("expected ErrPulsarVerifyFail, got: %v", err)
 	}
 }
 
@@ -153,8 +153,8 @@ func TestVerifyPQFinality_PulsarM_BitCountAlone_DoesNotPass(t *testing.T) {
 	if err == nil {
 		t.Fatal("verifyPQFinality accepted a valid signature over a different message: F109 regressed")
 	}
-	if !errors.Is(err, ErrPulsarMVerifyFail) {
-		t.Fatalf("expected ErrPulsarMVerifyFail, got: %v", err)
+	if !errors.Is(err, ErrPulsarVerifyFail) {
+		t.Fatalf("expected ErrPulsarVerifyFail, got: %v", err)
 	}
 }
 
