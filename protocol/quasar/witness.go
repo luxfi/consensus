@@ -18,14 +18,14 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-// Pulsar-M finality verification errors. Exported so call sites can
+// Pulsar finality verification errors. Exported so call sites can
 // route on the exact failure reason without parsing error strings.
 var (
-	// ErrPulsarMVerifyFail is returned when the Pulsar-M finality
+	// ErrPulsarVerifyFail is returned when the Pulsar finality
 	// signature does not verify under the bound group public key.
 	// Closes F107/F109: previously a bit-count tautology; now a real
-	// lattice signature check via luxfi/pulsar-m.
-	ErrPulsarMVerifyFail = errors.New("quasar: Pulsar-M finality signature did not verify under group public key")
+	// lattice signature check via luxfi/pulsar.
+	ErrPulsarVerifyFail = errors.New("quasar: Pulsar finality signature did not verify under group public key")
 
 	// ErrBLSForbiddenUnderStrictPQ is returned when verifyBLSAggregate
 	// is invoked while a strict-PQ profile is active. The BLS aggregate
@@ -39,7 +39,7 @@ var (
 // "PQ finality" used to mean "the Corona bitfield carries enough
 // set bits"; that is a bit-count tautology with zero cryptographic
 // content. The current implementation REQUIRES a real ML-DSA-65
-// (Pulsar-M-65 wire format) signature over a canonical signing digest
+// (Pulsar-65 wire format) signature over a canonical signing digest
 // before VerifyStateTransition admits a witness. The bit-count check
 // remains as a pre-filter ONLY because a witness that does not even
 // claim enough signers does not deserve a verifying-key dispatch.
@@ -263,8 +263,8 @@ func (v *VerkleWitness) VerifyStateTransition(witness *WitnessProof) error {
 // that does not even claim enough signers is structurally invalid
 // and we don't want to pay the lattice verify cost for it.
 //
-// Returns ErrPulsarMVerifyFail when the lattice verification rejects
-// the signature; returns a typed wrapping of the underlying pulsarm
+// Returns ErrPulsarVerifyFail when the lattice verification rejects
+// the signature; returns a typed wrapping of the underlying pulsar
 // error for structural failures (size, parameter set, nil pointer).
 func (v *VerkleWitness) verifyPQFinality(
 	witness *WitnessProof,
@@ -299,9 +299,9 @@ func (v *VerkleWitness) verifyPQFinality(
 
 	if err := pulsar.VerifyCtx(params, pub, digest[:], []byte(signingDigestCustomization), sig); err != nil {
 		// Re-wrap with our exported sentinel so call sites can route
-		// on errors.Is(err, ErrPulsarMVerifyFail) without depending on
-		// the pulsarm error variants.
-		return errors.Join(ErrPulsarMVerifyFail, err)
+		// on errors.Is(err, ErrPulsarVerifyFail) without depending on
+		// the pulsar error variants.
+		return errors.Join(ErrPulsarVerifyFail, err)
 	}
 	return nil
 }
