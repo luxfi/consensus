@@ -7,10 +7,10 @@ exclude github.com/ethereum/go-ethereum v1.10.26
 exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
-	github.com/luxfi/accel v1.0.7
+	github.com/luxfi/accel v1.1.2
 	github.com/luxfi/bft v0.1.5
 	github.com/luxfi/corona v0.4.0
-	github.com/luxfi/crypto v1.19.0
+	github.com/luxfi/crypto v1.19.10
 	github.com/luxfi/database v1.18.3
 	github.com/luxfi/ids v1.2.9
 	github.com/luxfi/lattice/v7 v7.1.0
@@ -18,7 +18,7 @@ require (
 	github.com/luxfi/math v1.4.0
 	github.com/luxfi/metric v1.5.0
 	github.com/luxfi/p2p v1.18.9
-	github.com/luxfi/pulsar v1.0.8
+	github.com/luxfi/pulsar v1.0.11
 	github.com/luxfi/runtime v1.0.0
 	github.com/luxfi/threshold v1.6.17
 	github.com/luxfi/validators v1.0.0
@@ -39,7 +39,6 @@ require (
 	github.com/ALTree/bigfloat v0.2.0 // indirect
 	github.com/DataDog/zstd v1.5.7 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20260311194731-d5b7577c683d // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
