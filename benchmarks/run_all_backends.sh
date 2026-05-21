@@ -34,16 +34,7 @@ if [ -d "../pkg/c" ]; then
     echo ""
 fi
 
-# 3. Check for C++ backend
-if [ -d "../pkg/cpp" ]; then
-    echo "━━━ Running C++ Backend Benchmarks ━━━"
-    cd ../pkg/cpp
-    make bench > "../../benchmarks/$RESULTS_DIR/cpp_benchmark.txt" 2>&1 || echo "⚠ C++ benchmarks skipped (not available)"
-    echo "✓ C++ benchmarks complete"
-    echo ""
-fi
-
-# 4. Check for MLX backend (Apple Silicon only)
+# 3. Check for MLX backend (Apple Silicon only)
 if [ "$ARCH" = "arm64" ] && [ "$PLATFORM" = "Darwin" ]; then
     if [ -d "../pkg/mlx" ]; then
         echo "━━━ Running MLX Backend Benchmarks (Apple Silicon) ━━━"
