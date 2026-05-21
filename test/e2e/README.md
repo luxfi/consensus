@@ -78,8 +78,8 @@ go build ./...
 # C library
 cd pkg/c && make build && cd ../..
 
-# C++ library
-cd pkg/cpp && cmake -B build && cmake --build build && cd ../..
+# C++ library (lives in ~/work/luxcpp/consensus/)
+cd ~/work/luxcpp/consensus && cmake -B build && cmake --build build
 
 # Rust library
 cd pkg/rust && cargo build --release && cd ../..
@@ -177,8 +177,8 @@ cd pkg/c && make clean && make build && cd ../..
 ### C++ Node Fails to Start
 
 ```bash
-# Rebuild C++ library
-cd pkg/cpp && rm -rf build && cmake -B build && cmake --build build && cd ../..
+# Rebuild C++ library (lives in ~/work/luxcpp/consensus/)
+cd ~/work/luxcpp/consensus && rm -rf build && cmake -B build && cmake --build build
 ```
 
 ### Rust Node Fails to Start
