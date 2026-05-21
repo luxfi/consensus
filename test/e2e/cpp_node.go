@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"sync"
 	"testing"
@@ -32,9 +33,10 @@ func NewCppNode(t *testing.T) *CppNode {
 func (n *CppNode) Start(ctx context.Context, port int) error {
 	n.t.Logf("Starting C++ node on port %d", port)
 
-	// Check if C++ binary exists
-	if !checkBuild(n.t, "C++", []string{"cmake", "--build", "pkg/cpp/build"}) {
-		n.t.Log("⚠️  C++ binary not built, skipping C++ node")
+	// C++ side lives in ~/work/luxcpp/consensus/. The Go repo holds only
+	// CGO bindings; the build is driven from luxcpp.
+	if !checkBuild(n.t, "C++", []string{"cmake", "--build", os.ExpandEnv("$HOME/work/luxcpp/consensus/build")}) {
+		n.t.Log("⚠️  C++ binary not built (luxcpp/consensus), skipping C++ node")
 		n.healthy = false
 		return fmt.Errorf("c++ binary not available")
 	}
