@@ -146,3 +146,9 @@ exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824
 // so CI can fetch modules from proxy.golang.org without sibling clones.
 // See CROSS-REPO-VERSION-PIN.md for the SHA → tag mapping at the
 // March 3, 2026 PQ Consensus Architecture Freeze.
+
+// In-tree corona override for the GPU NTT wiring patch
+// (corona v0.7.2: corona/gpu subpackage + threshold byte-equal test).
+// Remove once consensus's CI proxy picks up corona v0.7.2 (see
+// CROSS-REPO-VERSION-PIN.md).
+replace github.com/luxfi/corona => ../corona
