@@ -133,33 +133,6 @@ jobs:
         working-directory: pkg/c
         run: make test
 
-  test-cpp:
-    name: Test C++
-    runs-on: ubuntu-latest
-    continue-on-error: true  # C++ tests optional (ZMQ C++ bindings)
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake libzmq3-dev libczmq-dev pkg-config
-          # Try to install C++ ZMQ bindings
-          sudo apt-get install -y libzmqpp-dev || true
-
-      - name: Build C++ library
-        working-directory: pkg/cpp
-        run: |
-          mkdir -p build
-          cd build
-          cmake -DCMAKE_BUILD_TYPE=Release .. || echo "C++ build configuration failed"
-          make || echo "C++ build failed"
-
-      - name: Run C++ tests
-        working-directory: pkg/cpp/build
-        run: ctest --output-on-failure || echo "C++ tests skipped"
-
   test-rust:
     name: Test Rust
     runs-on: ubuntu-latest

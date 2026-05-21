@@ -289,12 +289,6 @@ examples-c: ## Build C integration examples
 	@cd pkg/c && $(MAKE) all || echo "⚠️  C examples build failed"
 	@echo "✅ C examples built"
 
-# Build C++ integration examples
-examples-cpp: ## Build C++ integration examples
-	@echo "🔨 Building C++ examples..."
-	@cd pkg/cpp && mkdir -p build && cd build && cmake .. && make || echo "⚠️  C++ examples build failed"
-	@echo "✅ C++ examples built"
-
 # Build Rust integration examples
 examples-rust: ## Build Rust integration examples
 	@echo "🔨 Building Rust examples..."
@@ -308,7 +302,6 @@ clean: ## Clean build artifacts
 	@echo "🧹 Cleaning..."
 	@rm -rf bin/ coverage.out coverage.html *.coverage benchmark_report.txt *.prof
 	@$(MAKE) paper-clean
-	@cd pkg/cpp && rm -rf build/ || true
 	@cd pkg/rust && cargo clean 2>/dev/null || true
 	@echo "✅ Clean complete"
 
