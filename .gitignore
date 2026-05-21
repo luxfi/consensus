@@ -91,7 +91,6 @@ pkg/rust/target
 .dev*
 
 # Language binding build artifacts
-pkg/cpp/build/
 pkg/rust/target/
 pkg/python/.venv/
 pkg/python/__pycache__/
