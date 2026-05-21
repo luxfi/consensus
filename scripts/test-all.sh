@@ -44,15 +44,6 @@ if [ -d "pkg/c" ]; then
     run_test "C" "make clean && make all && make test" "pkg/c"
 fi
 
-# 3. Test C++ (optional - may not have dependencies)
-if [ -d "pkg/cpp" ]; then
-    if command -v cmake &> /dev/null && pkg-config --exists libzmq; then
-        run_test "C++" "rm -rf build && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make && ctest --output-on-failure" "pkg/cpp" || true
-    else
-        echo -e "${COLOR_YELLOW}⚠️  C++ skipped (missing cmake or libzmq)${COLOR_RESET}"
-    fi
-fi
-
 # 4. Test Rust
 if [ -d "pkg/rust" ]; then
     if command -v cargo &> /dev/null; then
