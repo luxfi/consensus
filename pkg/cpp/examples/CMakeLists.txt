@@ -1,3 +1,0 @@
-# Examples CMakeLists.txt
-add_executable(simple_consensus simple_consensus.cpp)
-target_link_libraries(simple_consensus PRIVATE lux_consensus)
