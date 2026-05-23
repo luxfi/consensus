@@ -264,7 +264,7 @@ func (gem *GroupedEpochManager) generateGroupKeys(index int, validators []string
 		t = n - 1
 	}
 
-	era, err := keyera.Bootstrap(
+	era, _, err := keyera.Bootstrap(
 		t,
 		validators,
 		keyera.CoronaGroupID(index),
