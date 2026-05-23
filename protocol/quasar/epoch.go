@@ -218,7 +218,7 @@ func (em *EpochManager) InitializeEpoch(validators []string) (*EpochKeys, error)
 			ErrInvalidValidatorSet, em.threshold, len(validators))
 	}
 
-	era, err := keyera.Bootstrap(
+	era, _, err := keyera.Bootstrap(
 		em.threshold,
 		validators,
 		keyera.CoronaGroupID(0),
@@ -484,7 +484,7 @@ type EpochStats struct {
 // successful verification.
 func (em *EpochManager) reshareEpochKeys(epoch uint64, validators []string, threshold int) (*EpochKeys, error) {
 	if em.currentEra == nil {
-		era, err := keyera.Bootstrap(
+		era, _, err := keyera.Bootstrap(
 			threshold,
 			validators,
 			keyera.CoronaGroupID(0),
