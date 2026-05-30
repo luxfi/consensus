@@ -20,7 +20,7 @@ var (
 	XChainID = ids.GenerateTestID()
 	CChainID = ids.GenerateTestID()
 	// Use fixed asset ID to match genesistest.LUXAssetID for UTXO consistency
-	XAssetID = ids.ID{'l', 'u', 'x', ' ', 'a', 's', 's', 'e', 't', ' ', 'i', 'd'}
+	UTXOAssetID = ids.ID{'l', 'u', 'x', ' ', 'a', 's', 's', 'e', 't', ' ', 'i', 'd'}
 )
 
 // SimpleValidatorState is a minimal validator state for testing
@@ -148,7 +148,7 @@ func Context(tb testing.TB, chainID ids.ID) *consensusruntime.Runtime {
 		NodeID:    ids.GenerateTestNodeID(),
 		XChainID:  XChainID,
 		CChainID:  CChainID,
-		XAssetID:  XAssetID,
+		UTXOAssetID:  UTXOAssetID,
 	}
 
 	// Set up a simple validator state
@@ -171,7 +171,7 @@ func Runtime(tb testing.TB, chainID ids.ID) *runtime.Runtime {
 		NodeID:    ids.GenerateTestNodeID(),
 		XChainID:  XChainID,
 		CChainID:  CChainID,
-		XAssetID:  XAssetID,
+		UTXOAssetID:  UTXOAssetID,
 	}
 
 	// Set up a simple validator state
