@@ -105,7 +105,7 @@ type ChainContext struct {
 	// Additional fields
 	XChainID ids.ID
 	CChainID ids.ID
-	XAssetID ids.ID
+	UTXOAssetID ids.ID
 
 	// Consensus context
 	Ctx *runtime.Runtime
