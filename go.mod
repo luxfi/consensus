@@ -9,7 +9,7 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 require (
 	github.com/luxfi/accel v1.1.2
 	github.com/luxfi/bft v0.1.5
-	github.com/luxfi/corona v0.4.0
+	github.com/luxfi/corona v0.7.5
 	github.com/luxfi/crypto v1.19.10
 	github.com/luxfi/database v1.18.3
 	github.com/luxfi/ids v1.2.9
@@ -145,4 +145,3 @@ exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824
 // so CI can fetch modules from proxy.golang.org without sibling clones.
 // See CROSS-REPO-VERSION-PIN.md for the SHA → tag mapping at the
 // March 3, 2026 PQ Consensus Architecture Freeze.
-
