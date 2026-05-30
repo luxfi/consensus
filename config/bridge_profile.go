@@ -131,7 +131,7 @@ type BridgeProfile struct {
 	AllowsClassicalAdmin bool
 
 	// AllowsBLSAggregate permits BLS-12-381 aggregate signatures in the
-	// bridge finality-verification path (Avalanche Warp / Teleporter
+	// bridge finality-verification path (cross-chain Warp / Teleporter
 	// style). false on strict-PQ.
 	AllowsBLSAggregate bool
 
@@ -458,7 +458,7 @@ var StrictPQBridgeProfile = BridgeProfile{
 var BridgeClassicalCompat = BridgeProfile{
 	ProfileID:               uint32(BridgeProfileIDClassicalCompat),
 	Name:                    "BRIDGE_CLASSICAL_COMPAT_UNSAFE",
-	SourceFinalityScheme:    SigSchemeBLS12381, // classical aggregate (Ethereum / Avalanche)
+	SourceFinalityScheme:    SigSchemeBLS12381, // classical aggregate (Ethereum / EVM L1s)
 	DestFinalityScheme:      SigSchemePulsar65,
 	ProofPolicyID:           ProofPolicySTARKFRISHA3PQ, // destination-side verifier stays PQ
 	BridgeAdminScheme:       ContractAuthECDSAUnsafe,

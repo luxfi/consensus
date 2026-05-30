@@ -17,7 +17,7 @@ import (
 
 // --- Test infrastructure for threshold-style voting simulation ---
 
-// binaryChoice represents a binary voting choice (like snowball red/blue)
+// binaryChoice represents a binary voting choice (like vote red/blue)
 type binaryChoice int
 
 const (
@@ -25,13 +25,13 @@ const (
 	choiceBlue binaryChoice = 1
 )
 
-// binarySnowball simulates Snowball binary voting using Wave primitives
-// Maps: Snowball -> Wave
+// binaryVote simulates Vote binary voting using Wave primitives
+// Maps: Vote -> Wave
 //   - preference -> current vote bias
 //   - preferenceStrength -> accumulated vote count
 //   - confidence -> consecutive rounds at threshold
 //   - finalized -> decided
-type binarySnowball struct {
+type binaryVote struct {
 	alphaPreference int    // minimum votes to update preference
 	alphaConfidence int    // minimum votes to increment confidence
 	beta            int    // consecutive rounds needed for finalization
@@ -41,8 +41,8 @@ type binarySnowball struct {
 	finalized       bool
 }
 
-func newBinarySnowball(alphaPreference int, alphaConfidence int, beta int, initialChoice int) *binarySnowball {
-	return &binarySnowball{
+func newBinaryVote(alphaPreference int, alphaConfidence int, beta int, initialChoice int) *binaryVote {
+	return &binaryVote{
 		alphaPreference: alphaPreference,
 		alphaConfidence: alphaConfidence,
 		beta:            beta,
@@ -54,7 +54,7 @@ func newBinarySnowball(alphaPreference int, alphaConfidence int, beta int, initi
 }
 
 // RecordPoll processes a poll result with given vote count for a choice
-func (sb *binarySnowball) RecordPoll(voteCount int, choice int) {
+func (sb *binaryVote) RecordPoll(voteCount int, choice int) {
 	if sb.finalized {
 		return
 	}
@@ -93,12 +93,12 @@ func (sb *binarySnowball) RecordPoll(voteCount int, choice int) {
 }
 
 // RecordUnsuccessfulPoll resets confidence counter
-func (sb *binarySnowball) RecordUnsuccessfulPoll() {
+func (sb *binaryVote) RecordUnsuccessfulPoll() {
 	sb.confidence = 0
 }
 
-func (sb *binarySnowball) Preference() int { return sb.preference }
-func (sb *binarySnowball) Finalized() bool { return sb.finalized }
+func (sb *binaryVote) Preference() int { return sb.preference }
+func (sb *binaryVote) Finalized() bool { return sb.finalized }
 
 // --- Threshold Binary Tests (ported from upstream) ---
 
@@ -112,7 +112,7 @@ func TestThresholdBinaryBasic(t *testing.T) {
 	alphaPreference, alphaConfidence := 2, 3
 	beta := 2
 
-	sb := newBinarySnowball(alphaPreference, alphaConfidence, beta, red)
+	sb := newBinaryVote(alphaPreference, alphaConfidence, beta, red)
 	require.Equal(red, sb.Preference())
 	require.False(sb.Finalized())
 
@@ -145,7 +145,7 @@ func TestThresholdBinaryRecordPreference(t *testing.T) {
 	alphaPreference, alphaConfidence := 1, 2
 	beta := 2
 
-	sb := newBinarySnowball(alphaPreference, alphaConfidence, beta, red)
+	sb := newBinaryVote(alphaPreference, alphaConfidence, beta, red)
 	require.Equal(red, sb.Preference())
 	require.False(sb.Finalized())
 
@@ -182,7 +182,7 @@ func TestThresholdBinaryUnsuccessfulPoll(t *testing.T) {
 	alphaPreference, alphaConfidence := 1, 2
 	beta := 2
 
-	sb := newBinarySnowball(alphaPreference, alphaConfidence, beta, red)
+	sb := newBinaryVote(alphaPreference, alphaConfidence, beta, red)
 
 	// Confidence vote for blue
 	sb.RecordPoll(alphaConfidence, blue)
@@ -210,7 +210,7 @@ func TestThresholdBinaryLockColor(t *testing.T) {
 	alphaPreference, alphaConfidence := 1, 2
 	beta := 1
 
-	sb := newBinarySnowball(alphaPreference, alphaConfidence, beta, red)
+	sb := newBinaryVote(alphaPreference, alphaConfidence, beta, red)
 
 	// Single confidence vote finalizes with beta=1
 	sb.RecordPoll(alphaConfidence, red)
@@ -332,7 +332,7 @@ func (ws *waveThreshold) Count() uint32 {
 	return state.Count
 }
 
-// TestWaveThresholdEquivalence tests that Wave exhibits snowball-like behavior
+// TestWaveThresholdEquivalence tests that Wave exhibits vote-like behavior
 func TestWaveThresholdEquivalence(t *testing.T) {
 	require := require.New(t)
 
@@ -489,8 +489,8 @@ func validateConfig(cfg Config) bool {
 
 // --- N-ary voting simulation (ported from nnary_threshold_test.go) ---
 
-// narySnowball simulates N-ary snowball voting
-type narySnowball struct {
+// naryVote simulates N-ary vote voting
+type naryVote struct {
 	alphaPreference int
 	alphaConfidence int
 	beta            int
@@ -500,8 +500,8 @@ type narySnowball struct {
 	finalized       bool
 }
 
-func newNarySnowball(alphaPreference, alphaConfidence, beta int, initial string) *narySnowball {
-	return &narySnowball{
+func newNaryVote(alphaPreference, alphaConfidence, beta int, initial string) *naryVote {
+	return &naryVote{
 		alphaPreference: alphaPreference,
 		alphaConfidence: alphaConfidence,
 		beta:            beta,
@@ -512,13 +512,13 @@ func newNarySnowball(alphaPreference, alphaConfidence, beta int, initial string)
 	}
 }
 
-func (ns *narySnowball) Add(choice string) {
+func (ns *naryVote) Add(choice string) {
 	if _, exists := ns.choices[choice]; !exists {
 		ns.choices[choice] = 0
 	}
 }
 
-func (ns *narySnowball) RecordPoll(voteCount int, choice string) {
+func (ns *naryVote) RecordPoll(voteCount int, choice string) {
 	if ns.finalized {
 		return
 	}
@@ -549,14 +549,14 @@ func (ns *narySnowball) RecordPoll(voteCount int, choice string) {
 	}
 }
 
-func (ns *narySnowball) RecordUnsuccessfulPoll() {
+func (ns *naryVote) RecordUnsuccessfulPoll() {
 	ns.confidence = 0
 }
 
-func (ns *narySnowball) Preference() string { return ns.preference }
-func (ns *narySnowball) Finalized() bool    { return ns.finalized }
+func (ns *naryVote) Preference() string { return ns.preference }
+func (ns *naryVote) Finalized() bool    { return ns.finalized }
 
-// TestThresholdNaryBasic tests N-ary snowball with multiple choices
+// TestThresholdNaryBasic tests N-ary vote with multiple choices
 func TestThresholdNaryBasic(t *testing.T) {
 	require := require.New(t)
 
@@ -565,7 +565,7 @@ func TestThresholdNaryBasic(t *testing.T) {
 	alphaPreference, alphaConfidence := 1, 2
 	beta := 2
 
-	ns := newNarySnowball(alphaPreference, alphaConfidence, beta, red)
+	ns := newNaryVote(alphaPreference, alphaConfidence, beta, red)
 	ns.Add(blue)
 	ns.Add(green)
 
@@ -611,7 +611,7 @@ func TestThresholdNaryVirtuous(t *testing.T) {
 	alphaPreference, alphaConfidence := 1, 2
 	beta := 1
 
-	ns := newNarySnowball(alphaPreference, alphaConfidence, beta, "red")
+	ns := newNaryVote(alphaPreference, alphaConfidence, beta, "red")
 
 	require.Equal("red", ns.Preference())
 	require.False(ns.Finalized())
@@ -628,7 +628,7 @@ func TestThresholdNaryUnsuccessfulPoll(t *testing.T) {
 	alphaPreference, alphaConfidence := 1, 2
 	beta := 2
 
-	ns := newNarySnowball(alphaPreference, alphaConfidence, beta, "red")
+	ns := newNaryVote(alphaPreference, alphaConfidence, beta, "red")
 	ns.Add("blue")
 
 	ns.RecordPoll(alphaConfidence, "blue")
