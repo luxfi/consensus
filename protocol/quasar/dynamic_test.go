@@ -47,7 +47,7 @@ func TestDynamicChainRegistration(t *testing.T) {
 	t.Logf("✓ Primary chains auto-registered: %v", chains)
 }
 
-func TestAutoRegisterNewSubnet(t *testing.T) {
+func TestAutoRegisterNewChain(t *testing.T) {
 	// Create Quasar core
 	q, err := NewQuasar(2)
 	if err != nil {
@@ -67,7 +67,7 @@ func TestAutoRegisterNewSubnet(t *testing.T) {
 		t.Fatalf("Failed to start Quasar: %v", err)
 	}
 
-	// Submit block from NEW subnet - should auto-register
+	// Submit block from NEW chain - should auto-register
 	bridgeBlock := &ChainBlock{
 		ChainID:   [32]byte{0xFF},
 		ChainName: "Bridge-Net",
