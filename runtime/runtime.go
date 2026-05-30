@@ -73,8 +73,8 @@ type Runtime struct {
 	// CChainID is the C-Chain identifier
 	CChainID ids.ID `json:"cChainID"`
 
-	// XAssetID is the primary asset ID (X-chain native, typically LUX)
-	XAssetID ids.ID `json:"xAssetID"`
+	// UTXOAssetID is the primary asset ID (X-chain native, typically LUX)
+	UTXOAssetID ids.ID `json:"utxoAssetID"`
 
 	// ChainDataDir is the directory for chain-specific data
 	ChainDataDir string `json:"chainDataDir"`
@@ -250,7 +250,7 @@ type IDs struct {
 	ChainID      ids.ID
 	NodeID       ids.NodeID
 	PublicKey    []byte
-	XAssetID     ids.ID
+	UTXOAssetID     ids.ID
 	ChainDataDir string `json:"chainDataDir"`
 }
 
@@ -264,7 +264,7 @@ func WithIDs(ctx context.Context, id IDs) context.Context {
 	rt.ChainID = id.ChainID
 	rt.NodeID = id.NodeID
 	rt.PublicKey = id.PublicKey
-	rt.XAssetID = id.XAssetID
+	rt.UTXOAssetID = id.UTXOAssetID
 	rt.ChainDataDir = id.ChainDataDir
 	return WithRuntime(ctx, rt)
 }
