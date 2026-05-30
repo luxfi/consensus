@@ -17,12 +17,12 @@ import (
 )
 
 // Quasar is the supermassive black hole at the center of the blockchain galaxy
-// It collects blocks from ALL chains (P, X, C, + any new subnets) and applies quantum consensus
+// It collects blocks from ALL chains (P, X, C, + any new chains) and applies quantum consensus
 // External systems (bridges, contracts) can use RPC to add blocks to the event horizon
 type Quasar struct {
 	mu sync.RWMutex
 
-	// Dynamic chain registration - automatically includes new subnets/chains
+	// Dynamic chain registration - automatically includes new chains
 	chainBuffers map[string]chan *ChainBlock // chainName -> buffer
 
 	// Standard chain buffers (P/X/C)
@@ -162,7 +162,7 @@ func (q *Quasar) Start(ctx context.Context) error {
 	go q.processXChain(ctx)
 	go q.processCChain(ctx)
 
-	// Start processors for ALL dynamically registered chains (including new subnets)
+	// Start processors for ALL dynamically registered chains
 	go q.ProcessDynamicChains(ctx)
 
 	// Start quantum finalization engine - the singularity
@@ -523,8 +523,8 @@ func (q *Quasar) VerifyQuantumFinalityWithContext(ctx context.Context, blockHash
 	return true
 }
 
-// RegisterChain dynamically registers a new chain/subnet for automatic quantum security
-// All new subnets are automatically protected by the event horizon
+// RegisterChain dynamically registers a new chain for automatic quantum security
+// All new chains are automatically protected by the event horizon
 func (q *Quasar) RegisterChain(chainName string) error {
 	q.mu.Lock()
 

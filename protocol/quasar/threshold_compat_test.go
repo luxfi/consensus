@@ -23,23 +23,23 @@ type treeNode struct {
 	id       [32]byte
 	children [2]*treeNode // binary children
 	parent   *treeNode
-	unary    *unarySnowball
-	binary   *binaryTreeSnowball
+	unary    *unaryVote
+	binary   *binaryTreeVote
 }
 
-// unarySnowball tracks single-choice consensus
-type unarySnowball struct {
+// unaryVote tracks single-choice consensus
+type unaryVote struct {
 	preferenceStrength int
 	confidence         int
 	finalized          bool
 	beta               int
 }
 
-func newUnarySnowball(beta int) *unarySnowball {
-	return &unarySnowball{beta: beta}
+func newUnaryVote(beta int) *unaryVote {
+	return &unaryVote{beta: beta}
 }
 
-func (u *unarySnowball) RecordPoll(voteCount, threshold int) bool {
+func (u *unaryVote) RecordPoll(voteCount, threshold int) bool {
 	if u.finalized {
 		return false
 	}
@@ -55,8 +55,8 @@ func (u *unarySnowball) RecordPoll(voteCount, threshold int) bool {
 	return false
 }
 
-// binaryTreeSnowball tracks binary choice at tree branch point
-type binaryTreeSnowball struct {
+// binaryTreeVote tracks binary choice at tree branch point
+type binaryTreeVote struct {
 	preference      int
 	prefStrength    [2]int
 	confidence      int
@@ -66,15 +66,15 @@ type binaryTreeSnowball struct {
 	beta            int
 }
 
-func newBinaryTreeSnowball(alphaPreference, alphaConfidence, beta int) *binaryTreeSnowball {
-	return &binaryTreeSnowball{
+func newBinaryTreeVote(alphaPreference, alphaConfidence, beta int) *binaryTreeVote {
+	return &binaryTreeVote{
 		alphaPreference: alphaPreference,
 		alphaConfidence: alphaConfidence,
 		beta:            beta,
 	}
 }
 
-func (b *binaryTreeSnowball) RecordPoll(voteCount, choice int) bool {
+func (b *binaryTreeVote) RecordPoll(voteCount, choice int) bool {
 	if b.finalized {
 		return false
 	}
@@ -102,7 +102,7 @@ func (b *binaryTreeSnowball) RecordPoll(voteCount, choice int) bool {
 	return false
 }
 
-// consensusTree simulates Snowball's tree-based consensus
+// consensusTree simulates Vote's tree-based consensus
 type consensusTree struct {
 	root   *treeNode
 	params struct {
@@ -113,7 +113,7 @@ type consensusTree struct {
 	}
 	preference [32]byte
 	finalized  bool
-	// Track choice to branch mapping for binary snowball
+	// Track choice to branch mapping for binary vote
 	choices    [2][32]byte // choices[0] = first choice, choices[1] = second choice
 	numChoices int
 }
@@ -127,7 +127,7 @@ func newConsensusTree(params struct{ k, alphaPreference, alphaConfidence, beta i
 	tree.choices[0] = initial
 	tree.root = &treeNode{
 		id:    initial,
-		unary: newUnarySnowball(params.beta),
+		unary: newUnaryVote(params.beta),
 	}
 	return tree
 }
@@ -152,7 +152,7 @@ func (t *consensusTree) Add(choice [32]byte) {
 	// Add binary node at difference point
 	// (simplified - full implementation would walk tree)
 	if t.root.binary == nil {
-		t.root.binary = newBinaryTreeSnowball(
+		t.root.binary = newBinaryTreeVote(
 			t.params.alphaPreference,
 			t.params.alphaConfidence,
 			t.params.beta,
@@ -181,7 +181,7 @@ func (t *consensusTree) RecordPoll(votes map[[32]byte]int) bool {
 	// Count votes for current preference
 	voteCount := votes[t.preference]
 
-	// Try unary snowball first
+	// Try unary vote first
 	if t.root.unary != nil {
 		if t.root.unary.RecordPoll(voteCount, t.params.alphaConfidence) {
 			if t.root.unary.finalized {
@@ -191,7 +191,7 @@ func (t *consensusTree) RecordPoll(votes map[[32]byte]int) bool {
 		}
 	}
 
-	// Check binary snowball
+	// Check binary vote
 	if t.root.binary != nil {
 		// Determine which choice got more votes
 		maxVotes := 0
