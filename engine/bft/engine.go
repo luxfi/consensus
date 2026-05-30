@@ -8,8 +8,8 @@
 //
 // The four engine factories cover four orthogonal consensus paradigms:
 //
-//	NewChain — linear Snow-family metastable (Nova)
-//	NewDAG   — DAG Snow-family metastable (Nebula)
+//	NewChain — linear metastable BFT (Nova)
+//	NewDAG   — DAG metastable BFT (Nebula)
 //	NewPQ    — post-quantum threshold Quasar
 //	NewBFT   — classical leader-rotation BFT (this package)
 //
