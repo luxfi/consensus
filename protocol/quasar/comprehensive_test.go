@@ -1564,7 +1564,7 @@ func TestQuasar_SubmitBlock_AutoRegister(t *testing.T) {
 
 	block := &Block{
 		ChainID:   [32]byte{1},
-		ChainName: "New-Subnet",
+		ChainName: "New-Chain",
 		ID:        [32]byte{2},
 		Height:    1,
 		Timestamp: time.Now(),
@@ -1581,7 +1581,7 @@ func TestQuasar_SubmitBlock_AutoRegister(t *testing.T) {
 	chains := q.GetRegisteredChains()
 	found := false
 	for _, c := range chains {
-		if c == "New-Subnet" {
+		if c == "New-Chain" {
 			found = true
 			break
 		}
