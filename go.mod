@@ -19,7 +19,7 @@ require (
 	github.com/luxfi/metric v1.5.0
 	github.com/luxfi/p2p v1.18.9
 	github.com/luxfi/pulsar v1.0.12
-	github.com/luxfi/runtime v1.0.0
+	github.com/luxfi/runtime v1.1.0
 	github.com/luxfi/threshold v1.6.17
 	github.com/luxfi/validators v1.0.0
 	github.com/luxfi/version v1.0.1
