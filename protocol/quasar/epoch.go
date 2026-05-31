@@ -34,11 +34,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luxfi/corona/keyera"
-	"github.com/luxfi/corona/primitives"
-	pulsarReshare "github.com/luxfi/corona/reshare"
-	pulsarSign "github.com/luxfi/corona/sign"
-	coronaThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	"github.com/luxfi/threshold/protocols/corona/keyera"
+	"github.com/luxfi/threshold/protocols/corona/primitives"
+	pulsarReshare "github.com/luxfi/threshold/protocols/corona/reshare"
+	pulsarSign "github.com/luxfi/threshold/protocols/corona/sign"
 
 	"github.com/luxfi/lattice/v7/ring"
 
