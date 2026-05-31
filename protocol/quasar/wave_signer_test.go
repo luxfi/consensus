@@ -11,7 +11,7 @@ import (
 
 	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/ids"
-	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
+	"github.com/luxfi/threshold/protocols/pulsar"
 )
 
 // TestRoundSigner_RunRound_ProducesFIPS204Verifiable runs a
