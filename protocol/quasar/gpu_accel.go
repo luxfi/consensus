@@ -20,7 +20,7 @@ package quasar
 //      DisableCoronaGPUAccelerator() in a t.Cleanup hook.
 
 import (
-	cgpu "github.com/luxfi/corona/gpu"
+	cgpu "github.com/luxfi/threshold/protocols/corona/gpu"
 )
 
 // UseCoronaGPUAccelerator opts every subsequent coronaThreshold
