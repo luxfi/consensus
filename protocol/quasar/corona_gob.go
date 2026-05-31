@@ -6,9 +6,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	coronaThreshold "github.com/luxfi/corona/threshold"
 	"github.com/luxfi/lattice/v7/ring"
 	"github.com/luxfi/lattice/v7/utils/structs"
+	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
 )
 
 // coronaGobEncode serializes a Pulsar threshold signature using the

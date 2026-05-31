@@ -8,10 +8,10 @@ import (
 	"sync"
 
 	"github.com/luxfi/consensus/protocol/quasar"
-	coronaThreshold "github.com/luxfi/corona/threshold"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
 	"github.com/luxfi/ids"
+	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
 )
 
 // Engine defines the post-quantum consensus engine
