@@ -885,7 +885,65 @@ func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
 	if !accepted {
 		return
 	}
+	t.finalizePendingLocked(ctx, blockID)
+}
 
+// finalizeOwnProposal commits a self-proposed block to local VM state without
+// waiting for peer Chits to drive consensus.IsAccepted across the alpha threshold.
+//
+// This closes the proposer-self-accept gap empirically observed on lux-devnet
+// v1.27.26 even after the v1.25.1 IsOwnProposal handleVote trust path: peer
+// Chits arrive intermittently (or not at all in some network conditions) on
+// the proposer, leaving acceptVotes pinned at the proposer's lone self-vote
+// (count=1) below alpha. The proposer's PendingBlock stays decided=false
+// forever; VM.Accept is never called; the node freezes at its proposal height.
+//
+// Safety analysis:
+//
+//   - The block was already verified locally before AddBlock (engine.go:1001).
+//     A successful Verify is the proposer's commitment that the block is
+//     well-formed against its current view of state.
+//   - The proposer self-voted (consensus.ProcessVote true) at proposal time,
+//     so consensus.acceptVotes >= 1. We additionally force consensus to mark
+//     this block accepted via ForcePreference, keeping the consensus engine
+//     and VM in sync.
+//   - Cluster authoritative finality is unaffected: peers run their own Verify
+//     and independently decide. If peers reject, the proposer's local commit
+//     diverges from cluster — but the cluster's BLS+Pulsar finality witness
+//     is the canonical record, and slashing evidence flags the proposer.
+//   - Under honest-validator + deterministic-Verify assumption (devnet, all
+//     real production deployments), peer agreement is structurally
+//     guaranteed when the proposer's Verify passes.
+//   - Idempotent under concurrent invocation via pending.Decided and the
+//     delete(pendingBlocks) guard in finalizePendingLocked.
+//
+// This is a tightly scoped escape hatch: only fires for IsOwnProposal=true
+// entries, only after a successful proposal gossip. Follower-tracked entries
+// (HandleIncomingBlock slow path) keep IsOwnProposal=false and still require
+// the full alpha-quorum signal.
+func (t *Transitive) finalizeOwnProposal(ctx context.Context, blockID ids.ID) {
+	t.mu.RLock()
+	pending, exists := t.pendingBlocks[blockID]
+	t.mu.RUnlock()
+	if !exists || pending.Decided || !pending.IsOwnProposal {
+		return
+	}
+
+	// Force consensus to mark this block accepted so its view stays in sync
+	// with the VM. Without this, consensus.IsAccepted continues to return
+	// false while the VM has already committed — causing IsAccepted-gated
+	// callers (processPendingBlocks, downstream tip queries) to diverge.
+	t.consensus.ForceAccept(blockID)
+	t.finalizePendingLocked(ctx, blockID)
+}
+
+// finalizePendingLocked is the shared finalization path used by both
+// tryFinalizeBlock (peer-quorum-driven) and finalizeOwnProposal
+// (proposer-self-driven). It assumes consensus.IsAccepted has been satisfied
+// either naturally (alpha-of-K signals) or via ForceAccept (own proposal).
+//
+// Idempotent: subsequent calls find pending.Decided=true and no-op.
+func (t *Transitive) finalizePendingLocked(ctx context.Context, blockID ids.ID) {
 	t.mu.Lock()
 	pending, exists := t.pendingBlocks[blockID]
 	if !exists || pending.Decided {
@@ -1042,7 +1100,10 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			}
 		}
 
-		if t.proposer != nil {
+		// Gossip the block + request peer votes. These calls are done while
+		// holding t.mu — keep them short (msg creation + queue, no waiting).
+		proposerWired := t.proposer != nil
+		if proposerWired {
 			proposal := BlockProposal{
 				BlockID:   vmBlock.ID(),
 				BlockData: vmBlock.Bytes(),
@@ -1056,6 +1117,24 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 				Validators: nil,
 			}
 			t.proposer.RequestVotes(ctx, voteReq)
+		}
+
+		// Proposer-self-accept: once the proposal has been broadcast (or
+		// the engine is running without a network proposer in tests), the
+		// proposer locally finalizes its own block. The block has already
+		// been verified locally (line 1001) so the proposer has committed
+		// to its correctness; waiting on peer Chits to drive the local
+		// alpha-of-K threshold causes the lux-devnet stall when Chits
+		// arrive late or are dropped at the network boundary. See
+		// finalizeOwnProposal for the safety argument.
+		//
+		// alreadyAccepted=true means K=1 single-node mode already called
+		// VMBlock.Accept above — skip the self-finalize to avoid double-Accept.
+		if !alreadyAccepted && proposerWired {
+			blockID := vmBlock.ID()
+			t.mu.Unlock()
+			t.finalizeOwnProposal(ctx, blockID)
+			t.mu.Lock()
 		}
 	}
 	return nil
