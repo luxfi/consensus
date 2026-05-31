@@ -12,13 +12,13 @@ require (
 	github.com/luxfi/crypto v1.19.10
 	github.com/luxfi/database v1.18.3
 	github.com/luxfi/ids v1.2.9
-	github.com/luxfi/lattice/v7 v7.1.0
+	github.com/luxfi/lattice/v7 v7.1.4
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/math v1.4.1
 	github.com/luxfi/metric v1.5.7
 	github.com/luxfi/p2p v1.18.9
 	github.com/luxfi/runtime v1.1.0
-	github.com/luxfi/threshold v1.8.8-0.20260531193754-9d337052ec83
+	github.com/luxfi/threshold v1.8.8
 	github.com/luxfi/validators v1.0.0
 	github.com/luxfi/version v1.0.1
 	github.com/luxfi/warp v1.18.5
@@ -90,7 +90,7 @@ require (
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.0 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
-	github.com/luxfi/pulsar v1.0.12 // indirect
+	github.com/luxfi/pulsar v1.0.23 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.4 // indirect
 	github.com/luxfi/vm v1.0.27 // indirect
