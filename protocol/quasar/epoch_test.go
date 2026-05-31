@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	coronaThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
 	"github.com/stretchr/testify/require"
 )
 
