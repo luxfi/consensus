@@ -10,7 +10,7 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/crypto/mldsa"
-	"github.com/luxfi/pulsar/ref/go/pkg/pulsar"
+	"github.com/luxfi/threshold/protocols/pulsar"
 )
 
 // TestVerifyPQFinality_PulsarM_RealVerifyAccepts proves that
