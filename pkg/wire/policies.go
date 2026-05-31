@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/luxfi/consensus/protocol/quasar"
-	coronaThreshold "github.com/luxfi/corona/threshold"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
+	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
 )
 
 // maxCandidates is the upper bound on tracked candidates per policy instance.
