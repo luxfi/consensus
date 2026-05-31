@@ -30,9 +30,9 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/protocol/quasar"
-	coronaThreshold "github.com/luxfi/corona/threshold"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
+	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
 )
 
 // =============================================================================

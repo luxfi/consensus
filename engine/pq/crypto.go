@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/luxfi/corona/threshold"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/threshold/protocols/corona"
 )
 
 // CertificateGenerator generates real BLS and Corona threshold signatures.
@@ -23,9 +23,9 @@ type CertificateGenerator struct {
 	blsPublicKey *bls.PublicKey
 
 	// Corona threshold signing
-	coronaShare  *threshold.KeyShare
-	coronaSigner *threshold.Signer
-	coronaGroup  *threshold.GroupKey
+	coronaShare  *corona.KeyShare
+	coronaSigner *corona.Signer
+	coronaGroup  *corona.GroupKey
 
 	// ML-DSA-65 identity key (FIPS 204).
 	mldsaSecret *mldsa.PrivateKey
@@ -52,11 +52,11 @@ func NewCertificateGenerator(blsKey, pqKey []byte) *CertificateGenerator {
 	if len(pqKey) >= 32 {
 		// Generate a 2-of-3 threshold setup for demonstration
 		// The pqKey seeds the random generation
-		shares, groupKey, err := threshold.GenerateKeys(2, 3, nil)
+		shares, groupKey, err := corona.GenerateKeys(2, 3, nil)
 		if err == nil && len(shares) > 0 {
 			cg.coronaShare = shares[0]
 			cg.coronaGroup = groupKey
-			cg.coronaSigner = threshold.NewSigner(shares[0])
+			cg.coronaSigner = corona.NewSigner(shares[0])
 		}
 	}
 
@@ -74,13 +74,13 @@ func NewCertificateGenerator(blsKey, pqKey []byte) *CertificateGenerator {
 }
 
 // InitializeThreshold sets up multi-party threshold signing.
-func (cg *CertificateGenerator) InitializeThreshold(share *threshold.KeyShare) {
+func (cg *CertificateGenerator) InitializeThreshold(share *corona.KeyShare) {
 	cg.mu.Lock()
 	defer cg.mu.Unlock()
 
 	cg.coronaShare = share
 	cg.coronaGroup = share.GroupKey
-	cg.coronaSigner = threshold.NewSigner(share)
+	cg.coronaSigner = corona.NewSigner(share)
 }
 
 // GenerateBLSSignature generates a real BLS signature for a block.
@@ -167,7 +167,7 @@ func (cg *CertificateGenerator) GenerateBLSAggregate(blockID ids.ID, signatures 
 
 // GeneratePQCertificate generates a real Corona threshold signature share.
 // Returns the Round1 data that should be broadcast to other signers.
-func (cg *CertificateGenerator) GeneratePQCertificate(blockID ids.ID, sessionID int, prfKey []byte, signers []int) (*threshold.Round1Data, error) {
+func (cg *CertificateGenerator) GeneratePQCertificate(blockID ids.ID, sessionID int, prfKey []byte, signers []int) (*corona.Round1Data, error) {
 	cg.mu.RLock()
 	defer cg.mu.RUnlock()
 
@@ -185,8 +185,8 @@ func (cg *CertificateGenerator) CompleteCoronaRound2(
 	message string,
 	prfKey []byte,
 	signers []int,
-	round1Data map[int]*threshold.Round1Data,
-) (*threshold.Round2Data, error) {
+	round1Data map[int]*corona.Round1Data,
+) (*corona.Round2Data, error) {
 	cg.mu.RLock()
 	defer cg.mu.RUnlock()
 
@@ -198,7 +198,7 @@ func (cg *CertificateGenerator) CompleteCoronaRound2(
 }
 
 // FinalizeCoronaSignature aggregates round 2 data into final signature.
-func (cg *CertificateGenerator) FinalizeCoronaSignature(round2Data map[int]*threshold.Round2Data) (*threshold.Signature, error) {
+func (cg *CertificateGenerator) FinalizeCoronaSignature(round2Data map[int]*corona.Round2Data) (*corona.Signature, error) {
 	cg.mu.RLock()
 	defer cg.mu.RUnlock()
 
@@ -221,7 +221,7 @@ func (cg *CertificateGenerator) GetBLSPublicKey() []byte {
 }
 
 // GetCoronaGroupKey returns the Corona group public key.
-func (cg *CertificateGenerator) GetCoronaGroupKey() *threshold.GroupKey {
+func (cg *CertificateGenerator) GetCoronaGroupKey() *corona.GroupKey {
 	cg.mu.RLock()
 	defer cg.mu.RUnlock()
 	return cg.coronaGroup
@@ -267,12 +267,12 @@ func VerifyBLSAggregate(msg []byte, aggSigBytes []byte, pubKeyBytes [][]byte) er
 }
 
 // VerifyPQCertificate verifies a Corona threshold signature.
-func VerifyPQCertificate(groupKey *threshold.GroupKey, message string, sig *threshold.Signature) error {
+func VerifyPQCertificate(groupKey *corona.GroupKey, message string, sig *corona.Signature) error {
 	if groupKey == nil || sig == nil {
 		return fmt.Errorf("nil group key or signature")
 	}
 
-	if !threshold.Verify(groupKey, message, sig) {
+	if !corona.Verify(groupKey, message, sig) {
 		return fmt.Errorf("Corona signature verification failed")
 	}
 
