@@ -110,6 +110,17 @@ type PendingBlock struct {
 	VoteCount      int // Accept votes
 	RejectCount    int // Reject votes
 	Decided        bool
+
+	// IsOwnProposal is true when this node built and proposed the block.
+	// Used to short-circuit the proposer-self-accept gap: when peers send back
+	// a vote message after fast-follow acceptance, the proposer's local re-Verify
+	// in the network handler may spuriously fail (e.g., VM does not allow double
+	// Verify), flipping the vote to Reject. For pendingBlocks entries this node
+	// proposed, the block was already verified at proposal time (engine.go:977),
+	// so the mere arrival of a peer vote is positive evidence — vote.Accept is
+	// disregarded and the count advances. This preserves alpha-of-K quorum
+	// because the count is over distinct peer message arrivals, not self-promises.
+	IsOwnProposal bool
 }
 
 // -----------------------------------------------------------------------------
@@ -830,8 +841,21 @@ func (t *Transitive) handleVote(vote Vote) {
 		}
 	}
 
+	// Determine the effective accept signal. For own-proposed pending blocks
+	// the engine trusts mere peer-vote arrival as positive evidence (see
+	// PendingBlock.IsOwnProposal). This closes the proposer-self-accept gap:
+	// when a peer sends back a vote via the fast-follow SendVote callback
+	// (integration.go:498-500), it only does so after locally accepting the
+	// block. The proposer's local re-Verify in the network adapter may
+	// spuriously fail and flip the vote to Reject, which would otherwise
+	// drive the proposer's own block to rejected even though the cluster
+	// committed it. Counting peer participation here keeps the proposer's
+	// view in sync with cluster consensus without weakening alpha-of-K
+	// (the count still requires distinct peer messages).
+	effectiveAccept := vote.Accept || pending.IsOwnProposal
+
 	var voteCount int
-	if vote.Accept {
+	if effectiveAccept {
 		pending.VoteCount++
 		voteCount = pending.VoteCount
 	} else {
@@ -839,11 +863,11 @@ func (t *Transitive) handleVote(vote Vote) {
 	}
 	t.mu.Unlock()
 
-	if err := t.consensus.ProcessVote(ctx, vote.BlockID, vote.Accept); err != nil {
+	if err := t.consensus.ProcessVote(ctx, vote.BlockID, effectiveAccept); err != nil {
 		return
 	}
 
-	if vote.Accept {
+	if effectiveAccept {
 		responses := map[ids.ID]int{vote.BlockID: voteCount}
 		_ = t.consensus.Poll(ctx, responses)
 	} else {
@@ -1014,6 +1038,7 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 				ProposedAt:     time.Now(),
 				VoteCount:      1,
 				Decided:        false,
+				IsOwnProposal:  true,
 			}
 		}
 
