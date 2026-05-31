@@ -764,7 +764,22 @@ func TestProcessVote_AcceptTrueIncrementsSupport(t *testing.T) {
 	}
 }
 
-// TestProcessVote_AcceptFalseDoesNotAccept verifies Accept=false votes don't trigger acceptance
+// TestProcessVote_AcceptFalseDoesNotAccept verifies Accept=false votes for a
+// follower-tracked (NOT own-proposed) block do not trigger acceptance.
+//
+// History: this test originally used Notify+buildBlocksLocked to seed the
+// pending block, then sent Accept=false votes — modelling a scenario that
+// does not exist in the LUX network protocol. SendVote is only ever called
+// after fast-follow Accept (integration.go:498-500), so peer votes for an
+// own-proposed block are always positive. With the IsOwnProposal trust path
+// (closing the proposer-self-accept gap), explicit Accept=false votes for an
+// own block are interpreted as positive signals — the original assertion
+// no longer reflects production behavior.
+//
+// The invariant the test actually guards — "explicit rejection of a non-own
+// block is honored" — is now expressed via a directly-injected pending entry
+// with IsOwnProposal=false (matching the follower's HandleIncomingBlock slow
+// path) so the assertion is meaningful again.
 func TestProcessVote_AcceptFalseDoesNotAccept(t *testing.T) {
 
 	engine := NewWithParams(config.Parameters{
@@ -791,10 +806,27 @@ func TestProcessVote_AcceptFalseDoesNotAccept(t *testing.T) {
 	}
 	defer engine.Stop(ctx)
 
-	// Build block
-	if err := engine.Notify(ctx, Message{Type: PendingTxs}); err != nil {
-		t.Fatalf("Notify failed: %v", err)
+	// Seed the block as a follower-tracked entry (not own-proposed).
+	cb := &Block{
+		id:        blk.id,
+		parentID:  blk.parentID,
+		height:    blk.height,
+		timestamp: blk.timestamp.Unix(),
+		data:      blk.bytes,
 	}
+	if err := engine.AddBlock(ctx, cb); err != nil {
+		t.Fatalf("AddBlock: %v", err)
+	}
+	engine.mu.Lock()
+	engine.pendingBlocks[blk.id] = &PendingBlock{
+		ConsensusBlock: cb,
+		VMBlock:        blk,
+		ProposedAt:     time.Now(),
+		VoteCount:      1,
+		Decided:        false,
+		IsOwnProposal:  false,
+	}
+	engine.mu.Unlock()
 
 	// Send Accept=false votes (rejections)
 	for i := 0; i < 5; i++ {
@@ -815,7 +847,15 @@ func TestProcessVote_AcceptFalseDoesNotAccept(t *testing.T) {
 	}
 }
 
-// TestEngine_RejectsWithInsufficientSupport verifies blocks can be rejected
+// TestEngine_RejectsWithInsufficientSupport verifies follower-tracked blocks
+// (NOT own-proposed) are rejected when peers explicitly vote Accept=false.
+//
+// See history note on TestProcessVote_AcceptFalseDoesNotAccept: the test
+// originally exercised an own-proposed block, but the LUX network protocol
+// never gossips explicit Accept=false votes back to a proposer (peers send
+// no message on reject; SendVote is fast-follow-Accept-only). The invariant
+// that explicit rejections of a non-own pending block are honored is now
+// exercised via a follower-shaped pending entry (IsOwnProposal=false).
 func TestEngine_RejectsWithInsufficientSupport(t *testing.T) {
 
 	// Use smaller parameters (K=5, Alpha=3, Beta=2)
@@ -845,10 +885,27 @@ func TestEngine_RejectsWithInsufficientSupport(t *testing.T) {
 	}
 	defer engine.Stop(ctx)
 
-	// Trigger block build
-	if err := engine.Notify(ctx, Message{Type: PendingTxs}); err != nil {
-		t.Fatalf("Notify failed: %v", err)
+	// Seed as follower-tracked (not own-proposed).
+	cb := &Block{
+		id:        blk.id,
+		parentID:  blk.parentID,
+		height:    blk.height,
+		timestamp: blk.timestamp.Unix(),
+		data:      blk.bytes,
 	}
+	if err := engine.AddBlock(ctx, cb); err != nil {
+		t.Fatalf("AddBlock: %v", err)
+	}
+	engine.mu.Lock()
+	engine.pendingBlocks[blk.id] = &PendingBlock{
+		ConsensusBlock: cb,
+		VMBlock:        blk,
+		ProposedAt:     time.Now(),
+		VoteCount:      1,
+		Decided:        false,
+		IsOwnProposal:  false,
+	}
+	engine.mu.Unlock()
 
 	// Send reject votes (Accept=false)
 	for i := 0; i < 4; i++ {
