@@ -9,18 +9,16 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 require (
 	github.com/luxfi/accel v1.1.2
 	github.com/luxfi/bft v0.1.5
-	github.com/luxfi/corona v0.7.5
 	github.com/luxfi/crypto v1.19.10
 	github.com/luxfi/database v1.18.3
 	github.com/luxfi/ids v1.2.9
 	github.com/luxfi/lattice/v7 v7.1.0
 	github.com/luxfi/log v1.4.1
-	github.com/luxfi/math v1.4.0
-	github.com/luxfi/metric v1.5.0
+	github.com/luxfi/math v1.4.1
+	github.com/luxfi/metric v1.5.7
 	github.com/luxfi/p2p v1.18.9
-	github.com/luxfi/pulsar v1.0.12
 	github.com/luxfi/runtime v1.1.0
-	github.com/luxfi/threshold v1.6.17
+	github.com/luxfi/threshold v1.8.8-0.20260531193754-9d337052ec83
 	github.com/luxfi/validators v1.0.0
 	github.com/luxfi/version v1.0.1
 	github.com/luxfi/warp v1.18.5
@@ -85,12 +83,14 @@ require (
 	github.com/luxfi/concurrent v0.0.3 // indirect
 	github.com/luxfi/constants v1.4.3 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
+	github.com/luxfi/corona v0.7.5 // indirect
 	github.com/luxfi/crypto/ipa v1.2.4 // indirect
 	github.com/luxfi/geth v1.16.73 // indirect
-	github.com/luxfi/lens v0.1.3 // indirect
+	github.com/luxfi/lens v0.1.4 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.0 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
+	github.com/luxfi/pulsar v1.0.12 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.4 // indirect
 	github.com/luxfi/vm v1.0.27 // indirect
