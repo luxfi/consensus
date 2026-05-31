@@ -294,6 +294,33 @@ func (c *ChainConsensus) ForcePreference(blockID ids.ID) {
 	c.tips[blockID] = true
 }
 
+// ForceAccept marks a block as accepted in the consensus engine without
+// requiring the natural alpha-of-K quorum threshold. This is the consensus-
+// level counterpart to ForcePreference, used by the proposer-self-accept
+// path (engine.finalizeOwnProposal) to commit a self-proposed block locally
+// when peer Chits do not arrive in a timely fashion.
+//
+// Safety: the caller must have already verified the block (via VMBlock.Verify)
+// and must have IsOwnProposal=true in the pending entry. The engine's
+// finalizeOwnProposal helper is the only authorized caller — direct use
+// from elsewhere violates the alpha-quorum guarantee for follower-tracked
+// blocks and is unsafe.
+//
+// Idempotent: subsequent calls on an already-accepted block no-op.
+func (c *ChainConsensus) ForceAccept(blockID ids.ID) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	block, exists := c.blocks[blockID]
+	if !exists {
+		return
+	}
+	if block.accepted {
+		return
+	}
+	block.accepted = true
+	c.finalizedTip = blockID
+}
+
 // GetFinalizedTip returns the current finalized tip block ID.
 // This is useful for debugging and health checks.
 func (c *ChainConsensus) GetFinalizedTip() ids.ID {
