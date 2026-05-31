@@ -319,3 +319,230 @@ func TestProposer_AcceptsOnceUnderConcurrentVotes(t *testing.T) {
 		t.Fatalf("VMBlock.Accept must be called exactly once, got %d", got)
 	}
 }
+
+// recordingProposer captures Propose/RequestVotes calls without going through
+// any real network layer, so tests can model the production wiring (proposer
+// is non-nil → finalizeOwnProposal fires) without producing actual gossip
+// traffic. Mirrors the production BlockProposer surface.
+type recordingProposer struct {
+	proposeCalled  int64
+	requestVotesCalled int64
+}
+
+func (p *recordingProposer) Propose(_ context.Context, _ BlockProposal) error {
+	atomic.AddInt64(&p.proposeCalled, 1)
+	return nil
+}
+
+func (p *recordingProposer) RequestVotes(_ context.Context, _ VoteRequest) error {
+	atomic.AddInt64(&p.requestVotesCalled, 1)
+	return nil
+}
+
+func (p *recordingProposer) ProposeCalls() int64 {
+	return atomic.LoadInt64(&p.proposeCalled)
+}
+
+// TestProposerSelfAccept_FinalizesWithoutPeerChits is the regression test for
+// the v1.27.26 lux-devnet stall: the v1.25.1 IsOwnProposal trust path closes
+// the gap only when peer Chits actually arrive at the proposer. When Chits do
+// not arrive (network condition empirically observed on K=3 alpha=2 devnet),
+// the proposer's pending block stays decided=false indefinitely; VM.Accept
+// is never called; the node freezes at its proposal height.
+//
+// The v1.25.2 fix routes the proposer's commitment through
+// finalizeOwnProposal at the end of buildBlocksLocked: once the proposer
+// gossips the block and requests votes, it locally commits to its own
+// (already-verified) block without waiting on peer signals. This is safe
+// because the proposer ran Verify successfully — under honest-validator
+// assumption, peers running the same Verify reach the same decision, and
+// cluster authoritative finality (BLS+Pulsar witness) is unaffected.
+//
+// Test models the production wiring (recordingProposer non-nil) and sends
+// ZERO peer votes; the proposer must still call VMBlock.Accept exactly once.
+func TestProposerSelfAccept_FinalizesWithoutPeerChits(t *testing.T) {
+	// 5-validator alpha=3 cluster — without the fix, lone self-vote (count=1)
+	// stays below alpha (3) forever and the block never finalizes.
+	engine := NewWithParams(config.Parameters{
+		K:               5,
+		AlphaPreference: 3,
+		AlphaConfidence: 3,
+		Beta:            2,
+	})
+	ctx := context.Background()
+
+	blk := &verifyOnceBlock{
+		id:        ids.GenerateTestID(),
+		parentID:  ids.Empty,
+		height:    1,
+		timestamp: time.Now(),
+		bytes:     []byte("self-accept-no-chits"),
+	}
+	vm := &verifyOnceVM{blocks: []*verifyOnceBlock{blk}}
+	engine.SetVM(vm)
+	proposer := &recordingProposer{}
+	engine.SetProposer(proposer)
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	if err := engine.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("Notify: %v", err)
+	}
+
+	// Notify is synchronous through buildBlocksLocked which now ends in
+	// finalizeOwnProposal — Accept must already have fired before Notify
+	// returns. Allow a short grace for async signal propagation.
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) && blk.AcceptCalled() == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if got := proposer.ProposeCalls(); got != 1 {
+		t.Fatalf("proposer.Propose must fire once at proposal time, got %d", got)
+	}
+	if got := blk.VerifyCalls(); got != 1 {
+		t.Fatalf("Verify must be called exactly once at proposal time, got %d", got)
+	}
+	if got := blk.AcceptCalled(); got != 1 {
+		t.Fatalf("VMBlock.Accept must fire on proposer without peer Chits, got %d", got)
+	}
+	if got := blk.RejectCalled(); got != 0 {
+		t.Fatalf("VMBlock.Reject must NOT be called for self-finalized block, got %d", got)
+	}
+	if !engine.IsAccepted(blk.id) {
+		t.Fatal("engine must mark block accepted after self-finalize")
+	}
+	engine.mu.RLock()
+	_, stillPending := engine.pendingBlocks[blk.id]
+	engine.mu.RUnlock()
+	if stillPending {
+		t.Fatal("self-finalized block must be removed from pendingBlocks")
+	}
+}
+
+// TestProposerSelfAccept_IdempotentUnderLateChits verifies that late-arriving
+// peer Chits after the proposer has already self-finalized cannot drive a
+// second VMBlock.Accept call. This guards the production scenario where peers
+// fast-follow accept and then Chits arrive at the proposer AFTER its
+// self-finalize already fired.
+func TestProposerSelfAccept_IdempotentUnderLateChits(t *testing.T) {
+	engine := NewWithParams(config.Parameters{
+		K:               5,
+		AlphaPreference: 3,
+		AlphaConfidence: 3,
+		Beta:            2,
+	})
+	ctx := context.Background()
+
+	blk := &verifyOnceBlock{
+		id:        ids.GenerateTestID(),
+		parentID:  ids.Empty,
+		height:    1,
+		timestamp: time.Now(),
+		bytes:     []byte("late-chits"),
+	}
+	vm := &verifyOnceVM{blocks: []*verifyOnceBlock{blk}}
+	engine.SetVM(vm)
+	engine.SetProposer(&recordingProposer{})
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	if err := engine.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("Notify: %v", err)
+	}
+
+	// Wait for self-finalize.
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) && blk.AcceptCalled() == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if got := blk.AcceptCalled(); got != 1 {
+		t.Fatalf("self-finalize must fire once, got %d Accept calls", got)
+	}
+
+	// Now simulate late-arriving peer Chits (would normally drive natural
+	// finalization but the block is already decided + removed from pending).
+	for i := 0; i < 5; i++ {
+		engine.ReceiveVote(Vote{
+			BlockID:  blk.id,
+			NodeID:   ids.GenerateTestNodeID(),
+			Accept:   false, // bug-surface signal from applyQbit re-Verify
+			SignedAt: time.Now(),
+		})
+	}
+
+	// Drain time for handleVote to process the late votes.
+	time.Sleep(200 * time.Millisecond)
+
+	if got := blk.AcceptCalled(); got != 1 {
+		t.Fatalf("VMBlock.Accept must still be exactly 1 after late Chits, got %d", got)
+	}
+}
+
+// TestFollower_StillRequiresAlphaQuorum_AfterSelfAcceptFix verifies the
+// finalizeOwnProposal path is precisely scoped: IsOwnProposal=false entries
+// (followers tracking peer-proposed blocks via HandleIncomingBlock slow path)
+// must still require the full alpha-of-K quorum signal. The self-accept
+// shortcut applies only to the node that built the block.
+func TestFollower_StillRequiresAlphaQuorum_AfterSelfAcceptFix(t *testing.T) {
+	engine := NewWithParams(config.Parameters{
+		K:               5,
+		AlphaPreference: 3,
+		AlphaConfidence: 3,
+		Beta:            2,
+	})
+	engine.SetProposer(&recordingProposer{})
+	ctx := context.Background()
+
+	if err := engine.Start(ctx, true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	blkID := ids.GenerateTestID()
+	cb := &Block{
+		id:        blkID,
+		parentID:  ids.Empty,
+		height:    7,
+		timestamp: time.Now().Unix(),
+	}
+	if err := engine.AddBlock(ctx, cb); err != nil {
+		t.Fatalf("AddBlock: %v", err)
+	}
+
+	// Inject follower-style entry (NOT IsOwnProposal). finalizeOwnProposal
+	// MUST refuse to fire on this entry even though a proposer is wired.
+	engine.mu.Lock()
+	engine.pendingBlocks[blkID] = &PendingBlock{
+		ConsensusBlock: cb,
+		VMBlock:        nil,
+		ProposedAt:     time.Now(),
+		VoteCount:      1,
+		Decided:        false,
+		IsOwnProposal:  false,
+	}
+	engine.mu.Unlock()
+
+	// Direct call: must be a no-op since IsOwnProposal=false.
+	engine.finalizeOwnProposal(ctx, blkID)
+
+	engine.mu.RLock()
+	pending, exists := engine.pendingBlocks[blkID]
+	engine.mu.RUnlock()
+	if !exists {
+		t.Fatal("follower-tracked block must NOT be removed by finalizeOwnProposal")
+	}
+	if pending.Decided {
+		t.Fatal("follower-tracked block must NOT be marked Decided by finalizeOwnProposal")
+	}
+	if engine.IsAccepted(blkID) {
+		t.Fatal("follower-tracked block must NOT be marked accepted by finalizeOwnProposal")
+	}
+}
