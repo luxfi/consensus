@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luxfi/corona/keyera"
-	coronaThreshold "github.com/luxfi/corona/threshold"
+	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	"github.com/luxfi/threshold/protocols/corona/keyera"
 	"golang.org/x/crypto/sha3"
 )
 
