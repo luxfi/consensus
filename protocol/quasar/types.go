@@ -11,6 +11,7 @@ import (
 
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
+	magnetar "github.com/luxfi/magnetar/ref/go/pkg/magnetar"
 	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
 )
 
@@ -32,39 +33,43 @@ type Block struct {
 // Architectural shape — read the cardinality, not a counting word:
 //
 //	BLS-12-381  — classical fast-path aggregate (48 B; pairing-based)
-//	Corona      — Ring-LWE threshold ML-DSA   (O(1) after DKG; FIPS 204 Class N1)
-//	Pulsar      — Module-LWE threshold ML-DSA (O(1) after DKG; FIPS 204 Class N1)
+//	Pulsar      — Module-LWE threshold ML-DSA  (O(1) after DKG; FIPS 204 Class N1)
+//	Corona      — Ring-LWE  threshold ML-DSA   (O(1) after DKG; FIPS 204 Class N1)
+//	Magnetar    — SLH-DSA per-validator        (FIPS 205; hash-based; cross-family backstop)
 //	MLDSARollup — per-validator ML-DSA-65 rolled into one STARK / Groth16 proof
 //
-// Naming: the PQ-side is at most **Double Lattice** — Ring-LWE plus
-// Module-LWE. Calling the BLS+Corona+MLDSARollup composition "Triple
-// Quantum" is misleading because BLS is classical, not quantum. The
-// honest mode descriptor is "Classical + Double Lattice [+ Identity
-// Rollup]".
+// Three profile selectors map to which legs are populated, per
+// papers/lux-quasar-composition/sections/04-profiles.tex:
 //
-// Pure-PQ profile (no BLS, no classical curve in the validator path):
-// Corona + Pulsar (Double Lattice). Each layer is independently
-// FIPS 204 Class N1 (output verifies under the unmodified single-
-// party ML-DSA verifier). MLDSARollup is the identity attestation
-// layer, succinct via STARK (Z-Chain → P3Q).
+//	Pulsar profile  (minimum PQ posture):
+//	   BLS ‖ Puls ‖ ZK  — one classical, one Module-LWE lattice, rollup
 //
-// Corona (academic R-LWE with trusted-dealer DKG) is NOT a
-// production option for an open public chain. Corona is the
-// production Ring-LWE library (Pedersen DKG over R_q + proactive
-// resharing; `luxfi/corona`). The historic field name "Corona"
-// in this struct refers to "the Ring-LWE threshold slot"; that
-// slot now carries Corona bytes. The field is renamed accordingly.
+//	Aurora profile  (intra-lattice diversity):
+//	   BLS ‖ Puls ‖ Cor ‖ ZK  — two independent lattice families
 //
-// MLDSARollup is succinct: a single STARK/Groth16 proof attests
-// "∀ i ∈ [N]: ML-DSA.Verify(mldsa_pk_i, msg, mldsa_σ_i) = 1". Output
-// is one constant-size proof (192 B for Groth16, ~30 KB for a STARK
-// like P3Q), constant in validator count.
+//	Polaris profile (cross-family maximum assurance):
+//	   BLS ‖ Puls ‖ Cor ‖ Mag ‖ ZK  — two lattices + hash-based backstop
 //
-// Total cert size: 48 (BLS, optional) + |Corona| + |Pulsar| + |MLDSARollup|.
+// The Polaris profile is the headline "double lattice + hash-based"
+// PQ defense-in-depth — Module-LWE ∧ Ring-LWE ∧ SHA3-OW must all be
+// broken for an adversary to forge a cert. See polaris.go for the
+// composition function and SPEC.md §QuasarCert for the wire format.
+//
+// Total cert size:
+//
+//	Pulsar profile:  48 (BLS) + |Pulsar|         + |MLDSARollup|  ≈ 3.5 KB
+//	Aurora profile:  48 (BLS) + |Pulsar|+|Corona|+ |MLDSARollup|  ≈ 37 KB
+//	Polaris profile: 48 (BLS) + |Pulsar|+|Corona|+|Magnetar|+|MLDSARollup| ≈ 53 KB
+//
+// Magnetar carries a magnetar.ValidatorAggregateCert wire envelope
+// (N per-validator standalone SLH-DSA sigs over the round digest)
+// produced by magnetar.BuildAggregateCert and verified by
+// magnetar.VerifyAggregateCert.
 type QuasarCert struct {
 	BLS         []byte    // BLS-12-381 aggregate (48 bytes, classical fast-path; empty in pure-PQ)
 	Corona      []byte    // Ring-LWE threshold sig (Corona; O(1) after DKG)
-	Pulsar      []byte    // Module-LWE threshold sig (Pulsar-M; O(1) after DKG; optional)
+	Pulsar      []byte    // Module-LWE threshold sig (Pulsar-M; O(1) after DKG)
+	Magnetar    []byte    // SLH-DSA hash-based defense-in-depth (Polaris profile)
 	MLDSARollup []byte    // Succinct rollup of per-validator ML-DSA-65 (STARK or Groth16)
 	Epoch       uint64    // Epoch number
 	Finality    time.Time // Time of finality
@@ -105,6 +110,29 @@ func (c *QuasarCert) HasIdentityRollup() bool {
 		return false
 	}
 	return len(c.MLDSARollup) > 0
+}
+
+// HasHashBased reports whether the cert carries the Magnetar
+// (SLH-DSA / FIPS 205) hash-based defense-in-depth leg. This is the
+// Polaris profile's load-bearing cross-family guarantee: if every
+// lattice family (Module-LWE, Ring-LWE) breaks, hash-based one-wayness
+// still secures finality.
+func (c *QuasarCert) HasHashBased() bool {
+	if c == nil {
+		return false
+	}
+	return len(c.Magnetar) > 0
+}
+
+// IsPolaris reports whether this cert composes all three production
+// PQ schemes: Pulsar (Module-LWE threshold), Corona (Ring-LWE
+// threshold), and Magnetar (SLH-DSA hash-based). This is the maximum-
+// assurance profile per papers/lux-quasar-composition/sections/04.
+func (c *QuasarCert) IsPolaris() bool {
+	if c == nil {
+		return false
+	}
+	return len(c.Pulsar) > 0 && len(c.Corona) > 0 && len(c.Magnetar) > 0
 }
 
 // Verify checks structural presence of the Quasar layers: BLS fast-path
@@ -156,6 +184,9 @@ func (c *QuasarCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
 // nil if MLDSARollup is empty (rollup not yet wired). nil rtGroupKey
 // skips the Corona check (used when running in BLS-only mode or in a
 // Pulsar-only pure-PQ posture).
+//
+// To verify the Polaris-profile Magnetar leg as well, call
+// VerifyWithRealKeysPolaris.
 func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.PublicKey, rtGroupKey *coronaThreshold.GroupKey, mldsaPubKeys []*mldsa.PublicKey) bool {
 	if c == nil || len(message) == 0 {
 		return false
@@ -220,34 +251,111 @@ func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.Public
 	return true
 }
 
-// QuasarCert byte serialization layout:
+// VerifyWithRealKeysPolaris performs cryptographic verification of
+// every leg present in a Polaris-profile cert. In addition to the
+// classical BLS + Corona + ML-DSA legs verified by VerifyWithRealKeys,
+// this method also verifies:
 //
-//	[scheme:1=SigQuasar(=0x04)]
+//   - Pulsar (Module-LWE threshold ML-DSA), if c.Pulsar is non-empty
+//     and pulsarGroupKey is non-nil. The Pulsar leg carries a single
+//     FIPS 204 ML-DSA signature byte-equal to what unmodified
+//     ML-DSA.Verify accepts, so the routine routes through the
+//     pulsar package's stateless VerifyBytes.
+//
+//   - Magnetar (SLH-DSA / FIPS 205 hash-based), if c.Magnetar is
+//     non-empty. The Magnetar leg carries a magnetar.ValidatorAggregateCert
+//     wire blob (per-validator standalone SLH-DSA signatures) and
+//     verifies through magnetar.VerifyAggregateCert against
+//     knownMagnetarValidators. Verification accepts the cert iff
+//     every claimed signer's signature verifies AND the count meets
+//     the configured quorum (here, every signer must verify).
+//
+// A nil entry skips that leg's verification — exactly the semantics
+// of VerifyWithRealKeys for the legs it covers.
+func (c *QuasarCert) VerifyWithRealKeysPolaris(
+	message []byte,
+	blsAggPubKey *bls.PublicKey,
+	coronaGroupKey *coronaThreshold.GroupKey,
+	pulsarGroupKey []byte,
+	mldsaPubKeys []*mldsa.PublicKey,
+	knownMagnetarValidators map[magnetar.NodeID][]byte,
+) bool {
+	if !c.VerifyWithRealKeys(message, blsAggPubKey, coronaGroupKey, mldsaPubKeys) {
+		return false
+	}
+
+	// Pulsar leg — Module-LWE threshold ML-DSA. The Pulsar wire
+	// codec carries a PULS-framed FIPS 204 signature that
+	// pulsar.VerifyBytes accepts directly.
+	if len(c.Pulsar) > 0 {
+		if !verifyPulsarLeg(message, pulsarGroupKey, c.Pulsar) {
+			return false
+		}
+	}
+
+	// Magnetar leg — SLH-DSA hash-based. Carries a
+	// ValidatorAggregateCert wire blob.
+	if len(c.Magnetar) > 0 {
+		cert, err := DecodeMagnetarAggregate(c.Magnetar)
+		if err != nil {
+			return false
+		}
+		validCount, err := magnetar.VerifyAggregateCert(cert, message, knownMagnetarValidators)
+		if err != nil {
+			return false
+		}
+		// Polaris quorum policy: every claimed magnetar signer must
+		// verify. The consensus layer may impose a lower threshold;
+		// that's a profile-level override expressed at the caller.
+		if validCount != len(cert.Signers) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// QuasarCert byte serialization layout (Polaris-ready, five legs):
+//
+//	[scheme:1=SigQuasarPolaris(=0x05)]
 //	[bls_len:2 BE][bls:N]
-//	[rt_len:2 BE][rt:M]
-//	[mldsa_len:4 BE][mldsa:K]   // K = sum of (4-byte len + sig) for each validator,
-//	                             // OR a single Groth16 proof (~192 bytes).
+//	[corona_len:4 BE][corona:M]      // CORS-framed corona/threshold.Signature
+//	[pulsar_len:4 BE][pulsar:P]      // PULS-framed pulsar.Signature
+//	[magnetar_len:4 BE][magnetar:Q]  // MAGS-framed magnetar.Signature
+//	                                  // OR magnetar.ValidatorAggregateCert wire bytes
+//	[mldsa_len:4 BE][mldsa:K]        // EncodeMLDSASigs or single STARK/Groth16
 //	[epoch:8 BE]
 //	[finality_unix_ns:8 BE]
 //	[validators:2 BE]
 //
-// CertSchemeQuasar is the leading byte tag (matches wire.SigQuasar).
-const CertSchemeQuasar byte = 0x04
+// CertSchemeQuasar is the leading byte tag. 0x05 carries the
+// five-leg layout (Polaris-ready); the legacy 0x04 three-leg layout
+// is dropped per "no backwards compatibility only forwards
+// perfection" — pre-Polaris chains MUST re-cert at the rotation
+// window.
+const CertSchemeQuasar byte = 0x05
 
 // ErrCertCorrupt is returned when QuasarCert.UnmarshalBinary cannot decode
 // the input.
 var ErrCertCorrupt = errors.New("quasar: certificate corrupt")
+
+// minCertSize is the smallest possible serialized cert:
+// scheme(1) + bls_len(2) + corona_len(4) + pulsar_len(4) +
+// magnetar_len(4) + mldsa_len(4) + epoch(8) + finality(8) +
+// validators(2) = 37 bytes with every leg empty.
+const minCertSize = 1 + 2 + 4 + 4 + 4 + 4 + 8 + 8 + 2
 
 // MarshalBinary serializes the cert into a self-describing byte slice.
 func (c *QuasarCert) MarshalBinary() ([]byte, error) {
 	if c == nil {
 		return nil, errors.New("quasar: nil cert")
 	}
-	if len(c.BLS) > 0xFFFF || len(c.Corona) > 0xFFFF {
-		return nil, errors.New("quasar: signature too large")
+	if len(c.BLS) > 0xFFFF {
+		return nil, errors.New("quasar: BLS aggregate too large")
 	}
 
-	out := make([]byte, 0, 1+2+len(c.BLS)+2+len(c.Corona)+4+len(c.MLDSARollup)+8+8+2)
+	total := minCertSize + len(c.BLS) + len(c.Corona) + len(c.Pulsar) + len(c.Magnetar) + len(c.MLDSARollup)
+	out := make([]byte, 0, total)
 	out = append(out, CertSchemeQuasar)
 
 	var u16 [2]byte
@@ -258,9 +366,17 @@ func (c *QuasarCert) MarshalBinary() ([]byte, error) {
 	out = append(out, u16[:]...)
 	out = append(out, c.BLS...)
 
-	binary.BigEndian.PutUint16(u16[:], uint16(len(c.Corona)))
-	out = append(out, u16[:]...)
+	binary.BigEndian.PutUint32(u32[:], uint32(len(c.Corona)))
+	out = append(out, u32[:]...)
 	out = append(out, c.Corona...)
+
+	binary.BigEndian.PutUint32(u32[:], uint32(len(c.Pulsar)))
+	out = append(out, u32[:]...)
+	out = append(out, c.Pulsar...)
+
+	binary.BigEndian.PutUint32(u32[:], uint32(len(c.Magnetar)))
+	out = append(out, u32[:]...)
+	out = append(out, c.Magnetar...)
 
 	binary.BigEndian.PutUint32(u32[:], uint32(len(c.MLDSARollup)))
 	out = append(out, u32[:]...)
@@ -283,7 +399,7 @@ func (c *QuasarCert) UnmarshalBinary(data []byte) error {
 	if c == nil {
 		return errors.New("quasar: nil cert")
 	}
-	if len(data) < 1+2+2+4+8+8+2 {
+	if len(data) < minCertSize {
 		return ErrCertCorrupt
 	}
 	if data[0] != CertSchemeQuasar {
@@ -299,16 +415,38 @@ func (c *QuasarCert) UnmarshalBinary(data []byte) error {
 	c.BLS = append(c.BLS[:0], data[off:off+blsLen]...)
 	off += blsLen
 
-	if off+2 > len(data) {
+	if off+4 > len(data) {
 		return ErrCertCorrupt
 	}
-	rtLen := int(binary.BigEndian.Uint16(data[off:]))
-	off += 2
-	if off+rtLen > len(data) {
+	coronaLen := int(binary.BigEndian.Uint32(data[off:]))
+	off += 4
+	if off+coronaLen > len(data) {
 		return ErrCertCorrupt
 	}
-	c.Corona = append(c.Corona[:0], data[off:off+rtLen]...)
-	off += rtLen
+	c.Corona = append(c.Corona[:0], data[off:off+coronaLen]...)
+	off += coronaLen
+
+	if off+4 > len(data) {
+		return ErrCertCorrupt
+	}
+	pulsarLen := int(binary.BigEndian.Uint32(data[off:]))
+	off += 4
+	if off+pulsarLen > len(data) {
+		return ErrCertCorrupt
+	}
+	c.Pulsar = append(c.Pulsar[:0], data[off:off+pulsarLen]...)
+	off += pulsarLen
+
+	if off+4 > len(data) {
+		return ErrCertCorrupt
+	}
+	magnetarLen := int(binary.BigEndian.Uint32(data[off:]))
+	off += 4
+	if off+magnetarLen > len(data) {
+		return ErrCertCorrupt
+	}
+	c.Magnetar = append(c.Magnetar[:0], data[off:off+magnetarLen]...)
+	off += magnetarLen
 
 	if off+4 > len(data) {
 		return ErrCertCorrupt
