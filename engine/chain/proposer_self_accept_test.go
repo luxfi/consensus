@@ -55,10 +55,10 @@ func (b *verifyOnceBlock) Reject(context.Context) error {
 	atomic.AddInt64(&b.rejectCalled, 1)
 	return nil
 }
-func (b *verifyOnceBlock) Bytes() []byte           { return b.bytes }
-func (b *verifyOnceBlock) AcceptCalled() int64     { return atomic.LoadInt64(&b.acceptCalled) }
-func (b *verifyOnceBlock) RejectCalled() int64     { return atomic.LoadInt64(&b.rejectCalled) }
-func (b *verifyOnceBlock) VerifyCalls() int64      { return atomic.LoadInt64(&b.verifyCount) }
+func (b *verifyOnceBlock) Bytes() []byte       { return b.bytes }
+func (b *verifyOnceBlock) AcceptCalled() int64 { return atomic.LoadInt64(&b.acceptCalled) }
+func (b *verifyOnceBlock) RejectCalled() int64 { return atomic.LoadInt64(&b.rejectCalled) }
+func (b *verifyOnceBlock) VerifyCalls() int64  { return atomic.LoadInt64(&b.verifyCount) }
 
 var errVerifiedAlready = errVerifiedAlreadyT{}
 
@@ -325,7 +325,7 @@ func TestProposer_AcceptsOnceUnderConcurrentVotes(t *testing.T) {
 // is non-nil → finalizeOwnProposal fires) without producing actual gossip
 // traffic. Mirrors the production BlockProposer surface.
 type recordingProposer struct {
-	proposeCalled  int64
+	proposeCalled      int64
 	requestVotesCalled int64
 }
 
