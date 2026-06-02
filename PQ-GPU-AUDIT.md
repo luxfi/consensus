@@ -212,7 +212,7 @@ is itself ~3× slower than ML-DSA so break-even comes earlier).
 | Memory — long-running validators continuously batch-verifying | `*UntypedTensor` ops use `defer .Close()` consistently in `crypto/mldsa/gpu.go`. New `crypto/slhdsa/gpu.go` mirrors the same. Verified no leak via existing soak tests. |
 | macOS gatekeeper for new luxcpp dylib | Not adding new install paths in this pass — reusing the existing `accel` linkage. If a future pass packages an SLH-DSA-specific dylib, codesign at canonical path per cevm pattern. |
 | Backwards compat for `LUX_CONSENSUS_PQ_MODE` | Keep reading the `LUX_*` form alongside the new `CONSENSUS_PQ_MODE`. Unprefixed wins if both set. Document in `pq_mode.go` doc-comment. |
-| Naming-lock drift | Audit doc anchors the lock — Pulsar (threshold ML-DSA), Corona (threshold Ring-LWE), Magnetar (public-DKG MPC threshold SLH-DSA), P3Q (Z-Chain STARK), Quasar (engine). Cert profiles Pulsar / Aurora / Polaris. No Wing names, no Ringtail brand on the consensus surface. |
+| Naming-lock drift | Audit doc anchors the lock — Pulsar (threshold ML-DSA), Corona (threshold Ring-LWE), Magnetar (public-DKG MPC threshold SLH-DSA), P3Q (Z-Chain STARK), Quasar (engine). Cert profiles Pulsar / Aurora / Polaris. No Wing names on the consensus surface. |
 
 ## Final verdict per primitive
 
