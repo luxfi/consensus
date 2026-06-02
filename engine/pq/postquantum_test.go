@@ -7,6 +7,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/ids"
 	"github.com/stretchr/testify/require"
 )
@@ -145,7 +146,7 @@ func TestPostQuantumGenerateQuantumProof(t *testing.T) {
 	proof, err := pq.GenerateQuantumProof(ctx, blockID)
 	require.NoError(t, err)
 	require.NotEmpty(t, proof)
-	require.Equal(t, byte(0x04), proof[0]) // CertSchemeQuasar
+	require.Equal(t, quasar.CertSchemeQuasar, proof[0])
 }
 
 func TestPostQuantumGenerateQuantumProofMultiple(t *testing.T) {
