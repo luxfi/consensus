@@ -250,7 +250,7 @@ type IDs struct {
 	ChainID      ids.ID
 	NodeID       ids.NodeID
 	PublicKey    []byte
-	UTXOAssetID     ids.ID
+	UTXOAssetID  ids.ID
 	ChainDataDir string `json:"chainDataDir"`
 }
 
