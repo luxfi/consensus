@@ -14,13 +14,13 @@ require (
 	github.com/luxfi/ids v1.2.9
 	github.com/luxfi/lattice/v7 v7.1.4
 	github.com/luxfi/log v1.4.1
-	github.com/luxfi/magnetar v0.5.2
+	github.com/luxfi/magnetar v1.1.0
 	github.com/luxfi/math v1.4.1
 	github.com/luxfi/metric v1.5.7
 	github.com/luxfi/p2p v1.18.9
 	github.com/luxfi/pulsar v1.0.23
 	github.com/luxfi/runtime v1.1.0
-	github.com/luxfi/threshold v1.9.0
+	github.com/luxfi/threshold v1.9.1
 	github.com/luxfi/validators v1.0.0
 	github.com/luxfi/version v1.0.1
 	github.com/luxfi/warp v1.18.5
