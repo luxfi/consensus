@@ -143,12 +143,12 @@ func Context(tb testing.TB, chainID ids.ID) *consensusruntime.Runtime {
 	tb.Helper()
 
 	ctx := &consensusruntime.Runtime{
-		NetworkID: 1, // Mainnet (primary network)
-		ChainID:   chainID,
-		NodeID:    ids.GenerateTestNodeID(),
-		XChainID:  XChainID,
-		CChainID:  CChainID,
-		UTXOAssetID:  UTXOAssetID,
+		NetworkID:   1, // Mainnet (primary network)
+		ChainID:     chainID,
+		NodeID:      ids.GenerateTestNodeID(),
+		XChainID:    XChainID,
+		CChainID:    CChainID,
+		UTXOAssetID: UTXOAssetID,
 	}
 
 	// Set up a simple validator state
@@ -166,12 +166,12 @@ func Runtime(tb testing.TB, chainID ids.ID) *runtime.Runtime {
 	tb.Helper()
 
 	rt := &runtime.Runtime{
-		NetworkID: 1, // Mainnet (primary network)
-		ChainID:   chainID,
-		NodeID:    ids.GenerateTestNodeID(),
-		XChainID:  XChainID,
-		CChainID:  CChainID,
-		UTXOAssetID:  UTXOAssetID,
+		NetworkID:   1, // Mainnet (primary network)
+		ChainID:     chainID,
+		NodeID:      ids.GenerateTestNodeID(),
+		XChainID:    XChainID,
+		CChainID:    CChainID,
+		UTXOAssetID: UTXOAssetID,
 	}
 
 	// Set up a simple validator state
