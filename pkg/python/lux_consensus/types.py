@@ -116,15 +116,15 @@ class PolicyID(IntEnum):
     QUORUM = 1             # Threshold signature (3/5, 2/3)
     SAMPLE_CONVERGENCE = 2 # Metastable sampling (large N)
     L1_INCLUSION = 3       # External chain inclusion (OP Stack)
-    QUANTUM = 4            # BLS + Ringtail post-quantum
+    QUANTUM = 4            # BLS + Corona post-quantum
 
 
 # Signature scheme tags
 SIG_NONE = 0x00
 SIG_ED25519 = 0x01
 SIG_BLS = 0x02
-SIG_RINGTAIL = 0x03
-SIG_QUASAR = 0x04  # BLS + Ringtail (Quasar protocol)
+SIG_CORONA = 0x03
+SIG_QUASAR = 0x04  # BLS + Corona (Quasar protocol)
 
 
 # =============================================================================
