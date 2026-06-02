@@ -218,24 +218,24 @@ pub mod types {
         pub height: u64,
         pub signers: Vec<NodeID>,
         pub aggregated_sig: Vec<u8>,      // BLS aggregated signature
-        pub quantum_sigs: Vec<Vec<u8>>,   // Ringtail individual signatures
+        pub quantum_sigs: Vec<Vec<u8>>,   // Corona individual signatures
         pub timestamp: SystemTime,
     }
 
-    /// Quasar signature (BLS + Ringtail)
+    /// Quasar signature (BLS + Corona)
     #[derive(Debug, Clone)]
     pub struct QuasarSignature {
         pub bls_sig: Vec<u8>,        // BLS signature (48 bytes)
-        pub ringtail_sig: Vec<u8>,   // Ringtail post-quantum signature
+        pub corona_sig: Vec<u8>,     // Corona post-quantum signature
         pub signer: NodeID,
     }
 
-    /// Security level for Ringtail post-quantum crypto
+    /// Security level for Corona post-quantum crypto
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum SecurityLevel {
-        Low = 2,    // Ringtail Level 2
-        Medium = 3, // Ringtail Level 3 - Default
-        High = 5,   // Ringtail Level 5
+        Low = 2,    // Corona Level 2
+        Medium = 3, // Corona Level 3 - Default
+        High = 5,   // Corona Level 5
     }
 
     impl Default for SecurityLevel {
@@ -1113,7 +1113,7 @@ pub mod quasar {
         pub weight: u64,
         pub active: bool,
         pub bls_pubkey: Option<Vec<u8>>,      // BLS12-381 public key (96 bytes)
-        pub ringtail_pubkey: Option<Vec<u8>>, // Ringtail post-quantum public key
+        pub corona_pubkey: Option<Vec<u8>>,   // Corona post-quantum public key
     }
 
     /// Quasar hybrid consensus with post-quantum signatures
@@ -1142,7 +1142,7 @@ pub mod quasar {
                 weight,
                 active: true,
                 bls_pubkey: None,
-                ringtail_pubkey: None,
+                corona_pubkey: None,
             });
         }
 
@@ -1152,14 +1152,14 @@ pub mod quasar {
             id: NodeID,
             weight: u64,
             bls_pubkey: Option<Vec<u8>>,
-            ringtail_pubkey: Option<Vec<u8>>,
+            corona_pubkey: Option<Vec<u8>>,
         ) {
             self.validators.insert(id.clone(), Validator {
                 id,
                 weight,
                 active: true,
                 bls_pubkey,
-                ringtail_pubkey,
+                corona_pubkey,
             });
         }
 
@@ -1180,7 +1180,7 @@ pub mod quasar {
 
         /// Create a certificate from votes
         ///
-        /// Aggregates BLS signatures and collects Ringtail signatures
+        /// Aggregates BLS signatures and collects Corona signatures
         /// for quantum-safe finality verification.
         pub fn create_certificate(
             &mut self,
@@ -1206,8 +1206,8 @@ pub mod quasar {
             // Aggregate BLS signatures from all valid votes
             let aggregated_sig = self.aggregate_bls_signatures(votes);
 
-            // Collect Ringtail signatures for quantum-safe verification
-            let quantum_sigs = self.collect_ringtail_signatures(votes);
+            // Collect Corona signatures for quantum-safe verification
+            let quantum_sigs = self.collect_corona_signatures(votes);
 
             let cert = Certificate {
                 block_id: block_id.clone(),
@@ -1239,7 +1239,7 @@ pub mod quasar {
             // BLS signature verification would use:
             // blst::min_pk::PublicKey for aggregated public key
             // BlsSignature::verify() for the aggregated signature
-            // Ringtail signatures are verified individually against validator public keys
+            // Corona signatures are verified individually against validator public keys
 
             // Structural checks pass - signature verification depends on having public keys
             !cert.aggregated_sig.is_empty() || !cert.quantum_sigs.is_empty()
@@ -1294,11 +1294,11 @@ pub mod quasar {
             agg.to_signature().compress().to_vec()
         }
 
-        /// Collect Ringtail post-quantum signatures from votes
+        /// Collect Corona post-quantum signatures from votes
         ///
-        /// Ringtail signatures are lattice-based and cannot be aggregated like BLS.
-        /// Each validator's Ringtail signature is collected for quantum-safe verification.
-        fn collect_ringtail_signatures(&self, votes: &[Vote]) -> Vec<Vec<u8>> {
+        /// Corona signatures are lattice-based and cannot be aggregated like BLS.
+        /// Each validator's Corona signature is collected for quantum-safe verification.
+        fn collect_corona_signatures(&self, votes: &[Vote]) -> Vec<Vec<u8>> {
             votes
                 .iter()
                 .filter(|v| !v.signature.is_empty())
