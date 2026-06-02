@@ -140,6 +140,8 @@ github.com/leanovate/gopter v0.2.11 h1:vRjThO1EKPb/1NsDXuDrzldR28RLkBflWYcU9CvzW
 github.com/leanovate/gopter v0.2.11/go.mod h1:aK3tzZP/C+p1m3SPRE4SYZFGP7jjkuSI4f7Xvpt0S9c=
 github.com/luxfi/accel v1.1.7 h1:Mi3adBJ/CnOb/vRtzYSxC0Ptn3Z4GSiP4ughEon+6U0=
 github.com/luxfi/accel v1.1.7/go.mod h1:K00BcnLzEYMPHwCFq8Tf/450ApmTs9xBVvYOnofJCkc=
+github.com/luxfi/accel v1.1.8 h1:dFD1MSrVV7T4wrLcQbj+7vjfNSPxlRId3mJcTxMKoBM=
+github.com/luxfi/accel v1.1.8/go.mod h1:K00BcnLzEYMPHwCFq8Tf/450ApmTs9xBVvYOnofJCkc=
 github.com/luxfi/age v1.4.0 h1:tU5q65RQSQdaVq64Z/DVUhiPQMoMPQT6pr41LsvG0AQ=
 github.com/luxfi/age v1.4.0/go.mod h1:iAYAxgvrXxcy746+Ovh/eWWDuF9teJLNcCSSOX9RYW0=
 github.com/luxfi/atomic v1.0.0 h1:xUV60MuzRvXngaQ1sM0yVC2v4TRoLlUGkkH7M9PS4yw=
