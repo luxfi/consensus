@@ -7,7 +7,7 @@ exclude github.com/ethereum/go-ethereum v1.10.26
 exclude github.com/ethereum/go-ethereum v1.16.3
 
 require (
-	github.com/luxfi/accel v1.1.2
+	github.com/luxfi/accel v1.1.7
 	github.com/luxfi/bft v0.1.5
 	github.com/luxfi/crypto v1.19.10
 	github.com/luxfi/database v1.18.3
