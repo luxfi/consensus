@@ -226,7 +226,7 @@ pub mod types {
     #[derive(Debug, Clone)]
     pub struct QuasarSignature {
         pub bls_sig: Vec<u8>,        // BLS signature (48 bytes)
-        pub corona_sig: Vec<u8>,   // Corona post-quantum signature
+        pub corona_sig: Vec<u8>,     // Corona post-quantum signature
         pub signer: NodeID,
     }
 
@@ -1113,7 +1113,7 @@ pub mod quasar {
         pub weight: u64,
         pub active: bool,
         pub bls_pubkey: Option<Vec<u8>>,      // BLS12-381 public key (96 bytes)
-        pub corona_pubkey: Option<Vec<u8>>, // Corona post-quantum public key
+        pub corona_pubkey: Option<Vec<u8>>,   // Corona post-quantum public key
     }
 
     /// Quasar hybrid consensus with post-quantum signatures
