@@ -183,7 +183,7 @@ protocol/             All Quasar sub-protocols (see table above)
 types/                Block, Vote, Config, Decision, bag/
 runtime/              VM wiring (chain IDs, validators)
 pkg/wire/             Wire credentials (ML-DSA-44/65/87, BLS, Ed25519)
-bench/                Benchmarks (ZAP throughput, Lux vs Avalanche)
+bench/                Benchmarks (ZAP throughput, Lux vs prior-gen EVM)
 version/              Re-exports github.com/luxfi/version
 ```
 
@@ -281,10 +281,10 @@ ring-call benchmarks (ring200, ring1000) currently hit a pre-existing
 nil-pointer in `core/types.Header.Hash` at bench_test.go:306 when running full
 chain-read; unrelated to consensus correctness but flagged for evmgpu repo.
 
-### Lux vs Avalanche (bench/)
+### Lux vs prior-gen EVM (bench/)
 ZAP deserialization: 157x faster than protobuf (21 ns vs 3231 ns, zero allocs).
-End-to-end throughput: 11.5M TPS (Lux) vs 246K (Avalanche).
-Run: `GOWORK=off go test -v -run TestLuxVsAvalanche_EndToEnd -bench=. ./bench/`
+End-to-end throughput: 11.5M TPS (Lux) vs 246K (prior-gen baseline).
+Run: `GOWORK=off go test -v -run TestLuxVsLegacy_EndToEnd -bench=. ./bench/`
 
 ## Key Technical Notes
 
