@@ -3,7 +3,7 @@
 package quasar
 
 import (
-	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	corona "github.com/luxfi/threshold/protocols/corona"
 )
 
 // coronaGobEncode serializes a Corona threshold signature via the
@@ -11,12 +11,12 @@ import (
 // The legacy name is preserved for caller compatibility; the encoder
 // is now the v0.7.6 wire codec (4-byte magic "CORS" + 2-byte version
 // + length-prefixed ring polynomial bytes). The receiver verifies
-// with coronaThreshold.Verify after decoding through coronaGobDecode.
+// with corona.Verify after decoding through coronaGobDecode.
 //
 // Returns nil on encoder error; callers treat nil as "no signature
 // available" and the round driver falls back to the next-lower
 // witness level.
-func coronaGobEncode(sig *coronaThreshold.Signature) []byte {
+func coronaGobEncode(sig *corona.Signature) []byte {
 	if sig == nil {
 		return nil
 	}
@@ -30,11 +30,11 @@ func coronaGobEncode(sig *coronaThreshold.Signature) []byte {
 // coronaGobDecode is the inverse of coronaGobEncode. Strict
 // trailing-bytes policy is enforced by the underlying CORS wire
 // codec.
-func coronaGobDecode(data []byte) (*coronaThreshold.Signature, error) {
+func coronaGobDecode(data []byte) (*corona.Signature, error) {
 	if len(data) == 0 {
 		return nil, ErrCertCorrupt
 	}
-	out := &coronaThreshold.Signature{}
+	out := &corona.Signature{}
 	if err := out.UnmarshalBinary(data); err != nil {
 		return nil, ErrCertCorrupt
 	}

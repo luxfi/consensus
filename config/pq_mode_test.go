@@ -14,7 +14,7 @@ func TestPQMode_String(t *testing.T) {
 		name string
 	}{
 		{PQModeBLS, "bls"},
-		{PQModeNasua, "nasua"},
+		{PQModeCorona, "corona"},
 		{PQModePulsar, "pulsar"},
 		{PQModeQuasar, "quasar"},
 		{PQModeMLDSA, "mldsa"},
@@ -29,7 +29,7 @@ func TestPQMode_String(t *testing.T) {
 // TestParsePQMode_Canonical accepts every canonical lower-case name.
 func TestParsePQMode_Canonical(t *testing.T) {
 	for _, m := range []PQMode{
-		PQModeBLS, PQModeNasua, PQModePulsar, PQModeQuasar, PQModeMLDSA,
+		PQModeBLS, PQModeCorona, PQModePulsar, PQModeQuasar, PQModeMLDSA,
 	} {
 		got, err := ParsePQMode(m.String())
 		if err != nil {
@@ -56,11 +56,13 @@ func TestParsePQMode_Aliases(t *testing.T) {
 		{"bls-only", PQModeBLS},
 		{"classical", PQModeBLS},
 
-		// Corona (academic, BLAKE3, trusted dealer)
-		{"rt", PQModeNasua},
-		{"academic", PQModeNasua},
-		{"bls-rt", PQModeNasua},
-		{"sha256-rt", PQModeNasua},
+		// Corona (academic, BLAKE3, trusted dealer). Includes "nasua"
+		// alias from the pre-rename wire negotiation.
+		{"nasua", PQModeCorona},
+		{"rt", PQModeCorona},
+		{"academic", PQModeCorona},
+		{"bls-rt", PQModeCorona},
+		{"sha256-rt", PQModeCorona},
 
 		// Pulsar (production fork, SHA-3, Pedersen DKG)
 		{"sha3-rt", PQModePulsar},
@@ -120,7 +122,7 @@ func TestPQMode_PolicyID(t *testing.T) {
 		want uint16
 	}{
 		{PQModeBLS, 1},    // PolicyQuorum
-		{PQModeNasua, 5},  // PolicyPQ
+		{PQModeCorona, 5},  // PolicyPQ
 		{PQModePulsar, 5}, // PolicyPQ (same wire shape, SHA-3 negotiated out-of-band)
 		{PQModeQuasar, 4}, // PolicyQuantum
 		{PQModeMLDSA, 6},  // PolicyPZ
@@ -149,7 +151,7 @@ func TestPQMode_HashProfile(t *testing.T) {
 		want string
 	}{
 		{PQModeBLS, "none"},
-		{PQModeNasua, "blake3-legacy"},
+		{PQModeCorona, "blake3-legacy"},
 		{PQModePulsar, "sha3-nist"},
 		{PQModeQuasar, "sha3-nist"},
 		{PQModeMLDSA, "sha3-nist"},
@@ -179,7 +181,7 @@ func TestPQMode_HashSuiteID(t *testing.T) {
 		want HashSuiteID
 	}{
 		{PQModeBLS, HashSuiteNone},           // 0x00
-		{PQModeNasua, HashSuiteBLAKE3Legacy}, // 0x02
+		{PQModeCorona, HashSuiteBLAKE3Legacy}, // 0x02
 		{PQModePulsar, HashSuiteSHA3NIST},    // 0x01
 		{PQModeQuasar, HashSuiteSHA3NIST},    // 0x01
 		{PQModeMLDSA, HashSuiteSHA3NIST},     // 0x01 (SHAKE256 ∈ FIPS 202)
@@ -255,7 +257,7 @@ func TestPQMode_SigSchemeID(t *testing.T) {
 		want SigSchemeID
 	}{
 		{PQModeBLS, SigSchemeNone},
-		{PQModeNasua, SigSchemeNasua},
+		{PQModeCorona, SigSchemeNasua},
 		{PQModePulsar, SigSchemePulsarR},
 		{PQModeQuasar, SigSchemePulsarR},
 		{PQModeMLDSA, SigSchemeMLDSA65}, // raw ML-DSA-65 default; ops opt-in to Pulsar-M-65
@@ -688,7 +690,7 @@ func TestPQMode_DKGRequired(t *testing.T) {
 		want string
 	}{
 		{PQModeBLS, "none"},
-		{PQModeNasua, "trusted-dealer"},
+		{PQModeCorona, "trusted-dealer"},
 		{PQModePulsar, "pedersen-dkg-over-rq"},
 		{PQModeQuasar, "pedersen-dkg-over-rq"},
 		{PQModeMLDSA, "none"},
@@ -709,7 +711,7 @@ func TestPQMode_SuitableForPublicChain(t *testing.T) {
 		want bool
 	}{
 		{PQModeBLS, false},
-		{PQModeNasua, false},
+		{PQModeCorona, false},
 		{PQModePulsar, true},
 		{PQModeQuasar, true},
 		{PQModeMLDSA, true},
@@ -738,7 +740,7 @@ func TestPQMode_IsPostQuantum(t *testing.T) {
 		want bool
 	}{
 		{PQModeBLS, false},
-		{PQModeNasua, true},
+		{PQModeCorona, true},
 		{PQModePulsar, true},
 		{PQModeQuasar, true},
 		{PQModeMLDSA, true},

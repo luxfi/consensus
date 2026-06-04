@@ -61,21 +61,15 @@ func TestQuasarCert_RoundTrip_E2E(t *testing.T) {
 		Validators:  3,
 	}
 
-	// 3. Marshal / unmarshal round-trip.
-	raw, err := cert.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary: %v", err)
-	}
+	// 3. ZAP wire round-trip (LP-182 schema 0x01).
+	raw := cert.Bytes()
 	if len(raw) == 0 {
-		t.Fatal("MarshalBinary returned empty bytes")
-	}
-	if raw[0] != CertSchemeQuasar {
-		t.Fatalf("expected scheme byte %x, got %x", CertSchemeQuasar, raw[0])
+		t.Fatal("Bytes() returned empty bytes")
 	}
 
-	got := &QuasarCert{}
-	if err := got.UnmarshalBinary(raw); err != nil {
-		t.Fatalf("UnmarshalBinary: %v", err)
+	got, err := ParseQuasarCert(raw)
+	if err != nil {
+		t.Fatalf("ParseQuasarCert: %v", err)
 	}
 	if string(got.BLS) != string(cert.BLS) {
 		t.Fatalf("BLS round-trip mismatch")
@@ -116,19 +110,19 @@ func TestQuasarCert_RoundTrip_E2E(t *testing.T) {
 	}
 }
 
-// TestQuasarCert_UnmarshalCorrupt covers truncated and wrong-scheme inputs.
+// TestQuasarCert_UnmarshalCorrupt covers inputs that don't parse as the
+// LP-182 schema 0x01 ZAP wire-bytes — non-ZAP magic, truncated header,
+// or empty.
 func TestQuasarCert_UnmarshalCorrupt(t *testing.T) {
 	cases := [][]byte{
 		nil,
 		{},
-		{0x00},                         // wrong scheme
-		{CertSchemeQuasar},             // truncated header
-		{CertSchemeQuasar, 0x00, 0xFF}, // BLS length exceeds buffer
-		append([]byte{CertSchemeQuasar}, make([]byte, 4)...), // still truncated
+		{0x00},                            // wrong magic
+		make([]byte, 15),                  // too short for ZAP header
+		append([]byte("WRNG"), make([]byte, 100)...), // wrong magic
 	}
 	for i, c := range cases {
-		got := &QuasarCert{}
-		if err := got.UnmarshalBinary(c); err == nil {
+		if _, err := ParseQuasarCert(c); err == nil {
 			t.Fatalf("case %d: expected error for corrupt input %x", i, c)
 		}
 	}

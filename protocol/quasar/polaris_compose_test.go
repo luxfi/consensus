@@ -15,7 +15,7 @@ import (
 	"github.com/luxfi/crypto/mldsa"
 	"github.com/luxfi/ids"
 	magnetar "github.com/luxfi/magnetar/ref/go/pkg/magnetar"
-	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	corona "github.com/luxfi/threshold/protocols/corona"
 	"github.com/luxfi/threshold/protocols/pulsar"
 )
 
@@ -145,26 +145,26 @@ func TestQuasarCert_ComposesAllThreeSchemes(t *testing.T) {
 	// Trusted-dealer keygen (acceptable for an in-process test;
 	// production runs Pedersen DKG via keyera.Bootstrap).
 	// =========================================================
-	coronaShares, coronaGroupKey, err := coronaThreshold.GenerateKeys(threshold, n, nil)
+	coronaShares, coronaGroupKey, err := corona.GenerateKeys(threshold, n, nil)
 	if err != nil {
 		t.Fatalf("corona.GenerateKeys: %v", err)
 	}
 	if len(coronaShares) != n {
 		t.Fatalf("corona.GenerateKeys returned %d shares, want %d", len(coronaShares), n)
 	}
-	coronaSigners := make([]*coronaThreshold.Signer, threshold)
+	coronaSigners := make([]*corona.Signer, threshold)
 	signerIDs := make([]int, threshold)
 	for i := 0; i < threshold; i++ {
-		coronaSigners[i] = coronaThreshold.NewSigner(coronaShares[i])
+		coronaSigners[i] = corona.NewSigner(coronaShares[i])
 		signerIDs[i] = coronaShares[i].Index
 	}
 	const coronaSessionID = 31415
 	coronaPRFKey := []byte("polaris-compose-corona-prf-32B!!")
-	coronaRound1 := make(map[int]*coronaThreshold.Round1Data, threshold)
+	coronaRound1 := make(map[int]*corona.Round1Data, threshold)
 	for i := 0; i < threshold; i++ {
 		coronaRound1[signerIDs[i]] = coronaSigners[i].Round1(coronaSessionID, coronaPRFKey, signerIDs)
 	}
-	coronaRound2 := make(map[int]*coronaThreshold.Round2Data, threshold)
+	coronaRound2 := make(map[int]*corona.Round2Data, threshold)
 	for i := 0; i < threshold; i++ {
 		r2, err := coronaSigners[i].Round2(coronaSessionID, string(digest), coronaPRFKey, signerIDs, coronaRound1)
 		if err != nil {
@@ -177,7 +177,7 @@ func TestQuasarCert_ComposesAllThreeSchemes(t *testing.T) {
 		t.Fatalf("corona.Finalize: %v", err)
 	}
 	// Smoke check: corona verify accepts.
-	if !coronaThreshold.Verify(coronaGroupKey, string(digest), coronaSig) {
+	if !corona.Verify(coronaGroupKey, string(digest), coronaSig) {
 		t.Fatal("Corona leg failed standalone Verify")
 	}
 
@@ -286,19 +286,16 @@ func TestQuasarCert_ComposesAllThreeSchemes(t *testing.T) {
 	}
 
 	// =========================================================
-	// Round-trip through the wire codec.
+	// Round-trip through the LP-182 schema 0x01 ZAP wire.
 	// =========================================================
-	raw, err := cert.MarshalBinary()
-	if err != nil {
-		t.Fatalf("cert.MarshalBinary: %v", err)
-	}
-	if raw[0] != CertSchemeQuasar {
-		t.Fatalf("scheme byte = 0x%02x, want 0x%02x", raw[0], CertSchemeQuasar)
+	raw := cert.Bytes()
+	if len(raw) == 0 {
+		t.Fatalf("cert.Bytes returned empty")
 	}
 
-	decoded := &QuasarCert{}
-	if err := decoded.UnmarshalBinary(raw); err != nil {
-		t.Fatalf("decoded.UnmarshalBinary: %v", err)
+	decoded, err := ParseQuasarCert(raw)
+	if err != nil {
+		t.Fatalf("ParseQuasarCert: %v", err)
 	}
 	if !bytes.Equal(decoded.BLS, cert.BLS) {
 		t.Fatal("BLS leg round-trip mismatch")

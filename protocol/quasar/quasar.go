@@ -21,7 +21,7 @@ import (
 	// `coronaThreshold` identifier so this file's signing routines
 	// (Round1/Round2/Finalize) stay byte-stable while the underlying
 	// types come from pulsar/threshold.
-	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	corona "github.com/luxfi/threshold/protocols/corona"
 )
 
 // Buffer pools for hot paths - reduces GC pressure during signing/verification
@@ -70,9 +70,9 @@ type signer struct {
 	blsVerifier   threshold.Verifier
 
 	// Post-quantum Corona threshold signing (native 2-round protocol)
-	coronaGroupKey *coronaThreshold.GroupKey
-	coronaSigners  map[string]*coronaThreshold.Signer
-	coronaShares   map[string]*coronaThreshold.KeyShare
+	coronaGroupKey *corona.GroupKey
+	coronaSigners  map[string]*corona.Signer
+	coronaShares   map[string]*corona.KeyShare
 
 	// Post-quantum ML-DSA-65 identity signing (FIPS 204)
 	mldsaKeys    map[string]*mldsa.PrivateKey
@@ -107,8 +107,8 @@ type SignerConfig struct {
 	BLSGroupKey  threshold.PublicKey
 
 	// Corona threshold (native 2-round protocol)
-	CoronaShares   map[string]*coronaThreshold.KeyShare
-	CoronaGroupKey *coronaThreshold.GroupKey
+	CoronaShares   map[string]*corona.KeyShare
+	CoronaGroupKey *corona.GroupKey
 }
 
 // CoronaRound1State holds Round 1 data for all parties in a signing session.
@@ -116,7 +116,7 @@ type CoronaRound1State struct {
 	SessionID  int
 	PRFKey     []byte
 	SignerIDs  []int
-	Round1Data map[int]*coronaThreshold.Round1Data
+	Round1Data map[int]*corona.Round1Data
 }
 
 // NewSigner creates a new signer engine with basic BLS support.
@@ -129,8 +129,8 @@ func newSigner(thresholdVal int) (*signer, error) {
 		blsKeys:       make(map[string]*bls.SecretKey),
 		blsPubKeys:    make(map[string]*bls.PublicKey),
 		blsSigners:    make(map[string]threshold.Signer),
-		coronaSigners: make(map[string]*coronaThreshold.Signer),
-		coronaShares:  make(map[string]*coronaThreshold.KeyShare),
+		coronaSigners: make(map[string]*corona.Signer),
+		coronaShares:  make(map[string]*corona.KeyShare),
 		mldsaKeys:     make(map[string]*mldsa.PrivateKey),
 		mldsaPubKeys:  make(map[string]*mldsa.PublicKey),
 		validators:    make(map[string]*Validator),
@@ -148,8 +148,8 @@ func newSignerWithDualThreshold(config SignerConfig) (*signer, error) {
 		blsKeys:       make(map[string]*bls.SecretKey),
 		blsPubKeys:    make(map[string]*bls.PublicKey),
 		blsSigners:    make(map[string]threshold.Signer),
-		coronaSigners: make(map[string]*coronaThreshold.Signer),
-		coronaShares:  make(map[string]*coronaThreshold.KeyShare),
+		coronaSigners: make(map[string]*corona.Signer),
+		coronaShares:  make(map[string]*corona.KeyShare),
 		mldsaKeys:     make(map[string]*mldsa.PrivateKey),
 		mldsaPubKeys:  make(map[string]*mldsa.PublicKey),
 		validators:    make(map[string]*Validator),
@@ -187,7 +187,7 @@ func newSignerWithDualThreshold(config SignerConfig) (*signer, error) {
 	h.coronaGroupKey = config.CoronaGroupKey
 	for id, share := range config.CoronaShares {
 		h.coronaShares[id] = share
-		h.coronaSigners[id] = coronaThreshold.NewSigner(share)
+		h.coronaSigners[id] = corona.NewSigner(share)
 	}
 
 	return h, nil
@@ -218,14 +218,14 @@ func GenerateDualKeys(t, n int) (*SignerConfig, error) {
 	}
 
 	// Generate Corona threshold keys (native)
-	coronaShares, coronaGroupKey, err := coronaThreshold.GenerateKeys(t, n, nil)
+	coronaShares, coronaGroupKey, err := corona.GenerateKeys(t, n, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate Corona shares: %w", err)
 	}
 
 	// Convert to maps keyed by validator ID
 	blsShareMap := make(map[string]threshold.KeyShare)
-	coronaShareMap := make(map[string]*coronaThreshold.KeyShare)
+	coronaShareMap := make(map[string]*corona.KeyShare)
 
 	for i := 0; i < n; i++ {
 		id := fmt.Sprintf("v%d", i)
@@ -249,7 +249,7 @@ func GenerateDualKeys(t, n int) (*SignerConfig, error) {
 
 // CoronaRound1 performs Round 1 of Corona signing for a validator.
 // Returns Round1Data to broadcast to other validators.
-func (s *signer) CoronaRound1(validatorID string, sessionID int, prfKey []byte) (*coronaThreshold.Round1Data, error) {
+func (s *signer) CoronaRound1(validatorID string, sessionID int, prfKey []byte) (*corona.Round1Data, error) {
 	s.mu.RLock()
 	signer, exists := s.coronaSigners[validatorID]
 	s.mu.RUnlock()
@@ -270,7 +270,7 @@ func (s *signer) CoronaRound1(validatorID string, sessionID int, prfKey []byte) 
 // CoronaRound2 performs Round 2 of Corona signing for a validator.
 // Requires collected Round 1 data from all signers.
 // Returns Round2Data to broadcast.
-func (s *signer) CoronaRound2(validatorID string, sessionID int, message string, prfKey []byte, round1Data map[int]*coronaThreshold.Round1Data) (*coronaThreshold.Round2Data, error) {
+func (s *signer) CoronaRound2(validatorID string, sessionID int, message string, prfKey []byte, round1Data map[int]*corona.Round1Data) (*corona.Round2Data, error) {
 	s.mu.RLock()
 	signer, exists := s.coronaSigners[validatorID]
 	s.mu.RUnlock()
@@ -289,7 +289,7 @@ func (s *signer) CoronaRound2(validatorID string, sessionID int, message string,
 
 // CoronaFinalize aggregates Round 2 data into the final signature.
 // Any validator can call this.
-func (s *signer) CoronaFinalize(validatorID string, round2Data map[int]*coronaThreshold.Round2Data) (*coronaThreshold.Signature, error) {
+func (s *signer) CoronaFinalize(validatorID string, round2Data map[int]*corona.Round2Data) (*corona.Signature, error) {
 	s.mu.RLock()
 	signer, exists := s.coronaSigners[validatorID]
 	s.mu.RUnlock()
@@ -302,11 +302,11 @@ func (s *signer) CoronaFinalize(validatorID string, round2Data map[int]*coronaTh
 }
 
 // VerifyCoronaSignature verifies a Corona threshold signature.
-func (s *signer) VerifyCoronaSignature(message string, sig *coronaThreshold.Signature) bool {
+func (s *signer) VerifyCoronaSignature(message string, sig *corona.Signature) bool {
 	if s.coronaGroupKey == nil || sig == nil {
 		return false
 	}
-	return coronaThreshold.Verify(s.coronaGroupKey, message, sig)
+	return corona.Verify(s.coronaGroupKey, message, sig)
 }
 
 // ============================================================================
@@ -316,7 +316,7 @@ func (s *signer) VerifyCoronaSignature(message string, sig *coronaThreshold.Sign
 // DualSignRound1 performs Round 1 of both BLS and Corona in parallel.
 // BLS: Computes signature share (single round)
 // Corona:    Computes D matrix + MACs (Round 1 of 2)
-func (s *signer) DualSignRound1(ctx context.Context, validatorID string, message []byte, sessionID int, prfKey []byte) (*QuasarSig, *coronaThreshold.Round1Data, error) {
+func (s *signer) DualSignRound1(ctx context.Context, validatorID string, message []byte, sessionID int, prfKey []byte) (*QuasarSig, *corona.Round1Data, error) {
 	s.mu.RLock()
 	blsSigner, hasBLS := s.blsSigners[validatorID]
 	_, hasCorona := s.coronaSigners[validatorID]
@@ -329,7 +329,7 @@ func (s *signer) DualSignRound1(ctx context.Context, validatorID string, message
 	var wg sync.WaitGroup
 	var blsErr, rtErr error
 	var blsShare threshold.SignatureShare
-	var round1Data *coronaThreshold.Round1Data
+	var round1Data *corona.Round1Data
 
 	// Get BLS signer indices
 	blsIndices := make([]int, 0, len(s.blsSigners))
@@ -371,7 +371,7 @@ func (s *signer) DualSignRound1(ctx context.Context, validatorID string, message
 }
 
 // DualSignRound2 performs Round 2 of Corona (BLS is already done in Round1).
-func (s *signer) DualSignRound2(validatorID string, sessionID int, message string, prfKey []byte, round1Data map[int]*coronaThreshold.Round1Data) (*coronaThreshold.Round2Data, error) {
+func (s *signer) DualSignRound2(validatorID string, sessionID int, message string, prfKey []byte, round1Data map[int]*corona.Round1Data) (*corona.Round2Data, error) {
 	return s.CoronaRound2(validatorID, sessionID, message, prfKey, round1Data)
 }
 
@@ -386,7 +386,7 @@ func (s *signer) DualSignRound2(validatorID string, sessionID int, message strin
 //
 // Returns the QuasarSig with BLS + MLDSA filled, plus Corona Round1Data
 // for the 2-round protocol continuation.
-func (s *signer) TripleSignRound1(ctx context.Context, validatorID string, message []byte, sessionID int, prfKey []byte) (*QuasarSig, *coronaThreshold.Round1Data, error) {
+func (s *signer) TripleSignRound1(ctx context.Context, validatorID string, message []byte, sessionID int, prfKey []byte) (*QuasarSig, *corona.Round1Data, error) {
 	s.mu.RLock()
 	blsSigner, hasBLS := s.blsSigners[validatorID]
 	_, hasCorona := s.coronaSigners[validatorID]
@@ -400,7 +400,7 @@ func (s *signer) TripleSignRound1(ctx context.Context, validatorID string, messa
 	var wg sync.WaitGroup
 	var blsErr, rtErr, mldsaErr error
 	var blsShare threshold.SignatureShare
-	var round1Data *coronaThreshold.Round1Data
+	var round1Data *corona.Round1Data
 	var mldsaSig []byte
 
 	blsIndices := make([]int, 0, len(s.blsSigners))
@@ -861,8 +861,8 @@ func newSignerWithThresholdConfig(config ThresholdConfig) (*signer, error) {
 		blsKeys:       make(map[string]*bls.SecretKey),
 		blsPubKeys:    make(map[string]*bls.PublicKey),
 		blsSigners:    make(map[string]threshold.Signer),
-		coronaSigners: make(map[string]*coronaThreshold.Signer),
-		coronaShares:  make(map[string]*coronaThreshold.KeyShare),
+		coronaSigners: make(map[string]*corona.Signer),
+		coronaShares:  make(map[string]*corona.KeyShare),
 		mldsaKeys:     make(map[string]*mldsa.PrivateKey),
 		mldsaPubKeys:  make(map[string]*mldsa.PublicKey),
 		validators:    make(map[string]*Validator),

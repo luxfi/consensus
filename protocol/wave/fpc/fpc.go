@@ -2,7 +2,6 @@ package fpc
 
 import (
 	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"math"
 )
@@ -19,9 +18,10 @@ var (
 // seed = sha256(epoch_number || chain_id || prev_block_hash)
 func DeriveEpochSeed(epochNumber uint64, chainID []byte, prevBlockHash []byte) []byte {
 	h := sha256.New()
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], epochNumber)
-	h.Write(buf[:])
+	// Identity-layer canonicalization: epoch_number is bound as a
+	// fixed-width 8-byte big-endian prefix. See transcript_inputs.go
+	// for the helper's home and the LP-182 layer decomposition.
+	h.Write(u64BEFixed(epochNumber))
 	h.Write(chainID)
 	h.Write(prevBlockHash)
 	return h.Sum(nil)
@@ -65,15 +65,12 @@ func (s *Selector) computeTheta(phase uint64) float64 {
 	// Create PRF input: seed || phase
 	h := sha256.New()
 	h.Write(s.seed)
-
-	phaseBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(phaseBytes, phase)
-	h.Write(phaseBytes)
+	h.Write(u64BEFixed(phase))
 
 	hash := h.Sum(nil)
 
 	// Convert first 8 bytes of hash to uint64, normalize to [0,1]
-	hashUint := binary.BigEndian.Uint64(hash[:8])
+	hashUint := u64BEFromBytes(hash[:8])
 	normalized := float64(hashUint) / float64(^uint64(0))
 
 	// Scale to [thetaMin, thetaMax]

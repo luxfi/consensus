@@ -26,9 +26,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/luxfi/consensus/config"
+	wirezap "github.com/luxfi/consensus/pkg/wire/zap"
 )
 
 // QBlock is a single Q-Chain finality block per HIP-0079 §"Q-Block structure".
@@ -178,182 +178,40 @@ func (b *QBlock) TranscriptHash() [32]byte {
 }
 
 // ============================================================================
-// Wire codec
+// Wire codec — LP-182 schema 0x02 ZAP
 // ============================================================================
 //
-// Layout (deterministic, big-endian):
-//
-//	version                uint16 BE
-//	profile_id             uint32 BE
-//	network_id             uint32 BE
-//	chain_id               uint32 BE
-//	height                 uint64 BE
-//	round_or_view          uint32 BE
-//	parent_qblock_hash     [32]byte
-//	lux_state_root         [48]byte
-//	zchain_state_root      [48]byte
-//	validator_set_root     [48]byte
-//	committee_root         [48]byte
-//	dkg_transcript_root    [48]byte
-//	group_public_key_hash  [48]byte
-//	payload_root           [48]byte
-//	da_root                [48]byte
-//	signer_bitmap_commit   [48]byte
-//	hash_suite_id          uint8
-//	identity_scheme_id     uint8
-//	finality_scheme_id     uint8
-//	proof_policy_id        uint8
-//	proof_backend_id       uint8
-//	proof_format_id        uint8
-//	verifier_id            uint16 BE
-//	signature_len          uint32 BE
-//	signature              []byte
+// The wire layer (pkg/wire/zap.QBlock) is the LP-182 canonical wire form.
+// This file delegates Marshal / UnmarshalQBlock to that package; the Go
+// value-typed QBlock struct above remains the in-process representation
+// for the AcceptQBlock rule logic and TranscriptHash construction.
 
-// ErrQBlockTruncated is returned by UnmarshalQBlock when the input runs
-// out before all required fields have been read.
+// ErrQBlockTruncated is returned by UnmarshalQBlock when the input does
+// not parse as LP-182 schema 0x02 ZAP bytes.
 var ErrQBlockTruncated = errors.New("qblock: input truncated")
 
-// ErrQBlockTooLong is returned when an embedded length prefix would push
-// the read past the end of input. Bounds-check against the remaining
-// buffer is part of the codec's invariant, not a TODO.
+// ErrQBlockTooLong is kept as a typed sentinel for callers that route on
+// errors.Is — the ZAP wire-layer rejects oversized length fields at
+// pkg/wire/zap.WrapQBlock without producing a distinct error class, so
+// every framing rejection surfaces as ErrQBlockTruncated.
 var ErrQBlockTooLong = errors.New("qblock: declared length exceeds input")
 
-// Marshal returns the deterministic byte encoding of b.
+// Marshal returns the LP-182 schema 0x02 ZAP wire-bytes for this block.
 func (b *QBlock) Marshal() ([]byte, error) {
 	if b == nil {
 		return nil, errors.New("qblock: nil receiver")
 	}
-	// Fixed header: 2 + 4 + 4 + 4 + 8 + 4 + 32 + 9*48 + 6 (6 enum bytes)
-	// + 2 (verifier_id) + 4 (sig len).
-	size := 2 + 4 + 4 + 4 + 8 + 4 + 32 + 9*48 + 6 + 2 + 4 + len(b.PulsarMThresholdSignature)
-	buf := make([]byte, 0, size)
-
-	buf = appendU16(buf, b.Version)
-	buf = appendU32(buf, b.ProfileID)
-	buf = appendU32(buf, b.NetworkID)
-	buf = appendU32(buf, b.ChainID)
-	buf = appendU64(buf, b.Height)
-	buf = appendU32(buf, b.RoundOrView)
-	buf = append(buf, b.ParentQBlockHash[:]...)
-	buf = append(buf, b.StateRoot[:]...)
-	buf = append(buf, b.ZChainStateRoot[:]...)
-	buf = append(buf, b.ValidatorSetRoot[:]...)
-	buf = append(buf, b.CommitteeRoot[:]...)
-	buf = append(buf, b.DKGTranscriptRoot[:]...)
-	buf = append(buf, b.GroupPublicKeyHash[:]...)
-	buf = append(buf, b.PayloadRoot[:]...)
-	buf = append(buf, b.DARoot[:]...)
-	buf = append(buf, b.SignerBitmapCommitment[:]...)
-	buf = append(buf, byte(b.HashSuiteID))
-	buf = append(buf, byte(b.IdentitySchemeID))
-	buf = append(buf, byte(b.FinalitySchemeID))
-	buf = append(buf, byte(b.ProofPolicyID))
-	buf = append(buf, byte(b.ProofBackendID))
-	buf = append(buf, byte(b.ProofFormatID))
-	buf = appendU16(buf, uint16(b.VerifierID))
-	buf = appendU32(buf, uint32(len(b.PulsarMThresholdSignature)))
-	buf = append(buf, b.PulsarMThresholdSignature...)
-
-	return buf, nil
+	return qBlockToZAPBytes(b), nil
 }
 
-// UnmarshalQBlock is the round-trip inverse of Marshal.
+// UnmarshalQBlock wraps LP-182 schema 0x02 ZAP wire-bytes and projects
+// them back into a Go value-typed QBlock.
 func UnmarshalQBlock(data []byte) (*QBlock, error) {
-	r := &qBlockReader{buf: data}
-
-	b := &QBlock{}
-	var err error
-	if b.Version, err = r.u16(); err != nil {
-		return nil, err
-	}
-	if b.ProfileID, err = r.u32(); err != nil {
-		return nil, err
-	}
-	if b.NetworkID, err = r.u32(); err != nil {
-		return nil, err
-	}
-	if b.ChainID, err = r.u32(); err != nil {
-		return nil, err
-	}
-	if b.Height, err = r.u64(); err != nil {
-		return nil, err
-	}
-	if b.RoundOrView, err = r.u32(); err != nil {
-		return nil, err
-	}
-	if err = r.read32(&b.ParentQBlockHash); err != nil {
-		return nil, err
-	}
-	if err = r.read48(&b.StateRoot); err != nil {
-		return nil, err
-	}
-	if err = r.read48(&b.ZChainStateRoot); err != nil {
-		return nil, err
-	}
-	if err = r.read48(&b.ValidatorSetRoot); err != nil {
-		return nil, err
-	}
-	if err = r.read48(&b.CommitteeRoot); err != nil {
-		return nil, err
-	}
-	if err = r.read48(&b.DKGTranscriptRoot); err != nil {
-		return nil, err
-	}
-	if err = r.read48(&b.GroupPublicKeyHash); err != nil {
-		return nil, err
-	}
-	if err = r.read48(&b.PayloadRoot); err != nil {
-		return nil, err
-	}
-	if err = r.read48(&b.DARoot); err != nil {
-		return nil, err
-	}
-	if err = r.read48(&b.SignerBitmapCommitment); err != nil {
-		return nil, err
-	}
-	hsID, err := r.u8()
+	wrap, err := qBlockFromZAP(data)
 	if err != nil {
-		return nil, err
+		return nil, ErrQBlockTruncated
 	}
-	b.HashSuiteID = config.HashSuiteID(hsID)
-	idID, err := r.u8()
-	if err != nil {
-		return nil, err
-	}
-	b.IdentitySchemeID = config.IdentitySchemeID(idID)
-	ssID, err := r.u8()
-	if err != nil {
-		return nil, err
-	}
-	b.FinalitySchemeID = config.SigSchemeID(ssID)
-	psID, err := r.u8()
-	if err != nil {
-		return nil, err
-	}
-	b.ProofPolicyID = config.ProofPolicyID(psID)
-	pbID, err := r.u8()
-	if err != nil {
-		return nil, err
-	}
-	b.ProofBackendID = config.ProofBackendID(pbID)
-	pfID, err := r.u8()
-	if err != nil {
-		return nil, err
-	}
-	b.ProofFormatID = config.ProofFormatID(pfID)
-	vidWide, err := r.u16()
-	if err != nil {
-		return nil, err
-	}
-	b.VerifierID = config.VerifierID(vidWide)
-
-	if b.PulsarMThresholdSignature, err = r.lenPrefixed(); err != nil {
-		return nil, err
-	}
-	if len(r.buf) != 0 {
-		return nil, fmt.Errorf("qblock: %d trailing bytes after decode", len(r.buf))
-	}
-	return b, nil
+	return wrap, nil
 }
 
 // ============================================================================
@@ -613,102 +471,75 @@ func AcceptQBlock(b *QBlock, ctx AcceptanceContext) error {
 }
 
 // ============================================================================
-// Reader / writer helpers (private to this file)
+// ZAP wire bridge — LP-182 schema 0x02
 // ============================================================================
+//
+// qBlockToZAPBytes / qBlockFromZAP are thin adapters between the Go
+// value-typed QBlock struct (which the AcceptQBlock rule logic and
+// TranscriptHash() consume directly) and pkg/wire/zap.QBlock (which is
+// the LP-182 canonical wire form).
 
-func appendU16(b []byte, v uint16) []byte {
-	var x [2]byte
-	binary.BigEndian.PutUint16(x[:], v)
-	return append(b, x[:]...)
+func qBlockToZAPBytes(b *QBlock) []byte {
+	return wirezap.NewQBlock(wirezap.QBlockFields{
+		Version:                b.Version,
+		NetworkID:              b.NetworkID,
+		ChainID:                b.ChainID,
+		Height:                 b.Height,
+		RoundOrView:            b.RoundOrView,
+		ProfileID:              b.ProfileID,
+		ParentQBlockHash:       b.ParentQBlockHash,
+		StateRoot:              b.StateRoot,
+		ZChainStateRoot:        b.ZChainStateRoot,
+		ValidatorSetRoot:       b.ValidatorSetRoot,
+		CommitteeRoot:          b.CommitteeRoot,
+		DKGTranscriptRoot:      b.DKGTranscriptRoot,
+		GroupPublicKeyHash:     b.GroupPublicKeyHash,
+		PayloadRoot:            b.PayloadRoot,
+		DARoot:                 b.DARoot,
+		SignerBitmapCommitment: b.SignerBitmapCommitment,
+		HashSuiteID:            uint8(b.HashSuiteID),
+		IdentitySchemeID:       uint8(b.IdentitySchemeID),
+		FinalitySchemeID:       uint8(b.FinalitySchemeID),
+		ProofPolicyID:          uint8(b.ProofPolicyID),
+		ProofBackendID:         uint8(b.ProofBackendID),
+		ProofFormatID:          uint8(b.ProofFormatID),
+		VerifierID:             uint16(b.VerifierID),
+		Signature:              b.PulsarMThresholdSignature,
+	}).Bytes()
 }
 
-func appendU32(b []byte, v uint32) []byte {
-	var x [4]byte
-	binary.BigEndian.PutUint32(x[:], v)
-	return append(b, x[:]...)
-}
-
-func appendU64(b []byte, v uint64) []byte {
-	var x [8]byte
-	binary.BigEndian.PutUint64(x[:], v)
-	return append(b, x[:]...)
-}
-
-type qBlockReader struct {
-	buf []byte
-}
-
-func (r *qBlockReader) need(n int) error {
-	if len(r.buf) < n {
-		return fmt.Errorf("%w: need %d bytes, have %d", io.ErrUnexpectedEOF, n, len(r.buf))
-	}
-	return nil
-}
-
-func (r *qBlockReader) u8() (uint8, error) {
-	if err := r.need(1); err != nil {
-		return 0, ErrQBlockTruncated
-	}
-	v := r.buf[0]
-	r.buf = r.buf[1:]
-	return v, nil
-}
-
-func (r *qBlockReader) u16() (uint16, error) {
-	if err := r.need(2); err != nil {
-		return 0, ErrQBlockTruncated
-	}
-	v := binary.BigEndian.Uint16(r.buf[:2])
-	r.buf = r.buf[2:]
-	return v, nil
-}
-
-func (r *qBlockReader) u32() (uint32, error) {
-	if err := r.need(4); err != nil {
-		return 0, ErrQBlockTruncated
-	}
-	v := binary.BigEndian.Uint32(r.buf[:4])
-	r.buf = r.buf[4:]
-	return v, nil
-}
-
-func (r *qBlockReader) u64() (uint64, error) {
-	if err := r.need(8); err != nil {
-		return 0, ErrQBlockTruncated
-	}
-	v := binary.BigEndian.Uint64(r.buf[:8])
-	r.buf = r.buf[8:]
-	return v, nil
-}
-
-func (r *qBlockReader) read32(dst *[32]byte) error {
-	if err := r.need(32); err != nil {
-		return ErrQBlockTruncated
-	}
-	copy(dst[:], r.buf[:32])
-	r.buf = r.buf[32:]
-	return nil
-}
-
-func (r *qBlockReader) read48(dst *[48]byte) error {
-	if err := r.need(48); err != nil {
-		return ErrQBlockTruncated
-	}
-	copy(dst[:], r.buf[:48])
-	r.buf = r.buf[48:]
-	return nil
-}
-
-func (r *qBlockReader) lenPrefixed() ([]byte, error) {
-	n, err := r.u32()
+func qBlockFromZAP(data []byte) (*QBlock, error) {
+	wrap, err := wirezap.WrapQBlock(data)
 	if err != nil {
 		return nil, err
 	}
-	if uint64(n) > uint64(len(r.buf)) {
-		return nil, fmt.Errorf("%w: declared=%d remaining=%d", ErrQBlockTooLong, n, len(r.buf))
+	b := &QBlock{
+		Version:                wrap.Version(),
+		NetworkID:              wrap.NetworkID(),
+		ChainID:                wrap.ChainID(),
+		Height:                 wrap.Height(),
+		RoundOrView:            wrap.RoundOrView(),
+		ProfileID:              wrap.ProfileID(),
+		ParentQBlockHash:       wrap.ParentQBlockHash(),
+		StateRoot:              wrap.StateRoot(),
+		ZChainStateRoot:        wrap.ZChainStateRoot(),
+		ValidatorSetRoot:       wrap.ValidatorSetRoot(),
+		CommitteeRoot:          wrap.CommitteeRoot(),
+		DKGTranscriptRoot:     wrap.DKGTranscriptRoot(),
+		GroupPublicKeyHash:    wrap.GroupPublicKeyHash(),
+		PayloadRoot:           wrap.PayloadRoot(),
+		DARoot:                wrap.DARoot(),
+		SignerBitmapCommitment: wrap.SignerBitmapCommitment(),
+		HashSuiteID:           config.HashSuiteID(wrap.HashSuiteID()),
+		IdentitySchemeID:      config.IdentitySchemeID(wrap.IdentitySchemeID()),
+		FinalitySchemeID:      config.SigSchemeID(wrap.FinalitySchemeID()),
+		ProofPolicyID:         config.ProofPolicyID(wrap.ProofPolicyID()),
+		ProofBackendID:        config.ProofBackendID(wrap.ProofBackendID()),
+		ProofFormatID:         config.ProofFormatID(wrap.ProofFormatID()),
+		VerifierID:            config.VerifierID(wrap.VerifierID()),
 	}
-	out := make([]byte, n)
-	copy(out, r.buf[:n])
-	r.buf = r.buf[n:]
-	return out, nil
+	if sig := wrap.Signature(); len(sig) > 0 {
+		b.PulsarMThresholdSignature = append([]byte(nil), sig...)
+	}
+	return b, nil
 }

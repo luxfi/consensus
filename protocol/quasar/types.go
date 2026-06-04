@@ -5,14 +5,14 @@ package quasar
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"time"
 
+	wirezap "github.com/luxfi/consensus/pkg/wire/zap"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
 	magnetar "github.com/luxfi/magnetar/ref/go/pkg/magnetar"
-	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	corona "github.com/luxfi/threshold/protocols/corona"
 )
 
 // Block represents a finalized block in the Quasar consensus.
@@ -187,7 +187,7 @@ func (c *QuasarCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
 //
 // To verify the Polaris-profile Magnetar leg as well, call
 // VerifyWithRealKeysPolaris.
-func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.PublicKey, rtGroupKey *coronaThreshold.GroupKey, mldsaPubKeys []*mldsa.PublicKey) bool {
+func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.PublicKey, rtGroupKey *corona.GroupKey, mldsaPubKeys []*mldsa.PublicKey) bool {
 	if c == nil || len(message) == 0 {
 		return false
 	}
@@ -217,7 +217,7 @@ func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.Public
 		if err != nil {
 			return false
 		}
-		if !coronaThreshold.Verify(rtGroupKey, string(message), rtSig) {
+		if !corona.Verify(rtGroupKey, string(message), rtSig) {
 			return false
 		}
 	}
@@ -275,7 +275,7 @@ func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.Public
 func (c *QuasarCert) VerifyWithRealKeysPolaris(
 	message []byte,
 	blsAggPubKey *bls.PublicKey,
-	coronaGroupKey *coronaThreshold.GroupKey,
+	coronaGroupKey *corona.GroupKey,
 	pulsarGroupKey []byte,
 	mldsaPubKeys []*mldsa.PublicKey,
 	knownMagnetarValidators map[magnetar.NodeID][]byte,
@@ -315,163 +315,74 @@ func (c *QuasarCert) VerifyWithRealKeysPolaris(
 	return true
 }
 
-// QuasarCert byte serialization layout (Polaris-ready, five legs):
-//
-//	[scheme:1=SigQuasarPolaris(=0x05)]
-//	[bls_len:2 BE][bls:N]
-//	[corona_len:4 BE][corona:M]      // CORS-framed corona/threshold.Signature
-//	[pulsar_len:4 BE][pulsar:P]      // PULS-framed pulsar.Signature
-//	[magnetar_len:4 BE][magnetar:Q]  // MAGS-framed magnetar.Signature
-//	                                  // OR magnetar.ValidatorAggregateCert wire bytes
-//	[mldsa_len:4 BE][mldsa:K]        // EncodeMLDSASigs or single STARK/Groth16
-//	[epoch:8 BE]
-//	[finality_unix_ns:8 BE]
-//	[validators:2 BE]
-//
-// CertSchemeQuasar is the leading byte tag. 0x05 carries the
-// five-leg layout (Polaris-ready); the legacy 0x04 three-leg layout
-// is dropped per "no backwards compatibility only forwards
-// perfection" — pre-Polaris chains MUST re-cert at the rotation
-// window.
-const CertSchemeQuasar byte = 0x05
-
-// ErrCertCorrupt is returned when QuasarCert.UnmarshalBinary cannot decode
-// the input.
+// ErrCertCorrupt is returned when wire-bytes cannot decode into a
+// QuasarCert. Wire is ZAP (LP-182 schema 0x01) — see pkg/wire/zap.
 var ErrCertCorrupt = errors.New("quasar: certificate corrupt")
 
-// minCertSize is the smallest possible serialized cert:
-// scheme(1) + bls_len(2) + corona_len(4) + pulsar_len(4) +
-// magnetar_len(4) + mldsa_len(4) + epoch(8) + finality(8) +
-// validators(2) = 37 bytes with every leg empty.
-const minCertSize = 1 + 2 + 4 + 4 + 4 + 4 + 8 + 8 + 2
-
-// MarshalBinary serializes the cert into a self-describing byte slice.
-func (c *QuasarCert) MarshalBinary() ([]byte, error) {
+// Bytes returns the LP-182 schema 0x01 ZAP wire-bytes for this cert.
+// The Go value-typed struct is the in-process representation; ZAP is the
+// wire. Layer boundary respected.
+//
+// Identity is sha256(Bytes()); the transcript layer feeds Bytes() into
+// TupleHash256.
+func (c *QuasarCert) Bytes() []byte {
 	if c == nil {
-		return nil, errors.New("quasar: nil cert")
+		return nil
 	}
-	if len(c.BLS) > 0xFFFF {
-		return nil, errors.New("quasar: BLS aggregate too large")
-	}
-
-	total := minCertSize + len(c.BLS) + len(c.Corona) + len(c.Pulsar) + len(c.Magnetar) + len(c.MLDSARollup)
-	out := make([]byte, 0, total)
-	out = append(out, CertSchemeQuasar)
-
-	var u16 [2]byte
-	var u32 [4]byte
-	var u64 [8]byte
-
-	binary.BigEndian.PutUint16(u16[:], uint16(len(c.BLS)))
-	out = append(out, u16[:]...)
-	out = append(out, c.BLS...)
-
-	binary.BigEndian.PutUint32(u32[:], uint32(len(c.Corona)))
-	out = append(out, u32[:]...)
-	out = append(out, c.Corona...)
-
-	binary.BigEndian.PutUint32(u32[:], uint32(len(c.Pulsar)))
-	out = append(out, u32[:]...)
-	out = append(out, c.Pulsar...)
-
-	binary.BigEndian.PutUint32(u32[:], uint32(len(c.Magnetar)))
-	out = append(out, u32[:]...)
-	out = append(out, c.Magnetar...)
-
-	binary.BigEndian.PutUint32(u32[:], uint32(len(c.MLDSARollup)))
-	out = append(out, u32[:]...)
-	out = append(out, c.MLDSARollup...)
-
-	binary.BigEndian.PutUint64(u64[:], c.Epoch)
-	out = append(out, u64[:]...)
-
-	binary.BigEndian.PutUint64(u64[:], uint64(c.Finality.UnixNano()))
-	out = append(out, u64[:]...)
-
-	binary.BigEndian.PutUint16(u16[:], uint16(c.Validators))
-	out = append(out, u16[:]...)
-
-	return out, nil
+	return wirezap.NewQuasarCert(
+		c.BLS, c.Corona, c.Pulsar, c.Magnetar, c.MLDSARollup,
+		c.Epoch,
+		c.Finality.UnixNano(),
+		uint32(c.Validators),
+	).Bytes()
 }
 
-// UnmarshalBinary parses bytes produced by MarshalBinary.
-func (c *QuasarCert) UnmarshalBinary(data []byte) error {
-	if c == nil {
-		return errors.New("quasar: nil cert")
+// ParseQuasarCert wraps LP-182 schema 0x01 wire-bytes and projects them
+// back into a Go value-typed QuasarCert. Inverse of Bytes().
+//
+// The fixed integer fields round-trip exactly; the variable-length
+// signature legs are returned as fresh slices (the underlying ZAP buffer
+// is the source of truth and remains live for the caller).
+func ParseQuasarCert(data []byte) (*QuasarCert, error) {
+	if len(data) == 0 {
+		return nil, ErrCertCorrupt
 	}
-	if len(data) < minCertSize {
-		return ErrCertCorrupt
+	wrap, err := wirezap.WrapQuasarCert(data)
+	if err != nil {
+		return nil, ErrCertCorrupt
 	}
-	if data[0] != CertSchemeQuasar {
-		return ErrCertCorrupt
+	c := &QuasarCert{
+		Epoch:      wrap.Epoch(),
+		Finality:   time.Unix(0, wrap.FinalityUnixNano()),
+		Validators: int(wrap.Validators()),
 	}
-	off := 1
-
-	blsLen := int(binary.BigEndian.Uint16(data[off:]))
-	off += 2
-	if off+blsLen > len(data) {
-		return ErrCertCorrupt
+	if b := wrap.BLS(); len(b) > 0 {
+		c.BLS = append([]byte(nil), b...)
 	}
-	c.BLS = append(c.BLS[:0], data[off:off+blsLen]...)
-	off += blsLen
-
-	if off+4 > len(data) {
-		return ErrCertCorrupt
+	if b := wrap.Corona(); len(b) > 0 {
+		c.Corona = append([]byte(nil), b...)
 	}
-	coronaLen := int(binary.BigEndian.Uint32(data[off:]))
-	off += 4
-	if off+coronaLen > len(data) {
-		return ErrCertCorrupt
+	if b := wrap.Pulsar(); len(b) > 0 {
+		c.Pulsar = append([]byte(nil), b...)
 	}
-	c.Corona = append(c.Corona[:0], data[off:off+coronaLen]...)
-	off += coronaLen
-
-	if off+4 > len(data) {
-		return ErrCertCorrupt
+	if b := wrap.Magnetar(); len(b) > 0 {
+		c.Magnetar = append([]byte(nil), b...)
 	}
-	pulsarLen := int(binary.BigEndian.Uint32(data[off:]))
-	off += 4
-	if off+pulsarLen > len(data) {
-		return ErrCertCorrupt
+	if b := wrap.MLDSARollup(); len(b) > 0 {
+		c.MLDSARollup = append([]byte(nil), b...)
 	}
-	c.Pulsar = append(c.Pulsar[:0], data[off:off+pulsarLen]...)
-	off += pulsarLen
-
-	if off+4 > len(data) {
-		return ErrCertCorrupt
-	}
-	magnetarLen := int(binary.BigEndian.Uint32(data[off:]))
-	off += 4
-	if off+magnetarLen > len(data) {
-		return ErrCertCorrupt
-	}
-	c.Magnetar = append(c.Magnetar[:0], data[off:off+magnetarLen]...)
-	off += magnetarLen
-
-	if off+4 > len(data) {
-		return ErrCertCorrupt
-	}
-	mldsaLen := int(binary.BigEndian.Uint32(data[off:]))
-	off += 4
-	if off+mldsaLen > len(data) {
-		return ErrCertCorrupt
-	}
-	c.MLDSARollup = append(c.MLDSARollup[:0], data[off:off+mldsaLen]...)
-	off += mldsaLen
-
-	if off+8+8+2 > len(data) {
-		return ErrCertCorrupt
-	}
-	c.Epoch = binary.BigEndian.Uint64(data[off:])
-	off += 8
-	c.Finality = time.Unix(0, int64(binary.BigEndian.Uint64(data[off:])))
-	off += 8
-	c.Validators = int(binary.BigEndian.Uint16(data[off:]))
-	return nil
+	return c, nil
 }
 
 // EncodeMLDSASigs concatenates per-validator ML-DSA-65 signatures into a
-// single MLDSAProof byte slice using 4-byte length prefixes.
+// single MLDSAProof byte slice using 4-byte big-endian length prefixes.
+// This is the canonical internal framing used by VerifyWithRealKeys to
+// decompose the rollup; it is not a wire format on its own — the rollup
+// is just one variable-length field on the LP-182 QuasarCert wire.
+//
+// The 4-byte length encoding is canonicalized via transcript_inputs.go
+// helpers; this function does not import the stdlib byte-order package
+// directly.
 func EncodeMLDSASigs(sigs [][]byte) []byte {
 	total := 0
 	for _, s := range sigs {
@@ -480,7 +391,7 @@ func EncodeMLDSASigs(sigs [][]byte) []byte {
 	out := make([]byte, 0, total)
 	var u32 [4]byte
 	for _, s := range sigs {
-		binary.BigEndian.PutUint32(u32[:], uint32(len(s)))
+		putU32BE(u32[:], uint32(len(s)))
 		out = append(out, u32[:]...)
 		out = append(out, s...)
 	}
@@ -493,7 +404,9 @@ func decodeMLDSASigs(data []byte) ([][]byte, error) {
 		if i+4 > len(data) {
 			return nil, ErrCertCorrupt
 		}
-		l := int(binary.BigEndian.Uint32(data[i:]))
+		// uint32 BE length read; helper avoids the stdlib byte-order
+		// import in this file.
+		l := int(readU32BEFromBytes(data[i:]))
 		i += 4
 		if i+l > len(data) {
 			return nil, ErrCertCorrupt
@@ -506,14 +419,14 @@ func decodeMLDSASigs(data []byte) ([][]byte, error) {
 
 // EncodeCoronaSig serializes a Corona threshold signature using gob.
 // Returns nil bytes on encode failure (caller treats as "no signature").
-func EncodeCoronaSig(sig *coronaThreshold.Signature) []byte {
+func EncodeCoronaSig(sig *corona.Signature) []byte {
 	if sig == nil {
 		return nil
 	}
 	return coronaGobEncode(sig)
 }
 
-func decodeCoronaSig(data []byte) (*coronaThreshold.Signature, error) {
+func decodeCoronaSig(data []byte) (*corona.Signature, error) {
 	if len(data) == 0 {
 		return nil, ErrCertCorrupt
 	}

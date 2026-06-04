@@ -7,7 +7,7 @@ import (
 	"encoding/gob"
 	"testing"
 
-	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	corona "github.com/luxfi/threshold/protocols/corona"
 )
 
 // TestCoronaCertSize_BinaryVsGob measures the on-wire Pulsar/Corona
@@ -21,10 +21,10 @@ func TestCoronaCertSize_BinaryVsGob(t *testing.T) {
 		t.Fatalf("GenerateDualKeys: %v", err)
 	}
 
-	signers := make([]*coronaThreshold.Signer, 3)
+	signers := make([]*corona.Signer, 3)
 	i := 0
 	for _, share := range cfg.CoronaShares {
-		signers[i] = coronaThreshold.NewSigner(share)
+		signers[i] = corona.NewSigner(share)
 		i++
 	}
 
@@ -32,12 +32,12 @@ func TestCoronaCertSize_BinaryVsGob(t *testing.T) {
 	prfKey := []byte("pulsar-cert-size-prf")
 	signerIDs := []int{0, 1, 2}
 
-	r1 := make(map[int]*coronaThreshold.Round1Data)
+	r1 := make(map[int]*corona.Round1Data)
 	for _, s := range signers {
 		d := s.Round1(sessionID, prfKey, signerIDs)
 		r1[d.PartyID] = d
 	}
-	r2 := make(map[int]*coronaThreshold.Round2Data)
+	r2 := make(map[int]*corona.Round2Data)
 	for _, s := range signers {
 		d, err := s.Round2(sessionID, "test-message", prfKey, signerIDs, r1)
 		if err != nil {
@@ -80,7 +80,7 @@ func TestCoronaCertSize_BinaryVsGob(t *testing.T) {
 		t.Fatalf("native encode/decode not byte-equal: orig=%d roundtrip=%d", len(binBytes), len(rtBytes))
 	}
 
-	if !coronaThreshold.Verify(cfg.CoronaGroupKey, "test-message", rt) {
+	if !corona.Verify(cfg.CoronaGroupKey, "test-message", rt) {
 		t.Fatalf("native-decoded signature failed Verify")
 	}
 }

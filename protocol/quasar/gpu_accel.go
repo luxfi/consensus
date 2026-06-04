@@ -13,7 +13,7 @@ package quasar
 //
 // Wired here (rather than in NewSigner) because:
 //   1. UseAccelerator() is idempotent and global — once is enough.
-//   2. Subsequent coronaThreshold.NewParams calls (which build the
+//   2. Subsequent corona.NewParams calls (which build the
 //      rings) consult the global flag via corona/gpu.MaybeRegister and
 //      bind their SubRings into the lattice GPU registry.
 //   3. Tests that exercise the CPU path do so by calling

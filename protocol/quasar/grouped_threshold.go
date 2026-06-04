@@ -11,14 +11,13 @@
 package quasar
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sort"
 	"sync"
 	"time"
 
-	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	corona "github.com/luxfi/threshold/protocols/corona"
 	"github.com/luxfi/threshold/protocols/corona/keyera"
 	"golang.org/x/crypto/sha3"
 )
@@ -114,16 +113,16 @@ type ValidatorGroup struct {
 	Index      int
 	Validators []string
 	Threshold  int
-	GroupKey   *coronaThreshold.GroupKey
-	Shares     map[string]*coronaThreshold.KeyShare
-	Signers    map[string]*coronaThreshold.Signer
+	GroupKey   *corona.GroupKey
+	Shares     map[string]*corona.KeyShare
+	Signers    map[string]*corona.Signer
 }
 
 // GroupedSignature holds signatures from multiple groups.
 type GroupedSignature struct {
 	Epoch           uint64
 	Message         string
-	GroupSignatures map[int]*coronaThreshold.Signature // group index -> signature
+	GroupSignatures map[int]*corona.Signature // group index -> signature
 	SignedGroups    []int
 }
 
@@ -224,10 +223,11 @@ func (gem *GroupedEpochManager) assignToGroups(validators []string, seed []byte)
 	// at half the cost of the rest of the protocol.
 	for i := len(shuffled) - 1; i > 0; i-- {
 		indexBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(indexBytes, uint64(i))
+		putU64BE(indexBytes, uint64(i))
 		h := sha3_384(groupedThresholdHashV1, seed, indexBytes)
-		// Use unsigned modulo to avoid negative indices.
-		j := int(binary.BigEndian.Uint64(h[:8]) % uint64(i+1))
+		// Use unsigned modulo to avoid negative indices. Helper lives
+		// in transcript_inputs.go (identity-layer encoding).
+		j := int(readU64BEFromBytes(h[:8]) % uint64(i+1))
 		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 	}
 
@@ -280,14 +280,14 @@ func (gem *GroupedEpochManager) generateGroupKeys(index int, validators []string
 		Validators: validators,
 		Threshold:  t,
 		GroupKey:   era.GroupKey,
-		Shares:     make(map[string]*coronaThreshold.KeyShare),
-		Signers:    make(map[string]*coronaThreshold.Signer),
+		Shares:     make(map[string]*corona.KeyShare),
+		Signers:    make(map[string]*corona.Signer),
 	}
 
 	for _, v := range validators {
 		share := era.State.Shares[v]
 		group.Shares[v] = share
-		group.Signers[v] = coronaThreshold.NewSigner(share)
+		group.Signers[v] = corona.NewSigner(share)
 	}
 
 	return group, nil
@@ -306,7 +306,7 @@ func (gem *GroupedEpochManager) GetValidatorGroup(validatorID string) (int, erro
 }
 
 // GetGroupSigner returns the Corona signer for a validator in their group.
-func (gem *GroupedEpochManager) GetGroupSigner(validatorID string) (*coronaThreshold.Signer, int, error) {
+func (gem *GroupedEpochManager) GetGroupSigner(validatorID string) (*corona.Signer, int, error) {
 	gem.mu.RLock()
 	defer gem.mu.RUnlock()
 
@@ -337,7 +337,7 @@ func (gem *GroupedEpochManager) GetGroupValidators(groupIndex int) ([]string, er
 }
 
 // GetGroupKey returns the group's public key.
-func (gem *GroupedEpochManager) GetGroupKey(groupIndex int) (*coronaThreshold.GroupKey, error) {
+func (gem *GroupedEpochManager) GetGroupKey(groupIndex int) (*corona.GroupKey, error) {
 	gem.mu.RLock()
 	defer gem.mu.RUnlock()
 
@@ -358,13 +358,13 @@ func (gem *GroupedEpochManager) VerifyGroupedSignature(gs *GroupedSignature) (bo
 			len(gs.GroupSignatures), gem.groupQuorum)
 	}
 
-	// Verify all group signatures in parallel via coronaThreshold.VerifyBatch.
+	// Verify all group signatures in parallel via corona.VerifyBatch.
 	// Build (groupKey, message, sig) triples up-front; skip any signature
 	// whose groupIdx is out of bounds (treated as missing, not failed —
 	// the quorum check below decides liveness).
-	gks := make([]*coronaThreshold.GroupKey, 0, len(gs.GroupSignatures))
+	gks := make([]*corona.GroupKey, 0, len(gs.GroupSignatures))
 	msgs := make([]string, 0, len(gs.GroupSignatures))
-	sigs := make([]*coronaThreshold.Signature, 0, len(gs.GroupSignatures))
+	sigs := make([]*corona.Signature, 0, len(gs.GroupSignatures))
 	for groupIdx, sig := range gs.GroupSignatures {
 		if groupIdx < 0 || groupIdx >= len(gem.groups) {
 			continue
@@ -376,7 +376,7 @@ func (gem *GroupedEpochManager) VerifyGroupedSignature(gs *GroupedSignature) (bo
 
 	validGroups := 0
 	if len(sigs) > 0 {
-		results, err := coronaThreshold.VerifyBatch(gks, msgs, sigs)
+		results, err := corona.VerifyBatch(gks, msgs, sigs)
 		if err != nil {
 			// Slice lens are equal by construction; surface unexpected
 			// errors closed.
@@ -434,11 +434,11 @@ func (gem *GroupedEpochManager) ParallelGroupSign(
 	message string,
 	prfKey []byte,
 	signersByGroup map[int][]string, // group -> participating validators
-) (map[int]*coronaThreshold.Signature, error) {
+) (map[int]*corona.Signature, error) {
 	gem.mu.RLock()
 	defer gem.mu.RUnlock()
 
-	results := make(map[int]*coronaThreshold.Signature)
+	results := make(map[int]*corona.Signature)
 	var resultsMu sync.Mutex
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(signersByGroup))
@@ -489,7 +489,7 @@ func (gem *GroupedEpochManager) signWithGroup(
 	message string,
 	prfKey []byte,
 	signerIDs []string,
-) (*coronaThreshold.Signature, error) {
+) (*corona.Signature, error) {
 	group := gem.groups[groupIdx]
 
 	// Build signer index list
@@ -504,7 +504,7 @@ func (gem *GroupedEpochManager) signWithGroup(
 	sort.Ints(signerIndices)
 
 	// Round 1: Collect D matrices
-	round1Data := make(map[int]*coronaThreshold.Round1Data)
+	round1Data := make(map[int]*corona.Round1Data)
 	for _, vid := range signerIDs {
 		signer := group.Signers[vid]
 		r1 := signer.Round1(sessionID, prfKey, signerIndices)
@@ -512,7 +512,7 @@ func (gem *GroupedEpochManager) signWithGroup(
 	}
 
 	// Round 2: Compute z shares
-	round2Data := make(map[int]*coronaThreshold.Round2Data)
+	round2Data := make(map[int]*corona.Round2Data)
 	for _, vid := range signerIDs {
 		signer := group.Signers[vid]
 		r2, err := signer.Round2(sessionID, message, prfKey, signerIndices, round1Data)
@@ -566,21 +566,21 @@ type EpochCheckpoint struct {
 func (ec *EpochCheckpoint) CheckpointHash() [48]byte {
 	data := make([]byte, 0, 144)
 
-	// Epoch + heights
+	// Identity-layer canonicalization — see transcript_inputs.go.
+	// Fixed-width big-endian uint64 fields concatenated with [48]byte
+	// roots. The cSHAKE256 customization tag pins the customisation
+	// LUX-QUASAR-CHECKPOINT-V1; bumping the tag invalidates every
+	// prior checkpoint hash.
 	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, ec.Epoch)
+	putU64BE(buf, ec.Epoch)
 	data = append(data, buf...)
-	binary.BigEndian.PutUint64(buf, ec.StartHeight)
+	putU64BE(buf, ec.StartHeight)
 	data = append(data, buf...)
-	binary.BigEndian.PutUint64(buf, ec.EndHeight)
+	putU64BE(buf, ec.EndHeight)
 	data = append(data, buf...)
-
-	// Merkle root + previous anchor
 	data = append(data, ec.MerkleRoot[:]...)
 	data = append(data, ec.PreviousAnchor[:]...)
-
-	// Timestamp
-	binary.BigEndian.PutUint64(buf, uint64(ec.Timestamp))
+	putU64BE(buf, uint64(ec.Timestamp))
 	data = append(data, buf...)
 
 	return sha3_384(checkpointHashV1, data)

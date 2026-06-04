@@ -5,8 +5,8 @@ package prism
 
 import (
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
+	"math/big"
 
 	"github.com/luxfi/consensus/core/types"
 )
@@ -113,20 +113,20 @@ func (c *StakeWeightedCut) Luminance() Luminance {
 }
 
 // cryptoRandUint64 returns a cryptographically secure random uint64
-// in [0, max) — uniformly distributed via rejection sampling. Closes
+// in [0, max) — uniformly distributed via crypto/rand.Int. Closes
 // BLOCKERS.md CR-13: the prior `% max` form was biased on non-power-of-2
 // stake totals, structurally exploitable by stake-weight grinding.
+// crypto/rand.Int does constant-time rejection sampling internally.
 func cryptoRandUint64(max uint64) uint64 {
 	if max <= 1 {
 		return 0
 	}
-	limit := (^uint64(0) / max) * max
-	var buf [8]byte
-	for {
-		_, _ = rand.Read(buf[:])
-		v := binary.LittleEndian.Uint64(buf[:])
-		if v < limit {
-			return v % max
-		}
+	n, err := rand.Int(rand.Reader, new(big.Int).SetUint64(max))
+	if err != nil {
+		// crypto/rand.Reader.Read failing is an unrecoverable runtime
+		// condition; the biased fallback would defeat CR-13. Panic
+		// surfaces it immediately.
+		panic("prism: crypto/rand.Int failed: " + err.Error())
 	}
+	return n.Uint64()
 }

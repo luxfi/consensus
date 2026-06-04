@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	corona "github.com/luxfi/threshold/protocols/corona"
 	"github.com/stretchr/testify/require"
 )
 
@@ -198,14 +198,14 @@ func TestEpochManager_FullSigningFlow(t *testing.T) {
 	message := "epoch 0 block hash"
 
 	// Round 1
-	round1Data := make(map[int]*coronaThreshold.Round1Data)
+	round1Data := make(map[int]*corona.Round1Data)
 	round1Data[0] = signer0.Round1(sessionID, prfKey, signerIDs)
 	round1Data[1] = signer1.Round1(sessionID, prfKey, signerIDs)
 	round1Data[2] = signer2.Round1(sessionID, prfKey, signerIDs)
 	t.Log("Round 1 complete: D matrices computed")
 
 	// Round 2
-	round2Data := make(map[int]*coronaThreshold.Round2Data)
+	round2Data := make(map[int]*corona.Round2Data)
 	r2_0, err := signer0.Round2(sessionID, message, prfKey, signerIDs, round1Data)
 	require.NoError(t, err)
 	round2Data[0] = r2_0
@@ -249,12 +249,12 @@ func TestEpochManager_CrossEpochVerification(t *testing.T) {
 	signer2 := keys0.Signers["v2"]
 
 	// Complete 2-round protocol
-	round1Data := make(map[int]*coronaThreshold.Round1Data)
+	round1Data := make(map[int]*corona.Round1Data)
 	round1Data[0] = signer0.Round1(sessionID, prfKey, signerIDs)
 	round1Data[1] = signer1.Round1(sessionID, prfKey, signerIDs)
 	round1Data[2] = signer2.Round1(sessionID, prfKey, signerIDs)
 
-	round2Data := make(map[int]*coronaThreshold.Round2Data)
+	round2Data := make(map[int]*corona.Round2Data)
 	r2_0, _ := signer0.Round2(sessionID, message, prfKey, signerIDs, round1Data)
 	r2_1, _ := signer1.Round2(sessionID, message, prfKey, signerIDs, round1Data)
 	r2_2, _ := signer2.Round2(sessionID, message, prfKey, signerIDs, round1Data)
@@ -564,13 +564,13 @@ func TestQuasar_EpochSigningAfterRotation(t *testing.T) {
 	message := "block signed in epoch 0"
 
 	// 2-round protocol
-	round1Data := make(map[int]*coronaThreshold.Round1Data)
+	round1Data := make(map[int]*corona.Round1Data)
 	for _, vid := range validators {
 		signer := keys0.Signers[vid]
 		round1Data[keys0.Shares[vid].Index] = signer.Round1(sessionID, prfKey, signerIDs)
 	}
 
-	round2Data := make(map[int]*coronaThreshold.Round2Data)
+	round2Data := make(map[int]*corona.Round2Data)
 	for _, vid := range validators {
 		signer := keys0.Signers[vid]
 		r2, err := signer.Round2(sessionID, message, prfKey, signerIDs, round1Data)

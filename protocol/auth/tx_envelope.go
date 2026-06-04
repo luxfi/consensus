@@ -4,12 +4,11 @@
 package auth
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/luxfi/consensus/config"
+	wirezap "github.com/luxfi/consensus/pkg/wire/zap"
 )
 
 // tx_envelope.go — the canonical TxAuthEnvelope plus its signing-digest,
@@ -170,142 +169,85 @@ func (e *TxAuthEnvelope) SigningDigest() [48]byte {
 }
 
 // =============================================================================
-// Wire codec
+// Wire codec — LP-182 schema 0x0A ZAP
 // =============================================================================
 //
-// Layout (deterministic, big-endian):
-//
-//	version              uint16 BE
-//	profile_id           uint8
-//	chain_id             uint32 BE
-//	network_id           uint32 BE
-//	account_id           [48]byte
-//	nonce                uint64 BE
-//	expiry_height        uint64 BE
-//	wallet_scheme_id     uint8
-//	hash_suite_id        uint8
-//	fee_payer            [48]byte
-//	gas_limit            uint64 BE
-//	max_fee              [32]byte
-//	call_root            [32]byte
-//	access_list_root     [32]byte
-//	z_identity_root      [32]byte
-//	account_state_root   [32]byte
-//	public_key_ref       [32]byte
-//	signature_len        uint32 BE
-//	signature            []byte
+// The wire layer (pkg/wire/zap.TxAuthEnvelope) is the LP-182 canonical
+// wire form. This file delegates Marshal / UnmarshalTxAuthEnvelope to
+// that package; the Go value-typed TxAuthEnvelope struct above remains
+// the in-process representation for VerifyTxAuthEnvelope rule logic and
+// SigningDigest construction.
 
-// Marshal returns the deterministic byte encoding of e. Returns an
-// error on a nil receiver (programmer error, but no panic — callers
-// route the failure).
+// Marshal returns the LP-182 schema 0x0A ZAP wire-bytes for this
+// envelope. Returns ErrTxAuthNilEnvelope on a nil receiver.
 func (e *TxAuthEnvelope) Marshal() ([]byte, error) {
 	if e == nil {
 		return nil, ErrTxAuthNilEnvelope
 	}
-	// Fixed size: 2 (ver) + 1 (profile) + 4 (chain) + 4 (network) +
-	// 48 (account) + 8 (nonce) + 8 (expiry) + 1 (wallet) + 1 (suite)
-	// + 48 (feepayer) + 8 (gas) + 32 (maxfee) + 5*32 (roots) + 32 (pk ref)
-	// + 4 (sig len) = 263 bytes + len(Signature).
-	size := 2 + 1 + 4 + 4 + 48 + 8 + 8 + 1 + 1 + 48 + 8 + 32 + 4*32 + 32 + 4 + len(e.Signature)
-	buf := make([]byte, 0, size)
-
-	buf = appendU16(buf, e.Version)
-	buf = append(buf, byte(e.ProfileID))
-	buf = appendU32(buf, e.ChainID)
-	buf = appendU32(buf, e.NetworkID)
-	buf = append(buf, e.AccountID[:]...)
-	buf = appendU64(buf, e.Nonce)
-	buf = appendU64(buf, e.ExpiryHeight)
-	buf = append(buf, byte(e.WalletSchemeID))
-	buf = append(buf, byte(e.HashSuiteID))
-	buf = append(buf, e.FeePayer[:]...)
-	buf = appendU64(buf, e.GasLimit)
-	buf = append(buf, e.MaxFee[:]...)
-	buf = append(buf, e.CallRoot[:]...)
-	buf = append(buf, e.AccessListRoot[:]...)
-	buf = append(buf, e.ZIdentityRoot[:]...)
-	buf = append(buf, e.AccountStateRoot[:]...)
-	buf = append(buf, e.PublicKeyRef[:]...)
-	buf = appendU32(buf, uint32(len(e.Signature)))
-	buf = append(buf, e.Signature...)
-
-	return buf, nil
+	return wirezap.NewTxAuthEnvelope(wirezap.TxAuthEnvelopeFields{
+		Version:          e.Version,
+		ProfileID:        uint8(e.ProfileID),
+		ChainID:          e.ChainID,
+		NetworkID:        e.NetworkID,
+		AccountID:        e.AccountID,
+		Nonce:            e.Nonce,
+		ExpiryHeight:     e.ExpiryHeight,
+		WalletSchemeID:   uint8(e.WalletSchemeID),
+		HashSuiteID:      uint8(e.HashSuiteID),
+		FeePayer:         e.FeePayer,
+		GasLimit:         e.GasLimit,
+		MaxFee:           e.MaxFee,
+		CallRoot:         e.CallRoot,
+		AccessListRoot:   e.AccessListRoot,
+		ZIdentityRoot:    e.ZIdentityRoot,
+		AccountStateRoot: e.AccountStateRoot,
+		PublicKeyRef:     e.PublicKeyRef,
+		Signature:        e.Signature,
+	}).Bytes(), nil
 }
 
-// UnmarshalTxAuthEnvelope is the round-trip inverse of Marshal. Returns
-// a typed error from the ErrTxAuth* set on any framing failure. After
-// framing succeeds, refuses zero values on security-relevant enum
-// fields (ProfileID, WalletSchemeID, HashSuiteID): a zero-init envelope
-// is never a legitimate wire payload, and making the codec refuse it
-// removes one degree of freedom an attacker has when fuzzing a
-// downstream verifier whose policy check might miss a path.
+// UnmarshalTxAuthEnvelope wraps LP-182 schema 0x0A ZAP wire-bytes and
+// projects them back into a Go value-typed TxAuthEnvelope.
+//
+// Refuses zero values on security-relevant enum fields (ProfileID,
+// WalletSchemeID, HashSuiteID): a zero-init envelope is never a
+// legitimate wire payload. Removing this degree of freedom shrinks the
+// fuzz surface for downstream verifiers.
+//
+// Refuses trailing bytes beyond the declared ZAP message size. ZAP's
+// Parse silently truncates to the declared header size; auth at the
+// envelope level demands exact-size input to preserve the historical
+// hand-rolled codec's no-trailing-bytes invariant.
 func UnmarshalTxAuthEnvelope(data []byte) (*TxAuthEnvelope, error) {
-	r := &txAuthReader{buf: data}
-
-	e := &TxAuthEnvelope{}
-	var err error
-	if e.Version, err = r.u16(); err != nil {
-		return nil, err
-	}
-	pid, err := r.u8()
+	wrap, err := wirezap.WrapTxAuthEnvelope(data)
 	if err != nil {
-		return nil, err
+		return nil, ErrTxAuthTruncated
 	}
-	e.ProfileID = config.ProfileID(pid)
-	if e.ChainID, err = r.u32(); err != nil {
-		return nil, err
+	if len(wrap.Bytes()) != len(data) {
+		return nil, fmt.Errorf("%w: %d trailing bytes", ErrTxAuthTrailingBytes,
+			len(data)-len(wrap.Bytes()))
 	}
-	if e.NetworkID, err = r.u32(); err != nil {
-		return nil, err
+	e := &TxAuthEnvelope{
+		Version:          wrap.Version(),
+		ProfileID:        config.ProfileID(wrap.ProfileID()),
+		ChainID:          wrap.ChainID(),
+		NetworkID:        wrap.NetworkID(),
+		AccountID:        wrap.AccountID(),
+		Nonce:            wrap.Nonce(),
+		ExpiryHeight:     wrap.ExpiryHeight(),
+		WalletSchemeID:   WalletSchemeID(wrap.WalletSchemeID()),
+		HashSuiteID:      config.HashSuiteID(wrap.HashSuiteID()),
+		FeePayer:         wrap.FeePayer(),
+		GasLimit:         wrap.GasLimit(),
+		MaxFee:           wrap.MaxFee(),
+		CallRoot:         wrap.CallRoot(),
+		AccessListRoot:   wrap.AccessListRoot(),
+		ZIdentityRoot:    wrap.ZIdentityRoot(),
+		AccountStateRoot: wrap.AccountStateRoot(),
+		PublicKeyRef:     wrap.PublicKeyRef(),
 	}
-	if err = r.read48(&e.AccountID); err != nil {
-		return nil, err
-	}
-	if e.Nonce, err = r.u64(); err != nil {
-		return nil, err
-	}
-	if e.ExpiryHeight, err = r.u64(); err != nil {
-		return nil, err
-	}
-	ws, err := r.u8()
-	if err != nil {
-		return nil, err
-	}
-	e.WalletSchemeID = WalletSchemeID(ws)
-	hs, err := r.u8()
-	if err != nil {
-		return nil, err
-	}
-	e.HashSuiteID = config.HashSuiteID(hs)
-	if err = r.read48(&e.FeePayer); err != nil {
-		return nil, err
-	}
-	if e.GasLimit, err = r.u64(); err != nil {
-		return nil, err
-	}
-	if err = r.read32(&e.MaxFee); err != nil {
-		return nil, err
-	}
-	if err = r.read32(&e.CallRoot); err != nil {
-		return nil, err
-	}
-	if err = r.read32(&e.AccessListRoot); err != nil {
-		return nil, err
-	}
-	if err = r.read32(&e.ZIdentityRoot); err != nil {
-		return nil, err
-	}
-	if err = r.read32(&e.AccountStateRoot); err != nil {
-		return nil, err
-	}
-	if err = r.read32(&e.PublicKeyRef); err != nil {
-		return nil, err
-	}
-	if e.Signature, err = r.lenPrefixed(); err != nil {
-		return nil, err
-	}
-	if len(r.buf) != 0 {
-		return nil, fmt.Errorf("%w: %d trailing bytes", ErrTxAuthTrailingBytes, len(r.buf))
+	if sig := wrap.Signature(); len(sig) > 0 {
+		e.Signature = append([]byte(nil), sig...)
 	}
 
 	// Refuse zero values on security-relevant enums. Order matches the
@@ -585,87 +527,3 @@ var (
 	ErrTxAuthSignatureTooLong = errors.New("txauth: declared signature_len exceeds input")
 )
 
-// =============================================================================
-// Reader helpers (private to this file)
-// =============================================================================
-
-type txAuthReader struct {
-	buf []byte
-}
-
-func (r *txAuthReader) need(n int) error {
-	if len(r.buf) < n {
-		return fmt.Errorf("%w: need %d have %d",
-			io.ErrUnexpectedEOF, n, len(r.buf))
-	}
-	return nil
-}
-
-func (r *txAuthReader) u8() (uint8, error) {
-	if err := r.need(1); err != nil {
-		return 0, ErrTxAuthTruncated
-	}
-	v := r.buf[0]
-	r.buf = r.buf[1:]
-	return v, nil
-}
-
-func (r *txAuthReader) u16() (uint16, error) {
-	if err := r.need(2); err != nil {
-		return 0, ErrTxAuthTruncated
-	}
-	v := binary.BigEndian.Uint16(r.buf[:2])
-	r.buf = r.buf[2:]
-	return v, nil
-}
-
-func (r *txAuthReader) u32() (uint32, error) {
-	if err := r.need(4); err != nil {
-		return 0, ErrTxAuthTruncated
-	}
-	v := binary.BigEndian.Uint32(r.buf[:4])
-	r.buf = r.buf[4:]
-	return v, nil
-}
-
-func (r *txAuthReader) u64() (uint64, error) {
-	if err := r.need(8); err != nil {
-		return 0, ErrTxAuthTruncated
-	}
-	v := binary.BigEndian.Uint64(r.buf[:8])
-	r.buf = r.buf[8:]
-	return v, nil
-}
-
-func (r *txAuthReader) read32(dst *[32]byte) error {
-	if err := r.need(32); err != nil {
-		return ErrTxAuthTruncated
-	}
-	copy(dst[:], r.buf[:32])
-	r.buf = r.buf[32:]
-	return nil
-}
-
-func (r *txAuthReader) read48(dst *[48]byte) error {
-	if err := r.need(48); err != nil {
-		return ErrTxAuthTruncated
-	}
-	copy(dst[:], r.buf[:48])
-	r.buf = r.buf[48:]
-	return nil
-}
-
-func (r *txAuthReader) lenPrefixed() ([]byte, error) {
-	n, err := r.u32()
-	if err != nil {
-		return nil, err
-	}
-	if uint64(n) > uint64(len(r.buf)) {
-		return nil, fmt.Errorf("%w: declared=%d remaining=%d",
-			ErrTxAuthSignatureTooLong, n, len(r.buf))
-	}
-	out := make([]byte, n)
-	copy(out, r.buf[:n])
-	r.buf = r.buf[n:]
-	return out, nil
-}

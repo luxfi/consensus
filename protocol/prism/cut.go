@@ -2,7 +2,7 @@ package prism
 
 import (
 	"crypto/rand"
-	"encoding/binary"
+	"math/big"
 
 	"github.com/luxfi/consensus/core/types"
 )
@@ -58,23 +58,23 @@ func (c *UniformCut) Sample(k int) []types.NodeID {
 }
 
 // cryptoRandInt returns a cryptographically secure random integer in
-// [0, max) — uniformly distributed via rejection sampling. Closes
-// BLOCKERS.md CR-13. See protocol/photon/emitter.go for the same
-// rationale; both samplers were exploitable under nation-state
-// committee-grinding.
+// [0, max) — uniformly distributed via crypto/rand.Int. Closes
+// BLOCKERS.md CR-13: rejects modulo bias by relying on big.Int's
+// constant-time rejection-sampling implementation in the standard
+// library. See protocol/photon/emitter.go for the same rationale; both
+// samplers were exploitable under nation-state committee-grinding.
 func cryptoRandInt(max int) int {
 	if max <= 0 {
 		return 0
 	}
-	limit := (^uint64(0) / uint64(max)) * uint64(max)
-	var buf [8]byte
-	for {
-		_, _ = rand.Read(buf[:])
-		v := binary.LittleEndian.Uint64(buf[:])
-		if v < limit {
-			return int(v % uint64(max))
-		}
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		// crypto/rand.Reader.Read failing is an unrecoverable runtime
+		// condition; falling back to a biased sampler would defeat
+		// CR-13. Panic surfaces the failure immediately.
+		panic("prism: crypto/rand.Int failed: " + err.Error())
 	}
+	return int(n.Int64())
 }
 
 // Luminance implements Cut interface
