@@ -629,9 +629,9 @@ func (p *QuantumPolicy) MaybeFinalize(ctx context.Context, candidateID Candidate
 		Validators:  blsCount,
 	}
 
-	proofBytes, err := qc.MarshalBinary()
-	if err != nil {
-		return nil, fmt.Errorf("quantum: marshal QuasarCert: %w", err)
+	proofBytes := qc.Bytes()
+	if len(proofBytes) == 0 {
+		return nil, fmt.Errorf("quantum: marshal QuasarCert: nil cert")
 	}
 
 	var signers []byte
@@ -676,8 +676,8 @@ func (p *QuantumPolicy) Verify(ctx context.Context, cert *Certificate) (bool, er
 	if cert.PolicyID != PolicyQuantum {
 		return false, nil
 	}
-	qc := &quasar.QuasarCert{}
-	if err := qc.UnmarshalBinary(cert.Proof); err != nil {
+	qc, err := quasar.ParseQuasarCert(cert.Proof)
+	if err != nil {
 		return false, nil
 	}
 	// Structural gate: BLS + Corona must be present for SigQuasar.
@@ -700,8 +700,8 @@ func (p *QuantumPolicy) VerifyWithKeys(
 	if cert.PolicyID != PolicyQuantum {
 		return fmt.Errorf("quantum: wrong policy %d", cert.PolicyID)
 	}
-	qc := &quasar.QuasarCert{}
-	if err := qc.UnmarshalBinary(cert.Proof); err != nil {
+	qc, err := quasar.ParseQuasarCert(cert.Proof)
+	if err != nil {
 		return fmt.Errorf("quantum: decode QuasarCert: %w", err)
 	}
 

@@ -146,7 +146,10 @@ func TestPostQuantumGenerateQuantumProof(t *testing.T) {
 	proof, err := pq.GenerateQuantumProof(ctx, blockID)
 	require.NoError(t, err)
 	require.NotEmpty(t, proof)
-	require.Equal(t, quasar.CertSchemeQuasar, proof[0])
+	// LP-182: proof is a schema 0x01 ZAP-wire QuasarCert. Validate by
+	// round-tripping through ParseQuasarCert.
+	_, parseErr := quasar.ParseQuasarCert(proof)
+	require.NoError(t, parseErr)
 }
 
 func TestPostQuantumGenerateQuantumProofMultiple(t *testing.T) {

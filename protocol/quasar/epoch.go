@@ -27,14 +27,13 @@ package quasar
 
 import (
 	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
 	"sync"
 	"time"
 
-	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	corona "github.com/luxfi/threshold/protocols/corona"
 	"github.com/luxfi/threshold/protocols/corona/keyera"
 	"github.com/luxfi/threshold/protocols/corona/primitives"
 	pulsarReshare "github.com/luxfi/threshold/protocols/corona/reshare"
@@ -151,9 +150,9 @@ type EpochKeys struct {
 	ValidatorSet []string
 	Threshold    int
 	TotalParties int
-	GroupKey     *coronaThreshold.GroupKey
-	Shares       map[string]*coronaThreshold.KeyShare
-	Signers      map[string]*coronaThreshold.Signer
+	GroupKey     *corona.GroupKey
+	Shares       map[string]*corona.KeyShare
+	Signers      map[string]*corona.Signer
 
 	// LSS lifecycle fields. Generation increments by one on every
 	// successful Reshare under the same KeyEraID. RollbackFrom is
@@ -370,7 +369,7 @@ func (em *EpochManager) GetCurrentEpoch() uint64 {
 }
 
 // GetSigner returns the Corona signer for a validator in the current epoch.
-func (em *EpochManager) GetSigner(validatorID string) (*coronaThreshold.Signer, error) {
+func (em *EpochManager) GetSigner(validatorID string) (*corona.Signer, error) {
 	em.mu.RLock()
 	defer em.mu.RUnlock()
 
@@ -387,7 +386,7 @@ func (em *EpochManager) GetSigner(validatorID string) (*coronaThreshold.Signer, 
 }
 
 // GetSignerForEpoch returns the signer for a validator in a specific epoch.
-func (em *EpochManager) GetSignerForEpoch(validatorID string, epoch uint64) (*coronaThreshold.Signer, error) {
+func (em *EpochManager) GetSignerForEpoch(validatorID string, epoch uint64) (*corona.Signer, error) {
 	em.mu.RLock()
 	defer em.mu.RUnlock()
 
@@ -405,7 +404,7 @@ func (em *EpochManager) GetSignerForEpoch(validatorID string, epoch uint64) (*co
 }
 
 // VerifySignatureForEpoch verifies a Corona signature using the epoch's keys.
-func (em *EpochManager) VerifySignatureForEpoch(message string, sig *coronaThreshold.Signature, epoch uint64) bool {
+func (em *EpochManager) VerifySignatureForEpoch(message string, sig *corona.Signature, epoch uint64) bool {
 	em.mu.RLock()
 	keys, exists := em.epochHistory[epoch]
 	em.mu.RUnlock()
@@ -414,7 +413,7 @@ func (em *EpochManager) VerifySignatureForEpoch(message string, sig *coronaThres
 		return false
 	}
 
-	return coronaThreshold.Verify(keys.GroupKey, message, sig)
+	return corona.Verify(keys.GroupKey, message, sig)
 }
 
 // TimeUntilNextRotation returns how long until the next rotation is allowed.
@@ -515,7 +514,7 @@ func (em *EpochManager) reshareEpochKeys(epoch uint64, validators []string, thre
 			Epoch:        era.State.Epoch,
 			Validators:   era.State.Validators,
 			Threshold:    era.State.Threshold,
-			Shares:       map[string]*coronaThreshold.KeyShare{v: share},
+			Shares:       map[string]*corona.KeyShare{v: share},
 		}
 		oldConfigs[party.ID(v)] = &lss.PulsarConfig{State: perParty, PartyID: party.ID(v)}
 	}
@@ -542,7 +541,7 @@ func (em *EpochManager) reshareEpochKeys(epoch uint64, validators []string, thre
 		nextEpoch        uint64
 		nextThreshold    int
 	)
-	combinedShares := make(map[string]*coronaThreshold.KeyShare, len(newPartyIDs))
+	combinedShares := make(map[string]*corona.KeyShare, len(newPartyIDs))
 	for _, id := range newPartyIDs {
 		cfg := newConfigs[id]
 		if cfg == nil || cfg.State == nil {
@@ -590,7 +589,7 @@ func (em *EpochManager) reshareEpochKeys(epoch uint64, validators []string, thre
 // EpochShareState plus the era's persistent GroupKey. The Signers map
 // wraps each share for the 2-round Pulsar signing protocol, byte-stable
 // with the historical EpochKeys layout.
-func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, threshold int, state *keyera.EpochShareState, gk *coronaThreshold.GroupKey) *EpochKeys {
+func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, threshold int, state *keyera.EpochShareState, gk *corona.GroupKey) *EpochKeys {
 	now := time.Now()
 	keys := &EpochKeys{
 		Epoch:        epoch,
@@ -600,8 +599,8 @@ func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, th
 		Threshold:    threshold,
 		TotalParties: len(validators),
 		GroupKey:     gk,
-		Shares:       make(map[string]*coronaThreshold.KeyShare, len(validators)),
-		Signers:      make(map[string]*coronaThreshold.Signer, len(validators)),
+		Shares:       make(map[string]*corona.KeyShare, len(validators)),
+		Signers:      make(map[string]*corona.Signer, len(validators)),
 		KeyEraID:     state.KeyEraID,
 		Generation:   state.Generation,
 		RollbackFrom: state.RollbackFrom,
@@ -609,7 +608,7 @@ func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, th
 	for _, v := range validators {
 		share := state.Shares[v]
 		keys.Shares[v] = share
-		keys.Signers[v] = coronaThreshold.NewSigner(share)
+		keys.Signers[v] = corona.NewSigner(share)
 	}
 	return keys
 }
@@ -632,16 +631,16 @@ func (em *EpochManager) epochKeysFromState(epoch uint64, validators []string, th
 // (chainID, groupID), the era lineage (KeyEraID), and the
 // generation/epoch tuple so that a malicious proposer cannot replay an
 // activation cert across chains, eras, or generations.
-func (em *EpochManager) verifyActivationLocked(gk *coronaThreshold.GroupKey, oldState, newState *keyera.EpochShareState) error {
+func (em *EpochManager) verifyActivationLocked(gk *corona.GroupKey, oldState, newState *keyera.EpochShareState) error {
 	// Threshold-sign the activation message under the new committee.
-	signers := make([]*coronaThreshold.Signer, 0, len(newState.Validators))
+	signers := make([]*corona.Signer, 0, len(newState.Validators))
 	signerIndices := make([]int, 0, len(newState.Validators))
 	for _, v := range newState.Validators {
 		share, ok := newState.Shares[v]
 		if !ok {
 			return fmt.Errorf("activation: missing share for new validator %s", v)
 		}
-		signers = append(signers, coronaThreshold.NewSigner(share))
+		signers = append(signers, corona.NewSigner(share))
 		signerIndices = append(signerIndices, share.Index)
 	}
 
@@ -672,13 +671,13 @@ func (em *EpochManager) verifyActivationLocked(gk *coronaThreshold.GroupKey, old
 	const sessionID = 0
 	prfKey := derivePRFKey(em.chainID, em.groupID, newState.KeyEraID, newState.Generation, newState.Epoch)
 
-	round1 := make(map[int]*coronaThreshold.Round1Data, len(signers))
+	round1 := make(map[int]*corona.Round1Data, len(signers))
 	for _, s := range signers {
 		// Round1 sets PartyID from the underlying share index.
 		r1 := s.Round1(sessionID, prfKey, signerIndices)
 		round1[r1.PartyID] = r1
 	}
-	round2 := make(map[int]*coronaThreshold.Round2Data, len(signers))
+	round2 := make(map[int]*corona.Round2Data, len(signers))
 	for _, s := range signers {
 		r2, err := s.Round2(sessionID, string(msg), prfKey, signerIndices, round1)
 		if err != nil {
@@ -707,7 +706,7 @@ func (em *EpochManager) verifyActivationLocked(gk *coronaThreshold.GroupKey, old
 		// The Signature reference is captured here; ActivationCert's
 		// opaque bytes are unused in the in-process path.
 		_ = message
-		return coronaThreshold.Verify(gk, string(msg), sig)
+		return corona.Verify(gk, string(msg), sig)
 	}
 	if err := pulsarReshare.VerifyActivation(cert, localTranscriptHash, localExchangeHash, nil, verifier); err != nil {
 		return err
@@ -729,10 +728,10 @@ func hashValidatorSetForActivation(validators []string) [32]byte {
 	h := sha256.New()
 	h.Write([]byte("quasar.validator-set.v1"))
 	var lenBuf [4]byte
-	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(sorted)))
+	putU32BE(lenBuf[:], uint32(len(sorted)))
 	h.Write(lenBuf[:])
 	for _, v := range sorted {
-		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(v)))
+		putU32BE(lenBuf[:], uint32(len(v)))
 		h.Write(lenBuf[:])
 		h.Write([]byte(v))
 	}
@@ -744,7 +743,7 @@ func hashValidatorSetForActivation(validators []string) [32]byte {
 // hashGroupKey returns a stable 32-byte digest of a Pulsar GroupKey for
 // transcript binding. The current public Bytes() method returns a
 // short-form summary; we wrap it in SHA-256 for fixed width.
-func hashGroupKey(gk *coronaThreshold.GroupKey) [32]byte {
+func hashGroupKey(gk *corona.GroupKey) [32]byte {
 	h := sha256.New()
 	h.Write([]byte("quasar.group-key.v1"))
 	if gk != nil {
@@ -764,11 +763,11 @@ func derivePRFKey(chainID, groupID []byte, keyEraID, generation, epoch uint64) [
 	h.Write(chainID)
 	h.Write(groupID)
 	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], keyEraID)
+	putU64BE(buf[:], keyEraID)
 	h.Write(buf[:])
-	binary.BigEndian.PutUint64(buf[:], generation)
+	putU64BE(buf[:], generation)
 	h.Write(buf[:])
-	binary.BigEndian.PutUint64(buf[:], epoch)
+	putU64BE(buf[:], epoch)
 	h.Write(buf[:])
 	return h.Sum(nil)
 }
@@ -861,34 +860,30 @@ type QuantumBundle struct {
 	Timestamp    int64      // Unix timestamp
 
 	// Corona threshold signature (post-quantum secure)
-	Signature *coronaThreshold.Signature
+	Signature *corona.Signature
 }
 
-// Hash returns the hash of this bundle for chain linkage.
+// Hash returns the SHA-256 identity hash of this bundle for chain
+// linkage. Identity layer: hashes the LP-182 schema 0x07 ZAP wire
+// bytes (sans signature, which is not yet computed at Hash() time).
 func (qb *QuantumBundle) Hash() [32]byte {
-	h := sha256.New()
 	buf := make([]byte, 8)
 
-	// Epoch + sequence
-	binary.BigEndian.PutUint64(buf, qb.Epoch)
+	// Identity-layer canonicalization: fixed-width big-endian fields
+	// concatenated with [48]byte hash fields. Helper lives in
+	// transcript_inputs.go.
+	h := sha256.New()
+	putU64BE(buf, qb.Epoch)
 	h.Write(buf)
-	binary.BigEndian.PutUint64(buf, qb.Sequence)
+	putU64BE(buf, qb.Sequence)
 	h.Write(buf)
-
-	// Block range
-	binary.BigEndian.PutUint64(buf, qb.StartHeight)
+	putU64BE(buf, qb.StartHeight)
 	h.Write(buf)
-	binary.BigEndian.PutUint64(buf, qb.EndHeight)
+	putU64BE(buf, qb.EndHeight)
 	h.Write(buf)
-
-	// Merkle root of bundled BLS blocks
 	h.Write(qb.MerkleRoot[:])
-
-	// Previous bundle hash (chain linkage)
 	h.Write(qb.PreviousHash[:])
-
-	// Timestamp
-	binary.BigEndian.PutUint64(buf, uint64(qb.Timestamp))
+	putU64BE(buf, uint64(qb.Timestamp))
 	h.Write(buf)
 
 	var result [32]byte
@@ -1042,7 +1037,7 @@ func (bs *BundleSigner) SignBundle(
 	message := bundle.SignableMessage()
 
 	// Round 1: Collect commitments
-	round1Data := make(map[int]*coronaThreshold.Round1Data)
+	round1Data := make(map[int]*corona.Round1Data)
 	for _, v := range participatingValidators {
 		signer, ok := subsetSigners[v]
 		if !ok {
@@ -1053,7 +1048,7 @@ func (bs *BundleSigner) SignBundle(
 	}
 
 	// Round 2: Generate signature shares
-	round2Data := make(map[int]*coronaThreshold.Round2Data)
+	round2Data := make(map[int]*corona.Round2Data)
 	for _, v := range participatingValidators {
 		signer, ok := subsetSigners[v]
 		if !ok {
@@ -1090,7 +1085,7 @@ func (bs *BundleSigner) SignBundle(
 //
 // Side effects: this allocates one KeyShare clone and one Signer per
 // participating validator. The original epoch state is not mutated.
-func newSubsetSigners(keys *EpochKeys, participating []string, signerIndices []int) (map[string]*coronaThreshold.Signer, error) {
+func newSubsetSigners(keys *EpochKeys, participating []string, signerIndices []int) (map[string]*corona.Signer, error) {
 	if len(participating) == 0 {
 		return nil, errors.New("no participating validators")
 	}
@@ -1106,7 +1101,7 @@ func newSubsetSigners(keys *EpochKeys, participating []string, signerIndices []i
 		indexToSlot[idx] = slot
 	}
 
-	out := make(map[string]*coronaThreshold.Signer, len(participating))
+	out := make(map[string]*corona.Signer, len(participating))
 	for _, v := range participating {
 		share, ok := keys.Shares[v]
 		if !ok {
@@ -1122,7 +1117,7 @@ func newSubsetSigners(keys *EpochKeys, participating []string, signerIndices []i
 		r.MForm(newLambda, newLambda)
 		cloned := *share
 		cloned.Lambda = newLambda
-		out[v] = coronaThreshold.NewSigner(&cloned)
+		out[v] = corona.NewSigner(&cloned)
 	}
 	return out, nil
 }
@@ -1146,7 +1141,7 @@ func (bs *BundleSigner) VerifyBundle(bundle *QuantumBundle) bool {
 	}
 
 	message := bundle.SignableMessage()
-	return coronaThreshold.Verify(keys.GroupKey, message, bundle.Signature)
+	return corona.Verify(keys.GroupKey, message, bundle.Signature)
 }
 
 // ComputeMerkleRoot computes a Merkle root over block hashes.

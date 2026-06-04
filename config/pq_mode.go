@@ -51,16 +51,18 @@ const (
 	// production Lux mesh per HIP-0077.
 	PQModeBLS PQMode = iota
 
-	// PQModeNasua — BLS + the academic Nasua 2-round LWE threshold
-	// signature. Hash profile is **BLAKE3** (`primitives/hash.go` uses
-	// `github.com/zeebo/blake3` for every challenge / share / transcript
-	// binding). Trusted-dealer DKG, fixed federation, no proactive
-	// resharing. Suitable for bridge MPC and small fixed-membership
-	// federations; **not** an open public chain stance because it has no
-	// DKG that survives epoch rotation, and BLAKE3 is outside the NIST
-	// FIPS 202 approved hash family so this mode is **not** FIPS-approvable.
-	// Provided by `github.com/luxfi/nasua` (academic port).
-	PQModeNasua
+	// PQModeCorona — BLS + the Corona 2-round LWE threshold
+	// signature (formerly published as "Nasua"). Hash profile is
+	// **BLAKE3** (`primitives/hash.go` uses `github.com/zeebo/blake3` for
+	// every challenge / share / transcript binding). Trusted-dealer DKG,
+	// fixed federation, no proactive resharing. Suitable for bridge MPC
+	// and small fixed-membership federations; **not** an open public
+	// chain stance because it has no DKG that survives epoch rotation,
+	// and BLAKE3 is outside the NIST FIPS 202 approved hash family so
+	// this mode is **not** FIPS-approvable. Provided by
+	// `github.com/luxfi/threshold/protocols/corona` (the production
+	// rename of the historical Corona/Nasua academic port).
+	PQModeCorona
 
 	// PQModePulsar — BLS + the Pulsar production fork of Corona. Same
 	// 2-round threshold algorithm as Corona, but Pulsar's canonical
@@ -102,8 +104,8 @@ func (m PQMode) String() string {
 	switch m {
 	case PQModeBLS:
 		return "bls"
-	case PQModeNasua:
-		return "nasua"
+	case PQModeCorona:
+		return "corona"
 	case PQModePulsar:
 		return "pulsar"
 	case PQModeQuasar:
@@ -132,7 +134,7 @@ func (m PQMode) PolicyID() uint16 {
 	switch m {
 	case PQModeBLS:
 		return 1 // PolicyQuorum
-	case PQModeNasua, PQModePulsar:
+	case PQModeCorona, PQModePulsar:
 		return 5 // PolicyPQ
 	case PQModeQuasar:
 		return 4 // PolicyQuantum
@@ -236,7 +238,7 @@ func (m PQMode) HashSuiteID() HashSuiteID {
 	switch m {
 	case PQModeBLS:
 		return HashSuiteNone
-	case PQModeNasua:
+	case PQModeCorona:
 		return HashSuiteBLAKE3Legacy
 	case PQModePulsar, PQModeQuasar, PQModeMLDSA:
 		return HashSuiteSHA3NIST
@@ -382,7 +384,7 @@ func (m PQMode) SigSchemeID() SigSchemeID {
 	switch m {
 	case PQModeBLS:
 		return SigSchemeNone
-	case PQModeNasua:
+	case PQModeCorona:
 		return SigSchemeNasua
 	case PQModePulsar, PQModeQuasar:
 		return SigSchemePulsarR
@@ -639,7 +641,7 @@ func (m PQMode) DKGRequired() string {
 	switch m {
 	case PQModeBLS, PQModeMLDSA:
 		return "none"
-	case PQModeNasua:
+	case PQModeCorona:
 		return "trusted-dealer" // unsuitable for open public chains
 	case PQModePulsar, PQModeQuasar:
 		return "pedersen-dkg-over-rq"
@@ -655,7 +657,7 @@ func (m PQMode) DKGRequired() string {
 //
 //	canonical                              aliases (component-named only)
 //	"bls"            (BLS)                 "classical", "bls-only"
-//	"nasua"       (BLS + Corona)      "rt", "academic", "bls-rt", "bls-q", "sha256-rt"
+//	"corona"       (BLS + Corona)      "rt", "academic", "nasua", "bls-rt", "bls-q", "sha256-rt"
 //	"pulsar"         (BLS + Pulsar)        "sha3-rt", "production-rt", "bls-pulsar"
 //	"quasar"         (BLS + Pulsar + Z)    "rollup", "groth16", "zk",
 //	                                       "bls-z", "bls-zk", "bls-groth16",
@@ -665,8 +667,8 @@ func ParsePQMode(s string) (PQMode, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "", "bls", "bls-only", "classical":
 		return PQModeBLS, nil
-	case "nasua", "rt", "academic", "bls-rt", "bls-q", "sha256-rt":
-		return PQModeNasua, nil
+	case "corona", "nasua", "rt", "academic", "bls-rt", "bls-q", "sha256-rt":
+		return PQModeCorona, nil
 	case "pulsar", "sha3-rt", "production-rt", "bls-pulsar":
 		return PQModePulsar, nil
 	case "quasar", "rollup", "groth16", "zk",
@@ -725,7 +727,7 @@ func (m PQMode) IsPostQuantum() bool {
 
 // SuitableForPublicChain reports whether the mode is appropriate for an
 // open public chain (epoch rotation, no trusted dealer). False for
-// PQModeNasua (trusted-dealer DKG only) and PQModeBLS (no PQ at all);
+// PQModeCorona (trusted-dealer DKG only) and PQModeBLS (no PQ at all);
 // true for everything else.
 func (m PQMode) SuitableForPublicChain() bool {
 	switch m {

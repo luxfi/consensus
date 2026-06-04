@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/luxfi/crypto/threshold"
-	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	corona "github.com/luxfi/threshold/protocols/corona"
 	"github.com/stretchr/testify/require"
 )
 
@@ -190,7 +190,7 @@ func TestDualSigningFlow(t *testing.T) {
 	t.Log("=== Round 1: BLS signing + Corona D matrices ===")
 
 	blsSigs := make([]*QuasarSig, 3)
-	allRound1 := make(map[int]*coronaThreshold.Round1Data)
+	allRound1 := make(map[int]*corona.Round1Data)
 
 	for i, vid := range validatorIDs {
 		blsSig, rtRound1, err := h.DualSignRound1(ctx, vid, message, sessionID, prfKey)
@@ -223,16 +223,16 @@ func TestDualSigningFlow(t *testing.T) {
 	rtShares := config.CoronaShares
 	rtGroupKey := config.CoronaGroupKey
 
-	signers := make([]*coronaThreshold.Signer, 3)
+	signers := make([]*corona.Signer, 3)
 	for i := 0; i < 3; i++ {
-		signers[i] = coronaThreshold.NewSigner(rtShares[validatorIDs[i]])
+		signers[i] = corona.NewSigner(rtShares[validatorIDs[i]])
 	}
 
 	signerIDs := []int{0, 1, 2}
 	messageStr := string(message)
 
 	// Round 1: All parties compute D + MACs
-	rtRound1Data := make(map[int]*coronaThreshold.Round1Data)
+	rtRound1Data := make(map[int]*corona.Round1Data)
 	for _, signer := range signers {
 		data := signer.Round1(sessionID, prfKey, signerIDs)
 		rtRound1Data[data.PartyID] = data
@@ -240,7 +240,7 @@ func TestDualSigningFlow(t *testing.T) {
 	t.Log("  Round1: D matrices computed")
 
 	// Round 2: All parties compute z shares
-	rtRound2Data := make(map[int]*coronaThreshold.Round2Data)
+	rtRound2Data := make(map[int]*corona.Round2Data)
 	for _, signer := range signers {
 		data, err := signer.Round2(sessionID, messageStr, prfKey, signerIDs, rtRound1Data)
 		require.NoError(t, err, "Corona Round2 failed")
@@ -255,7 +255,7 @@ func TestDualSigningFlow(t *testing.T) {
 	t.Logf("  Finalize: Z=%d, Delta=%d", len(rtSig.Z), len(rtSig.Delta))
 
 	// Verify Corona
-	rtValid := coronaThreshold.Verify(rtGroupKey, messageStr, rtSig)
+	rtValid := corona.Verify(rtGroupKey, messageStr, rtSig)
 	require.True(t, rtValid, "Corona signature verification failed")
 	t.Log("  Corona:    ✓ verified")
 

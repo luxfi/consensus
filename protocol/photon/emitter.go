@@ -2,7 +2,7 @@ package photon
 
 import (
 	"crypto/rand"
-	"encoding/binary"
+	"math/big"
 
 	"github.com/luxfi/consensus/core/types"
 )
@@ -67,32 +67,27 @@ func (e *UniformEmitter) Emit(msg interface{}) ([]types.NodeID, error) {
 }
 
 // cryptoRandInt returns a cryptographically secure random integer in
-// [0, max) — uniformly distributed. Closes BLOCKERS.md CR-13: prior
-// implementation used `binary.LittleEndian.Uint64(buf[:]) % uint64(max)`
-// which introduces modulo bias for non-power-of-2 max. Under the
-// nation-state grinding threat model, that bias was a structural
-// exploit on committee sampling (Pinkas-Reiter style).
+// [0, max) — uniformly distributed via crypto/rand.Int. Closes
+// BLOCKERS.md CR-13: prior implementation used
+// `binary.LittleEndian.Uint64(buf[:]) % uint64(max)` which introduces
+// modulo bias for non-power-of-2 max. Under the nation-state grinding
+// threat model, that bias was a structural exploit on committee
+// sampling (Pinkas-Reiter style).
 //
-// This implementation uses rejection sampling: read 8 bytes, reject
-// values in the high partial bucket, retry until the sample falls in
-// the perfectly-uniform range. Expected loops ~1.0–2.0 (never more
-// than 2.0 in expectation for any positive max).
+// crypto/rand.Int implements constant-time rejection sampling
+// internally; we rely on the standard library instead of hand-rolling
+// the rejection loop.
 func cryptoRandInt(max int) int {
 	if max <= 0 {
 		return 0
 	}
-	// Bound to refuse: largest multiple of max <= 2^64. Values above
-	// this are biased and must be rejected.
-	limit := (^uint64(0) / uint64(max)) * uint64(max)
-	var buf [8]byte
-	for {
-		_, _ = rand.Read(buf[:])
-		v := binary.LittleEndian.Uint64(buf[:])
-		if v < limit {
-			return int(v % uint64(max))
-		}
-		// Bias-region hit; resample.
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		// crypto/rand.Reader.Read failing is an unrecoverable runtime
+		// condition; biased fallback would defeat CR-13.
+		panic("photon: crypto/rand.Int failed: " + err.Error())
 	}
+	return int(n.Int64())
 }
 
 // EmitTo emits a message to specific nodes

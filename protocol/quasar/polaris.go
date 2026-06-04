@@ -26,14 +26,14 @@
 package quasar
 
 import (
-	"encoding/binary"
 	"errors"
 	"time"
 
+	wirezap "github.com/luxfi/consensus/pkg/wire/zap"
 	"github.com/luxfi/crypto/bls"
 	magnetar "github.com/luxfi/magnetar/ref/go/pkg/magnetar"
 	pulsarwire "github.com/luxfi/pulsar/ref/go/pkg/pulsar"
-	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
+	corona "github.com/luxfi/threshold/protocols/corona"
 	pulsar "github.com/luxfi/threshold/protocols/pulsar"
 )
 
@@ -64,7 +64,7 @@ type PolarisLegs struct {
 
 	// Corona is the Ring-LWE threshold signature for the round.
 	// Produced by the corona/threshold.Signer ceremony.
-	Corona *coronaThreshold.Signature
+	Corona *corona.Signature
 
 	// Magnetar carries the per-validator standalone SLH-DSA aggregate
 	// over the round digest. Built via magnetar.BuildAggregateCert
@@ -142,23 +142,17 @@ func verifyPulsarLeg(message []byte, groupKey []byte, pulsarSigBytes []byte) boo
 }
 
 // EncodeMagnetarAggregate serialises a magnetar.ValidatorAggregateCert
-// into the canonical wire form embedded in a QuasarCert's Magnetar
-// slot.
+// into LP-182 schema 0x04 ZAP wire-bytes, embedded in a QuasarCert's
+// Magnetar slot.
 //
-// Wire layout (big-endian throughout):
+// The three parallel slices (Signers, PubKeys, Sigs) are concatenated
+// into three variable-length ZAP byte fields. Per-element byte widths
+// are derived from magnetar.ParamsFor(Mode) at both encode and decode,
+// so a flipped mode byte changes the expected stride and rejects in
+// DecodeMagnetarAggregate before any signature dispatch.
 //
-//	mode(1)
-//	signer_count(4)
-//	signer_id[i] for i in [0, N): 32 bytes each
-//	pubkey[i] for i in [0, N): PublicKeySize(mode) bytes each
-//	sig[i] for i in [0, N): SignatureSize(mode) bytes each
-//
-// All four shape fields are tightly bound: a flipped mode byte
-// changes the per-entry byte width and rejects in DecodeMagnetarAggregate
-// before any signature dispatch.
-//
-// Returns ErrAggregateCertShape if the cert's parallel slices are
-// misaligned.
+// Returns magnetar.ErrAggregateCertShape if the cert's parallel slices
+// are misaligned.
 func EncodeMagnetarAggregate(cert *magnetar.ValidatorAggregateCert) ([]byte, error) {
 	if cert == nil {
 		return nil, magnetar.ErrAggregateCertEmpty
@@ -183,66 +177,72 @@ func EncodeMagnetarAggregate(cert *magnetar.ValidatorAggregateCert) ([]byte, err
 		}
 	}
 
-	total := 1 + 4 + n*(32+params.PublicKeySize+params.SignatureSize)
-	out := make([]byte, 0, total)
-	out = append(out, byte(cert.Mode))
+	signers := make([]byte, 0, n*32)
+	for i := 0; i < n; i++ {
+		signers = append(signers, cert.Signers[i][:]...)
+	}
+	pubKeys := make([]byte, 0, n*params.PublicKeySize)
+	for i := 0; i < n; i++ {
+		pubKeys = append(pubKeys, cert.PubKeys[i]...)
+	}
+	sigs := make([]byte, 0, n*params.SignatureSize)
+	for i := 0; i < n; i++ {
+		sigs = append(sigs, cert.Sigs[i]...)
+	}
 
-	var u32 [4]byte
-	binary.BigEndian.PutUint32(u32[:], uint32(n))
-	out = append(out, u32[:]...)
-
-	for i := 0; i < n; i++ {
-		out = append(out, cert.Signers[i][:]...)
-	}
-	for i := 0; i < n; i++ {
-		out = append(out, cert.PubKeys[i]...)
-	}
-	for i := 0; i < n; i++ {
-		out = append(out, cert.Sigs[i]...)
-	}
-	return out, nil
+	return wirezap.NewMagnetarAggregateCert(wirezap.MagnetarAggregateFields{
+		Mode:    uint8(cert.Mode),
+		Count:   uint32(n),
+		Signers: signers,
+		PubKeys: pubKeys,
+		Sigs:    sigs,
+	}).Bytes(), nil
 }
 
 // DecodeMagnetarAggregate is the inverse of EncodeMagnetarAggregate.
-// Strict trailing-bytes policy: any byte left after the declared
-// frame rejects the cert as malformed (matches pulsar / corona /
-// magnetar wire policy).
+// Wraps LP-182 schema 0x04 ZAP wire-bytes and projects them back into
+// a magnetar.ValidatorAggregateCert.
+//
+// Strict shape policy: the concatenated Signers / PubKeys / Sigs byte
+// lengths MUST equal Count * stride for the declared Mode. Anything
+// else rejects as malformed.
 func DecodeMagnetarAggregate(data []byte) (*magnetar.ValidatorAggregateCert, error) {
-	if len(data) < 5 {
-		return nil, ErrCertCorrupt
-	}
-	mode := magnetar.Mode(data[0])
-	params, err := magnetar.ParamsFor(mode)
+	wrap, err := wirezap.WrapMagnetarAggregateCert(data)
 	if err != nil {
 		return nil, ErrCertCorrupt
 	}
-	n := int(binary.BigEndian.Uint32(data[1:5]))
+	mode := magnetar.Mode(wrap.Mode())
+	params, perr := magnetar.ParamsFor(mode)
+	if perr != nil {
+		return nil, ErrCertCorrupt
+	}
+	n := int(wrap.Count())
 	if n == 0 {
 		return nil, ErrCertCorrupt
 	}
-	want := 5 + n*(32+params.PublicKeySize+params.SignatureSize)
-	if len(data) != want {
+	signersBytes := wrap.Signers()
+	pubKeysBytes := wrap.PubKeys()
+	sigsBytes := wrap.Sigs()
+	if len(signersBytes) != n*32 ||
+		len(pubKeysBytes) != n*params.PublicKeySize ||
+		len(sigsBytes) != n*params.SignatureSize {
 		return nil, ErrCertCorrupt
 	}
-	off := 5
 	signers := make([]magnetar.NodeID, n)
 	for i := 0; i < n; i++ {
-		copy(signers[i][:], data[off:off+32])
-		off += 32
+		copy(signers[i][:], signersBytes[i*32:(i+1)*32])
 	}
 	pubKeys := make([][]byte, n)
 	for i := 0; i < n; i++ {
 		pk := make([]byte, params.PublicKeySize)
-		copy(pk, data[off:off+params.PublicKeySize])
+		copy(pk, pubKeysBytes[i*params.PublicKeySize:(i+1)*params.PublicKeySize])
 		pubKeys[i] = pk
-		off += params.PublicKeySize
 	}
 	sigs := make([][]byte, n)
 	for i := 0; i < n; i++ {
 		sg := make([]byte, params.SignatureSize)
-		copy(sg, data[off:off+params.SignatureSize])
+		copy(sg, sigsBytes[i*params.SignatureSize:(i+1)*params.SignatureSize])
 		sigs[i] = sg
-		off += params.SignatureSize
 	}
 	return &magnetar.ValidatorAggregateCert{
 		Mode:    mode,

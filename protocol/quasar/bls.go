@@ -21,7 +21,6 @@ package quasar
 
 import (
 	"context"
-	"encoding/binary"
 	"sort"
 	"sync"
 
@@ -31,7 +30,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-// uint64BufPool pools 8-byte buffers for binary.LittleEndian encoding in hot paths
+// uint64BufPool pools 8-byte buffers for BigEndian encoding in hot paths
 var uint64BufPool = sync.Pool{
 	New: func() any {
 		buf := make([]byte, 8)
@@ -246,7 +245,10 @@ func buildVoteDigest(blockID ids.ID, votes map[string]int) []byte {
 	for _, validator := range validators {
 		count := votes[validator]
 		_, _ = h.Write([]byte(validator))
-		binary.LittleEndian.PutUint64(countBytes, uint64(count))
+		// 8-byte big-endian canonicalization — vote count fixed-width
+		// for cSHAKE digest stability. Helper lives in
+		// transcript_inputs.go (identity-layer hash-input encoding).
+		putU64BE(countBytes, uint64(count))
 		_, _ = h.Write(countBytes)
 	}
 	out := make([]byte, 32)

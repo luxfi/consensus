@@ -118,8 +118,8 @@ func (pq *PostQuantum) VerifyQuantumSignature(message, signature, publicKey []by
 		return errors.New("pq: no BLS aggregate verify key attached")
 	}
 
-	cert := &quasar.QuasarCert{}
-	if err := cert.UnmarshalBinary(signature); err != nil {
+	cert, err := quasar.ParseQuasarCert(signature)
+	if err != nil {
 		return fmt.Errorf("pq: decode QuasarCert: %w", err)
 	}
 
@@ -177,7 +177,7 @@ func (pq *PostQuantum) GenerateQuantumProof(ctx context.Context, blockID ids.ID)
 	if len(sig.MLDSA) > 0 {
 		cert.MLDSARollup = quasar.EncodeMLDSASigs([][]byte{sig.MLDSA})
 	}
-	return cert.MarshalBinary()
+	return cert.Bytes(), nil
 }
 
 // pickValidator returns any validator ID configured on the signer.
