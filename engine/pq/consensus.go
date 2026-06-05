@@ -109,7 +109,7 @@ func (s *memoryStore) Children(id quasar.VertexID) []quasar.VertexID {
 // Uses in-memory storage suitable for single-node operation.
 // For distributed deployment, inject a persistent Store implementation.
 //
-// The engine honours params.PQMode (and the LUX_CONSENSUS_PQ_MODE env
+// The engine honours params.PQMode (and the CONSENSUS_PQ_MODE env
 // override) to select which signature layers are active. Only the BLS
 // fast path is wired today; PQ paths are ready for the signer hookup.
 func NewConsensus(params config.Parameters) *ConsensusEngine {
