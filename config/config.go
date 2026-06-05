@@ -44,7 +44,7 @@ type Parameters struct {
 }
 
 // WithPQMode returns a copy of Parameters with the given PQ mode set.
-// Use config.PQModeFromEnv to honour the LUX_CONSENSUS_PQ_MODE override.
+// Use config.PQModeFromEnv to honour the CONSENSUS_PQ_MODE override.
 func (p Parameters) WithPQMode(m PQMode) Parameters {
 	p.PQMode = m
 	return p
