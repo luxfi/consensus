@@ -38,6 +38,15 @@ import (
 // aspirational — every leg has a working code path that the cert
 // composer exercises end-to-end.
 func TestQuasarCert_ComposesAllThreeSchemes(t *testing.T) {
+	// SLH-DSA-via-magnetar in the leg-3 path is unavoidably ~30s under
+	// `-race` (NIST FIPS 205 hash-tree depth × goroutine instrumentation
+	// overhead). Gate the heavy compose under -short so the full quasar
+	// suite stays under the 10m -race timeout. See SUMMARY.md for the
+	// race-hot-path bottleneck investigation that pinned this.
+	if testing.Short() {
+		t.Skip("skipping SLH-DSA-bound compose test under -short")
+	}
+
 	// One round digest signed by every leg. Bound out-of-band by the
 	// QBlock TranscriptHash pattern in production; here we use a raw
 	// fixed digest for the round-trip exercise.
