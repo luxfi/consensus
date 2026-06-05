@@ -9,7 +9,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/luxfi/consensus/engine"
@@ -33,15 +32,6 @@ func (b *SimpleBlock) Bytes() []byte        { return b.data }
 
 func main() {
 	fmt.Println("=== Lux Consensus Go SDK Example ===")
-	fmt.Println()
-
-	// Check if we should use C implementation
-	useCConsensus := os.Getenv("USE_C_CONSENSUS") == "1"
-	if useCConsensus {
-		fmt.Println("Using C consensus implementation (CGO)")
-	} else {
-		fmt.Println("Using pure Go consensus implementation")
-	}
 	fmt.Println()
 
 	// Create consensus factory
@@ -187,10 +177,4 @@ func main() {
 	}
 
 	fmt.Println("✅ Example completed successfully!")
-	fmt.Println()
-
-	// Instructions for running with different implementations
-	fmt.Println("To run with different implementations:")
-	fmt.Println("  Pure Go:  go run go_sdk_example.go")
-	fmt.Println("  C (CGO):  USE_C_CONSENSUS=1 CGO_ENABLED=1 go run go_sdk_example.go")
 }
