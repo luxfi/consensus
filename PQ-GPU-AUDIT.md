@@ -159,7 +159,7 @@ Existing equivalence coverage:
 
 - `crypto/mldsa`: KAT vectors at `crypto/mldsa/testdata/kat/` —
   verify path tested against FIPS 204 KATs in CPU and (when built
-  with `-tags=accel_native`) GPU.
+  with `-tags=lux_accel_real`) GPU.
 - `crypto/slhdsa`: KAT vectors at `crypto/slhdsa/kat_vectors_test.go`
   — verify against FIPS 205 KATs. After this pass, the same KATs
   exercise the new `batchVerifyGPU` path when GPU is available.
@@ -206,7 +206,7 @@ is itself ~3× slower than ML-DSA so break-even comes earlier).
 | cgo overhead per dispatch | Existing pattern: `accel.NewSession()` once, reuse for all dispatches. Batch ops amortize. Threshold gates kept where break-even is measured below batch size. |
 | GPU/CPU non-equivalence (lattice/hash deterministic but the GPU NTT could disagree at modular boundary) | KAT-driven equivalence: existing `crypto/mldsa/testdata/kat/` and `crypto/slhdsa/kat_vectors_test.go` exercise both paths byte-for-byte. New SLH-DSA gpu.go test mirrors mldsa pattern: `TestSLHDSABatchEquivalenceCPUvsGPU`. |
 | `CRYPTO_BACKEND=gpu` set on a GPU-less host | `backend.Resolve(gpuOK, cgoOK)` falls through gracefully to CGo or Vanilla. Unlike the cevm pattern (which fatals on explicit override), the Go path soft-falls — matches existing Resolve behavior. Separate decision point if we want fatal-on-mismatch semantics; the current behavior is consistent across the entire crypto package, changing only Quasar's path would break the "one way" rule. |
-| Linker — cgo bridge to luxcpp libs | Already solved: `lux/accel` cgo build with `-tags=accel_native` links luxcpp's static libs. `crypto/mldsa/gpu.go` already uses this path. New `crypto/slhdsa/gpu.go` follows the same import (`github.com/luxfi/accel`). |
+| Linker — cgo bridge to luxcpp libs | Already solved: `lux/accel` cgo build with `-tags=lux_accel_real` links luxcpp's static libs. `crypto/mldsa/gpu.go` already uses this path. New `crypto/slhdsa/gpu.go` follows the same import (`github.com/luxfi/accel`). |
 | Build matrix (Apple Silicon Metal / Linux NVIDIA CUDA / Linux CPU-only) | Same matrix as today: `accel` already builds clean on all three. SLH-DSA addition adds two new C entry points but they're behind the same cgo guard. Linux-CPU-only build keeps stub behavior (`stubLatticeOps.SLHDSAVerifyBatch` returns `ErrNoBackends`, callers fall back via `Resolve`). |
 | Concurrency — multiple goroutines dispatching to same GPU | `accel.Session` already wraps the underlying device with a mutex. No new locks needed. |
 | Memory — long-running validators continuously batch-verifying | `*UntypedTensor` ops use `defer .Close()` consistently in `crypto/mldsa/gpu.go`. New `crypto/slhdsa/gpu.go` mirrors the same. Verified no leak via existing soak tests. |
