@@ -750,19 +750,20 @@ func TestPQMode_IsPostQuantum(t *testing.T) {
 	}
 }
 
-// TestPQModeFromEnv covers the env-var override path.
+// TestPQModeFromEnv covers the env-var override path. CONSENSUS_PQ_MODE is
+// the one and only env var honoured; the legacy LUX_-prefixed name is gone.
 func TestPQModeFromEnv(t *testing.T) {
-	t.Setenv("LUX_CONSENSUS_PQ_MODE", "")
+	t.Setenv("CONSENSUS_PQ_MODE", "")
 	if got, err := PQModeFromEnv(PQModeQuasar); err != nil || got != PQModeQuasar {
 		t.Errorf("empty env: got (%v, %v), want (PQModeQuasar, nil)", got, err)
 	}
 
-	t.Setenv("LUX_CONSENSUS_PQ_MODE", "pulsar")
+	t.Setenv("CONSENSUS_PQ_MODE", "pulsar")
 	if got, err := PQModeFromEnv(PQModeBLS); err != nil || got != PQModePulsar {
 		t.Errorf("env=pulsar: got (%v, %v), want (PQModePulsar, nil)", got, err)
 	}
 
-	t.Setenv("LUX_CONSENSUS_PQ_MODE", "garbage")
+	t.Setenv("CONSENSUS_PQ_MODE", "garbage")
 	got, err := PQModeFromEnv(PQModeQuasar)
 	if err == nil {
 		t.Errorf("env=garbage: expected error, got nil; mode=%v", got)
@@ -772,41 +773,21 @@ func TestPQModeFromEnv(t *testing.T) {
 	}
 }
 
-// TestPQModeFromEnv_UnprefixedPrecedence covers the unprefixed canonical
-// CONSENSUS_PQ_MODE env name added per the "drop LUX_ prefix" directive.
-// Verifies:
-//
-//  1. CONSENSUS_PQ_MODE alone is honoured.
-//  2. CONSENSUS_PQ_MODE wins when both are set (one way: the new way takes
-//     precedence).
-//  3. Only LUX_CONSENSUS_PQ_MODE set: legacy fallback still works.
-//  4. Both unset: default returned.
-func TestPQModeFromEnv_UnprefixedPrecedence(t *testing.T) {
-	// 1. CONSENSUS_PQ_MODE alone.
-	t.Setenv("CONSENSUS_PQ_MODE", "quasar")
-	t.Setenv("LUX_CONSENSUS_PQ_MODE", "")
-	if got, err := PQModeFromEnv(PQModeBLS); err != nil || got != PQModeQuasar {
-		t.Errorf("unprefixed alone: got (%v, %v), want (PQModeQuasar, nil)", got, err)
+// TestPQModeFromEnv_LegacyNameIgnored asserts that the dropped legacy
+// LUX_CONSENSUS_PQ_MODE env var is no longer honoured. Only CONSENSUS_PQ_MODE
+// affects the resolved mode.
+func TestPQModeFromEnv_LegacyNameIgnored(t *testing.T) {
+	// Legacy name set, canonical unset: default returned, legacy is dead.
+	t.Setenv("CONSENSUS_PQ_MODE", "")
+	t.Setenv("LUX_CONSENSUS_PQ_MODE", "pulsar")
+	if got, err := PQModeFromEnv(PQModeBLS); err != nil || got != PQModeBLS {
+		t.Errorf("legacy-only: got (%v, %v), want (PQModeBLS, nil) — legacy var must be ignored", got, err)
 	}
 
-	// 2. Both set — unprefixed wins.
+	// Both set: canonical wins (legacy is ignored entirely).
 	t.Setenv("CONSENSUS_PQ_MODE", "quasar")
 	t.Setenv("LUX_CONSENSUS_PQ_MODE", "bls")
 	if got, err := PQModeFromEnv(PQModeMLDSA); err != nil || got != PQModeQuasar {
-		t.Errorf("both set: got (%v, %v), want (PQModeQuasar, nil) — unprefixed must win", got, err)
-	}
-
-	// 3. Only legacy LUX_ var set: fallback honoured.
-	t.Setenv("CONSENSUS_PQ_MODE", "")
-	t.Setenv("LUX_CONSENSUS_PQ_MODE", "pulsar")
-	if got, err := PQModeFromEnv(PQModeBLS); err != nil || got != PQModePulsar {
-		t.Errorf("legacy fallback: got (%v, %v), want (PQModePulsar, nil)", got, err)
-	}
-
-	// 4. Both unset: default returned.
-	t.Setenv("CONSENSUS_PQ_MODE", "")
-	t.Setenv("LUX_CONSENSUS_PQ_MODE", "")
-	if got, err := PQModeFromEnv(PQModeQuasar); err != nil || got != PQModeQuasar {
-		t.Errorf("both unset: got (%v, %v), want (PQModeQuasar, nil)", got, err)
+		t.Errorf("both set: got (%v, %v), want (PQModeQuasar, nil) — canonical must win", got, err)
 	}
 }
