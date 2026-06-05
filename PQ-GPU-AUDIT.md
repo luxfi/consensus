@@ -80,10 +80,10 @@ Patches landed in this audit run:
    replaced with the truth (GPU dispatch happens at the primitive
    layer; Quasar composes them).
 
-2. **`consensus`**: `config/pq_mode.go` — `CONSENSUS_PQ_MODE` reads
-   first; `LUX_CONSENSUS_PQ_MODE` retained as legacy fallback. Zero
-   breakage. Operators move forward to the unprefixed name; old
-   manifests keep working until they're rotated.
+2. **`consensus`**: `config/pq_mode.go` — `CONSENSUS_PQ_MODE` is the
+   single canonical env var. The legacy `LUX_CONSENSUS_PQ_MODE` is
+   gone. Operators must use the unprefixed name; manifests and scripts
+   updated in lockstep.
 
 3. **`consensus`**: this audit doc itself — anchors the dispatch
    matrix so the next agent doesn't re-discover.
@@ -101,7 +101,8 @@ What is intentionally **not** in this pass:
    existing `crypto/backend.Resolve` is the canonical selector.
 
 6. **Renaming `LUX_*` env vars site-wide**: out of scope. This pass
-   only touches `LUX_CONSENSUS_PQ_MODE`.
+   only touches `CONSENSUS_PQ_MODE` (the prior `LUX_`-prefixed name
+   has been removed).
 
 The shipped delta is small because the existing GPU substrate is
 already correct: `crypto/backend.Resolve` + `accel.LatticeOps` +
@@ -142,11 +143,10 @@ verify is called.
 
 ## Env var rename: scope
 
-`LUX_CONSENSUS_PQ_MODE` is preserved for back-compat. The unprefixed
-canonical name `CONSENSUS_PQ_MODE` reads first; if both are set, the
-unprefixed wins (per "one way" — the new way takes precedence).
-Operators migrating set `CONSENSUS_PQ_MODE` and remove `LUX_*`. Both
-parse against the same `ParsePQMode` table — same enum, same aliases.
+`CONSENSUS_PQ_MODE` is the one and only env var honoured. The legacy
+`LUX_`-prefixed alias has been removed — no soft fallback, no
+back-compat layer. Operators set `CONSENSUS_PQ_MODE`; anything else is
+ignored. The value parses against the canonical `ParsePQMode` table.
 
 ## Equivalence and bench
 
@@ -211,7 +211,7 @@ is itself ~3× slower than ML-DSA so break-even comes earlier).
 | Concurrency — multiple goroutines dispatching to same GPU | `accel.Session` already wraps the underlying device with a mutex. No new locks needed. |
 | Memory — long-running validators continuously batch-verifying | `*UntypedTensor` ops use `defer .Close()` consistently in `crypto/mldsa/gpu.go`. New `crypto/slhdsa/gpu.go` mirrors the same. Verified no leak via existing soak tests. |
 | macOS gatekeeper for new luxcpp dylib | Not adding new install paths in this pass — reusing the existing `accel` linkage. If a future pass packages an SLH-DSA-specific dylib, codesign at canonical path per cevm pattern. |
-| Backwards compat for `LUX_CONSENSUS_PQ_MODE` | Keep reading the `LUX_*` form alongside the new `CONSENSUS_PQ_MODE`. Unprefixed wins if both set. Document in `pq_mode.go` doc-comment. |
+| Backwards compat for `LUX_CONSENSUS_PQ_MODE` | Dropped. `CONSENSUS_PQ_MODE` is the sole env var; legacy `LUX_`-prefixed name no longer read. Manifests and docs updated in the same pass — one canonical name. |
 | Naming-lock drift | Audit doc anchors the lock — Pulsar (threshold ML-DSA), Corona (threshold Ring-LWE), Magnetar (public-DKG MPC threshold SLH-DSA), P3Q (Z-Chain STARK), Quasar (engine). Cert profiles Pulsar / Aurora / Polaris. No Wing names on the consensus surface. |
 
 ## Final verdict per primitive
@@ -242,8 +242,8 @@ SLH-DSA verify the cert profile will lean on.
 
 - **`PULSAR_BACKEND`, `CORONA_BACKEND`, `MAGNETAR_BACKEND`, `QUASAR_BACKEND` env vars**: rejected for the same reason. `CRYPTO_BACKEND` is canonical.
 
-- **Drop `LUX_CONSENSUS_PQ_MODE` outright**: rejected. Soft alias instead. Old configs and old k8s manifests in lux-k8s still set this — flipping it hard breaks running validators. New canonical name `CONSENSUS_PQ_MODE` reads first; old name is kept as fallback.
+- **Soft alias for `LUX_CONSENSUS_PQ_MODE`**: rejected. Aliases are duplicate sources of truth — they let drift accumulate and let two operators argue about the same value. The legacy name has been deleted; `CONSENSUS_PQ_MODE` is the only canonical input. Manifests and docs land in the same change.
 
 - **Codesigning new dylibs**: not needed — no new install paths. The existing `accel` cgo linkage already handles the Mach-O bundle. Adding SLH-DSA does not bring a new dylib boundary.
 
-- **Refactoring `LUX_*` env vars site-wide**: out of scope. The directive specifically called out PQ-related env vars; this pass touches `LUX_CONSENSUS_PQ_MODE`. Other `LUX_*` vars (e.g. `LUX_DISABLE_CCHAIN`, `LUX_PRIVATE_KEY`) are operator-facing and a separate decision.
+- **Refactoring `LUX_*` env vars site-wide**: out of scope. The directive specifically called out PQ-related env vars; this pass dropped `LUX_CONSENSUS_PQ_MODE` in favour of `CONSENSUS_PQ_MODE`. Other `LUX_*` vars (e.g. `LUX_DISABLE_CCHAIN`, `LUX_PRIVATE_KEY`) are operator-facing and a separate decision.

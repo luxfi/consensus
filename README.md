@@ -46,7 +46,7 @@ Each cryptographic layer is independently toggleable:
 ### PQ Mode Selection (Configurable)
 
 The active mode is selectable at runtime via `config.PQMode` or the
-`LUX_CONSENSUS_PQ_MODE` env var. Defined in `config/pq_mode.go`:
+`CONSENSUS_PQ_MODE` env var. Defined in `config/pq_mode.go`:
 
 | Mode | Env value | Maps to wire policy |
 |------|-----------|---------------------|
