@@ -679,20 +679,13 @@ func ParsePQMode(s string) (PQMode, error) {
 	}
 }
 
-// PQModeFromEnv resolves the consensus PQ mode from environment variables.
-//
-// Reads CONSENSUS_PQ_MODE first (canonical, unprefixed per the "drop the
-// LUX_ prefix" directive); falls through to the legacy LUX_CONSENSUS_PQ_MODE
-// for back-compat with running validators that still ship the old name in
-// their k8s manifests. If both are set, CONSENSUS_PQ_MODE wins (one way:
-// the new way takes precedence).
+// PQModeFromEnv resolves the consensus PQ mode from CONSENSUS_PQ_MODE.
+// The legacy LUX_-prefixed name is no longer honoured — there is one
+// canonical, unprefixed env var.
 //
 // Empty / unset returns the supplied default. Invalid values return def + error.
 func PQModeFromEnv(def PQMode) (PQMode, error) {
 	v := os.Getenv("CONSENSUS_PQ_MODE")
-	if v == "" {
-		v = os.Getenv("LUX_CONSENSUS_PQ_MODE")
-	}
 	if v == "" {
 		return def, nil
 	}
