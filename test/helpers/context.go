@@ -19,7 +19,7 @@ var (
 	PChainID = ids.GenerateTestID()
 	XChainID = ids.GenerateTestID()
 	CChainID = ids.GenerateTestID()
-	// Use fixed asset ID to match genesistest.LUXAssetID for UTXO consistency
+	// Use fixed asset ID to match genesistest.UTXOAssetID for UTXO consistency
 	UTXOAssetID = ids.ID{'l', 'u', 'x', ' ', 'a', 's', 's', 'e', 't', ' ', 'i', 'd'}
 )
 
