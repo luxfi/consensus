@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
@@ -50,6 +51,15 @@ type PostQuantum struct {
 	blsAggKey   *bls.PublicKey
 	rtGroupKey  *coronaThreshold.GroupKey
 	mldsaPubKey *mldsa.PublicKey
+
+	// certPolicy, when set, makes cert verification policy-driven: the
+	// chain's config.CertPolicy decides which legs are mandatory
+	// (RequiredLegs), independent of which legs the cert bytes carry.
+	// Default (CertModeOff, Hybrid) verifies the supplied-key legs via
+	// the implied-policy path; SetCertPolicy upgrades to strict
+	// policy-enforced verification (e.g. strict-PQ chains).
+	certPolicy    config.CertPolicy
+	certPolicySet bool
 }
 
 // New creates a new post-quantum consensus engine
@@ -75,6 +85,17 @@ func (pq *PostQuantum) AttachVerifyKeys(blsAggKey *bls.PublicKey, rtGroupKey *co
 	pq.blsAggKey = blsAggKey
 	pq.rtGroupKey = rtGroupKey
 	pq.mldsaPubKey = mldsaPubKey
+}
+
+// SetCertPolicy binds the chain's config.CertPolicy so cert verification
+// is policy-driven: VerifyQuantumSignature then rejects any cert missing
+// a RequiredLegs() leg (or its key), regardless of the leg bytes the cert
+// carries. This is how a strict-PQ chain forces the PQ legs to be present.
+func (pq *PostQuantum) SetCertPolicy(cp config.CertPolicy) {
+	pq.mu.Lock()
+	defer pq.mu.Unlock()
+	pq.certPolicy = cp
+	pq.certPolicySet = true
 }
 
 // Start starts the engine
@@ -112,11 +133,9 @@ func (pq *PostQuantum) VerifyQuantumSignature(message, signature, publicKey []by
 	blsAggKey := pq.blsAggKey
 	rtGroupKey := pq.rtGroupKey
 	mldsaPubKey := pq.mldsaPubKey
+	cp := pq.certPolicy
+	cpSet := pq.certPolicySet
 	pq.mu.RUnlock()
-
-	if blsAggKey == nil {
-		return errors.New("pq: no BLS aggregate verify key attached")
-	}
 
 	cert := &quasar.QuasarCert{}
 	if err := cert.UnmarshalBinary(signature); err != nil {
@@ -128,6 +147,26 @@ func (pq *PostQuantum) VerifyQuantumSignature(message, signature, publicKey []by
 		mldsaKeys = []*mldsa.PublicKey{mldsaPubKey}
 	}
 
+	// Policy-driven path: the chain's CertPolicy decides the mandatory
+	// leg set; a strict-PQ policy makes BLS optional and the PQ legs
+	// required (and is verified WITHOUT a BLS key for a pure-PQ cert).
+	if cpSet {
+		keys := quasar.CertKeys{
+			BLS:    blsAggKey,
+			Corona: rtGroupKey,
+			MLDSA:  mldsaKeys,
+		}
+		if !cert.VerifyUnderPolicy(message, cp, keys) {
+			return errors.New("pq: QuasarCert verification failed (policy)")
+		}
+		return nil
+	}
+
+	// Implied-policy path (no chain CertPolicy bound): the supplied key
+	// set declares the required legs. BLS is required here.
+	if blsAggKey == nil {
+		return errors.New("pq: no BLS aggregate verify key attached")
+	}
 	if !cert.VerifyWithRealKeys(message, blsAggKey, rtGroupKey, mldsaKeys) {
 		return errors.New("pq: QuasarCert verification failed")
 	}
