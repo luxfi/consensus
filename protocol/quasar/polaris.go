@@ -71,9 +71,9 @@ type PolarisLegs struct {
 	// from individual ValidatorSign outputs.
 	Magnetar *magnetar.ValidatorAggregateCert
 
-	// MLDSARollup is the succinct STARK/Groth16 attestation of N
-	// per-validator ML-DSA-65 signatures. Optional; populated when
-	// the Z-Chain rollup path is wired.
+	// MLDSARollup is the succinct strict-PQ STARK/FRI attestation of N
+	// per-validator ML-DSA-65 signatures (via P3Q). Optional; populated
+	// when the Z-Chain rollup prover is wired.
 	MLDSARollup []byte
 
 	// Epoch is the consensus epoch this cert finalises.
