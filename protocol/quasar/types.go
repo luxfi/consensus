@@ -36,7 +36,7 @@ type Block struct {
 //	Pulsar      — Module-LWE threshold ML-DSA  (O(1) after DKG; FIPS 204 Class N1)
 //	Corona      — Ring-LWE  threshold ML-DSA   (O(1) after DKG; FIPS 204 Class N1)
 //	Magnetar    — SLH-DSA per-validator        (FIPS 205; hash-based; cross-family backstop)
-//	MLDSARollup — per-validator ML-DSA-65 rolled into one STARK / Groth16 proof
+//	MLDSARollup — per-validator ML-DSA-65 rolled into one strict-PQ STARK / FRI proof (P3Q)
 //
 // Three profile selectors map to which legs are populated, per
 // papers/lux-quasar-composition/sections/04-profiles.tex:
@@ -70,7 +70,7 @@ type QuasarCert struct {
 	Corona      []byte    // Ring-LWE threshold sig (Corona; O(1) after DKG)
 	Pulsar      []byte    // Module-LWE threshold sig (Pulsar-M; O(1) after DKG)
 	Magnetar    []byte    // SLH-DSA hash-based defense-in-depth (Polaris profile)
-	MLDSARollup []byte    // Succinct rollup of per-validator ML-DSA-65 (STARK or Groth16)
+	MLDSARollup []byte    // Succinct rollup of per-validator ML-DSA-65 (strict-PQ STARK/FRI via P3Q)
 	Epoch       uint64    // Epoch number
 	Finality    time.Time // Time of finality
 	Validators  int       `json:"validators,omitempty"` // Count of signing validators
@@ -104,7 +104,7 @@ func (c *QuasarCert) HasClassicalFastPath() bool {
 
 // HasIdentityRollup reports whether the cert carries the
 // per-validator ML-DSA-65 identity attestation rolled up into a
-// succinct STARK/Groth16 proof.
+// succinct strict-PQ STARK/FRI proof (P3Q).
 func (c *QuasarCert) HasIdentityRollup() bool {
 	if c == nil {
 		return false
@@ -223,10 +223,10 @@ func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.Public
 	}
 
 	// 3. ML-DSA-65 verify (PQ identity, FIPS 204). The MLDSARollup field
-	//    holds either a single STARK/Groth16 rollup (Z-Chain → P3Q) or a
-	//    concatenation of per-validator ML-DSA-65 sigs. We support the
-	//    per-validator path here by serialising each sig with a 4-byte
-	//    length prefix.
+	//    holds either a single strict-PQ STARK/FRI rollup (Z-Chain → P3Q,
+	//    verified on-chain by precompile/starkfri) or a concatenation of
+	//    per-validator ML-DSA-65 sigs. We support the per-validator path
+	//    here by serialising each sig with a 4-byte length prefix.
 	if len(c.MLDSARollup) > 0 {
 		if len(mldsaPubKeys) == 0 {
 			return false
@@ -323,7 +323,7 @@ func (c *QuasarCert) VerifyWithRealKeysPolaris(
 //	[pulsar_len:4 BE][pulsar:P]      // PULS-framed pulsar.Signature
 //	[magnetar_len:4 BE][magnetar:Q]  // MAGS-framed magnetar.Signature
 //	                                  // OR magnetar.ValidatorAggregateCert wire bytes
-//	[mldsa_len:4 BE][mldsa:K]        // EncodeMLDSASigs or single STARK/Groth16
+//	[mldsa_len:4 BE][mldsa:K]        // EncodeMLDSASigs or single strict-PQ STARK/FRI (P3Q)
 //	[epoch:8 BE]
 //	[finality_unix_ns:8 BE]
 //	[validators:2 BE]

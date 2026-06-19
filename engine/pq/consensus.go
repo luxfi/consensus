@@ -47,7 +47,7 @@ type FinalityEvent struct {
 	BLSProof    []byte // Classical BLS-12-381 aggregate (optional)
 	Corona      []byte // Corona (Ring-LWE) threshold sig
 	Pulsar      []byte // Pulsar-M (Module-LWE) threshold sig (optional)
-	MLDSARollup []byte // Per-validator ML-DSA-65 rolled up via STARK/Groth16
+	MLDSARollup []byte // Per-validator ML-DSA-65 rolled up via strict-PQ STARK/FRI (P3Q)
 }
 
 // memoryStore is a simple in-memory implementation of dag.Store for P-Chain vertices
