@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/protocol/quasar"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
@@ -444,6 +445,16 @@ type QuantumPolicy struct {
 	blsVotes   map[CandidateID]map[VoterID][]byte // BLS signatures
 	pqVotes    map[CandidateID]map[VoterID][]byte // Corona signatures
 	certs      map[CandidateID]*Certificate
+
+	// certPolicy is the chain's cert posture — the single source of truth
+	// for which QuasarCert legs are MANDATORY on the verify path. Derived
+	// from the chain's ChainSecurityProfile (profile.CertPolicy()). The
+	// policy-driven verifier (VerifyCertUnderPolicy) consults
+	// certPolicy.RequiredLegs(): leg presence is policy-driven, never
+	// cert-byte-driven, so an adversary cannot weaken a cert by omitting
+	// legs. The default (set by NewQuantumPolicy) is the Permissive-profile
+	// posture; strict-PQ chains construct with NewQuantumPolicyForProfile.
+	certPolicy config.CertPolicy
 }
 
 // RTRequirementError is returned when Corona signature is missing but required
@@ -457,19 +468,30 @@ func (e *RTRequirementError) Error() string {
 
 // NewQuantumPolicy creates a quantum-safe BLS+Corona policy
 // By default, RT signatures are REQUIRED for Q-Chain consensus security.
+// The cert posture defaults to the Permissive-profile policy (Hybrid:
+// BLS + Pulsar + Corona). Strict-PQ chains MUST use
+// NewQuantumPolicyForProfile so the verify path drops BLS from the
+// required set.
 func NewQuantumPolicy(threshold int) *QuantumPolicy {
-	return &QuantumPolicy{
-		threshold:  threshold,
-		requireRT:  true, // DEFAULT: RT REQUIRED for quantum safety
-		candidates: make(map[CandidateID]*Candidate),
-		blsVotes:   make(map[CandidateID]map[VoterID][]byte),
-		pqVotes:    make(map[CandidateID]map[VoterID][]byte),
-		certs:      make(map[CandidateID]*Certificate),
-	}
+	return newQuantumPolicy(threshold, true, config.Permissive().CertPolicy())
 }
 
 // NewQuantumPolicyWithOptions creates a quantum policy with explicit RT requirement
 func NewQuantumPolicyWithOptions(threshold int, requireRT bool) *QuantumPolicy {
+	return newQuantumPolicy(threshold, requireRT, config.Permissive().CertPolicy())
+}
+
+// NewQuantumPolicyForProfile creates a quantum policy whose cert posture is
+// derived from the chain's ChainSecurityProfile — the single source of
+// truth. A strict-PQ profile yields a Strict-variant CertPolicy (BLS not
+// required), so the live verify path rejects a leg-stripped (e.g. BLS-only)
+// cert. requireRT follows the policy: PQ profiles require the Corona/RT leg.
+func NewQuantumPolicyForProfile(threshold int, profile *config.ChainSecurityProfile) *QuantumPolicy {
+	cp := profile.CertPolicy()
+	return newQuantumPolicy(threshold, cp.IsPostQuantum(), cp)
+}
+
+func newQuantumPolicy(threshold int, requireRT bool, cp config.CertPolicy) *QuantumPolicy {
 	return &QuantumPolicy{
 		threshold:  threshold,
 		requireRT:  requireRT,
@@ -477,6 +499,7 @@ func NewQuantumPolicyWithOptions(threshold int, requireRT bool) *QuantumPolicy {
 		blsVotes:   make(map[CandidateID]map[VoterID][]byte),
 		pqVotes:    make(map[CandidateID]map[VoterID][]byte),
 		certs:      make(map[CandidateID]*Certificate),
+		certPolicy: cp,
 	}
 }
 
@@ -687,16 +710,34 @@ func (p *QuantumPolicy) Verify(ctx context.Context, cert *Certificate) (bool, er
 	return true, nil
 }
 
-// VerifyWithKeys performs cryptographic verification of the certificate
-// using the supplied BLS aggregate, Corona group, and ML-DSA validator
-// keys. Returns nil iff every embedded signature verifies against the
-// canonical message digest sha256(cert.CandidateID || cert.Height).
-func (p *QuantumPolicy) VerifyWithKeys(
-	cert *Certificate,
-	blsAggKey *bls.PublicKey,
-	rtGroupKey *coronaThreshold.GroupKey,
-	mldsaKeys []*mldsa.PublicKey,
-) error {
+// certMessageDigest is the canonical message a QuasarCert commits to:
+// sha256(cert.CandidateID || cert.Height). Single definition so the
+// verify paths cannot disagree on what was signed.
+func certMessageDigest(cert *Certificate) []byte {
+	h := sha256.New()
+	h.Write(cert.CandidateID[:])
+	var hb [8]byte
+	for i := 0; i < 8; i++ {
+		hb[i] = byte(cert.Height >> (8 * (7 - i)))
+	}
+	h.Write(hb[:])
+	return h.Sum(nil)
+}
+
+// VerifyCertUnderPolicy is THE live, policy-driven QuasarCert verify path
+// (Red H3 wiring). It decodes the cert and routes through
+// QuasarCert.VerifyUnderPolicy using the chain's certPolicy: which legs
+// are MANDATORY is decided by certPolicy.RequiredLegs(), NOT by the cert
+// bytes. On a strict-PQ chain (Variant=Strict) BLS is not in the required
+// set and the PQ legs (Pulsar, Corona) plus the ML-DSA identity rollup are
+// required — so a leg-stripped (e.g. BLS-only) cert is rejected here,
+// before any chance of degenerating to the BLS-permissive path.
+//
+// keys supplies the per-leg verification keys for the legs the policy
+// requires; a missing required key is a hard rejection (VerifyUnderPolicy
+// Gate 1). This replaces the old VerifyWithRealKeys (implied-policy) path
+// as the production verifier.
+func (p *QuantumPolicy) VerifyCertUnderPolicy(cert *Certificate, keys quasar.CertKeys) error {
 	if cert.PolicyID != PolicyQuantum {
 		return fmt.Errorf("quantum: wrong policy %d", cert.PolicyID)
 	}
@@ -705,19 +746,38 @@ func (p *QuantumPolicy) VerifyWithKeys(
 		return fmt.Errorf("quantum: decode QuasarCert: %w", err)
 	}
 
-	h := sha256.New()
-	h.Write(cert.CandidateID[:])
-	var hb [8]byte
-	for i := 0; i < 8; i++ {
-		hb[i] = byte(cert.Height >> (8 * (7 - i)))
-	}
-	h.Write(hb[:])
-	msg := h.Sum(nil)
+	p.mu.RLock()
+	cp := p.certPolicy
+	p.mu.RUnlock()
 
-	if !qc.VerifyWithRealKeys(msg, blsAggKey, rtGroupKey, mldsaKeys) {
-		return fmt.Errorf("quantum: QuasarCert cryptographic verification failed")
+	if !qc.VerifyUnderPolicy(certMessageDigest(cert), cp, keys) {
+		return fmt.Errorf("quantum: QuasarCert verification failed under cert policy %s", cp.WireName())
 	}
 	return nil
+}
+
+// VerifyWithKeys verifies a certificate against the chain's cert policy,
+// supplying the three classical-era keys (BLS aggregate, Corona group,
+// ML-DSA validators). It is a thin adapter over the policy-driven
+// VerifyCertUnderPolicy: it builds a quasar.CertKeys from the supplied keys
+// and delegates, so the mandatory-leg decision is the chain's CertPolicy,
+// never the cert bytes.
+//
+// For a strict-PQ chain whose CertPolicy also requires the Pulsar /
+// Magnetar legs, callers MUST use VerifyCertUnderPolicy directly with the
+// full key set; this 3-key adapter cannot supply those keys and the verify
+// will (correctly) reject for the missing required key.
+func (p *QuantumPolicy) VerifyWithKeys(
+	cert *Certificate,
+	blsAggKey *bls.PublicKey,
+	rtGroupKey *coronaThreshold.GroupKey,
+	mldsaKeys []*mldsa.PublicKey,
+) error {
+	return p.VerifyCertUnderPolicy(cert, quasar.CertKeys{
+		BLS:   blsAggKey,
+		Corona: rtGroupKey,
+		MLDSA: mldsaKeys,
+	})
 }
 
 // =============================================================================
