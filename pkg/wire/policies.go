@@ -714,6 +714,15 @@ func (p *QuantumPolicy) VerifyWithKeys(
 	h.Write(hb[:])
 	msg := h.Sum(nil)
 
+	// requireRT is the policy intent for this quantum policy: when set
+	// (the default), the Corona (Ring-LWE) leg is MANDATORY — its key
+	// must be supplied and the leg must be present and verify. This makes
+	// the mandatory-leg decision policy-driven (the requireRT flag), not
+	// cert-byte-driven: an adversary cannot strip the Corona leg.
+	if p.requireRT && rtGroupKey == nil {
+		return fmt.Errorf("quantum: requireRT set but no Corona group key supplied")
+	}
+
 	if !qc.VerifyWithRealKeys(msg, blsAggKey, rtGroupKey, mldsaKeys) {
 		return fmt.Errorf("quantum: QuasarCert cryptographic verification failed")
 	}
