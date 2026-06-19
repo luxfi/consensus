@@ -11,13 +11,12 @@ import (
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/engine/chain"
 	"github.com/luxfi/consensus/engine/dag"
-	"github.com/luxfi/consensus/engine/pq"
 	"github.com/luxfi/ids"
 )
 
 func main() {
 	var (
-		engine   = flag.String("engine", "all", "Engine to benchmark (chain, dag, pq, all)")
+		engine   = flag.String("engine", "all", "Engine to benchmark (chain, dag, all)")
 		network  = flag.String("network", "local", "Network configuration (mainnet, testnet, local)")
 		duration = flag.Duration("duration", 10*time.Second, "Benchmark duration")
 		blocks   = flag.Int("blocks", 1000, "Number of blocks to process")
@@ -47,14 +46,10 @@ func main() {
 		benchmarkChain(ctx, params, *blocks, *parallel, *verbose)
 	case "dag":
 		benchmarkDAG(ctx, params, *blocks, *parallel, *verbose)
-	case "pq":
-		benchmarkPQ(ctx, params, *blocks, *parallel, *verbose)
 	case "all":
 		benchmarkChain(ctx, params, *blocks, *parallel, *verbose)
 		fmt.Println()
 		benchmarkDAG(ctx, params, *blocks, *parallel, *verbose)
-		fmt.Println()
-		benchmarkPQ(ctx, params, *blocks, *parallel, *verbose)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown engine: %s\n", *engine)
 		os.Exit(1)
@@ -66,7 +61,7 @@ func printHelp() {
 	fmt.Println("\nUsage: bench [options]")
 	fmt.Println("\nOptions:")
 	fmt.Println("  -engine string    Engine to benchmark (default: all)")
-	fmt.Println("                    Options: chain, dag, pq, all")
+	fmt.Println("                    Options: chain, dag, all")
 	fmt.Println("  -network string   Network configuration (default: local)")
 	fmt.Println("                    Options: mainnet, testnet, local")
 	fmt.Println("  -duration time    Benchmark duration (default: 10s)")
@@ -178,61 +173,6 @@ func benchmarkDAG(ctx context.Context, params config.Parameters, blocks int, par
 	fmt.Printf("  TPS:       %.2f vertices/sec\n", tps)
 
 	_ = engine.Shutdown(ctx)
-}
-
-func benchmarkPQ(ctx context.Context, params config.Parameters, blocks int, parallel int, verbose bool) {
-	fmt.Println("=== Post-Quantum Engine Benchmark ===")
-	engine := pq.New()
-
-	start := time.Now()
-	if err := engine.Start(ctx, 1); err != nil {
-		fmt.Printf("Failed to start PQ engine: %v\n", err)
-		return
-	}
-
-	processed := 0
-	errors := 0
-	proofSizes := []int{}
-
-	for i := 0; i < blocks && ctx.Err() == nil; i++ {
-		blockID := ids.GenerateTestID()
-		proof, err := engine.GenerateQuantumProof(ctx, blockID)
-		if err != nil {
-			errors++
-			if verbose {
-				fmt.Printf("Error generating proof %d: %v\n", i, err)
-			}
-		} else {
-			processed++
-			proofSizes = append(proofSizes, len(proof))
-		}
-
-		if verbose && i%100 == 0 {
-			fmt.Printf("Generated %d proofs...\n", i)
-		}
-	}
-
-	elapsed := time.Since(start)
-	tps := float64(processed) / elapsed.Seconds()
-
-	// Calculate average proof size
-	avgProofSize := 0
-	if len(proofSizes) > 0 {
-		sum := 0
-		for _, size := range proofSizes {
-			sum += size
-		}
-		avgProofSize = sum / len(proofSizes)
-	}
-
-	fmt.Printf("Results:\n")
-	fmt.Printf("  Generated: %d proofs\n", processed)
-	fmt.Printf("  Errors:    %d\n", errors)
-	fmt.Printf("  Time:      %s\n", elapsed)
-	fmt.Printf("  TPS:       %.2f proofs/sec\n", tps)
-	fmt.Printf("  Avg Proof: %d bytes\n", avgProofSize)
-
-	_ = engine.Stop(ctx)
 }
 
 func init() {
