@@ -457,6 +457,43 @@ func (p *ChainSecurityProfile) IsPQ() bool {
 	return false
 }
 
+// CertPolicy returns the cert posture implied by this security profile —
+// the SINGLE mapping from "which security profile is this chain on" to
+// "which QuasarCert legs are mandatory". It is the source of truth the
+// live cert verifier consults (via QuasarCert.VerifyUnderPolicy): one
+// profile decision drives the cert switch, exactly as IsPQ() drives the
+// EVM/zkvm switches.
+//
+// Mapping:
+//
+//   - strict-PQ class (StrictPQ, FIPS): Variant=Strict (BLS is NOT a
+//     required leg — a CRQC that forges BLS cannot satisfy the policy),
+//     Mode=PQ-strict (RequiredLegs = {Pulsar, Corona}, the two PQ lattice
+//     legs the profile's Pulsar-M finality kernel produces). No BLS-only
+//     degradation is possible: a leg-stripped cert is rejected.
+//
+//   - every other profile (Permissive, unknown): Variant=Hybrid,
+//     Mode=PQ-strict (RequiredLegs = {BLS, Pulsar, Corona}) — BLS retained
+//     as the classical fast-path leg alongside the PQ legs (defence in
+//     depth, not BLS-only).
+//
+// TimeoutMs is set to the mode's minimum (2x floor latency); operators
+// widen it per deployment. Fallback equals Mode (no temporal degradation
+// implied by the profile itself).
+func (p *ChainSecurityProfile) CertPolicy() CertPolicy {
+	variant := CertVariantHybrid
+	if p.IsPQ() {
+		variant = CertVariantStrict
+	}
+	cp := CertPolicy{
+		Mode:      CertModeStrict,
+		Variant:   variant,
+		TimeoutMs: CertModeStrict.MinTimeoutMs(),
+		Fallback:  CertModeStrict,
+	}
+	return cp
+}
+
 // AllowsBackend reports whether b is in the profile's backend allowlist.
 // Returns false for ProofBackendNone and any forbidden / non-production
 // backend regardless of whether they appear in the allowlist
