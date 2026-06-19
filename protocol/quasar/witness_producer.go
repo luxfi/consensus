@@ -5,7 +5,7 @@
 //
 // Lux Quasar finality is layered, parallel witnesses. P-Chain BLS is the
 // always-on finality witness. Q-Chain (Corona threshold) and Z-Chain
-// (MLDSAGroth16 rollup) are independently toggleable parallel witnesses
+// (MLDSAStark rollup) are independently toggleable parallel witnesses
 // that produce additional finality artifacts at the same round-rate as P.
 //
 // Each round, the consensus driver computes a 32-byte round digest binding
@@ -72,17 +72,25 @@ type QWitnessProducer interface {
 	Witness(ctx context.Context, digest RoundDigest) ([]byte, error)
 }
 
-// ZWitnessProducer produces Z-Chain MLDSAGroth16 rollup witnesses.
+// ZWitnessProducer produces Z-Chain MLDSAStark rollup witnesses.
 //
 // The Z-Chain VM (chains/zkvm) implements this by collecting per-validator
-// ML-DSA-65 signatures over the round digest and producing a single Groth16
-// proof attesting "for every i in [N], MLDSA.Verify(pk_i, digest, sig_i) = 1".
+// ML-DSA-65 signatures over the round digest and producing a single
+// post-quantum STARK / FRI proof attesting "for every i in [N],
+// MLDSA.Verify(pk_i, digest, sig_i) = 1". The proof is a strict-PQ STARK
+// (Plonky3 fork: cSHAKE256 Merkle over Goldilocks, FRI — no KZG, no
+// pairings, no trusted setup), so the Z lane stays quantum-safe.
 //
 // The validator ML-DSA public-key list is bound to pchain_validator_root for
 // the round; the prover takes those keys as a public input. The proof is
-// verified by the Groth16 (bn254) precompile on Z-Chain.
+// verified by the STARK / FRI verifier on Z-Chain (precompile/starkfri,
+// via P3Q), NOT by the classical pairing-based Groth16 precompile.
+//
+// The witness is opaque to consensus: this interface returns []byte and the
+// QuasarCert carries it verbatim. The proof system is a Z-Chain concern, so
+// migrating Groth16 → STARK/FRI does not change this interface.
 type ZWitnessProducer interface {
-	// Witness returns a Groth16 proof aggregating per-validator ML-DSA-65
+	// Witness returns a STARK / FRI proof aggregating per-validator ML-DSA-65
 	// signatures over the round digest. validatorMLDSAPubs is the canonical
 	// public-key list rooted in pchain_validator_root for the round.
 	Witness(ctx context.Context, digest RoundDigest, validatorMLDSAPubs [][]byte) ([]byte, error)
@@ -278,16 +286,17 @@ func policyAtLeast(effective, floor uint16) bool {
 }
 
 // DisabledZWitnessProducer is the explicit "no Z lane" sentinel producer.
-// Networks that do not run a Z-Chain Groth16 prover (smaller deployments,
-// classical-only configurations, or chains during their pre-Z bootstrap
-// window) install this producer; the driver treats every call as
-// ErrWitnessUnavailable and finalises at the next-lower witness set.
+// Networks that do not run a Z-Chain STARK prover (smaller deployments,
+// chains during their pre-Z bootstrap window, or any deployment until the
+// MLDSA-rollup AIR + p3q prover binding ship) install this producer; the
+// driver treats every call as ErrWitnessUnavailable and finalises at the
+// next-lower witness set.
 //
 // The chains/zkvm package supplies the active-Z producer that proves
-// "for each i, MLDSA.Verify(pk_i, digest, sig_i) = 1" via Groth16/bn254
-// with the validator ML-DSA pubkey list as a public input. See LP-020 §6
-// and proofs/quasar-cert-soundness.tex App. B for the R1CS constraint
-// count and prover-cost analysis.
+// "for each i, MLDSA.Verify(pk_i, digest, sig_i) = 1" via a strict-PQ
+// STARK / FRI proof (P3Q) with the validator ML-DSA pubkey list as a
+// public input. See LP-020 §6 and proofs/quasar-cert-soundness.tex App. B
+// for the AIR constraint count and prover-cost analysis.
 type DisabledZWitnessProducer struct{}
 
 // Witness always returns ErrWitnessUnavailable so the driver downgrades

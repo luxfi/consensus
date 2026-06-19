@@ -36,7 +36,7 @@ type Block struct {
 //	Pulsar      — Module-LWE threshold ML-DSA  (O(1) after DKG; FIPS 204 Class N1)
 //	Corona      — Ring-LWE  threshold ML-DSA   (O(1) after DKG; FIPS 204 Class N1)
 //	Magnetar    — SLH-DSA per-validator        (FIPS 205; hash-based; cross-family backstop)
-//	MLDSARollup — per-validator ML-DSA-65 rolled into one STARK / Groth16 proof
+//	MLDSARollup — per-validator ML-DSA-65 rolled into one strict-PQ STARK / FRI proof (P3Q)
 //
 // Three profile selectors map to which legs are populated, per
 // papers/lux-quasar-composition/sections/04-profiles.tex:
@@ -70,7 +70,7 @@ type QuasarCert struct {
 	Corona      []byte    // Ring-LWE threshold sig (Corona; O(1) after DKG)
 	Pulsar      []byte    // Module-LWE threshold sig (Pulsar-M; O(1) after DKG)
 	Magnetar    []byte    // SLH-DSA hash-based defense-in-depth (Polaris profile)
-	MLDSARollup []byte    // Succinct rollup of per-validator ML-DSA-65 (STARK or Groth16)
+	MLDSARollup []byte    // Succinct rollup of per-validator ML-DSA-65 (strict-PQ STARK/FRI via P3Q)
 	Epoch       uint64    // Epoch number
 	Finality    time.Time // Time of finality
 	Validators  int       `json:"validators,omitempty"` // Count of signing validators
@@ -104,7 +104,7 @@ func (c *QuasarCert) HasClassicalFastPath() bool {
 
 // HasIdentityRollup reports whether the cert carries the
 // per-validator ML-DSA-65 identity attestation rolled up into a
-// succinct STARK/Groth16 proof.
+// succinct strict-PQ STARK/FRI proof (P3Q).
 func (c *QuasarCert) HasIdentityRollup() bool {
 	if c == nil {
 		return false
@@ -180,72 +180,70 @@ func (c *QuasarCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
 // schemes) + identity rollup. Any single scheme broken does not break
 // finality.
 //
-// message is the digest the signers committed to. mldsaPubKeys may be
-// nil if MLDSARollup is empty (rollup not yet wired). nil rtGroupKey
-// skips the Corona check (used when running in BLS-only mode or in a
-// Pulsar-only pure-PQ posture).
+// message is the digest the signers committed to.
 //
-// To verify the Polaris-profile Magnetar leg as well, call
+// POLICY NOTE (Red H3). This is the implied-policy entry point:
+// production code that knows the chain's config.CertPolicy MUST prefer
+// VerifyUnderPolicy, which decides the mandatory leg set from the policy.
+// Here the *supplied key set* is the policy declaration — a trusted,
+// caller-supplied input (NOT attacker-controlled cert bytes):
+//
+//	BLS     — required iff blsAggPubKey != nil. nil ⇒ pure-PQ posture,
+//	          and a no-BLS cert is accepted (the old hard-mandatory BLS
+//	          check that wrongly rejected pure-PQ certs is removed).
+//	Corona  — required iff rtGroupKey != nil. A supplied key means the
+//	          leg MUST be present and verify (an attacker cannot strip it).
+//	Rollup  — present-implies-verify (never silently skipped).
+//
+// When blsAggPubKey == nil, at least one PQ leg (Corona or rollup) MUST
+// be present and verify — an all-empty cert never finalises.
+//
+// To verify the Polaris-profile Pulsar + Magnetar legs as well, call
 // VerifyWithRealKeysPolaris.
 func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.PublicKey, rtGroupKey *coronaThreshold.GroupKey, mldsaPubKeys []*mldsa.PublicKey) bool {
 	if c == nil || len(message) == 0 {
 		return false
 	}
-	if len(c.BLS) == 0 {
-		return false
+
+	verifiedAnyPQ := false
+
+	// BLS aggregate (classical). Required iff a key is supplied.
+	if blsAggPubKey != nil {
+		if !verifyBLSLeg(message, blsAggPubKey, c.BLS) {
+			return false
+		}
 	}
 
-	// 1. BLS aggregate verify (classical).
-	if blsAggPubKey == nil {
-		return false
-	}
-	blsSig, err := bls.SignatureFromBytes(c.BLS)
-	if err != nil {
-		return false
-	}
-	if !bls.Verify(blsAggPubKey, blsSig, message) {
-		return false
-	}
-
-	// 2. Corona threshold verify (Ring-LWE PQ). Optional: skipped when
-	//    rtGroupKey is nil (BLS-only mode or Pulsar-only pure-PQ).
+	// Corona threshold (Ring-LWE PQ). Required iff a key is supplied;
+	// a supplied key forbids stripping the leg.
 	if rtGroupKey != nil {
-		if len(c.Corona) == 0 {
+		if !verifyCoronaLeg(message, rtGroupKey, c.Corona) {
 			return false
 		}
-		rtSig, err := decodeCoronaSig(c.Corona)
-		if err != nil {
-			return false
-		}
-		if !coronaThreshold.Verify(rtGroupKey, string(message), rtSig) {
-			return false
-		}
+		verifiedAnyPQ = true
 	}
 
-	// 3. ML-DSA-65 verify (PQ identity, FIPS 204). The MLDSARollup field
-	//    holds either a single STARK/Groth16 rollup (Z-Chain → P3Q) or a
-	//    concatenation of per-validator ML-DSA-65 sigs. We support the
-	//    per-validator path here by serialising each sig with a 4-byte
-	//    length prefix.
-	if len(c.MLDSARollup) > 0 {
-		if len(mldsaPubKeys) == 0 {
+	// ML-DSA-65 identity rollup (FIPS 204 PQ). Required iff ML-DSA keys
+	// are supplied — symmetric with the Corona/Pulsar/Magnetar legs: a
+	// supplied key means the verifier was configured to check this leg, so
+	// an absent rollup is a downgrade and is rejected. Without keys, a
+	// present rollup cannot be verified and is likewise rejected (never
+	// silently skipped).
+	if len(mldsaPubKeys) > 0 {
+		if !verifyMLDSARollupLeg(message, mldsaPubKeys, c.MLDSARollup) {
 			return false
 		}
-		sigs, err := decodeMLDSASigs(c.MLDSARollup)
-		if err != nil {
-			return false
-		}
-		// Need at least Validators good sigs. If MLDSARollup was a single
-		// succinct rollup, we'd verify it once; for now we require N sigs
-		// matching the public keys provided.
-		if len(sigs) > len(mldsaPubKeys) {
-			return false
-		}
-		for i, sig := range sigs {
-			if !mldsaPubKeys[i].Verify(message, sig, nil) {
-				return false
-			}
-		}
+		verifiedAnyPQ = true
+	} else if len(c.MLDSARollup) > 0 {
+		// Rollup bytes present but no key to verify them: fail closed.
+		return false
+	}
+
+	// An all-classical cert with no BLS key, or an empty cert, never
+	// finalises: a pure-PQ posture (blsAggPubKey == nil) demands a PQ
+	// leg actually verified.
+	if blsAggPubKey == nil && !verifiedAnyPQ {
+		return false
 	}
 
 	return true
@@ -284,30 +282,20 @@ func (c *QuasarCert) VerifyWithRealKeysPolaris(
 		return false
 	}
 
-	// Pulsar leg — Module-LWE threshold ML-DSA. The Pulsar wire
-	// codec carries a PULS-framed FIPS 204 signature that
-	// pulsar.VerifyBytes accepts directly.
-	if len(c.Pulsar) > 0 {
+	// Pulsar leg — Module-LWE threshold ML-DSA. Required iff a group key
+	// is supplied; a supplied key forbids stripping the leg.
+	if len(pulsarGroupKey) > 0 {
 		if !verifyPulsarLeg(message, pulsarGroupKey, c.Pulsar) {
 			return false
 		}
 	}
 
-	// Magnetar leg — SLH-DSA hash-based. Carries a
-	// ValidatorAggregateCert wire blob.
-	if len(c.Magnetar) > 0 {
-		cert, err := DecodeMagnetarAggregate(c.Magnetar)
-		if err != nil {
-			return false
-		}
-		validCount, err := magnetar.VerifyAggregateCert(cert, message, knownMagnetarValidators)
-		if err != nil {
-			return false
-		}
-		// Polaris quorum policy: every claimed magnetar signer must
-		// verify. The consensus layer may impose a lower threshold;
-		// that's a profile-level override expressed at the caller.
-		if validCount != len(cert.Signers) {
+	// Magnetar leg — SLH-DSA / FIPS 205 hash-based. Required iff the
+	// known-validator set is supplied; a supplied set forbids stripping
+	// the leg. Polaris quorum policy: every claimed signer must verify
+	// (enforced inside verifyMagnetarLeg).
+	if len(knownMagnetarValidators) > 0 {
+		if !verifyMagnetarLeg(message, knownMagnetarValidators, c.Magnetar) {
 			return false
 		}
 	}
@@ -323,7 +311,7 @@ func (c *QuasarCert) VerifyWithRealKeysPolaris(
 //	[pulsar_len:4 BE][pulsar:P]      // PULS-framed pulsar.Signature
 //	[magnetar_len:4 BE][magnetar:Q]  // MAGS-framed magnetar.Signature
 //	                                  // OR magnetar.ValidatorAggregateCert wire bytes
-//	[mldsa_len:4 BE][mldsa:K]        // EncodeMLDSASigs or single STARK/Groth16
+//	[mldsa_len:4 BE][mldsa:K]        // EncodeMLDSASigs or single strict-PQ STARK/FRI (P3Q)
 //	[epoch:8 BE]
 //	[finality_unix_ns:8 BE]
 //	[validators:2 BE]

@@ -173,7 +173,7 @@ const (
 	PolicyL1Inclusion PolicyID = 3
 
 	// PolicyQuantum - parallel-witness PQ finality, witness set {P, Q, Z}.
-	// Maximum security level: P-Chain BLS + Q-Chain Corona + Z-Chain MLDSAGroth16.
+	// Maximum security level: P-Chain BLS + Q-Chain Corona + Z-Chain MLDSAStark.
 	// All three witnesses run in parallel.
 	PolicyQuantum PolicyID = 4
 
@@ -182,7 +182,7 @@ const (
 	PolicyPQ PolicyID = 5
 
 	// PolicyPZ - parallel-witness finality, witness set {P, Z}.
-	// P-Chain BLS + Z-Chain MLDSAGroth16 rollup. No Q-Chain ceremony.
+	// P-Chain BLS + Z-Chain MLDSAStark rollup. No Q-Chain ceremony.
 	PolicyPZ PolicyID = 6
 )
 
@@ -191,7 +191,7 @@ const (
 // =============================================================================
 //
 // Lux finality is layered, parallel witnesses. P-Chain BLS is always required.
-// Q-Chain (Corona threshold) and Z-Chain (MLDSAGroth16 rollup) are
+// Q-Chain (Corona threshold) and Z-Chain (MLDSAStark rollup) are
 // independently toggleable parallel witnesses producing additional finality
 // artifacts at the same round-rate as P. Adding witnesses does not increase
 // per-block latency, only parallel verification cost.
@@ -206,8 +206,8 @@ const (
 	WitnessP FinalityWitnesses = 1 << 0
 	// WitnessQ - Q-Chain Corona threshold (Module-LWE, eprint 2024/1113).
 	WitnessQ FinalityWitnesses = 1 << 1
-	// WitnessZ - Z-Chain MLDSAGroth16 rollup (per-validator ML-DSA-65
-	// aggregated via Groth16 SNARK).
+	// WitnessZ - Z-Chain MLDSAStark rollup (per-validator ML-DSA-65
+	// aggregated via a strict-PQ STARK/FRI proof, P3Q).
 	WitnessZ FinalityWitnesses = 1 << 2
 )
 
