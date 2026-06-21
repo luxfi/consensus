@@ -114,8 +114,14 @@ func (pq *PostQuantum) VerifyQuantumSignature(message, signature, publicKey []by
 	mldsaPubKey := pq.mldsaPubKey
 	pq.mu.RUnlock()
 
-	if blsAggKey == nil {
-		return errors.New("pq: no BLS aggregate verify key attached")
+	// BLS is the OPTIONAL classical fast-path leg; a pure-PQ cert carries
+	// none. Require at least one verify key (BLS, Corona, or ML-DSA) so a
+	// pure-PQ posture (Corona / ML-DSA only) is verifiable, while a fully
+	// keyless call is still rejected. The per-leg fail-closed guard in
+	// QuasarCert.VerifyWithRealKeys ensures finality rests on ≥1 checked
+	// signature.
+	if blsAggKey == nil && rtGroupKey == nil && mldsaPubKey == nil {
+		return errors.New("pq: no verify key attached (need BLS, Corona, or ML-DSA)")
 	}
 
 	cert := &quasar.QuasarCert{}
