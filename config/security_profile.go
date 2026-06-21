@@ -114,6 +114,9 @@ func (p ProfileID) String() string {
 //	               0x22 = P3Q_BINARY_V1          Lux P3Q (Plonky3 fork) native
 //	               0x23 = STONE_CAIRO_BINARY_V1  Stone / Cairo native
 //	               0x24 = STWO_CIRCLE_BINARY_V1  Stwo Circle STARK native
+//	0x30..0x3F — Direct full-node-verifiable layouts (no succinct proof)
+//	               0x30 = DIRECT_WEIGHTED_QUORUM_V1  weighted quorum cert wire
+//	                       (signer records: per-signer FIPS sig + Merkle path)
 //	0x70..0x7F — Dev-only formats (CI / fuzzing)
 //	0x80..0xFF — Forbidden in strict-PQ mode (mirrors classical-wrapper IDs)
 //	               0x80 = GROTH16_WRAPPED_BINARY classical wrapper format
@@ -128,6 +131,12 @@ const (
 	ProofFormatP3QBinaryV1        ProofFormatID = 0x22
 	ProofFormatStoneCairoBinaryV1 ProofFormatID = 0x23
 	ProofFormatStwoCircleBinaryV1 ProofFormatID = 0x24
+
+	// ProofFormatDirectWeightedQuorumV1 is the wire layout of the
+	// direct full-node-verifiable weighted quorum certificate (the full,
+	// records-included encoding). See protocol/quasar/quorum_cert.go
+	// MarshalBinary / the QC version byte.
+	ProofFormatDirectWeightedQuorumV1 ProofFormatID = 0x30
 
 	ProofFormatGroth16WrappedForbid ProofFormatID = 0x80
 	ProofFormatKZGWrappedForbid     ProofFormatID = 0x81
@@ -150,6 +159,8 @@ func (f ProofFormatID) String() string {
 		return "stone-cairo-binary-v1"
 	case ProofFormatStwoCircleBinaryV1:
 		return "stwo-circle-binary-v1"
+	case ProofFormatDirectWeightedQuorumV1:
+		return "direct-weighted-quorum-v1"
 	case ProofFormatGroth16WrappedForbid:
 		return "groth16-wrapped-classical-forbidden-in-pq"
 	case ProofFormatKZGWrappedForbid:
@@ -200,6 +211,14 @@ const (
 	VerifierStoneCairoSTARKPQ    VerifierID = 0x0023
 	VerifierStwoCircleSTARKPQ    VerifierID = 0x0024
 
+	// VerifierDirectWeightedQuorumPQ is the pinned verifier for the direct
+	// full-node-verifiable weighted quorum certificate. Its "program" is the
+	// fixed predicate in protocol/quasar/quorum_cert.go (per-signer FIPS
+	// 204/205 Verify + weighted-validator-set Merkle inclusion + weight
+	// threshold). It carries no verifier key or trusted setup — the manifest
+	// for this id pins the consensus source commit and the predicate version.
+	VerifierDirectWeightedQuorumPQ VerifierID = 0x0030
+
 	// Dev-only verifiers.
 	VerifierSP1CoreSTARKDev  VerifierID = 0x0070
 	VerifierRISC0RawSTARKDev VerifierID = 0x0071
@@ -224,6 +243,8 @@ func (v VerifierID) String() string {
 		return "stone-cairo-stark-pq"
 	case VerifierStwoCircleSTARKPQ:
 		return "stwo-circle-stark-pq"
+	case VerifierDirectWeightedQuorumPQ:
+		return "direct-weighted-quorum-pq"
 	case VerifierSP1CoreSTARKDev:
 		return "sp1-core-stark-dev"
 	case VerifierRISC0RawSTARKDev:
