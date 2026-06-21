@@ -262,12 +262,18 @@ func TestRedteam_F3_ProofBackendAxisMismatchRejected(t *testing.T) {
 
 // TestRedteam_F4_NonCanonicalLeafEncodingRejected reproduces the proof-shape
 // ambiguity: weightedProofShape gives the IDENTICAL shape ("RR") for a leaf at
-// index 0 whether LeafCount is 3 or 4, so a record's (LeafIndex,LeafCount) has
-// multiple encodings that verify against the same root with the same sibling
-// bytes. Left unbound, the same logical cert would have byte-distinct
-// encodings (breaking dedup / equivocation detection). The fix binds
-// (LeafIndex,LeafCount) into the signer commitment, so swapping LeafCount
-// 3→4 changes the commitment and the cert is rejected.
+// index 0 whether LeafCount is 3 or 4, so the proof's promotion/orientation
+// sequence alone cannot distinguish a (0,3) record from a (0,4) record with the
+// same sibling bytes. Left unbound, the same logical cert would have
+// byte-distinct encodings (breaking dedup / equivocation detection).
+//
+// RED-1 upgrade: the canonicality is now enforced CRYPTOGRAPHICALLY in the
+// weighted-Merkle commitment — LeafCount is folded into every leaf digest
+// (computeWeightedLeafHash), so relabeling LeafCount 3→4 recomputes a different
+// leaf digest and FAILS the Merkle inclusion clause against validator_set_root.
+// The malleation is caught at the Merkle clause itself (ErrQCMerkleInclusion),
+// strictly stronger than the prior commitment-only defence (which is retained
+// as defence-in-depth). Exactly ONE (LeafIndex,LeafCount) verifies per tree.
 func TestRedteam_F4_NonCanonicalLeafEncodingRejected(t *testing.T) {
 	// 3 ML-DSA signers → the committed set has 3 leaves; the index-0 record's
 	// canonical proof carries LeafCount=3 with shape "RR".
@@ -297,9 +303,9 @@ func TestRedteam_F4_NonCanonicalLeafEncodingRejected(t *testing.T) {
 	}
 
 	// Confirm the SHAPE ambiguity is real: (0,3) and (0,4) produce the same
-	// promotion/orientation sequence, so the Merkle verifier alone cannot
-	// distinguish them. This is exactly why the binding must live in the cert
-	// commitment.
+	// promotion/orientation sequence, so the proof shape alone cannot
+	// distinguish them. This is exactly why LeafCount must be bound into the
+	// leaf digest (the root) — the structural cross-check is insufficient.
 	shape3 := weightedProofShape(0, 3)
 	shape4 := weightedProofShape(0, 4)
 	if len(shape3) != len(shape4) {
@@ -312,26 +318,26 @@ func TestRedteam_F4_NonCanonicalLeafEncodingRejected(t *testing.T) {
 	}
 
 	// Malleate: claim LeafCount=4 for the index-0 record WITHOUT touching the
-	// sibling bytes. The Merkle recomputation still succeeds (same shape, same
-	// siblings → same root), so this would slip past the Merkle clause — but
-	// the commitment now binds LeafCount, so recomputing it over the malleated
-	// record yields a value != the stored commitment.
+	// sibling bytes. Before RED-1 this slipped past the Merkle clause (same
+	// shape, same siblings → same root). Now LeafCount is bound into the leaf
+	// digest, so the recomputed root no longer matches validator_set_root.
 	sc.cert.Signers[rec0].MerklePath.LeafCount = 4
 
-	// The Merkle clause must still PASS for this record (proving the malleation
-	// is NOT caught by the Merkle math — only by the commitment binding).
-	if !VerifyWeightedInclusion(
+	// The Merkle clause must now FAIL for this record: the count-binding makes
+	// the recomputed leaf digest — and therefore the root — depend on the
+	// claimed count, so the (0,4) relabel cannot reproduce the (0,3) root.
+	if VerifyWeightedInclusion(
 		sc.cert.ValidatorSetRoot, sc.cert.Epoch,
 		sc.cert.Signers[rec0].leaf(), sc.cert.Signers[rec0].MerklePath,
 	) {
-		t.Fatal("precondition: malleated (0,4) proof must still satisfy the Merkle clause")
+		t.Fatal("malleated (0,4) proof still satisfies the Merkle clause — count not bound into the root")
 	}
 
-	// Verify with the ORIGINAL (un-recomputed) commitment → the bound
-	// LeafCount no longer matches → ErrQCSignerCommitment.
+	// Full cert Verify rejects the malleated cert at the Merkle inclusion
+	// clause (record iteration reaches clause (a) before the commitment check).
 	err := sc.cert.Verify(sc.env, sc.cfg)
-	if !errors.Is(err, ErrQCSignerCommitment) {
-		t.Fatalf("malleated LeafCount err = %v, want ErrQCSignerCommitment", err)
+	if !errors.Is(err, ErrQCMerkleInclusion) {
+		t.Fatalf("malleated LeafCount err = %v, want ErrQCMerkleInclusion", err)
 	}
 }
 
