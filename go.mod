@@ -24,13 +24,11 @@ require (
 	github.com/luxfi/validators v1.2.0
 	github.com/luxfi/version v1.0.1
 	github.com/luxfi/warp v1.18.6
-	github.com/luxfi/zap v0.7.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.52.0
-	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -41,7 +39,6 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
-	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cockroachdb/errors v1.12.0 // indirect
@@ -67,7 +64,6 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/rpc v1.2.1 // indirect
-	github.com/grandcat/zeroconf v1.0.0 // indirect
 	github.com/gtank/merlin v0.1.1 // indirect
 	github.com/gtank/ristretto255 v0.2.0 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
@@ -89,7 +85,6 @@ require (
 	github.com/luxfi/geth v1.16.98 // indirect
 	github.com/luxfi/lens v0.1.4 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
-	github.com/luxfi/mdns v0.1.1 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
 	github.com/luxfi/pq v1.0.3 // indirect
 	github.com/luxfi/sampler v1.1.0 // indirect
@@ -98,7 +93,6 @@ require (
 	github.com/luxfi/zapdb v1.10.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/miekg/dns v1.1.72 // indirect
 	github.com/mimoo/StrobeGo v0.0.0-20220103164710-9a04d6ca976b // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
@@ -125,13 +119,12 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
-	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
-	golang.org/x/tools v0.45.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
@@ -140,8 +133,17 @@ exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 
 exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
 
-// luxfi/pulsar and luxfi/lens are now consumed via published tags
-// (pulsar v0.1.5, lens v0.1.3). Local replace directives were removed
-// so CI can fetch modules from proxy.golang.org without sibling clones.
-// See CROSS-REPO-VERSION-PIN.md for the SHA → tag mapping at the
-// March 3, 2026 PQ Consensus Architecture Freeze.
+// luxfi/lens is consumed via a published tag (lens v0.1.3). The local
+// replace directive was removed so CI can fetch modules from
+// proxy.golang.org without sibling clones. See CROSS-REPO-VERSION-PIN.md
+// for the SHA → tag mapping at the March 3, 2026 PQ Consensus
+// Architecture Freeze.
+//
+// luxfi/pulsar is pinned to the sibling checkout via a replace directive:
+// the Quasar Pulsar cert profile (protocol/quasar/pulsar) consumes the
+// RoundSigner / NonceCert / CertProfile API that lands on the
+// fix/threshold-mldsa-hint-leak branch and is NOT yet in any published
+// tag (the cached v1.1.1 predates it). Remove the replace once a tag
+// carrying the RoundSigner API ships (per the pulsar migration plan, the
+// v0.2.0 / Pulsar-M rename cut).
+replace github.com/luxfi/pulsar => ../luxfi/pulsar
