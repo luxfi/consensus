@@ -200,6 +200,94 @@ func TestWeightedMerkle_TamperedPathRejected(t *testing.T) {
 	}
 }
 
+// TestWeightedMerkle_LeafCountCanonical is the RED-1 regression: the weighted
+// proof SHAPE is many-to-one in the leaf count (collision classes {3,4},
+// {5,6,7,8}, {9..16}, {17..32}, … all share a shape per leaf index), so the
+// step-count/orientation cross-check alone cannot distinguish an alternate
+// LeafCount within a class. Before binding the count into the leaf digest, an
+// attacker could relabel LeafCount within its shape-class, keep the same
+// siblings, and recompute an IDENTICAL root — a second byte-distinct cert over
+// the same signer set (a QUASAR-C5 non-malleability break and a dedup/
+// equivocation hazard). This test asserts that across every (n, idx) up to 32,
+// ONLY the canonical (idx, n) verifies and EVERY alternate count is rejected,
+// including same-shape-class counts that defeat the structural guards.
+func TestWeightedMerkle_LeafCountCanonical(t *testing.T) {
+	const maxN = 32
+
+	// shapeKey serialises weightedProofShape so we can detect when an alternate
+	// count lands in the SAME shape class as the honest one (the dangerous
+	// case the structural cross-check cannot catch).
+	shapeKey := func(idx, n int) string {
+		var b []byte
+		for _, s := range weightedProofShape(idx, n) {
+			switch {
+			case s.promoted:
+				b = append(b, 'P')
+			case s.siblingIsRight:
+				b = append(b, 'R')
+			default:
+				b = append(b, 'L')
+			}
+		}
+		return string(b)
+	}
+
+	sawSameClassForgeryAttempt := false
+
+	for n := 1; n <= maxN; n++ {
+		leaves := make([]WeightedValidatorLeaf, n)
+		for i := 0; i < n; i++ {
+			leaves[i] = mkLeaf(byte(i+1), uint64(10*(i+1)), 0x42, 1)
+		}
+		set, err := BuildWeightedValidatorSet(7, leaves)
+		if err != nil {
+			t.Fatalf("n=%d build: %v", n, err)
+		}
+		root := set.Root()
+		sorted := set.Leaves()
+
+		for idx := 0; idx < n; idx++ {
+			proof, err := set.InclusionProof(idx)
+			if err != nil {
+				t.Fatalf("n=%d idx=%d proof: %v", n, idx, err)
+			}
+			// Canonical proof must verify.
+			if !VerifyWeightedInclusion(root, 7, sorted[idx], proof) {
+				t.Fatalf("n=%d idx=%d: canonical proof rejected", n, idx)
+			}
+			honestShape := shapeKey(idx, n)
+
+			// Forge by relabeling LeafCount to every other valid count, keeping
+			// the honest leaf and the honest Steps (siblings + flags). EVERY
+			// alternate count must be rejected.
+			for np := 1; np <= maxN; np++ {
+				if np == n || idx >= np {
+					continue
+				}
+				forged := *proof
+				forged.LeafCount = uint32(np)
+				if shapeKey(idx, np) == honestShape {
+					// Same-class relabel: step count + orientation flags STILL
+					// match expSteps, so only the count-binding can reject it.
+					sawSameClassForgeryAttempt = true
+				}
+				if VerifyWeightedInclusion(root, 7, sorted[idx], &forged) {
+					t.Fatalf("n=%d idx=%d: forged LeafCount=%d (shape %q vs honest %q) ACCEPTED — malleability open",
+						n, idx, np, shapeKey(idx, np), honestShape)
+				}
+			}
+		}
+	}
+
+	// Guard the test itself: confirm we actually exercised the dangerous
+	// same-shape-class relabel (e.g. (idx=0,n=3) vs (idx=0,n=4) both "RR"),
+	// not just trivially-different shapes the length check already caught.
+	if !sawSameClassForgeryAttempt {
+		t.Fatal("test did not exercise a same-shape-class LeafCount relabel; " +
+			"the regression would pass vacuously")
+	}
+}
+
 // TestWeightedMerkle_NoDuplicationSecondPreimage guards the CVE-2012-2459
 // class: with an odd number of leaves, a tree that DUPLICATES the last leaf
 // makes the (n) and (n with last leaf repeated) multisets share a root.
@@ -215,12 +303,15 @@ func TestWeightedMerkle_NoDuplicationSecondPreimage(t *testing.T) {
 	set, _ := BuildWeightedValidatorSet(7, leaves)
 
 	// Hand-roll the "duplicate last leaf" root the vulnerable construction
-	// would produce, and confirm it does NOT equal our promotion root.
-	h := make([][48]byte, 0, 4)
+	// would produce, and confirm it does NOT equal our promotion root. The
+	// vulnerable construction has FOUR leaf slots, so it binds leaf_count=4;
+	// the honest set binds leaf_count=3. The roots therefore differ both by
+	// tree structure (promotion vs duplication) AND by the bound count.
+	dup := make([][48]byte, 0, 4)
 	for _, l := range leaves {
-		h = append(h, computeWeightedLeafHash(7, l))
+		dup = append(dup, computeWeightedLeafHash(7, 4, l))
 	}
-	dup := append(append([][48]byte(nil), h...), h[len(h)-1]) // 4 leaves, last duplicated
+	dup = append(dup, dup[len(dup)-1]) // 4 leaves, last duplicated
 	dupRoot := weightedMerkleRoot(dup)
 	if dupRoot == set.Root() {
 		t.Fatal("promotion root collides with last-leaf-duplication root (CVE-2012-2459 surface)")

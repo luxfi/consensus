@@ -414,13 +414,16 @@ func (c *WeightedQuorumCert) verifyWithMessage(message []byte, cfg QuorumVerifie
 // message binding catches it — defence-in-depth against header tampering.
 //
 // Per signer it binds validator_id AND the Merkle (leaf_index, leaf_count).
-// Without the latter, the weighted-Merkle proof shape can be ambiguous: two
-// different (leaf_index, leaf_count) encodings can yield the identical proof
-// shape (e.g. (0,3) and (0,4) both produce "RR"), so a single logical record
-// would have multiple valid encodings → byte-distinct certs with the same
-// signatures, breaking dedup / equivocation detection. Binding (leaf_index,
-// leaf_count) makes any such malleation change the commitment → rejected,
-// and makes the cert bytes canonical for a given signer set.
+// The PRIMARY canonicality guarantee for (leaf_index, leaf_count) is enforced
+// cryptographically in the weighted-Merkle commitment itself: leaf_count is
+// folded into every leaf digest (computeWeightedLeafHash), so a record that
+// relabels its count within a shape-class (e.g. (0,3)→(0,4), both shape "RR")
+// recomputes a different leaf digest and FAILS the Merkle inclusion clause
+// against validator_set_root — exactly one (leaf_index, leaf_count) verifies
+// per committed tree (QUASAR-C5). Binding the pair here as well is
+// defence-in-depth: it makes the commitment field itself total and tamper-
+// evident over the Merkle position, so any position malleation is caught at
+// the commitment check too, not only at the inclusion clause.
 //
 // Layout (TupleHash256, customization "QUASAR-WQC-SIGNERS-V1"):
 //
