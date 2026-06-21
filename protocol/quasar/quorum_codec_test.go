@@ -28,7 +28,7 @@ func TestQuorumCert_FullRoundTrip(t *testing.T) {
 		t.Fatal("full round-trip not byte-stable")
 	}
 	// And the decoded cert must still verify with real signatures.
-	if err := got.Verify(sc.message, sc.cfg); err != nil {
+	if err := got.Verify(sc.env, sc.cfg); err != nil {
 		t.Fatalf("decoded full cert failed verify: %v", err)
 	}
 }
@@ -51,7 +51,7 @@ func TestQuorumCert_CompactRoundTrip(t *testing.T) {
 		t.Fatal("compact round-trip not byte-stable")
 	}
 	// A compact cert cannot be verified until records are re-attached.
-	if err := got.Verify(sc.message, sc.cfg); !errors.Is(err, ErrQCCompactNoRecords) {
+	if err := got.Verify(sc.env, sc.cfg); !errors.Is(err, ErrQCCompactNoRecords) {
 		t.Fatalf("compact verify err = %v, want ErrQCCompactNoRecords", err)
 	}
 }
@@ -66,13 +66,13 @@ func TestQuorumCert_CompactToFullViaDA(t *testing.T) {
 
 	// Honest DA: the real records re-attach and verify.
 	reattached := compact.WithRecords(sc.cert.Signers)
-	if err := reattached.Verify(sc.message, sc.cfg); err != nil {
+	if err := reattached.Verify(sc.env, sc.cfg); err != nil {
 		t.Fatalf("honest re-attach failed verify: %v", err)
 	}
 
 	// Malicious DA: drop one record (different signer set than committed).
 	tampered := compact.WithRecords(sc.cert.Signers[:3])
-	err := tampered.Verify(sc.message, sc.cfg)
+	err := tampered.Verify(sc.env, sc.cfg)
 	// SignerCount (4) != records (3) is caught first; either count-mismatch
 	// or commitment-mismatch is an acceptable clean rejection.
 	if err == nil {
@@ -124,7 +124,7 @@ func TestQuorumCert_MixedSchemeRoundTrip(t *testing.T) {
 	if !sc.cert.Equal(got) {
 		t.Fatal("mixed-scheme round-trip not byte-stable")
 	}
-	if err := got.Verify(sc.message, sc.cfg); err != nil {
+	if err := got.Verify(sc.env, sc.cfg); err != nil {
 		t.Fatalf("decoded mixed cert failed verify: %v", err)
 	}
 }
@@ -151,7 +151,7 @@ func TestQuasarCert_WeightedQuorumLeg(t *testing.T) {
 	}
 
 	// The clean Verify entry point over the QuasarCert.
-	if err := qc.VerifyWeightedQuorumLeg(sc.message, sc.cfg); err != nil {
+	if err := qc.VerifyWeightedQuorumLeg(sc.env, sc.cfg); err != nil {
 		t.Fatalf("VerifyWeightedQuorumLeg rejected a valid leg: %v", err)
 	}
 
@@ -173,7 +173,7 @@ func TestQuasarCert_WeightedQuorumLeg(t *testing.T) {
 	if err := qc2.UnmarshalBinary(qcWire); err != nil {
 		t.Fatalf("QuasarCert unmarshal: %v", err)
 	}
-	if err := qc2.VerifyWeightedQuorumLeg(sc.message, sc.cfg); err != nil {
+	if err := qc2.VerifyWeightedQuorumLeg(sc.env, sc.cfg); err != nil {
 		t.Fatalf("round-tripped QuasarCert leg failed verify: %v", err)
 	}
 }
@@ -208,7 +208,7 @@ func TestQuasarCert_AttachLegPreservesOtherLegs(t *testing.T) {
 	if !out.HasWeightedQuorumLeg() {
 		t.Fatal("attach did not install the weighted quorum leg")
 	}
-	if err := out.VerifyWeightedQuorumLeg(sc.message, sc.cfg); err != nil {
+	if err := out.VerifyWeightedQuorumLeg(sc.env, sc.cfg); err != nil {
 		t.Fatalf("attached leg failed verify: %v", err)
 	}
 }
@@ -229,8 +229,15 @@ func TestQuorumMessage_ForCertMatches(t *testing.T) {
 	if string(msg) != string(sc.message) {
 		t.Fatal("QuorumMessageForCert != the message signers signed")
 	}
-	if err := sc.cert.Verify(msg, sc.cfg); err != nil {
+	// The rebuilt message bytes drive a passing predicate (this is exactly the
+	// message the public Verify constructs internally).
+	if err := sc.cert.verifyWithMessage(msg, sc.cfg); err != nil {
 		t.Fatalf("cert failed verify under QuorumMessageForCert output: %v", err)
+	}
+	// And the public envelope-based Verify (which rebuilds the message itself)
+	// accepts the same cert.
+	if err := sc.cert.Verify(sc.env, sc.cfg); err != nil {
+		t.Fatalf("cert failed envelope-based Verify: %v", err)
 	}
 }
 

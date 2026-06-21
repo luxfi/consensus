@@ -69,6 +69,14 @@ type QuorumMessageEnvelope struct {
 	QCType           uint8    // certificate role (prepare/commit/finality/…)
 	ValidatorSetRoot [48]byte // weighted-validator-set commitment
 
+	// QuorumThreshold is the minimum total voting weight the cert asserts as
+	// its security parameter. Bound into the SIGNED message so a signature is
+	// only valid for the threshold it was produced under — a cert may not
+	// re-present signatures under a lowered threshold (sub-quorum finality
+	// forgery). This is a quorum-cert-specific axis (like qc_type and the
+	// value hash) layered here, NOT in the shared round digest.
+	QuorumThreshold uint64
+
 	// Additional round-digest roots. These default to the value hash / set
 	// root when a caller has nothing more specific, but are exposed so a
 	// deployment that runs the full Q-Block envelope can bind its real
@@ -140,11 +148,19 @@ func QuorumConsensusMessage(env QuorumMessageEnvelope) ([]byte, error) {
 	}
 
 	// Re-frame the round digest under the quorum message tag together with
-	// qc_type and the value hash. This is the seam that makes a quorum
-	// message non-interchangeable with a bare round digest.
+	// qc_type, the value hash, and the quorum threshold. This is the seam
+	// that makes a quorum message non-interchangeable with a bare round
+	// digest AND binds the quorum security parameter into the signature: a
+	// signature produced under threshold T verifies ONLY for threshold T, so
+	// honest signatures over the chain's real BFT quorum cannot be re-framed
+	// under a lowered threshold (sub-quorum finality forgery).
 	var u32 [4]byte
 	binary.BigEndian.PutUint32(u32[:], env.ChainID)
 	chainBytes := append([]byte(nil), u32[:]...)
+
+	var u64 [8]byte
+	binary.BigEndian.PutUint64(u64[:], env.QuorumThreshold)
+	threshBytes := append([]byte(nil), u64[:]...)
 
 	parts := [][]byte{
 		[]byte(quorumMessageProtocolTag),
@@ -153,6 +169,7 @@ func QuorumConsensusMessage(env QuorumMessageEnvelope) ([]byte, error) {
 		env.ValueHash[:],
 		chainBytes,
 		env.ValidatorSetRoot[:],
+		threshBytes,
 	}
 	out := tupleHash256RoundDigest(parts, 32, quorumMessageCustomization)
 	return out, nil
@@ -166,10 +183,10 @@ func QuorumConsensusMessage(env QuorumMessageEnvelope) ([]byte, error) {
 //
 // This is the function a verifier SHOULD use: it guarantees the message is
 // derived from the SAME (chain_id, epoch, height, round, value_hash,
-// qc_type, validator_set_root) the cert claims, so a cert whose signers
-// signed a different message fails verification, and a cert that lies about
-// its position fails because the rebuilt message no longer matches the
-// signatures.
+// qc_type, validator_set_root, quorum_threshold) the cert claims, so a cert
+// whose signers signed a different message fails verification, and a cert
+// that lies about its position or lowers its threshold fails because the
+// rebuilt message no longer matches the signatures.
 func QuorumMessageForCert(envelope QuorumMessageEnvelope, cert *WeightedQuorumCert) ([]byte, error) {
 	if cert == nil {
 		return nil, ErrQCNil
@@ -182,5 +199,6 @@ func QuorumMessageForCert(envelope QuorumMessageEnvelope, cert *WeightedQuorumCe
 	env.ValueHash = cert.ValueHash
 	env.QCType = cert.QCType
 	env.ValidatorSetRoot = cert.ValidatorSetRoot
+	env.QuorumThreshold = cert.QuorumThreshold
 	return QuorumConsensusMessage(env)
 }
