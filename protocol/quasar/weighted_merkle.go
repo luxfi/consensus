@@ -161,24 +161,43 @@ func (s *WeightedValidatorSet) Leaves() []WeightedValidatorLeaf {
 }
 
 // computeWeightedLeafHash returns the 48-byte digest of one leaf under the
-// epoch. The encoding is canonical and length-framed via TupleHash256, so
-// no boundary-shifting attack can move bytes between fields.
+// epoch and the total leaf count. The encoding is canonical and length-framed
+// via TupleHash256, so no boundary-shifting attack can move bytes between
+// fields.
+//
+// leafCount is the total number of leaves in the committed set. It is a
+// tree-wide parameter folded into EVERY leaf digest — exactly as epoch is —
+// so the same (validator_id, pubkey, weight) under a different claimed count
+// produces a different leaf digest and therefore a different root. This is
+// what makes the inclusion proof's (LeafIndex, LeafCount) canonical: the
+// weighted proof SHAPE alone is many-to-one in the count (the collision
+// classes {3,4}, {5,6,7,8}, … all share a shape), so without binding the
+// count cryptographically into the root, an attacker could relabel LeafCount
+// within its shape-class, keep the same siblings, and recompute an IDENTICAL
+// root — a second byte-distinct cert over the same signer set (QUASAR-C5
+// non-malleability break, see quorum_cert.go). Binding the count here makes
+// the recomputed leaf digest depend on it, so any relabel changes the root
+// and is rejected: exactly ONE (LeafIndex, LeafCount) verifies per real tree.
 //
 // Layout (TupleHash256, customization "QUASAR-WVSET-LEAF-V1"):
 //
 //	parts[0] = "Quasar/WVSet/Leaf"  (in-band protocol tag)
 //	parts[1] = epoch                (8 BE)
-//	parts[2] = validator_id         ([32]byte)
-//	parts[3] = canonical_pubkey     (variable, length-framed)
-//	parts[4] = voting_weight        (8 BE)
-//	parts[5] = parameter_set_id     (1)
-//	parts[6] = key_version          (4 BE)
-func computeWeightedLeafHash(epoch uint64, leaf WeightedValidatorLeaf) [48]byte {
+//	parts[2] = leaf_count           (4 BE)
+//	parts[3] = validator_id         ([32]byte)
+//	parts[4] = canonical_pubkey     (variable, length-framed)
+//	parts[5] = voting_weight        (8 BE)
+//	parts[6] = parameter_set_id     (1)
+//	parts[7] = key_version          (4 BE)
+func computeWeightedLeafHash(epoch uint64, leafCount uint32, leaf WeightedValidatorLeaf) [48]byte {
 	var u64 [8]byte
 	var u32 [4]byte
 
 	binary.BigEndian.PutUint64(u64[:], epoch)
 	epochBytes := append([]byte(nil), u64[:]...)
+
+	binary.BigEndian.PutUint32(u32[:], leafCount)
+	countBytes := append([]byte(nil), u32[:]...)
 
 	binary.BigEndian.PutUint64(u64[:], leaf.VotingWeight)
 	weightBytes := append([]byte(nil), u64[:]...)
@@ -189,6 +208,7 @@ func computeWeightedLeafHash(epoch uint64, leaf WeightedValidatorLeaf) [48]byte 
 	parts := [][]byte{
 		[]byte(weightedLeafProtocolTag),
 		epochBytes,
+		countBytes,
 		leaf.ValidatorID[:],
 		leaf.PublicKey,
 		weightBytes,
@@ -259,8 +279,9 @@ func BuildWeightedValidatorSet(epoch uint64, leaves []WeightedValidatorLeaf) (*W
 	}
 
 	leafHashes := make([][48]byte, len(sorted))
+	count := uint32(len(sorted))
 	for i := range sorted {
-		leafHashes[i] = computeWeightedLeafHash(epoch, sorted[i])
+		leafHashes[i] = computeWeightedLeafHash(epoch, count, sorted[i])
 	}
 
 	root := weightedMerkleRoot(leafHashes)
@@ -425,7 +446,16 @@ func VerifyWeightedInclusion(root [48]byte, epoch uint64, leaf WeightedValidator
 		return false
 	}
 
-	running := computeWeightedLeafHash(epoch, leaf)
+	// Fold the CLAIMED leaf count into the leaf digest, exactly as the
+	// builder folds the real count. The weighted proof shape is many-to-one
+	// in the count (collision classes {3,4}, {5,6,7,8}, … share a shape), so
+	// the step-count/orientation cross-check above cannot distinguish an
+	// alternate count within the same class. Binding the count into the leaf
+	// digest here makes the recomputed root depend on it: a cert that relabels
+	// LeafCount within its shape-class yields a DIFFERENT digest and fails
+	// against the real root, so exactly ONE (LeafIndex, LeafCount) verifies
+	// per committed tree (QUASAR-C5 non-malleability).
+	running := computeWeightedLeafHash(epoch, uint32(n), leaf)
 	for level, exp := range expSteps {
 		got := proof.Steps[level]
 		if got.Promoted != exp.promoted {
