@@ -503,6 +503,16 @@ func (p ProofPolicyID) IsForbiddenInPQMode() bool {
 //	               0x22 = P3Q_STARK_FRI_SHA3_PQ     Lux P3Q (Plonky3 fork, cSHAKE256 Merkle)
 //	               0x23 = STONE_CAIRO_STARK_PQ      Cairo / Stone backend
 //	               0x24 = STWO_CIRCLE_STARK_PQ      Stwo Circle STARK
+//	0x30..0x3F — Direct full-node verification (no succinct proof). The
+//	             "proof" is the certificate itself: each signer's
+//	             unmodified FIPS 204/205 signature, a weighted-validator-set
+//	             Merkle inclusion path, and a weight-threshold predicate.
+//	             Soundness rests ONLY on the underlying FIPS verifier plus
+//	             Merkle second-preimage resistance — there is no
+//	             succinctness layer and therefore no STARK/SNARK trusted
+//	             component to audit. A STARK compression backend over the
+//	             SAME relation is a separate id in the 0x10/0x20 block.
+//	               0x30 = DIRECT_WEIGHTED_QUORUM_PQ  per-signer FIPS verify + Merkle + weight predicate
 //	0x70..0x7F — Dev-only / non-production (CI, testnet, audit fuzzing)
 //	               0x70 = RISC0_RAW_STARK_DEV
 //	               0x71 = SP1_CORE_STARK_DEV
@@ -518,6 +528,18 @@ const (
 	ProofBackendP3QSTARKFRISHA3    ProofBackendID = 0x22
 	ProofBackendStoneCairoSTARK    ProofBackendID = 0x23
 	ProofBackendStwoCircleSTARK    ProofBackendID = 0x24
+
+	// ProofBackendDirectWeightedQuorum is the direct full-node-verifiable
+	// weighted quorum certificate backend (HIP-0079 §"full-node-verifiable
+	// mode"). Verification is direct: for each signer record, run unmodified
+	// FIPS 204 (ML-DSA) or FIPS 205 (SLH-DSA) Verify over the
+	// domain-separated consensus message, check the weighted-validator-set
+	// Merkle inclusion path, then assert the accumulated voting weight meets
+	// the quorum threshold. No succinct proof, no recursion, no trusted
+	// setup; the per-signer signatures ARE the proof. This is threshold
+	// CERTIFICATION, not threshold signing — no key material is shared,
+	// reconstructed, or combined. See protocol/quasar/quorum_cert.go.
+	ProofBackendDirectWeightedQuorum ProofBackendID = 0x30
 
 	// Dev-only — never produced in production strict-PQ deployments.
 	ProofBackendRISC0RawSTARKDev ProofBackendID = 0x70
@@ -545,6 +567,8 @@ func (b ProofBackendID) String() string {
 		return "stone-cairo-stark-pq"
 	case ProofBackendStwoCircleSTARK:
 		return "stwo-circle-stark-pq"
+	case ProofBackendDirectWeightedQuorum:
+		return "direct-weighted-quorum-pq"
 	case ProofBackendRISC0RawSTARKDev:
 		return "risc0-raw-stark-dev"
 	case ProofBackendSP1CoreSTARKDev:
@@ -561,16 +585,33 @@ func (b ProofBackendID) String() string {
 // IsProductionPQ reports whether this backend is acceptable in strict-PQ
 // production mode. Dev backends (0x70 block) and forbidden backends
 // (0x80 block) return false.
+//
+// ProofBackendDirectWeightedQuorum qualifies: its soundness rests on
+// unmodified FIPS 204/205 verification plus Merkle second-preimage
+// resistance, which is strictly inside the NIST-approved algorithm set
+// (no classical EC, no trusted setup). It is the most conservative
+// production-PQ posture — there is no succinctness assumption to break.
 func (b ProofBackendID) IsProductionPQ() bool {
 	switch b {
 	case ProofBackendRISC0SuccinctSTARK,
 		ProofBackendSP1CompressedSTARK,
 		ProofBackendP3QSTARKFRISHA3,
 		ProofBackendStoneCairoSTARK,
-		ProofBackendStwoCircleSTARK:
+		ProofBackendStwoCircleSTARK,
+		ProofBackendDirectWeightedQuorum:
 		return true
 	}
 	return false
+}
+
+// IsDirectVerifiable reports whether this backend is verified directly by
+// a full node — no succinct proof, no recursion, no trusted setup. The
+// certificate carries the per-signer FIPS signatures and a Merkle/weight
+// predicate; the verifier replays them. Distinguishes the
+// "full-node-verifiable mode" from the succinct (STARK/SNARK) backends so
+// audit tooling can assert which trust model a cert envelope rides under.
+func (b ProofBackendID) IsDirectVerifiable() bool {
+	return b == ProofBackendDirectWeightedQuorum
 }
 
 // IsForbiddenInPQMode mirrors ProofPolicyID.IsForbiddenInPQMode at the
