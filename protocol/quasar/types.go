@@ -169,46 +169,58 @@ func (c *QuasarCert) VerifyWithKeys(groupKey []byte, pqKey []byte) bool {
 }
 
 // VerifyWithRealKeys performs cryptographic verification of the
-// certificate. A Quasar cert is finalised iff the configured layers
-// verify in parallel:
+// certificate. A Quasar cert is finalised iff EVERY leg that is present
+// (carries bytes AND has a verify key supplied) verifies, AND at least
+// one leg actually verified — so finality always rests on a real,
+// checked signature, never on the absence of evidence.
 //
-//   - BLS-12-381 aggregate against blsAggPubKey (classical fast path)
-//   - Corona (Ring-LWE threshold ML-DSA) against rtGroupKey (PQ)
-//   - Per-validator ML-DSA-65 sigs against mldsaPubKeys (FIPS 204 PQ)
+//   - BLS-12-381 aggregate against blsAggPubKey (OPTIONAL classical
+//     fast path; skipped in pure-PQ mode where the cert carries no BLS)
+//   - Corona (Ring-LWE threshold) against rtGroupKey (PQ)
+//   - Per-validator ML-DSA-65 / rollup against mldsaPubKeys (FIPS 204 PQ)
 //
-// Defence-in-depth posture is classical + (one or two PQ lattice
-// schemes) + identity rollup. Any single scheme broken does not break
-// finality.
+// BLS is one OPTIONAL leg, not a precondition. This matches the cert's
+// documented contract ("empty in pure-PQ", HasClassicalFastPath) and the
+// sibling VerkleWitness verifier, which already profile-gates BLS out
+// under strict-PQ. A pure-PQ cert (BLS empty, ≥1 lattice leg) finalises
+// here; a quantum break of BLS-12-381 cannot forge such a cert because
+// no BLS evidence is consulted. Conversely a cert with NO verifiable leg
+// (all empty, or bytes present without keys) is REJECTED — the fail-
+// closed guard below prevents accepting a cert on absence of evidence.
 //
-// message is the digest the signers committed to. mldsaPubKeys may be
-// nil if MLDSARollup is empty (rollup not yet wired). nil rtGroupKey
-// skips the Corona check (used when running in BLS-only mode or in a
-// Pulsar-only pure-PQ posture).
-//
-// To verify the Polaris-profile Magnetar leg as well, call
-// VerifyWithRealKeysPolaris.
+// message is the digest the signers committed to. A nil key for any leg,
+// or empty bytes for that leg, skips it. To also verify the Polaris
+// Pulsar + Magnetar legs, call VerifyWithRealKeysPolaris.
 func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.PublicKey, rtGroupKey *coronaThreshold.GroupKey, mldsaPubKeys []*mldsa.PublicKey) bool {
 	if c == nil || len(message) == 0 {
 		return false
 	}
-	if len(c.BLS) == 0 {
-		return false
+
+	// verified counts legs that were both PRESENT and cryptographically
+	// checked OK. A cert is accepted only if verified > 0 (fail-closed:
+	// never finalise on the absence of evidence).
+	verified := 0
+
+	// 1. BLS aggregate verify (OPTIONAL classical fast path). Present iff
+	//    the cert carries BLS bytes. When present a verify key is
+	//    required (BLS bytes without a key is a malformed cert, not a
+	//    skip); when absent (pure-PQ) the leg is simply skipped.
+	if len(c.BLS) > 0 {
+		if blsAggPubKey == nil {
+			return false
+		}
+		blsSig, err := bls.SignatureFromBytes(c.BLS)
+		if err != nil {
+			return false
+		}
+		if !bls.Verify(blsAggPubKey, blsSig, message) {
+			return false
+		}
+		verified++
 	}
 
-	// 1. BLS aggregate verify (classical).
-	if blsAggPubKey == nil {
-		return false
-	}
-	blsSig, err := bls.SignatureFromBytes(c.BLS)
-	if err != nil {
-		return false
-	}
-	if !bls.Verify(blsAggPubKey, blsSig, message) {
-		return false
-	}
-
-	// 2. Corona threshold verify (Ring-LWE PQ). Optional: skipped when
-	//    rtGroupKey is nil (BLS-only mode or Pulsar-only pure-PQ).
+	// 2. Corona threshold verify (Ring-LWE PQ). Present iff a group key is
+	//    supplied; then the Corona bytes must be present and verify.
 	if rtGroupKey != nil {
 		if len(c.Corona) == 0 {
 			return false
@@ -220,13 +232,13 @@ func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.Public
 		if !coronaThreshold.Verify(rtGroupKey, string(message), rtSig) {
 			return false
 		}
+		verified++
 	}
 
 	// 3. ML-DSA-65 verify (PQ identity, FIPS 204). The MLDSARollup field
-	//    holds either a single STARK/Groth16 rollup (Z-Chain → P3Q) or a
-	//    concatenation of per-validator ML-DSA-65 sigs. We support the
-	//    per-validator path here by serialising each sig with a 4-byte
-	//    length prefix.
+	//    holds either a single STARK rollup (Z-Chain → P3Q) or a
+	//    concatenation of per-validator ML-DSA-65 sigs (4-byte length
+	//    prefix each). Present iff the cert carries rollup bytes.
 	if len(c.MLDSARollup) > 0 {
 		if len(mldsaPubKeys) == 0 {
 			return false
@@ -235,9 +247,7 @@ func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.Public
 		if err != nil {
 			return false
 		}
-		// Need at least Validators good sigs. If MLDSARollup was a single
-		// succinct rollup, we'd verify it once; for now we require N sigs
-		// matching the public keys provided.
+		// Require N sigs matching the public keys provided.
 		if len(sigs) > len(mldsaPubKeys) {
 			return false
 		}
@@ -246,9 +256,13 @@ func (c *QuasarCert) VerifyWithRealKeys(message []byte, blsAggPubKey *bls.Public
 				return false
 			}
 		}
+		verified++
 	}
 
-	return true
+	// Fail-closed: a cert finalises only on ≥1 verified leg. With BLS now
+	// optional, this is the guard that stops an all-empty / no-key cert
+	// from being accepted on absence of evidence.
+	return verified > 0
 }
 
 // VerifyWithRealKeysPolaris performs cryptographic verification of
