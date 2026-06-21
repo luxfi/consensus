@@ -190,6 +190,9 @@ var (
 	ErrQCSignerCommitment      = errors.New("quasar: recomputed signer commitment != SignerCommitment")
 	ErrQCWeightOverflow        = errors.New("quasar: signer weight sum overflows uint64")
 	ErrQCThresholdZero         = errors.New("quasar: quorum threshold is zero")
+	ErrQCMinThresholdUnset     = errors.New("quasar: verifier MinThreshold is unset (zero); a cert may not assert its own security parameter — fail closed")
+	ErrQCThresholdBelowFloor   = errors.New("quasar: cert QuorumThreshold is below the chain BFT quorum floor (MinThreshold)")
+	ErrQCProofBackendMismatch  = errors.New("quasar: envelope proof backend does not match the cert's ProofBackendID")
 )
 
 // QuorumVerifierConfig pins the policy axes the verifier enforces. Kept
@@ -204,7 +207,24 @@ type QuorumVerifierConfig struct {
 
 	// Context is the FIPS context string passed to every per-signer verify.
 	// It MUST match what signers bound at sign time. Length ≤ 255.
+	//
+	// Applied per-scheme: ML-DSA (FIPS 204) records verify under this context;
+	// SLH-DSA (FIPS 205) records ALWAYS verify under the empty context,
+	// because the only SLH-DSA sign path here (magnetar.ValidatorSign) binds
+	// the empty FIPS-205 context and the round-digest message already carries
+	// the full domain binding. See contextForScheme.
 	Context []byte
+
+	// MinThreshold is the chain's BFT quorum floor — the minimum voting
+	// weight any valid cert on this chain MUST assert. Verify FAILS CLOSED if
+	// MinThreshold is zero (unset): a certificate may not be the sole source
+	// of its own security parameter, so the verifier MUST pin the floor from
+	// the chain profile. A cert whose QuorumThreshold is below this floor is
+	// rejected (ErrQCThresholdBelowFloor) regardless of how many signatures it
+	// carries — this is the mandatory defence against sub-quorum finality
+	// forgery, independent of (and in addition to) the threshold's binding
+	// into the signed message.
+	MinThreshold uint64
 }
 
 // schemeAllowed reports whether scheme is admissible under this config.
@@ -216,32 +236,78 @@ func (c *QuorumVerifierConfig) schemeAllowed(scheme QuorumSchemeID) bool {
 	return c.AllowedSchemes[scheme]
 }
 
-// Verify checks the certificate against message under cfg. Returns nil iff
-// every predicate clause holds; otherwise a typed error naming the first
-// failure. NEVER panics and NEVER does unbounded work — an adversarial cert
-// (unknown validator, bad signature, tampered weight) yields a clean error,
-// not a node crash.
+// Verify checks the certificate against the chain envelope under cfg. Returns
+// nil iff every predicate clause holds; otherwise a typed error naming the
+// first failure. NEVER panics and NEVER does unbounded work — an adversarial
+// cert (unknown validator, bad signature, tampered weight, forged threshold)
+// yields a clean error, not a node crash.
 //
-// message is the domain-separated consensus message the signers signed —
-// build it with QuorumConsensusMessage so the binding to
-// (chain_id, epoch, height, round, value_hash, qc_type, validator_set_root)
-// is canonical and matches what the cert claims.
+// envelope carries the chain's pinned posture axes (profile, hash suite,
+// schemes, proof backend/format/verifier, network). Verify rebuilds the
+// domain-separated signing message ITSELF from the envelope plus the cert's
+// own consensus-position fields (via QuorumMessageForCert) — it NEVER trusts
+// a caller-supplied opaque message. This closes the role-replay / position
+// mismatch surface: a cert whose signers signed a different
+// (chain_id, epoch, height, round, value_hash, qc_type, validator_set_root,
+// quorum_threshold) fails the per-signer FIPS check for every record, and a
+// cert that lies about any of those fails because the rebuilt message no
+// longer matches the signatures.
 //
-// The verifier cross-checks the cert's own position fields against the
-// supplied message via the caller's discipline: the caller derives message
-// from the SAME (chain_id, epoch, …) it expects, so a cert whose signers
-// signed a different message fails clause (c) for every record. The
-// position fields are additionally bound into SignerCommitment, so a cert
-// that lies about its own position fails clause (commitment) too.
-func (c *WeightedQuorumCert) Verify(message []byte, cfg QuorumVerifierConfig) error {
+// Verify additionally asserts the envelope's proof-backend axis equals the
+// cert's own ProofBackendID(), so a cert produced under the direct
+// weighted-quorum backend cannot be verified under a different backend's
+// envelope (and vice versa).
+func (c *WeightedQuorumCert) Verify(envelope QuorumMessageEnvelope, cfg QuorumVerifierConfig) error {
+	if c == nil {
+		return ErrQCNil
+	}
+	// Bind the verification envelope to the cert's trust model: the caller's
+	// envelope axis MUST name the same proof backend this cert is produced
+	// under. Folds the round-digest proof-backend axis check into Verify so a
+	// cross-backend envelope is rejected before any message is built.
+	if envelope.ProofBackend != c.ProofBackendID() {
+		return fmt.Errorf("%w: envelope=0x%02x cert=0x%02x",
+			ErrQCProofBackendMismatch, uint8(envelope.ProofBackend), uint8(c.ProofBackendID()))
+	}
+	// Rebuild the signing message from the envelope + the cert's own position
+	// fields. The verifier owns message construction — it does not trust a
+	// caller-supplied message.
+	message, err := QuorumMessageForCert(envelope, c)
+	if err != nil {
+		return err
+	}
+	return c.verifyWithMessage(message, cfg)
+}
+
+// verifyWithMessage is the core weighted-quorum predicate over an already-
+// built domain-separated message. It is INTERNAL: production callers MUST use
+// Verify, which constructs the message itself from the chain envelope so a
+// caller can never substitute an opaque message that skips the position /
+// threshold / proof-backend binding. This helper carries only the predicate
+// clauses + the mandatory threshold floor; it is exercised directly by tests
+// that need to drive a deliberately-mismatched message.
+func (c *WeightedQuorumCert) verifyWithMessage(message []byte, cfg QuorumVerifierConfig) error {
 	if c == nil {
 		return ErrQCNil
 	}
 	if c.Version != QuorumCertVersion {
 		return fmt.Errorf("%w: got %d want %d", ErrQCVersion, c.Version, QuorumCertVersion)
 	}
+	// Mandatory threshold floor (fail-closed). A cert may not be the sole
+	// source of its own security parameter: the verifier MUST pin the chain's
+	// BFT quorum floor, and a cert asserting a threshold below it is rejected
+	// regardless of signature count — the defence-in-depth that closes
+	// sub-quorum finality forgery even if a signed-message binding were
+	// somehow bypassed.
+	if cfg.MinThreshold == 0 {
+		return ErrQCMinThresholdUnset
+	}
 	if c.QuorumThreshold == 0 {
 		return ErrQCThresholdZero
+	}
+	if c.QuorumThreshold < cfg.MinThreshold {
+		return fmt.Errorf("%w: threshold %d floor %d",
+			ErrQCThresholdBelowFloor, c.QuorumThreshold, cfg.MinThreshold)
 	}
 	if c.SignerCount == 0 {
 		return ErrQCNoSigners
@@ -303,9 +369,14 @@ func (c *WeightedQuorumCert) Verify(message []byte, cfg QuorumVerifierConfig) er
 		}
 
 		// Clause (c): unmodified FIPS verify. The dispatch is a thin call
-		// into the stock FIPS 204 / 205 verifier for the scheme.
+		// into the stock FIPS 204 / 205 verifier for the scheme. The FIPS
+		// context is selected PER SCHEME (contextForScheme): ML-DSA records
+		// verify under cfg.Context; SLH-DSA records verify under the empty
+		// FIPS-205 context, matching magnetar.ValidatorSign's empty-ctx sign.
+		// Without this, a mixed ML-DSA ∧ SLH-DSA cert would only verify when
+		// cfg.Context is nil (the SLH-DSA leg would reject a non-empty ctx).
 		verify := defaultQuorumVerifiers[rec.Scheme]
-		if verify == nil || !verify(rec.PublicKey, message, cfg.Context, rec.Signature) {
+		if verify == nil || !verify(rec.PublicKey, message, contextForScheme(cfg, rec.Scheme), rec.Signature) {
 			return fmt.Errorf("%w: record %d scheme %s", ErrQCSigInvalid, i, rec.Scheme)
 		}
 
@@ -336,11 +407,20 @@ func (c *WeightedQuorumCert) Verify(message []byte, cfg QuorumVerifierConfig) er
 }
 
 // computeSignerCommitment recomputes the cSHAKE256 commitment over the
-// ordered signer-id set plus the cert's version and consensus position.
+// ordered signer set plus the cert's version and consensus position.
 // Binding the position fields here means a cert that lies about its own
 // (chain_id, epoch, height, round, value_hash, qc_type, validator_set_root,
 // quorum_threshold) fails the commitment check even before the per-signer
 // message binding catches it — defence-in-depth against header tampering.
+//
+// Per signer it binds validator_id AND the Merkle (leaf_index, leaf_count).
+// Without the latter, the weighted-Merkle proof shape can be ambiguous: two
+// different (leaf_index, leaf_count) encodings can yield the identical proof
+// shape (e.g. (0,3) and (0,4) both produce "RR"), so a single logical record
+// would have multiple valid encodings → byte-distinct certs with the same
+// signatures, breaking dedup / equivocation detection. Binding (leaf_index,
+// leaf_count) makes any such malleation change the commitment → rejected,
+// and makes the cert bytes canonical for a given signer set.
 //
 // Layout (TupleHash256, customization "QUASAR-WQC-SIGNERS-V1"):
 //
@@ -355,7 +435,10 @@ func (c *WeightedQuorumCert) Verify(message []byte, cfg QuorumVerifierConfig) er
 //	parts[8]  = validator_set_root ([48]byte)
 //	parts[9]  = quorum_threshold   (8 BE)
 //	parts[10] = signer_count       (4 BE)
-//	parts[11+i] = validator_id[i]  ([32]byte), in record order
+//	then, per record i in order, three parts:
+//	  validator_id[i]  ([32]byte)
+//	  leaf_index[i]    (4 BE)
+//	  leaf_count[i]    (4 BE)
 func (c *WeightedQuorumCert) computeSignerCommitment() [48]byte {
 	var u16 [2]byte
 	var u32 [4]byte
@@ -376,7 +459,7 @@ func (c *WeightedQuorumCert) computeSignerCommitment() [48]byte {
 	binary.BigEndian.PutUint32(u32[:], c.SignerCount)
 	countBytes := append([]byte(nil), u32[:]...)
 
-	parts := make([][]byte, 0, 11+len(c.Signers))
+	parts := make([][]byte, 0, 11+3*len(c.Signers))
 	parts = append(parts,
 		[]byte(signerCommitmentProtocolTag),
 		verBytes,
@@ -391,7 +474,21 @@ func (c *WeightedQuorumCert) computeSignerCommitment() [48]byte {
 		countBytes,
 	)
 	for i := range c.Signers {
-		parts = append(parts, c.Signers[i].ValidatorID[:])
+		// Bind the Merkle position (leaf_index, leaf_count). A nil path (a
+		// structurally-incomplete record that will fail the Merkle clause
+		// anyway) binds the (0,0) sentinel so the commitment is still total.
+		var leafIdx, leafCount uint32
+		if p := c.Signers[i].MerklePath; p != nil {
+			leafIdx, leafCount = p.LeafIndex, p.LeafCount
+		}
+		var idxBytes, cntBytes [4]byte
+		binary.BigEndian.PutUint32(idxBytes[:], leafIdx)
+		binary.BigEndian.PutUint32(cntBytes[:], leafCount)
+		parts = append(parts,
+			c.Signers[i].ValidatorID[:],
+			append([]byte(nil), idxBytes[:]...),
+			append([]byte(nil), cntBytes[:]...),
+		)
 	}
 
 	out := tupleHash256RoundDigest(parts, 48, signerCommitmentCustomization)
@@ -565,6 +662,18 @@ const (
 // wqcHeaderSize is the fixed compact-header byte length.
 const wqcHeaderSize = 1 + 2 + 4 + 8 + 8 + 4 + 32 + 1 + 48 + 8 + 8 + 48 + 4
 
+// wqcMinRecordBytes is the SMALLEST possible on-wire size of one signer
+// record: the fixed fields with a zero-length public key, a zero-length
+// signature, and a zero-step Merkle path. Used to cap an attacker-controlled
+// signer_count against the remaining buffer BEFORE any allocation, so a
+// header claiming signer_count = 0xFFFFFFFF cannot force a multi-hundred-GB
+// reservation (decode-DoS). Layout, per the full-record comment above:
+//
+//	validator_id:32 scheme:1 param_set_id:1 key_version:4 voting_weight:8
+//	pubkey_len:4 sig_len:4 merkle_leaf_index:4 merkle_leaf_count:4
+//	merkle_step_count:4
+const wqcMinRecordBytes = 32 + 1 + 1 + 4 + 8 + 4 + 4 + 4 + 4 + 4 // = 66
+
 // ErrQCWireCorrupt is returned by the decoders on any structural defect.
 var ErrQCWireCorrupt = errors.New("quasar: weighted quorum cert wire corrupt")
 
@@ -693,7 +802,16 @@ func UnmarshalWeightedQuorumCert(data []byte) (*WeightedQuorumCert, error) {
 		return c, nil
 	}
 
-	// Full: decode signer_count records.
+	// Full: decode signer_count records. Cap signer_count against the
+	// remaining buffer BEFORE reserving capacity: each record occupies at
+	// least wqcMinRecordBytes, so a count whose minimum footprint exceeds the
+	// bytes that remain is structurally impossible. This rejects an
+	// adversarial header (signer_count = 0xFFFFFFFF → ~446 GB reservation) in
+	// O(1) with no allocation — mirrors the step_count cap below.
+	if uint64(c.SignerCount)*wqcMinRecordBytes > uint64(len(r.buf)) {
+		return nil, fmt.Errorf("%w: signer_count %d exceeds remaining buffer (%d bytes)",
+			ErrQCWireCorrupt, c.SignerCount, len(r.buf))
+	}
 	c.Signers = make([]QuorumSignerRecord, 0, c.SignerCount)
 	for i := uint32(0); i < c.SignerCount; i++ {
 		var rec QuorumSignerRecord

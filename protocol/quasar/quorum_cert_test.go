@@ -144,6 +144,10 @@ func buildScenario(t *testing.T, signers []*testSigner, threshold uint64, ctx []
 		valueHash[i] = 0xAB
 	}
 	env.ValueHash = valueHash
+	// The quorum threshold is bound into the SIGNED message, so it must be set
+	// on the envelope before the signers sign (and it equals the cert's
+	// QuorumThreshold below).
+	env.QuorumThreshold = threshold
 
 	// Build the weighted validator set commitment from the signers' leaves.
 	leaves := make([]WeightedValidatorLeaf, len(signers))
@@ -212,8 +216,11 @@ func buildScenario(t *testing.T, signers []*testSigner, threshold uint64, ctx []
 	}
 
 	return scenario{
-		env:     env,
-		cfg:     QuorumVerifierConfig{Context: ctx},
+		env: env,
+		// MinThreshold is the mandatory BFT-quorum floor. The scenario pins it
+		// to the cert's threshold (the verifier MUST pin a non-zero floor or
+		// Verify fails closed). Tests that drive a below-floor cert override it.
+		cfg:     QuorumVerifierConfig{Context: ctx, MinThreshold: threshold},
 		message: message,
 		cert:    cert,
 		set:     set,
@@ -239,7 +246,7 @@ func fourMLDSA(t *testing.T) scenario {
 
 func TestQuorumCert_HappyPath(t *testing.T) {
 	sc := fourMLDSA(t)
-	if err := sc.cert.Verify(sc.message, sc.cfg); err != nil {
+	if err := sc.cert.Verify(sc.env, sc.cfg); err != nil {
 		t.Fatalf("valid cert rejected: %v", err)
 	}
 }
@@ -270,7 +277,7 @@ func TestQuorumCert_SLHDSAInterop(t *testing.T) {
 		newSLHDSASigner(t, 0x02, 60),
 	}
 	sc := buildScenario(t, signers, 100, nil)
-	if err := sc.cert.Verify(sc.message, sc.cfg); err != nil {
+	if err := sc.cert.Verify(sc.env, sc.cfg); err != nil {
 		t.Fatalf("valid SLH-DSA cert rejected: %v", err)
 	}
 	for i := range sc.cert.Signers {
@@ -294,7 +301,7 @@ func TestQuorumCert_MixedScheme(t *testing.T) {
 		newMLDSASigner(t, 0x03, 40),
 	}
 	sc := buildScenario(t, signers, 100, nil)
-	if err := sc.cert.Verify(sc.message, sc.cfg); err != nil {
+	if err := sc.cert.Verify(sc.env, sc.cfg); err != nil {
 		t.Fatalf("valid mixed-scheme cert rejected: %v", err)
 	}
 }
@@ -309,10 +316,10 @@ func TestQuorumCert_MLDSAContextBinding(t *testing.T) {
 		newMLDSASigner(t, 0x02, 60),
 	}
 	sc := buildScenario(t, signers, 100, ctxA)
-	if err := sc.cert.Verify(sc.message, QuorumVerifierConfig{Context: ctxA}); err != nil {
+	if err := sc.cert.Verify(sc.env, QuorumVerifierConfig{Context: ctxA, MinThreshold: 100}); err != nil {
 		t.Fatalf("ctx-A cert rejected under ctx-A: %v", err)
 	}
-	if err := sc.cert.Verify(sc.message, QuorumVerifierConfig{Context: []byte("ctx-B")}); err == nil {
+	if err := sc.cert.Verify(sc.env, QuorumVerifierConfig{Context: []byte("ctx-B"), MinThreshold: 100}); err == nil {
 		t.Fatal("cert signed under ctx-A verified under ctx-B (context not bound)")
 	}
 }
@@ -328,7 +335,7 @@ func TestQuorumCert_RejectsUnsorted(t *testing.T) {
 	// Recompute the commitment so the failure is the ordering check, not the
 	// commitment check (we want to prove the ordering clause specifically).
 	sc.cert.SignerCommitment = sc.cert.computeSignerCommitment()
-	err := sc.cert.Verify(sc.message, sc.cfg)
+	err := sc.cert.Verify(sc.env, sc.cfg)
 	if !errors.Is(err, ErrQCNotStrictlyIncreasing) {
 		t.Fatalf("unsorted cert err = %v, want ErrQCNotStrictlyIncreasing", err)
 	}
@@ -339,7 +346,7 @@ func TestQuorumCert_RejectsDuplicateSigner(t *testing.T) {
 	// Duplicate record 1 over record 2's slot → two identical ids adjacent.
 	sc.cert.Signers[2] = sc.cert.Signers[1]
 	sc.cert.SignerCommitment = sc.cert.computeSignerCommitment()
-	err := sc.cert.Verify(sc.message, sc.cfg)
+	err := sc.cert.Verify(sc.env, sc.cfg)
 	if !errors.Is(err, ErrQCNotStrictlyIncreasing) {
 		t.Fatalf("duplicate-signer cert err = %v, want ErrQCNotStrictlyIncreasing", err)
 	}
@@ -379,7 +386,7 @@ func TestQuorumCert_BelowThresholdRejected(t *testing.T) {
 		newMLDSASigner(t, 0x04, 25),
 	}
 	sc := buildScenario(t, signers, 101, nil)
-	err := sc.cert.Verify(sc.message, sc.cfg)
+	err := sc.cert.Verify(sc.env, sc.cfg)
 	if !errors.Is(err, ErrQCBelowThreshold) {
 		t.Fatalf("below-threshold err = %v, want ErrQCBelowThreshold", err)
 	}
@@ -388,7 +395,7 @@ func TestQuorumCert_BelowThresholdRejected(t *testing.T) {
 func TestQuorumCert_AtThresholdAccepted(t *testing.T) {
 	// Σ weight = 100; threshold exactly 100 → accept (≥, not >).
 	sc := fourMLDSA(t) // threshold == 100 == Σ weight
-	if err := sc.cert.Verify(sc.message, sc.cfg); err != nil {
+	if err := sc.cert.Verify(sc.env, sc.cfg); err != nil {
 		t.Fatalf("at-threshold cert rejected: %v", err)
 	}
 }
@@ -401,7 +408,11 @@ func TestQuorumCert_WrongMessageRejected(t *testing.T) {
 	sc := fourMLDSA(t)
 	wrong := append([]byte(nil), sc.message...)
 	wrong[0] ^= 0xFF
-	err := sc.cert.Verify(wrong, sc.cfg)
+	// Drive the internal predicate with a deliberately-corrupted message. The
+	// public Verify builds the message itself (it cannot be fed a wrong one);
+	// verifyWithMessage is the demoted raw-message form, exercised here to
+	// prove a message that does not match the signatures is rejected.
+	err := sc.cert.verifyWithMessage(wrong, sc.cfg)
 	if !errors.Is(err, ErrQCSigInvalid) {
 		t.Fatalf("wrong-message err = %v, want ErrQCSigInvalid", err)
 	}
@@ -421,7 +432,9 @@ func crossAxis(t *testing.T, name string, mutate func(*QuorumMessageEnvelope)) {
 	if bytes.Equal(msg2, sc.message) {
 		t.Fatalf("%s: message unchanged after mutating axis (no binding!)", name)
 	}
-	if err := sc.cert.Verify(msg2, sc.cfg); err == nil {
+	// Drive the internal predicate with the cross-axis message: the cert's
+	// signatures (over the original axis values) must not verify against it.
+	if err := sc.cert.verifyWithMessage(msg2, sc.cfg); err == nil {
 		t.Fatalf("%s: cert verified against cross-domain message (replay surface)", name)
 	}
 }
@@ -455,7 +468,7 @@ func TestQuorumCert_NonMemberRejected(t *testing.T) {
 	// safe and prove the Merkle clause specifically).
 	sc.cert.AggregateWeight = sc.cert.AggregateWeight - 25 + 999
 	sc.cert.SignerCommitment = sc.cert.computeSignerCommitment()
-	err := sc.cert.Verify(sc.message, sc.cfg)
+	err := sc.cert.Verify(sc.env, sc.cfg)
 	if !errors.Is(err, ErrQCMerkleInclusion) {
 		t.Fatalf("non-member err = %v, want ErrQCMerkleInclusion", err)
 	}
@@ -499,7 +512,7 @@ func TestQuorumCert_UnknownValidatorNotFatal(t *testing.T) {
 	sc.cert.SignerCommitment = sc.cert.computeSignerCommitment()
 
 	// Must not panic; must return the Merkle clause error.
-	err := sc.cert.Verify(sc.message, sc.cfg)
+	err := sc.cert.Verify(sc.env, sc.cfg)
 	if !errors.Is(err, ErrQCMerkleInclusion) {
 		t.Fatalf("unknown-validator err = %v, want ErrQCMerkleInclusion (clean, not fatal)", err)
 	}
@@ -513,7 +526,7 @@ func TestQuorumCert_AggregateWeightTamper(t *testing.T) {
 	sc := fourMLDSA(t)
 	sc.cert.AggregateWeight++ // claim one more than Σ weight
 	sc.cert.SignerCommitment = sc.cert.computeSignerCommitment()
-	err := sc.cert.Verify(sc.message, sc.cfg)
+	err := sc.cert.Verify(sc.env, sc.cfg)
 	if !errors.Is(err, ErrQCAggregateWeight) {
 		t.Fatalf("aggregate tamper err = %v, want ErrQCAggregateWeight", err)
 	}
@@ -522,20 +535,31 @@ func TestQuorumCert_AggregateWeightTamper(t *testing.T) {
 func TestQuorumCert_SignerCommitmentTamper(t *testing.T) {
 	sc := fourMLDSA(t)
 	sc.cert.SignerCommitment[0] ^= 0xFF
-	err := sc.cert.Verify(sc.message, sc.cfg)
+	err := sc.cert.Verify(sc.env, sc.cfg)
 	if !errors.Is(err, ErrQCSignerCommitment) {
 		t.Fatalf("commitment tamper err = %v, want ErrQCSignerCommitment", err)
 	}
 }
 
-func TestQuorumCert_HeaderPositionTamperFailsCommitment(t *testing.T) {
-	// Flipping a position field the commitment binds (but NOT re-signing /
-	// re-committing) must fail the commitment check.
+func TestQuorumCert_HeaderPositionTamperFailsVerify(t *testing.T) {
+	// A cert that lies about its own consensus position must be rejected.
+	// Under the envelope-based Verify, the verifier rebuilds the signing
+	// message from the cert's OWN position fields (QuorumMessageForCert), so
+	// flipping the height makes Verify rebuild the message at the tampered
+	// height — and the signatures (produced over the real height) no longer
+	// verify. This is a STRONGER guarantee than the old commitment-only catch:
+	// position tampering fails at the per-signer FIPS check, earlier in the
+	// predicate. (The commitment layer remains as defence-in-depth against
+	// signer-set / leaf-position malleation that does not change the rebuilt
+	// message — see SignerCommitmentTamper and the leaf-encoding test.)
 	sc := fourMLDSA(t)
-	sc.cert.Height++ // commitment was computed over the old height
-	err := sc.cert.Verify(sc.message, sc.cfg)
-	if !errors.Is(err, ErrQCSignerCommitment) {
-		t.Fatalf("position tamper err = %v, want ErrQCSignerCommitment", err)
+	sc.cert.Height++ // signatures were produced over the original height
+	// Recompute the commitment so we PASS the commitment check and prove the
+	// rejection is the signature clause specifically, not the commitment.
+	sc.cert.SignerCommitment = sc.cert.computeSignerCommitment()
+	err := sc.cert.Verify(sc.env, sc.cfg)
+	if !errors.Is(err, ErrQCSigInvalid) {
+		t.Fatalf("position tamper err = %v, want ErrQCSigInvalid", err)
 	}
 }
 
@@ -545,12 +569,14 @@ func TestQuorumCert_HeaderPositionTamperFailsCommitment(t *testing.T) {
 
 func TestQuorumCert_SchemeNotAllowed(t *testing.T) {
 	sc := fourMLDSA(t)
-	// Allow only SLH-DSA; the cert is all ML-DSA → rejected.
+	// Allow only SLH-DSA; the cert is all ML-DSA → rejected. MinThreshold must
+	// be set or Verify fails closed before reaching the scheme check.
 	cfg := QuorumVerifierConfig{
 		Context:        nil,
+		MinThreshold:   100,
 		AllowedSchemes: map[QuorumSchemeID]bool{QuorumSchemeSLHDSA192s: true},
 	}
-	err := sc.cert.Verify(sc.message, cfg)
+	err := sc.cert.Verify(sc.env, cfg)
 	if !errors.Is(err, ErrQCSchemeNotAllowed) {
 		t.Fatalf("scheme-not-allowed err = %v, want ErrQCSchemeNotAllowed", err)
 	}
@@ -561,7 +587,7 @@ func TestQuorumCert_ParamSetMismatch(t *testing.T) {
 	// Claim a param byte that disagrees with the scheme byte.
 	sc.cert.Signers[0].ParamSetID = uint8(QuorumSchemeMLDSA87)
 	sc.cert.SignerCommitment = sc.cert.computeSignerCommitment()
-	err := sc.cert.Verify(sc.message, sc.cfg)
+	err := sc.cert.Verify(sc.env, sc.cfg)
 	if !errors.Is(err, ErrQCParamSetMismatch) {
 		t.Fatalf("param mismatch err = %v, want ErrQCParamSetMismatch", err)
 	}
@@ -575,25 +601,25 @@ func TestQuorumCert_StructuralRejections(t *testing.T) {
 	sc := fourMLDSA(t)
 
 	var nilCert *WeightedQuorumCert
-	if err := nilCert.Verify(sc.message, sc.cfg); !errors.Is(err, ErrQCNil) {
+	if err := nilCert.Verify(sc.env, sc.cfg); !errors.Is(err, ErrQCNil) {
 		t.Fatalf("nil cert err = %v, want ErrQCNil", err)
 	}
 
 	badVer := *sc.cert
 	badVer.Version = 99
-	if err := (&badVer).Verify(sc.message, sc.cfg); !errors.Is(err, ErrQCVersion) {
+	if err := (&badVer).Verify(sc.env, sc.cfg); !errors.Is(err, ErrQCVersion) {
 		t.Fatalf("bad version err = %v, want ErrQCVersion", err)
 	}
 
 	zeroThresh := *sc.cert
 	zeroThresh.QuorumThreshold = 0
-	if err := (&zeroThresh).Verify(sc.message, sc.cfg); !errors.Is(err, ErrQCThresholdZero) {
+	if err := (&zeroThresh).Verify(sc.env, sc.cfg); !errors.Is(err, ErrQCThresholdZero) {
 		t.Fatalf("zero threshold err = %v, want ErrQCThresholdZero", err)
 	}
 
 	countMismatch := *sc.cert
 	countMismatch.SignerCount = 99
-	if err := (&countMismatch).Verify(sc.message, sc.cfg); !errors.Is(err, ErrQCSignerCountMismatch) {
+	if err := (&countMismatch).Verify(sc.env, sc.cfg); !errors.Is(err, ErrQCSignerCountMismatch) {
 		t.Fatalf("count mismatch err = %v, want ErrQCSignerCountMismatch", err)
 	}
 }
