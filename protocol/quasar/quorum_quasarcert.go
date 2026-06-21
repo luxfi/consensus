@@ -92,18 +92,22 @@ func (c *QuasarCert) HasWeightedQuorumLeg() bool {
 }
 
 // VerifyWeightedQuorumLeg verifies the direct weighted quorum certificate
-// carried in a QuasarCert's MLDSARollup leg against message under cfg. This
-// is the clean Verify entry point for the full-node-verifiable mode.
+// carried in a QuasarCert's MLDSARollup leg against the chain envelope under
+// cfg. This is the clean Verify entry point for the full-node-verifiable
+// mode.
 //
 // It returns nil iff the leg is present, decodes as a WQC, and passes the
-// full weighted-quorum predicate (per-signer FIPS verify + Merkle inclusion
-// + weight threshold + aggregate/commitment checks). Any failure is a typed
-// error — never a panic, never unbounded work.
+// full weighted-quorum predicate (proof-backend axis match + per-signer FIPS
+// verify + Merkle inclusion + weight threshold floor + aggregate/commitment
+// checks). Any failure is a typed error — never a panic, never unbounded
+// work.
 //
-// message MUST be the domain-separated consensus message the signers signed
-// (build it with QuorumMessageForCert from the chain's envelope axes and the
-// extracted cert, so the position binding is canonical).
-func (c *QuasarCert) VerifyWeightedQuorumLeg(message []byte, cfg QuorumVerifierConfig) error {
+// envelope carries the chain's pinned posture axes; the extracted cert's
+// Verify rebuilds the domain-separated signing message ITSELF from the
+// envelope plus the cert's own position fields, so the caller never supplies
+// an opaque message that could skip the position / threshold / proof-backend
+// binding.
+func (c *QuasarCert) VerifyWeightedQuorumLeg(envelope QuorumMessageEnvelope, cfg QuorumVerifierConfig) error {
 	if c == nil {
 		return ErrQCNil
 	}
@@ -114,7 +118,7 @@ func (c *QuasarCert) VerifyWeightedQuorumLeg(message []byte, cfg QuorumVerifierC
 	if err != nil {
 		return err
 	}
-	return cert.Verify(message, cfg)
+	return cert.Verify(envelope, cfg)
 }
 
 // BuildQuasarCertFromWeightedQuorum builds a QuasarCert whose MLDSARollup

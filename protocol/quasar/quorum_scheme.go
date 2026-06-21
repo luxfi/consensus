@@ -176,6 +176,30 @@ func slhdsaVerifier(mode magnetar.Mode) quorumVerifyFn {
 	}
 }
 
+// contextForScheme returns the FIPS context string to verify a record of the
+// given scheme under, resolving the mixed-scheme context asymmetry.
+//
+// The two FIPS sign paths used here bind DIFFERENT contexts:
+//   - ML-DSA (FIPS 204) records are signed via mldsa.SignCtx under the
+//     caller's context, so they MUST verify under cfg.Context.
+//   - SLH-DSA (FIPS 205) records are signed via magnetar.ValidatorSign, which
+//     binds the EMPTY FIPS-205 context (the round-digest message already
+//     carries the full domain binding). They MUST verify under the empty
+//     context regardless of cfg.Context.
+//
+// Applying one cfg.Context to every scheme would make a mixed ML-DSA ∧
+// SLH-DSA cert verify only when cfg.Context is nil. Selecting the context per
+// scheme family removes that footgun: the empty context is forced for the
+// SLH-DSA leg, so a mixed cert verifies under any cfg.Context the ML-DSA
+// signers used.
+func contextForScheme(cfg QuorumVerifierConfig, scheme QuorumSchemeID) []byte {
+	if scheme.FIPS() == "205" {
+		// SLH-DSA: empty FIPS-205 context (matches magnetar.ValidatorSign).
+		return nil
+	}
+	return cfg.Context
+}
+
 // expectedPubKeyLen returns the canonical public-key byte length for a
 // scheme, or (0, false) if the scheme is unknown. Used by the certificate
 // verifier to reject a record whose embedded key length cannot match the
