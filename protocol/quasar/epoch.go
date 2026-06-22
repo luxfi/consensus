@@ -675,7 +675,10 @@ func (em *EpochManager) verifyActivationLocked(gk *coronaThreshold.GroupKey, old
 	round1 := make(map[int]*coronaThreshold.Round1Data, len(signers))
 	for _, s := range signers {
 		// Round1 sets PartyID from the underlying share index.
-		r1 := s.Round1(sessionID, prfKey, signerIndices)
+		r1, err := s.Round1(sessionID, prfKey, signerIndices)
+		if err != nil {
+			return fmt.Errorf("corona round1: %w", err)
+		}
 		round1[r1.PartyID] = r1
 	}
 	round2 := make(map[int]*coronaThreshold.Round2Data, len(signers))
@@ -1048,7 +1051,10 @@ func (bs *BundleSigner) SignBundle(
 		if !ok {
 			continue
 		}
-		r1 := signer.Round1(sessionID, prfKey, signerIndices)
+		r1, err := signer.Round1(sessionID, prfKey, signerIndices)
+		if err != nil {
+			return fmt.Errorf("corona round1: %w", err)
+		}
 		round1Data[keys.Shares[v].Index] = r1
 	}
 

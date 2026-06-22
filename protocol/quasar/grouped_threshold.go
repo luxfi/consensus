@@ -507,7 +507,10 @@ func (gem *GroupedEpochManager) signWithGroup(
 	round1Data := make(map[int]*coronaThreshold.Round1Data)
 	for _, vid := range signerIDs {
 		signer := group.Signers[vid]
-		r1 := signer.Round1(sessionID, prfKey, signerIndices)
+		r1, err := signer.Round1(sessionID, prfKey, signerIndices)
+		if err != nil {
+			return nil, fmt.Errorf("corona round1: %w", err)
+		}
 		round1Data[group.Shares[vid].Index] = r1
 	}
 

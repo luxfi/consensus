@@ -34,7 +34,10 @@ func TestCoronaCertSize_BinaryVsGob(t *testing.T) {
 
 	r1 := make(map[int]*coronaThreshold.Round1Data)
 	for _, s := range signers {
-		d := s.Round1(sessionID, prfKey, signerIDs)
+		d, err := s.Round1(sessionID, prfKey, signerIDs)
+		if err != nil {
+			t.Fatalf("Round1: %v", err)
+		}
 		r1[d.PartyID] = d
 	}
 	r2 := make(map[int]*coronaThreshold.Round2Data)
