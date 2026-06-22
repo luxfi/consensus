@@ -264,7 +264,7 @@ func (s *signer) CoronaRound1(validatorID string, sessionID int, prfKey []byte) 
 		signerIDs = append(signerIDs, share.Index)
 	}
 
-	return signer.Round1(sessionID, prfKey, signerIDs), nil
+	return signer.Round1(sessionID, prfKey, signerIDs)
 }
 
 // CoronaRound2 performs Round 2 of Corona signing for a validator.
