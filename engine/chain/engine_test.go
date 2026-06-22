@@ -35,7 +35,7 @@ func (b *mockBlock) Reject(context.Context) error { return nil }
 func (b *mockBlock) Bytes() []byte                { return b.bytes }
 
 func TestNew(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	if engine == nil {
 		t.Fatal("New() returned nil")
 	}
@@ -46,7 +46,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestStart(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	err := engine.Start(ctx, true)
@@ -60,7 +60,7 @@ func TestStart(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	_ = engine.Start(ctx, true)
@@ -72,7 +72,7 @@ func TestStop(t *testing.T) {
 }
 
 func TestHealthCheck(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	health, err := engine.HealthCheck(ctx)
@@ -99,7 +99,7 @@ func TestHealthCheck(t *testing.T) {
 }
 
 func TestGetBlock(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	// GetBlock should return nil (no-op for now)
@@ -114,7 +114,7 @@ func TestGetBlock(t *testing.T) {
 }
 
 func TestChainWorkflow(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	// Start engine
@@ -195,7 +195,7 @@ func (m *mockVM) SetPreference(ctx context.Context, id ids.ID) error {
 
 // TestNotifyPendingTxsTriggersBuildBlock verifies that Notify(PendingTxs) triggers BuildBlock
 func TestNotifyPendingTxsTriggersBuildBlock(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	// Start engine
@@ -246,7 +246,7 @@ func TestNotifyPendingTxsTriggersBuildBlock(t *testing.T) {
 
 // TestNotifyStateSyncDoneDoesNotBuild verifies that StateSyncDone doesn't trigger builds
 func TestNotifyStateSyncDoneDoesNotBuild(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	if err := engine.Start(ctx, true); err != nil {
@@ -270,7 +270,7 @@ func TestNotifyStateSyncDoneDoesNotBuild(t *testing.T) {
 
 // TestNotifyWithNoVMDoesNotPanic verifies Notify handles nil VM gracefully
 func TestNotifyWithNoVMDoesNotPanic(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	if err := engine.Start(ctx, true); err != nil {
@@ -288,7 +288,7 @@ func TestNotifyWithNoVMDoesNotPanic(t *testing.T) {
 
 // TestNotifyBuildBlockError verifies error handling when BuildBlock fails
 func TestNotifyBuildBlockError(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	if err := engine.Start(ctx, true); err != nil {
@@ -388,7 +388,7 @@ func (m *trackingMockVM) SetPreference(ctx context.Context, id ids.ID) error {
 
 // TestEngine_DoesNotAcceptWithoutQuorum verifies blocks are NOT accepted without sufficient votes
 func TestEngine_DoesNotAcceptWithoutQuorum(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	// Create a tracking block
@@ -454,7 +454,7 @@ func TestEngine_DoesNotAcceptWithoutQuorum(t *testing.T) {
 func TestEngine_AcceptsAfterQuorum(t *testing.T) {
 	// Use smaller parameters for testing (K=5, Alpha=3, Beta=2)
 	// This means we need 3 out of 5 votes for quorum
-	engine := NewWithParams(config.Parameters{
+	engine := newTestEngineParams(config.Parameters{
 		K:               5,
 		AlphaPreference: 3,
 		AlphaConfidence: 3,
@@ -495,14 +495,12 @@ func TestEngine_AcceptsAfterQuorum(t *testing.T) {
 		t.Fatal("Block should be in pending blocks")
 	}
 
-	// Send enough votes to reach quorum (3 votes for Alpha=3)
+	// Send enough SIGNED votes to reach quorum (3 votes for Alpha=3). Distinct
+	// validators, each signing the block's position — the cert assembles and the
+	// block finalizes. (Unsigned votes are dropped by the authenticated quorum
+	// path; this is the BFT finality gate.)
 	for i := 0; i < 4; i++ {
-		engine.ReceiveVote(Vote{
-			BlockID:  blk.id,
-			NodeID:   ids.GenerateTestNodeID(),
-			Accept:   true,
-			SignedAt: time.Now(),
-		})
+		engine.ReceiveVote(signedVoteForEngine(engine, blk.id, ids.GenerateTestNodeID()))
 	}
 
 	// Give poll loop time to process the acceptance
@@ -530,7 +528,7 @@ func TestEngine_AcceptsAfterQuorum(t *testing.T) {
 
 // TestReceiveVote_DropsWhenNotStarted verifies votes are dropped when engine not started
 func TestReceiveVote_DropsWhenNotStarted(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	// DO NOT start the engine
 
 	vote := Vote{
@@ -549,7 +547,7 @@ func TestReceiveVote_DropsWhenNotStarted(t *testing.T) {
 
 // TestReceiveVote_AcceptsWhenStarted verifies votes are queued when engine is started
 func TestReceiveVote_AcceptsWhenStarted(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	if err := engine.Start(ctx, true); err != nil {
@@ -573,7 +571,7 @@ func TestReceiveVote_AcceptsWhenStarted(t *testing.T) {
 
 // TestReceiveVote_DropsAfterStop verifies votes are dropped after engine stops
 func TestReceiveVote_DropsAfterStop(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	if err := engine.Start(ctx, true); err != nil {
@@ -605,7 +603,7 @@ func TestReceiveVote_DropsAfterStop(t *testing.T) {
 
 // TestHandleVote_IgnoresUnknownBlocks verifies votes for untracked blocks are ignored
 func TestHandleVote_IgnoresUnknownBlocks(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	if err := engine.Start(ctx, true); err != nil {
@@ -644,7 +642,7 @@ func TestHandleVote_IgnoresUnknownBlocks(t *testing.T) {
 
 // TestHandleVote_ProcessesKnownBlocks verifies votes for tracked blocks are processed
 func TestHandleVote_ProcessesKnownBlocks(t *testing.T) {
-	engine := NewWithParams(config.Parameters{
+	engine := newTestEngineParams(config.Parameters{
 		K:               5,
 		AlphaPreference: 3,
 		AlphaConfidence: 3,
@@ -682,13 +680,8 @@ func TestHandleVote_ProcessesKnownBlocks(t *testing.T) {
 	}
 	initialVoteCount := pending.VoteCount
 
-	// Send vote for known block
-	engine.ReceiveVote(Vote{
-		BlockID:  blk.id,
-		NodeID:   ids.GenerateTestNodeID(),
-		Accept:   true,
-		SignedAt: time.Now(),
-	})
+	// Send a SIGNED vote for the known block (authenticated quorum path).
+	engine.ReceiveVote(signedVoteForEngine(engine, blk.id, ids.GenerateTestNodeID()))
 
 	// Give handler time to process
 	time.Sleep(100 * time.Millisecond)
@@ -716,7 +709,7 @@ func TestHandleVote_ProcessesKnownBlocks(t *testing.T) {
 
 // TestProcessVote_AcceptTrueIncrementsSupport verifies Accept=true votes count toward acceptance
 func TestProcessVote_AcceptTrueIncrementsSupport(t *testing.T) {
-	engine := NewWithParams(config.Parameters{
+	engine := newTestEngineParams(config.Parameters{
 		K:               3,
 		AlphaPreference: 2,
 		AlphaConfidence: 2,
@@ -745,14 +738,9 @@ func TestProcessVote_AcceptTrueIncrementsSupport(t *testing.T) {
 		t.Fatalf("Notify failed: %v", err)
 	}
 
-	// Send Accept=true votes to reach quorum
+	// Send SIGNED Accept votes to reach quorum (authenticated quorum path).
 	for i := 0; i < 3; i++ {
-		engine.ReceiveVote(Vote{
-			BlockID:  blk.id,
-			NodeID:   ids.GenerateTestNodeID(),
-			Accept:   true,
-			SignedAt: time.Now(),
-		})
+		engine.ReceiveVote(signedVoteForEngine(engine, blk.id, ids.GenerateTestNodeID()))
 	}
 
 	// Wait for acceptance
@@ -782,7 +770,7 @@ func TestProcessVote_AcceptTrueIncrementsSupport(t *testing.T) {
 // path) so the assertion is meaningful again.
 func TestProcessVote_AcceptFalseDoesNotAccept(t *testing.T) {
 
-	engine := NewWithParams(config.Parameters{
+	engine := newTestEngineParams(config.Parameters{
 		K:               3,
 		AlphaPreference: 2,
 		AlphaConfidence: 2,
@@ -859,7 +847,7 @@ func TestProcessVote_AcceptFalseDoesNotAccept(t *testing.T) {
 func TestEngine_RejectsWithInsufficientSupport(t *testing.T) {
 
 	// Use smaller parameters (K=5, Alpha=3, Beta=2)
-	engine := NewWithParams(config.Parameters{
+	engine := newTestEngineParams(config.Parameters{
 		K:               5,
 		AlphaPreference: 3,
 		AlphaConfidence: 3,
@@ -933,7 +921,7 @@ func TestEngine_RejectsWithInsufficientSupport(t *testing.T) {
 // TestSyncState_UpdatesConsensusState verifies SyncState correctly updates consensus.
 // This is critical for recovering from admin_importChain RLP imports.
 func TestSyncState_UpdatesConsensusState(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	// Before sync, bootstrapped is false (engine not started)
@@ -962,7 +950,7 @@ func TestSyncState_UpdatesConsensusState(t *testing.T) {
 
 // TestSyncState_ClearsStalePendingBlocks verifies SyncState removes stale blocks.
 func TestSyncState_ClearsStalePendingBlocks(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	// Add some pending blocks at various heights
@@ -1003,7 +991,7 @@ func TestSyncState_ClearsStalePendingBlocks(t *testing.T) {
 
 // TestSyncState_Idempotent verifies calling SyncState multiple times is safe.
 func TestSyncState_Idempotent(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	blockID1 := ids.GenerateTestID()
@@ -1035,7 +1023,7 @@ func TestSyncState_Idempotent(t *testing.T) {
 
 // TestSyncState_WithEmptyID verifies SyncState handles empty block ID.
 func TestSyncState_WithEmptyID(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	// Sync with empty ID (genesis state)
@@ -1228,7 +1216,7 @@ func TestBurstThroughput(t *testing.T) {
 func TestSlashing_DoubleVoteDropped(t *testing.T) {
 	detector := slashing.NewDetector(64, 0.5)
 	db := slashing.NewDB(1 * time.Hour)
-	engine := New(WithSlashing(detector, db))
+	engine := newTestEngine(WithSlashing(detector, db))
 	ctx := context.Background()
 
 	_ = engine.Start(ctx, true)
@@ -1260,7 +1248,7 @@ func TestSlashing_DoubleVoteDropped(t *testing.T) {
 	nodeA[0] = 0x01
 
 	// First vote: nodeA votes for blkID at height 100 -- should succeed
-	engine.ReceiveVote(Vote{BlockID: blkID, NodeID: nodeA, Accept: true})
+	engine.ReceiveVote(signedVoteForEngine(engine, blkID, nodeA))
 	time.Sleep(50 * time.Millisecond) // let vote handler process
 
 	engine.mu.RLock()
@@ -1276,7 +1264,8 @@ func TestSlashing_DoubleVoteDropped(t *testing.T) {
 	}
 
 	// Second vote: nodeA votes for blkID2 at height 100 -- equivocation, should be dropped
-	engine.ReceiveVote(Vote{BlockID: blkID2, NodeID: nodeA, Accept: true})
+	// (by the slashing detector, which runs before signature verification).
+	engine.ReceiveVote(signedVoteForEngine(engine, blkID2, nodeA))
 	time.Sleep(50 * time.Millisecond)
 
 	engine.mu.RLock()
@@ -1307,7 +1296,7 @@ func TestSlashing_DoubleVoteDropped(t *testing.T) {
 func TestSlashing_JailedVotesDropped(t *testing.T) {
 	detector := slashing.NewDetector(64, 0.5)
 	db := slashing.NewDB(1 * time.Hour)
-	engine := New(WithSlashing(detector, db))
+	engine := newTestEngine(WithSlashing(detector, db))
 	ctx := context.Background()
 
 	_ = engine.Start(ctx, true)
@@ -1358,7 +1347,7 @@ func TestSlashing_JailedVotesDropped(t *testing.T) {
 func TestSlashing_CheckBlockProposal(t *testing.T) {
 	detector := slashing.NewDetector(64, 0.5)
 	db := slashing.NewDB(1 * time.Hour)
-	engine := New(WithSlashing(detector, db))
+	engine := newTestEngine(WithSlashing(detector, db))
 
 	var nodeA ids.NodeID
 	nodeA[0] = 0x01
@@ -1396,7 +1385,7 @@ func TestSlashing_CheckBlockProposal(t *testing.T) {
 
 func TestSlashing_Disabled(t *testing.T) {
 	// Without slashing option, everything works normally
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	_ = engine.Start(ctx, true)
@@ -1415,7 +1404,7 @@ func TestSlashing_Disabled(t *testing.T) {
 	var nodeA ids.NodeID
 	nodeA[0] = 0x01
 
-	engine.ReceiveVote(Vote{BlockID: blkID, NodeID: nodeA, Accept: true})
+	engine.ReceiveVote(signedVoteForEngine(engine, blkID, nodeA))
 	time.Sleep(50 * time.Millisecond)
 
 	engine.mu.RLock()
@@ -1439,14 +1428,14 @@ func TestSlashing_Disabled(t *testing.T) {
 
 func TestSlashing_SlashingDBAccessor(t *testing.T) {
 	db := slashing.NewDB(1 * time.Hour)
-	engine := New(WithSlashing(slashing.NewDetector(64, 0.5), db))
+	engine := newTestEngine(WithSlashing(slashing.NewDetector(64, 0.5), db))
 
 	got := engine.SlashingDB()
 	if got != db {
 		t.Fatal("SlashingDB() should return the configured DB")
 	}
 
-	engine2 := New()
+	engine2 := newTestEngine()
 	if engine2.SlashingDB() != nil {
 		t.Fatal("SlashingDB() should return nil when slashing disabled")
 	}
@@ -1507,7 +1496,7 @@ func (m *failingBuildVM) SetPreference(_ context.Context, id ids.ID) error {
 // must not decrement pendingBuildBlocks so the build is retried.
 func TestBuildBlockError_DoesNotDecrementPending(t *testing.T) {
 	vm := &failingBuildVM{failCount: 1}
-	eng := New(WithVM(vm))
+	eng := newTestEngine(WithVM(vm))
 
 	if err := eng.Start(context.Background(), true); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -1534,7 +1523,7 @@ func TestBuildBlockError_DoesNotDecrementPending(t *testing.T) {
 // error, the next Notify successfully builds the block (retry).
 func TestBuildBlockError_RetriesOnNextNotify(t *testing.T) {
 	vm := &failingBuildVM{failCount: 1}
-	eng := New(WithVM(vm))
+	eng := newTestEngine(WithVM(vm))
 
 	if err := eng.Start(context.Background(), true); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -1571,7 +1560,7 @@ func TestBuildBlockError_RetriesOnNextNotify(t *testing.T) {
 // retains the counter, so future Notifys always attempt to build.
 func TestBuildBlockError_RepeatedFailures_NoPermanentHalt(t *testing.T) {
 	vm := &failingBuildVM{failCount: 100} // fails 100 times
-	eng := New(WithVM(vm))
+	eng := newTestEngine(WithVM(vm))
 
 	if err := eng.Start(context.Background(), true); err != nil {
 		t.Fatalf("Start: %v", err)
