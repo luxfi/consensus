@@ -25,7 +25,7 @@ func TestConfigValidate(t *testing.T) {
 
 func TestWithProposer(t *testing.T) {
 	proposer := &mockProposer{}
-	engine := New(WithProposer(proposer))
+	engine := newTestEngine(WithProposer(proposer))
 	if engine.proposer == nil {
 		t.Error("WithProposer should set proposer")
 	}
@@ -33,14 +33,14 @@ func TestWithProposer(t *testing.T) {
 
 func TestWithEmitter(t *testing.T) {
 	proposer := &mockProposer{}
-	engine := New(WithEmitter(proposer))
+	engine := newTestEngine(WithEmitter(proposer))
 	if engine.proposer == nil {
 		t.Error("WithEmitter should set proposer (alias)")
 	}
 }
 
 func TestWithLogger(t *testing.T) {
-	engine := New(WithLogger(nil))
+	engine := newTestEngine(WithLogger(nil))
 	// When nil is passed, the constructor should set log.Noop()
 	if engine.log == nil {
 		t.Error("log should not be nil even when WithLogger(nil)")
@@ -48,7 +48,7 @@ func TestWithLogger(t *testing.T) {
 }
 
 func TestWithVoteBuffers(t *testing.T) {
-	engine := New(WithVoteBuffers(50, 200))
+	engine := newTestEngine(WithVoteBuffers(50, 200))
 	if cap(engine.voteRequests) != 50 {
 		t.Errorf("expected voteRequests cap 50, got %d", cap(engine.voteRequests))
 	}
@@ -59,7 +59,7 @@ func TestWithVoteBuffers(t *testing.T) {
 
 func TestWithVoteBuffersZero(t *testing.T) {
 	// Zero values should not create new channels (keep defaults)
-	engine := New(WithVoteBuffers(0, 0))
+	engine := newTestEngine(WithVoteBuffers(0, 0))
 	if engine.voteRequests == nil {
 		t.Error("voteRequests should not be nil")
 	}
@@ -71,7 +71,7 @@ func TestWithVoteBuffersZero(t *testing.T) {
 func TestWithParams(t *testing.T) {
 	params := config.DefaultParams()
 	params.K = 42
-	engine := New(WithParams(params))
+	engine := newTestEngine(WithParams(params))
 	if engine.params.K != 42 {
 		t.Errorf("expected K=42, got %d", engine.params.K)
 	}
@@ -80,7 +80,7 @@ func TestWithParams(t *testing.T) {
 func TestWithSlashing(t *testing.T) {
 	det := slashing.NewDetector(64, 0.5)
 	db := slashing.NewDB(10 * time.Minute)
-	engine := New(WithSlashing(det, db))
+	engine := newTestEngine(WithSlashing(det, db))
 	if engine.slashingDetector == nil {
 		t.Error("slashing detector should be set")
 	}
@@ -92,7 +92,7 @@ func TestWithSlashing(t *testing.T) {
 // --- StartWithID / StopWithError / Context ---
 
 func TestStartWithID(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 	if err := engine.StartWithID(ctx, 1); err != nil {
 		t.Fatalf("StartWithID failed: %v", err)
@@ -104,7 +104,7 @@ func TestStartWithID(t *testing.T) {
 }
 
 func TestStopWithError(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 	engine.Start(ctx, true)
 
@@ -118,7 +118,7 @@ func TestStopWithError(t *testing.T) {
 }
 
 func TestContextBeforeStart(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := engine.Context()
 	if ctx == nil {
 		t.Error("Context should return non-nil before Start")
@@ -126,7 +126,7 @@ func TestContextBeforeStart(t *testing.T) {
 }
 
 func TestContextAfterStart(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	engine.Start(context.Background(), true)
 	ctx := engine.Context()
 	if ctx == nil {
@@ -138,7 +138,7 @@ func TestContextAfterStart(t *testing.T) {
 // --- SetEmitter ---
 
 func TestSetEmitter(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	proposer := &mockProposer{}
 	engine.SetEmitter(proposer)
 	if engine.proposer == nil {
@@ -149,14 +149,14 @@ func TestSetEmitter(t *testing.T) {
 // --- HasPendingBlock / GetPendingBlock ---
 
 func TestHasPendingBlockEmpty(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	if engine.HasPendingBlock(ids.Empty) {
 		t.Error("should have no pending blocks initially")
 	}
 }
 
 func TestGetPendingBlockEmpty(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	blk, ok := engine.GetPendingBlock(ids.Empty)
 	if ok {
 		t.Error("should not find pending block")
@@ -167,7 +167,7 @@ func TestGetPendingBlockEmpty(t *testing.T) {
 }
 
 func TestGetPendingBlockNoVMBlock(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	blockID := ids.GenerateTestID()
 	engine.pendingBlocks[blockID] = &PendingBlock{
 		ConsensusBlock: &Block{id: blockID},
@@ -183,7 +183,7 @@ func TestGetPendingBlockNoVMBlock(t *testing.T) {
 }
 
 func TestGetPendingBlockWithVMBlock(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	blockID := ids.GenerateTestID()
 	mb := &mockBlock{id: blockID, height: 1}
 	engine.pendingBlocks[blockID] = &PendingBlock{
@@ -202,7 +202,7 @@ func TestGetPendingBlockWithVMBlock(t *testing.T) {
 // --- ReceiveVote ---
 
 func TestReceiveVoteNotStarted(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	vote := Vote{BlockID: ids.GenerateTestID(), Accept: true}
 	if engine.ReceiveVote(vote) {
 		t.Error("should return false when not started")
@@ -210,7 +210,7 @@ func TestReceiveVoteNotStarted(t *testing.T) {
 }
 
 func TestReceiveVoteStarted(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	engine.Start(context.Background(), true)
 	defer engine.Stop(context.Background())
 
@@ -221,7 +221,7 @@ func TestReceiveVoteStarted(t *testing.T) {
 }
 
 func TestReceiveVoteBufferFull(t *testing.T) {
-	engine := New(WithVoteBuffers(1, 1))
+	engine := newTestEngine(WithVoteBuffers(1, 1))
 	engine.Start(context.Background(), true)
 	defer engine.Stop(context.Background())
 
@@ -236,7 +236,7 @@ func TestReceiveVoteBufferFull(t *testing.T) {
 // --- DrainAccepted ---
 
 func TestDrainAcceptedNoBlocks(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	engine.Start(context.Background(), true)
 	defer engine.Stop(context.Background())
 
@@ -245,7 +245,7 @@ func TestDrainAcceptedNoBlocks(t *testing.T) {
 }
 
 func TestDrainAcceptedWithAcceptedBlock(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 	engine.Start(ctx, true)
 	defer engine.Stop(ctx)
@@ -283,7 +283,7 @@ func TestDrainAcceptedWithAcceptedBlock(t *testing.T) {
 // --- SyncState ---
 
 func TestSyncState(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 	engine.Start(ctx, true)
 	defer engine.Stop(ctx)
@@ -320,7 +320,7 @@ func TestSyncState(t *testing.T) {
 // --- Stats ---
 
 func TestStats(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	stats := engine.Stats()
 
 	expectedKeys := []string{"blocks_built", "blocks_accepted", "blocks_rejected",
@@ -354,7 +354,7 @@ func TestNewWithConfigBurstMode(t *testing.T) {
 func TestHandleVoteWithSlashing(t *testing.T) {
 	det := slashing.NewDetector(64, 0.5)
 	db := slashing.NewDB(10 * time.Minute)
-	engine := New(WithSlashing(det, db))
+	engine := newTestEngine(WithSlashing(det, db))
 	ctx := context.Background()
 	engine.Start(ctx, true)
 	defer engine.Stop(ctx)
@@ -378,7 +378,7 @@ func TestHandleVoteWithSlashing(t *testing.T) {
 }
 
 func TestHandleVoteUnknownBlock(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 	engine.Start(ctx, true)
 	defer engine.Stop(ctx)
@@ -391,7 +391,7 @@ func TestHandleVoteUnknownBlock(t *testing.T) {
 }
 
 func TestHandleVoteReject(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 	engine.Start(ctx, true)
 	defer engine.Stop(ctx)
@@ -405,7 +405,9 @@ func TestHandleVoteReject(t *testing.T) {
 		VMBlock:        &mockBlock{id: blockID},
 	}
 
-	engine.handleVote(Vote{BlockID: blockID, Accept: false})
+	// A SIGNED reject from a validator counts toward RejectCount (an unsigned
+	// reject is dropped by the authenticated quorum path).
+	engine.handleVote(signedRejectForEngine(engine, blockID, ids.GenerateTestNodeID()))
 	// RejectCount should be incremented
 	engine.mu.RLock()
 	p := engine.pendingBlocks[blockID]
@@ -418,7 +420,7 @@ func TestHandleVoteReject(t *testing.T) {
 // --- CheckBlockProposal ---
 
 func TestCheckBlockProposalNoSlashing(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ev := engine.CheckBlockProposal(ids.GenerateTestNodeID(), 1, ids.GenerateTestID(), nil)
 	if ev != nil {
 		t.Error("should return nil when slashing not configured")
@@ -428,7 +430,7 @@ func TestCheckBlockProposalNoSlashing(t *testing.T) {
 func TestCheckBlockProposalJailed(t *testing.T) {
 	det := slashing.NewDetector(64, 0.5)
 	db := slashing.NewDB(10 * time.Minute)
-	engine := New(WithSlashing(det, db))
+	engine := newTestEngine(WithSlashing(det, db))
 
 	nodeID := ids.GenerateTestNodeID()
 	db.RecordEvidence(slashing.Evidence{
@@ -444,13 +446,13 @@ func TestCheckBlockProposalJailed(t *testing.T) {
 }
 
 func TestSlashingDB(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	if engine.SlashingDB() != nil {
 		t.Error("should return nil when not configured")
 	}
 
 	db := slashing.NewDB(10 * time.Minute)
-	engine2 := New(WithSlashing(slashing.NewDetector(64, 0.5), db))
+	engine2 := newTestEngine(WithSlashing(slashing.NewDetector(64, 0.5), db))
 	if engine2.SlashingDB() == nil {
 		t.Error("should return DB when configured")
 	}
@@ -459,7 +461,7 @@ func TestSlashingDB(t *testing.T) {
 // --- Double start ---
 
 func TestDoubleStart(t *testing.T) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 	engine.Start(ctx, true)
 	defer engine.Stop(ctx)

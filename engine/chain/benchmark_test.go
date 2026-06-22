@@ -546,7 +546,7 @@ func BenchmarkBlockAdditionTable(b *testing.B) {
 
 // Benchmark GetBlock operation
 func BenchmarkGetBlock(b *testing.B) {
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 	_ = engine.Start(ctx, true)
 
@@ -575,7 +575,7 @@ func BenchmarkBootstrapping(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		engine := New()
+		engine := newTestEngine()
 		ctx := context.Background()
 
 		// Start triggers bootstrapping
