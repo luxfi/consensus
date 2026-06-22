@@ -199,9 +199,15 @@ func TestEpochManager_FullSigningFlow(t *testing.T) {
 
 	// Round 1
 	round1Data := make(map[int]*coronaThreshold.Round1Data)
-	round1Data[0] = signer0.Round1(sessionID, prfKey, signerIDs)
-	round1Data[1] = signer1.Round1(sessionID, prfKey, signerIDs)
-	round1Data[2] = signer2.Round1(sessionID, prfKey, signerIDs)
+	r1_0, err := signer0.Round1(sessionID, prfKey, signerIDs)
+	require.NoError(t, err)
+	round1Data[0] = r1_0
+	r1_1, err := signer1.Round1(sessionID, prfKey, signerIDs)
+	require.NoError(t, err)
+	round1Data[1] = r1_1
+	r1_2, err := signer2.Round1(sessionID, prfKey, signerIDs)
+	require.NoError(t, err)
+	round1Data[2] = r1_2
 	t.Log("Round 1 complete: D matrices computed")
 
 	// Round 2
@@ -250,9 +256,15 @@ func TestEpochManager_CrossEpochVerification(t *testing.T) {
 
 	// Complete 2-round protocol
 	round1Data := make(map[int]*coronaThreshold.Round1Data)
-	round1Data[0] = signer0.Round1(sessionID, prfKey, signerIDs)
-	round1Data[1] = signer1.Round1(sessionID, prfKey, signerIDs)
-	round1Data[2] = signer2.Round1(sessionID, prfKey, signerIDs)
+	r1_0, err := signer0.Round1(sessionID, prfKey, signerIDs)
+	require.NoError(t, err)
+	round1Data[0] = r1_0
+	r1_1, err := signer1.Round1(sessionID, prfKey, signerIDs)
+	require.NoError(t, err)
+	round1Data[1] = r1_1
+	r1_2, err := signer2.Round1(sessionID, prfKey, signerIDs)
+	require.NoError(t, err)
+	round1Data[2] = r1_2
 
 	round2Data := make(map[int]*coronaThreshold.Round2Data)
 	r2_0, _ := signer0.Round2(sessionID, message, prfKey, signerIDs, round1Data)
@@ -567,7 +579,9 @@ func TestQuasar_EpochSigningAfterRotation(t *testing.T) {
 	round1Data := make(map[int]*coronaThreshold.Round1Data)
 	for _, vid := range validators {
 		signer := keys0.Signers[vid]
-		round1Data[keys0.Shares[vid].Index] = signer.Round1(sessionID, prfKey, signerIDs)
+		r1, err := signer.Round1(sessionID, prfKey, signerIDs)
+		require.NoError(t, err)
+		round1Data[keys0.Shares[vid].Index] = r1
 	}
 
 	round2Data := make(map[int]*coronaThreshold.Round2Data)
