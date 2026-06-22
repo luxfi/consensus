@@ -33,7 +33,23 @@ post-quantum finality. All sub-protocols live in `protocol/`.
 
 **DAG (Nebula)**: Photon -> Wave (per frontier vertex) -> Flare (cert/skip) -> Horizon (safe prefix) -> Field (commit) -> Committer
 
-### Quasar Certificate
+### ConsensusCert envelope (CANONICAL — supersedes the Groth16 `QuasarCert` narrative below)
+
+The finality certificate is threshold **CERTIFICATION**, not threshold signing.
+One policy-gated envelope (`protocol/quasar/consensus_cert.go`,
+`VerifyConsensusCert`) with per-leg evidence modes:
+`EvidenceThresholdSig` (lattice O(1) — origin's `VerifyWithRealKeys`),
+`EvidenceWeightedSigSet` (independent FIPS sigs + weighted quorum — the
+`WeightedQuorumCert`; the **only** mode for SLH-DSA, never seed-reconstructed),
+`EvidenceStarkCompressedSigSet` (P3Q, same predicate, audit-gated stub), and
+`EvidenceClassicalAggregate` (BLS, classical-only, never satisfies a PQ leg).
+Required legs are **policy-derived** (`CertPolicy.RequiredLegs`), never cert
+bytes (the Red H3 anti-downgrade). One-sentence spec: *policy defines the
+required legs; cert bytes provide per-leg evidence; each mode proves the same
+weighted-quorum predicate over the same domain-separated message.* The
+`MLDSAProof`/Groth16 3-tuple below is the SUPERSEDED prior design.
+
+### Quasar Certificate (superseded — historical)
 
 `QuasarCert` (see `protocol/quasar/types.go:40`) is a 3-tuple:
 
