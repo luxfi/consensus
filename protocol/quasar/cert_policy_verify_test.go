@@ -155,7 +155,11 @@ func buildPolarisFixture(t *testing.T) polarisFixture {
 	coronaPRFKey := []byte("h3-policy-verify-corona-prf-32B!!")
 	coronaRound1 := make(map[int]*coronaThreshold.Round1Data, threshold)
 	for i := 0; i < threshold; i++ {
-		coronaRound1[signerIDs[i]] = coronaSigners[i].Round1(coronaSessionID, coronaPRFKey, signerIDs)
+		r1, err := coronaSigners[i].Round1(coronaSessionID, coronaPRFKey, signerIDs)
+		if err != nil {
+			t.Fatalf("corona.Round1[%d]: %v", i, err)
+		}
+		coronaRound1[signerIDs[i]] = r1
 	}
 	coronaRound2 := make(map[int]*coronaThreshold.Round2Data, threshold)
 	for i := 0; i < threshold; i++ {
