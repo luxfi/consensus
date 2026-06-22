@@ -295,9 +295,10 @@ func TestOnImportComplete_AfterStart(t *testing.T) {
 	vm.blocks[genesisID] = genesisBlock
 
 	rt := NewRuntime(NetworkConfig{
-		ChainID:   ids.GenerateTestID(),
-		NetworkID: ids.GenerateTestID(),
-		VM:        vm,
+		ChainID:      ids.GenerateTestID(),
+		NetworkID:    ids.GenerateTestID(),
+		VM:           vm,
+		VoteVerifier: testAuth, // multi-validator engine requires a verifier
 	})
 
 	// Start the engine
@@ -339,7 +340,7 @@ func TestSyncStateFromVM(t *testing.T) {
 	vm.lastAcceptedID = importedBlockID
 	vm.blocks[importedBlockID] = importedBlock
 
-	engine := New()
+	engine := newTestEngine()
 
 	blockID, height, err := SyncStateFromVM(ctx, vm, engine)
 	require.NoError(err)

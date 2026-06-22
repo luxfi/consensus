@@ -427,7 +427,7 @@ func TestTransitiveAddBlock(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -450,7 +450,7 @@ func TestTransitiveProcessVote(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -474,7 +474,7 @@ func TestTransitivePoll(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -501,7 +501,7 @@ func TestTransitiveIsAccepted(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -515,7 +515,7 @@ func TestTransitivePreference(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -528,7 +528,7 @@ func TestTransitivePreference(t *testing.T) {
 func TestTransitiveSetVM(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 
 	// Initially no VM
 	require.Nil(engine.vm)
@@ -549,7 +549,7 @@ func TestTransitiveNotifyPendingTxs(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -570,7 +570,7 @@ func TestTransitiveNotifyPendingTxsWithVM(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -596,7 +596,7 @@ func TestTransitiveNotifyPendingTxsWithVMError(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -622,7 +622,7 @@ func TestTransitiveNotifyStateSyncDone(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -637,7 +637,7 @@ func TestTransitiveNotifyUnknownType(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -651,7 +651,7 @@ func TestTransitiveNotifyUnknownType(t *testing.T) {
 func TestTransitivePendingBuildBlocks(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 
 	// Initially zero
 	require.Zero(engine.PendingBuildBlocks())
@@ -669,7 +669,7 @@ func TestTransitiveBuildBlocksLockedNilVM(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 
 	// Set pending builds
 	engine.pendingBuildBlocks = 3
@@ -689,7 +689,7 @@ func TestTransitiveBuildBlocksLockedMultiple(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 
 	// Track build calls
 	buildCount := 0
@@ -716,7 +716,7 @@ func TestTransitiveBuildBlocksLockedPartialFailure(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 
 	// Fail after first build
 	buildCount := 0
@@ -755,7 +755,7 @@ func TestNewWithParams(t *testing.T) {
 		Beta:            10,
 	}
 
-	engine := NewWithParams(params)
+	engine := newTestEngineParams(params)
 
 	require.NotNil(engine)
 	require.NotNil(engine.consensus)
@@ -862,7 +862,7 @@ func TestTransitiveConcurrentNotify(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -929,7 +929,7 @@ func TestTransitiveStartStop(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 
 	// Multiple start/stop cycles
 	for i := 0; i < 5; i++ {
@@ -948,7 +948,7 @@ func TestTransitiveStopWithoutStart(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 
 	// Stop should be safe even without start
 	err := engine.Stop(ctx)
@@ -960,7 +960,7 @@ func TestTransitiveHealthCheckBeforeStart(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 
 	// Health check should work even before start
 	health, err := engine.HealthCheck(ctx)
@@ -977,7 +977,7 @@ func TestTransitiveHealthCheckAfterStart(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -1103,7 +1103,7 @@ func TestFullConsensusFlow(t *testing.T) {
 		AlphaConfidence: 1,
 		Beta:            1,
 	}
-	engine := NewWithParams(params)
+	engine := newTestEngineParams(params)
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 
@@ -1200,7 +1200,7 @@ func TestNotifyMultiplePendingTxs(t *testing.T) {
 	require := require.New(t)
 	ctx := context.Background()
 
-	engine := New()
+	engine := newTestEngine()
 	require.NoError(engine.Start(ctx, true))
 	defer engine.Stop(ctx)
 

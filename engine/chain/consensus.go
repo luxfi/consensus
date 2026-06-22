@@ -5,12 +5,20 @@ package chain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/ids"
 )
+
+// ErrForceAcceptRequiresSingleValidator is returned by ForceAccept when invoked
+// on a multi-validator engine (k != 1). Self-finality without α-of-K is only
+// sound when the sole validator's accept IS the quorum; in every multi-
+// validator deployment finality MUST flow through the cert-witnessed α-of-K
+// path. Fail-closed.
+var ErrForceAcceptRequiresSingleValidator = errors.New("chain: ForceAccept is only valid for a single-validator engine (k==1); multi-validator finality requires an alpha-of-K quorum cert")
 
 // Block represents a block in the chain
 type Block struct {
@@ -294,30 +302,64 @@ func (c *ChainConsensus) ForcePreference(blockID ids.ID) {
 	c.tips[blockID] = true
 }
 
-// ForceAccept marks a block as accepted in the consensus engine without
-// requiring the natural alpha-of-K quorum threshold. This is the consensus-
-// level counterpart to ForcePreference, used by the proposer-self-accept
-// path (engine.finalizeOwnProposal) to commit a self-proposed block locally
-// when peer Chits do not arrive in a timely fashion.
+// ForceAccept marks a block as accepted WITHOUT a quorum — it is the
+// single-validator (K==1) finalization path and NOTHING ELSE.
 //
-// Safety: the caller must have already verified the block (via VMBlock.Verify)
-// and must have IsOwnProposal=true in the pending entry. The engine's
-// finalizeOwnProposal helper is the only authorized caller — direct use
-// from elsewhere violates the alpha-quorum guarantee for follower-tracked
-// blocks and is unsafe.
+// HISTORY / WHY IT IS GATED: ForceAccept used to be the proposer-self-accept
+// escape hatch — the proposer force-accepted its OWN block on its lone
+// self-vote when peer Chits arrived late. That was self-finality: a value
+// block could finalize with NO α-of-K agreement, so a Byzantine (or merely
+// equivocating) proposer could fork the chain. It is REMOVED for K>1. With
+// more than one validator, finality flows ONLY through the α-of-K path
+// (ProcessVote / Poll set accepted=true once acceptVotes>=alpha) and is
+// witnessed by a QuorumCert (quorum_cert.go) — there is no force path.
+//
+// For K==1 (a single-validator network, e.g. --dev / localnet) "α-of-K" is
+// "1-of-1": the sole validator's own accept IS the quorum, so ForceAccept is
+// the correct, safe finalization. The guard makes the abuse impossible to
+// reach in any multi-validator deployment:
+//
+//	returns ErrForceAcceptRequiresSingleValidator when k != 1 — fail-closed.
 //
 // Idempotent: subsequent calls on an already-accepted block no-op.
-func (c *ChainConsensus) ForceAccept(blockID ids.ID) {
+func (c *ChainConsensus) ForceAccept(blockID ids.ID) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.k != 1 {
+		return ErrForceAcceptRequiresSingleValidator
+	}
 	block, exists := c.blocks[blockID]
 	if !exists {
-		return
+		return nil
 	}
 	if block.accepted {
-		return
+		return nil
 	}
 	block.accepted = true
+	c.finalizedTip = blockID
+	return nil
+}
+
+// AcceptViaCert marks a block accepted because a verified QuorumCert proves
+// α-of-K validators accepted it. This is the multi-validator finalization
+// authority that replaces the deleted self-accept force path: the caller has
+// ALREADY verified the cert (cert.Verify) against the chain's VoteVerifier, so
+// this method records the decision the cert proves. It does not re-decide
+// quorum — the cert IS the quorum proof.
+//
+// The block need not be locally tracked in c.blocks (a follower may finalize a
+// block via cert before it ever entered local consensus tracking): when absent
+// the finalized tip is still advanced so the engine's view matches the proven
+// finality. Idempotent on an already-accepted tracked block.
+func (c *ChainConsensus) AcceptViaCert(blockID ids.ID) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if block, exists := c.blocks[blockID]; exists {
+		if block.accepted {
+			return
+		}
+		block.accepted = true
+	}
 	c.finalizedTip = blockID
 }
 
@@ -327,4 +369,22 @@ func (c *ChainConsensus) GetFinalizedTip() ids.ID {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.finalizedTip
+}
+
+// K returns the consensus sample size (the K of α-of-K). Used by the engine to
+// select the single-validator (K==1) force path vs. the multi-validator
+// cert-witnessed path, and by the fail-closed DEX guard.
+func (c *ChainConsensus) K() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.k
+}
+
+// Alpha returns the acceptance quorum threshold (α of α-of-K). A block is
+// accepted once acceptVotes >= Alpha; a QuorumCert proves exactly this many
+// distinct signed accepts.
+func (c *ChainConsensus) Alpha() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.alpha
 }
