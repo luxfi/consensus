@@ -46,6 +46,21 @@ type NetworkConfig struct {
 	// For small validator sets (e.g., 5 nodes), use LocalParams() which has
 	// K=5, Beta=4 - appropriate thresholds for the validator count.
 	Params *config.Parameters
+
+	// Quorum-cert finality (multi-validator). The node supplies these to enable
+	// α-of-K cert-witnessed finality:
+	//   - VoteVerifier MUST be non-nil for any K>1 chain (the engine refuses to
+	//     Start a multi-validator engine without it). Verifies vote + cert
+	//     signatures against the chain's validator key set.
+	//   - VoteSigner signs THIS node's accept votes (so its signature joins the
+	//     cert when it votes). Required for this node to contribute to a cert.
+	//   - CryptoWitnessSource (optional) upgrades engine certs to
+	//     quasar.WeightedQuorumCert when the chain's PQ weighted validator set is
+	//     plumbed. nil keeps the engine-level cert as the witness.
+	//
+	// For a single-validator chain (K==1, e.g. --dev) leave these nil.
+	VoteVerifier VoteVerifier
+	VoteSigner   VoteSigner
 }
 
 // Gossiper abstracts the network layer for consensus message broadcasting.
@@ -70,6 +85,29 @@ type Gossiper interface {
 	// that this node has accepted the block, enabling the proposer to
 	// reach vote threshold and finalize its own copy.
 	SendVote(chainID ids.ID, toNodeID ids.NodeID, blockID ids.ID) error
+}
+
+// QuorumGossiper is the vote/cert distribution topology required for α-of-K
+// finality. It is the STRUCTURAL fix for the proposer-freeze: under the old
+// SendVote-to-proposer-only topology a follower's vote reached only the
+// proposer, so if the proposer's own Chits dropped it pinned below alpha and
+// froze (which is why self-finality was bolted on). Here followers broadcast
+// their SIGNED votes to ALL validators and any node that collects alpha
+// distinct signed votes assembles + gossips the cert — so finality no longer
+// depends on one node's inbound Chits.
+//
+// A Gossiper that does not implement QuorumGossiper runs in legacy single-
+// validator / no-cert mode (K==1). Multi-validator finality requires it.
+type QuorumGossiper interface {
+	// BroadcastVote sends this node's SIGNED accept vote for blockID to ALL
+	// validators on the network (not just the proposer). voteBytes is the
+	// encoded signed vote (node id + signature over the canonical vote
+	// message). Returns the number of validators reached.
+	BroadcastVote(chainID ids.ID, networkID ids.ID, blockID ids.ID, voteBytes []byte) int
+	// GossipCert broadcasts an assembled finality cert (encoded
+	// WeightedQuorumCert / engine QuorumCert) to ALL validators so they can
+	// finalize blockID on a verifiable α-of-K proof. Returns validators reached.
+	GossipCert(chainID ids.ID, networkID ids.ID, blockID ids.ID, certBytes []byte) int
 }
 
 // Runtime wraps Transitive with network integration and VM notification handling.
@@ -120,6 +158,22 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		params = *cfg.Params
 	}
 	engine := NewWithParams(params)
+
+	// Wire α-of-K quorum-cert finality for multi-validator chains. The engine
+	// refuses to Start a K>1 engine without a verifier (fail-closed), so a
+	// production multi-validator chain MUST supply cfg.VoteVerifier. The cert
+	// gossiper bridges the network Gossiper's cert-distribution to the engine.
+	if cfg.VoteVerifier != nil {
+		var certGossiper CertGossiper
+		if cfg.Gossiper != nil {
+			certGossiper = &gossiperCertBridge{
+				gossiper:  cfg.Gossiper,
+				chainID:   cfg.ChainID,
+				networkID: cfg.NetworkID,
+			}
+		}
+		WithQuorumCert(cfg.ChainID, cfg.NodeID, cfg.VoteVerifier, certGossiper, cfg.VoteSigner)(engine)
+	}
 
 	rt := &Runtime{
 		Transitive: engine,
@@ -263,6 +317,26 @@ func (rt *Runtime) ForwardVMNotifications(toEngine <-chan block.Message) {
 // where blocks are accepted synchronously during buildBlocksLocked).
 func (rt *Runtime) drainAcceptedBlocks(ctx context.Context) {
 	rt.Transitive.DrainAccepted(ctx)
+}
+
+// gossiperCertBridge adapts the engine's CertGossiper (GossipCert(chainID,
+// blockID, bytes)) to the network Gossiper's QuorumGossiper.GossipCert
+// (chainID, networkID, blockID, bytes). If the configured Gossiper does not
+// implement QuorumGossiper, cert gossip is a no-op (the engine still finalizes
+// locally on the verified cert; followers reach finality via their own votes).
+type gossiperCertBridge struct {
+	gossiper  Gossiper
+	chainID   ids.ID
+	networkID ids.ID
+}
+
+var _ CertGossiper = (*gossiperCertBridge)(nil)
+
+func (b *gossiperCertBridge) GossipCert(_ ids.ID, blockID ids.ID, certBytes []byte) error {
+	if qg, ok := b.gossiper.(QuorumGossiper); ok {
+		qg.GossipCert(b.chainID, b.networkID, blockID, certBytes)
+	}
+	return nil
 }
 
 // gossiperProposer adapts a Gossiper to the BlockProposer interface.
@@ -425,33 +499,31 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 			log.Stringer("from", fromNodeID))
 	}
 
-	// Fast-follow pattern: Accept blocks that extend our chain from valid proposers
-	// This is safe because:
-	// 1. Block has been verified (cryptographic integrity, state transitions)
-	// 2. Block came from a known validator (fromNodeID)
-	// 3. Block extends our accepted chain (parent check below)
+	// QUORUM-GATED FOLLOW (replaces the old unverified fast-follow Accept):
 	//
-	// The mutex serializes fast-follow acceptance to prevent concurrent
-	// Accept() calls from duplicate gossip delivery of the same block.
+	// A follower MUST NOT Accept a gossiped block on mere arrival — that was the
+	// follower-side half of the self-finality hole (an equivocating proposer
+	// could get followers to commit two different blocks at one height). Instead
+	// the follower:
+	//   1. has already VERIFIED the block (above),
+	//   2. tracks it for consensus and casts its OWN signed accept vote,
+	//   3. BROADCASTS that signed vote to ALL validators (topology fix), and
+	//   4. Accepts ONLY when it holds a verified α-of-K QuorumCert
+	//      (handleIncomingCert, or a cert it assembles from gossiped votes).
+	//
+	// This both closes the fork (no commit without α-of-K witness) AND keeps
+	// liveness (votes reach every validator, so finality does not hinge on one
+	// node's inbound Chits; the proposer-freeze cannot recur).
 	blockID := blk.ID()
 	rt.fastFollowMu.Lock()
 	defer rt.fastFollowMu.Unlock()
 
-	// Height-based fast-follow: accept verified gossip blocks that advance
-	// beyond our tracked height. This is robust because:
-	// 1. Blocks are already cryptographically verified before reaching here
-	// 2. The sender is a known validator
-	// 3. Height ordering prevents re-accepting old blocks or going backwards
-	// 4. The mutex prevents concurrent acceptance races
-	//
-	// We use height instead of parent-ID matching because VM.LastAccepted()
-	// is asynchronous and block-producing nodes don't update the tracker.
 	incomingHeight := blk.Height()
 
-	// Dedup: skip blocks at or below our tracked height
+	// Dedup: skip blocks at or below our tracked finalized height.
 	if incomingHeight <= rt.fastFollowHeight {
 		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Info("fast-follow: block at/below tracked height, skipping",
+			rt.config.Logger.Debug("follow: block at/below tracked height, skipping",
 				log.Stringer("blockID", blockID),
 				log.Uint64("incomingHeight", incomingHeight),
 				log.Uint64("trackedHeight", rt.fastFollowHeight))
@@ -459,110 +531,90 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 		return blk, nil
 	}
 
-	if !rt.config.Logger.IsZero() {
-		rt.config.Logger.Info("fast-follow: accepting block from validator",
-			log.Stringer("blockID", blockID),
-			log.Uint64("height", incomingHeight),
-			log.Stringer("from", fromNodeID),
-			log.Uint64("trackedHeight", rt.fastFollowHeight))
-	}
+	// Track the verified block in consensus + pending and record OUR signed
+	// accept vote toward its cert. castAndBroadcastVote returns after the vote
+	// is queued for all validators. The block is NOT accepted here — finality
+	// awaits the cert.
+	rt.followVerifiedBlock(ctx, blk, fromNodeID)
+	return blk, nil
+}
 
-	// Accept the block directly
-	if err := blk.Accept(ctx); err != nil {
-		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Warn("fast-follow: accept failed, falling through to consensus",
-				log.Stringer("blockID", blockID),
-				log.Uint64("height", incomingHeight),
-				log.Err(err))
-		}
-		// Accept failed - fall through to consensus tracking
-	} else {
-		// Update our height tracker immediately
-		rt.fastFollowHeight = incomingHeight
-
-		// Update VM preference to build on this block
-		if err := rt.config.VM.SetPreference(ctx, blockID); err != nil {
-			if !rt.config.Logger.IsZero() {
-				rt.config.Logger.Warn("fast-follow: failed to set preference",
-					log.Stringer("blockID", blockID),
-					log.Err(err))
-			}
-		}
-		rt.Transitive.blocksAccepted++
-		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Info("fast-follow: block accepted successfully",
-				log.Stringer("blockID", blockID),
-				log.Uint64("height", incomingHeight))
-		}
-
-		// Send vote back to proposer so they can finalize
-		if rt.config.Gossiper != nil {
-			if err := rt.config.Gossiper.SendVote(rt.config.ChainID, fromNodeID, blockID); err != nil {
-				if !rt.config.Logger.IsZero() {
-					rt.config.Logger.Warn("fast-follow: failed to send vote",
-						log.Stringer("blockID", blockID),
-						log.Stringer("proposer", fromNodeID),
-						log.Err(err))
-				}
-			}
-		}
-		return blk, nil
-	}
-
-	// If fast-follow doesn't apply, fall back to consensus tracking
-	// (This handles out-of-order blocks or conflicting chains)
-	if !rt.config.Logger.IsZero() {
-		rt.config.Logger.Debug("block does not extend chain tip, adding to consensus tracking",
-			log.Stringer("blockID", blk.ID()),
-			log.Uint64("height", blk.Height()))
-	}
-
-	// Create consensus block and add to tracking
+// followVerifiedBlock tracks a verified gossip block and casts+broadcasts this
+// node's signed accept vote to ALL validators. It does NOT Accept the block:
+// acceptance is gated on a verified α-of-K QuorumCert (handleIncomingCert).
+//
+// The caller holds rt.fastFollowMu.
+func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fromNodeID ids.NodeID) {
+	blockID := blk.ID()
 	consensusBlock := &Block{
-		id:        blk.ID(),
+		id:        blockID,
 		parentID:  blk.ParentID(),
 		height:    blk.Height(),
 		timestamp: blk.Timestamp().Unix(),
 		data:      blk.Bytes(),
 	}
 
-	// Add to consensus engine
-	if err := rt.Transitive.consensus.AddBlock(ctx, consensusBlock); err != nil {
-		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Debug("failed to add block to consensus",
-				log.Stringer("blockID", blk.ID()),
-				log.Err(err))
-		}
-		// Continue anyway - block may already exist
-	}
+	// Add to consensus tracking (idempotent: AddBlock errors if already present).
+	_ = rt.Transitive.consensus.AddBlock(ctx, consensusBlock)
 
-	// Add to pending blocks for tracking
 	rt.Transitive.mu.Lock()
-	if _, exists := rt.Transitive.pendingBlocks[blk.ID()]; !exists {
-		rt.Transitive.pendingBlocks[blk.ID()] = &PendingBlock{
+	pending, exists := rt.Transitive.pendingBlocks[blockID]
+	if !exists {
+		pending = &PendingBlock{
 			ConsensusBlock: consensusBlock,
 			VMBlock:        blk,
 			ProposedAt:     time.Now(),
-			VoteCount:      1, // Count our own vote
+			VoteCount:      0,
 			Decided:        false,
+			IsOwnProposal:  false,
 		}
-	} else {
-		// Block already tracked, increment vote count
-		rt.Transitive.pendingBlocks[blk.ID()].VoteCount++
+		rt.Transitive.pendingBlocks[blockID] = pending
 	}
+	chainID := rt.Transitive.chainID
+	nodeID := rt.Transitive.nodeID
+	signer := rt.Transitive.voteSigner
+	verifier := rt.Transitive.voteVerifier
+	pos := rt.Transitive.blockPositionLocked(pending, blockID)
 	rt.Transitive.mu.Unlock()
 
-	// Vote in favor of the block (process our vote)
-	responses := map[ids.ID]int{blk.ID(): 1}
-	if err := rt.Transitive.consensus.Poll(ctx, responses); err != nil {
-		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Debug("failed to vote on block",
-				log.Stringer("blockID", blk.ID()),
-				log.Err(err))
-		}
+	// Single-validator / no-signer engines do not gossip votes; nothing to do.
+	if signer == nil || verifier == nil {
+		return
 	}
 
-	return blk, nil
+	// Sign our accept vote over the canonical position message.
+	message := CanonicalVoteMessage(pos)
+	sig, err := signer.SignVote(message)
+	if err != nil {
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("follow: failed to sign accept vote",
+				log.Stringer("blockID", blockID), log.Err(err))
+		}
+		return
+	}
+
+	// Record our own vote locally toward the cert (so a node that is itself
+	// near-quorum can assemble), then broadcast it to ALL validators.
+	ownVote := Vote{
+		BlockID:   blockID,
+		NodeID:    nodeID,
+		Accept:    true,
+		SignedAt:  time.Now(),
+		Signature: sig,
+		ParentID:  pos.ParentID,
+		Round:     pos.Round,
+	}
+	rt.Transitive.ReceiveVote(ownVote)
+
+	if qg, ok := rt.config.Gossiper.(QuorumGossiper); ok {
+		if voteBytes, encErr := encodeSignedVote(nodeID, sig); encErr == nil {
+			qg.BroadcastVote(chainID, rt.config.NetworkID, blockID, voteBytes)
+		}
+	} else if rt.config.Gossiper != nil {
+		// Legacy gossiper without quorum support: at least notify the proposer
+		// (keeps a degraded path working) — but finality still requires a cert.
+		_ = rt.config.Gossiper.SendVote(rt.config.ChainID, fromNodeID, blockID)
+	}
 }
 
 // OnImportComplete must be called after admin_importChain (RLP import) completes.
