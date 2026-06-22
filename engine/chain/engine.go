@@ -21,6 +21,12 @@ import (
 var (
 	ErrNotStarted     = errors.New("engine not started")
 	ErrAlreadyStarted = errors.New("engine already started")
+
+	// ErrQuorumVerifierRequired is returned by Start when a multi-validator
+	// engine (K>1) is started without a VoteVerifier. Multi-validator finality
+	// MUST be gated on a verifiable α-of-K quorum cert; without a verifier
+	// there is no way to tell a real quorum from forged votes. Fail-closed.
+	ErrQuorumVerifierRequired = errors.New("chain: multi-validator engine (K>1) requires a vote verifier for quorum-cert finality (use WithQuorumCert / WithVoteVerifier)")
 )
 
 // -----------------------------------------------------------------------------
@@ -100,6 +106,21 @@ type Vote struct {
 	NodeID   ids.NodeID
 	Accept   bool
 	SignedAt time.Time
+
+	// Signature is the validator's signature over CanonicalVoteMessage of the
+	// block's position (ChainID, Height, Round, BlockID, ParentID). It is the
+	// material the engine collects into a QuorumCert — the portable, verifiable
+	// α-of-K finality witness. May be empty for a single-validator (K==1)
+	// engine, where the sole validator's local accept is the quorum and no cert
+	// is gossiped; MUST be present and valid for multi-validator finality.
+	Signature []byte
+	// ParentID binds the parent into the vote's signed position. Carried so the
+	// engine can rebuild CanonicalVoteMessage when assembling a cert even if it
+	// is not separately tracking the block's parent.
+	ParentID ids.ID
+	// Round is the consensus round the vote was cast in (0 for the first round
+	// at a height). Bound into the signed position.
+	Round uint32
 }
 
 // PendingBlock tracks a block awaiting consensus.
@@ -110,6 +131,19 @@ type PendingBlock struct {
 	VoteCount      int // Accept votes
 	RejectCount    int // Reject votes
 	Decided        bool
+
+	// certVotes collects the distinct SIGNED accept votes observed for this
+	// block, keyed by voter NodeID (de-dup: one vote per validator). When the
+	// count reaches alpha the engine assembles a QuorumCert from these — the
+	// α-of-K finality witness. Empty for single-validator (K==1) finality.
+	certVotes map[ids.NodeID]SignedVote
+	// Round is the consensus round the block was proposed in. Bound into every
+	// vote's signed position so a cert binds the exact round.
+	Round uint32
+	// cert is the assembled+verified finality witness once the quorum is
+	// reached (nil until then). Retained so the engine can re-gossip it on
+	// request and so a follower's accept is gated on holding it.
+	cert *QuorumCert
 
 	// IsOwnProposal is true when this node built and proposed the block.
 	// Used to short-circuit the proposer-self-accept gap: when peers send back
@@ -201,6 +235,36 @@ func WithLogger(l log.Logger) Option {
 	}
 }
 
+// WithQuorumCert wires multi-validator α-of-K cert-witnessed finality. The node
+// supplies a VoteVerifier (mandatory for cert finality — verifies every vote
+// signature and every incoming cert), and optionally a CertGossiper (to
+// distribute assembled certs) and a VoteSigner (to sign this node's own votes).
+// chainID and nodeID identify this node's position for vote/cert binding.
+//
+// Without this option the engine runs in single-validator (K==1) mode: the sole
+// validator's local accept is the quorum, finality uses the ForceAccept path,
+// and no certs or signatures are produced. The engine REFUSES to start a
+// multi-validator (K>1) configuration without a verifier (fail-closed) — see
+// Start.
+func WithQuorumCert(chainID ids.ID, nodeID ids.NodeID, verifier VoteVerifier, gossiper CertGossiper, signer VoteSigner) Option {
+	return func(t *Transitive) {
+		t.chainID = chainID
+		t.nodeID = nodeID
+		t.voteVerifier = verifier
+		t.certGossiper = gossiper
+		t.voteSigner = signer
+	}
+}
+
+// WithVoteVerifier sets only the vote/cert signature verifier. Convenience for
+// callers that verify but neither sign nor gossip (e.g. a verifying-only node
+// or a test).
+func WithVoteVerifier(verifier VoteVerifier) Option {
+	return func(t *Transitive) {
+		t.voteVerifier = verifier
+	}
+}
+
 // WithVoteBuffers sets channel buffer sizes.
 func WithVoteBuffers(requests, votes int) Option {
 	return func(t *Transitive) {
@@ -267,8 +331,51 @@ type Transitive struct {
 	slashingDetector *slashing.Detector
 	slashingDB       *slashing.DB
 
+	// Quorum-cert finality (multi-validator). These are the engine's sole
+	// dependencies for α-of-K cert-witnessed finality:
+	//
+	//   - voteVerifier verifies each collected vote's signature before it is
+	//     counted toward a cert and verifies an incoming cert's signatures.
+	//     The node injects a real scheme (BLS / ML-DSA / secp256k1). When nil,
+	//     the engine is in single-validator (K==1) mode and finality uses the
+	//     local-accept force path (no cert, no signatures).
+	//   - certGossiper re-broadcasts an assembled cert to all validators so
+	//     followers can finalize on a verifiable α-of-K proof rather than
+	//     fast-following an unverified block. Optional (nil disables cert
+	//     gossip; finality still holds locally via the α-of-K count).
+	//   - voteSigner signs this node's own accept votes (used when it votes as
+	//     a follower, so its signature can be collected into a cert). Optional.
+	//   - chainID / nodeID identify this node's position for vote/cert binding.
+	voteVerifier VoteVerifier
+	certGossiper CertGossiper
+	voteSigner   VoteSigner
+	chainID      ids.ID
+	nodeID       ids.NodeID
+
 	// Logger for consensus events (nil-safe: uses log.Noop() if unset)
 	log log.Logger
+}
+
+// CertGossiper broadcasts an assembled finality cert to validators. The node
+// supplies the network implementation; the engine expresses WHAT (gossip this
+// proof of α-of-K finality), the node decides HOW. Optional — a nil gossiper
+// means the proposer finalizes locally on the α-of-K count without distributing
+// the cert (followers then reach finality via their own collected votes once
+// the topology gossips votes to all).
+type CertGossiper interface {
+	// GossipCert broadcasts the encoded finality cert for blockID to validators.
+	GossipCert(chainID ids.ID, blockID ids.ID, certBytes []byte) error
+}
+
+// VoteSigner signs this node's accept vote over the canonical vote message so
+// the signature can be collected into a QuorumCert. Backed by the node's
+// validator key (the same key the VoteVerifier checks against). Optional: a
+// single-validator engine does not gossip votes and needs no signer.
+type VoteSigner interface {
+	// SignVote returns this node's signature over message (the canonical vote
+	// message for a position). The returned bytes are what a peer's
+	// VoteVerifier will verify.
+	SignVote(message []byte) ([]byte, error)
 }
 
 // New creates an engine with default parameters.
@@ -345,6 +452,15 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 
 	if t.started {
 		return ErrAlreadyStarted
+	}
+
+	// FAIL-CLOSED: a multi-validator engine (K>1) MUST have a vote verifier so
+	// finality can be gated on a verifiable α-of-K quorum cert. Starting K>1
+	// without one would leave no way to distinguish a real quorum from forged
+	// votes — exactly the hole this change closes. A single-validator engine
+	// (K==1) needs no verifier: its own accept is the quorum.
+	if t.params.K > 1 && t.voteVerifier == nil {
+		return ErrQuorumVerifierRequired
 	}
 
 	t.ctx, t.cancel = context.WithCancel(ctx)
@@ -841,86 +957,244 @@ func (t *Transitive) handleVote(vote Vote) {
 		}
 	}
 
-	// Determine the effective accept signal. For own-proposed pending blocks
-	// the engine trusts mere peer-vote arrival as positive evidence (see
-	// PendingBlock.IsOwnProposal). This closes the proposer-self-accept gap:
-	// when a peer sends back a vote via the fast-follow SendVote callback
-	// (integration.go:498-500), it only does so after locally accepting the
-	// block. The proposer's local re-Verify in the network adapter may
-	// spuriously fail and flip the vote to Reject, which would otherwise
-	// drive the proposer's own block to rejected even though the cluster
-	// committed it. Counting peer participation here keeps the proposer's
-	// view in sync with cluster consensus without weakening alpha-of-K
-	// (the count still requires distinct peer messages).
-	effectiveAccept := vote.Accept || pending.IsOwnProposal
+	// AUTHENTICATE THE VOTE (multi-validator). A vote is counted toward the
+	// quorum ONLY if its signature verifies over the block's position AND the
+	// vote's own decision (accept→accept-message, reject→reject-message). This:
+	//   - makes consensus.acceptVotes count only REAL validator accepts, so
+	//     IsAccepted() is truthful (it cannot be inflated by forged/unsigned
+	//     votes) and stays in lock-step with the assemblable cert;
+	//   - blocks forged-accept finality (an outsider key, or a real validator's
+	//     signature lifted from a DIFFERENT position/decision, fails here);
+	//   - blocks forged-reject censorship (an unauthenticated reject is dropped,
+	//     strictly safer than the prior unauthenticated reject path).
+	//
+	// The former `effectiveAccept = vote.Accept || IsOwnProposal` REJECT→ACCEPT
+	// flip is DELETED: vote.Accept is authoritative once the signature checks
+	// out. Single-validator engines (no verifier) skip authentication — the sole
+	// validator's self-vote is the quorum and carries no signature.
+	if t.voteVerifier != nil {
+		pos := t.blockPositionLocked(pending, vote.BlockID)
+		msg := canonicalVoteMessageFor(pos, vote.Accept)
+		if len(vote.Signature) == 0 || !t.voteVerifier.VerifyVote(vote.NodeID, msg, vote.Signature) {
+			// Unsigned or invalid: not a real vote from this validator at this
+			// position/decision. Drop it — count nothing.
+			t.mu.Unlock()
+			return
+		}
+	}
 
+	accept := vote.Accept
 	var voteCount int
-	if effectiveAccept {
+	if accept {
 		pending.VoteCount++
 		voteCount = pending.VoteCount
+		// Record the signed accept vote toward this block's quorum cert so the
+		// engine can assemble + gossip the α-of-K witness once the threshold is
+		// reached. (Reject votes are not certifiable — a finality cert proves
+		// acceptance — they only drive the rejection path.)
+		t.recordCertVoteLocked(pending, vote)
 	} else {
 		pending.RejectCount++
 	}
 	t.mu.Unlock()
 
-	if err := t.consensus.ProcessVote(ctx, vote.BlockID, effectiveAccept); err != nil {
+	if err := t.consensus.ProcessVote(ctx, vote.BlockID, accept); err != nil {
 		return
 	}
+	_ = t.consensus.Poll(ctx, map[ids.ID]int{vote.BlockID: voteCount})
 
-	if effectiveAccept {
-		responses := map[ids.ID]int{vote.BlockID: voteCount}
-		_ = t.consensus.Poll(ctx, responses)
-	} else {
-		// Trigger poll to check for rejection quorum
-		_ = t.consensus.Poll(ctx, map[ids.ID]int{vote.BlockID: voteCount})
-	}
-
-	// Finalize: if consensus accepted this block, call VM.Accept() and update state.
+	// Finalize: if consensus reached the α-of-K accept quorum, assemble the
+	// cert, gossip it, and call VM.Accept().
 	t.tryFinalizeBlock(ctx, vote.BlockID)
 }
 
-// tryFinalizeBlock checks if consensus has accepted a block and calls VM.Accept().
-func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
-	accepted := t.consensus.IsAccepted(blockID)
-	if !accepted {
+// recordCertVoteLocked records a distinct SIGNED accept vote toward this
+// block's quorum cert. Caller holds t.mu. A vote with no signature is ignored
+// for cert purposes (it still counts toward the plain accept tally in
+// handleVote) — only signed votes can witness a cert. Verification of the
+// signature happens at assembly time (assembleCertLocked) so a single bad
+// signature cannot poison the map; de-dup is by NodeID.
+func (t *Transitive) recordCertVoteLocked(pending *PendingBlock, vote Vote) {
+	if len(vote.Signature) == 0 {
 		return
 	}
+	if pending.certVotes == nil {
+		pending.certVotes = make(map[ids.NodeID]SignedVote)
+	}
+	pending.certVotes[vote.NodeID] = SignedVote{
+		NodeID:    vote.NodeID,
+		Accept:    true,
+		Signature: append([]byte(nil), vote.Signature...),
+	}
+}
+
+// recordOwnVoteLocked signs THIS node's accept vote for blockID and records it
+// into the block's cert set. Caller holds t.mu. No-op when no voteSigner is
+// configured (single-validator / K==1 finality needs no cert). The proposer
+// (and any node casting its own accept locally) is one of the α signers, so its
+// signature belongs in the cert.
+func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) {
+	if t.voteSigner == nil {
+		return
+	}
+	pos := t.blockPositionLocked(pending, blockID)
+	sig, err := t.voteSigner.SignVote(CanonicalVoteMessage(pos))
+	if err != nil {
+		t.log.Warn("failed to sign own accept vote for cert", "blockID", blockID, "error", err)
+		return
+	}
+	t.recordCertVoteLocked(pending, Vote{
+		BlockID:   blockID,
+		NodeID:    t.nodeID,
+		Accept:    true,
+		Signature: sig,
+		ParentID:  pos.ParentID,
+		Round:     pos.Round,
+	})
+}
+
+// blockPositionLocked returns the consensus position a block's votes/cert bind
+// to. Caller holds t.mu.
+func (t *Transitive) blockPositionLocked(pending *PendingBlock, blockID ids.ID) VotePosition {
+	var parentID ids.ID
+	var height uint64
+	if pending.ConsensusBlock != nil {
+		parentID = pending.ConsensusBlock.parentID
+		height = pending.ConsensusBlock.height
+	}
+	return VotePosition{
+		ChainID:  t.chainID,
+		Height:   height,
+		Round:    pending.Round,
+		BlockID:  blockID,
+		ParentID: parentID,
+	}
+}
+
+// assembleCertLocked attempts to assemble a verified QuorumCert from the signed
+// accept votes collected for blockID. Caller holds t.mu. Returns the cert (and
+// caches it on pending) iff:
+//   - a vote verifier is configured (multi-validator finality), AND
+//   - at least alpha distinct votes verify under it.
+//
+// Each collected vote's signature is verified here; votes that fail are dropped
+// from the candidate set so one forged vote cannot block a real quorum, and the
+// cert is only built from VERIFIED votes — Assemble + the subsequent Verify
+// then re-check distinctness and the threshold. Returns nil if the verified
+// quorum is not yet present (the proposer keeps waiting / re-requesting — this
+// is the liveness path, NOT a force).
+func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *QuorumCert {
+	if pending.cert != nil {
+		return pending.cert
+	}
+	if t.voteVerifier == nil {
+		return nil
+	}
+	alpha := t.consensus.Alpha()
+	if alpha <= 0 {
+		return nil
+	}
+	pos := t.blockPositionLocked(pending, blockID)
+	message := CanonicalVoteMessage(pos)
+
+	verified := make([]SignedVote, 0, len(pending.certVotes))
+	for _, sv := range pending.certVotes {
+		if t.voteVerifier.VerifyVote(sv.NodeID, message, sv.Signature) {
+			verified = append(verified, sv)
+		}
+	}
+	if uint32(len(verified)) < uint32(alpha) {
+		return nil
+	}
+	cert, err := AssembleQuorumCert(pos, uint32(alpha), verified)
+	if err != nil {
+		return nil
+	}
+	// Defence in depth: the cert we just built must verify under our own
+	// verifier before we treat it as a finality witness (catches any assembly
+	// invariant drift). Assemble already enforced distinctness + threshold.
+	if err := cert.Verify(t.voteVerifier); err != nil {
+		return nil
+	}
+	pending.cert = cert
+	return cert
+}
+
+// tryFinalizeBlock finalizes a block once the α-of-K accept quorum is reached.
+//
+// Multi-validator (K>1): finality requires a verified QuorumCert. consensus
+// .IsAccepted only flips true once acceptVotes>=alpha (the α-of-K count), so
+// reaching it means alpha distinct accepts arrived. We assemble the cert from
+// the collected SIGNED votes as the portable witness, GOSSIP it so followers
+// finalize on a verifiable proof (not a fast-follow guess), then commit. If the
+// count says accepted but we cannot yet assemble a verified cert (signatures
+// still in flight), we WAIT — we never force. This is what makes the change
+// BFT: no value finalizes without a verifiable α-of-K witness.
+//
+// Single-validator (K==1): there are no peer signatures; IsAccepted reflects
+// the sole validator's own accept, which IS the 1-of-1 quorum. Commit directly.
+func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
+	if !t.consensus.IsAccepted(blockID) {
+		return
+	}
+
+	t.mu.Lock()
+	pending, exists := t.pendingBlocks[blockID]
+	if !exists || pending.Decided {
+		t.mu.Unlock()
+		return
+	}
+	multiValidator := t.consensus.K() > 1
+	var cert *QuorumCert
+	var certBytes []byte
+	if multiValidator {
+		cert = t.assembleCertLocked(pending, blockID)
+		if cert == nil {
+			// Quorum count reached but no verified cert yet — wait for signed
+			// votes. Do NOT finalize: BFT safety requires the witness.
+			t.mu.Unlock()
+			return
+		}
+		if b, err := cert.MarshalBinary(); err == nil {
+			certBytes = b
+		}
+	}
+	chainID := t.chainID
+	gossiper := t.certGossiper
+	t.mu.Unlock()
+
+	// Distribute the finality proof so followers can finalize on it. Best
+	// effort: local finality is already established by the verified cert.
+	if multiValidator && gossiper != nil && certBytes != nil {
+		_ = gossiper.GossipCert(chainID, blockID, certBytes)
+	}
+
 	t.finalizePendingLocked(ctx, blockID)
 }
 
-// finalizeOwnProposal commits a self-proposed block to local VM state without
-// waiting for peer Chits to drive consensus.IsAccepted across the alpha threshold.
+// finalizeOwnProposal commits a self-proposed block once finality is legitimate.
 //
-// This closes the proposer-self-accept gap empirically observed on lux-devnet
-// v1.27.26 even after the v1.25.1 IsOwnProposal handleVote trust path: peer
-// Chits arrive intermittently (or not at all in some network conditions) on
-// the proposer, leaving acceptVotes pinned at the proposer's lone self-vote
-// (count=1) below alpha. The proposer's PendingBlock stays decided=false
-// forever; VM.Accept is never called; the node freezes at its proposal height.
+// THE FREEZE THIS USED TO "FIX" — AND HOW IT IS NOW FIXED WITHOUT SELF-FINALITY:
 //
-// Safety analysis:
+// The old version FORCE-ACCEPTED the proposer's own block on its lone self-vote
+// (consensus.ForceAccept) because peer Chits arrived late/dropped, pinning
+// acceptVotes at 1 < alpha and freezing the node. That was self-finality — a
+// value could finalize with NO α-of-K agreement, so an equivocating proposer
+// could fork the chain. DELETED for K>1.
 //
-//   - The block was already verified locally before AddBlock (engine.go:1001).
-//     A successful Verify is the proposer's commitment that the block is
-//     well-formed against its current view of state.
-//   - The proposer self-voted (consensus.ProcessVote true) at proposal time,
-//     so consensus.acceptVotes >= 1. We additionally force consensus to mark
-//     this block accepted via ForcePreference, keeping the consensus engine
-//     and VM in sync.
-//   - Cluster authoritative finality is unaffected: peers run their own Verify
-//     and independently decide. If peers reject, the proposer's local commit
-//     diverges from cluster — but the cluster's BLS+Pulsar finality witness
-//     is the canonical record, and slashing evidence flags the proposer.
-//   - Under honest-validator + deterministic-Verify assumption (devnet, all
-//     real production deployments), peer agreement is structurally
-//     guaranteed when the proposer's Verify passes.
-//   - Idempotent under concurrent invocation via pending.Decided and the
-//     delete(pendingBlocks) guard in finalizePendingLocked.
+// The freeze is now solved STRUCTURALLY by the vote-distribution topology
+// (integration.go): followers gossip their SIGNED accept votes to ALL
+// validators (not only back to the proposer), and the proposer assembles +
+// gossips the cert. So the proposer collects alpha distinct signed votes and
+// finalizes via the cert (tryFinalizeBlock) — late/dropped Chits are handled by
+// re-request + cert gossip + the poll timeout, NOT by self-finalizing. If the
+// quorum genuinely is not present, the node correctly does NOT finalize (a real
+// minority cannot and must not finalize).
 //
-// This is a tightly scoped escape hatch: only fires for IsOwnProposal=true
-// entries, only after a successful proposal gossip. Follower-tracked entries
-// (HandleIncomingBlock slow path) keep IsOwnProposal=false and still require
-// the full alpha-quorum signal.
+// Here we only do two things, both fail-closed:
+//   - K==1: ForceAccept (1-of-1 quorum: the sole validator's accept is final).
+//   - K>1: re-run tryFinalizeBlock, which finalizes IFF a verified cert exists.
+//     Never forces.
 func (t *Transitive) finalizeOwnProposal(ctx context.Context, blockID ids.ID) {
 	t.mu.RLock()
 	pending, exists := t.pendingBlocks[blockID]
@@ -929,12 +1203,20 @@ func (t *Transitive) finalizeOwnProposal(ctx context.Context, blockID ids.ID) {
 		return
 	}
 
-	// Force consensus to mark this block accepted so its view stays in sync
-	// with the VM. Without this, consensus.IsAccepted continues to return
-	// false while the VM has already committed — causing IsAccepted-gated
-	// callers (processPendingBlocks, downstream tip queries) to diverge.
-	t.consensus.ForceAccept(blockID)
-	t.finalizePendingLocked(ctx, blockID)
+	if t.consensus.K() == 1 {
+		// Single-validator: the sole validator's accept IS the quorum. Force is
+		// the correct 1-of-1 finalization (ForceAccept refuses K>1).
+		if err := t.consensus.ForceAccept(blockID); err != nil {
+			t.log.Crit("ForceAccept refused — engine misconfigured (K>1 reached single-validator path)",
+				"blockID", blockID, "error", err)
+			return
+		}
+		t.finalizePendingLocked(ctx, blockID)
+		return
+	}
+
+	// Multi-validator: finalize only via a verified α-of-K cert. No force.
+	t.tryFinalizeBlock(ctx, blockID)
 }
 
 // finalizePendingLocked is the shared finalization path used by both
@@ -1090,7 +1372,7 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			}
 			t.mu.Lock()
 		} else {
-			t.pendingBlocks[vmBlock.ID()] = &PendingBlock{
+			pb := &PendingBlock{
 				ConsensusBlock: consensusBlock,
 				VMBlock:        vmBlock,
 				ProposedAt:     time.Now(),
@@ -1098,6 +1380,12 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 				Decided:        false,
 				IsOwnProposal:  true,
 			}
+			t.pendingBlocks[vmBlock.ID()] = pb
+			// The proposer is one of the α signers: record its OWN signed accept
+			// vote into the cert set so the assembled cert includes it (its
+			// ProcessVote above counted it toward acceptVotes; this puts the
+			// matching SIGNED record in certVotes so count and cert agree).
+			t.recordOwnVoteLocked(pb, vmBlock.ID())
 		}
 
 		// Gossip the block + request peer votes. These calls are done while
