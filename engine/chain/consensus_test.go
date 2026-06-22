@@ -15,7 +15,7 @@ import (
 func TestConsensusVoting(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	require.NoError(engine.Start(ctx, true))
@@ -33,7 +33,7 @@ func TestConsensusVoting(t *testing.T) {
 func TestConflictResolution(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	require.NoError(engine.Start(ctx, true))
@@ -53,7 +53,7 @@ func TestConflictResolution(t *testing.T) {
 func TestMultipleBlocks(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	require.NoError(engine.Start(ctx, true))
@@ -79,7 +79,7 @@ func TestMultipleBlocks(t *testing.T) {
 func TestChainReorg(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	require.NoError(engine.Start(ctx, true))
@@ -102,7 +102,7 @@ func TestChainReorg(t *testing.T) {
 func TestConcurrentRequests(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	require.NoError(engine.Start(ctx, true))
@@ -132,7 +132,7 @@ func TestConcurrentRequests(t *testing.T) {
 func TestFinality(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	require.NoError(engine.Start(ctx, true))
@@ -153,7 +153,7 @@ func TestFinality(t *testing.T) {
 func TestRestartPreservesState(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	// First session
@@ -176,7 +176,7 @@ func TestRestartPreservesState(t *testing.T) {
 func TestInvalidBlockHandling(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	require.NoError(engine.Start(ctx, true))
@@ -196,7 +196,7 @@ func TestInvalidBlockHandling(t *testing.T) {
 func TestHighLoadScenario(t *testing.T) {
 	require := require.New(t)
 
-	engine := New()
+	engine := newTestEngine()
 	ctx := context.Background()
 
 	require.NoError(engine.Start(ctx, true))
