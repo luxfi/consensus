@@ -313,24 +313,33 @@ func TestValidateForNetwork(t *testing.T) {
 			wantErr:   ErrKTooLowForMainnet,
 		},
 
-		// Testnet (networkID=5): K >= 5 required
+		// Testnet (networkID=2, the real Lux testnet — NOT the legacy 5): K >= 5.
 		{
 			name:      "testnet params on testnet",
 			params:    TestnetParams(),
-			networkID: 5,
+			networkID: 2,
 			wantErr:   nil,
 		},
 		{
 			name:      "burst params on testnet rejected",
 			params:    BurstParams(),
-			networkID: 5,
+			networkID: 2,
 			wantErr:   ErrKTooLowForTestnet,
 		},
 		{
 			name:      "solo GPU params on testnet rejected",
 			params:    SoloGPUParams(),
-			networkID: 5,
+			networkID: 2,
 			wantErr:   ErrKTooLowForTestnet,
+		},
+		// Regression: the legacy id 5 must NOT spuriously gate as testnet (the
+		// floor was wrongly keyed to 5 and never fired for the real testnet 2).
+		// On id 5 only the base Valid() applies, so a weak-but-Valid set passes.
+		{
+			name:      "burst params on legacy id 5 (no testnet floor)",
+			params:    BurstParams(),
+			networkID: 5,
+			wantErr:   nil,
 		},
 
 		// Local/devnet (networkID >= 1337): any K allowed
