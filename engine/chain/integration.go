@@ -68,6 +68,15 @@ type NetworkConfig struct {
 	// at admission). The node supplies a source backed by the chain's validator
 	// set weights.
 	StakeSource StakeSource
+
+	// ValidatorSetRoot (optional) binds every vote/cert to the active weighted
+	// validator set at the block's height (the MEDIUM fix), so the ⅔-by-stake
+	// predicate is ENFORCED at the cert-position epoch: a cert gathered under one
+	// epoch's set cannot be re-verified against another epoch's set (its
+	// signatures were over the bound root). Supply it on a chain whose validator
+	// set/stake changes across epochs (alongside StakeSource); nil binds Empty
+	// (the correct no-op for a fixed validator set).
+	ValidatorSetRoot ValidatorSetRootSource
 }
 
 // Gossiper abstracts the network layer for consensus message broadcasting.
@@ -185,6 +194,12 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		// α-of-K count.
 		if cfg.StakeSource != nil {
 			WithStakeWeighting(cfg.StakeSource)(engine)
+		}
+		// Epoch binding (MEDIUM): pin every vote/cert to the active weighted set
+		// at the block's height so the stake predicate is enforced at the
+		// cert-position epoch (a cross-epoch cert fails verification).
+		if cfg.ValidatorSetRoot != nil {
+			WithValidatorSetRoot(cfg.ValidatorSetRoot)(engine)
 		}
 	}
 

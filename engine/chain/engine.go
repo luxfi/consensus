@@ -276,6 +276,22 @@ func WithStakeWeighting(stake StakeSource) Option {
 	}
 }
 
+// WithValidatorSetRoot binds every vote/cert this engine produces to the active
+// weighted validator set at the block's height (the MEDIUM fix). The node
+// supplies a ValidatorSetRootSource backed by the chain's validator set; the
+// engine stamps the root into each VotePosition so a cert is pinned to the exact
+// set it was certified under — a cross-epoch cert (votes cast under set R
+// re-presented as certifying under set R') fails signature verification because
+// every signature was over R. REQUIRED alongside WithStakeWeighting on a chain
+// whose validator set / stake can change across epochs, so the ⅔-by-stake
+// predicate is enforced at the cert-position epoch rather than assumed. Omit it
+// only on a fixed-set chain (then Empty-root binding is the correct no-op).
+func WithValidatorSetRoot(src ValidatorSetRootSource) Option {
+	return func(t *Transitive) {
+		t.setRootSource = src
+	}
+}
+
 // WithVoteBuffers sets channel buffer sizes.
 func WithVoteBuffers(requests, votes int) Option {
 	return func(t *Transitive) {
@@ -370,6 +386,15 @@ type Transitive struct {
 	// finality is count-α and the chain MUST enforce equal stake at validator
 	// admission (the documented invariant) — the node wires this for value chains.
 	stakeSource StakeSource
+
+	// setRootSource (optional) supplies the commitment to the active weighted
+	// validator set at a block's height (the MEDIUM fix). When set, every
+	// VotePosition this engine signs/assembles carries that set-root, so a cert
+	// is cryptographically pinned to the exact set it was certified under and
+	// cannot be re-verified against a different epoch's set. When nil, positions
+	// carry ids.Empty (behavior identical to before set-root binding) — a chain
+	// without epoch-versioned sets needs no binding.
+	setRootSource ValidatorSetRootSource
 
 	// Logger for consensus events (nil-safe: uses log.Noop() if unset)
 	log log.Logger
@@ -563,9 +588,14 @@ func (t *Transitive) SyncState(ctx context.Context, lastAcceptedID ids.ID, heigh
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	// Update consensus state
+	// Update consensus state. A backward import is refused (ErrSyncStateRegression)
+	// and must abort the whole reconcile — we do NOT clear pending blocks or flip
+	// bootstrapped on a refused import, so a rejected regression is a clean no-op
+	// rather than a partial state mutation.
 	if t.consensus != nil {
-		t.consensus.SyncState(lastAcceptedID, height)
+		if err := t.consensus.SyncState(lastAcceptedID, height); err != nil {
+			return err
+		}
 	}
 
 	// Clear any pending blocks that are now stale (below the synced height)
@@ -1081,12 +1111,23 @@ func (t *Transitive) blockPositionLocked(pending *PendingBlock, blockID ids.ID) 
 		parentID = pending.ConsensusBlock.parentID
 		height = pending.ConsensusBlock.height
 	}
+	// Stamp the active weighted-validator-set commitment at this block's height
+	// (the MEDIUM fix). Every path that builds a position — sign
+	// (recordOwnVoteLocked), assemble + verify (assembleCertLocked) — routes
+	// through here, so they all bind the SAME root for a given block: a cert is
+	// pinned to the exact set it was certified under. nil source ⟹ Empty root
+	// (the fixed-set no-op). The source MUST be deterministic at a given height.
+	var setRoot ids.ID
+	if t.setRootSource != nil {
+		setRoot = t.setRootSource.ValidatorSetRoot(height)
+	}
 	return VotePosition{
-		ChainID:  t.chainID,
-		Height:   height,
-		Round:    pending.Round,
-		BlockID:  blockID,
-		ParentID: parentID,
+		ChainID:          t.chainID,
+		Height:           height,
+		Round:            pending.Round,
+		BlockID:          blockID,
+		ParentID:         parentID,
+		ValidatorSetRoot: setRoot,
 	}
 }
 

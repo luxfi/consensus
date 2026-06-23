@@ -14,8 +14,18 @@ var (
 	ErrInvalidBeta        = errors.New("beta must be >= 1")
 	ErrBlockTimeTooLow    = errors.New("block time must be >= 1ms")
 	ErrRoundTimeoutTooLow = errors.New("round timeout must be >= block time")
-	ErrKTooLowForMainnet  = errors.New("K must be >= 11 for mainnet (networkID=1): low K enables cheap 51% attacks")
-	ErrKTooLowForTestnet  = errors.New("K must be >= 5 for testnet (networkID=5): low K enables cheap 51% attacks")
+	// ErrKTooLowForMainnet enforces the mainnet sample-size floor. K>=11 is the
+	// floor that gives mainnet a meaningful Byzantine margin: it is NOT merely
+	// "K>=11" as a magic number — it is the smallest K for which the BFT overlap
+	// bound 2*AlphaPreference - K >= floor((K-1)/3)+1 (= f+1) can hold with
+	// f=floor((K-1)/3)>=3, so two quorums always overlap in >f honest nodes and
+	// a sub-1/3 coalition can neither finalize nor fork. A smaller K shrinks f
+	// toward 0 and makes a cheap stake-fraction (51%-style) attack viable.
+	ErrKTooLowForMainnet = errors.New("consensus: mainnet (networkID=1) requires K>=11 so the BFT overlap bound 2*AlphaPreference-K >= floor((K-1)/3)+1 holds with f=floor((K-1)/3)>=3; a smaller K drives f->0 and enables a cheap sub-1/3 (51%-style) attack")
+	// ErrKTooLowForTestnet is the testnet analogue: K>=5 keeps f=floor((K-1)/3)>=1
+	// so the same overlap bound (2*AlphaPreference-K >= f+1) is satisfiable with
+	// at least single-fault Byzantine tolerance.
+	ErrKTooLowForTestnet = errors.New("consensus: testnet (networkID=2) requires K>=5 so the BFT overlap bound 2*AlphaPreference-K >= floor((K-1)/3)+1 holds with f=floor((K-1)/3)>=1; a smaller K leaves f=0 and a single faulty validator can fork it")
 
 	// ErrAlphaBelowBFTQuorum is returned by Valid() when the integer accept
 	// quorum (AlphaPreference) is too small for the sample size K to guarantee
@@ -355,8 +365,14 @@ func (p Parameters) Valid() error {
 }
 
 // ValidateForNetwork validates parameters are safe for the given network.
-// Mainnet (1) requires K >= 11, testnet (5) requires K >= 5.
-// Local/devnet (>= 1337) allows any K.
+// Mainnet (networkID 1) requires K >= 11, testnet (networkID 2) requires K >= 5.
+// Local/devnet (3 / >= 1337) allows any K.
+//
+// The Lux primary-network IDs are convention-fixed: 1 = mainnet, 2 = testnet,
+// 3 = devnet, 1337 = localnet (see luxfi/constants). The testnet floor was
+// previously keyed to networkID 5 (a legacy Avalanche-Fuji id) and therefore
+// NEVER fired for the real Lux testnet (id 2) — a safety floor that did not
+// trigger for the network it protects. It is now correctly keyed to 2.
 func (p Parameters) ValidateForNetwork(networkID uint32) error {
 	if err := p.Valid(); err != nil {
 		return err
@@ -366,7 +382,7 @@ func (p Parameters) ValidateForNetwork(networkID uint32) error {
 		if p.K < 11 {
 			return ErrKTooLowForMainnet
 		}
-	case 5: // testnet
+	case 2: // testnet
 		if p.K < 5 {
 			return ErrKTooLowForTestnet
 		}
@@ -386,7 +402,7 @@ func (p Parameters) ValidateForNetwork(networkID uint32) error {
 //	K==2,3          → rejected (f=0, no Byzantine tolerance — a single fault forks)
 //	K>=4            → f≥1, admitted (subject to the mainnet/testnet floors below)
 //	mainnet(1)      → K>=11
-//	testnet(5)      → K>=5
+//	testnet(2)      → K>=5
 //
 // Use this (not ValidateForNetwork) when selecting params for a multi-node value
 // chain; the node's value-DEX activation also fails closed on the engine Mode.
