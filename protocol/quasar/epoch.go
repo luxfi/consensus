@@ -674,9 +674,13 @@ func (em *EpochManager) verifyActivationLocked(gk *coronaThreshold.GroupKey, old
 
 	round1 := make(map[int]*coronaThreshold.Round1Data, len(signers))
 	for _, s := range signers {
-		// Round1 sets PartyID from the underlying share index. It is deterministic
-		// and cannot fail (single-return corona API).
-		r1 := s.Round1(sessionID, prfKey, signerIndices)
+		// Round1 sets PartyID from the underlying share index. corona v0.7.9
+		// re-added the error return on SignRound1 (kernel-boundary hardening),
+		// so propagate it rather than assume infallibility.
+		r1, err := s.Round1(sessionID, prfKey, signerIndices)
+		if err != nil {
+			return fmt.Errorf("activation: round1: %w", err)
+		}
 		round1[r1.PartyID] = r1
 	}
 	round2 := make(map[int]*coronaThreshold.Round2Data, len(signers))
@@ -1049,7 +1053,10 @@ func (bs *BundleSigner) SignBundle(
 		if !ok {
 			continue
 		}
-		r1 := signer.Round1(sessionID, prfKey, signerIndices)
+		r1, err := signer.Round1(sessionID, prfKey, signerIndices)
+		if err != nil {
+			return fmt.Errorf("round1: validator %s: %w", v, err)
+		}
 		round1Data[keys.Shares[v].Index] = r1
 	}
 
