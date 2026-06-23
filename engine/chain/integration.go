@@ -574,13 +574,46 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 // The caller holds rt.fastFollowMu.
 func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fromNodeID ids.NodeID) {
 	blockID := blk.ID()
+	childEpoch := pChainHeightOf(blk) // epoch for the weighted set (MEDIUM-1)
+
+	// RECEIVE-SIDE EPOCH GATE (HIGH-1, predicate a — monotonicity): refuse to
+	// track or vote for a gossiped block whose stamped P-chain epoch height
+	// REGRESSES below its parent's recorded epoch. The proposer's build-side
+	// max(currentH, parentH) is proposer-only; a Byzantine proposer skips it and
+	// stamps a stale H_old (a past epoch where its departed coalition held ≥⅔,
+	// signed with leaked old keys) to finalize a fresh block against a validator
+	// set the current set never approved (safety break). The parent's epoch is read
+	// from the engine's tracked-block ledger (EpochHeightOf) — the authoritative
+	// "epoch we recorded for the parent". Enforcing childEpoch ≥ parentEpoch here,
+	// against the block's REAL parent (parentID is the inner block's own parent,
+	// which the cert also binds — the attacker cannot decouple them), means a
+	// chain's epoch can only move forward, so the far-past attack is closed and
+	// safety reduces to current-set BFT. The recency UPPER bound (absurd-future H)
+	// is enforced at the node boundary that holds the live P-chain height
+	// (pChainHeightVM.ParseBlock), so the two predicates jointly bound the epoch to
+	// [parentEpoch, localCurrentH+slack]. A missing parent (not yet tracked) leaves
+	// nothing to regress against and is admitted: the far-past attack needs a stale
+	// epoch BELOW the parent's, which is only meaningful once the parent is tracked;
+	// an orphan with no tracked parent cannot extend finalized history anyway.
+	if parentEpoch, ok := rt.Transitive.consensus.EpochHeightOf(blk.ParentID()); ok && childEpoch < parentEpoch {
+		if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("follow: REFUSED block — P-chain epoch regresses below parent (far-past epoch attack)",
+				log.Stringer("blockID", blockID),
+				log.Stringer("parentID", blk.ParentID()),
+				log.Uint64("childEpoch", childEpoch),
+				log.Uint64("parentEpoch", parentEpoch),
+				log.Stringer("from", fromNodeID))
+		}
+		return
+	}
+
 	consensusBlock := &Block{
 		id:           blockID,
 		parentID:     blk.ParentID(),
 		height:       blk.Height(),
 		timestamp:    blk.Timestamp().Unix(),
 		data:         blk.Bytes(),
-		pChainHeight: pChainHeightOf(blk), // epoch for the weighted set (MEDIUM-1)
+		pChainHeight: childEpoch,
 	}
 
 	// Add to consensus tracking (idempotent: AddBlock errors if already present).
