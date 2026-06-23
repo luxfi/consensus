@@ -166,7 +166,7 @@ func TestConsensus_EquivocatingProposerCannotFinalizeBothForks(t *testing.T) {
 		if cert.Position.BlockID == forkB.id {
 			t.Fatal("SAFETY VIOLATION: a finality cert was produced for fork B")
 		}
-		if err := cert.Verify(vs); err != nil {
+		if err := cert.Verify(vs, cert.Position.Height); err != nil {
 			t.Fatalf("gossiped cert %d failed verification: %v", i, err)
 		}
 	}
@@ -216,30 +216,34 @@ func TestConsensus_PartitionMinorityCannotFinalize(t *testing.T) {
 func TestDEX_BFTQuorumFinalizesFill(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	rec := &recordingGossiper{}
-	e, chainID := newQuorumEngine(t, params5(), vs, 0, rec)
+	// HIGH-4b: a value-DEX quorum-finality engine REQUIRES a stake source — finality is a
+	// stake-weighted ⅔ supermajority, not a raw count. Wire the test set as the (equal-
+	// weight) stake source for THIS value test.
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, rec, WithStakeWeighting(vs))
 
-	// The DEX value gate must PERMIT activation: K>1 + verifier = quorum-finality.
-	if err := e.RequireQuorumFinalityForValueDEX(true); err != nil {
-		t.Fatalf("value DEX must be permitted under quorum finality: %v", err)
-	}
+	// K>1 + verifier + gossiper + stake = genuine quorum-finality regime.
 	if e.Mode() != ModeQuorumFinality {
 		t.Fatalf("engine must report quorum-finality mode, got %s", e.Mode())
 	}
 
-	// A value fill block. Finalizes only at alpha-of-K.
+	// A value fill block. With equal unit weights over 5 validators, the ⅔-of-stake
+	// supermajority needs > 3.33 → at least 4 voters. We chit ALL FOUR followers (5 of 5
+	// including the proposer's self-vote) so the stake-weighted quorum is met deterministically
+	// regardless of self-vote arrival ordering — the value-DEX finality rule (stake-weighted,
+	// not count-α) is what gates VM.Accept here.
 	fill := newTestBlock(42, ids.Empty, "dex-value-fill")
 	pos := trackProposal(e, chainID, fill, 0)
 
 	e.ReceiveVote(vs.signedVote(1, pos))
 	e.ReceiveVote(vs.signedVote(2, pos))
+	e.ReceiveVote(vs.signedVote(3, pos))
+	e.ReceiveVote(vs.signedVote(4, pos))
 
-	if !waitFor(2*time.Second, func() bool { return e.IsAccepted(fill.id) }) {
-		t.Fatal("LIVENESS: DEX value fill did not finalize after alpha-of-K quorum")
+	if !waitFor(2*time.Second, func() bool { return fill.AcceptCalled() == 1 }) {
+		t.Fatalf("LIVENESS: DEX value fill did not finalize under the stake-weighted quorum (Accept ran %d times)", fill.AcceptCalled())
 	}
-	if fill.AcceptCalled() != 1 {
-		t.Fatalf("value fill VM.Accept must run exactly once at quorum, got %d", fill.AcceptCalled())
-	}
-	// The finality witness must be a real, verifiable cert.
+	// The finality witness must be a real, verifiable cert that ALSO clears the stake-
+	// weighted supermajority (the value-DEX finality rule).
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	if len(rec.certs) == 0 {
@@ -249,11 +253,11 @@ func TestDEX_BFTQuorumFinalizesFill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode fill cert: %v", err)
 	}
-	if err := cert.Verify(vs); err != nil {
-		t.Fatalf("fill cert must verify: %v", err)
+	if err := cert.VerifyWeighted(vs, vs, cert.Position.Height); err != nil {
+		t.Fatalf("fill cert must verify under the stake-weighted supermajority: %v", err)
 	}
-	if cert.VoterCount() < 3 {
-		t.Fatalf("fill cert must carry >= alpha=3 distinct voters, got %d", cert.VoterCount())
+	if cert.VoterCount() < 4 {
+		t.Fatalf("fill cert must carry >= the ⅔-stake supermajority (4 of 5) distinct voters, got %d", cert.VoterCount())
 	}
 }
 
@@ -427,12 +431,9 @@ func TestSingleValidator_StillFinalizes(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = e.Stop(context.Background()) })
 
+	// A single validator can author any history: it must NEVER report quorum-finality.
 	if e.Mode() != ModeSingleValidator {
 		t.Fatalf("K=1 must be single-validator mode, got %s", e.Mode())
-	}
-	// Value DEX MUST be refused on a single validator (fail-closed).
-	if err := e.RequireQuorumFinalityForValueDEX(true); err == nil {
-		t.Fatal("SAFETY: value DEX must be refused on a single-validator engine")
 	}
 
 	blk := newTestBlock(1, ids.Empty, "solo")

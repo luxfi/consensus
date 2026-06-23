@@ -215,6 +215,52 @@ func TestHeightGuard_RejectsHeightGap(t *testing.T) {
 	}
 }
 
+// TestForcePreference_CannotDesyncFinalizedLedger proves the recovery hatch
+// ForcePreference can never move finalizedTip off the finalized head — a
+// preference-recovery convenience must not corrupt the per-height guard's source
+// of truth (invariant (c): parent == finalized tip). A misuse with a NON-finalized
+// block must leave finalizedTip/finalizedHeight/finalizedByHeight intact, so a
+// subsequent finalize still checks the parent against the TRUE finalized block.
+func TestForcePreference_CannotDesyncFinalizedLedger(t *testing.T) {
+	c := NewChainConsensus(4, 3, 2)
+
+	g := ids.GenerateTestID() // finalized head at height 1
+	if err := c.AcceptViaCert(g, 1, ids.Empty); err != nil {
+		t.Fatalf("finalize height 1: %v", err)
+	}
+
+	// Legit recovery: ForcePreference on the just-finalized head is a reaffirming
+	// no-op — finalizedTip stays g.
+	c.ForcePreference(g)
+	if c.GetFinalizedTip() != g {
+		t.Fatalf("ForcePreference(head) must reaffirm finalized tip g, got %s", c.GetFinalizedTip())
+	}
+
+	// MISUSE: force preference to an UNRELATED, non-finalized block. This must NOT
+	// overwrite finalizedTip (doing so would blind invariant (c)).
+	rogue := ids.GenerateTestID()
+	c.ForcePreference(rogue)
+	if c.GetFinalizedTip() != g {
+		t.Fatalf("CRITICAL: ForcePreference(non-finalized) desynced finalized tip: got %s want %s (g)", c.GetFinalizedTip(), g)
+	}
+	if fh, set := c.GetFinalizedHeight(); !set || fh != 1 {
+		t.Fatalf("finalized height must be unchanged at 1, got (%d,%v)", fh, set)
+	}
+
+	// PROOF the guard still works against the TRUE tip: a child at height 2 whose
+	// parent is the rogue (forced-preference) block must be REJECTED — the guard
+	// checks against g, not rogue. If the desync had happened, this would wrongly
+	// pass.
+	if err := c.AcceptViaCert(ids.GenerateTestID(), 2, rogue); !errors.Is(err, ErrParentNotFinalizedTip) {
+		t.Fatalf("child parented on the rogue forced-pref block must be rejected by the guard, got %v", err)
+	}
+	// The correct child (parent == true tip g) finalizes.
+	h2 := ids.GenerateTestID()
+	if err := c.AcceptViaCert(h2, 2, g); err != nil {
+		t.Fatalf("correct child (parent g) must finalize: %v", err)
+	}
+}
+
 // TestHeightGuard_LocalVotePathAlsoGuarded proves the LOCAL α-count path
 // (ProcessVote) is guarded too: two conflicting blocks at one height, each
 // reaching α via local votes, finalize only ONE.

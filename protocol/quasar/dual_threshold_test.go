@@ -234,8 +234,7 @@ func TestDualSigningFlow(t *testing.T) {
 	// Round 1: All parties compute D + MACs
 	rtRound1Data := make(map[int]*coronaThreshold.Round1Data)
 	for _, signer := range signers {
-		data, err := signer.Round1(sessionID, prfKey, signerIDs)
-		require.NoError(t, err, "Corona Round1 failed")
+		data := signer.Round1(sessionID, prfKey, signerIDs)
 		rtRound1Data[data.PartyID] = data
 	}
 	t.Log("  Round1: D matrices computed")

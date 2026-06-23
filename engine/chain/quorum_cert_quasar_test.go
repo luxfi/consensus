@@ -186,7 +186,7 @@ func TestQuasarBridge_RealCertVerifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assemble engine cert: %v", err)
 	}
-	if err := engineCert.Verify(vs); err != nil {
+	if err := engineCert.Verify(vs, engineCert.Position.Height); err != nil {
 		t.Fatalf("engine cert must verify: %v", err)
 	}
 

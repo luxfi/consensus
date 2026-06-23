@@ -110,47 +110,56 @@ func TestWeighted_VerifyWeightedThreshold(t *testing.T) {
 		return c
 	}
 
+	// The stake maps are height-independent, so the epoch height passed to
+	// VerifyWeighted is the cert's position height (pos.Height); the predicate
+	// boundary under test is unchanged by the height-pinning refactor.
+	const epoch = uint64(1) // == pos.Height
 	// total=9, voters {0,1} hold 6 = exactly ⅔ → MUST be rejected (strict).
 	exactlyTwoThirds := &stakeMap{w: map[ids.NodeID]uint64{vs.nodeID(0): 3, vs.nodeID(1): 3, vs.nodeID(2): 3}, total: 9}
-	if err := mkCert(0, 1).VerifyWeighted(vs, exactlyTwoThirds); err == nil {
+	if err := mkCert(0, 1).VerifyWeighted(vs, exactlyTwoThirds, epoch); err == nil {
 		t.Fatal("exactly ⅔ of stake must be rejected (need STRICT supermajority)")
 	}
 	// voters {0,1} hold 7/9 > ⅔ → accepted.
 	overTwoThirds := &stakeMap{w: map[ids.NodeID]uint64{vs.nodeID(0): 4, vs.nodeID(1): 3, vs.nodeID(2): 2}, total: 9}
-	if err := mkCert(0, 1).VerifyWeighted(vs, overTwoThirds); err != nil {
+	if err := mkCert(0, 1).VerifyWeighted(vs, overTwoThirds, epoch); err != nil {
 		t.Fatalf("7/9 > ⅔ must be accepted: %v", err)
 	}
 	// nil stake source → fail closed (not silently count-only).
-	if err := mkCert(0, 1, 2).VerifyWeighted(vs, nil); err == nil {
+	if err := mkCert(0, 1, 2).VerifyWeighted(vs, nil, epoch); err == nil {
 		t.Fatal("nil stake source must fail closed")
 	}
 }
 
 // TestMode_RequiresQuorumGossiper is the HIGH-4 guard fix: ModeQuorumFinality
 // requires a present quorum gossiper, not merely K>1 && verifier!=nil. A K>1
-// engine with a verifier but NO cert gossiper is degraded → ModeUnknown → value
-// DEX refused.
+// engine with a verifier but NO cert gossiper is degraded → ModeUnknown.
 func TestMode_RequiresQuorumGossiper(t *testing.T) {
 	vs := newTestValidatorSet(4)
 	chainID := ids.GenerateTestID()
 
-	// Verifier present, gossiper present → quorum-finality, value DEX permitted.
+	// Verifier present, gossiper present, STAKE source present → quorum-finality, value DEX
+	// permitted. (HIGH-4b: a stake source is now ALSO required — value DEX finalizes on a
+	// stake-weighted supermajority, not a raw count.)
 	withGossip := NewWithConfig(Config{Params: params4()},
-		WithQuorumCert(chainID, vs.nodeID(0), vs, &recordingGossiper{}, vs.signerFor(0)))
+		WithQuorumCert(chainID, vs.nodeID(0), vs, &recordingGossiper{}, vs.signerFor(0)),
+		WithStakeWeighting(vs))
 	if got := withGossip.Mode(); got != ModeQuorumFinality {
-		t.Fatalf("verifier+gossiper must be quorum-finality, got %s", got)
-	}
-	if err := withGossip.RequireQuorumFinalityForValueDEX(true); err != nil {
-		t.Fatalf("value DEX must be permitted with a live topology: %v", err)
+		t.Fatalf("verifier+gossiper+stake must be quorum-finality, got %s", got)
 	}
 
 	// Verifier present, NO gossiper → degraded → ModeUnknown → value DEX refused.
-	noGossip := NewWithConfig(Config{Params: params4()}, WithVoteVerifier(vs))
+	noGossip := NewWithConfig(Config{Params: params4()}, WithVoteVerifier(vs), WithStakeWeighting(vs))
 	if got := noGossip.Mode(); got != ModeUnknown {
 		t.Fatalf("verifier WITHOUT gossiper must be ModeUnknown (degraded), got %s", got)
 	}
-	if err := noGossip.RequireQuorumFinalityForValueDEX(true); err == nil {
-		t.Fatal("HIGH-4: value DEX must be REFUSED when the quorum gossiper is absent (degraded topology)")
+
+	// HIGH-4b: verifier + gossiper but NO stake source → ModeUnknown → value DEX refused.
+	// A value chain that did not wire a stake source finalizes count-α only, which is weaker
+	// than the stake-weighted supermajority the launch rule requires.
+	noStake := NewWithConfig(Config{Params: params4()},
+		WithQuorumCert(chainID, vs.nodeID(0), vs, &recordingGossiper{}, vs.signerFor(0)))
+	if got := noStake.Mode(); got != ModeUnknown {
+		t.Fatalf("verifier+gossiper WITHOUT a stake source must be ModeUnknown, got %s", got)
 	}
 }
 
