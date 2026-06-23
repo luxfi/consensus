@@ -9,10 +9,11 @@
 //	    validator-set-root R verifies only against R. Re-presenting it as
 //	    certifying under a different set-root R' (a cross-epoch laundering) fails
 //	    clause-6 signature verification — every signature was over R.
-//	(2) NO-FLIP: an already-correct cert at (height H, root R), whose voters held
-//	    a ⅔-stake supermajority AT H, is NOT flipped by a later stake change.
-//	    VerifyWeighted reads stake at Position.Height, so a change at a different
-//	    height cannot retroactively invalidate (or validate) the cert.
+//	(2) NO-FLIP: an already-correct cert at (epoch height H, root R), whose voters
+//	    held a ⅔-stake supermajority AT H, is NOT flipped by a later stake change.
+//	    VerifyWeighted reads stake at the EPOCH HEIGHT passed by the caller (the
+//	    block's P-chain height; here == the cert's position height), so a change at
+//	    a different height cannot retroactively invalidate (or validate) the cert.
 //
 // Together these turn "the ⅔-by-stake predicate is measured at the cert-position
 // epoch" from a Gate-D ASSUMPTION into an ENFORCED invariant.
@@ -87,7 +88,7 @@ func TestEpochBinding_CrossEpochCertRejected(t *testing.T) {
 	}
 
 	// Sound: the cert verifies against its OWN (epoch-A) position.
-	if err := certA.Verify(vs); err != nil {
+	if err := certA.Verify(vs, certA.Position.Height); err != nil {
 		t.Fatalf("epoch-A cert must verify against its own set-root: %v", err)
 	}
 
@@ -101,7 +102,7 @@ func TestEpochBinding_CrossEpochCertRejected(t *testing.T) {
 		Threshold: certA.Threshold,
 		Votes:     certA.Votes, // same signatures, different claimed epoch
 	}
-	if err := certLaundered.Verify(vs); err == nil {
+	if err := certLaundered.Verify(vs, certLaundered.Position.Height); err == nil {
 		t.Fatal("MEDIUM: a cert re-presented under a DIFFERENT validator-set-root must FAIL verification (cross-epoch laundering)")
 	}
 
@@ -145,14 +146,14 @@ func TestEpochBinding_StakeReadAtCertHeight(t *testing.T) {
 	}
 
 	// Correct at its OWN epoch: stake read at height 10 → 99/100 > ⅔ → accepted.
-	if err := cert10.VerifyWeighted(vs, ess); err != nil {
+	if err := cert10.VerifyWeighted(vs, ess, cert10.Position.Height); err != nil {
 		t.Fatalf("cert at height 10 must verify against height-10 stake (99/100): %v", err)
 	}
 
 	// NO-FLIP: the later stake change (node0 unbonds at height 100) does NOT
 	// affect this cert — its Position.Height is 10, so VerifyWeighted still reads
 	// the height-10 snapshot. Re-verify is stable.
-	if err := cert10.VerifyWeighted(vs, ess); err != nil {
+	if err := cert10.VerifyWeighted(vs, ess, cert10.Position.Height); err != nil {
 		t.Fatalf("a later-epoch stake change must NOT flip an already-correct height-10 cert: %v", err)
 	}
 
@@ -168,7 +169,7 @@ func TestEpochBinding_StakeReadAtCertHeight(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assemble height-100 cert: %v", err)
 	}
-	if err := cert100.VerifyWeighted(vs, ess); err == nil {
+	if err := cert100.VerifyWeighted(vs, ess, cert100.Position.Height); err == nil {
 		t.Fatal("a cert at height 100 by {0,1,2} holds only 3/100 of stake and MUST be rejected (proves height-100 snapshot is read)")
 	}
 }
@@ -203,7 +204,7 @@ func TestEpochBinding_RoundTripPreservesRoot(t *testing.T) {
 		t.Fatal("cert did not round-trip through the wire codec with the set-root field")
 	}
 	// The decoded cert still verifies (sigs bound to the same root).
-	if err := got.Verify(vs); err != nil {
+	if err := got.Verify(vs, got.Position.Height); err != nil {
 		t.Fatalf("decoded cert must still verify: %v", err)
 	}
 }

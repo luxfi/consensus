@@ -28,7 +28,7 @@ func TestQuorumCertCodec_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
-	if err := cert.Verify(vs); err != nil {
+	if err := cert.Verify(vs, cert.Position.Height); err != nil {
 		t.Fatalf("original cert must verify: %v", err)
 	}
 
@@ -43,7 +43,7 @@ func TestQuorumCertCodec_RoundTrip(t *testing.T) {
 	if !cert.Equal(got) {
 		t.Fatal("round-trip cert must equal the original")
 	}
-	if err := got.Verify(vs); err != nil {
+	if err := got.Verify(vs, got.Position.Height); err != nil {
 		t.Fatalf("round-trip cert must still verify: %v", err)
 	}
 }
@@ -114,7 +114,7 @@ func TestQuorumCert_DuplicateVoterRejected(t *testing.T) {
 			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)}, // dup
 		},
 	}
-	if err := bad.Verify(vs); err == nil {
+	if err := bad.Verify(vs, bad.Position.Height); err == nil {
 		t.Fatal("Verify must reject non-strictly-increasing voters")
 	}
 }
@@ -127,7 +127,7 @@ func TestQuorumCert_NilVerifierFailsClosed(t *testing.T) {
 	cert, _ := AssembleQuorumCert(pos, 1, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 	})
-	if err := cert.Verify(nil); err == nil {
+	if err := cert.Verify(nil, 0); err == nil {
 		t.Fatal("Verify(nil) must fail closed")
 	}
 }

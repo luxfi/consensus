@@ -584,10 +584,7 @@ func TestThresholdSigLegAcceptsRealCoronaAggregate(t *testing.T) {
 	prf := []byte("consensus-cert-corona-prf-32-byte")
 	r1 := make(map[int]*coronaThreshold.Round1Data, threshold)
 	for i := 0; i < threshold; i++ {
-		rr1, rerr := signers[i].Round1(sessionID, prf, ids)
-		if rerr != nil {
-			t.Fatalf("corona Round1[%d]: %v", i, rerr)
-		}
+		rr1 := signers[i].Round1(sessionID, prf, ids)
 		r1[ids[i]] = rr1
 	}
 	r2 := make(map[int]*coronaThreshold.Round2Data, threshold)

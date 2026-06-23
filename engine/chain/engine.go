@@ -269,10 +269,33 @@ func WithVoteVerifier(verifier VoteVerifier) Option {
 // backed by the chain's validator set (weights from the same set the verifier
 // authenticates against). REQUIRED for a PoS value chain with unequal stake;
 // omit it only when equal stake is enforced at admission (then count-α is the
-// correct, equivalent rule).
+// correct, equivalent rule). It is ALSO a precondition for Mode() to report
+// ModeQuorumFinality (the engine's stake-weighted finality regime) — see Mode().
 func WithStakeWeighting(stake StakeSource) Option {
 	return func(t *Transitive) {
 		t.stakeSource = stake
+	}
+}
+
+// WithStrictPQ marks the engine as running under a STRICT post-quantum security
+// profile (the node derives this from the chain's consensus profile —
+// config.Profile.IsStrict()). When set, Mode() additionally requires a PQ
+// cryptoWitness (WithCryptoWitness) before it reports ModeQuorumFinality, so the
+// engine cannot report a quorum-finality regime the chain cannot witness
+// post-quantum. A non-strict chain leaves this false (the requirement is vacuous).
+func WithStrictPQ(strict bool) Option {
+	return func(t *Transitive) {
+		t.strictPQ = strict
+	}
+}
+
+// WithCryptoWitness wires the post-quantum finality witness source a strict-PQ
+// chain uses. It is REQUIRED for Mode() to report ModeQuorumFinality on a strict-PQ
+// chain; on a non-strict chain it is unused. The node supplies a source whose
+// Scheme() names the PQ witness scheme actually in force.
+func WithCryptoWitness(w CryptoWitnessSource) Option {
+	return func(t *Transitive) {
+		t.cryptoWitness = w
 	}
 }
 
@@ -395,6 +418,24 @@ type Transitive struct {
 	// carry ids.Empty (behavior identical to before set-root binding) — a chain
 	// without epoch-versioned sets needs no binding.
 	setRootSource ValidatorSetRootSource
+
+	// strictPQ records that this chain runs under a STRICT post-quantum security
+	// profile (set via WithStrictPQ, from config.Profile.IsStrict()). When true,
+	// Mode() additionally requires a PQ cryptoWitness before reporting
+	// ModeQuorumFinality, so the engine cannot report a quorum-finality
+	// regime the chain cannot witness post-quantum.
+	strictPQ bool
+
+	// cryptoWitness (optional) is the post-quantum finality witness source a strict-PQ
+	// chain wires (the SAME node-layer CryptoWitnessSource that upgrades an engine
+	// QuorumCert into a quasar.WeightedQuorumCert — see quorum_cert_quasar.go). It is
+	// REQUIRED for Mode() to report ModeQuorumFinality on a strict-PQ chain: without it the
+	// cert path cannot produce the PQ (quasar) witness the profile demands, so the value-
+	// DEX gate must not certify a quorum-finality regime that cannot be witnessed post-
+	// quantum. On a non-strict chain it is unused. Injected like voteVerifier/stakeSource so
+	// the gate reads the SAME field that delivers the witness — nil means "PQ witness not
+	// plumbed", exactly the semantics ToQuasarCert already relies on.
+	cryptoWitness CryptoWitnessSource
 
 	// Logger for consensus events (nil-safe: uses log.Noop() if unset)
 	log log.Logger
@@ -1024,7 +1065,9 @@ func (t *Transitive) handleVote(vote Vote) {
 	if t.voteVerifier != nil {
 		pos := t.blockPositionLocked(pending, vote.BlockID)
 		msg := canonicalVoteMessageFor(pos, vote.Accept)
-		if len(vote.Signature) == 0 || !t.voteVerifier.VerifyVote(vote.NodeID, msg, vote.Signature) {
+		// Resolve the voter's pubkey at the block's P-CHAIN epoch height (RESIDUAL-B),
+		// the same height the position's set-root commits to.
+		if len(vote.Signature) == 0 || !t.voteVerifier.VerifyVote(vote.NodeID, msg, vote.Signature, t.epochHeightLocked(pending)) {
 			// Unsigned or invalid: not a real vote from this validator at this
 			// position/decision. Drop it — count nothing.
 			t.mu.Unlock()
@@ -1102,6 +1145,38 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 	})
 }
 
+// pChainHeighter is the subset of block.SignedBlock the engine needs to pin a
+// block's validator-set epoch: the P-CHAIN height the block was proposed at. A
+// proposervm block satisfies it; a bare VM block does not (epoch height 0 →
+// fail-closed on the K>1 finality path). Defined locally so the engine depends
+// only on the one method it reads, not the whole SignedBlock surface.
+type pChainHeighter interface {
+	PChainHeight() uint64
+}
+
+// pChainHeightOf extracts the P-chain height a VM block was proposed at, or 0 if
+// the block does not carry one (pre-fork / no proposervm wrapper). This is the
+// SOLE place the engine reads PChainHeight off a VM block, so every consensus
+// Block records the same epoch the proposervm signed.
+func pChainHeightOf(b block.Block) uint64 {
+	if ph, ok := b.(pChainHeighter); ok {
+		return ph.PChainHeight()
+	}
+	return 0
+}
+
+// epochHeightLocked returns the P-CHAIN height the block's weighted validator set
+// is pinned to — the SINGLE height used for the set-root commitment, the
+// ⅔-by-stake tally, AND per-voter pubkey resolution (membership, pubkey,
+// set-root, stake ALL read set@H, MEDIUM-1/CRITICAL-1/RESIDUAL-B). It is the
+// block's recorded P-chain height, NOT its value-chain height. Caller holds t.mu.
+func (t *Transitive) epochHeightLocked(pending *PendingBlock) uint64 {
+	if pending != nil && pending.ConsensusBlock != nil {
+		return pending.ConsensusBlock.pChainHeight
+	}
+	return 0
+}
+
 // blockPositionLocked returns the consensus position a block's votes/cert bind
 // to. Caller holds t.mu.
 func (t *Transitive) blockPositionLocked(pending *PendingBlock, blockID ids.ID) VotePosition {
@@ -1111,15 +1186,19 @@ func (t *Transitive) blockPositionLocked(pending *PendingBlock, blockID ids.ID) 
 		parentID = pending.ConsensusBlock.parentID
 		height = pending.ConsensusBlock.height
 	}
-	// Stamp the active weighted-validator-set commitment at this block's height
-	// (the MEDIUM fix). Every path that builds a position — sign
-	// (recordOwnVoteLocked), assemble + verify (assembleCertLocked) — routes
-	// through here, so they all bind the SAME root for a given block: a cert is
-	// pinned to the exact set it was certified under. nil source ⟹ Empty root
-	// (the fixed-set no-op). The source MUST be deterministic at a given height.
+	// Stamp the active weighted-validator-set commitment at the block's P-CHAIN
+	// EPOCH height (the MEDIUM-1 / CRITICAL-1 fix) — NOT its value-chain height.
+	// Every path that builds a position — sign (recordOwnVoteLocked), assemble +
+	// verify (assembleCertLocked), incoming-vote/cert verify — routes through
+	// here, so they all bind the SAME root for a given block: a cert is pinned to
+	// the exact set it was certified under. The epoch height is the proposervm's
+	// PChainHeight, the only height that is (i) ≤ the current P-chain height (so
+	// platformvm.GetValidatorSet does NOT errUnfinalizedHeight) and (ii) embedded
+	// in the signed block so every honest node derives the IDENTICAL set/root.
+	// nil source ⟹ Empty root (the fixed-set no-op).
 	var setRoot ids.ID
 	if t.setRootSource != nil {
-		setRoot = t.setRootSource.ValidatorSetRoot(height)
+		setRoot = t.setRootSource.ValidatorSetRoot(t.epochHeightLocked(pending))
 	}
 	return VotePosition{
 		ChainID:          t.chainID,
@@ -1129,6 +1208,55 @@ func (t *Transitive) blockPositionLocked(pending *PendingBlock, blockID ids.ID) 
 		ParentID:         parentID,
 		ValidatorSetRoot: setRoot,
 	}
+}
+
+// TrackOwnProposalForTest inserts blk as a verified own-proposal pending block —
+// the SAME state buildBlocksLocked establishes for a locally built block — and
+// returns the canonical VotePosition followers must sign. It exists so a test in
+// ANOTHER module (the node's chains package) can drive a REAL VM block (e.g. the
+// node's P-chain-height-stamping wrapper block) through the engine's actual
+// vote→assemble→verify→finalize path. It is exported ONLY for that cross-module
+// test reach; it is not part of the consensus runtime surface.
+//
+// It is NOT a finality shortcut: it records the proposer's own signed accept
+// (recordOwnVoteLocked) and a single self-vote toward the count exactly as
+// production does, and it NEVER calls ForceAccept. A block tracked here finalizes
+// (K>1) only when enough real signed peer votes arrive to assemble a cert that
+// VERIFIES under the wired verifier (and clears the ⅔-stake predicate when a
+// stake source is wired) — the genuine BFT path.
+//
+// The load-bearing line is `pChainHeightOf(blk)`: it captures the block's P-CHAIN
+// epoch height off the VM block through the SAME boundary the production
+// buildBlocksLocked uses, so a test can prove the boundary delivers the real
+// height (not 0) end to end. The returned position's set-root is stamped at that
+// epoch height (blockPositionLocked), so a follower signs — and the verifier
+// resolves pubkeys at — the LIVE set@H.
+func (t *Transitive) TrackOwnProposalForTest(ctx context.Context, blk block.Block, round uint32) VotePosition {
+	cb := &Block{
+		id:           blk.ID(),
+		parentID:     blk.ParentID(),
+		height:       blk.Height(),
+		timestamp:    blk.Timestamp().Unix(),
+		data:         blk.Bytes(),
+		pChainHeight: pChainHeightOf(blk), // the boundary capture under test (b2)
+	}
+	_ = t.consensus.AddBlock(ctx, cb)
+	_ = t.consensus.ProcessVote(ctx, blk.ID(), true)
+	t.mu.Lock()
+	pb := &PendingBlock{
+		ConsensusBlock: cb,
+		VMBlock:        blk,
+		ProposedAt:     time.Now(),
+		VoteCount:      1,
+		Round:          round,
+		Decided:        false,
+		IsOwnProposal:  true,
+	}
+	t.pendingBlocks[blk.ID()] = pb
+	t.recordOwnVoteLocked(pb, blk.ID())
+	pos := t.blockPositionLocked(pb, blk.ID())
+	t.mu.Unlock()
+	return pos
 }
 
 // assembleCertLocked attempts to assemble a verified QuorumCert from the signed
@@ -1156,10 +1284,13 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	}
 	pos := t.blockPositionLocked(pending, blockID)
 	message := CanonicalVoteMessage(pos)
+	// The epoch height pins every per-voter pubkey resolution + the stake tally to
+	// the SAME P-chain height the position's set-root commits to (MEDIUM-1).
+	epochHeight := t.epochHeightLocked(pending)
 
 	verified := make([]SignedVote, 0, len(pending.certVotes))
 	for _, sv := range pending.certVotes {
-		if t.voteVerifier.VerifyVote(sv.NodeID, message, sv.Signature) {
+		if t.voteVerifier.VerifyVote(sv.NodeID, message, sv.Signature, epochHeight) {
 			verified = append(verified, sv)
 		}
 	}
@@ -1177,10 +1308,10 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	// (HIGH-3) — the count quorum alone is not finality when stake is unequal, so
 	// we keep WAITING (return nil) until enough STAKE has voted, never forcing.
 	if t.stakeSource != nil {
-		if err := cert.VerifyWeighted(t.voteVerifier, t.stakeSource); err != nil {
+		if err := cert.VerifyWeighted(t.voteVerifier, t.stakeSource, epochHeight); err != nil {
 			return nil
 		}
-	} else if err := cert.Verify(t.voteVerifier); err != nil {
+	} else if err := cert.Verify(t.voteVerifier, epochHeight); err != nil {
 		return nil
 	}
 	pending.cert = cert
@@ -1425,11 +1556,12 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		}
 
 		consensusBlock := &Block{
-			id:        vmBlock.ID(),
-			parentID:  vmBlock.ParentID(),
-			height:    vmBlock.Height(),
-			timestamp: vmBlock.Timestamp().Unix(),
-			data:      vmBlock.Bytes(),
+			id:           vmBlock.ID(),
+			parentID:     vmBlock.ParentID(),
+			height:       vmBlock.Height(),
+			timestamp:    vmBlock.Timestamp().Unix(),
+			data:         vmBlock.Bytes(),
+			pChainHeight: pChainHeightOf(vmBlock), // epoch for the weighted set (MEDIUM-1)
 		}
 
 		// Verify BEFORE consensus — prevents accepting invalid blocks in K=1 mode

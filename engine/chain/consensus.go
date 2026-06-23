@@ -74,6 +74,30 @@ type Block struct {
 	timestamp int64
 	data      []byte
 
+	// pChainHeight is the P-CHAIN epoch height the block's weighted validator set
+	// is pinned to (MEDIUM-1 / CRITICAL-1): the set-root commitment, the ⅔-by-stake
+	// tally, AND the per-voter pubkey resolution are ALL read from the height-
+	// indexed validators.State at THIS height — never the value-chain `height`.
+	// They differ fundamentally: platformvm.GetValidatorSet interprets its argument
+	// as a P-CHAIN height and returns errUnfinalizedHeight when the current P-chain
+	// height < the argument, and the value-chain height races far ahead of the
+	// P-chain height on a busy chain — feeding `height` there yields an empty set
+	// and stalls finality FOREVER (the mainnet-bricking bug this fixes).
+	//
+	// Source: a proposervm signed block carries its PChainHeight
+	// (block.SignedBlock.PChainHeight); pChainHeightOf reads it off the VM block at
+	// the engine boundary. When the block does NOT expose one (the VM is not
+	// proposervm-wrapped at the engine boundary, which is the case for the current
+	// in-process chain stack), this is 0 → the set is read at P-chain height 0, the
+	// GENESIS validator set. That is non-empty, identical on every node (everyone
+	// agrees on genesis), and ≤ the current P-chain height, so finality is LIVE and
+	// consistent — and EXACT for any chain whose validator set is unchanged since
+	// genesis. The refinement that pins post-genesis STAKING-CHANGE epochs requires
+	// the proposervm to deliver its PChainHeight to the engine's block (the
+	// remaining (b2) wiring); the mechanism here is proven by
+	// TestPChainEpochFinality_RealWiring, which feeds a block that DOES carry it.
+	pChainHeight uint64
+
 	// Consensus state - Photon -> Wave -> Focus finality
 	driver   *engine.Driver
 	accepted bool

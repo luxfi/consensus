@@ -47,7 +47,9 @@ func (a nodeAuth) sign(nodeID ids.NodeID, message []byte) []byte {
 }
 
 // VerifyVote implements VoteVerifier: recompute the node's MAC over message.
-func (a nodeAuth) VerifyVote(nodeID ids.NodeID, message []byte, sig []byte) bool {
+// The MAC is keyed by nodeID, not by epoch, so epochHeight is not consulted here
+// (the deterministic harness has one fixed key per node across all epochs).
+func (a nodeAuth) VerifyVote(nodeID ids.NodeID, message []byte, sig []byte, _ uint64) bool {
 	want := a.sign(nodeID, message)
 	return hmac.Equal(want, sig)
 }
@@ -172,7 +174,10 @@ func newTestValidatorSet(n int) *testValidatorSet {
 func (s *testValidatorSet) nodeID(i int) ids.NodeID { return s.ids[i] }
 
 // VerifyVote implements VoteVerifier. Unknown node → false (never an error).
-func (s *testValidatorSet) VerifyVote(nodeID ids.NodeID, message []byte, sig []byte) bool {
+// The fixed test set is the same at every epoch, so epochHeight is not consulted
+// here; the height-pinned-resolution behavior (RESIDUAL-B) is exercised by the
+// dedicated epochValidatorSet in quorum_finality_test.go.
+func (s *testValidatorSet) VerifyVote(nodeID ids.NodeID, message []byte, sig []byte, _ uint64) bool {
 	s.mu.RLock()
 	pub, ok := s.pub[nodeID]
 	s.mu.RUnlock()
@@ -180,6 +185,28 @@ func (s *testValidatorSet) VerifyVote(nodeID ids.NodeID, message []byte, sig []b
 		return false
 	}
 	return ed25519.Verify(pub, message, sig)
+}
+
+// Weight implements StakeSource: every validator in the test set carries EQUAL unit
+// weight (1), so a count-α quorum is also a ⅔-stake supermajority — the test set is a
+// valid stake source for the value-DEX quorum-finality gate (Mode() requires one). An
+// unknown node has weight 0 (it contributes no stake).
+func (s *testValidatorSet) Weight(nodeID ids.NodeID, _ uint64) uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.pub[nodeID]; ok {
+		return 1
+	}
+	return 0
+}
+
+// TotalStake implements StakeSource: the total active stake is the validator count
+// (equal unit weights). Non-zero for a non-empty set, so the stake-weighted check is
+// usable (a zero total would be treated as unusable / fail-closed by VerifyWeighted).
+func (s *testValidatorSet) TotalStake(_ uint64) uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return uint64(len(s.ids))
 }
 
 // signerFor returns a VoteSigner bound to validator i's key.
@@ -281,10 +308,23 @@ func (g *certQuorumGossiper) GossipCert(c, n, b ids.ID, cb []byte) int {
 // cert gossiper. K/alpha come from params.
 func newQuorumEngine(t *testing.T, params config.Parameters, vs *testValidatorSet, self int, gossiper CertGossiper) (*Transitive, ids.ID) {
 	t.Helper()
+	return newQuorumEngineOpts(t, params, vs, self, gossiper)
+}
+
+// newQuorumEngineOpts builds the engine and applies any EXTRA options on top of the
+// base quorum-cert wiring. The base harness deliberately does NOT wire a stake source —
+// the finality tests rely on COUNT-α finality (cert.Verify), and stake-weighting
+// (cert.VerifyWeighted) would change the threshold (⅔-of-stake) and break those tests.
+// A test that exercises the value-DEX MODE gate (which requires a stake source) passes
+// WithStakeWeighting explicitly, scoped to that test, so finality math stays count-α for
+// everyone else.
+func newQuorumEngineOpts(t *testing.T, params config.Parameters, vs *testValidatorSet, self int, gossiper CertGossiper, extra ...Option) (*Transitive, ids.ID) {
+	t.Helper()
 	chainID := ids.GenerateTestID()
-	e := NewWithConfig(Config{Params: params},
+	opts := append([]Option{
 		WithQuorumCert(chainID, vs.nodeID(self), vs, gossiper, vs.signerFor(self)),
-	)
+	}, extra...)
+	e := NewWithConfig(Config{Params: params}, opts...)
 	if err := e.Start(context.Background(), true); err != nil {
 		t.Fatalf("Start: %v", err)
 	}

@@ -95,8 +95,10 @@ func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
 	pending, exists := t.pendingBlocks[blockID]
 	verifier := t.voteVerifier
 	var pos VotePosition
+	var epochHeight uint64
 	if exists {
 		pos = t.blockPositionLocked(pending, blockID)
+		epochHeight = t.epochHeightLocked(pending)
 	}
 	t.mu.RUnlock()
 
@@ -104,9 +106,10 @@ func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
 		return false
 	}
 
-	// Verify the signature against OUR position for this block. A vote that
-	// signed a different position (different height/round/parent) fails here.
-	if !verifier.VerifyVote(nodeID, CanonicalVoteMessage(pos), sig) {
+	// Verify the signature against OUR position for this block, resolving the
+	// voter's pubkey at the block's P-CHAIN epoch height (RESIDUAL-B). A vote that
+	// signed a different position (different height/round/parent/set-root) fails.
+	if !verifier.VerifyVote(nodeID, CanonicalVoteMessage(pos), sig, epochHeight) {
 		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("incoming vote: signature invalid",
 				log.Stringer("blockID", blockID), log.Stringer("from", nodeID))
@@ -207,18 +210,50 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		return false
 	}
 
+	// Resolve the cert's epoch height (MEDIUM-1) from OUR locally-tracked,
+	// locally-verified block — the proposervm P-chain height we recorded for this
+	// block ID. Every honest node derives the same epoch height from the same
+	// signed block, so the cert verifies against the IDENTICAL set/root/stake on
+	// every node. A cert for a block we have not yet tracked is deferred below
+	// (we cannot know its epoch — and we must not Accept an unverified block
+	// anyway), so for a stake-weighted finalize `exists` is required here.
+	var epochHeight uint64
+	if exists && pending.ConsensusBlock != nil {
+		epochHeight = pending.ConsensusBlock.pChainHeight
+	}
+
+	// Defence in depth (epoch binding): the cert's set-root MUST equal the set-root
+	// WE recompute at our epoch height for this block. The set-root is folded into
+	// every signed vote, so a verifying cert already implies the signers agreed on
+	// it; this cross-check additionally rejects a cert whose epoch (set-root) does
+	// not match the epoch of the block we tracked under this ID — a cert laundered
+	// from a different validator-set epoch. nil source ⟹ Empty on both sides (no
+	// epoch bound), so this is a no-op for a fixed-set chain.
+	t.mu.RLock()
+	stake := t.stakeSource
+	setRootSrc := t.setRootSource
+	t.mu.RUnlock()
+	if setRootSrc != nil && exists {
+		localRoot := setRootSrc.ValidatorSetRoot(epochHeight)
+		if localRoot != cert.Position.ValidatorSetRoot {
+			if !rt.config.Logger.IsZero() {
+				rt.config.Logger.Warn("incoming cert: set-root does not match our epoch for this block; dropping",
+					log.Stringer("blockID", cert.Position.BlockID),
+					log.Uint64("epochHeight", epochHeight))
+			}
+			return false
+		}
+	}
+
 	// On a stake-weighted chain the incoming cert must clear the ⅔-of-stake
 	// supermajority (HIGH-3), not just the count predicate — otherwise a
 	// low-stake coalition's count-α cert would finalize. Count-only chains use
 	// Verify (equal-stake invariant enforced at admission).
-	t.mu.RLock()
-	stake := t.stakeSource
-	t.mu.RUnlock()
 	var verr error
 	if stake != nil {
-		verr = cert.VerifyWeighted(verifier, stake)
+		verr = cert.VerifyWeighted(verifier, stake, epochHeight)
 	} else {
-		verr = cert.Verify(verifier)
+		verr = cert.Verify(verifier, epochHeight)
 	}
 	if verr != nil {
 		if !rt.config.Logger.IsZero() {
