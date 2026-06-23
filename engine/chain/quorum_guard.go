@@ -60,15 +60,25 @@ var ErrValueDEXRequiresQuorumFinality = errors.New("chain: real-value native DEX
 // Mode reports the engine's finality regime, derived from its live
 // configuration:
 //
-//   - K<=1                       → ModeSingleValidator
-//   - K>1 with a vote verifier   → ModeQuorumFinality
-//   - K>1 without a vote verifier → ModeUnknown (a misconfiguration the engine
-//     also refuses to Start; surfaced here so the guard treats it as not-safe).
+//   - K<=1                                    → ModeSingleValidator
+//   - K>1 with a vote verifier AND a cert
+//     gossiper (the α-of-K topology is
+//     actually reachable: votes collected,
+//     certs distributed to followers)        → ModeQuorumFinality
+//   - K>1 missing the verifier OR the cert
+//     gossiper                               → ModeUnknown (degraded — a verifier
+//     with no way to distribute the cert can leave followers unable to finalize;
+//     the engine refuses Start without the verifier, and the value-DEX guard
+//     treats this as not-safe so value never activates over a degraded topology).
 //
-// Because the mode is computed from K and the presence of the verifier — the
-// same inputs that select the finalization path in tryFinalizeBlock — it is
-// impossible for an engine to report ModeQuorumFinality yet finalize via the
-// force path.
+// HIGH-4: ModeQuorumFinality REQUIRES a present quorum gossiper, not merely
+// K>1 && verifier!=nil. Otherwise a node whose network layer never wired the
+// vote/cert distribution would report "quorum-finality" and permit value-DEX
+// while followers silently cannot finalize on a cert (freeze) — the topology
+// must be live, not just the verifier present. Because the mode is computed from
+// the SAME fields that select and distribute finality (verifier gates counting,
+// certGossiper distributes the proof), an engine cannot report ModeQuorumFinality
+// yet be unable to drive cert-witnessed finality to its followers.
 func (t *Transitive) Mode() ConsensusMode {
 	k := t.consensus.K()
 	if k <= 1 {
@@ -76,8 +86,9 @@ func (t *Transitive) Mode() ConsensusMode {
 	}
 	t.mu.RLock()
 	hasVerifier := t.voteVerifier != nil
+	hasGossiper := t.certGossiper != nil
 	t.mu.RUnlock()
-	if hasVerifier {
+	if hasVerifier && hasGossiper {
 		return ModeQuorumFinality
 	}
 	return ModeUnknown

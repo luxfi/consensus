@@ -74,17 +74,18 @@ const (
 // or vote is invalid); none is a panic and none does unbounded work — an
 // adversarial cert yields an error, never a node crash.
 var (
-	ErrQCNil                   = errors.New("chain: nil quorum cert")
-	ErrQCVersion               = errors.New("chain: quorum cert version mismatch")
-	ErrQCType                  = errors.New("chain: quorum cert type mismatch")
-	ErrQCNoVotes               = errors.New("chain: quorum cert has no votes")
-	ErrQCThresholdZero         = errors.New("chain: quorum cert threshold (alpha) is zero")
-	ErrQCNotStrictlyIncreasing = errors.New("chain: cert voters are not strictly increasing (duplicate or unsorted node id)")
-	ErrQCBelowThreshold        = errors.New("chain: distinct accept votes below quorum threshold (alpha)")
-	ErrQCVoteNotAccept         = errors.New("chain: cert carries a non-accept vote")
-	ErrQCVotePosition          = errors.New("chain: cert vote position does not match cert position")
-	ErrQCSigInvalid            = errors.New("chain: cert vote signature failed verification")
-	ErrQCVerifierNil           = errors.New("chain: vote verifier is nil; cannot verify a cert's signatures — fail closed")
+	ErrQCNil                     = errors.New("chain: nil quorum cert")
+	ErrQCVersion                 = errors.New("chain: quorum cert version mismatch")
+	ErrQCType                    = errors.New("chain: quorum cert type mismatch")
+	ErrQCNoVotes                 = errors.New("chain: quorum cert has no votes")
+	ErrQCThresholdZero           = errors.New("chain: quorum cert threshold (alpha) is zero")
+	ErrQCNotStrictlyIncreasing   = errors.New("chain: cert voters are not strictly increasing (duplicate or unsorted node id)")
+	ErrQCBelowThreshold          = errors.New("chain: distinct accept votes below quorum threshold (alpha)")
+	ErrQCVoteNotAccept           = errors.New("chain: cert carries a non-accept vote")
+	ErrQCVotePosition            = errors.New("chain: cert vote position does not match cert position")
+	ErrQCSigInvalid              = errors.New("chain: cert vote signature failed verification")
+	ErrQCVerifierNil             = errors.New("chain: vote verifier is nil; cannot verify a cert's signatures — fail closed")
+	ErrQCStakeBelowSupermajority = errors.New("chain: cert voters' stake below 2/3 of total stake (count quorum reached but not stake-weighted supermajority)")
 )
 
 // SignedVote is one validator's signed ACCEPT decision over a consensus
@@ -187,6 +188,70 @@ type VoteVerifierFunc func(nodeID ids.NodeID, message []byte, sig []byte) bool
 // VerifyVote implements VoteVerifier.
 func (f VoteVerifierFunc) VerifyVote(nodeID ids.NodeID, message []byte, sig []byte) bool {
 	return f(nodeID, message, sig)
+}
+
+// StakeSource supplies validator voting weights so finality can be checked as a
+// STAKE-WEIGHTED supermajority rather than a raw voter COUNT. This is the HIGH-3
+// fix: on a PoS chain with unequal stake, "α distinct voters" is NOT the same as
+// "≥⅔ of stake" — a coalition of many low-stake validators could reach the count
+// while controlling a minority of stake. When a value/PoS chain wires a
+// StakeSource, a cert finalizes only if BOTH hold: (count ≥ α) AND (Σ voter
+// stake ≥ ⅔ Σ total stake).
+//
+// Determinism + fail-closed: Weight MUST be deterministic for a given
+// (nodeID, epoch) and return 0 for an unknown/out-of-set voter (an out-of-set
+// voter contributes no stake — it cannot inflate the numerator). TotalStake is
+// the epoch's total active stake; if it is 0 the source is unusable and the
+// caller treats the cert as unverifiable (fail closed). The engine binds the
+// source to the cert's position height so weights are read at the right epoch.
+type StakeSource interface {
+	// Weight returns the voting weight (stake) of nodeID at the given height, or
+	// 0 if nodeID is not an active validator at that height.
+	Weight(nodeID ids.NodeID, height uint64) uint64
+	// TotalStake returns the total active validator stake at the given height.
+	TotalStake(height uint64) uint64
+}
+
+// VerifyWeighted verifies the cert under `verifier` (the full count predicate of
+// Verify) AND additionally requires that the summed stake of the cert's voters
+// is at least two-thirds of the total stake at the cert's position height. It is
+// the stake-aware finality predicate for value/PoS chains.
+//
+// A nil stake source means "no stake model wired" — the caller MUST instead use
+// Verify and is responsible for the equal-stake admission invariant (documented
+// on the engine). VerifyWeighted with a nil source returns ErrQCVerifierNil's
+// sibling fail-closed error to make a wiring mistake loud rather than silently
+// count-only.
+func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource) error {
+	if err := c.Verify(verifier); err != nil {
+		return err
+	}
+	if stake == nil {
+		return fmt.Errorf("%w: stake source nil", ErrQCStakeBelowSupermajority)
+	}
+	total := stake.TotalStake(c.Position.Height)
+	if total == 0 {
+		// No known stake at this height — cannot assert a supermajority. Fail closed.
+		return fmt.Errorf("%w: total stake is zero at height %d", ErrQCStakeBelowSupermajority, c.Position.Height)
+	}
+	var voted uint64
+	for i := range c.Votes {
+		voted += stake.Weight(c.Votes[i].NodeID, c.Position.Height)
+	}
+	// STRICT supermajority by stake: accept iff voted > 2·total/3 (Tendermint
+	// +⅔). Computed overflow-safely from total alone (3·voted and 2·total would
+	// overflow for large total): floor(2·total/3) = 2·(total/3) + adjustment for
+	// the remainder, then accept iff voted strictly exceeds that floor.
+	q, r := total/3, total%3
+	twoThirdsFloor := 2 * q
+	if r == 2 {
+		twoThirdsFloor++ // r∈{0,1}→+0, r==2→+1 (floor(2r/3))
+	}
+	if voted <= twoThirdsFloor {
+		return fmt.Errorf("%w: voted=%d total=%d (need > floor(2/3·total)=%d) at height %d",
+			ErrQCStakeBelowSupermajority, voted, total, twoThirdsFloor, c.Position.Height)
+	}
+	return nil
 }
 
 // QuorumCert is the engine-level finality witness: α distinct validators each

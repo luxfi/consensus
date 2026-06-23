@@ -20,6 +20,32 @@ import (
 // path. Fail-closed.
 var ErrForceAcceptRequiresSingleValidator = errors.New("chain: ForceAccept is only valid for a single-validator engine (k==1); multi-validator finality requires an alpha-of-K quorum cert")
 
+// The per-height finalization invariants. ANY attempt to finalize a block that
+// violates one of these is rejected by markFinalizedLocked and surfaced to the
+// caller — a second valid cert for an already-finalized height is equivocation
+// evidence, never a silent second VM.Accept. These are the safety properties
+// that make α-of-K finality non-forking even when Round is attacker-chosen and
+// two valid α-certs exist at one height.
+var (
+	// ErrHeightAlreadyFinalized is returned when a DIFFERENT block is already
+	// finalized at the target height. This is the fork the per-height guard
+	// exists to stop: two valid α-certs at the same height across different
+	// rounds. The first finalizes; the second is rejected and is equivocation
+	// evidence (two distinct blocks signed-final at one height).
+	ErrHeightAlreadyFinalized = errors.New("chain: a different block is already finalized at this height (equivocation: two finalized blocks at one height)")
+
+	// ErrNonMonotonicFinalizedHeight is returned when a finalize is attempted at
+	// a height at or below the current finalized height with a different block —
+	// finality only ever moves forward.
+	ErrNonMonotonicFinalizedHeight = errors.New("chain: finalized height must strictly increase (cannot re-finalize an old or equal height with a different block)")
+
+	// ErrParentNotFinalizedTip is returned when a newly-finalized block's parent
+	// is not the current finalized tip. Finality is a single non-branching chain:
+	// every finalized block (after the first) extends the previously finalized
+	// one.
+	ErrParentNotFinalizedTip = errors.New("chain: newly-finalized block's parent is not the current finalized tip (would branch finalized history)")
+)
+
 // Block represents a block in the chain
 type Block struct {
 	id        ids.ID
@@ -54,17 +80,87 @@ type ChainConsensus struct {
 	// Consensus tracking
 	bootstrapped bool
 	finalizedTip ids.ID
+
+	// Per-height finalization ledger — the single source of truth for "which
+	// block is finalized at height H". finalizedTip/finalizedHeight name the
+	// current head of finalized history; finalizedByHeight indexes the full set
+	// so a re-finalize of any past height with a different block is caught (not
+	// just the current one). Together they make finality a single non-branching
+	// chain: ONE block per height, height strictly increasing, parent == tip.
+	finalizedHeight    uint64
+	finalizedHeightSet bool // false until the first block is finalized
+	finalizedByHeight  map[uint64]ids.ID
 }
 
 // NewChainConsensus creates a real consensus engine
 func NewChainConsensus(k, alpha, beta int) *ChainConsensus {
 	return &ChainConsensus{
-		k:      k,
-		alpha:  alpha,
-		beta:   beta,
-		blocks: make(map[ids.ID]*Block),
-		tips:   make(map[ids.ID]bool),
+		k:                 k,
+		alpha:             alpha,
+		beta:              beta,
+		blocks:            make(map[ids.ID]*Block),
+		tips:              make(map[ids.ID]bool),
+		finalizedByHeight: make(map[uint64]ids.ID),
 	}
+}
+
+// markFinalizedLocked is the SINGLE place finality is committed. Every finalize
+// path — local α-of-K count (ProcessVote/Poll), cert-witnessed finality
+// (AcceptViaCert), and single-validator force (ForceAccept) — routes through
+// here so the per-height safety invariants are enforced in exactly one place
+// (decomplected: the invariant is not braided into each caller).
+//
+// It enforces, in order:
+//
+//	(a) ONE finalized block per height. If a block is already finalized at this
+//	    height: same block → idempotent no-op (nil); DIFFERENT block →
+//	    ErrHeightAlreadyFinalized (the fork; equivocation evidence).
+//	(b) monotonic height: a finalize at or below the current finalized height
+//	    with a new block → ErrNonMonotonicFinalizedHeight. (After the first
+//	    finalize, only a strictly greater height is admissible.)
+//	(c) parent == current finalized tip (after the first finalize): the new
+//	    block extends finalized history, never branches it →
+//	    ErrParentNotFinalizedTip otherwise.
+//
+// On success it records the block in the per-height ledger and advances
+// finalizedTip/finalizedHeight. It does NOT call into the VM or set block.accepted
+// — those are the caller's responsibility (the caller owns whether a tracked
+// Block exists); this method owns ONLY the safety ledger. Caller holds c.mu.
+//
+// `parentID` may be ids.Empty for a genesis/first block with no parent.
+func (c *ChainConsensus) markFinalizedLocked(blockID ids.ID, height uint64, parentID ids.ID) error {
+	// (a) one block per height.
+	if existing, ok := c.finalizedByHeight[height]; ok {
+		if existing == blockID {
+			return nil // idempotent: this exact block already finalized here
+		}
+		return fmt.Errorf("%w: height %d already finalized %s, refused %s",
+			ErrHeightAlreadyFinalized, height, existing, blockID)
+	}
+
+	if c.finalizedHeightSet {
+		// (b) monotonic + CONTIGUOUS: finality advances by exactly one height.
+		// height ≤ finalized is a backward/equal fork attempt (equal-height-same-
+		// block was already idempotent in (a)); height > finalized+1 would leave a
+		// gap (and a valid α-cert cannot carry a height inconsistent with the
+		// block's true height unless > f validators are Byzantine). Requiring the
+		// strict successor makes finalized history a single CONTIGUOUS chain.
+		if height != c.finalizedHeight+1 {
+			return fmt.Errorf("%w: refused height %d at finalized height %d (block %s; finality advances by exactly 1)",
+				ErrNonMonotonicFinalizedHeight, height, c.finalizedHeight, blockID)
+		}
+		// (c) parent must be the current finalized tip — no branching.
+		if parentID != c.finalizedTip {
+			return fmt.Errorf("%w: block %s parent %s != finalized tip %s (height %d)",
+				ErrParentNotFinalizedTip, blockID, parentID, c.finalizedTip, height)
+		}
+	}
+
+	c.finalizedByHeight[height] = blockID
+	c.finalizedTip = blockID
+	c.finalizedHeight = height
+	c.finalizedHeightSet = true
+	return nil
 }
 
 // AddBlock adds a block to consensus
@@ -115,10 +211,14 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept
 		block.rejectVotes++
 	}
 
-	// Check if acceptance quorum is reached (accept votes >= alpha)
+	// Check if acceptance quorum is reached (accept votes >= alpha). Finality is
+	// committed through the single per-height guard: if this block would fork an
+	// already-finalized height (or branch finalized history) the guard refuses
+	// and the block is NOT marked accepted — the count alone never finalizes.
 	if block.acceptVotes >= c.alpha && !block.accepted {
-		block.accepted = true
-		c.finalizedTip = blockID
+		if err := c.markFinalizedLocked(blockID, block.height, block.parentID); err == nil {
+			block.accepted = true
+		}
 	}
 
 	// Check if rejection quorum is reached (reject votes >= alpha)
@@ -167,10 +267,13 @@ func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) err
 			decided := block.driver.Decided()
 
 			// Check if block reached finality through Focus convergence
-			// AND we have sufficient accept votes (quorum reached)
+			// AND we have sufficient accept votes (quorum reached). Commit through
+			// the single per-height guard — a block that would fork an already-
+			// finalized height is refused and stays un-accepted.
 			if !shouldContinue && decided && block.acceptVotes >= c.alpha {
-				block.accepted = true
-				c.finalizedTip = blockID
+				if err := c.markFinalizedLocked(blockID, block.height, block.parentID); err == nil {
+					block.accepted = true
+				}
 			}
 		}
 	}
@@ -270,8 +373,15 @@ func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Update finalized tip to the synced block
+	// Update finalized tip to the synced block and seed the per-height ledger so
+	// the next finalize (the first block built on the import) satisfies the
+	// monotonic-height + parent==tip invariants against the imported head.
 	c.finalizedTip = lastAcceptedID
+	if lastAcceptedID != ids.Empty {
+		c.finalizedByHeight = map[uint64]ids.ID{height: lastAcceptedID}
+		c.finalizedHeight = height
+		c.finalizedHeightSet = true
+	}
 
 	// Mark as bootstrapped so new blocks can be proposed
 	c.bootstrapped = true
@@ -335,8 +445,14 @@ func (c *ChainConsensus) ForceAccept(blockID ids.ID) error {
 	if block.accepted {
 		return nil
 	}
+	// Even the single-validator path commits through the per-height guard: a
+	// K==1 node still must not finalize two blocks at one height or branch its
+	// own finalized history (e.g. a buggy double-build). The guard is cheap and
+	// keeps ONE finalization path.
+	if err := c.markFinalizedLocked(blockID, block.height, block.parentID); err != nil {
+		return err
+	}
 	block.accepted = true
-	c.finalizedTip = blockID
 	return nil
 }
 
@@ -347,20 +463,36 @@ func (c *ChainConsensus) ForceAccept(blockID ids.ID) error {
 // this method records the decision the cert proves. It does not re-decide
 // quorum — the cert IS the quorum proof.
 //
-// The block need not be locally tracked in c.blocks (a follower may finalize a
-// block via cert before it ever entered local consensus tracking): when absent
-// the finalized tip is still advanced so the engine's view matches the proven
-// finality. Idempotent on an already-accepted tracked block.
-func (c *ChainConsensus) AcceptViaCert(blockID ids.ID) {
+// CRITICAL — per-height single-finalize. The cert's Round is attacker-chosen, so
+// two VALID α-certs can exist for two DIFFERENT blocks at the SAME height (each
+// over a different round). Both would Verify. This method commits through
+// markFinalizedLocked, which finalizes the FIRST and returns
+// ErrHeightAlreadyFinalized for the SECOND — the second is rejected (no
+// VM.Accept) and the error is the caller's equivocation evidence. Without this
+// guard the second cert forks the chain (red's PoC).
+//
+// The block's (height, parentID) come from the cert position the caller already
+// verified — finality binds to the position the signatures cover, never to a
+// locally-tracked Block (a follower may finalize via cert before the block
+// enters local tracking). When the block IS tracked, it is also marked accepted.
+//
+// Returns nil on success (including the idempotent re-finalize of the same
+// block at the same height) or the guard error naming the violated invariant.
+func (c *ChainConsensus) AcceptViaCert(blockID ids.ID, height uint64, parentID ids.ID) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Commit to the per-height ledger FIRST — this is the single safety gate.
+	// On any violation (already-finalized height, non-monotonic, parent !=
+	// tip) nothing is accepted and the error propagates to the caller.
+	if err := c.markFinalizedLocked(blockID, height, parentID); err != nil {
+		return err
+	}
+
 	if block, exists := c.blocks[blockID]; exists {
-		if block.accepted {
-			return
-		}
 		block.accepted = true
 	}
-	c.finalizedTip = blockID
+	return nil
 }
 
 // GetFinalizedTip returns the current finalized tip block ID.
@@ -369,6 +501,27 @@ func (c *ChainConsensus) GetFinalizedTip() ids.ID {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.finalizedTip
+}
+
+// GetFinalizedHeight returns the current finalized height and whether any block
+// has been finalized yet. The engine uses this to gate an incoming cert on
+// height (reject a cert at or below the last-finalized height — MED-5) BEFORE
+// running the cert through the per-height guard.
+func (c *ChainConsensus) GetFinalizedHeight() (uint64, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.finalizedHeight, c.finalizedHeightSet
+}
+
+// FinalizedBlockAtHeight returns the block finalized at the given height, if
+// any. Used to produce equivocation evidence: when a second cert is refused at
+// an already-finalized height, the caller reports BOTH the finalized block and
+// the refused one.
+func (c *ChainConsensus) FinalizedBlockAtHeight(height uint64) (ids.ID, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	id, ok := c.finalizedByHeight[height]
+	return id, ok
 }
 
 // K returns the consensus sample size (the K of α-of-K). Used by the engine to
