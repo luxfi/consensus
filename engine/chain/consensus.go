@@ -44,6 +44,16 @@ var (
 	// every finalized block (after the first) extends the previously finalized
 	// one.
 	ErrParentNotFinalizedTip = errors.New("chain: newly-finalized block's parent is not the current finalized tip (would branch finalized history)")
+
+	// ErrSyncStateRegression is returned by SyncState when an import
+	// (admin_importChain / state-sync reconcile) tries to seed the finalized
+	// head at a height BELOW the height already finalized locally. SyncState
+	// bypasses markFinalizedLocked by design (an import is an out-of-band
+	// reconcile, not an α-of-K finalize), so the monotonic invariant the per-
+	// height guard enforces must be re-asserted here explicitly: a backward
+	// import must NOT silently regress local finalized height (which would let a
+	// shorter imported chain un-finalize blocks the node already finalized).
+	ErrSyncStateRegression = errors.New("chain: SyncState refused — import height is below the already-finalized height (would regress finalized history)")
 )
 
 // Block represents a block in the chain
@@ -369,9 +379,37 @@ func (c *ChainConsensus) Stats() map[string]interface{} {
 //
 // This is called by the syncer after admin_importChain to reconcile consensus
 // state with the EVM state database.
-func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) {
+//
+// MONOTONIC GUARD (defence-in-depth): SyncState bypasses markFinalizedLocked by
+// design — an import is an out-of-band reconcile with the VM's last-accepted
+// head, NOT an α-of-K finalize, so it legitimately seeds finalizedTip/Height
+// directly. But "bypasses the finalize path" must NOT mean "bypasses the
+// monotonic invariant": a backward import (height below the already-finalized
+// height) is refused with ErrSyncStateRegression and leaves all finalized state
+// untouched. Without this guard a shorter/older imported chain could silently
+// regress finalizedHeight and un-finalize blocks the node already finalized —
+// re-opening the very fork window the per-height guard closes. A re-import at the
+// SAME height with the SAME block is idempotent; a forward import advances. The
+// only allowed move-backward is the genesis/empty reset (lastAcceptedID==Empty).
+func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Refuse a backward regression of finalized history. Only enforced once a
+	// height is established and for a concrete (non-empty) import head; an empty
+	// reset is a deliberate teardown, not a regression.
+	if c.finalizedHeightSet && lastAcceptedID != ids.Empty && height < c.finalizedHeight {
+		return fmt.Errorf("%w: import height %d < finalized height %d (block %s)",
+			ErrSyncStateRegression, height, c.finalizedHeight, lastAcceptedID)
+	}
+	// Equal-height re-import must agree on the block (a different block at the
+	// already-finalized height is equivocation, not a reconcile).
+	if c.finalizedHeightSet && lastAcceptedID != ids.Empty && height == c.finalizedHeight {
+		if existing, ok := c.finalizedByHeight[height]; ok && existing != lastAcceptedID {
+			return fmt.Errorf("%w: import height %d already finalized %s, refused %s",
+				ErrHeightAlreadyFinalized, height, existing, lastAcceptedID)
+		}
+	}
 
 	// Update finalized tip to the synced block and seed the per-height ledger so
 	// the next finalize (the first block built on the import) satisfies the
@@ -398,17 +436,43 @@ func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) {
 			delete(c.blocks, blockID)
 		}
 	}
+	return nil
 }
 
-// ForcePreference forces the consensus preferred tip to the given block.
-// This is a recovery mechanism used when SetPreference fails after Accept —
-// without it, the VM and consensus engine disagree on the chain tip, causing
-// a state divergence death spiral.
+// ForcePreference reaffirms the engine's preferred tip after a VM SetPreference
+// failure. It is a recovery mechanism used when SetPreference fails AFTER a block
+// was accepted — without it the VM and consensus engine could disagree on the
+// chain tip, causing a state-divergence death spiral.
+//
+// SAFETY (decomplected from the per-height guard): finalizedTip is the per-height
+// guard's source of truth for invariant (c) (a new block's parent must equal the
+// finalized tip). This method therefore MUST NOT be able to move finalizedTip OFF
+// the finalized head — a recovery convenience may never corrupt the safety ledger.
+// Every legitimate caller invokes ForcePreference with the block that was JUST
+// finalized (its precondition: "SetPreference failed after Accept"), so the block
+// is already the finalized tip and this is a reaffirming no-op on finalizedTip.
+//
+// If invoked with a block that is NOT the current finalized head (a future
+// misuse / refactor bug), it does NOT overwrite finalizedTip — doing so would
+// leave finalizedTip disagreeing with finalizedHeight/finalizedByHeight and blind
+// invariant (c). It still records the block as a tip (harmless: tips only seed
+// block building; finality is gated by the guard, never by tips). Fail-safe.
 func (c *ChainConsensus) ForcePreference(blockID ids.ID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.finalizedTip = blockID
-	// Ensure the forced block is a tip
+	// Only (re)assert the finalized tip when blockID IS the finalized head — i.e.
+	// the block finalized at the current finalized height (the universal caller
+	// precondition). Before the first finalize (no head yet) there is nothing to
+	// corrupt, so adopting blockID as the preliminary tip is safe.
+	if !c.finalizedHeightSet {
+		c.finalizedTip = blockID
+	} else if fin, ok := c.finalizedByHeight[c.finalizedHeight]; ok && fin == blockID {
+		c.finalizedTip = blockID // reaffirm — already the head, no desync
+	}
+	// else: blockID is not the finalized head — do NOT move finalizedTip (would
+	// desync the per-height guard's invariant). Only mark it a build tip below.
+
+	// Ensure the forced block is a tip for block-building purposes.
 	c.tips[blockID] = true
 }
 
