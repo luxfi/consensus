@@ -54,6 +54,16 @@ var (
 	// import must NOT silently regress local finalized height (which would let a
 	// shorter imported chain un-finalize blocks the node already finalized).
 	ErrSyncStateRegression = errors.New("chain: SyncState refused — import height is below the already-finalized height (would regress finalized history)")
+
+	// ErrSyncStateEmptyWithHeight is returned by SyncState when an EMPTY import
+	// head (lastAcceptedID == ids.Empty) is paired with a POSITIVE height (INFO-6).
+	// An empty head is the genesis/teardown reset, which is meaningful only at
+	// height 0; an empty head at height>0 is contradictory. If allowed it would set
+	// finalizedTip=Empty while LEAVING finalizedHeight/finalizedByHeight stale (the
+	// non-empty seed branch is skipped) and PRUNE blocks below the positive height —
+	// the exact finalizedTip-vs-finalizedHeight desync ForcePreference was hardened
+	// against. SyncState refuses it fail-closed before mutating any state.
+	ErrSyncStateEmptyWithHeight = errors.New("chain: SyncState refused — empty import head paired with a non-zero height (an empty reset is genesis/teardown at height 0; this would desync finalizedTip from finalizedHeight and prune live blocks)")
 )
 
 // Block represents a block in the chain
@@ -390,10 +400,25 @@ func (c *ChainConsensus) Stats() map[string]interface{} {
 // regress finalizedHeight and un-finalize blocks the node already finalized —
 // re-opening the very fork window the per-height guard closes. A re-import at the
 // SAME height with the SAME block is idempotent; a forward import advances. The
-// only allowed move-backward is the genesis/empty reset (lastAcceptedID==Empty).
+// only allowed move-backward is the genesis/empty reset (lastAcceptedID==Empty),
+// which is valid ONLY at height 0 — an empty head at height>0 is contradictory
+// and refused with ErrSyncStateEmptyWithHeight (INFO-6), since it would desync
+// finalizedTip from finalizedHeight and prune live blocks.
 func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Refuse an empty import head paired with a positive height (INFO-6). An empty
+	// head is the genesis/teardown reset — valid only at height 0. At height>0 it
+	// would assign finalizedTip=Empty while skipping the seed branch (so
+	// finalizedHeight/finalizedByHeight stay stale) AND prune blocks below the
+	// height, desyncing finalizedTip from finalizedHeight (the desync the per-height
+	// guard and ForcePreference exist to prevent). Fail-closed BEFORE any mutation.
+	// Unreachable on the live path (the sole caller, SyncStateFromVM, pairs Empty
+	// with height 0), but guarded so a future caller cannot open the desync.
+	if lastAcceptedID == ids.Empty && height > 0 {
+		return fmt.Errorf("%w: refused empty head at height %d", ErrSyncStateEmptyWithHeight, height)
+	}
 
 	// Refuse a backward regression of finalized history. Only enforced once a
 	// height is established and for a concrete (non-empty) import head; an empty

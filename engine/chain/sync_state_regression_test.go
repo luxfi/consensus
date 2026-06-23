@@ -4,6 +4,7 @@
 package chain
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -121,5 +122,55 @@ func TestSyncState_EmptyResetAllowed(t *testing.T) {
 	}
 	if got := c.GetFinalizedTip(); got != ids.Empty {
 		t.Fatalf("empty reset should clear the finalized tip, got %s", got)
+	}
+}
+
+// TestSyncState_EmptyHeadWithPositiveHeightRefused is the INFO-6 regression. An
+// EMPTY import head paired with a POSITIVE height is contradictory (an empty head
+// is the genesis/teardown reset, valid only at height 0). If allowed it would set
+// finalizedTip=Empty while the seed branch is skipped (finalizedHeight stays
+// stale) AND prune blocks below the positive height — the exact
+// finalizedTip-vs-finalizedHeight desync ForcePreference was hardened against.
+// SyncState must REFUSE it fail-closed, leaving finalized state AND the block pool
+// untouched (no pruning).
+func TestSyncState_EmptyHeadWithPositiveHeightRefused(t *testing.T) {
+	c := NewChainConsensus(4, 3, 2)
+
+	// Finalized head at height 100.
+	h100 := ids.GenerateTestID()
+	if err := c.AcceptViaCert(h100, 100, ids.Empty); err != nil {
+		t.Fatalf("seed finalize at height 100: %v", err)
+	}
+	// Seed a low-height block in the pool so we can prove the refused import does
+	// NOT prune it (the desync path would delete every block below the height).
+	low := &Block{id: ids.GenerateTestID(), height: 50}
+	if err := c.AddBlock(context.Background(), low); err != nil {
+		t.Fatalf("seed low block @50: %v", err)
+	}
+
+	// Empty head at a positive height → refused with ErrSyncStateEmptyWithHeight.
+	if err := c.SyncState(ids.Empty, 5000); !errors.Is(err, ErrSyncStateEmptyWithHeight) {
+		t.Fatalf("SyncState(Empty, 5000) should return ErrSyncStateEmptyWithHeight, got: %v", err)
+	}
+
+	// Finalized state is untouched (the desync is prevented).
+	if got := c.GetFinalizedTip(); got != h100 {
+		t.Fatalf("refused empty-at-height import desynced the tip: got %s want %s", got, h100)
+	}
+	if c.finalizedHeight != 100 || !c.finalizedHeightSet {
+		t.Fatalf("refused import corrupted finalizedHeight: got %d set=%v want 100/true", c.finalizedHeight, c.finalizedHeightSet)
+	}
+	if existing, ok := c.finalizedByHeight[100]; !ok || existing != h100 {
+		t.Fatalf("refused import corrupted the per-height ledger at 100: ok=%v existing=%s", ok, existing)
+	}
+	// The low-height block MUST still be present — the refused import pruned nothing.
+	if _, ok := c.GetBlock(low.id); !ok {
+		t.Fatal("refused empty-at-height import pruned a live block below the height (the desync the guard prevents)")
+	}
+
+	// Sanity: the legitimate empty reset (Empty, 0) is still allowed (the guard is
+	// precise — it gates only height>0, not all empty heads).
+	if err := c.SyncState(ids.Empty, 0); err != nil {
+		t.Fatalf("empty reset SyncState(Empty,0) must still succeed after the guard, got: %v", err)
 	}
 }
