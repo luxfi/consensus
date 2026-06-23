@@ -264,9 +264,9 @@ func (s *signer) CoronaRound1(validatorID string, sessionID int, prfKey []byte) 
 		signerIDs = append(signerIDs, share.Index)
 	}
 
-	// corona Round1 is deterministic lattice matrix generation and cannot fail
-	// (single-return API; the prior error return was removed upstream).
-	return signer.Round1(sessionID, prfKey, signerIDs), nil
+	// corona v0.7.9 re-added the Round1 error return (kernel-boundary
+	// hardening on SignRound1); propagate it to the caller.
+	return signer.Round1(sessionID, prfKey, signerIDs)
 }
 
 // CoronaRound2 performs Round 2 of Corona signing for a validator.
