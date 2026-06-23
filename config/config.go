@@ -148,6 +148,12 @@ func TestnetParams() Parameters {
 
 // LocalParams returns local parameters with 2/3 threshold for 3-node networks.
 // Uses 1ms block time for maximum throughput on localhost (zero network latency).
+//
+// SECURITY: K=3/α=2 is f=0 (CFT) — a single Byzantine validator forks it. This
+// is the documented CRITICAL-2 fork config and is FORBIDDEN on value networks
+// (ValidateForValueNetwork rejects it). Use it ONLY for a single-operator local
+// network where every node is trusted (no value across independent parties). For
+// a multi-node local network that must be genuinely BFT, use LocalBFTParams.
 func LocalParams() Parameters {
 	p := DefaultParams()
 	p.K = 3
@@ -156,6 +162,38 @@ func LocalParams() Parameters {
 	p.AlphaPreference = 2 // 2 of 3 for preference
 	p.AlphaConfidence = 2 // 2 of 3 for confidence
 	p.BetaVirtuous = 2    // Virtuous confidence for 2/3
+	p.BlockTime = 1 * time.Millisecond
+	p.RoundTO = 5 * time.Millisecond
+	return p
+}
+
+// LocalBFTParams returns the MINIMAL Byzantine-fault-tolerant parameter set for a
+// small local network: K=4, α=3 (AlphaPreference = AlphaConfidence = 3). This is
+// f=1 (3·1+1 = 4 the minimal BFT committee), the smallest K that
+// ValidateForValueNetwork admits (K≥4). It clears the BFT α-floor
+// (2·AlphaPreference − K = 2·3 − 4 = 2 ≥ f+1 = 2), so a single faulty validator
+// can neither forge a quorum nor stall finality.
+//
+// Why this exists: DefaultParams (K=20, α=14) is unsatisfiable on a small local
+// network — α=14 affirmative votes are unreachable with only 3-4 validators, so
+// NO block ever finalizes (the P-Chain freezes at height 0 and no chain is
+// created). A local 4-validator devnet must use K=4 to make quorum reachable
+// while staying genuinely BFT. Unlike LocalParams (K=3, f=0), this passes
+// ValidateForValueNetwork and the CRITICAL-2 multi-node-is-BFT regression — it
+// is a REAL BFT set, just sized for a minimal committee. Requires ≥4 validators
+// to provide f=1 in practice; with fewer, quorum needs near-unanimity and runtime
+// fault tolerance degrades to f=0 (still safe, just not live under one fault).
+//
+// Keeps LocalParams' localhost timing (1ms blocks / 5ms rounds).
+func LocalBFTParams() Parameters {
+	p := DefaultParams()
+	p.K = 4
+	p.Alpha = 0.67        // ⌈3/4⌉ ≈ 2/3-style threshold for a 4-committee
+	p.Beta = 2            // fast confirmation on localhost
+	p.AlphaPreference = 3 // 3 of 4 for preference (f=1)
+	p.AlphaConfidence = 3 // 3 of 4 for confidence (f=1)
+	p.BetaVirtuous = 2    // virtuous confidence
+	p.BetaRogue = 4       // rogue confidence stays above the committee size
 	p.BlockTime = 1 * time.Millisecond
 	p.RoundTO = 5 * time.Millisecond
 	return p
