@@ -1165,6 +1165,12 @@ func pChainHeightOf(b block.Block) uint64 {
 	return 0
 }
 
+// PChainHeightOfForTest exposes the engine's block→P-chain-height boundary read to
+// a test in ANOTHER module (the node's chains package), so it can prove the
+// node-layer wrapper delivers the REAL epoch height (not 0) through the EXACT
+// function the engine uses. Exported only for that cross-module test reach.
+func PChainHeightOfForTest(b block.Block) uint64 { return pChainHeightOf(b) }
+
 // epochHeightLocked returns the P-CHAIN height the block's weighted validator set
 // is pinned to — the SINGLE height used for the set-root commitment, the
 // ⅔-by-stake tally, AND per-voter pubkey resolution (membership, pubkey,
