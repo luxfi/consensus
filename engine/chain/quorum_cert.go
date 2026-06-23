@@ -54,7 +54,15 @@ import (
 // QuorumCertVersion is the wire/struct version of the engine-level quorum
 // certificate. Bound into the canonical vote message and the cert digest so a
 // version bump is non-malleable.
-const QuorumCertVersion uint16 = 1
+//
+// v2 adds VotePosition.ValidatorSetRoot to BOTH the canonical signed message and
+// the wire codec (the MEDIUM epoch-binding fix). This is a deliberate
+// forward-only break: a v1 signature (no set-root) and a v2 signature (with
+// set-root) are over different messages and carry different versions, so a
+// mixed-version cert fails clause-1 (version) and clause-6 (signature) loudly
+// rather than silently mis-parsing. The whole validator set upgrades together in
+// one release cascade; there is no partial-upgrade finality interop.
+const QuorumCertVersion uint16 = 2
 
 // QCType names a certificate's semantic role so a signature gathered for one
 // role can never be replayed as another. The chain engine finalizes blocks, so
@@ -110,13 +118,33 @@ type SignedVote struct {
 
 // VotePosition is the consensus position a vote (and a cert) binds to. Every
 // axis here is folded into the canonical signed message, so a signature for one
-// position can never be replayed at another (height/round/block/parent/chain).
+// position can never be replayed at another (height/round/block/parent/chain/
+// validator-set epoch).
 type VotePosition struct {
 	ChainID  ids.ID
 	Height   uint64
 	Round    uint32
 	BlockID  ids.ID
 	ParentID ids.ID
+	// ValidatorSetRoot binds the cert to the EXACT weighted validator set the
+	// vote was cast under (the MEDIUM fix). It is a commitment to the active
+	// set+weights at this position's height/epoch — mirroring quasar's
+	// ConsensusCert.ValidatorSetRoot, which already binds the same axis
+	// (consensus_cert_legs.go). Because it is folded into the canonical signed
+	// message, a cert assembled from votes cast under set-root R cannot be
+	// re-presented as certifying under a different set-root R': every signature
+	// was over R, so reconstructing the message with R' fails clause-6 verify.
+	//
+	// This turns the stake-weighted finality predicate ("⅔-by-stake at the
+	// cert-position epoch") from an assumption into an ENFORCED invariant: a
+	// cross-epoch stake change cannot retroactively flip an already-correct cert
+	// (the cert's identity is pinned to R, not to "current" stake), and a cert
+	// gathered under one epoch's set cannot be laundered into another epoch.
+	//
+	// ids.Empty means "no validator-set epoch bound" — a chain that does not
+	// wire a set-root source signs and verifies with Empty consistently, so the
+	// behavior is byte-identical to before this field existed (backward-safe).
+	ValidatorSetRoot ids.ID
 }
 
 // CanonicalVoteMessage is the exact byte string a validator signs to vote
@@ -141,10 +169,17 @@ func CanonicalVoteMessage(pos VotePosition) []byte {
 //	"LUX/chain/vote/v1\x00"   domain tag (NUL-terminated, role separator)
 //	version:2  qc_type:1
 //	chain_id:32  height:8  round:4  block_id:32  parent_id:32
+//	validator_set_root:32    (epoch/weighted-set commitment; Empty = unbound)
 //	accept:1   (0x01 accept | 0x00 reject)
+//
+// validator_set_root is bound BEFORE the accept byte so a vote is committed to
+// the exact weighted validator set it was cast under (the MEDIUM fix): a cert
+// gathered under set-root R cannot be re-verified as certifying under a
+// different set R' — every signature was over R, so a message rebuilt with R'
+// fails verification.
 func canonicalVoteMessageFor(pos VotePosition, accept bool) []byte {
 	const tag = "LUX/chain/vote/v1\x00"
-	buf := make([]byte, 0, len(tag)+2+1+32+8+4+32+32+1)
+	buf := make([]byte, 0, len(tag)+2+1+32+8+4+32+32+32+1)
 	buf = append(buf, tag...)
 	var u16 [2]byte
 	binary.BigEndian.PutUint16(u16[:], QuorumCertVersion)
@@ -159,6 +194,7 @@ func canonicalVoteMessageFor(pos VotePosition, accept bool) []byte {
 	buf = append(buf, u32[:]...)
 	buf = append(buf, pos.BlockID[:]...)
 	buf = append(buf, pos.ParentID[:]...)
+	buf = append(buf, pos.ValidatorSetRoot[:]...)
 	if accept {
 		buf = append(buf, 0x01)
 	} else {
@@ -211,6 +247,30 @@ type StakeSource interface {
 	// TotalStake returns the total active validator stake at the given height.
 	TotalStake(height uint64) uint64
 }
+
+// ValidatorSetRootSource computes the commitment to the active weighted
+// validator set at a given height — the value bound into a VotePosition's
+// ValidatorSetRoot. The node supplies it from the chain's validator set; the
+// engine stamps it into every position it signs/assembles so a cert is
+// cryptographically pinned to the exact set+weights it was certified under
+// (the MEDIUM fix). It MUST be deterministic for a given height across all
+// honest nodes (every node computing the root for height H must agree, or their
+// signatures over the same block would not be mutually verifiable).
+//
+// Returning ids.Empty is the explicit "no epoch bound" answer — a chain that
+// does not commit to a set-root signs and verifies with Empty consistently
+// (behavior identical to before set-root binding existed).
+type ValidatorSetRootSource interface {
+	// ValidatorSetRoot returns the deterministic commitment to the active
+	// weighted validator set at height.
+	ValidatorSetRoot(height uint64) ids.ID
+}
+
+// ValidatorSetRootFunc adapts a function to a ValidatorSetRootSource.
+type ValidatorSetRootFunc func(height uint64) ids.ID
+
+// ValidatorSetRoot implements ValidatorSetRootSource.
+func (f ValidatorSetRootFunc) ValidatorSetRoot(height uint64) ids.ID { return f(height) }
 
 // VerifyWeighted verifies the cert under `verifier` (the full count predicate of
 // Verify) AND additionally requires that the summed stake of the cert's voters
