@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -15,6 +16,23 @@ var (
 	ErrRoundTimeoutTooLow = errors.New("round timeout must be >= block time")
 	ErrKTooLowForMainnet  = errors.New("K must be >= 11 for mainnet (networkID=1): low K enables cheap 51% attacks")
 	ErrKTooLowForTestnet  = errors.New("K must be >= 5 for testnet (networkID=5): low K enables cheap 51% attacks")
+
+	// ErrAlphaBelowBFTQuorum is returned by Valid() when the integer accept
+	// quorum (AlphaPreference) is too small for the sample size K to guarantee
+	// safety under Byzantine faults. Two α-quorums must overlap in MORE than f
+	// honest nodes so they cannot certify conflicting blocks; that requires
+	//
+	//	2·AlphaPreference − K ≥ f + 1,   where f = ⌊(K-1)/3⌋.
+	//
+	// A config that fails this (e.g. K=3/α=2 treated as BFT) admits a single
+	// faulty validator forking the chain — exactly the round-1 hole.
+	ErrAlphaBelowBFTQuorum = errors.New("consensus: alpha quorum too small for K to be Byzantine-safe (need 2*AlphaPreference - K >= floor((K-1)/3)+1)")
+
+	// ErrKTooLowForValue is returned by ValidateForValueNetwork when a value /
+	// PoS chain is configured with K<4. K=3 tolerates f=⌊2/3⌋=0 Byzantine
+	// validators — i.e. NO fault tolerance — so a single Byzantine validator can
+	// fork it. Real-value chains require f≥1 ⟹ K≥4 (α≥3); mainnet requires K≥11.
+	ErrKTooLowForValue = errors.New("consensus: value/PoS chain requires K>=4 (f>=1 Byzantine tolerance); K=3 has f=0 and a single faulty validator forks it")
 )
 
 // Parameters defines consensus parameters
@@ -241,6 +259,27 @@ func (p Parameters) WithBlockTime(blockTime time.Duration) Parameters {
 	return p
 }
 
+// ByzantineFaultTolerance returns f, the maximum number of Byzantine validators
+// this sample size can tolerate under classic BFT (n=K, f<n/3):
+//
+//	f = ⌊(K-1)/3⌋
+//
+// K=1→0, K=3→0, K=4→1, K=7→2, K=10→3, K=11→3, K=21→6. A value chain needs f≥1,
+// hence K≥4 (see ValidateForValueNetwork).
+func (p Parameters) ByzantineFaultTolerance() int {
+	if p.K < 1 {
+		return 0
+	}
+	return (p.K - 1) / 3
+}
+
+// bftQuorumFloor returns the minimum integer accept quorum α for safety at this
+// K: the smallest α with 2α − K ≥ f + 1, i.e. α ≥ ⌈(K + f + 1)/2⌉.
+func (p Parameters) bftQuorumFloor() int {
+	f := p.ByzantineFaultTolerance()
+	return (p.K + f + 1 + 1) / 2 // ceil((K+f+1)/2)
+}
+
 // Validate validates parameters (compatibility method)
 func (p Parameters) Validate() error {
 	return p.Valid()
@@ -272,6 +311,26 @@ func (p Parameters) Valid() error {
 	}
 	if p.AlphaConfidence != 0 && (p.AlphaConfidence < 0 || p.AlphaConfidence > p.K) {
 		return ErrParametersInvalid
+	}
+
+	// BFT QUORUM FLOOR — the integer accept quorum (AlphaPreference, the α that
+	// the chain engine actually counts toward finality) must be large enough
+	// that two α-quorums overlap in more than f honest validators:
+	//
+	//	2·AlphaPreference − K ≥ ⌊(K-1)/3⌋ + 1
+	//
+	// Without this a config can finalize on a quorum that two conflicting
+	// certs/decisions can both reach (the K=3/α=2 family with f silently 0 is
+	// the boundary; anything weaker forks outright). Checked only when an
+	// integer α is set (AlphaPreference>0); a chain that runs the float α path
+	// derives AlphaPreference from K before reaching the engine.
+	if p.AlphaPreference > 0 {
+		f := p.ByzantineFaultTolerance()
+		if 2*p.AlphaPreference-p.K < f+1 {
+			return fmt.Errorf("%w: K=%d AlphaPreference=%d f=%d (2*%d-%d=%d < %d)",
+				ErrAlphaBelowBFTQuorum, p.K, p.AlphaPreference, f,
+				p.AlphaPreference, p.K, 2*p.AlphaPreference-p.K, f+1)
+		}
 	}
 	if p.BetaVirtuous < 0 {
 		return ErrParametersInvalid
@@ -311,6 +370,32 @@ func (p Parameters) ValidateForNetwork(networkID uint32) error {
 		if p.K < 5 {
 			return ErrKTooLowForTestnet
 		}
+	}
+	return nil
+}
+
+// ValidateForValueNetwork validates parameters are safe for a chain that
+// finalizes REAL VALUE across independent parties (a PoS / value chain — C, D,
+// any L1 that custodies funds). It is STRICTER than ValidateForNetwork: a value
+// chain must tolerate at least one Byzantine validator (f≥1), so K=3 (f=0) is
+// FORBIDDEN regardless of networkID. Single-validator (K==1) value chains are a
+// separate, explicitly-chosen regime (POA --dev) and are NOT admitted here —
+// value across independent parties requires a real quorum.
+//
+//	K==1            → rejected (use the single-validator regime knowingly, not here)
+//	K==2,3          → rejected (f=0, no Byzantine tolerance — a single fault forks)
+//	K>=4            → f≥1, admitted (subject to the mainnet/testnet floors below)
+//	mainnet(1)      → K>=11
+//	testnet(5)      → K>=5
+//
+// Use this (not ValidateForNetwork) when selecting params for a multi-node value
+// chain; the node's value-DEX activation also fails closed on the engine Mode.
+func (p Parameters) ValidateForValueNetwork(networkID uint32) error {
+	if err := p.ValidateForNetwork(networkID); err != nil {
+		return err
+	}
+	if p.ByzantineFaultTolerance() < 1 {
+		return fmt.Errorf("%w: K=%d f=%d networkID=%d", ErrKTooLowForValue, p.K, p.ByzantineFaultTolerance(), networkID)
 	}
 	return nil
 }

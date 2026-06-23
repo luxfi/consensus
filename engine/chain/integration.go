@@ -61,6 +61,13 @@ type NetworkConfig struct {
 	// For a single-validator chain (K==1, e.g. --dev) leave these nil.
 	VoteVerifier VoteVerifier
 	VoteSigner   VoteSigner
+
+	// StakeSource (optional) makes finality a ⅔-by-STAKE supermajority instead
+	// of a raw voter count (HIGH-3). REQUIRED for a PoS value chain with unequal
+	// stake; nil keeps count-α finality (correct only under equal stake enforced
+	// at admission). The node supplies a source backed by the chain's validator
+	// set weights.
+	StakeSource StakeSource
 }
 
 // Gossiper abstracts the network layer for consensus message broadcasting.
@@ -173,6 +180,12 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 			}
 		}
 		WithQuorumCert(cfg.ChainID, cfg.NodeID, cfg.VoteVerifier, certGossiper, cfg.VoteSigner)(engine)
+		// Stake-weighted finality (HIGH-3): when the node supplies validator
+		// weights, a cert must clear a ⅔-of-stake supermajority, not just the
+		// α-of-K count.
+		if cfg.StakeSource != nil {
+			WithStakeWeighting(cfg.StakeSource)(engine)
+		}
 	}
 
 	rt := &Runtime{

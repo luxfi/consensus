@@ -145,15 +145,13 @@ type PendingBlock struct {
 	// request and so a follower's accept is gated on holding it.
 	cert *QuorumCert
 
-	// IsOwnProposal is true when this node built and proposed the block.
-	// Used to short-circuit the proposer-self-accept gap: when peers send back
-	// a vote message after fast-follow acceptance, the proposer's local re-Verify
-	// in the network handler may spuriously fail (e.g., VM does not allow double
-	// Verify), flipping the vote to Reject. For pendingBlocks entries this node
-	// proposed, the block was already verified at proposal time (engine.go:977),
-	// so the mere arrival of a peer vote is positive evidence — vote.Accept is
-	// disregarded and the count advances. This preserves alpha-of-K quorum
-	// because the count is over distinct peer message arrivals, not self-promises.
+	// IsOwnProposal is true when this node built and proposed the block. It now
+	// selects ONLY the finalization ENTRY POINT (finalizeOwnProposal vs.
+	// tryFinalizeBlock); it does NOT alter how votes are counted. The former
+	// REJECT→ACCEPT laundering it used to gate ("a peer's reject counts as accept
+	// for my own block") is DELETED — vote.Accept is authoritative once the
+	// signature verifies (handleVote), so an own-proposal finalizes only on a
+	// real α-of-K cert (K>1) or the 1-of-1 force (K==1), never on self-promises.
 	IsOwnProposal bool
 }
 
@@ -265,6 +263,19 @@ func WithVoteVerifier(verifier VoteVerifier) Option {
 	}
 }
 
+// WithStakeWeighting makes finality STAKE-WEIGHTED (HIGH-3): a cert is accepted
+// only when its voters hold a strict ⅔-of-stake supermajority at the cert's
+// height, in addition to the α-of-K count. The node supplies a StakeSource
+// backed by the chain's validator set (weights from the same set the verifier
+// authenticates against). REQUIRED for a PoS value chain with unequal stake;
+// omit it only when equal stake is enforced at admission (then count-α is the
+// correct, equivalent rule).
+func WithStakeWeighting(stake StakeSource) Option {
+	return func(t *Transitive) {
+		t.stakeSource = stake
+	}
+}
+
 // WithVoteBuffers sets channel buffer sizes.
 func WithVoteBuffers(requests, votes int) Option {
 	return func(t *Transitive) {
@@ -351,6 +362,14 @@ type Transitive struct {
 	voteSigner   VoteSigner
 	chainID      ids.ID
 	nodeID       ids.NodeID
+
+	// stakeSource (optional) makes finality STAKE-WEIGHTED instead of a raw voter
+	// count (HIGH-3). When set (a value/PoS chain with unequal stake), a cert is
+	// accepted only if its voters hold a strict ⅔ supermajority of stake at the
+	// cert's height (VerifyWeighted), in addition to the α-of-K count. When nil,
+	// finality is count-α and the chain MUST enforce equal stake at validator
+	// admission (the documented invariant) — the node wires this for value chains.
+	stakeSource StakeSource
 
 	// Logger for consensus events (nil-safe: uses log.Noop() if unset)
 	log log.Logger
@@ -1113,7 +1132,14 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	// Defence in depth: the cert we just built must verify under our own
 	// verifier before we treat it as a finality witness (catches any assembly
 	// invariant drift). Assemble already enforced distinctness + threshold.
-	if err := cert.Verify(t.voteVerifier); err != nil {
+	// On a stake-weighted chain it must ALSO clear the ⅔-of-stake supermajority
+	// (HIGH-3) — the count quorum alone is not finality when stake is unequal, so
+	// we keep WAITING (return nil) until enough STAKE has voted, never forcing.
+	if t.stakeSource != nil {
+		if err := cert.VerifyWeighted(t.voteVerifier, t.stakeSource); err != nil {
+			return nil
+		}
+	} else if err := cert.Verify(t.voteVerifier); err != nil {
 		return nil
 	}
 	pending.cert = cert
@@ -1256,6 +1282,37 @@ func (t *Transitive) finalizePendingLocked(ctx context.Context, blockID ids.ID) 
 
 	// Pipeline: block finalized → immediately build next
 	t.signalPipeline()
+
+	// MED-6: bound the slashing detector's per-height vote/block maps to a
+	// sliding window below the finalized height. Equivocation is only
+	// actionable near the tip; retaining every height's records unboundedly is a
+	// memory-exhaustion vector. Prune everything older than the window.
+	t.pruneSlashingBelowWindow()
+}
+
+// slashingRetentionHeights is how many heights below the finalized tip the
+// slashing detector retains vote/block records for. Equivocation evidence is
+// only useful near the tip (a fork is attempted at or above the last finalized
+// height); older records cannot prove a NEW double-vote and are pruned to bound
+// memory. 1024 heights is ample for cross-validator timing skew at any block
+// time while keeping the maps O(window·validators).
+const slashingRetentionHeights = uint64(1024)
+
+// pruneSlashingBelowWindow drops slashing records older than the retention
+// window below the finalized height. No-op when no detector is wired or when the
+// chain has not advanced past the window.
+func (t *Transitive) pruneSlashingBelowWindow() {
+	t.mu.RLock()
+	detector := t.slashingDetector
+	t.mu.RUnlock()
+	if detector == nil {
+		return
+	}
+	fh, set := t.consensus.GetFinalizedHeight()
+	if !set || fh <= slashingRetentionHeights {
+		return
+	}
+	detector.PruneBelow(fh - slashingRetentionHeights)
 }
 
 // DrainAccepted finalizes any pending blocks that consensus has accepted.
