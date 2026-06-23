@@ -575,11 +575,12 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fromNodeID ids.NodeID) {
 	blockID := blk.ID()
 	consensusBlock := &Block{
-		id:        blockID,
-		parentID:  blk.ParentID(),
-		height:    blk.Height(),
-		timestamp: blk.Timestamp().Unix(),
-		data:      blk.Bytes(),
+		id:           blockID,
+		parentID:     blk.ParentID(),
+		height:       blk.Height(),
+		timestamp:    blk.Timestamp().Unix(),
+		data:         blk.Bytes(),
+		pChainHeight: pChainHeightOf(blk), // epoch for the weighted set (MEDIUM-1)
 	}
 
 	// Add to consensus tracking (idempotent: AddBlock errors if already present).
