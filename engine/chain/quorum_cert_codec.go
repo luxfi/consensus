@@ -30,6 +30,7 @@ var ErrQCWireCorrupt = errors.New("chain: quorum cert wire corrupt")
 //	round:4
 //	block_id:32
 //	parent_id:32
+//	validator_set_root:32   (epoch/weighted-set commitment; Empty = unbound)
 //	threshold:4
 //	vote_count:4
 //	then vote_count records, each:
@@ -42,7 +43,9 @@ var ErrQCWireCorrupt = errors.New("chain: quorum cert wire corrupt")
 const qcVoteFixed = ids.NodeIDLen + 1 + 4
 
 // qcHeaderSize is the fixed header byte length preceding the vote records.
-const qcHeaderSize = 2 + 1 + 32 + 8 + 4 + 32 + 32 + 4 + 4
+// (version + type + chain_id + height + round + block_id + parent_id +
+// validator_set_root + threshold + vote_count.)
+const qcHeaderSize = 2 + 1 + 32 + 8 + 4 + 32 + 32 + 32 + 4 + 4
 
 // MarshalBinary encodes the cert deterministically. Equal certs encode to equal
 // bytes (votes are kept in the strictly-increasing order Assemble produced).
@@ -64,6 +67,7 @@ func (c *QuorumCert) MarshalBinary() ([]byte, error) {
 	buf = append(buf, u32[:]...)
 	buf = append(buf, c.Position.BlockID[:]...)
 	buf = append(buf, c.Position.ParentID[:]...)
+	buf = append(buf, c.Position.ValidatorSetRoot[:]...)
 	binary.BigEndian.PutUint32(u32[:], c.Threshold)
 	buf = append(buf, u32[:]...)
 	binary.BigEndian.PutUint32(u32[:], uint32(len(c.Votes)))
@@ -113,6 +117,9 @@ func UnmarshalQuorumCert(data []byte) (*QuorumCert, error) {
 		return nil, ErrQCWireCorrupt
 	}
 	if err = r.readIDInto(&c.Position.ParentID); err != nil {
+		return nil, ErrQCWireCorrupt
+	}
+	if err = r.readIDInto(&c.Position.ValidatorSetRoot); err != nil {
 		return nil, ErrQCWireCorrupt
 	}
 	if c.Threshold, err = r.u32(); err != nil {
