@@ -64,6 +64,20 @@ var (
 	// the exact finalizedTip-vs-finalizedHeight desync ForcePreference was hardened
 	// against. SyncState refuses it fail-closed before mutating any state.
 	ErrSyncStateEmptyWithHeight = errors.New("chain: SyncState refused — empty import head paired with a non-zero height (an empty reset is genesis/teardown at height 0; this would desync finalizedTip from finalizedHeight and prune live blocks)")
+
+	// ErrEpochRegression is returned by the receive-side epoch gate when a
+	// gossiped child block's stamped P-CHAIN epoch height is BELOW its parent's
+	// recorded epoch height. The build side stamps H = max(currentH, parentH)
+	// (monotone), but that is PROPOSER-ONLY: a Byzantine proposer can skip it and
+	// stamp a stale H_old — a past P-chain epoch where its since-departed coalition
+	// held ≥⅔ — then sign with leaked old keys valid at H_old. A follower that
+	// adopted H_old blindly would resolve the validator set at the stale epoch and
+	// finalize a FRESH block against a set the CURRENT set never approved (a safety
+	// break: live equivocation, posterior corruption). Re-asserting monotonicity
+	// against the parent's recorded epoch on the RECEIVE side rejects that block
+	// before it is ever tracked or voted, so a chain's epoch can only move forward —
+	// reducing safety to current-set BFT with NO weak-subjectivity assumption.
+	ErrEpochRegression = errors.New("chain: gossiped block refused — its P-chain epoch height regresses below its parent's recorded epoch (a Byzantine proposer cannot pin a fresh block to a stale validator set)")
 )
 
 // Block represents a block in the chain
@@ -376,6 +390,25 @@ func (c *ChainConsensus) GetBlock(blockID ids.ID) (*Block, bool) {
 
 	block, exists := c.blocks[blockID]
 	return block, exists
+}
+
+// EpochHeightOf returns the P-CHAIN epoch height recorded for a tracked block
+// (the height its weighted validator set, set-root, and ⅔-stake tally are pinned
+// to — Block.pChainHeight), and whether the block is tracked at all. It is the
+// SINGLE authoritative read of "what epoch did we record for this block", used by
+// the receive-side monotonicity gate to reject a child whose stamped epoch
+// regresses below its parent's recorded epoch (the far-past attack: a Byzantine
+// proposer stamps a stale H where its old coalition held ≥⅔). A miss (false) means
+// the parent is not yet tracked — the caller treats that fail-closed.
+func (c *ChainConsensus) EpochHeightOf(blockID ids.ID) (uint64, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	block, exists := c.blocks[blockID]
+	if !exists {
+		return 0, false
+	}
+	return block.pChainHeight, true
 }
 
 // Stats returns consensus statistics
