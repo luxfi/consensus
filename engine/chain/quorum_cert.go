@@ -214,16 +214,26 @@ func canonicalVoteMessageFor(pos VotePosition, accept bool) []byte {
 // input (return false). Implementations that consult a validator set MUST treat
 // an unknown nodeID as "false", not an error — a cert with an out-of-set voter
 // is simply invalid.
+//
+// epochHeight is the P-CHAIN height the block's weighted validator set is pinned
+// to (MEDIUM-1 / RESIDUAL-B). An implementation that resolves the voter's public
+// key from a validator set MUST resolve it from the set IN FORCE AT epochHeight —
+// the SAME height the set-root and the ⅔-by-stake tally are read at — NOT from
+// the current validator map. Resolving from the current map drops the legitimate
+// vote of a validator that has since left the current set but was a member at
+// epochHeight (an async-skew window during a staking change), stalling finality
+// for that block. The four reads — membership, pubkey, set-root, stake — all key
+// off epochHeight so a cert is internally consistent at exactly one epoch.
 type VoteVerifier interface {
-	VerifyVote(nodeID ids.NodeID, message []byte, sig []byte) bool
+	VerifyVote(nodeID ids.NodeID, message []byte, sig []byte, epochHeight uint64) bool
 }
 
 // VoteVerifierFunc adapts a function to a VoteVerifier.
-type VoteVerifierFunc func(nodeID ids.NodeID, message []byte, sig []byte) bool
+type VoteVerifierFunc func(nodeID ids.NodeID, message []byte, sig []byte, epochHeight uint64) bool
 
 // VerifyVote implements VoteVerifier.
-func (f VoteVerifierFunc) VerifyVote(nodeID ids.NodeID, message []byte, sig []byte) bool {
-	return f(nodeID, message, sig)
+func (f VoteVerifierFunc) VerifyVote(nodeID ids.NodeID, message []byte, sig []byte, epochHeight uint64) bool {
+	return f(nodeID, message, sig, epochHeight)
 }
 
 // StakeSource supplies validator voting weights so finality can be checked as a
@@ -282,21 +292,27 @@ func (f ValidatorSetRootFunc) ValidatorSetRoot(height uint64) ids.ID { return f(
 // on the engine). VerifyWeighted with a nil source returns ErrQCVerifierNil's
 // sibling fail-closed error to make a wiring mistake loud rather than silently
 // count-only.
-func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource) error {
-	if err := c.Verify(verifier); err != nil {
+func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, epochHeight uint64) error {
+	if err := c.Verify(verifier, epochHeight); err != nil {
 		return err
 	}
 	if stake == nil {
 		return fmt.Errorf("%w: stake source nil", ErrQCStakeBelowSupermajority)
 	}
-	total := stake.TotalStake(c.Position.Height)
+	// The ⅔-by-stake tally is read at the block's P-CHAIN EPOCH height — the SAME
+	// height the cert's set-root and the per-voter pubkeys are read at (MEDIUM-1)
+	// — NOT c.Position.Height (the value-chain height, which platformvm would
+	// reject as unfinalized and which races ahead of the P-chain epoch). Reading
+	// the tally at the same epoch the signatures were cast under guarantees a
+	// validator whose vote is in the cert also contributes its epoch weight.
+	total := stake.TotalStake(epochHeight)
 	if total == 0 {
-		// No known stake at this height — cannot assert a supermajority. Fail closed.
-		return fmt.Errorf("%w: total stake is zero at height %d", ErrQCStakeBelowSupermajority, c.Position.Height)
+		// No known stake at this epoch — cannot assert a supermajority. Fail closed.
+		return fmt.Errorf("%w: total stake is zero at epoch height %d (value-height %d)", ErrQCStakeBelowSupermajority, epochHeight, c.Position.Height)
 	}
 	var voted uint64
 	for i := range c.Votes {
-		voted += stake.Weight(c.Votes[i].NodeID, c.Position.Height)
+		voted += stake.Weight(c.Votes[i].NodeID, epochHeight)
 	}
 	// STRICT supermajority by stake: accept iff voted > 2·total/3 (Tendermint
 	// +⅔). Computed overflow-safely from total alone (3·voted and 2·total would
@@ -411,7 +427,7 @@ func AssembleQuorumCert(pos VotePosition, threshold uint32, votes []SignedVote) 
 //
 // fail-closed: a nil verifier is an error, never a pass — a cert may not be
 // trusted without the ability to check its signatures.
-func (c *QuorumCert) Verify(verifier VoteVerifier) error {
+func (c *QuorumCert) Verify(verifier VoteVerifier, epochHeight uint64) error {
 	if c == nil {
 		return ErrQCNil
 	}
@@ -452,10 +468,12 @@ func (c *QuorumCert) Verify(verifier VoteVerifier) error {
 			return fmt.Errorf("%w: vote %d voter %s", ErrQCVoteNotAccept, i, v.NodeID)
 		}
 
-		// Clause (6): signature verifies over the cert's own position. The
-		// verifier rebuilds nothing from the vote — the message is derived from
-		// the CERT position, so a vote that signed a different position fails.
-		if !verifier.VerifyVote(v.NodeID, message, v.Signature) {
+		// Clause (6): signature verifies over the cert's own position, with the
+		// voter's pubkey resolved at the block's P-CHAIN EPOCH height (the same
+		// height the set-root in this position commits to). The verifier rebuilds
+		// nothing from the vote — the message is derived from the CERT position,
+		// so a vote that signed a different position fails.
+		if !verifier.VerifyVote(v.NodeID, message, v.Signature, epochHeight) {
 			return fmt.Errorf("%w: vote %d voter %s", ErrQCSigInvalid, i, v.NodeID)
 		}
 
