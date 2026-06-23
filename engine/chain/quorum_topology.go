@@ -21,7 +21,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/luxfi/consensus/core/slashing"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
 )
@@ -175,10 +177,53 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	if cert.Position.ChainID != chainID {
 		return false
 	}
-	if err := cert.Verify(verifier); err != nil {
+
+	// MED-5 HEIGHT GATE — reject the cert on height BEFORE any finalize work:
+	//   - a cert at or below the last-finalized height is stale or a fork attempt
+	//     (the height is already decided); and
+	//   - a cert whose height does not match the height of the block we are
+	//     tracking under that ID is internally inconsistent.
+	// This is the cheap front-line check; the per-height guard in AcceptViaCert
+	// is the authoritative backstop that also produces equivocation evidence.
+	if fh, set := t.consensus.GetFinalizedHeight(); set && cert.Position.Height <= fh {
+		// If a DIFFERENT block is finalized at this exact height, the cert is an
+		// equivocation proof — surface it. (Same block = harmless stale replay.)
+		if fin, ok := t.consensus.FinalizedBlockAtHeight(cert.Position.Height); ok && fin != cert.Position.BlockID {
+			rt.reportCertEquivocation(cert, fin)
+		} else if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Debug("incoming cert: height at/below finalized; dropping",
+				log.Uint64("certHeight", cert.Position.Height),
+				log.Uint64("finalizedHeight", fh))
+		}
+		return false
+	}
+	if exists && pending.ConsensusBlock != nil && pending.ConsensusBlock.height != cert.Position.Height {
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("incoming cert: height does not match tracked block; dropping",
+				log.Stringer("blockID", cert.Position.BlockID),
+				log.Uint64("certHeight", cert.Position.Height),
+				log.Uint64("trackedHeight", pending.ConsensusBlock.height))
+		}
+		return false
+	}
+
+	// On a stake-weighted chain the incoming cert must clear the ⅔-of-stake
+	// supermajority (HIGH-3), not just the count predicate — otherwise a
+	// low-stake coalition's count-α cert would finalize. Count-only chains use
+	// Verify (equal-stake invariant enforced at admission).
+	t.mu.RLock()
+	stake := t.stakeSource
+	t.mu.RUnlock()
+	var verr error
+	if stake != nil {
+		verr = cert.VerifyWeighted(verifier, stake)
+	} else {
+		verr = cert.Verify(verifier)
+	}
+	if verr != nil {
 		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Warn("incoming cert: verification failed",
-				log.Stringer("blockID", cert.Position.BlockID), log.Err(err))
+				log.Stringer("blockID", cert.Position.BlockID), log.Err(verr))
 		}
 		return false
 	}
@@ -201,8 +246,12 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		ctx = c
 	}
 
-	// Record the cert and mark accepted-via-cert in consensus, then run the
-	// shared finalize path (VM.Accept + SetPreference + pipeline).
+	// Record the cert candidate, then commit through the per-height guard. The
+	// guard is the AUTHORITATIVE single-finalize gate: it finalizes the first
+	// block at a height and REFUSES a second (different) one — even if the cert
+	// itself verified — returning ErrHeightAlreadyFinalized, which we surface as
+	// equivocation evidence. Only on a clean accept do we run the shared finalize
+	// path (VM.Accept + SetPreference). This closes the two-certs-one-height fork.
 	t.mu.Lock()
 	if pending.Decided {
 		t.mu.Unlock()
@@ -211,7 +260,28 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	pending.cert = cert
 	t.mu.Unlock()
 
-	t.consensus.AcceptViaCert(cert.Position.BlockID)
+	if err := t.consensus.AcceptViaCert(cert.Position.BlockID, cert.Position.Height, cert.Position.ParentID); err != nil {
+		// The cert verified but violates a per-height finalization invariant.
+		// This is the fork the guard exists to stop — do NOT VM.Accept.
+		if errors.Is(err, ErrHeightAlreadyFinalized) {
+			if fin, ok := t.consensus.FinalizedBlockAtHeight(cert.Position.Height); ok {
+				rt.reportCertEquivocation(cert, fin)
+			}
+		}
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("incoming cert: REFUSED by per-height finality guard (no VM.Accept)",
+				log.Stringer("blockID", cert.Position.BlockID),
+				log.Uint64("height", cert.Position.Height), log.Err(err))
+		}
+		// Roll back the speculative cert cache so a later legitimate finalize of
+		// this (already-decided-elsewhere) ID is not confused.
+		t.mu.Lock()
+		if pd, ok := t.pendingBlocks[cert.Position.BlockID]; ok && !pd.Decided {
+			pd.cert = nil
+		}
+		t.mu.Unlock()
+		return false
+	}
 
 	rt.fastFollowMu.Lock()
 	if cert.Position.Height > rt.fastFollowHeight {
@@ -227,4 +297,39 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 			log.Int("voters", cert.VoterCount()))
 	}
 	return true
+}
+
+// reportCertEquivocation records that a SECOND, conflicting finality cert was
+// presented for a height already finalized to a DIFFERENT block — a provable
+// safety-equivocation. Each voter in the conflicting cert signed-final a block
+// at a height already finalized to `finalized`, so each is recorded as a
+// DoubleVote (it asserts a different block at the same height than the one that
+// finalized). The event is also logged at CRIT — this is a Byzantine-fault
+// signal, not a routine drop. Best effort: never blocks the safety reject.
+func (rt *Runtime) reportCertEquivocation(cert *QuorumCert, finalized ids.ID) {
+	if !rt.config.Logger.IsZero() {
+		rt.config.Logger.Crit("EQUIVOCATION: conflicting finality cert at finalized height",
+			log.Uint64("height", cert.Position.Height),
+			log.Stringer("finalizedBlock", finalized),
+			log.Stringer("conflictingBlock", cert.Position.BlockID),
+			log.Int("conflictingVoters", cert.VoterCount()))
+	}
+	t := rt.Transitive
+	t.mu.RLock()
+	sdb := t.slashingDB
+	t.mu.RUnlock()
+	if sdb == nil {
+		return
+	}
+	for i := range cert.Votes {
+		proof := fmt.Appendf(nil, "height=%d finalized=%s conflicting=%s",
+			cert.Position.Height, finalized, cert.Position.BlockID)
+		sdb.RecordEvidence(slashing.Evidence{
+			Type:        slashing.DoubleVote,
+			ValidatorID: cert.Votes[i].NodeID,
+			Height:      cert.Position.Height,
+			Timestamp:   time.Now(),
+			Proof:       proof,
+		})
+	}
 }
