@@ -53,6 +53,7 @@ func TestStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
+	t.Cleanup(func() { _ = engine.Stop(context.Background()) })
 
 	if !engine.IsBootstrapped() {
 		t.Error("Engine should be bootstrapped after Start")
@@ -202,6 +203,7 @@ func TestNotifyPendingTxsTriggersBuildBlock(t *testing.T) {
 	if err := engine.Start(ctx, true); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
+	t.Cleanup(func() { _ = engine.Stop(context.Background()) })
 
 	// Set up mock VM
 	vm := &mockVM{}
@@ -252,6 +254,7 @@ func TestNotifyStateSyncDoneDoesNotBuild(t *testing.T) {
 	if err := engine.Start(ctx, true); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
+	t.Cleanup(func() { _ = engine.Stop(context.Background()) })
 
 	vm := &mockVM{}
 	engine.SetVM(vm)
@@ -276,6 +279,7 @@ func TestNotifyWithNoVMDoesNotPanic(t *testing.T) {
 	if err := engine.Start(ctx, true); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
+	t.Cleanup(func() { _ = engine.Stop(context.Background()) })
 
 	// Don't set VM - it should be nil
 
@@ -294,6 +298,7 @@ func TestNotifyBuildBlockError(t *testing.T) {
 	if err := engine.Start(ctx, true); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
+	t.Cleanup(func() { _ = engine.Stop(context.Background()) })
 
 	// VM that always errors
 	vm := &mockVM{
