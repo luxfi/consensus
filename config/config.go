@@ -43,7 +43,23 @@ var (
 	// validators — i.e. NO fault tolerance — so a single Byzantine validator can
 	// fork it. Real-value chains require f≥1 ⟹ K≥4 (α≥3); mainnet requires K≥11.
 	ErrKTooLowForValue = errors.New("consensus: value/PoS chain requires K>=4 (f>=1 Byzantine tolerance); K=3 has f=0 and a single faulty validator forks it")
+
+	// ErrKBelowLiveFloor is returned by ValidateForLiveValueNetwork when the
+	// committee is smaller than min(tierFloor, liveN) — i.e. it under-samples the
+	// live validator set. With K sized to the live set this never fires; it guards
+	// an operator who pins a K smaller than the validators that actually exist.
+	ErrKBelowLiveFloor = errors.New("consensus: K under-samples the live validator set (need K >= min(tierFloor, liveValidators))")
 )
+
+// errKTooLowForValueLive wraps ErrKTooLowForValue with the live-aware context.
+func errKTooLowForValueLive(p Parameters, networkID uint32) error {
+	return fmt.Errorf("%w: K=%d f=%d networkID=%d", ErrKTooLowForValue, p.K, p.ByzantineFaultTolerance(), networkID)
+}
+
+// errKBelowLiveFloor wraps ErrKBelowLiveFloor with the resolved live floor.
+func errKBelowLiveFloor(p Parameters, networkID uint32, liveN, effective int) error {
+	return fmt.Errorf("%w: K=%d < %d (networkID=%d liveValidators=%d)", ErrKBelowLiveFloor, p.K, effective, networkID, liveN)
+}
 
 // Parameters defines consensus parameters
 type Parameters struct {
