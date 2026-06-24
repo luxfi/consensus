@@ -7,10 +7,19 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/luxfi/consensus"
 	"github.com/stretchr/testify/require"
 )
+
+// voteAll records a finalizing quorum for id without using the test handle,
+// so it is safe to call from a helper goroutine.
+func voteAll(ctx context.Context, chain *consensus.Chain, id consensus.ID) {
+	for i := 0; i < 20; i++ {
+		_ = chain.RecordVote(ctx, consensus.NewVote(id, consensus.VotePreference, consensus.NodeID{byte(i + 1)}))
+	}
+}
 
 // maxVolumeIdCommand mirrors the Hanzo S3 master's ENTIRE replicated FSM:
 // a monotonic max volume id + a topology id. Replacing seaweedfs/raft's
@@ -100,4 +109,68 @@ func TestLog_ReplicatesMasterFSM(t *testing.T) {
 	require.Equal(t, 1, n)
 	require.Equal(t, uint32(12), maxVolumeId)
 	require.Equal(t, 0, log.Pending())
+}
+
+// TestLog_RunAutoApplies proves the background driver applies a command once
+// consensus finalizes it, with no manual Advance.
+func TestLog_RunAutoApplies(t *testing.T) {
+	chain := consensus.NewChain(consensus.DefaultConfig())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	applied := make(chan string, 4)
+	log := New(chain, func(p []byte) error { applied <- string(p); return nil })
+	require.NoError(t, log.Start(ctx))
+	defer log.Stop()
+	go log.Run(ctx, 5*time.Millisecond)
+
+	id, err := log.Submit(ctx, []byte("auto-1"))
+	require.NoError(t, err)
+
+	// Not finalized -> Run must not apply it.
+	select {
+	case <-applied:
+		t.Fatal("applied before finalization")
+	case <-time.After(60 * time.Millisecond):
+	}
+
+	voteToFinality(ctx, t, chain, id)
+	select {
+	case p := <-applied:
+		require.Equal(t, "auto-1", p)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not apply after finalization")
+	}
+}
+
+// TestLog_CommitBlocksUntilApplied proves Commit (the synchronous raft.Do
+// drop-in) blocks until consensus finalizes AND applies the command.
+func TestLog_CommitBlocksUntilApplied(t *testing.T) {
+	chain := consensus.NewChain(consensus.DefaultConfig())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var got string
+	log := New(chain, func(p []byte) error { got = string(p); return nil })
+	require.NoError(t, log.Start(ctx))
+	defer log.Stop()
+	go log.Run(ctx, 5*time.Millisecond)
+
+	payload := []byte("commit-me")
+	expID := blockID(1, consensus.GenesisID, payload)
+
+	// Finalize once Commit's Submit has added the block (peers, simulated).
+	go func() {
+		for chain.GetStatus(expID) == consensus.StatusUnknown {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+		voteAll(ctx, chain, expID)
+	}()
+
+	require.NoError(t, log.Commit(ctx, payload))
+	require.Equal(t, "commit-me", got)
 }

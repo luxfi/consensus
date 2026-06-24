@@ -47,7 +47,8 @@ type Log struct {
 	mu      sync.Mutex
 	height  uint64
 	lastID  consensus.ID
-	pending []pendingBlock // submitted, not yet applied, in ascending height
+	pending []pendingBlock                  // submitted, not yet applied, ascending height
+	waiters map[consensus.ID]chan struct{}  // closed when a block is applied (for Commit)
 }
 
 type pendingBlock struct {
@@ -58,7 +59,12 @@ type pendingBlock struct {
 // New returns a Log over engine; apply is called for each finalized command
 // in order. Call [Log.Start] before submitting.
 func New(engine consensus.Engine, apply Apply) *Log {
-	return &Log{engine: engine, apply: apply, lastID: consensus.GenesisID}
+	return &Log{
+		engine:  engine,
+		apply:   apply,
+		lastID:  consensus.GenesisID,
+		waiters: make(map[consensus.ID]chan struct{}),
+	}
 }
 
 // Start starts the underlying consensus engine.
@@ -90,6 +96,7 @@ func (l *Log) Submit(ctx context.Context, payload []byte) (consensus.ID, error) 
 	l.height = height
 	l.lastID = id
 	l.pending = append(l.pending, pendingBlock{id: id, payload: append([]byte(nil), payload...)})
+	l.waiters[id] = make(chan struct{})
 	return id, nil
 }
 
@@ -112,9 +119,52 @@ func (l *Log) Advance(ctx context.Context) (int, error) {
 			return applied, err
 		}
 		l.pending = l.pending[1:]
+		if w, ok := l.waiters[head.id]; ok {
+			close(w) // wake any Commit waiting on this command
+			delete(l.waiters, head.id)
+		}
 		applied++
 	}
 	return applied, nil
+}
+
+// Run drives [Log.Advance] on an interval until ctx is cancelled, so
+// finalized commands are applied without the caller polling. A coordinator
+// starts this once: `go log.Run(ctx, 20*time.Millisecond)`.
+func (l *Log) Run(ctx context.Context, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			_, _ = l.Advance(ctx)
+		}
+	}
+}
+
+// Commit submits payload and blocks until consensus finalizes it AND it is
+// applied (via the [Log.Run] driver), or ctx is cancelled — the synchronous
+// drop-in for Raft's `server.Do(command)`. Requires Run to be active (or
+// Advance to be called concurrently).
+func (l *Log) Commit(ctx context.Context, payload []byte) error {
+	id, err := l.Submit(ctx, payload)
+	if err != nil {
+		return err
+	}
+	l.mu.Lock()
+	w := l.waiters[id]
+	l.mu.Unlock()
+	if w == nil {
+		return nil // already applied between Submit and here
+	}
+	select {
+	case <-w:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Pending reports how many submitted commands have not yet been applied.
