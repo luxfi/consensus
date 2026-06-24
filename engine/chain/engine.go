@@ -145,6 +145,13 @@ type PendingBlock struct {
 	// request and so a follower's accept is gated on holding it.
 	cert *QuorumCert
 
+	// lastRePoll is when the re-poll loop last re-solicited votes for this block
+	// (zero until the first re-poll). The re-poll loop only re-drives a block once
+	// per RoundTO so a stuck block recovers without a gossip storm. See
+	// rePollAllPending — this is the liveness retry the topology doc promises
+	// ("vote-broadcast + cert-gossip + the poll-timeout re-request").
+	lastRePoll time.Time
+
 	// IsOwnProposal is true when this node built and proposed the block. It now
 	// selects ONLY the finalization ENTRY POINT (finalizeOwnProposal vs.
 	// tryFinalizeBlock); it does NOT alter how votes are counted. The former
@@ -555,10 +562,11 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 	// Capture ctx in local variable to avoid race with struct field access
 	engineCtx := t.ctx
 
-	t.wg.Add(3)
+	t.wg.Add(4)
 	go t.pollLoopWithCtx(engineCtx)
 	go t.voteHandlerWithCtx(engineCtx)
 	go t.pipelineLoop(engineCtx)
+	go t.rePollLoopWithCtx(engineCtx)
 
 	return nil
 }
@@ -860,6 +868,124 @@ func (t *Transitive) pollLoopWithCtx(ctx context.Context) {
 				return
 			}
 			t.processPendingBlocks()
+		}
+	}
+}
+
+// rePollLoopWithCtx is the LIVENESS retry that prevents a terminal first-poll
+// stall. The proposer issues exactly ONE RequestVotes when it builds a block
+// (buildBlocksLocked) and runs finalizeOwnProposal ONCE right after; if at that
+// instant the α-of-K signed votes have not yet arrived (the common case at
+// genesis — peers are still bootstrapping, or the first PushQuery was dropped at
+// the network boundary), the proposer's block sits in pendingBlocks with only its
+// own self-vote and NOTHING re-solicits the missing votes. The finality poll loop
+// (processPendingBlocks) only CHECKS consensus.IsAccepted; it never re-requests.
+// So a single lagging validator at height 0 wedged finality forever — the devnet
+// freeze. This loop implements the "poll-timeout re-request" the topology doc
+// (quorum_topology.go) already promises but that was never wired.
+//
+// It is a pure liveness retry: it re-solicits votes and re-attempts cert
+// assembly, and changes NOTHING about the finality predicate. A block still
+// finalizes only on a verified α-of-K cert (multi-validator) or the 1-of-1 force
+// (single-validator); a genuine minority still cannot and does not finalize.
+//
+// Interval = RoundTO (the round budget) so a stuck block is re-driven once per
+// round, not every block tick — bounded work, no gossip storm. Each block is
+// re-driven at most once per interval via PendingBlock.lastRePoll.
+func (t *Transitive) rePollLoopWithCtx(ctx context.Context) {
+	defer t.wg.Done()
+
+	// Re-poll on the round budget. RoundTO is the time a poll is expected to
+	// complete in; a block still undecided after a round is a candidate for
+	// re-solicitation. Fall back to a conservative 250ms if unset.
+	interval := t.params.RoundTO
+	if interval <= 0 {
+		interval = 250 * time.Millisecond
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if ctx.Err() != nil {
+				return
+			}
+			t.rePollAllPending(ctx, interval)
+		}
+	}
+}
+
+// rePollAllPending re-drives every undecided pending block that has gone a full
+// re-poll interval without being re-solicited. For each such block it:
+//
+//  1. re-attempts finalization (tryFinalizeBlock) — idempotent; assembles +
+//     gossips the cert if α signed votes are now present, so a follower that
+//     missed the proposer's single cert-gossip still finalizes; and
+//  2. if this node PROPOSED the block and a proposer transport is wired, re-issues
+//     RequestVotes — re-sending the PushQuery so a laggard/peer that missed the
+//     first poll receives the block + vote request again and can sign.
+//
+// Single-validator (K==1) engines never stall here (their own accept is the
+// quorum, finalized synchronously), so the re-poll is a no-op for them.
+func (t *Transitive) rePollAllPending(ctx context.Context, interval time.Duration) {
+	// K==1: no peer votes are ever needed; nothing to re-solicit.
+	if t.consensus.K() <= 1 {
+		return
+	}
+
+	now := time.Now()
+
+	// Snapshot the blocks due for a re-poll under the lock, then act without it
+	// (RequestVotes / tryFinalizeBlock take their own locks). A block is due once
+	// it has been undecided for a full interval since the later of ProposedAt and
+	// its last re-poll — so the FIRST re-poll waits one interval after proposal
+	// (giving the normal fast path time to finalize), then at most one per interval.
+	type due struct {
+		blockID   ids.ID
+		blockData []byte
+		ownProp   bool
+	}
+	var dueBlocks []due
+	t.mu.Lock()
+	for blockID, pending := range t.pendingBlocks {
+		if pending.Decided {
+			continue
+		}
+		last := pending.lastRePoll
+		if last.IsZero() {
+			last = pending.ProposedAt
+		}
+		if now.Sub(last) < interval {
+			continue
+		}
+		pending.lastRePoll = now
+		var data []byte
+		if pending.VMBlock != nil {
+			data = pending.VMBlock.Bytes()
+		}
+		dueBlocks = append(dueBlocks, due{blockID: blockID, blockData: data, ownProp: pending.IsOwnProposal})
+	}
+	proposer := t.proposer
+	t.mu.Unlock()
+
+	for _, d := range dueBlocks {
+		// (1) Re-attempt finalization first: if α signed votes already arrived but
+		// the single finalize attempt raced (or a follower missed the cert gossip),
+		// this assembles + gossips the cert and commits now. Idempotent.
+		t.tryFinalizeBlock(ctx, d.blockID)
+
+		// (2) Proposer re-poll: re-send the vote request so a laggard re-receives
+		// the block and votes. Only the proposer polls peers (followers learn the
+		// block via gossip and broadcast their own votes); a follower short of
+		// quorum recovers via the cert-gossip path that step (1) re-runs.
+		if d.ownProp && proposer != nil {
+			_ = proposer.RequestVotes(ctx, VoteRequest{
+				BlockID:   d.blockID,
+				BlockData: d.blockData,
+			})
 		}
 	}
 }
