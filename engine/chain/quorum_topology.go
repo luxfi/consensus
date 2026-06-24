@@ -324,7 +324,15 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	}
 	rt.fastFollowMu.Unlock()
 
-	t.finalizePendingLocked(ctx, cert.Position.BlockID)
+	// The cert cleared VerifyWeighted/Verify above (the SAME predicate
+	// BuildVerifiedQuorumCert runs) and the per-height guard via AcceptViaCert, so
+	// promote it to the finality authority token and finalize through the SOLE
+	// finalizer. wrapVerifiedCert refuses only a nil cert; this cert is non-nil.
+	vcert, ok := wrapVerifiedCert(cert)
+	if !ok {
+		return false
+	}
+	_ = t.AcceptWithCert(ctx, cert.Position.BlockID, vcert)
 	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Info("finalized block via α-of-K quorum cert",
 			log.Stringer("blockID", cert.Position.BlockID),
