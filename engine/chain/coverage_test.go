@@ -225,11 +225,22 @@ func TestReceiveVoteBufferFull(t *testing.T) {
 	engine.Start(context.Background(), true)
 	defer engine.Stop(context.Background())
 
-	// Fill the buffer
-	engine.ReceiveVote(Vote{BlockID: ids.GenerateTestID(), Accept: true})
-	// This should return false (buffer full)
-	if engine.ReceiveVote(Vote{BlockID: ids.GenerateTestID(), Accept: true}) {
-		t.Error("should return false when buffer is full")
+	// ReceiveVote does a NON-BLOCKING send (select/default) and returns false when
+	// the channel cannot accept the vote. With a size-1 buffer and a concurrent
+	// vote-handler draining it, asserting on exactly the 2nd send is racy: the
+	// handler may have freed the slot between sends. The CONTRACT is "returns
+	// false when it cannot enqueue", so push a burst far larger than (buffer +
+	// in-flight) and require that at least one send is refused — deterministic
+	// regardless of how fast the single drainer runs.
+	sawFull := false
+	for i := 0; i < 1000; i++ {
+		if !engine.ReceiveVote(Vote{BlockID: ids.GenerateTestID(), Accept: true}) {
+			sawFull = true
+			break
+		}
+	}
+	if !sawFull {
+		t.Error("should return false at least once when the vote buffer is saturated")
 	}
 }
 
