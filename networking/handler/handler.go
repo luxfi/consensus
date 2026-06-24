@@ -46,4 +46,5 @@ const (
 	Vote                = router.Vote
 	GetContext          = router.GetContext
 	Context             = router.Context
+	Gossip              = router.Gossip
 )

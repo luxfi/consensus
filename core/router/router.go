@@ -45,6 +45,11 @@ const (
 	GetContext
 	// Context is the response containing prerequisite blocks needed to verify/attach a tip
 	Context
+	// Gossip is an unsolicited app-gossip payload (e.g. the α-of-K quorum
+	// vote/cert envelope broadcast to all validators). It carries application
+	// bytes, not a consensus container, and is demuxed by the chain handler's
+	// Gossip method. MUST stay last so the preceding wire bytes are unchanged.
+	Gossip
 )
 
 // Field represents a message field
