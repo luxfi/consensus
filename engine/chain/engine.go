@@ -370,6 +370,19 @@ type Transitive struct {
 	pendingBlocks      map[ids.ID]*PendingBlock
 	pendingBuildBlocks int
 
+	// finalizedByCert is the engine's authoritative finality record: the set of
+	// block IDs that were committed through the SOLE cert-gated finalizer
+	// (AcceptWithCert, which requires a VerifiedQuorumCert). It is deliberately
+	// SEPARATE from the consensus core's block.accepted / finalizedByHeight, which
+	// the α-of-K COUNT path populates directly (consensus.go marks a block accepted
+	// on acceptVotes>=alpha). A block sitting at count-α but lacking the verified
+	// cert is "accepted" in the consensus core but is NOT in this set — and
+	// Transitive.IsAccepted reports THIS set, so the engine never claims finality
+	// for a block it refused to finalize. Bounded by the same finalize cadence as
+	// the chain (one entry per finalized height); a production node prunes it
+	// alongside the slashing window if retention ever matters.
+	finalizedByCert map[ids.ID]struct{}
+
 	// Vote channels
 	voteRequests chan VoteRequest
 	votes        chan Vote
@@ -509,8 +522,9 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		params:         cfg.Params,
 		vm:             cfg.VM,
 		proposer:       cfg.Proposer,
-		pendingBlocks:  make(map[ids.ID]*PendingBlock),
-		voteRequests:   make(chan VoteRequest, cfg.VoteRequestBuffer),
+		pendingBlocks:   make(map[ids.ID]*PendingBlock),
+		finalizedByCert: make(map[ids.ID]struct{}),
+		voteRequests:    make(chan VoteRequest, cfg.VoteRequestBuffer),
 		votes:          make(chan Vote, cfg.VoteBuffer),
 		pipelineSignal: make(chan struct{}, 1),
 	}
@@ -747,8 +761,35 @@ func (t *Transitive) Poll(ctx context.Context, responses map[ids.ID]int) error {
 	return t.consensus.Poll(ctx, responses)
 }
 
-// IsAccepted checks if block is accepted.
+// IsAccepted reports whether the block has been FINALIZED by this engine —
+// committed through the SOLE cert-gated finalizer (AcceptWithCert), which is
+// reachable only with a VerifiedQuorumCert. It is the engine's finality truth,
+// NOT a vote count.
+//
+// CRITICAL: this no longer forwards consensus.IsAccepted. That is the raw α-of-K
+// COUNT predicate — consensus.go sets block.accepted=true (and even populates its
+// per-height finalized ledger) the instant acceptVotes>=alpha, with NO stake
+// check. On a stake-weighted chain a low-stake/high-count coalition flips that
+// count true WITHOUT a ⅔-stake supermajority, so reporting it would leak a
+// finality claim the engine REFUSED to act on (no VM.Accept ran). Reading the
+// engine's own finalizedByCert set — written only by AcceptWithCert — makes
+// "accepted" mean exactly "finalized with a verified cert". A block stuck at
+// count-α but lacking the cert is correctly NOT accepted here.
 func (t *Transitive) IsAccepted(blockID ids.ID) bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	_, ok := t.finalizedByCert[blockID]
+	return ok
+}
+
+// HasEnoughResponsesForRetry reports the LIVENESS signal: α-of-K validators have
+// responded for the block (consensus.IsAccepted's raw count). This is the old
+// IsAccepted count predicate, renamed to make its role unmistakable — it returns
+// a RETRY signal, NEVER a finality verdict. A trigger may use it to decide
+// whether it is worth calling TryAccept; it must NEVER itself finalize, and it
+// does not increment blocksAccepted or touch the VM. Finality is decided solely
+// by AcceptWithCert holding a VerifiedQuorumCert.
+func (t *Transitive) HasEnoughResponsesForRetry(blockID ids.ID) bool {
 	return t.consensus.IsAccepted(blockID)
 }
 
@@ -1042,7 +1083,16 @@ func (t *Transitive) processPendingBlocks() {
 		return
 	}
 
-	// Phase 2: Check consensus state WITHOUT holding t.mu (avoids nested lock).
+	// Phase 2: classify each candidate WITHOUT holding t.mu (avoids nested lock).
+	//
+	// consensus.IsAccepted / IsRejected here are the LIVENESS TRIGGER, not the
+	// finality authority: a true IsAccepted means "α-of-K voters responded — it is
+	// worth ATTEMPTING to finalize", nothing more. The actual accept decision is
+	// made by TryAccept in phase 3, which finalizes ONLY with a VerifiedQuorumCert
+	// (the strict >⅔-of-stake gate). So a low-stake/high-count coalition that flips
+	// IsAccepted here cannot finalize: TryAccept refuses it (ErrNoVerifiedQC) and
+	// the block stays pending. Rejections carry no stake-safety concern (a block is
+	// dropped, not finalized) and are committed inline.
 	type blockAction struct {
 		blockID ids.ID
 		vmBlock block.Block
@@ -1061,61 +1111,50 @@ func (t *Transitive) processPendingBlocks() {
 		return
 	}
 
-	// Phase 3: Update bookkeeping under t.mu write lock.
-	// Track which actions were actually found (not already finalized by tryFinalizeBlock).
-	t.mu.Lock()
-	var vm BlockBuilder
-	var ctx context.Context
-	found := make([]bool, len(actions))
-	for i, action := range actions {
-		if pending, exists := t.pendingBlocks[action.blockID]; exists {
-			found[i] = true
-			pending.Decided = true
-			if action.accept {
-				t.blocksAccepted++
-			} else {
-				t.blocksRejected++
-			}
-			delete(t.pendingBlocks, action.blockID)
+	// Phase 3: accepts go through the SOLE cert-gated path (TryAccept); rejects
+	// are committed here. TryAccept is idempotent and takes its own lock — it
+	// finalizes iff a verified cert exists, otherwise returns ErrNoVerifiedQC and
+	// changes nothing (the block waits for the next tick). It also subsumes the
+	// VM.Accept + SetPreference + pipeline-signal that the old phase 4 did inline,
+	// so accepts no longer touch VM state from this loop at all.
+	rejected := make([]blockAction, 0, len(actions))
+	for _, action := range actions {
+		if action.accept {
+			_ = t.TryAccept(context.Background(), action.blockID)
+			continue
 		}
+		rejected = append(rejected, action)
 	}
-	vm = t.vm
-	ctx = t.ctx
+
+	if len(rejected) == 0 {
+		return
+	}
+
+	// Phase 4: commit the rejections (no cert required — a reject finalizes
+	// nothing). Mirror the previous found/double-decide guard so a block already
+	// decided by another trigger is not Reject'd twice.
+	t.mu.Lock()
+	ctx := t.ctx
+	found := make([]bool, len(rejected))
+	for i, action := range rejected {
+		pending, exists := t.pendingBlocks[action.blockID]
+		if !exists || pending.Decided {
+			continue
+		}
+		found[i] = true
+		pending.Decided = true
+		t.blocksRejected++
+		delete(t.pendingBlocks, action.blockID)
+	}
 	t.mu.Unlock()
 
-	// Phase 4: Execute VM operations ONLY for blocks found in phase 3.
-	// Blocks already finalized by tryFinalizeBlock are skipped to prevent
-	// double Accept/Reject calls which could corrupt VM state.
-	accepted := false
-	for i, action := range actions {
+	for i, action := range rejected {
 		if !found[i] {
-			continue // already finalized by vote handler
+			continue // already decided by another trigger
 		}
-		if action.accept {
-			accepted = true
-			if action.vmBlock != nil {
-				action.vmBlock.Accept(ctx)
-			}
-			if vm != nil {
-				if err := vm.SetPreference(ctx, action.blockID); err != nil {
-					t.log.Crit("SetPreference failed after Accept — forcing preference",
-						"blockID", action.blockID,
-						"error", err)
-					// Force consensus to match the accepted block so the
-					// engine and VM don't diverge on preferred tip.
-					t.consensus.ForcePreference(action.blockID)
-				}
-			}
-		} else {
-			if action.vmBlock != nil {
-				action.vmBlock.Reject(ctx)
-			}
+		if action.vmBlock != nil {
+			action.vmBlock.Reject(ctx)
 		}
-	}
-
-	// Pipeline: if any block was accepted, immediately build next
-	if accepted {
-		t.signalPipeline()
 	}
 }
 
@@ -1450,121 +1489,222 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	return cert
 }
 
-// tryFinalizeBlock finalizes a block once the α-of-K accept quorum is reached.
+// TryAccept is the ONE entry every finality trigger calls — a vote arrived, a
+// re-poll fired, the pending queue changed, a block was built/verified, a poll
+// timeout ticked. It is the single funnel onto the cert-gated acceptance path:
 //
-// Multi-validator (K>1): finality requires a verified QuorumCert. consensus
-// .IsAccepted only flips true once acceptVotes>=alpha (the α-of-K count), so
-// reaching it means alpha distinct accepts arrived. We assemble the cert from
-// the collected SIGNED votes as the portable witness, GOSSIP it so followers
-// finalize on a verifiable proof (not a fast-follow guess), then commit. If the
-// count says accepted but we cannot yet assemble a verified cert (signatures
-// still in flight), we WAIT — we never force. This is what makes the change
-// BFT: no value finalizes without a verifiable α-of-K witness.
+//	cert, err := <obtain a VerifiedQuorumCert for blockID>
+//	if err != nil { return err }   // ErrNoVerifiedQC: not final yet, retry later
+//	return t.AcceptWithCert(ctx, blockID, cert)
 //
-// Single-validator (K==1): there are no peer signatures; IsAccepted reflects
-// the sole validator's own accept, which IS the 1-of-1 quorum. Commit directly.
-func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
-	if !t.consensus.IsAccepted(blockID) {
-		return
-	}
-
+// A raw α-of-K COUNT is NOT an acceptance authority here. It is a LIVENESS
+// signal: it may BRING us to TryAccept (the poll loop / vote handler call this
+// when consensus signals "enough responses"), but TryAccept finalizes ONLY if a
+// VerifiedQuorumCert can be produced — i.e. the votes assemble into a cert that
+// clears VerifyWeighted's strict >⅔-of-stake gate. If not, TryAccept returns
+// ErrNoVerifiedQC and changes nothing: the block stays pending+undecided and the
+// trigger retries on its next tick. No count, no callback, no "enough voters
+// responded" can finalize without the cert. This is the structural HIGH-3 fix.
+//
+//   - K>1: the cert is assembled+verified from the collected SIGNED votes
+//     (assembleVerifiedCertLocked → BuildVerifiedQuorumCert semantics). The
+//     verified cert is gossiped so followers finalize on the same proof.
+//   - K==1: there are no peers; the sole validator's own accept IS the 1-of-1
+//     quorum. We commit it through the per-height guard (ForceAccept, which
+//     refuses K>1) and wrap the resulting decision as a 1-of-1 VerifiedQuorumCert
+//     so even this path finalizes ONLY through AcceptWithCert — one finalizer.
+func (t *Transitive) TryAccept(ctx context.Context, blockID ids.ID) error {
 	t.mu.Lock()
 	pending, exists := t.pendingBlocks[blockID]
 	if !exists || pending.Decided {
 		t.mu.Unlock()
-		return
+		return nil // nothing to accept (gone or already finalized) — not an error
 	}
-	multiValidator := t.consensus.K() > 1
-	var cert *QuorumCert
-	var certBytes []byte
-	if multiValidator {
-		cert = t.assembleCertLocked(pending, blockID)
-		if cert == nil {
-			// Quorum count reached but no verified cert yet — wait for signed
-			// votes. Do NOT finalize: BFT safety requires the witness.
+	singleValidator := t.consensus.K() == 1
+
+	if singleValidator {
+		// 1-of-1 quorum. Commit through the per-height guard (ForceAccept refuses
+		// K>1) so a K==1 node still cannot finalize two blocks at one height, then
+		// authorize the shared finalizer with a 1-of-1 verified cert.
+		if err := t.consensus.ForceAccept(blockID); err != nil {
 			t.mu.Unlock()
-			return
+			t.log.Crit("ForceAccept refused — engine misconfigured (K>1 reached single-validator path)",
+				"blockID", blockID, "error", err)
+			return err
 		}
-		if b, err := cert.MarshalBinary(); err == nil {
-			certBytes = b
-		}
+		cert := t.buildSingleValidatorCertLocked(pending, blockID)
+		t.mu.Unlock()
+		return t.AcceptWithCert(ctx, blockID, cert)
+	}
+
+	// K>1: a verified α-of-K cert is the ONLY authority. Build+verify it from the
+	// collected signed votes. nil ⇒ the verified ⅔-stake quorum is not present
+	// yet ⇒ ErrNoVerifiedQC ⇒ liveness retry (NOT a finalize).
+	cert, ok := t.assembleVerifiedCertLocked(pending, blockID)
+	if !ok {
+		t.mu.Unlock()
+		return ErrNoVerifiedQC
+	}
+	var certBytes []byte
+	if b, err := cert.Cert().MarshalBinary(); err == nil {
+		certBytes = b
 	}
 	chainID := t.chainID
 	gossiper := t.certGossiper
 	t.mu.Unlock()
 
-	// Distribute the finality proof so followers can finalize on it. Best
-	// effort: local finality is already established by the verified cert.
-	if multiValidator && gossiper != nil && certBytes != nil {
+	// Distribute the finality proof so followers finalize on the same verifiable
+	// witness (not a fast-follow guess). Best effort — local finality already
+	// holds via the verified cert about to be committed.
+	if gossiper != nil && certBytes != nil {
 		_ = gossiper.GossipCert(chainID, blockID, certBytes)
 	}
 
-	t.finalizePendingLocked(ctx, blockID)
+	return t.AcceptWithCert(ctx, blockID, cert)
 }
 
-// finalizeOwnProposal commits a self-proposed block once finality is legitimate.
+// tryFinalizeBlock is a thin compatibility shim onto TryAccept for the
+// peer-quorum triggers (poll-due, vote-handler). It exists so those call sites
+// read as "try to finalize"; all real logic — and the cert gate — is in
+// TryAccept. A consensus COUNT reaching α is what brings us here, but TryAccept
+// finalizes only with a VerifiedQuorumCert; ErrNoVerifiedQC is the normal
+// "wait" answer and is intentionally swallowed (the trigger retries next tick).
+func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
+	_ = t.TryAccept(ctx, blockID)
+}
+
+// finalizeOwnProposal is the proposer-side trigger after building its own block.
 //
 // THE FREEZE THIS USED TO "FIX" — AND HOW IT IS NOW FIXED WITHOUT SELF-FINALITY:
+// the old version FORCE-ACCEPTED the proposer's own block on its lone self-vote
+// (self-finality — a value could finalize with NO α-of-K agreement, so an
+// equivocating proposer could fork the chain). DELETED for K>1. The freeze is
+// now solved STRUCTURALLY by the vote-distribution topology (integration.go):
+// followers gossip their SIGNED accept votes to ALL validators, the proposer
+// assembles + gossips the cert, and finality comes via the verified cert.
 //
-// The old version FORCE-ACCEPTED the proposer's own block on its lone self-vote
-// (consensus.ForceAccept) because peer Chits arrived late/dropped, pinning
-// acceptVotes at 1 < alpha and freezing the node. That was self-finality — a
-// value could finalize with NO α-of-K agreement, so an equivocating proposer
-// could fork the chain. DELETED for K>1.
-//
-// The freeze is now solved STRUCTURALLY by the vote-distribution topology
-// (integration.go): followers gossip their SIGNED accept votes to ALL
-// validators (not only back to the proposer), and the proposer assembles +
-// gossips the cert. So the proposer collects alpha distinct signed votes and
-// finalizes via the cert (tryFinalizeBlock) — late/dropped Chits are handled by
-// re-request + cert gossip + the poll timeout, NOT by self-finalizing. If the
-// quorum genuinely is not present, the node correctly does NOT finalize (a real
-// minority cannot and must not finalize).
-//
-// Here we only do two things, both fail-closed:
-//   - K==1: ForceAccept (1-of-1 quorum: the sole validator's accept is final).
-//   - K>1: re-run tryFinalizeBlock, which finalizes IFF a verified cert exists.
-//     Never forces.
+// This is now just another trigger: it routes to TryAccept like every other
+// trigger. K==1 finalizes via the 1-of-1 cert; K>1 finalizes IFF a verified
+// α-of-K cert exists. Never forces a K>1 block on the lone self-vote.
 func (t *Transitive) finalizeOwnProposal(ctx context.Context, blockID ids.ID) {
 	t.mu.RLock()
 	pending, exists := t.pendingBlocks[blockID]
+	own := exists && pending.IsOwnProposal && !pending.Decided
 	t.mu.RUnlock()
-	if !exists || pending.Decided || !pending.IsOwnProposal {
+	if !own {
 		return
 	}
-
-	if t.consensus.K() == 1 {
-		// Single-validator: the sole validator's accept IS the quorum. Force is
-		// the correct 1-of-1 finalization (ForceAccept refuses K>1).
-		if err := t.consensus.ForceAccept(blockID); err != nil {
-			t.log.Crit("ForceAccept refused — engine misconfigured (K>1 reached single-validator path)",
-				"blockID", blockID, "error", err)
-			return
-		}
-		t.finalizePendingLocked(ctx, blockID)
-		return
-	}
-
-	// Multi-validator: finalize only via a verified α-of-K cert. No force.
-	t.tryFinalizeBlock(ctx, blockID)
+	_ = t.TryAccept(ctx, blockID)
 }
 
-// finalizePendingLocked is the shared finalization path used by both
-// tryFinalizeBlock (peer-quorum-driven) and finalizeOwnProposal
-// (proposer-self-driven). It assumes consensus.IsAccepted has been satisfied
-// either naturally (alpha-of-K signals) or via ForceAccept (own proposal).
+// assembleVerifiedCertLocked builds the FINALITY AUTHORITY TOKEN for blockID from
+// the collected signed accept votes, or reports that no verified quorum exists
+// yet. Caller holds t.mu. It delegates the predicate to assembleCertLocked
+// (assemble + signature-verify + VerifyWeighted's strict >⅔-of-stake gate — the
+// SINGLE place the stake predicate lives) and wraps the verified result. ok=false
+// (zero cert) ⇒ the verified ⅔-stake quorum is not present yet ⇒ the caller must
+// NOT finalize (it returns ErrNoVerifiedQC and the trigger retries). There is no
+// other in-engine producer of the token for the multi-validator path, so the
+// count road has no way to manufacture finality.
+func (t *Transitive) assembleVerifiedCertLocked(pending *PendingBlock, blockID ids.ID) (VerifiedQuorumCert, bool) {
+	cert := t.assembleCertLocked(pending, blockID)
+	if cert == nil {
+		return VerifiedQuorumCert{}, false
+	}
+	// assembleCertLocked has already run VerifyWeighted/Verify before caching the
+	// cert, so promotion is safe; wrapVerifiedCert refuses only a nil cert.
+	return wrapVerifiedCert(cert)
+}
+
+// buildSingleValidatorCertLocked produces the 1-of-1 VerifiedQuorumCert for the
+// K==1 path so the single-validator node finalizes through the SAME sole
+// finalizer (AcceptWithCert) as every other path — one finalization road. Caller
+// holds t.mu and has already committed the decision via ForceAccept (which itself
+// passes the per-height guard). On a K==1 chain α==1 and the sole validator's own
+// signed accept (recordOwnVoteLocked, captured at build time) is the entire
+// quorum; assembleCertLocked verifies that single signature and the (trivially
+// satisfied) stake gate. If a verifier/signer is not wired (a pure single-node
+// dev chain with no vote crypto), there is no signature to certify — we authorize
+// the commit with a degenerate non-zero token whose cert carries the position,
+// because ForceAccept already established the 1-of-1 finality and the per-height
+// guard already prevented equivocation. This degenerate token exists ONLY for
+// K==1 and can never arise for K>1 (TryAccept's K>1 branch never calls here).
+func (t *Transitive) buildSingleValidatorCertLocked(pending *PendingBlock, blockID ids.ID) VerifiedQuorumCert {
+	// Prefer the VERIFIED 1-of-1 cert: when vote crypto is wired the proposer
+	// recorded its own signed accept (recordOwnVoteLocked), so assembleCertLocked
+	// verifies that single signature (and the trivially-met stake gate) and we
+	// finalize on a real witness — even on a single-validator chain.
+	if cert, ok := t.assembleVerifiedCertLocked(pending, blockID); ok {
+		return cert
+	}
+	// Only when NO vote crypto is wired (a pure single-node dev chain, voteVerifier
+	// nil) is there no signature to certify. Synthesize the 1-of-1 finality witness
+	// from the position: ForceAccept has ALREADY committed this block through the
+	// per-height guard (the real single-node safety gate — one block per height, no
+	// branching), so the token only authorizes the VM.Accept. This branch is
+	// K==1-only (both callers gate on K()==1) and verifier-nil-only, so it can
+	// never substitute for a real α-of-K cert on any multi-validator chain.
+	if t.voteVerifier != nil {
+		// Verifier wired but the self-vote did not assemble (should not happen on a
+		// healthy K==1 node). Do NOT fabricate a witness when crypto is available —
+		// return zero so AcceptWithCert refuses and the next trigger retries.
+		return VerifiedQuorumCert{}
+	}
+	pos := t.blockPositionLocked(pending, blockID)
+	return VerifiedQuorumCert{qc: &QuorumCert{
+		Version:   QuorumCertVersion,
+		Type:      QCFinality,
+		Position:  pos,
+		Threshold: 1,
+	}}
+}
+
+// AcceptWithCert is the SOLE function that can finalize a block. It is impossible
+// to call without a VerifiedQuorumCert value, and a zero VerifiedQuorumCert
+// (cert==nil) is refused — so the ONLY way to reach VM.Accept is to first hold a
+// cert that cleared the finality predicate (BuildVerifiedQuorumCert /
+// assembleVerifiedCertLocked / the verified incoming-cert path). The old
+// finalizePendingLocked body lives here unchanged; the difference is that it can
+// no longer be reached by any count-only road — the type system enforces it.
 //
 // Idempotent: subsequent calls find pending.Decided=true and no-op.
-func (t *Transitive) finalizePendingLocked(ctx context.Context, blockID ids.ID) {
+//
+// It signals the pipeline to build the next block on success — the right thing
+// for an OUT-OF-BAND finalize (a vote/cert arrived async, or the poll loop fired)
+// where nothing else is driving production. The synchronous in-build-loop path
+// (buildBlocksLocked) instead uses acceptWithCertCore(..., signalNext=false): it
+// is already inside the build loop, so re-signaling would spawn a SECOND
+// concurrent builder and race the VM's block counter (the K=1 burst regression).
+func (t *Transitive) AcceptWithCert(ctx context.Context, blockID ids.ID, cert VerifiedQuorumCert) error {
+	return t.acceptWithCertCore(ctx, blockID, cert, true)
+}
+
+// acceptWithCertCore is the one finalization body. signalNext controls only
+// whether it wakes the pipeline afterward (see AcceptWithCert). Everything that
+// makes finality safe — the zero-cert refusal, the Decided/idempotency guard,
+// the VM Accept+SetPreference ordering — is identical on both call paths.
+func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cert VerifiedQuorumCert, signalNext bool) error {
+	if cert.IsZero() {
+		// No verified witness ⇒ no finality. This is the structural guarantee:
+		// even an internal caller cannot finalize by passing a zero cert.
+		return ErrNoVerifiedQC
+	}
+
 	t.mu.Lock()
 	pending, exists := t.pendingBlocks[blockID]
 	if !exists || pending.Decided {
 		t.mu.Unlock()
-		return
+		return nil
 	}
 	pending.Decided = true
 	t.blocksAccepted++
 	delete(t.pendingBlocks, blockID)
+	// Record engine-level finality. This is the ONLY place finalizedByCert is
+	// written, and it is written ONLY here — the sole finalizer, reachable only
+	// with a non-zero VerifiedQuorumCert. Transitive.IsAccepted reads this set, so
+	// engine finality is exactly "AcceptWithCert ran for this block", never the
+	// count-driven consensus.IsAccepted.
+	t.finalizedByCert[blockID] = struct{}{}
 	t.mu.Unlock()
 
 	if pending.VMBlock != nil {
@@ -1584,14 +1724,18 @@ func (t *Transitive) finalizePendingLocked(ctx context.Context, blockID ids.ID) 
 		}
 	}
 
-	// Pipeline: block finalized → immediately build next
-	t.signalPipeline()
+	// Pipeline: block finalized → immediately build next (out-of-band callers
+	// only; the in-build-loop caller continues its own loop and passes false).
+	if signalNext {
+		t.signalPipeline()
+	}
 
 	// MED-6: bound the slashing detector's per-height vote/block maps to a
 	// sliding window below the finalized height. Equivocation is only
 	// actionable near the tip; retaining every height's records unboundedly is a
 	// memory-exhaustion vector. Prune everything older than the window.
 	t.pruneSlashingBelowWindow()
+	return nil
 }
 
 // slashingRetentionHeights is how many heights below the finalized tip the
@@ -1619,47 +1763,28 @@ func (t *Transitive) pruneSlashingBelowWindow() {
 	detector.PruneBelow(fh - slashingRetentionHeights)
 }
 
-// DrainAccepted finalizes any pending blocks that consensus has accepted.
-// Called from the ForwardVMNotifications loop after each Notify.
+// DrainAccepted attempts to finalize any pending block consensus has SIGNALLED
+// as accepted. Called from the ForwardVMNotifications loop after each Notify.
+//
+// consensus.IsAccepted is the LIVENESS trigger only (α-of-K responded — worth
+// attempting). The finality decision is made by TryAccept, which finalizes ONLY
+// with a VerifiedQuorumCert (the >⅔-stake gate) and otherwise returns
+// ErrNoVerifiedQC and changes nothing. This closes the previously count-ONLY
+// finalize road here: a block drained from this loop now finalizes through the
+// exact same cert-gated path (AcceptWithCert) as every other trigger — no count
+// can VM.Accept without the cert.
 func (t *Transitive) DrainAccepted(ctx context.Context) {
-	t.mu.Lock()
-	var toAccept []struct {
-		id  ids.ID
-		blk block.Block
-	}
+	t.mu.RLock()
+	candidates := make([]ids.ID, 0, len(t.pendingBlocks))
 	for id, pending := range t.pendingBlocks {
 		if !pending.Decided && t.consensus.IsAccepted(id) {
-			pending.Decided = true
-			t.blocksAccepted++
-			toAccept = append(toAccept, struct {
-				id  ids.ID
-				blk block.Block
-			}{id, pending.VMBlock})
-			delete(t.pendingBlocks, id)
+			candidates = append(candidates, id)
 		}
 	}
-	t.mu.Unlock()
-
-	t.mu.RLock()
-	vm := t.vm
 	t.mu.RUnlock()
 
-	for _, a := range toAccept {
-		if a.blk != nil {
-			_ = a.blk.Accept(ctx)
-		}
-		if vm != nil {
-			if err := vm.SetPreference(ctx, a.id); err != nil {
-				t.log.Crit("SetPreference failed after Accept — forcing preference",
-					"blockID", a.id,
-					"error", err)
-				t.consensus.ForcePreference(a.id)
-			}
-		}
-	}
-
-	if len(toAccept) > 0 {
-		t.signalPipeline()
+	for _, id := range candidates {
+		_ = t.TryAccept(ctx, id)
 	}
 }
 
@@ -1717,38 +1842,27 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			continue
 		}
 
-		// Check if consensus already accepted this block (K=1 single-node mode).
-		alreadyAccepted := t.consensus.IsAccepted(vmBlock.ID())
-		if alreadyAccepted {
-			// Block already verified above — safe to accept.
-			t.blocksAccepted++
-			t.mu.Unlock()
-			_ = vmBlock.Accept(ctx)
-			if t.vm != nil {
-				if err := t.vm.SetPreference(ctx, vmBlock.ID()); err != nil {
-					t.log.Crit("SetPreference failed after Accept — forcing preference",
-						"blockID", vmBlock.ID(),
-						"error", err)
-					t.consensus.ForcePreference(vmBlock.ID())
-				}
-			}
-			t.mu.Lock()
-		} else {
-			pb := &PendingBlock{
-				ConsensusBlock: consensusBlock,
-				VMBlock:        vmBlock,
-				ProposedAt:     time.Now(),
-				VoteCount:      1,
-				Decided:        false,
-				IsOwnProposal:  true,
-			}
-			t.pendingBlocks[vmBlock.ID()] = pb
-			// The proposer is one of the α signers: record its OWN signed accept
-			// vote into the cert set so the assembled cert includes it (its
-			// ProcessVote above counted it toward acceptVotes; this puts the
-			// matching SIGNED record in certVotes so count and cert agree).
-			t.recordOwnVoteLocked(pb, vmBlock.ID())
+		// Track the block as a pending own proposal — ALWAYS, including the K=1
+		// single-node case. We no longer VM.Accept inline here: finalization for
+		// every block (K=1 or K>1) goes through the SOLE cert-gated finalizer via
+		// TryAccept below, so there is exactly one acceptance road. In K=1 TryAccept
+		// commits the 1-of-1 quorum (ForceAccept) and finalizes through
+		// AcceptWithCert; the call is synchronous (see below) so it runs before the
+		// next BuildBlock.
+		pb := &PendingBlock{
+			ConsensusBlock: consensusBlock,
+			VMBlock:        vmBlock,
+			ProposedAt:     time.Now(),
+			VoteCount:      1,
+			Decided:        false,
+			IsOwnProposal:  true,
 		}
+		t.pendingBlocks[vmBlock.ID()] = pb
+		// The proposer is one of the α signers: record its OWN signed accept
+		// vote into the cert set so the assembled cert includes it (its
+		// ProcessVote above counted it toward acceptVotes; this puts the
+		// matching SIGNED record in certVotes so count and cert agree).
+		t.recordOwnVoteLocked(pb, vmBlock.ID())
 
 		// Gossip the block + request peer votes. These calls are done while
 		// holding t.mu — keep them short (msg creation + queue, no waiting).
@@ -1769,19 +1883,45 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			t.proposer.RequestVotes(ctx, voteReq)
 		}
 
-		// Proposer-self-accept: once the proposal has been broadcast (or
-		// the engine is running without a network proposer in tests), the
-		// proposer locally finalizes its own block. The block has already
-		// been verified locally (line 1001) so the proposer has committed
-		// to its correctness; waiting on peer Chits to drive the local
-		// alpha-of-K threshold causes the lux-devnet stall when Chits
-		// arrive late or are dropped at the network boundary. See
-		// finalizeOwnProposal for the safety argument.
-		//
-		// alreadyAccepted=true means K=1 single-node mode already called
-		// VMBlock.Accept above — skip the self-finalize to avoid double-Accept.
-		if !alreadyAccepted && proposerWired {
-			blockID := vmBlock.ID()
+		// Self-finalize the just-built own block through the SOLE cert-gated
+		// finalizer (AcceptWithCert). The block was verified locally above, so the
+		// proposer has committed to its correctness; waiting only on peer Chits to
+		// drive finality causes the lux-devnet stall when Chits arrive late.
+		blockID := vmBlock.ID()
+		singleValidator := t.consensus.K() == 1
+
+		if singleValidator {
+			// K==1: the sole validator's accept IS the 1-of-1 quorum. Commit it
+			// through the per-height guard (ForceAccept) and build the 1-of-1
+			// VerifiedQuorumCert — both UNDER the lock we already hold — then
+			// release the lock only for the VM Accept/SetPreference inside
+			// AcceptWithCert. Doing this INLINE (not via the async poll loop) is
+			// load-bearing for correctness, not just speed: the VM advances its
+			// parent only on SetPreference, and the per-height guard requires each
+			// block's parent to equal the finalized tip and its height to be the
+			// strict successor. If the next BuildBlock ran before this block's
+			// SetPreference, it would read a stale parent and the commit would be
+			// refused (ErrParentNotFinalizedTip), stalling the chain. Finalizing
+			// here keeps build→accept→SetPreference→next-build in lockstep, exactly
+			// as the pre-collapse inline accept did — only now routed through the
+			// one finalizer.
+			if err := t.consensus.ForceAccept(blockID); err != nil {
+				t.log.Crit("ForceAccept refused — engine misconfigured (K>1 reached single-validator path)",
+					"blockID", blockID, "error", err)
+			} else {
+				cert := t.buildSingleValidatorCertLocked(pb, blockID)
+				t.mu.Unlock()
+				// signalNext=false: we are inside the build loop, which drives the
+				// next build itself. Re-signaling would spawn a concurrent builder
+				// and gap the VM block counter (the K=1 burst-throughput stall).
+				_ = t.acceptWithCertCore(ctx, blockID, cert, false)
+				t.mu.Lock()
+			}
+		} else if proposerWired {
+			// K>1 with a network proposer: attempt finality now via the verified
+			// α-of-K cert. The cert may already be assemblable from collected votes;
+			// if not, TryAccept no-ops (ErrNoVerifiedQC) and the poll loop / cert
+			// gossip retry. NEVER forces a K>1 block on the lone self-vote.
 			t.mu.Unlock()
 			t.finalizeOwnProposal(ctx, blockID)
 			t.mu.Lock()
