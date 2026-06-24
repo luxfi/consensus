@@ -48,6 +48,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/ids"
 )
 
@@ -314,15 +315,12 @@ func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, ep
 	for i := range c.Votes {
 		voted += stake.Weight(c.Votes[i].NodeID, epochHeight)
 	}
-	// STRICT supermajority by stake: accept iff voted > 2·total/3 (Tendermint
-	// +⅔). Computed overflow-safely from total alone (3·voted and 2·total would
-	// overflow for large total): floor(2·total/3) = 2·(total/3) + adjustment for
-	// the remainder, then accept iff voted strictly exceeds that floor.
-	q, r := total/3, total%3
-	twoThirdsFloor := 2 * q
-	if r == 2 {
-		twoThirdsFloor++ // r∈{0,1}→+0, r==2→+1 (floor(2r/3))
-	}
+	// STRICT supermajority by stake: accept iff voted > floor(2·total/3)
+	// (Tendermint +⅔). The floor is the SINGLE definition in config.TwoThirdsStakeFloor
+	// — the SAME function the live-set parameter sizer derives α from
+	// (config.WeightedSupermajorityThreshold), so the count threshold the node
+	// sizes to can never drift from the stake predicate enforced here.
+	twoThirdsFloor := config.TwoThirdsStakeFloor(total)
 	if voted <= twoThirdsFloor {
 		return fmt.Errorf("%w: voted=%d total=%d (need > floor(2/3·total)=%d) at height %d",
 			ErrQCStakeBelowSupermajority, voted, total, twoThirdsFloor, c.Position.Height)
