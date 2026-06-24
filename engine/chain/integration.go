@@ -472,7 +472,7 @@ func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) er
 		sentTo = p.gossiper.SendPullQuery(p.chainID, p.networkID, req.BlockID, validators)
 	}
 	if p.logger != nil && !p.logger.IsZero() {
-		p.logger.Debug("requested votes from validators",
+		p.logger.Info("DIAG RequestVotes: sent vote request",
 			log.Stringer("blockID", req.BlockID),
 			log.Int("requested", len(validators)),
 			log.Int("sentTo", sentTo),
@@ -641,6 +641,12 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 
 	// Single-validator / no-signer engines do not gossip votes; nothing to do.
 	if signer == nil || verifier == nil {
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Info("DIAG follow: NO vote — signer/verifier nil",
+				log.Stringer("blockID", blockID),
+				log.Bool("signerNil", signer == nil),
+				log.Bool("verifierNil", verifier == nil))
+		}
 		return
 	}
 
@@ -670,9 +676,18 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 
 	if qg, ok := rt.config.Gossiper.(QuorumGossiper); ok {
 		if voteBytes, encErr := encodeSignedVote(nodeID, sig); encErr == nil {
-			qg.BroadcastVote(chainID, rt.config.NetworkID, blockID, voteBytes)
+			sent := qg.BroadcastVote(chainID, rt.config.NetworkID, blockID, voteBytes)
+			if !rt.config.Logger.IsZero() {
+				rt.config.Logger.Info("DIAG follow: broadcast signed vote via QuorumGossiper",
+					log.Stringer("blockID", blockID), log.Int("sentTo", sent))
+			}
+		} else if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("DIAG follow: encodeSignedVote failed", log.Err(encErr))
 		}
 	} else if rt.config.Gossiper != nil {
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Info("DIAG follow: gossiper is NOT QuorumGossiper (legacy SendVote path)")
+		}
 		// Legacy gossiper without quorum support: at least notify the proposer
 		// (keeps a degraded path working) — but finality still requires a cert.
 		_ = rt.config.Gossiper.SendVote(rt.config.ChainID, fromNodeID, blockID)
