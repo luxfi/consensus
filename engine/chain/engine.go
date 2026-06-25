@@ -503,9 +503,20 @@ type Transitive struct {
 	// catchupRequested rate-limits ancestor fetches: it remembers the missing
 	// parent IDs we have already asked for and when, so a re-gossip of the same
 	// orphan (or many children of one missing parent) issues ONE fetch per
-	// catchupCooldown, never a fetch storm. Keyed by the MISSING block ID. Pruned
-	// when the parent arrives (the orphan is no longer orphaned) and bounded by
-	// the same finalize cadence as the chain.
+	// catchupCooldown, never a fetch storm. Keyed by the MISSING block ID.
+	//
+	// BOUNDED two ways (both fail-closed), because a Byzantine validator can stream
+	// votes for forged random IDs that never arrive:
+	//   - Reclaim-on-known: an entry is deleted the moment its block becomes TRACKED
+	//     or DECIDED — at the accept span, the reject site, the sync reset, and at
+	//     claimCatchupLocked's early returns (already-tracked / known-to-consensus).
+	//     A block that actually arrives reclaims its slot; honest entries never pile
+	//     up.
+	//   - Hard cap + TTL: a forged ID that never arrives is never reclaimed above, so
+	//     claimCatchupLocked refuses to grow the map past maxCatchupRequested — at
+	//     the cap it sweeps entries older than catchupRequestTTL and, if still full
+	//     (an active young flood), refuses the new claim. The map can never exceed
+	//     maxCatchupRequested.
 	catchupRequested map[ids.ID]time.Time
 
 	// bufferedVotes parks signed accept/reject votes that arrived for a block this
@@ -517,10 +528,15 @@ type Transitive struct {
 	// via the SAME catch-up seam used for a missing parent; when the block lands at
 	// a tracking site, drainBufferedVotes replays these through the normal channel
 	// path so each is signature-verified exactly as a live vote (buffering never
-	// bypasses the gate). Keyed by the voted-on (missing) BlockID. Bounded by
-	// maxBufferedVoteBlocks distinct keys and maxBufferedVotesPerBlock per key
-	// (fail-closed: a new vote past a cap is dropped, never evicting an existing
-	// one). Drained on track, deleted on decide — it cannot leak.
+	// bypasses the gate). Keyed by the voted-on (missing) BlockID, and within each
+	// block deduped by NodeID: at most ONE buffered vote per (BlockID, validator)
+	// — a repeat from the same NodeID REPLACES its parked vote, never appends — so
+	// the per-block slice is bounded by DISTINCT voters, not raw arrivals (the dual
+	// of certVotes' NodeID keying; defeats single-Byzantine-ID buffer crowd-out).
+	// Bounded by maxBufferedVoteBlocks distinct keys and maxBufferedVotesPerBlock
+	// distinct NodeIDs per key (fail-closed: a new vote past a cap is dropped,
+	// never evicting an existing one). Drained on track, deleted on decide — it
+	// cannot leak.
 	bufferedVotes map[ids.ID][]Vote
 
 	// requestMissing is the engine's hook into the runtime's catch-up TRANSPORT
@@ -618,17 +634,17 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 	}
 
 	t := &Transitive{
-		consensus:      NewChainConsensus(cfg.Params.K, cfg.Params.AlphaPreference, int(cfg.Params.Beta)),
-		params:         cfg.Params,
-		vm:             cfg.VM,
-		proposer:       cfg.Proposer,
+		consensus:        NewChainConsensus(cfg.Params.K, cfg.Params.AlphaPreference, int(cfg.Params.Beta)),
+		params:           cfg.Params,
+		vm:               cfg.VM,
+		proposer:         cfg.Proposer,
 		pendingBlocks:    make(map[ids.ID]*PendingBlock),
 		finalizedByCert:  make(map[ids.ID]struct{}),
 		catchupRequested: make(map[ids.ID]time.Time),
 		bufferedVotes:    make(map[ids.ID][]Vote),
 		voteRequests:     make(chan VoteRequest, cfg.VoteRequestBuffer),
-		votes:          make(chan Vote, cfg.VoteBuffer),
-		pipelineSignal: make(chan struct{}, 1),
+		votes:            make(chan Vote, cfg.VoteBuffer),
+		pipelineSignal:   make(chan struct{}, 1),
 	}
 
 	for _, opt := range opts {
@@ -770,6 +786,8 @@ func (t *Transitive) SyncState(ctx context.Context, lastAcceptedID ids.ID, heigh
 			// Votes parked for a stale (now-synced-past) block will never be drained
 			// — drop them so a sync cannot leave buffered-vote residue.
 			delete(t.bufferedVotes, blockID)
+			// Same for its catch-up throttle entry: synced past ⇒ never re-fetched.
+			delete(t.catchupRequested, blockID)
 		}
 	}
 
@@ -1044,11 +1062,33 @@ const (
 	// lands, removes the orphan condition entirely.
 	catchupCooldown = 2 * time.Second
 
+	// maxCatchupRequested HARD-bounds the catchupRequested throttle map so a
+	// Byzantine validator streaming votes for forged random BlockIDs (which never
+	// arrive, so the delete-on-track/decide reclaim never fires for them) cannot
+	// grow it without limit. Layer-1 (delete-on-track/decide + the early-return
+	// reclaims in claimCatchupLocked) keeps honest entries from accumulating; this
+	// hard cap is layer-2 (defence in depth) for the all-forged flood where layer-1
+	// never reclaims. At the cap we first TTL-sweep, then fail closed (refuse the
+	// new claim) rather than grow — so the map can never exceed this size.
+	maxCatchupRequested = 4096
+
+	// catchupRequestTTL is the age past which a catchupRequested entry is reclaimed
+	// by the at-cap sweep. It is far beyond catchupCooldown: an honest fetch either
+	// lands (and is reclaimed by delete-on-track) or is abandoned well inside 30s,
+	// so a still-young entry at the cap signals an active forged flood — which we
+	// answer by refusing new claims, never by unbounded growth.
+	catchupRequestTTL = 30 * time.Second
+
 	// maxBufferedVotesPerBlock caps how many votes we park for ONE missing block.
-	// One vote per validator per block is the natural ceiling, so 256 covers any
-	// realistic validator set; a flood beyond it for a single block ID is dropped
-	// (fail-closed) — the genuine α-of-K voters are already within the cap.
-	maxBufferedVotesPerBlock = 256
+	// One vote per validator per block is the natural ceiling, so this must be ≥ the
+	// largest supported validator set or the buffered fast-path silently drops
+	// genuine votes 257..N and a net with α > cap cannot finalize from buffered votes
+	// alone (recoverable only via re-poll). node/config/tokenomics.go defines a
+	// 500-validator tier (and an unlimited tier); on a K=N / α=⌈⅔N⌉ chain with
+	// N=500, α≈334. 512 covers the 500-tier with margin. A flood beyond the cap for
+	// a single block ID is dropped (fail-closed) — the genuine α-of-K voters fit.
+	// The bound stays small: 512 × maxBufferedVoteBlocks × ~64B ≈ 33MB worst case.
+	maxBufferedVotesPerBlock = 512
 
 	// maxBufferedVoteBlocks caps how many DISTINCT missing block IDs we will park
 	// votes for at once. A spam stream of votes for never-delivered random block
@@ -1225,20 +1265,49 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 // On a true return it records the throttle stamp, so the gate is self-arming:
 // the caller does not need to remember anything. This is the catch-up analogue
 // of the re-poll backoff — one mechanism, one place.
+//
+// The catchupRequested map is bounded TWO ways, both fail-closed:
+//   - Layer 1 (reclaim-on-known): when missingID turns out to be already tracked
+//     or known to consensus, its throttle entry can never be needed again, so we
+//     delete it at those early returns (the dual of delete-on-track/decide at the
+//     accept/reject/sync sites). An honest fetch that LANDS is reclaimed this way.
+//   - Layer 2 (hard cap + TTL): a FORGED id that never arrives is never reclaimed
+//     by layer 1, so before inserting a new entry at the cap we sweep entries
+//     older than catchupRequestTTL; if the map is still at the cap (all young — an
+//     active flood) we REFUSE the claim (no insert, no fetch). The map can never
+//     exceed maxCatchupRequested.
 func (t *Transitive) claimCatchupLocked(missingID ids.ID) bool {
 	if t.catchup == nil || missingID == ids.Empty {
 		return false
 	}
-	// Already have it tracked (or it just finalized) ⇒ not missing.
+	// Already have it tracked (or it just finalized) ⇒ not missing. A now-arrived
+	// block can never be re-needed, so reclaim any throttle entry for it (layer 1).
 	if _, tracked := t.pendingBlocks[missingID]; tracked {
+		delete(t.catchupRequested, missingID)
 		return false
 	}
 	if _, ok := t.consensus.GetBlock(missingID); ok {
+		delete(t.catchupRequested, missingID)
 		return false
 	}
 	now := time.Now()
 	if last, ok := t.catchupRequested[missingID]; ok && now.Sub(last) < catchupCooldown {
 		return false // throttled — one fetch per missing parent per cooldown
+	}
+	// HARD bound (layer 2): only when at the cap and inserting a NEW key. Sweep
+	// entries past the TTL (an honest fetch resolves far inside catchupRequestTTL);
+	// if still full afterward, every entry is young — an active forged-ID flood —
+	// so fail closed: refuse the new claim rather than grow past the cap. The sweep
+	// is O(size), bounded, and runs only at the cap (free in steady state).
+	if _, existing := t.catchupRequested[missingID]; !existing && len(t.catchupRequested) >= maxCatchupRequested {
+		for id, stamp := range t.catchupRequested {
+			if now.Sub(stamp) >= catchupRequestTTL {
+				delete(t.catchupRequested, id)
+			}
+		}
+		if len(t.catchupRequested) >= maxCatchupRequested {
+			return false // map saturated with active (young) entries — fail closed
+		}
 	}
 	t.catchupRequested[missingID] = now
 	return true
@@ -1361,6 +1430,9 @@ func (t *Transitive) processPendingBlocks() {
 		// Drop any votes parked for a now-rejected block (it will never be tracked
 		// to drain them) so the buffer cannot leak.
 		delete(t.bufferedVotes, action.blockID)
+		// A rejected (decided) block is no longer "missing" — reclaim its catch-up
+		// throttle entry so catchupRequested stays bounded.
+		delete(t.catchupRequested, action.blockID)
 	}
 	t.mu.Unlock()
 
@@ -1421,14 +1493,26 @@ func (t *Transitive) handleVote(vote Vote) {
 		// replays each parked vote through the normal channel path, where it is
 		// signature-verified like any live vote (buffering NEVER bypasses the gate;
 		// a forged/unsigned parked vote costs one map slot and is dropped on replay).
-		t.bufferVoteLocked(vote)
-		fetch := t.requestMissing
+		accepted := t.bufferVoteLocked(vote)
+		// GATE the fetch on buffer acceptance. If the buffer REFUSED the vote (a cap
+		// was hit), do NOT fetch — a fetch for a vote we did not park is pure
+		// amplification: there is nothing buffered for the fetched block to drain
+		// into. Fetching ONLY for parked votes gives a bounded aggregate fetch rate:
+		// at most min(maxBufferedVoteBlocks, maxCatchupRequested) distinct fetches in
+		// flight (one per parked-and-claimed missing ID), each re-fireable at most
+		// once per catchupCooldown. That is the global fetch ceiling — it falls out
+		// of bounding BOTH bufferedVotes and catchupRequested.
+		var fetch func(missingID ids.ID, from ids.NodeID)
+		if accepted {
+			fetch = t.requestMissing
+		}
 		t.mu.Unlock()
 		// Fire the fetch WITHOUT the lock: requestMissing routes to
 		// Runtime.requestCatchup, which claims its OWN lock for the idempotency gate
 		// (claimCatchupLocked) and then does the RequestAncestors round-trip. Calling
 		// it while still holding t.mu would re-enter the lock (non-reentrant) and
-		// deadlock. nil ⇒ no runtime wired (bare engine); the buffered vote waits.
+		// deadlock. nil ⇒ no runtime wired (bare engine) OR the buffer rejected the
+		// vote (no payoff in fetching); either way the vote waits / is dropped.
 		if fetch != nil {
 			fetch(vote.BlockID, vote.NodeID)
 		}
@@ -1511,23 +1595,53 @@ func (t *Transitive) handleVote(vote Vote) {
 }
 
 // bufferVoteLocked parks a vote for a not-yet-tracked block, enforcing both
-// bounds (fail-closed). Caller holds t.mu. It does NO signature work — a parked
-// vote is verified only when drainBufferedVotes replays it through handleVote.
-//   - Per-block cap: if maxBufferedVotesPerBlock votes are already parked for this
-//     block ID, the new vote is dropped (the real α-of-K voters fit well within).
+// bounds (fail-closed) AND one-vote-per-(block, validator) dedup. Caller holds
+// t.mu. It does NO signature work — a parked vote is verified only when
+// drainBufferedVotes replays it through handleVote.
+//
+// Dedup invariant: at most ONE buffered vote per (BlockID, NodeID). If a vote for
+// this {BlockID, NodeID} pair is already parked, it is REPLACED in place rather
+// than appended, so the per-block slice is bounded by DISTINCT NodeIDs, not raw
+// arrival count. This is the dual of the certVotes NodeID-keyed dedup that
+// recordCertVoteLocked applies to live votes — same keying, mirrored onto the
+// slice. It closes the single-Byzantine-ID crowd-out: one NodeID can occupy at
+// most ONE slot per block, so it cannot flood maxBufferedVotesPerBlock junk
+// entries and crowd genuine validators' votes out of the buffer fast-path.
+//
+// Returns accepted=true iff a vote for this block is now parked/represented; the
+// caller uses this to GATE the catch-up fetch. A same-(block, node) REPLACEMENT
+// still returns true: there is a parked vote for that block to drain into, so the
+// fetch is still warranted. accepted=false only when a cap dropped the vote — and
+// a vote we refused to even buffer must NOT trigger a fetch (firing one for a
+// dropped vote is pure amplification with no payoff — nothing is parked for the
+// fetched block to drain into).
+//   - Per-block cap: if maxBufferedVotesPerBlock DISTINCT NodeIDs are already
+//     parked for this block ID, a vote from a NEW NodeID is dropped (the real
+//     α-of-K voters fit well within; a replacement of an existing NodeID never
+//     hits the cap — it does not grow the slice).
 //   - Total-keys cap: if this is a NEW block ID and maxBufferedVoteBlocks distinct
 //     IDs are already parked, the new key is dropped (we never evict an existing
 //     key — the simplest sound bound; existing keys drain on track or delete on
 //     decide).
-func (t *Transitive) bufferVoteLocked(vote Vote) {
+func (t *Transitive) bufferVoteLocked(vote Vote) (accepted bool) {
 	existing, seen := t.bufferedVotes[vote.BlockID]
 	if !seen && len(t.bufferedVotes) >= maxBufferedVoteBlocks {
-		return // total distinct-block ceiling reached — fail closed
+		return false // total distinct-block ceiling reached — fail closed
+	}
+	// Dedup by NodeID (dual of certVotes): if this validator already has a vote
+	// parked for this block, replace it in place — never append a second. This is
+	// what bounds the slice by distinct NodeIDs and defeats single-ID crowd-out.
+	for i := range existing {
+		if existing[i].NodeID == vote.NodeID {
+			existing[i] = vote
+			return true // a vote for this block is parked — fetch still warranted
+		}
 	}
 	if len(existing) >= maxBufferedVotesPerBlock {
-		return // per-block ceiling reached — fail closed
+		return false // per-block ceiling reached — fail closed
 	}
 	t.bufferedVotes[vote.BlockID] = append(existing, vote)
+	return true
 }
 
 // drainBufferedVotes replays every vote parked for blockID now that the block is
@@ -1998,6 +2112,9 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// cannot leak for an already-finalized block (the drain handles the happy path
 	// where the block arrived; this handles the already-decided path).
 	delete(t.bufferedVotes, blockID)
+	// Likewise reclaim its catch-up throttle entry: a finalized block is no longer
+	// "missing", so no future fetch for it can fire — keep catchupRequested bounded.
+	delete(t.catchupRequested, blockID)
 	// Record engine-level finality. This is the ONLY place finalizedByCert is
 	// written, and it is written ONLY here — the sole finalizer, reachable only
 	// with a non-zero VerifiedQuorumCert. Transitive.IsAccepted reads this set, so
