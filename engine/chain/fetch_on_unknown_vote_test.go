@@ -28,11 +28,11 @@ import (
 // GetAncestors→Put round-trip would, landing the block at the tracking site that
 // drains buffered votes. It models "the fetch succeeded".
 type deliveringCatchup struct {
-	mu       sync.Mutex
-	rt       *Runtime
-	store    map[ids.ID]*verifyOnceBlock
+	mu        sync.Mutex
+	rt        *Runtime
+	store     map[ids.ID]*verifyOnceBlock
 	requested []ids.ID
-	calls    int
+	calls     int
 }
 
 func (c *deliveringCatchup) RequestAncestors(_ ids.ID, _ ids.ID, missingBlockID ids.ID, from ids.NodeID) error {
@@ -294,5 +294,85 @@ func TestBufferedVote_StillSignatureGated(t *testing.T) {
 	if !waitFor(2*time.Second, func() bool { return rt.IsAccepted(blk.id) }) {
 		t.Fatalf("liveness: block did not finalize after GENUINE α votes (Accept=%d) — gate too strict",
 			blk.AcceptCalled())
+	}
+}
+
+// -----------------------------------------------------------------------------
+// TEST 4 — FETCH GATED ON BUFFER ACCEPTANCE. The fetch (requestMissing) fires
+// ONLY for a vote the buffer actually parked. Once the distinct-block buffer is
+// saturated at its cap, a vote for a NEW (forged) block ID is dropped by
+// bufferVoteLocked — and must therefore fire NO fetch. Firing a fetch for a vote
+// we refused to buffer is pure amplification with no payoff (nothing is parked
+// for the fetched block to drain into). This pins FIX 2: the bounded global fetch
+// ceiling is "fetches ≤ buffered distinct blocks".
+// -----------------------------------------------------------------------------
+
+func TestFetchNotFiredWhenBufferRejected(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	// Bare engine: we drive handleVote directly (synchronous, deterministic) and
+	// stub the engine's requestMissing hook with a counter. A bare engine leaves
+	// requestMissing nil (only NewRuntime wires it), so the stub is the sole caller.
+	chainID := ids.GenerateTestID()
+	e := NewWithConfig(Config{Params: params5()},
+		WithQuorumCert(chainID, vs.nodeID(0), vs, &recordingGossiper{}, vs.signerFor(0)),
+	)
+	if err := e.Start(context.Background(), true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+
+	// Record every fetch request. handleVote calls this inline (same goroutine)
+	// after releasing t.mu, so a plain counter is race-free under direct driving.
+	var fetches int
+	e.mu.Lock()
+	e.requestMissing = func(missingID ids.ID, from ids.NodeID) { fetches++ }
+	e.mu.Unlock()
+
+	attacker := ids.GenerateTestNodeID()
+
+	// Saturate the distinct-block buffer to EXACTLY its cap with distinct forged
+	// IDs. Each is a new key the buffer accepts, so each fires exactly one fetch.
+	for i := 0; i < maxBufferedVoteBlocks; i++ {
+		e.handleVote(Vote{BlockID: ids.GenerateTestID(), NodeID: attacker, Accept: true, SignedAt: time.Now()})
+	}
+
+	e.mu.RLock()
+	distinct := len(e.bufferedVotes)
+	e.mu.RUnlock()
+	if distinct != maxBufferedVoteBlocks {
+		t.Fatalf("precondition: buffer should be saturated at %d distinct blocks, got %d", maxBufferedVoteBlocks, distinct)
+	}
+	fetchesAtCap := fetches
+	if fetchesAtCap != maxBufferedVoteBlocks {
+		t.Fatalf("precondition: %d accepted votes should each fire one fetch, got %d", maxBufferedVoteBlocks, fetchesAtCap)
+	}
+
+	// Now send MORE votes for NEW (distinct, never-before-seen) forged block IDs.
+	// The buffer is full → bufferVoteLocked returns false for each → the fetch must
+	// be GATED OFF. The fetch counter must NOT advance.
+	for i := 0; i < 500; i++ {
+		e.handleVote(Vote{BlockID: ids.GenerateTestID(), NodeID: attacker, Accept: true, SignedAt: time.Now()})
+	}
+
+	if fetches != fetchesAtCap {
+		t.Fatalf("FIX-2 REGRESSION: %d fetches fired for votes the saturated buffer REFUSED "+
+			"(was %d at cap, now %d) — a rejected vote must fire NO fetch (pure amplification)",
+			fetches-fetchesAtCap, fetchesAtCap, fetches)
+	}
+
+	// Sanity: a vote for an ALREADY-BUFFERED block ID (under its per-block cap) is
+	// still accepted and still fetches (the gate keys on buffer acceptance, not on
+	// "new ID"). Pick one of the saturated keys and add a second vote for it.
+	e.mu.RLock()
+	var anExisting ids.ID
+	for id := range e.bufferedVotes {
+		anExisting = id
+		break
+	}
+	e.mu.RUnlock()
+	e.handleVote(Vote{BlockID: anExisting, NodeID: ids.GenerateTestNodeID(), Accept: true, SignedAt: time.Now()})
+	if fetches != fetchesAtCap+1 {
+		t.Fatalf("a vote ACCEPTED into an existing (under-cap) buffer key must still fetch: "+
+			"expected %d, got %d", fetchesAtCap+1, fetches)
 	}
 }
