@@ -670,11 +670,20 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 
 	if qg, ok := rt.config.Gossiper.(QuorumGossiper); ok {
 		if voteBytes, encErr := encodeSignedVote(nodeID, sig); encErr == nil {
-			qg.BroadcastVote(chainID, rt.config.NetworkID, blockID, voteBytes)
+			sent := qg.BroadcastVote(chainID, rt.config.NetworkID, blockID, voteBytes)
+			if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
+				rt.config.Logger.Info("DIAG follow: BROADCAST signed vote",
+					log.Stringer("blockID", blockID), log.Int("sentTo", sent),
+					log.Uint64("posHeight", pos.Height), log.Uint32("posRound", pos.Round),
+					log.Stringer("posSetRoot", pos.ValidatorSetRoot))
+			}
+		} else if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("DIAG follow: encodeSignedVote failed", log.Err(encErr))
 		}
 	} else if rt.config.Gossiper != nil {
-		// Legacy gossiper without quorum support: at least notify the proposer
-		// (keeps a degraded path working) — but finality still requires a cert.
+		if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
+			rt.config.Logger.Info("DIAG follow: gossiper is NOT QuorumGossiper (legacy path, no cert)")
+		}
 		_ = rt.config.Gossiper.SendVote(rt.config.ChainID, fromNodeID, blockID)
 	}
 }

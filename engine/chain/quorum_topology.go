@@ -103,6 +103,11 @@ func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
 	t.mu.RUnlock()
 
 	if !exists || verifier == nil {
+		if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
+			rt.config.Logger.Info("DIAG incoming vote DROPPED — block not tracked or no verifier",
+				log.Stringer("blockID", blockID), log.Stringer("from", nodeID),
+				log.Bool("exists", exists), log.Bool("verifierNil", verifier == nil))
+		}
 		return false
 	}
 
@@ -110,11 +115,18 @@ func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
 	// voter's pubkey at the block's P-CHAIN epoch height (RESIDUAL-B). A vote that
 	// signed a different position (different height/round/parent/set-root) fails.
 	if !verifier.VerifyVote(nodeID, CanonicalVoteMessage(pos), sig, epochHeight) {
-		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Debug("incoming vote: signature invalid",
-				log.Stringer("blockID", blockID), log.Stringer("from", nodeID))
+		if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
+			rt.config.Logger.Info("DIAG incoming vote DROPPED — signature invalid (epoch/set-root mismatch?)",
+				log.Stringer("blockID", blockID), log.Stringer("from", nodeID),
+				log.Uint64("epochHeight", epochHeight), log.Uint64("posHeight", pos.Height),
+				log.Uint32("posRound", pos.Round), log.Stringer("posSetRoot", pos.ValidatorSetRoot))
 		}
 		return false
+	}
+	if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
+		rt.config.Logger.Info("DIAG incoming vote COUNTED",
+			log.Stringer("blockID", blockID), log.Stringer("from", nodeID),
+			log.Uint64("epochHeight", epochHeight))
 	}
 
 	// Count it. ReceiveVote routes through handleVote, which records the signed
