@@ -77,6 +77,14 @@ type NetworkConfig struct {
 	// set/stake changes across epochs (alongside StakeSource); nil binds Empty
 	// (the correct no-op for a fixed validator set).
 	ValidatorSetRoot ValidatorSetRootSource
+
+	// Catchup (optional) is the node's ancestor-fetch transport, wired into the
+	// engine's runtime auto-recovery (see Catchup / Runtime.requestCatchup). With
+	// it, a follower that falls behind — missing a block's PARENT (out-of-order
+	// gossip) or its BYTES (a vote outran the block) — self-heals by fetching the
+	// missing block and rejoining the frontier. nil keeps the legacy no-self-heal
+	// behaviour (a behind follower is stranded).
+	Catchup Catchup
 }
 
 // Gossiper abstracts the network layer for consensus message broadcasting.
@@ -209,6 +217,16 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		validators: cfg.Validators,
 		nodeID:     cfg.NodeID,
 	}
+
+	// Wire runtime auto-recovery (ONE mechanism, two triggers): the engine holds
+	// the fetch GATE (claimCatchupLocked) and the missing-PARENT trigger
+	// (followVerifiedBlock → requestCatchup); the engine's missing-BYTES trigger
+	// (handleVote buffering a vote for an untracked block) signals through
+	// requestMissing into the SAME requestCatchup transport. WithCatchup gives the
+	// engine the transport handle for its gate's nil-check; requestMissing supplies
+	// the networkID-bearing round-trip the engine itself cannot make.
+	WithCatchup(cfg.Catchup)(engine)
+	engine.requestMissing = rt.requestCatchup
 
 	// Log validator set status for debugging
 	hasLogger := cfg.Logger != nil && !cfg.Logger.IsZero()
@@ -607,6 +625,17 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 		return
 	}
 
+	// AUTO-RECOVERY (the behind-follower self-heal): if this block's PARENT is one
+	// we do not have — not Empty, not our finalized tip, not tracked/known — then
+	// we are BEHIND. The child is an orphan we cannot finalize (the per-height
+	// guard requires parent==finalizedTip) and re-polling it would be pure spam to
+	// peers who are ahead. Instead fetch the missing chain via the catch-up seam;
+	// the fetched ancestors arrive back through HandleIncomingBlock, fill the gap,
+	// and the frontier reconciles — no manual snapshot reset. The fetch is
+	// idempotent + throttled in the engine (claimCatchupLocked). We still track the
+	// orphan below so it finalizes the moment its parent lands.
+	rt.requestCatchup(blk.ParentID(), fromNodeID)
+
 	consensusBlock := &Block{
 		id:           blockID,
 		parentID:     blk.ParentID(),
@@ -638,6 +667,15 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	verifier := rt.Transitive.voteVerifier
 	pos := rt.Transitive.blockPositionLocked(pending, blockID)
 	rt.Transitive.mu.Unlock()
+
+	// THE SELF-HEAL DRAIN: this block is now tracked, so replay any votes a peer
+	// parked for it before its bytes arrived (the gossip race handleVote buffered).
+	// Each parked vote re-enters handleVote via the channel — now with the block
+	// tracked — and is signature-verified exactly as a live vote. This is what
+	// turns the former wedge (vote-before-block dropped forever) into finality:
+	// the fetched/late block lands here and its buffered α-of-K votes complete the
+	// quorum. Drain after unlock — drainBufferedVotes takes the engine lock.
+	rt.Transitive.drainBufferedVotes(blockID)
 
 	// Single-validator / no-signer engines do not gossip votes; nothing to do.
 	if signer == nil || verifier == nil {
@@ -677,6 +715,31 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 		// (keeps a degraded path working) — but finality still requires a cert.
 		_ = rt.config.Gossiper.SendVote(rt.config.ChainID, fromNodeID, blockID)
 	}
+}
+
+// requestCatchup is the ONE catch-up TRANSPORT: "I am missing block `missingID`
+// — fetch it from `from`." It is the single mechanism for runtime auto-recovery,
+// shared by BOTH self-heal triggers:
+//   - a gossiped child whose PARENT we lack (followVerifiedBlock), and
+//   - a vote for a block whose BYTES we lack (the engine's requestMissing hook,
+//     wired to this in NewRuntime).
+//
+// The engine owns idempotency + rate-limiting (claimCatchupLocked: one fetch per
+// missing ID per catchupCooldown, suppressed once the block is tracked/known), so
+// this method only supplies the networkID the engine does not hold and performs
+// the RequestAncestors round-trip. The fetched block arrives back through
+// HandleIncomingBlock, where it is tracked and its buffered votes drained. nil
+// Catchup / Empty missingID ⇒ no-op (claimCatchupLocked returns false). The gate
+// is claimed UNDER the engine lock; the transport call is made WITHOUT it (it may
+// touch the network).
+func (rt *Runtime) requestCatchup(missingID ids.ID, from ids.NodeID) {
+	rt.Transitive.mu.Lock()
+	claim := rt.Transitive.claimCatchupLocked(missingID)
+	rt.Transitive.mu.Unlock()
+	if !claim {
+		return
+	}
+	_ = rt.config.Catchup.RequestAncestors(rt.config.ChainID, rt.config.NetworkID, missingID, from)
 }
 
 // OnImportComplete must be called after admin_importChain (RLP import) completes.

@@ -146,11 +146,32 @@ type PendingBlock struct {
 	cert *QuorumCert
 
 	// lastRePoll is when the re-poll loop last re-solicited votes for this block
-	// (zero until the first re-poll). The re-poll loop only re-drives a block once
-	// per RoundTO so a stuck block recovers without a gossip storm. See
-	// rePollAllPending — this is the liveness retry the topology doc promises
-	// ("vote-broadcast + cert-gossip + the poll-timeout re-request").
+	// (zero until the first re-poll). The re-poll loop re-drives a block at most
+	// once per its CURRENT backoff window (rePollBackoff), so a stuck block
+	// recovers without a gossip storm. See rePollAllPending — this is the liveness
+	// retry the topology doc promises ("vote-broadcast + cert-gossip + the
+	// poll-timeout re-request"), now with exponential backoff + a hard cap.
 	lastRePoll time.Time
+
+	// rePollBackoff is the CURRENT re-poll interval for this block. It starts at
+	// the base RoundTO and DOUBLES after each re-poll (capped at maxRePollBackoff),
+	// so a block that is stuck because peers are behind is re-solicited on a
+	// geometric schedule (RoundTO, 2·RoundTO, 4·RoundTO, …), not a 250ms hot loop.
+	// Zero ⇒ "use the base interval for the first re-poll".
+	rePollBackoff time.Duration
+
+	// rePollAttempts counts how many times the re-poll loop has re-solicited this
+	// block. Once it reaches maxRePollAttempts the block is ABANDONED for re-poll
+	// purposes (rePollAbandoned) — re-soliciting the SAME block to peers who
+	// cannot vote (they are behind its parent) is pure spam and never recovers it;
+	// the catch-up path (requestCatchup) is what recovers a behind frontier.
+	rePollAttempts int
+
+	// rePollAbandoned is set once rePollAttempts hits the cap. An abandoned block
+	// is NEVER re-polled again (no infinite spam), but is NOT deleted: it remains
+	// pending and recoverable — a late cert (HandleIncomingCert) or a catch-up
+	// that fills its parent can still finalize it.
+	rePollAbandoned bool
 
 	// IsOwnProposal is true when this node built and proposed the block. It now
 	// selects ONLY the finalization ENTRY POINT (finalizeOwnProposal vs.
@@ -306,6 +327,19 @@ func WithCryptoWitness(w CryptoWitnessSource) Option {
 	}
 }
 
+// WithCatchup wires the engine's runtime auto-recovery seam (Catchup): the
+// transport the engine uses to fetch ancestors it is missing when a gossiped
+// child or a verified cert references a parent it does not have. Without it a
+// follower that falls behind during normal operation is stranded (it can neither
+// vote on nor finalize a block whose parent it lacks); with it the follower
+// self-heals by fetching the missing chain and rejoining the frontier. Optional;
+// nil keeps the legacy no-self-heal behaviour.
+func WithCatchup(c Catchup) Option {
+	return func(t *Transitive) {
+		t.catchup = c
+	}
+}
+
 // WithValidatorSetRoot binds every vote/cert this engine produces to the active
 // weighted validator set at the block's height (the MEDIUM fix). The node
 // supplies a ValidatorSetRootSource backed by the chain's validator set; the
@@ -457,6 +491,49 @@ type Transitive struct {
 	// plumbed", exactly the semantics ToQuasarCert already relies on.
 	cryptoWitness CryptoWitnessSource
 
+	// catchup (optional) is the engine's seam for runtime auto-recovery when it
+	// falls behind — see Catchup. When a gossiped child or a verified cert
+	// references a parent this node does not have, the engine asks catchup to
+	// fetch the missing ancestors (requestCatchupLocked) instead of silently
+	// dropping the child (the old behaviour that stranded a behind follower). nil
+	// disables self-healing (legacy). The engine owns idempotency + rate-limiting
+	// so the implementation can be a thin adapter onto the network getter.
+	catchup Catchup
+
+	// catchupRequested rate-limits ancestor fetches: it remembers the missing
+	// parent IDs we have already asked for and when, so a re-gossip of the same
+	// orphan (or many children of one missing parent) issues ONE fetch per
+	// catchupCooldown, never a fetch storm. Keyed by the MISSING block ID. Pruned
+	// when the parent arrives (the orphan is no longer orphaned) and bounded by
+	// the same finalize cadence as the chain.
+	catchupRequested map[ids.ID]time.Time
+
+	// bufferedVotes parks signed accept/reject votes that arrived for a block this
+	// node does not yet TRACK (the gossip race: a peer's vote can outrun the block
+	// bytes). The old handleVote DROPPED such a vote — and because votes are only
+	// solicited once, a dropped vote was lost forever, so a follower that missed
+	// the block bytes could never reach the α-of-K quorum and the block wedged. We
+	// instead BUFFER the vote (no signature work yet) and fetch the missing block
+	// via the SAME catch-up seam used for a missing parent; when the block lands at
+	// a tracking site, drainBufferedVotes replays these through the normal channel
+	// path so each is signature-verified exactly as a live vote (buffering never
+	// bypasses the gate). Keyed by the voted-on (missing) BlockID. Bounded by
+	// maxBufferedVoteBlocks distinct keys and maxBufferedVotesPerBlock per key
+	// (fail-closed: a new vote past a cap is dropped, never evicting an existing
+	// one). Drained on track, deleted on decide — it cannot leak.
+	bufferedVotes map[ids.ID][]Vote
+
+	// requestMissing is the engine's hook into the runtime's catch-up TRANSPORT
+	// (Runtime.requestCatchup): "I am missing block `id` — fetch it from `from`".
+	// It is the SAME one mechanism the missing-PARENT self-heal uses; the engine
+	// (which does not hold the networkID) signals WHAT to fetch and the runtime
+	// supplies the networkID + RequestAncestors round-trip. nil when no runtime is
+	// wired (a bare engine in a unit test that drives delivery itself), in which
+	// case a buffered vote simply waits for the block to be delivered by other
+	// means. Set by NewRuntime; idempotency + rate-limiting stay in the engine
+	// (claimCatchupLocked), so this is a thin signal, never a second transport.
+	requestMissing func(missingID ids.ID, from ids.NodeID)
+
 	// Logger for consensus events (nil-safe: uses log.Noop() if unset)
 	log log.Logger
 }
@@ -481,6 +558,29 @@ type VoteSigner interface {
 	// message for a position). The returned bytes are what a peer's
 	// VoteVerifier will verify.
 	SignVote(message []byte) ([]byte, error)
+}
+
+// Catchup is the engine's SOLE seam for "I am behind — fetch the block(s) I am
+// missing". It is the one mechanism for runtime auto-recovery (decomplected from
+// the finality path): the engine expresses WHAT (fetch the ancestors rooted at a
+// missing block ID), the node decides HOW (a GetAncestors/Get round-trip on its
+// existing network transport, delivering the fetched blocks back through
+// HandleIncomingBlock).
+//
+// It is wired by the node (WithCatchup); when nil the engine simply does not
+// self-heal a behind state (the legacy behaviour — a follower that falls behind
+// at runtime is stranded). Idempotency and rate-limiting live in the ENGINE
+// (requestCatchupLocked), so an implementation may be a thin, stateless adapter
+// onto the network getter.
+type Catchup interface {
+	// RequestAncestors asks a peer to deliver the chain of blocks ending at
+	// missingBlockID (the parent a gossiped child / verified cert referenced but
+	// which this node does not have). `from` is the peer that advertised the
+	// child — the natural source to fetch its parent from. chainID/networkID
+	// scope the request to this chain's validator network. The fetched blocks are
+	// expected to arrive via HandleIncomingBlock, at which point the formerly
+	// orphaned child can be tracked, voted, and finalized.
+	RequestAncestors(chainID ids.ID, networkID ids.ID, missingBlockID ids.ID, from ids.NodeID) error
 }
 
 // New creates an engine with default parameters.
@@ -522,9 +622,11 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		params:         cfg.Params,
 		vm:             cfg.VM,
 		proposer:       cfg.Proposer,
-		pendingBlocks:   make(map[ids.ID]*PendingBlock),
-		finalizedByCert: make(map[ids.ID]struct{}),
-		voteRequests:    make(chan VoteRequest, cfg.VoteRequestBuffer),
+		pendingBlocks:    make(map[ids.ID]*PendingBlock),
+		finalizedByCert:  make(map[ids.ID]struct{}),
+		catchupRequested: make(map[ids.ID]time.Time),
+		bufferedVotes:    make(map[ids.ID][]Vote),
+		voteRequests:     make(chan VoteRequest, cfg.VoteRequestBuffer),
 		votes:          make(chan Vote, cfg.VoteBuffer),
 		pipelineSignal: make(chan struct{}, 1),
 	}
@@ -665,6 +767,9 @@ func (t *Transitive) SyncState(ctx context.Context, lastAcceptedID ids.ID, heigh
 	for blockID, pending := range t.pendingBlocks {
 		if pending.ConsensusBlock != nil && pending.ConsensusBlock.height <= height {
 			delete(t.pendingBlocks, blockID)
+			// Votes parked for a stale (now-synced-past) block will never be drained
+			// — drop them so a sync cannot leave buffered-vote residue.
+			delete(t.bufferedVotes, blockID)
 		}
 	}
 
@@ -913,6 +1018,47 @@ func (t *Transitive) pollLoopWithCtx(ctx context.Context) {
 	}
 }
 
+// Re-poll backoff/cap constants. The re-poll loop is a RARE liveness BACKSTOP,
+// not a hot loop: a block stuck because peers are BEHIND its parent is never
+// recovered by re-soliciting the same block (those peers cannot vote), so we
+// re-poll on a geometric schedule and then STOP, leaving recovery to the
+// catch-up path (which fetches the missing chain so peers can vote).
+const (
+	// maxRePollBackoff caps the per-block re-poll interval. Starting from the base
+	// RoundTO and doubling, the interval climbs RoundTO, 2·, 4·, … but never
+	// exceeds this — so even a long-lived pending block is re-polled at most once
+	// every maxRePollBackoff, turning a 250ms storm into a trickle.
+	maxRePollBackoff = 16 * time.Second
+
+	// maxRePollAttempts is the hard cap on re-poll attempts per block. After this
+	// many re-solicitations the block is abandoned for re-poll (rePollAbandoned)
+	// — it is never re-polled again (but stays pending, recoverable via cert or
+	// catch-up). With doubling from a 250ms base, 8 attempts span
+	// 0.25+0.5+1+2+4+8+16+16 ≈ 48s of backstop before giving up on re-poll.
+	maxRePollAttempts = 8
+
+	// catchupCooldown rate-limits ancestor fetches per missing parent: at most one
+	// RequestAncestors per missing block ID per cooldown, so many children of one
+	// missing parent (or repeated gossip of one orphan) cannot become a fetch
+	// storm. The cooldown is generous because a fetch is a round-trip that, once it
+	// lands, removes the orphan condition entirely.
+	catchupCooldown = 2 * time.Second
+
+	// maxBufferedVotesPerBlock caps how many votes we park for ONE missing block.
+	// One vote per validator per block is the natural ceiling, so 256 covers any
+	// realistic validator set; a flood beyond it for a single block ID is dropped
+	// (fail-closed) — the genuine α-of-K voters are already within the cap.
+	maxBufferedVotesPerBlock = 256
+
+	// maxBufferedVoteBlocks caps how many DISTINCT missing block IDs we will park
+	// votes for at once. A spam stream of votes for never-delivered random block
+	// IDs cannot grow the buffer past this many keys: once full, votes for a NEW
+	// block ID are dropped (we do NOT evict an existing key — the simplest sound
+	// bound). Happy-path keys are removed on drain (the block arrived) or on decide,
+	// so this ceiling is only ever approached under adversarial junk.
+	maxBufferedVoteBlocks = 1024
+)
+
 // rePollLoopWithCtx is the LIVENESS retry that prevents a terminal first-poll
 // stall. The proposer issues exactly ONE RequestVotes when it builds a block
 // (buildBlocksLocked) and runs finalizeOwnProposal ONCE right after; if at that
@@ -930,15 +1076,18 @@ func (t *Transitive) pollLoopWithCtx(ctx context.Context) {
 // finalizes only on a verified α-of-K cert (multi-validator) or the 1-of-1 force
 // (single-validator); a genuine minority still cannot and does not finalize.
 //
-// Interval = RoundTO (the round budget) so a stuck block is re-driven once per
-// round, not every block tick — bounded work, no gossip storm. Each block is
-// re-driven at most once per interval via PendingBlock.lastRePoll.
+// The ticker wakes on the base RoundTO, but each block is gated by its OWN
+// EXPONENTIAL BACKOFF (PendingBlock.rePollBackoff, doubling per attempt, capped)
+// and a HARD ATTEMPT CAP (maxRePollAttempts): a stuck block is re-driven on a
+// geometric schedule and then ABANDONED for re-poll — turning the former
+// fixed-cadence 250ms storm (the devnet self-DoS) into a bounded trickle. A
+// behind follower is NOT recovered by re-polling (it cannot vote without the
+// parent); it is recovered by the catch-up path that fetches the missing chain.
 func (t *Transitive) rePollLoopWithCtx(ctx context.Context) {
 	defer t.wg.Done()
 
-	// Re-poll on the round budget. RoundTO is the time a poll is expected to
-	// complete in; a block still undecided after a round is a candidate for
-	// re-solicitation. Fall back to a conservative 250ms if unset.
+	// Wake on the base round budget; per-block backoff decides whether a given
+	// block is actually due. Fall back to a conservative 250ms if unset.
 	interval := t.params.RoundTO
 	if interval <= 0 {
 		interval = 250 * time.Millisecond
@@ -971,7 +1120,11 @@ func (t *Transitive) rePollLoopWithCtx(ctx context.Context) {
 //
 // Single-validator (K==1) engines never stall here (their own accept is the
 // quorum, finalized synchronously), so the re-poll is a no-op for them.
-func (t *Transitive) rePollAllPending(ctx context.Context, interval time.Duration) {
+//
+// base is the base re-poll interval (RoundTO). Each block is gated by its OWN
+// backoff window (rePollBackoff, doubling per attempt from base, capped at
+// maxRePollBackoff) and abandoned once rePollAttempts reaches maxRePollAttempts.
+func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 	// K==1: no peer votes are ever needed; nothing to re-solicit.
 	if t.consensus.K() <= 1 {
 		return
@@ -981,9 +1134,10 @@ func (t *Transitive) rePollAllPending(ctx context.Context, interval time.Duratio
 
 	// Snapshot the blocks due for a re-poll under the lock, then act without it
 	// (RequestVotes / tryFinalizeBlock take their own locks). A block is due once
-	// it has been undecided for a full interval since the later of ProposedAt and
-	// its last re-poll — so the FIRST re-poll waits one interval after proposal
-	// (giving the normal fast path time to finalize), then at most one per interval.
+	// it has been undecided for its CURRENT backoff window since the later of
+	// ProposedAt and its last re-poll — so the FIRST re-poll waits one base
+	// interval after proposal (giving the normal fast path time to finalize), then
+	// the window DOUBLES each attempt, and after the cap the block is abandoned.
 	type due struct {
 		blockID   ids.ID
 		blockData []byte
@@ -992,17 +1146,38 @@ func (t *Transitive) rePollAllPending(ctx context.Context, interval time.Duratio
 	var dueBlocks []due
 	t.mu.Lock()
 	for blockID, pending := range t.pendingBlocks {
-		if pending.Decided {
+		if pending.Decided || pending.rePollAbandoned {
 			continue
+		}
+		// The window for THIS attempt: base for the first, doubling thereafter,
+		// capped. rePollBackoff carries the PREVIOUS window (0 before the first).
+		window := pending.rePollBackoff
+		if window <= 0 {
+			window = base
 		}
 		last := pending.lastRePoll
 		if last.IsZero() {
 			last = pending.ProposedAt
 		}
-		if now.Sub(last) < interval {
+		if now.Sub(last) < window {
 			continue
 		}
+
+		// This block is due. Record the attempt, advance the backoff (double, cap),
+		// and abandon once the cap is hit so it is NEVER re-polled again.
 		pending.lastRePoll = now
+		pending.rePollAttempts++
+		next := window * 2
+		if next > maxRePollBackoff {
+			next = maxRePollBackoff
+		}
+		pending.rePollBackoff = next
+		if pending.rePollAttempts >= maxRePollAttempts {
+			pending.rePollAbandoned = true
+			t.log.Warn("re-poll: block abandoned after attempt cap — not re-soliciting further (recoverable via cert/catch-up)",
+				"blockID", blockID, "attempts", pending.rePollAttempts)
+		}
+
 		var data []byte
 		if pending.VMBlock != nil {
 			data = pending.VMBlock.Bytes()
@@ -1021,7 +1196,9 @@ func (t *Transitive) rePollAllPending(ctx context.Context, interval time.Duratio
 		// (2) Proposer re-poll: re-send the vote request so a laggard re-receives
 		// the block and votes. Only the proposer polls peers (followers learn the
 		// block via gossip and broadcast their own votes); a follower short of
-		// quorum recovers via the cert-gossip path that step (1) re-runs.
+		// quorum recovers via the cert-gossip path that step (1) re-runs, or via
+		// catch-up if it is behind the block's parent. The backoff above bounds how
+		// often this fires; the cap stops it entirely for a terminally stuck block.
 		if d.ownProp && proposer != nil {
 			_ = proposer.RequestVotes(ctx, VoteRequest{
 				BlockID:   d.blockID,
@@ -1029,6 +1206,42 @@ func (t *Transitive) rePollAllPending(ctx context.Context, interval time.Duratio
 			})
 		}
 	}
+}
+
+// claimCatchupLocked is the engine's idempotency + rate-limit GATE for "fetch
+// this missing ancestor". It is the SINGLE decision point for whether a catch-up
+// fetch should fire — the Runtime owns the actual network round-trip (it carries
+// the networkID + transport). Caller holds t.mu.
+//
+// Returns true iff the caller should now issue exactly one RequestAncestors for
+// missingID. It returns false (suppressing the fetch) when:
+//   - no catchup transport is wired (legacy: a behind follower stays stranded),
+//   - missingID is Empty (genesis/no parent — nothing to fetch),
+//   - the block is already tracked or known to consensus (not actually missing),
+//   - a fetch for this missing ID fired within catchupCooldown (throttle — so
+//     many children of one missing parent, or repeated gossip of one orphan,
+//     issue ONE fetch per cooldown, never a fetch storm).
+//
+// On a true return it records the throttle stamp, so the gate is self-arming:
+// the caller does not need to remember anything. This is the catch-up analogue
+// of the re-poll backoff — one mechanism, one place.
+func (t *Transitive) claimCatchupLocked(missingID ids.ID) bool {
+	if t.catchup == nil || missingID == ids.Empty {
+		return false
+	}
+	// Already have it tracked (or it just finalized) ⇒ not missing.
+	if _, tracked := t.pendingBlocks[missingID]; tracked {
+		return false
+	}
+	if _, ok := t.consensus.GetBlock(missingID); ok {
+		return false
+	}
+	now := time.Now()
+	if last, ok := t.catchupRequested[missingID]; ok && now.Sub(last) < catchupCooldown {
+		return false // throttled — one fetch per missing parent per cooldown
+	}
+	t.catchupRequested[missingID] = now
+	return true
 }
 
 // pipelineLoop implements pipelined block production: as soon as a block is
@@ -1145,6 +1358,9 @@ func (t *Transitive) processPendingBlocks() {
 		pending.Decided = true
 		t.blocksRejected++
 		delete(t.pendingBlocks, action.blockID)
+		// Drop any votes parked for a now-rejected block (it will never be tracked
+		// to drain them) so the buffer cannot leak.
+		delete(t.bufferedVotes, action.blockID)
 	}
 	t.mu.Unlock()
 
@@ -1186,7 +1402,36 @@ func (t *Transitive) handleVote(vote Vote) {
 	ctx := t.ctx
 
 	if !exists {
+		// A vote for an ALREADY-FINALIZED block needs nothing: the block is decided
+		// (removed from pendingBlocks, recorded in finalizedByCert). Do NOT buffer or
+		// fetch it — that would re-park a late/duplicate vote AFTER acceptWithCertCore
+		// cleared the buffer, leaking a slot for a block that will never re-track to
+		// drain it. Drop it (the finality cert already exists).
+		if _, finalized := t.finalizedByCert[vote.BlockID]; finalized {
+			t.mu.Unlock()
+			return
+		}
+		// VOTE FOR A BLOCK WE DO NOT YET TRACK — the gossip race that wedged the
+		// write path: a peer's vote outran the block bytes. The old code DROPPED it
+		// here, and since votes are solicited only once, the drop was permanent —
+		// the missing-bytes follower could never reach α-of-K and the block never
+		// Accepted. Instead BUFFER the vote (bounded, no signature work yet) and ask
+		// the catch-up seam to FETCH the missing block, exactly as the missing-parent
+		// path does. When the block lands at a tracking site, drainBufferedVotes
+		// replays each parked vote through the normal channel path, where it is
+		// signature-verified like any live vote (buffering NEVER bypasses the gate;
+		// a forged/unsigned parked vote costs one map slot and is dropped on replay).
+		t.bufferVoteLocked(vote)
+		fetch := t.requestMissing
 		t.mu.Unlock()
+		// Fire the fetch WITHOUT the lock: requestMissing routes to
+		// Runtime.requestCatchup, which claims its OWN lock for the idempotency gate
+		// (claimCatchupLocked) and then does the RequestAncestors round-trip. Calling
+		// it while still holding t.mu would re-enter the lock (non-reentrant) and
+		// deadlock. nil ⇒ no runtime wired (bare engine); the buffered vote waits.
+		if fetch != nil {
+			fetch(vote.BlockID, vote.NodeID)
+		}
 		return
 	}
 
@@ -1263,6 +1508,47 @@ func (t *Transitive) handleVote(vote Vote) {
 	// Finalize: if consensus reached the α-of-K accept quorum, assemble the
 	// cert, gossip it, and call VM.Accept().
 	t.tryFinalizeBlock(ctx, vote.BlockID)
+}
+
+// bufferVoteLocked parks a vote for a not-yet-tracked block, enforcing both
+// bounds (fail-closed). Caller holds t.mu. It does NO signature work — a parked
+// vote is verified only when drainBufferedVotes replays it through handleVote.
+//   - Per-block cap: if maxBufferedVotesPerBlock votes are already parked for this
+//     block ID, the new vote is dropped (the real α-of-K voters fit well within).
+//   - Total-keys cap: if this is a NEW block ID and maxBufferedVoteBlocks distinct
+//     IDs are already parked, the new key is dropped (we never evict an existing
+//     key — the simplest sound bound; existing keys drain on track or delete on
+//     decide).
+func (t *Transitive) bufferVoteLocked(vote Vote) {
+	existing, seen := t.bufferedVotes[vote.BlockID]
+	if !seen && len(t.bufferedVotes) >= maxBufferedVoteBlocks {
+		return // total distinct-block ceiling reached — fail closed
+	}
+	if len(existing) >= maxBufferedVotesPerBlock {
+		return // per-block ceiling reached — fail closed
+	}
+	t.bufferedVotes[vote.BlockID] = append(existing, vote)
+}
+
+// drainBufferedVotes replays every vote parked for blockID now that the block is
+// tracked. It removes the slice under t.mu, deletes the key (so the buffer cannot
+// leak for a block that did arrive), and re-enqueues each vote via ReceiveVote —
+// the SAME channel path a live vote takes. Re-enqueueing (rather than calling
+// handleVote inline) avoids re-entrant locking and keeps ONE code path: each
+// replayed vote re-enters handleVote with the block now tracked, so it is
+// signature-verified exactly as a live vote (a forged/unsigned parked vote is
+// dropped at the gate; it never counts). Called at every block-tracking site. If
+// the vote channel is full, ReceiveVote returns false and the vote is dropped —
+// acceptable: the periodic re-poll / re-gossip will re-deliver it.
+func (t *Transitive) drainBufferedVotes(blockID ids.ID) {
+	t.mu.Lock()
+	parked := t.bufferedVotes[blockID]
+	delete(t.bufferedVotes, blockID)
+	t.mu.Unlock()
+
+	for _, vote := range parked {
+		t.ReceiveVote(vote)
+	}
 }
 
 // recordCertVoteLocked records a distinct SIGNED accept vote toward this
@@ -1427,6 +1713,10 @@ func (t *Transitive) TrackOwnProposalForTest(ctx context.Context, blk block.Bloc
 	t.recordOwnVoteLocked(pb, blk.ID())
 	pos := t.blockPositionLocked(pb, blk.ID())
 	t.mu.Unlock()
+	// Replay any votes a peer parked for this block before we tracked it (a
+	// follower could have seen a peer's vote for our own block before our build
+	// signal). Drain after unlock — drainBufferedVotes takes t.mu.
+	t.drainBufferedVotes(blk.ID())
 	return pos
 }
 
@@ -1587,6 +1877,11 @@ func (t *Transitive) tryFinalizeBlock(ctx context.Context, blockID ids.ID) {
 // trigger. K==1 finalizes via the 1-of-1 cert; K>1 finalizes IFF a verified
 // α-of-K cert exists. Never forces a K>1 block on the lone self-vote.
 func (t *Transitive) finalizeOwnProposal(ctx context.Context, blockID ids.ID) {
+	// The own block is now tracked (buildBlocksLocked inserted it before calling
+	// here, with the lock released). Replay any votes a peer parked for it before
+	// our build signal so they count toward this attempt. Lock-free (drain takes
+	// t.mu); every caller invokes this without holding t.mu.
+	t.drainBufferedVotes(blockID)
 	t.mu.RLock()
 	pending, exists := t.pendingBlocks[blockID]
 	own := exists && pending.IsOwnProposal && !pending.Decided
@@ -1699,6 +1994,10 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	pending.Decided = true
 	t.blocksAccepted++
 	delete(t.pendingBlocks, blockID)
+	// A decided block can never need parked votes again — drop any so the buffer
+	// cannot leak for an already-finalized block (the drain handles the happy path
+	// where the block arrived; this handles the already-decided path).
+	delete(t.bufferedVotes, blockID)
 	// Record engine-level finality. This is the ONLY place finalizedByCert is
 	// written, and it is written ONLY here — the sole finalizer, reachable only
 	// with a non-zero VerifiedQuorumCert. Transitive.IsAccepted reads this set, so
