@@ -417,6 +417,16 @@ type Transitive struct {
 	// alongside the slashing window if retention ever matters.
 	finalizedByCert map[ids.ID]struct{}
 
+	// certBytesByBlock persists the marshaled finality cert for each block this node
+	// finalized, so it can SERVE that cert to a peer catching up (CertForBlock). It
+	// is written at the SOLE finalizer (acceptWithCertCore), so every finalize path
+	// captures its cert in ONE place. certServedOrder is the companion FIFO of block
+	// ids in finalize (== ascending height) order, used to evict the oldest cert once
+	// the store passes maxServedCerts — a bounded sliding window, never an unbounded
+	// map. A node lagging beyond the window bootstraps instead of catching up.
+	certBytesByBlock map[ids.ID][]byte
+	certServedOrder  []ids.ID
+
 	// Vote channels
 	voteRequests chan VoteRequest
 	votes        chan Vote
@@ -640,6 +650,7 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		proposer:         cfg.Proposer,
 		pendingBlocks:    make(map[ids.ID]*PendingBlock),
 		finalizedByCert:  make(map[ids.ID]struct{}),
+		certBytesByBlock: make(map[ids.ID][]byte),
 		catchupRequested: make(map[ids.ID]time.Time),
 		bufferedVotes:    make(map[ids.ID][]Vote),
 		voteRequests:     make(chan VoteRequest, cfg.VoteRequestBuffer),
@@ -2121,6 +2132,15 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// engine finality is exactly "AcceptWithCert ran for this block", never the
 	// count-driven consensus.IsAccepted.
 	t.finalizedByCert[blockID] = struct{}{}
+	// Retain the cert that just authorized this finalize so this node can serve it
+	// to a peer catching up (CertForBlock). cert is the SAME VerifiedQuorumCert that
+	// cleared the predicate above; marshaling it here — the one finalizer — captures
+	// every finalize path (local assembly, incoming gossiped cert, K==1) in one spot.
+	if qc := cert.Cert(); qc != nil {
+		if b, err := qc.MarshalBinary(); err == nil {
+			t.storeServedCertLocked(blockID, b)
+		}
+	}
 	t.mu.Unlock()
 
 	if pending.VMBlock != nil {
