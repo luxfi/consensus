@@ -155,6 +155,22 @@ type Runtime struct {
 	fastFollowHeight uint64
 }
 
+// bftCommittee scales a preset sample size k down to the live validator count and
+// returns the BFT-supermajority quorum α = ⌊2k/3⌋+1 for the resulting committee.
+// It only ever shrinks an oversized committee (count < k) — a preset that already
+// fits (k ≤ count) is reported unchanged (clamped=false) so its hand-tuned α is
+// preserved. The α formula reproduces every preset exactly: K4→α3, K11→α8,
+// K20→α14, K21→α15, guaranteeing the result clears the BFT α-floor (2α−k ≥ f+1)
+// while staying reachable (α ≤ k). This is the one mechanism that keeps a network
+// from booting with an unsatisfiable quorum (α > live validators), which wedges
+// finality permanently: every block verifies but the α-of-K cert never assembles.
+func bftCommittee(k, count int) (newK, alpha int, clamped bool) {
+	if count <= 0 || k <= count {
+		return k, 0, false
+	}
+	return count, 2*count/3 + 1, true
+}
+
 // NewRuntime creates a fully wired consensus runtime ready for production use.
 //
 // This is the single, canonical way to create a chain consensus runtime for node integration.
@@ -181,6 +197,29 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	if cfg.Params != nil {
 		params = *cfg.Params
 	}
+
+	// Dynamic committee sizing (liveness, one mechanism): a static preset K can
+	// exceed the live validator count. TestnetParams (K=11, α=8) on a 5-validator
+	// network demands 8 affirmative votes from 5 nodes — unreachable — so NO block
+	// ever finalizes: each block verifies but the α-of-K quorum cert never
+	// assembles and the chain wedges. Scale K down to the live set and α to the BFT
+	// supermajority ⌊2K/3⌋+1 — the exact relation every preset already encodes
+	// (K4→α3, K11→α8, K20→α14, K21→α15) — so any validator count yields a
+	// satisfiable, BFT-valid (K, α) with no per-network preset tuning to drift. The
+	// clamp only ever shrinks an oversized committee (params.K > count); a preset
+	// that already fits (K ≤ count) is untouched. The ⅔-STAKE cert
+	// (WithStakeWeighting, below) still layers weighted BFT safety on top of this
+	// count floor, so a smaller committee never weakens the supermajority guarantee.
+	validatorCount := -1
+	if cfg.Validators != nil {
+		validatorCount = cfg.Validators.Count(cfg.NetworkID)
+		if k, alpha, clamped := bftCommittee(params.K, validatorCount); clamped {
+			params.K = k
+			params.AlphaPreference = alpha
+			params.AlphaConfidence = alpha
+		}
+	}
+
 	engine := NewWithParams(params)
 
 	// Wire α-of-K quorum-cert finality for multi-validator chains. The engine
@@ -230,12 +269,11 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 
 	// Log validator set status for debugging
 	hasLogger := cfg.Logger != nil && !cfg.Logger.IsZero()
-	if cfg.Validators != nil {
-		count := cfg.Validators.Count(cfg.NetworkID)
+	if validatorCount >= 0 {
 		if hasLogger {
 			cfg.Logger.Info("consensus engine initialized with validator set",
 				log.Stringer("networkID", cfg.NetworkID),
-				log.Int("validatorCount", count),
+				log.Int("validatorCount", validatorCount),
 				log.Int("k", params.K),
 				log.Int("alpha", params.AlphaPreference))
 		}
