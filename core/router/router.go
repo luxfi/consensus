@@ -48,8 +48,16 @@ const (
 	// Gossip is an unsolicited app-gossip payload (e.g. the α-of-K quorum
 	// vote/cert envelope broadcast to all validators). It carries application
 	// bytes, not a consensus container, and is demuxed by the chain handler's
-	// Gossip method. MUST stay last so the preceding wire bytes are unchanged.
+	// Gossip method. Its wire value is fixed; append any new op ABOVE NumOps.
 	Gossip
+
+	// NumOps is the count of router ops and the single source of truth for the
+	// op-space size. It is not a wire op — it is one past the last op. Node-side
+	// routing (node message.ToConsensusOp) is asserted to be a bijection onto
+	// [0, NumOps), so an op added here without a matching node mapping fails the
+	// alignment test instead of being silently dropped by the chain router — the
+	// gap that wedged α-of-K finality when Gossip had no node mapping.
+	NumOps
 )
 
 // Field represents a message field
