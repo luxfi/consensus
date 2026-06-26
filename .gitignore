@@ -109,3 +109,4 @@ test.bin
 examples/quasar_full/quasar_full
 examples/01-simple-bridge/01-simple-bridge
 examples/02-ai-payment/02-ai-payment
+pkg/c/examples/bin/

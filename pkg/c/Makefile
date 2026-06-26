@@ -1,5 +1,6 @@
 # Lux Consensus C Library Makefile
 CC = gcc
+CXX = c++
 AR = ar
 CFLAGS = -Wall -Wextra -O3 -fPIC -pthread -I./include
 LDFLAGS = -shared -pthread
@@ -73,6 +74,13 @@ test: $(SHARED_LIB)
 	else \
 		LD_LIBRARY_PATH=./lib ./test/bin/test_consensus; \
 	fi
+
+test-cpp: $(STATIC_LIB)
+	@echo "Building C++ consumer example (links libluxconsensus statically)..."
+	@mkdir -p examples/bin
+	$(CXX) -std=c++17 -Iinclude -o examples/bin/cpp_consumer examples/cpp_consumer.cpp $(STATIC_LIB) -pthread
+	@echo "Running C++ consumer..."
+	@./examples/bin/cpp_consumer
 
 $(BENCHMARK_BIN): benchmark.c $(SHARED_LIB)
 	@echo "Building benchmark..."
