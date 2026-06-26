@@ -400,6 +400,19 @@ type Transitive struct {
 	started      bool
 	wg           sync.WaitGroup // tracks background goroutines
 
+	// bootstrapPhase is true while the node is INITIAL-SYNCING — fetching and
+	// executing the chain from a peer's accepted frontier down to its local tip —
+	// and false once it has reached the frontier and entered live consensus. It is
+	// the SOLE gate on the bootstrap accept authority (Runtime.AcceptBootstrapBlock):
+	// a block fetched-from-frontier-and-re-executed may finalize WITHOUT an α-of-K
+	// cert ONLY while this is true. The instant the node goes live (FinishBootstrap),
+	// the bootstrap path is fail-closed and finality flows ONLY through the
+	// cert-witnessed α-of-K road — so the weak-subjectivity-on-the-beacon-set trust
+	// of bootstrap can never be used to bypass the live cert-gate. Defaults true at
+	// construction (a fresh engine is bootstrapping); the node flips it false exactly
+	// when it signals the chain bootstrapped.
+	bootstrapPhase bool
+
 	// Block management
 	pendingBlocks      map[ids.ID]*PendingBlock
 	pendingBuildBlocks int
@@ -648,6 +661,7 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		params:           cfg.Params,
 		vm:               cfg.VM,
 		proposer:         cfg.Proposer,
+		bootstrapPhase:   true, // a fresh engine is initial-syncing until it reaches the frontier
 		pendingBlocks:    make(map[ids.ID]*PendingBlock),
 		finalizedByCert:  make(map[ids.ID]struct{}),
 		certBytesByBlock: make(map[ids.ID][]byte),
@@ -764,6 +778,30 @@ func (t *Transitive) IsBootstrapped() bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.bootstrapped
+}
+
+// InBootstrapPhase reports whether the engine is still INITIAL-SYNCING (fetching
+// + executing the chain from the network frontier). It is the gate the bootstrap
+// accept authority (Runtime.AcceptBootstrapBlock) checks: a fetched-from-frontier
+// block may finalize without an α-of-K cert ONLY while this is true. Once the node
+// reaches the frontier (FinishBootstrap) it returns false and the bootstrap path is
+// fail-closed — the live cert-gate is the only finalizer thereafter.
+func (t *Transitive) InBootstrapPhase() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.bootstrapPhase
+}
+
+// FinishBootstrap ends the bootstrap phase: the node has executed up to the
+// discovered frontier and is entering live consensus. After this call the bootstrap
+// accept path is fail-closed (InBootstrapPhase == false) and finality flows ONLY
+// through the cert-witnessed α-of-K road. The node MUST call this exactly when it
+// signals the chain bootstrapped (so the two transitions — "accept without a cert"
+// and "no longer accept without a cert" — happen together). Idempotent.
+func (t *Transitive) FinishBootstrap() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.bootstrapPhase = false
 }
 
 // SyncState synchronizes consensus state with VM state.
