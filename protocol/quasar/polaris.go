@@ -59,7 +59,6 @@ type PolarisLegs struct {
 	BLS *bls.Signature
 
 	// Pulsar is the Module-LWE threshold signature for the round.
-	// Produced by the pulsar.ThresholdSigner ceremony.
 	Pulsar *pulsar.Signature
 
 	// Corona is the Ring-LWE threshold signature for the round.
