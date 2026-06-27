@@ -49,6 +49,13 @@ const (
 	// catch-up window while keeping the transient buffer bounded.
 	defaultMaxBuffer = 64 * 1024
 
+	// defaultMaxBufferBytes bounds the descent buffer by BYTES as well as by block
+	// count (M3). A block count alone does not bound memory: 64Ki large blocks could
+	// still OOM the node. A peer that streams oversized blocks during the descent now
+	// hits this budget and the pass fails ErrGapTooLarge (state-sync first) instead of
+	// exhausting memory. 1 GiB is generous for a transient catch-up window.
+	defaultMaxBufferBytes = 1 << 30
+
 	// defaultRetryInterval is the pause after a round that made NO progress (a peer
 	// did not serve, or none is ahead yet) before re-sampling — so a dead/withholding
 	// peer is retried against a fresh sample, never hot-looped.
@@ -78,6 +85,14 @@ var (
 	// ErrCannotConnect is returned when a descent exhausts its round budget without the
 	// fetched segment reaching the local tip (a peer serving a disjoint chain).
 	ErrCannotConnect = errors.New("bootstrap: fetched ancestry never connected to the local tip")
+
+	// ErrFrontierNotDescendedFromCheckpoint is returned when an operator pinned a
+	// weak-subjectivity checkpoint (a recent finalized block id + height) and the
+	// α-agreed frontier's ancestry does NOT pass through it — the frontier is on a
+	// chain that does not descend from the trusted checkpoint, so it is refused. This
+	// is the defense-in-depth anchor for the empty-genesis case (where there is no
+	// local history for the contiguity guard to bind the first block to).
+	ErrFrontierNotDescendedFromCheckpoint = errors.New("bootstrap: α-agreed frontier does not descend from the weak-subjectivity checkpoint")
 )
 
 // BlockSource is the peer-fetch transport the bootstrapper drives. The node
@@ -120,8 +135,21 @@ type Config struct {
 	Log    log.Logger
 
 	MaxBlocksPerFetch int           // default 256
-	MaxBuffer         int           // default 64Ki
+	MaxBuffer         int           // default 64Ki blocks
+	MaxBufferBytes    int           // default 1 GiB (M3 — byte budget on the descent buffer)
 	RetryInterval     time.Duration // default 1s
+
+	// WeakSubjectivityID + WeakSubjectivityHeight pin an OPTIONAL operator-supplied
+	// recent finalized checkpoint (block id at height). When both are set (id != Empty
+	// AND height > 0) and the checkpoint is AHEAD of the local last-accepted, the
+	// content-addressed descent from the α-agreed frontier MUST pass through this id at
+	// this height — otherwise the frontier is on a chain that does not descend from the
+	// trusted checkpoint and is refused (ErrFrontierNotDescendedFromCheckpoint). This is
+	// the defense-in-depth anchor for an EMPTY (genesis) node, where there is no local
+	// history for the per-height guard to bind the first fetched block to. Zero value =
+	// disabled (the α-beacon-quorum on the frontier remains the primary safety anchor).
+	WeakSubjectivityID     ids.ID
+	WeakSubjectivityHeight uint64
 }
 
 // Bootstrapper runs the fetch+execute loop to converge a node to the frontier.
@@ -136,6 +164,9 @@ func New(cfg Config) *Bootstrapper {
 	}
 	if cfg.MaxBuffer <= 0 {
 		cfg.MaxBuffer = defaultMaxBuffer
+	}
+	if cfg.MaxBufferBytes <= 0 {
+		cfg.MaxBufferBytes = defaultMaxBufferBytes
 	}
 	if cfg.RetryInterval <= 0 {
 		cfg.RetryInterval = defaultRetryInterval
@@ -213,11 +244,30 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, caughtUp bo
 		return false, true, nil
 	}
 
-	// DESCEND from the frontier in bounded batches, buffering by height, until the
-	// fetched segment reaches our tip (lowest height ≤ lastH+1). Each batch is
-	// oldest-first; the lowest block's parent is the next descent target.
+	// CONTENT-ADDRESSED DESCENT from the α-agreed frontier (the C1 safety core).
+	// Starting at tipID, walk the parent chain DOWNWARD, buffering ONLY blocks that
+	// cryptographically link from tipID — each buffered block's id is the parent-id of
+	// the block one height above it on the path. This is what guarantees the executed
+	// chain actually REACHES the α-agreed frontier: the per-height accept guard alone
+	// enforces only LOCAL parent linkage (height == finalized+1, parent == tip), NOT
+	// that the top of the synced chain equals the agreed tip. Without content
+	// addressing a malicious Ancestors peer could serve a forged-but-Verify-passing
+	// sidechain that connects to our local tip yet never reaches the honest frontier —
+	// finalizing forged blocks and bricking the node. Here a forged block cannot be
+	// substituted: its id will not equal the `want` we derived from tipID's parent
+	// chain, so it is ignored (off-path), and a batch that does not even contain `want`
+	// is abandoned (re-sample a fresh peer). Frontier-naming (node FrontierTip,
+	// beacon + α-weighted-stake quorum) closes the OTHER half — a forged FRONTIER can
+	// never be named.
 	buffer := make(map[uint64][]byte)
-	want := tipID
+	var bufferBytes int
+	want := tipID // the next block id we require, descending from the agreed frontier
+	// sawCheckpoint is pre-satisfied unless an operator pinned a weak-subjectivity
+	// checkpoint that is AHEAD of our local tip (so the descent must pass through it).
+	checkpointActive := b.cfg.WeakSubjectivityID != ids.Empty &&
+		b.cfg.WeakSubjectivityHeight > 0 &&
+		b.cfg.WeakSubjectivityHeight > lastH
+	sawCheckpoint := !checkpointActive
 	connected := false
 	for round := 0; round < maxDescentRounds; round++ {
 		if ctx.Err() != nil {
@@ -230,35 +280,80 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, caughtUp bo
 			return advanced, false, nil
 		}
 
-		// batch is oldest-first: batch[0] is the lowest. Buffer all, by height.
-		var lowest block.Block
+		// Index the batch by content (block id). Unparseable bytes ⇒ a malformed peer
+		// response: abandon and re-sample (never trust junk into the buffer).
+		type idxEntry struct {
+			raw    []byte
+			height uint64
+			parent ids.ID
+		}
+		index := make(map[ids.ID]idxEntry, len(batch))
 		for _, raw := range batch {
 			blk, perr := b.cfg.Chain.ParseBlock(ctx, raw)
 			if perr != nil {
-				// Unparseable bytes from a peer — abandon the pass and re-sample.
 				return advanced, false, nil
 			}
-			if lowest == nil || blk.Height() < lowest.Height() {
-				lowest = blk
-			}
-			buffer[blk.Height()] = raw
+			index[blk.ID()] = idxEntry{raw: raw, height: blk.Height(), parent: blk.ParentID()}
 		}
-		if lowest == nil {
+
+		// Walk the VERIFIED parent chain from `want` downward, buffering on-path blocks
+		// only. Off-path blocks present in the batch are ignored — a forged block cannot
+		// masquerade as an ancestor of the α-agreed frontier because its id is not on
+		// tipID's parent chain.
+		haveLowest := false
+		var lowestHeight uint64
+		var lowestParent ids.ID
+		cur := want
+		for {
+			e, present := index[cur]
+			if !present {
+				break // the batch does not extend the path further down this round
+			}
+			if _, dup := buffer[e.height]; !dup {
+				buffer[e.height] = e.raw
+				bufferBytes += len(e.raw)
+			}
+			if cur == b.cfg.WeakSubjectivityID && e.height == b.cfg.WeakSubjectivityHeight {
+				sawCheckpoint = true
+			}
+			haveLowest = true
+			lowestHeight = e.height
+			lowestParent = e.parent
+			if e.height <= lastH+1 {
+				break // reached our tip's successor — connected
+			}
+			cur = e.parent
+		}
+		if !haveLowest {
+			// The batch did not contain the block we asked for (`want`): the peer served
+			// off-path junk. Abandon the pass and re-sample a fresh peer.
 			return advanced, false, nil
 		}
 
-		if lowest.Height() <= lastH+1 {
+		if lowestHeight <= lastH+1 {
 			connected = true
 			break
 		}
-		if len(buffer) >= b.cfg.MaxBuffer {
+		if len(buffer) >= b.cfg.MaxBuffer || bufferBytes >= b.cfg.MaxBufferBytes {
 			return advanced, false, ErrGapTooLarge
 		}
-		// Descend: fetch the parent of the lowest block we have.
-		want = lowest.ParentID()
+		// Descend: require the parent of the lowest on-path block next round.
+		want = lowestParent
 	}
 	if !connected {
 		return advanced, false, ErrCannotConnect
+	}
+
+	// WEAK SUBJECTIVITY (defense-in-depth). If an operator pinned a recent finalized
+	// checkpoint AHEAD of our tip, the α-agreed frontier MUST descend from it — we must
+	// have encountered that id at that height on the content-addressed path from the
+	// frontier down. If not, the frontier is on a chain that does not descend from the
+	// trusted checkpoint: refuse it (do not execute a single block of it).
+	if !sawCheckpoint {
+		b.cfg.Log.Warn("bootstrap: α-agreed frontier does not descend from the weak-subjectivity checkpoint — refusing the frontier",
+			log.Stringer("checkpoint", b.cfg.WeakSubjectivityID),
+			log.Uint64("checkpointHeight", b.cfg.WeakSubjectivityHeight))
+		return advanced, false, ErrFrontierNotDescendedFromCheckpoint
 	}
 
 	// EXECUTE oldest-first from lastH+1 up through the contiguous buffer. Each accept
