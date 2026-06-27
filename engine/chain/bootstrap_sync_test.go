@@ -235,3 +235,65 @@ func TestBootstrap_OutOfOrderRefusedThenInOrderConverges(t *testing.T) {
 		t.Fatalf("did not converge to M+3 after in-order feed, got %d", fh)
 	}
 }
+
+// -----------------------------------------------------------------------------
+// M2 — FIRST-BLOCK ANCHOR. When the consensus finalized-height tracker is UNSET
+// (the un-seeded / empty-genesis path — SyncState only sets it when the VM has a
+// non-empty last-accepted), the per-height guard alone would record WHATEVER
+// (height, parent) the first fetched block claims. AcceptBootstrapBlock instead
+// binds the FIRST block to the VM's ACTUAL last-accepted: a peer cannot seed
+// finality at an arbitrary height/parent.
+// -----------------------------------------------------------------------------
+
+func TestBootstrap_M2_FirstBlockAnchorsToLocalLastAccepted(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	vm := newCatchupVM()
+	rt, _, _ := newCatchupRuntime(t, vs, 0, vm)
+
+	// Empty node holding only genesis (height 0). Crucially we DO NOT seedBehindAt —
+	// so the consensus finalized-height tracker stays UNSET (set==false). The VM's
+	// last-accepted is genesis.
+	genesis := newTestBlock(0, ids.Empty, "genesis")
+	vm.register(genesis)
+	_ = vm.SetPreference(context.Background(), genesis.id)
+	if _, set := rt.Transitive.consensus.GetFinalizedHeight(); set {
+		t.Fatal("precondition: tracker must be UNSET for the M2 path")
+	}
+
+	// ATTACK A — a peer's first block seeds finality far ahead (height 500) on an
+	// arbitrary parent. Without the anchor, markFinalizedLocked would record it. The
+	// anchor refuses it: height 500 != localLastH+1 (== 1).
+	ahead := newTestBlock(500, ids.GenerateTestID(), "seed-ahead@500")
+	vm.register(ahead)
+	if err := rt.AcceptBootstrapBlock(context.Background(), ahead.bytes); err == nil {
+		t.Fatal("M2 VIOLATION: first block at height 500 seeded finality off an unset tracker")
+	}
+	if got := ahead.AcceptCalled(); got != 0 {
+		t.Fatalf("M2 VIOLATION: ahead block ran VM.Accept %d×", got)
+	}
+	if _, set := rt.Transitive.consensus.GetFinalizedHeight(); set {
+		t.Fatal("M2 VIOLATION: tracker became set off an unanchored first block")
+	}
+
+	// ATTACK B — the right height (1) but the WRONG parent (not genesis). Refused: the
+	// first block must extend the VM's actual last-accepted.
+	wrongParent := newTestBlock(1, ids.GenerateTestID(), "wrong-parent@1")
+	vm.register(wrongParent)
+	if err := rt.AcceptBootstrapBlock(context.Background(), wrongParent.bytes); err == nil {
+		t.Fatal("M2 VIOLATION: first block at height 1 with a non-genesis parent was accepted")
+	}
+	if _, set := rt.Transitive.consensus.GetFinalizedHeight(); set {
+		t.Fatal("M2 VIOLATION: tracker became set off a wrong-parent first block")
+	}
+
+	// HONEST — height 1, parent == genesis. Anchored, Verify passes, finalizes; the
+	// tracker is now seeded at height 1 and the normal contiguity guard takes over.
+	first := newTestBlock(1, genesis.id, "first@1")
+	vm.register(first)
+	if err := rt.AcceptBootstrapBlock(context.Background(), first.bytes); err != nil {
+		t.Fatalf("honest contiguous first block must finalize, got: %v", err)
+	}
+	if fh, set := rt.Transitive.consensus.GetFinalizedHeight(); !set || fh != 1 {
+		t.Fatalf("M2: tracker must be seeded at height 1 after the anchored first block, got (%d,%v)", fh, set)
+	}
+}

@@ -48,6 +48,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
 )
 
@@ -117,6 +118,33 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 		if blk.Height() > fh+1 {
 			return ErrBootstrapBlockRejected
 		}
+		// height == fh+1: parent == finalizedTip is enforced by markFinalizedLocked.
+	} else {
+		// M2 — FIRST-BLOCK ANCHOR. The finalized-height tracker is UNSET (the un-seeded
+		// / empty-genesis path: SyncState only sets it when the VM has a non-empty last
+		// accepted). In that state markFinalizedLocked would record WHATEVER (height,
+		// parent) the peer's first block claims — so a peer could seed finality at an
+		// arbitrary height/parent. Bind the first bootstrap block to the VM's ACTUAL
+		// last-accepted instead of trusting Verify alone.
+		lastID, lastH, lerr := rt.localLastAccepted(ctx)
+		if lerr != nil {
+			return errors.Join(ErrBootstrapBlockRejected, lerr)
+		}
+		if lastID == ids.Empty {
+			// Truly empty (no accepted block — not even genesis). The only valid first
+			// block is genesis itself: height 0 with no parent. Anything else is a peer
+			// trying to seed finality mid-chain.
+			if blk.Height() != 0 || blk.ParentID() != ids.Empty {
+				return ErrBootstrapBlockRejected
+			}
+		} else {
+			if blk.Height() <= lastH {
+				return nil // already hold it (responder overlap)
+			}
+			if blk.Height() != lastH+1 || blk.ParentID() != lastID {
+				return ErrBootstrapBlockRejected // not our contiguous next block
+			}
+		}
 	}
 
 	// RE-EXECUTE. Local Verify proves the block is VALID against our (already-accepted)
@@ -148,4 +176,24 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 	}
 	_ = rt.config.VM.SetPreference(ctx, blk.ID())
 	return nil
+}
+
+// localLastAccepted reads the VM's last-accepted block id and height — the anchor the
+// FIRST bootstrap block must extend when the consensus finalized-height tracker is not
+// yet seeded (M2). Returns (ids.Empty, 0, nil) for a VM with no accepted block.
+func (rt *Runtime) localLastAccepted(ctx context.Context) (ids.ID, uint64, error) {
+	id, err := rt.config.VM.LastAccepted(ctx)
+	if err != nil {
+		return ids.Empty, 0, err
+	}
+	if id == ids.Empty {
+		return ids.Empty, 0, nil
+	}
+	blk, err := rt.config.VM.GetBlock(ctx, id)
+	if err != nil {
+		// Id known, height unknown — treat height as 0 (genesis-ish). The parent check
+		// in the caller still binds the block to this id.
+		return id, 0, nil
+	}
+	return id, blk.Height(), nil
 }
