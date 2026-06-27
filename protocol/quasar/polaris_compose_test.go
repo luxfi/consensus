@@ -5,15 +5,12 @@ package quasar
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"testing"
 	"time"
 
-	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	"github.com/luxfi/ids"
 	magnetar "github.com/luxfi/magnetar/ref/go/pkg/magnetar"
 	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
 	"github.com/luxfi/threshold/protocols/pulsar"
@@ -115,37 +112,19 @@ func TestQuasarCert_ComposesAllThreeSchemes(t *testing.T) {
 	}
 	pulsarGroupPK := dkgOuts[0].GroupPubkey
 
-	// Drive one Lux round via RoundSigner over a (3, 2) Cut.
-	pulsarPool := make([]ids.NodeID, n)
-	pulsarShares := make(map[ids.NodeID]*pulsar.KeyShare, n)
-	for i := 0; i < n; i++ {
-		var id ids.NodeID
-		copy(id[:], committee[i][:])
-		pulsarPool[i] = id
-		pulsarShares[id] = dkgOuts[i].SecretShare
-	}
-	// Empty PrecompileCtx — the Polaris cert path's pulsar leg signs
-	// with no ctx so verification routes through the stateless
-	// pulsarwire.VerifyBytes (empty-ctx FIPS 204 verifier). The
-	// cert's domain separation lives in the TupleHash transcript
-	// that produced the round digest, not in the ML-DSA ctx string.
-	pulsarRoundSigner := &RoundSigner{
-		Params:    pulsarParams,
-		Cut:       prism.NewUniformCut(pulsarPool),
-		K:         3,
-		Threshold: 2,
-		Shares:    pulsarShares,
-	}
-	pulsarRoundRes, err := pulsarRoundSigner.RunRound(context.Background(), digest)
-	if err != nil {
-		t.Fatalf("Pulsar RoundSigner.RunRound: %v", err)
-	}
-	if pulsarRoundRes.Signature == nil || len(pulsarRoundRes.Signature.Bytes) == 0 {
-		t.Fatal("Pulsar round produced empty signature")
+	// Drive one t-of-n Pulsar threshold-sign ceremony over the fixed (3, 2)
+	// committee. Empty ctx — the Polaris cert path's pulsar leg signs with no
+	// ctx so verification routes through the stateless pulsarwire.VerifyBytes
+	// (empty-ctx FIPS 204 verifier). The cert's domain separation lives in the
+	// TupleHash transcript that produced the round digest, not in the ML-DSA
+	// ctx string.
+	pulsarSig := signPulsarThresholdLeg(t, pulsarParams, committee, threshold, identities, dkgOuts, digest, nil)
+	if pulsarSig == nil || len(pulsarSig.Bytes) == 0 {
+		t.Fatal("Pulsar ceremony produced empty signature")
 	}
 	// Smoke check: byte-equal to FIPS 204 ML-DSA.Verify under empty
 	// ctx. If this fails the rest of the test is moot.
-	if err := pulsar.VerifyCtx(pulsarParams, pulsarGroupPK, digest, nil, pulsarRoundRes.Signature); err != nil {
+	if err := pulsar.VerifyCtx(pulsarParams, pulsarGroupPK, digest, nil, pulsarSig); err != nil {
 		t.Fatalf("Pulsar leg failed standalone FIPS 204 verify: %v", err)
 	}
 
@@ -270,7 +249,7 @@ func TestQuasarCert_ComposesAllThreeSchemes(t *testing.T) {
 	// =========================================================
 	legs := PolarisLegs{
 		BLS:         blsSig,
-		Pulsar:      pulsarRoundRes.Signature,
+		Pulsar:      pulsarSig,
 		Corona:      coronaSig,
 		Magnetar:    magCert,
 		MLDSARollup: mldsaRollup,
