@@ -347,9 +347,9 @@ type ConsensusCert struct {
 	// commits state only transitively through BlockHash.
 	StateRoot [32]byte
 
-	// KeyEraID identifies the PulsarKeyEra (compact group-key era) this cert's
+	// KeyEraID identifies the KeyEra (compact group-key era) this cert's
 	// threshold legs verify under. Bound into M so a signature under one era's
-	// group key can never be replayed under another; the boring VerifyPulsar
+	// group key can never be replayed under another; the boring VerifyThresholdLeg
 	// ALSO checks it structurally against the resolved era (defence in depth).
 	KeyEraID uint64
 

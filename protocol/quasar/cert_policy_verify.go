@@ -201,6 +201,23 @@ func verifyCoronaLeg(message []byte, groupKey *coronaThreshold.GroupKey, sigByte
 	return coronaThreshold.Verify(groupKey, string(message), sig)
 }
 
+// verifyCoronaGroupKeyLeg verifies a Corona threshold signature under a group
+// key supplied as canonical wire BYTES — the form a KeyEra carries it in. It
+// decodes the group key, then routes through the SAME stateless verifyCoronaLeg
+// / coronaThreshold.Verify path, so a KeyEra's standalone Corona verify and the
+// envelope's Corona leg verify agree byte-for-byte. This is the Corona arm of
+// VerifyThresholdLeg's per-lane dispatch.
+func verifyCoronaGroupKeyLeg(message, groupKeyBytes, sigBytes []byte) bool {
+	if len(groupKeyBytes) == 0 || len(sigBytes) == 0 {
+		return false
+	}
+	gk := &coronaThreshold.GroupKey{}
+	if err := gk.UnmarshalBinary(groupKeyBytes); err != nil {
+		return false
+	}
+	return verifyCoronaLeg(message, gk, sigBytes)
+}
+
 // verifyMagnetarLeg verifies the Magnetar (SLH-DSA / FIPS 205 hash-based)
 // leg. The leg carries a magnetar.ValidatorAggregateCert wire blob; the
 // Polaris quorum policy requires every claimed signer to verify.
