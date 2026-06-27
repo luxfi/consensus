@@ -382,7 +382,10 @@ func (f *coronaFixture) signWithRetry(msg []byte, prfKey []byte, groupKey *coron
 func (f *coronaFixture) signOnce(msg []byte, sessionID int, prfKey []byte) (*signResult, error) {
 	round1 := make(map[int]*coronaThreshold.Round1Data, f.n)
 	for _, s := range f.rtSigners {
-		d := s.Round1(sessionID, prfKey, f.rtSignerIDs)
+		d, e := s.Round1(sessionID, prfKey, f.rtSignerIDs)
+		if e != nil {
+			return nil, fmt.Errorf("Round1: %w", e)
+		}
 		round1[d.PartyID] = d
 	}
 
@@ -451,7 +454,7 @@ func BenchmarkPQModes_BLSPlusCorona(b *testing.B) {
 				}()
 				go func() {
 					defer wg.Done()
-					_ = fix.rtSigners[0].Round1(1, prfKey, fix.rtSignerIDs)
+					_, _ = fix.rtSigners[0].Round1(1, prfKey, fix.rtSignerIDs)
 				}()
 				wg.Wait()
 			})
@@ -589,7 +592,7 @@ func BenchmarkPQModes_TripleQuantum(b *testing.B) {
 				}()
 				go func() {
 					defer wg.Done()
-					_ = fix.rtSigners[0].Round1(1, prfKey, fix.rtSignerIDs)
+					_, _ = fix.rtSigners[0].Round1(1, prfKey, fix.rtSignerIDs)
 				}()
 				go func() {
 					defer wg.Done()
