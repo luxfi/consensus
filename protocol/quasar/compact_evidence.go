@@ -90,18 +90,6 @@ var laneByKind = map[EvidenceKind]evidenceLane{
 	EvidenceP3QMLDSARollup:       {leg: LegPulsarMLDSA, mode: EvidenceP3QRollup},
 }
 
-// LaneFor returns the (LegKind, EvidenceMode) an evidence kind decomposes to.
-func LaneFor(kind EvidenceKind) (LegKind, EvidenceMode, bool) {
-	lane, ok := laneByKind[kind]
-	return lane.leg, lane.mode, ok
-}
-
-// IsPostQuantum reports whether the evidence kind is a post-quantum lane.
-func (k EvidenceKind) IsPostQuantum() bool {
-	lane, ok := laneByKind[k]
-	return ok && lane.leg.IsPostQuantum()
-}
-
 // ----------------------------------------------------------------------------
 // Proof assumption axis (for the P3Q rollup lane).
 // ----------------------------------------------------------------------------
@@ -151,13 +139,6 @@ func (a ProofAssumption) String() string {
 	}
 }
 
-// IsPostQuantum reports whether the assumption is PQ-safe. A classical
-// succinct proof is NOT (its proof object is breakable by a CRQC, even though
-// the raw cert set it attests is PQ-safe).
-func (a ProofAssumption) IsPostQuantum() bool {
-	return a != AssumptionClassicalSuccinct
-}
-
 // ----------------------------------------------------------------------------
 // Suite registry — the single suite-ID → verifier dispatch authority.
 // ----------------------------------------------------------------------------
@@ -187,12 +168,6 @@ type Suite struct {
 	// Assumption names the proof assumption (native for Beam/Pulsar/Corona;
 	// direct / pq-succinct / classical-succinct for P3Q).
 	Assumption ProofAssumption
-}
-
-// IsPostQuantum reports whether the suite is post-quantum (PQ leg AND a
-// PQ-safe assumption).
-func (s Suite) IsPostQuantum() bool {
-	return s.Leg.IsPostQuantum() && s.Assumption.IsPostQuantum()
 }
 
 var (
