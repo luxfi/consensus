@@ -289,3 +289,33 @@ func TestMaxBufferBytes_BoundsDescentMemory(t *testing.T) {
 		t.Fatalf("expected ErrGapTooLarge from the byte budget, got %v", err)
 	}
 }
+
+// TestRED_DeepGapFailsSafe_NoFalseComplete: an EMPTY node whose gap to the frontier
+// exceeds the in-memory window does NOT converge via this path — it returns
+// ErrGapTooLarge and finalizes NOTHING, so the caller leaves it un-bootstrapped (it must
+// state-sync to within the window first). The safety-critical property is "no
+// FALSE-complete": the node never declares itself synced at a partial height. This is the
+// genesis→1.08M mainnet case (gap >> 64Ki); the realistic first canary is the STALE node
+// (small gap), proven by TestLoop_PartialNodeConverges.
+func TestRED_DeepGapFailsSafe_NoFalseComplete(t *testing.T) {
+	const N = 600
+	chain, reg := chainOf(N, 0)
+	peer := newTestPeer(chain)
+	node := newTestNode(reg, chain[0]) // empty: only genesis
+
+	// A tight window (20 blocks/fetch, 50-block buffer) models a gap far larger than the
+	// node can hold in memory.
+	bs := New(Config{
+		Source: peer, Chain: node, RetryInterval: time.Millisecond, Log: log.NewNoOpLogger(),
+		MaxBlocksPerFetch: 20, MaxBuffer: 50,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := bs.Run(ctx)
+	if err != ErrGapTooLarge {
+		t.Fatalf("deep gap must fail safe with ErrGapTooLarge, got %v", err)
+	}
+	if node.accepts != 0 || node.height != 0 {
+		t.Fatalf("FALSE-COMPLETE: a too-deep gap advanced the node (height %d, %d accepts) — must finalize nothing", node.height, node.accepts)
+	}
+}
