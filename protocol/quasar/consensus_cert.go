@@ -150,6 +150,16 @@ const (
 	// EvidenceClassicalAggregate — a classical aggregate (e.g. BLS-12-381). It
 	// can satisfy ONLY a LegClassical requirement and never a PQ leg.
 	EvidenceClassicalAggregate
+
+	// EvidenceP3QRollup — the P3Q FALLBACK mode: a compact root/proof over a
+	// set of INDEPENDENT per-validator ML-DSA certificates (the MLDSACertSet),
+	// rather than one aggregate threshold signature. It is its OWN primitive
+	// (own verifier in p3q_rollup.go, conceptual precompile slot 0x012205), not
+	// bolted onto the Pulsar threshold-sig verifier; it satisfies the SAME
+	// LegPulsarMLDSA requirement by a different mechanism. Used for
+	// migration / recovery / bridge / audit, NEVER as the primary finality
+	// object when a compact Pulsar threshold leg is available.
+	EvidenceP3QRollup
 )
 
 // String returns the canonical wire name of the evidence mode.
@@ -163,6 +173,8 @@ func (m EvidenceMode) String() string {
 		return "stark-compressed-sig-set"
 	case EvidenceClassicalAggregate:
 		return "classical-aggregate"
+	case EvidenceP3QRollup:
+		return "p3q-rollup"
 	default:
 		return fmt.Sprintf("evidence-mode(0x%02x)", uint8(m))
 	}
@@ -329,6 +341,17 @@ type ConsensusCert struct {
 	// into the message and cross-checked by the threshold-sig accountability
 	// clause (I8).
 	SignerRoot [32]byte
+
+	// StateRoot is the post-state commitment this cert finalises (owner-spec
+	// finality tuple). Bound into the canonical message M. Zero when the chain
+	// commits state only transitively through BlockHash.
+	StateRoot [32]byte
+
+	// KeyEraID identifies the PulsarKeyEra (compact group-key era) this cert's
+	// threshold legs verify under. Bound into M so a signature under one era's
+	// group key can never be replayed under another; the boring VerifyPulsar
+	// ALSO checks it structurally against the resolved era (defence in depth).
+	KeyEraID uint64
 
 	// AggregateWeight is the cert's claimed total signer weight (header-level;
 	// each evidence mode independently re-establishes weight against the
@@ -580,44 +603,33 @@ func HashRequiredLegs(legs []LegSpec) [32]byte {
 // anchor to. It binds the FULL consensus tuple — NEVER the block hash alone:
 //
 //	domain_tag ‖ version ‖ cert_profile ‖ chain_id ‖ epoch ‖ height ‖ round ‖
-//	block_hash ‖ validator_set_root ‖ policy_id ‖ required_legs_root ‖ signer_root
+//	block_hash ‖ validator_set_root ‖ policy_id ‖ required_legs_root ‖
+//	signer_root ‖ state_root ‖ key_era_id
 //
 // under a quorum-cert-distinct customization tag. A cert whose signers signed a
 // different tuple fails every leg's signature check; a cert that lies about any
 // tuple field fails because the rebuilt message no longer matches.
+//
+// This is the envelope's accessor for the ONE canonical finality message: it
+// extracts the tuple from a *ConsensusCert and delegates to finalityMessage
+// (quasar_finality.go) — the SAME builder QuasarFinalityMessage uses, so all
+// lanes provably sign byte-identical M.
 func consensusCertMessage(cert *ConsensusCert, requiredLegsRoot [32]byte) []byte {
-	var u16 [2]byte
-	var u32 [4]byte
-	var u64 [8]byte
-
-	binary.BigEndian.PutUint16(u16[:], cert.Version)
-	verBytes := append([]byte(nil), u16[:]...)
-	binary.BigEndian.PutUint32(u32[:], cert.ChainID)
-	chainBytes := append([]byte(nil), u32[:]...)
-	binary.BigEndian.PutUint64(u64[:], cert.Epoch)
-	epochBytes := append([]byte(nil), u64[:]...)
-	binary.BigEndian.PutUint64(u64[:], cert.Height)
-	heightBytes := append([]byte(nil), u64[:]...)
-	binary.BigEndian.PutUint32(u32[:], cert.Round)
-	roundBytes := append([]byte(nil), u32[:]...)
-	binary.BigEndian.PutUint32(u32[:], cert.PolicyID)
-	policyBytes := append([]byte(nil), u32[:]...)
-
-	parts := [][]byte{
-		[]byte(consensusCertDomainTag),
-		verBytes,
-		{cert.Profile},
-		chainBytes,
-		epochBytes,
-		heightBytes,
-		roundBytes,
-		cert.BlockHash[:],
-		cert.ValidatorSetRoot[:],
-		policyBytes,
-		requiredLegsRoot[:],
-		cert.SignerRoot[:],
-	}
-	return tupleHash256RoundDigest(parts, 32, consensusCertMessageCustomization)
+	return finalityMessage(finalityTuple{
+		Version:          cert.Version,
+		Profile:          cert.Profile,
+		ChainID:          cert.ChainID,
+		Epoch:            cert.Epoch,
+		Height:           cert.Height,
+		Round:            cert.Round,
+		BlockHash:        cert.BlockHash,
+		StateRoot:        cert.StateRoot,
+		ValidatorSetRoot: cert.ValidatorSetRoot,
+		PolicyID:         cert.PolicyID,
+		RequiredLegsRoot: requiredLegsRoot,
+		SignerRoot:       cert.SignerRoot,
+		KeyEraID:         cert.KeyEraID,
+	})
 }
 
 // ----------------------------------------------------------------------------
@@ -791,6 +803,8 @@ func dispatchEvidence(policy ConsensusCertPolicy, validators ConsensusValidatorS
 		return VerifyStarkCompressedSigSet(policy, validators, cert, msg, ev)
 	case EvidenceClassicalAggregate:
 		return VerifyClassicalAggregateLeg(policy, validators, cert, msg, ev)
+	case EvidenceP3QRollup:
+		return VerifyP3QRollupLeg(policy, validators, cert, msg, ev)
 	default:
 		return fmt.Errorf("%w: 0x%02x", ErrUnknownEvidenceMode, uint8(ev.Mode))
 	}
