@@ -36,7 +36,7 @@
 //
 // Decomplected: this file owns ONLY message construction. It decides nothing
 // about which legs are required (policy), whether a leg verifies (the leg
-// verifiers), or which era key to use (the PulsarKeyEra registry).
+// verifiers), or which era key to use (the KeyEra registry).
 package quasar
 
 import "encoding/binary"
@@ -61,7 +61,7 @@ const QuasarFinalityDomainName = "QUASAR_FINALITY_V1"
 //	StateRoot        → stateRoot
 //	ValidatorSetRoot → signerSetID   (the P-Chain-pinned committed signer set)
 //	PolicyID         → evidencePolicyID
-//	KeyEraID         → keyEraID       (the PulsarKeyEra this cert finalises under)
+//	KeyEraID         → keyEraID       (the KeyEra this cert finalises under)
 //
 // Version, Profile, Epoch and RequiredLegsRoot are additional bindings the
 // envelope already commits (defence in depth — more binding is strictly more

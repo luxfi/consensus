@@ -366,9 +366,9 @@ func TestCompact_VerifyPulsar_BoringAndDispatchSafe(t *testing.T) {
 	})
 	pulsarSig, pulsarGK := signPulsarLegFIPS204(t, M)
 
-	era := PulsarKeyEra{
+	era := KeyEra{
 		ChainID: 9, SignerSetID: signerSet, KeyEraID: 7, Generation: 1,
-		PChainHeight: 1000, MLDSAPubKey: pulsarGK, Threshold: 100,
+		PChainHeight: 1000, GroupPubKey: pulsarGK, Threshold: 100,
 		SchemeID: "Lux-Pulsar-TALUS-MLDSA65", KeygenMode: "talus-mpc",
 	}
 	good := PulsarEvidence{SuiteID: "Lux-Pulsar-TALUS-MLDSA65", KeyEraID: 7, Generation: 1, SignerSetID: signerSet, Signature: pulsarSig}
@@ -405,6 +405,83 @@ func TestCompact_VerifyPulsar_BoringAndDispatchSafe(t *testing.T) {
 	otherM := QuasarFinalityMessage(QuasarFinalityParams{ChainID: 9, Epoch: 9, Height: 10, Round: 9, KeyEraID: 7, SignerSetID: signerSet, Profile: 1})
 	if !errors.Is(VerifyPulsar(good, otherM, era), ErrBadSignature) {
 		t.Fatal("a signature for one M verified under a different M (replay)")
+	}
+}
+
+// ----------------------------------------------------------------------------
+// 4a. ONE KeyEra + ONE VerifyThresholdLeg entry point serves the Corona lane.
+//     A corona-suite era verifies through the SAME type + dispatch as Pulsar —
+//     value-not-place: the lane is selected by the era's scheme, not its type.
+// ----------------------------------------------------------------------------
+
+func TestCompact_VerifyThresholdLeg_CoronaLane(t *testing.T) {
+	var signerSet [48]byte
+	for i := range signerSet {
+		signerSet[i] = 0x33
+	}
+	M := QuasarFinalityMessage(QuasarFinalityParams{
+		ChainID: 11, Epoch: 4, Height: 4, Round: 4, KeyEraID: 2, EvidencePolicyID: 1,
+		SignerSetID: signerSet, Profile: 1,
+	})
+
+	// A REAL multi-node Corona (Ring-LWE, t-of-n) threshold signature + the
+	// matching group key — the dual-PQ corona helper, same as the dualpq test.
+	coronaSig, coronaGK, _ := signCoronaLegMultiNode(t, dualPQThreshold, dualPQThreshold, dualPQN, M)
+	gkBytes, err := coronaGK.MarshalBinary()
+	if err != nil {
+		t.Fatalf("corona group key MarshalBinary: %v", err)
+	}
+
+	const coronaSuite = "Lux-Corona-Ringtail-L3-v1"
+	era := KeyEra{
+		ChainID: 11, SignerSetID: signerSet, KeyEraID: 2, Generation: 0,
+		PChainHeight: 500, GroupPubKey: gkBytes, Threshold: 100,
+		SchemeID: coronaSuite, KeygenMode: "talus-mpc",
+	}
+	good := PulsarEvidence{
+		SuiteID: coronaSuite, KeyEraID: 2, Generation: 0,
+		SignerSetID: signerSet, Signature: EncodeCoronaSig(coronaSig),
+	}
+
+	// THE PROOF: the SAME KeyEra type and the SAME VerifyThresholdLeg entry
+	// point route a Corona-suite era through the Corona (Ring-LWE) verifier —
+	// no CoronaKeyEra type, no second verify entry point.
+	if err := VerifyThresholdLeg(good, M, era); err != nil {
+		t.Fatalf("corona-lane era rejected via the unified dispatch: %v", err)
+	}
+
+	// The Pulsar wrapper must REFUSE a Corona era at the door (lane gate): a
+	// Corona scheme can never reach the Pulsar verify path.
+	if err := VerifyPulsar(good, M, era); !errors.Is(err, ErrSuiteLaneMismatch) {
+		t.Fatalf("VerifyPulsar accepted a corona era: err = %v, want ErrSuiteLaneMismatch", err)
+	}
+
+	// Dispatch safety + boring rejects, each a distinct typed error.
+	reject := func(name string, mutate func(*PulsarEvidence), want error) {
+		t.Helper()
+		bad := good
+		mutate(&bad)
+		if err := VerifyThresholdLeg(bad, M, era); !errors.Is(err, want) {
+			t.Fatalf("%s: err = %v, want %v", name, err, want)
+		}
+	}
+	// A Pulsar suite id can NEVER reach the Corona verifier.
+	reject("pulsar suite at corona era", func(e *PulsarEvidence) { e.SuiteID = "Lux-Pulsar-TALUS-MLDSA65" }, ErrSuiteLaneMismatch)
+	// A different (valid) Corona suite that is not the era's scheme.
+	reject("suite != era scheme", func(e *PulsarEvidence) { e.SuiteID = "Lux-Corona-Ringtail-L5-v1" }, ErrSuiteMismatch)
+	reject("unknown suite", func(e *PulsarEvidence) { e.SuiteID = "Lux-Nonsense-vX" }, ErrUnknownSuite)
+	reject("wrong KeyEraID", func(e *PulsarEvidence) { e.KeyEraID = 9 }, ErrWrongEra)
+	reject("wrong SignerSetID", func(e *PulsarEvidence) { e.SignerSetID[0] ^= 0xFF }, ErrWrongEra)
+	reject("corrupt corona signature", func(e *PulsarEvidence) {
+		e.Signature = append([]byte(nil), good.Signature...)
+		e.Signature[len(e.Signature)/2] ^= 0xFF
+	}, ErrBadSignature)
+
+	// Wrong M (replay to a different finality position) — the corona signature
+	// no longer verifies under the era group key.
+	otherM := QuasarFinalityMessage(QuasarFinalityParams{ChainID: 11, Epoch: 4, Height: 5, Round: 4, KeyEraID: 2, SignerSetID: signerSet, Profile: 1})
+	if !errors.Is(VerifyThresholdLeg(good, otherM, era), ErrBadSignature) {
+		t.Fatal("a corona signature for one M verified under a different M (replay)")
 	}
 }
 
@@ -537,16 +614,16 @@ func TestCompact_P3QRollup_SuccinctGated(t *testing.T) {
 }
 
 // ----------------------------------------------------------------------------
-// 6. PulsarKeyEra registry + the one-M property.
+// 6. KeyEra registry + the one-M property.
 // ----------------------------------------------------------------------------
 
-func TestCompact_PulsarKeyEraRegistry(t *testing.T) {
-	reg := NewPulsarKeyEraRegistry()
+func TestCompact_KeyEraRegistry(t *testing.T) {
+	reg := NewKeyEraRegistry()
 	var ss [48]byte
 	ss[0] = 0x09
 	M := []byte("era registry message")
 	_, gk := signPulsarLegFIPS204(t, M)
-	era := PulsarKeyEra{ChainID: 9, SignerSetID: ss, KeyEraID: 1, Generation: 0, MLDSAPubKey: gk, SchemeID: "Lux-Pulsar-TALUS-MLDSA65"}
+	era := KeyEra{ChainID: 9, SignerSetID: ss, KeyEraID: 1, Generation: 0, GroupPubKey: gk, SchemeID: "Lux-Pulsar-TALUS-MLDSA65"}
 
 	if err := reg.Register(era); err != nil {
 		t.Fatalf("register: %v", err)
@@ -563,8 +640,8 @@ func TestCompact_PulsarKeyEraRegistry(t *testing.T) {
 	}
 	// Conflicting key under same coordinates rejected.
 	conflict := era
-	conflict.MLDSAPubKey = append([]byte(nil), gk...)
-	conflict.MLDSAPubKey[0] ^= 0xFF
+	conflict.GroupPubKey = append([]byte(nil), gk...)
+	conflict.GroupPubKey[0] ^= 0xFF
 	if err := reg.Register(conflict); !errors.Is(err, ErrEraConflict) {
 		t.Fatalf("conflict: err = %v, want ErrEraConflict", err)
 	}
@@ -572,11 +649,20 @@ func TestCompact_PulsarKeyEraRegistry(t *testing.T) {
 	if _, err := reg.Lookup(9, ss, 2, 0); !errors.Is(err, ErrEraNotFound) {
 		t.Fatalf("not-found: err = %v, want ErrEraNotFound", err)
 	}
-	// A non-Pulsar scheme id is refused at registration.
+	// The registry is LANE-AGNOSTIC: a Corona (Ring-LWE) era registers fine —
+	// KeyEra serves every threshold lane, not just Pulsar. Registration checks
+	// the lane + a non-empty key; the full Corona group-signature verify is
+	// proven in TestCompact_VerifyThresholdLeg_CoronaLane.
+	coronaEra := KeyEra{ChainID: 9, SignerSetID: ss, KeyEraID: 2, Generation: 0, GroupPubKey: []byte("corona-group-key"), SchemeID: "Lux-Corona-Ringtail-L3-v1"}
+	if err := reg.Register(coronaEra); err != nil {
+		t.Fatalf("corona era registration refused (registry must be lane-agnostic): %v", err)
+	}
+	// A NON-threshold lane (Beam classical aggregate) has no compact group-key
+	// era and is refused at registration.
 	bad := era
-	bad.SchemeID = "Lux-Corona-Ringtail-L3-v1"
+	bad.SchemeID = "Lux-Beam-BLS12381-v1"
 	if err := reg.Register(bad); !errors.Is(err, ErrSuiteLaneMismatch) {
-		t.Fatalf("non-Pulsar era scheme: err = %v, want ErrSuiteLaneMismatch", err)
+		t.Fatalf("non-threshold era scheme: err = %v, want ErrSuiteLaneMismatch", err)
 	}
 }
 
