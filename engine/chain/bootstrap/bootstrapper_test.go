@@ -62,27 +62,42 @@ func chainOf(n int, invalidAt uint64) ([]*tBlock, map[string]*tBlock) {
 	return blocks, reg
 }
 
-// testPeer is an in-memory BlockSource: a node holding the full chain genesis→tip.
+// testPeer is an in-memory BlockSource: a node holding the full chain genesis→tip. It
+// reports FrontierNamed by default; `status` overrides that to model the no-beacon /
+// connecting / no-quorum cases, and `connectAfter` models the CANARY boot race (the beacon
+// set is still connecting for the first N frontier queries, then names the tip).
 type testPeer struct {
-	byHeight []*tBlock
-	byID     map[ids.ID]*tBlock
-	serveNothing bool // model a dead/withholding peer
-	hasFrontier  bool // model "no peer ahead"
+	byHeight     []*tBlock
+	byID         map[ids.ID]*tBlock
+	serveNothing bool           // model a dead/withholding peer
+	status       FrontierStatus // status to report once "connected" (default FrontierNamed)
+	connectAfter int            // report FrontierConnecting for the first N queries, then `status`
+	frontierCalls int           // observable: how many times the loop asked for the frontier
 }
 
 func newTestPeer(chain []*tBlock) *testPeer {
-	p := &testPeer{byHeight: chain, byID: map[ids.ID]*tBlock{}, hasFrontier: true}
+	p := &testPeer{byHeight: chain, byID: map[ids.ID]*tBlock{}, status: FrontierNamed}
 	for _, b := range chain {
 		p.byID[b.id] = b
 	}
 	return p
 }
 
-func (p *testPeer) FrontierTip(context.Context) (ids.ID, bool) {
-	if !p.hasFrontier || len(p.byHeight) == 0 {
-		return ids.Empty, false
+func (p *testPeer) FrontierTip(context.Context) (ids.ID, FrontierStatus) {
+	p.frontierCalls++
+	// CANARY: beacons not connected yet for the first connectAfter queries.
+	if p.connectAfter > 0 && p.frontierCalls <= p.connectAfter {
+		return ids.Empty, FrontierConnecting
 	}
-	return p.byHeight[len(p.byHeight)-1].id, true
+	switch p.status {
+	case FrontierNamed:
+		if len(p.byHeight) == 0 {
+			return ids.Empty, FrontierNoBeacons
+		}
+		return p.byHeight[len(p.byHeight)-1].id, FrontierNamed
+	default: // FrontierNoBeacons / FrontierConnecting / FrontierNoQuorum
+		return ids.Empty, p.status
+	}
 }
 
 // Ancestors serves up to maxBlocks blocks ending at blockID, OLDEST-FIRST, walking
@@ -179,10 +194,11 @@ const (
 func runBootstrap(t *testing.T, peer BlockSource, node Chain) error {
 	t.Helper()
 	bs := New(Config{
-		Source:        peer,
-		Chain:         node,
+		Source:            peer,
+		Chain:             node,
 		MaxBlocksPerFetch: 256,
-		RetryInterval: time.Millisecond, // keep the stall path fast in tests
+		RetryInterval:     time.Millisecond,      // keep the stall/connect paths fast in tests
+		ConnectDeadline:   200 * time.Millisecond, // bound the beacon-connectivity wait in tests
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -257,18 +273,112 @@ func TestLoop_InvalidBlockHaltsSync(t *testing.T) {
 	}
 }
 
-func TestLoop_NoPeerAhead_FinishesImmediately(t *testing.T) {
+// TestLoop_NoBeaconSet_SingleNodeFinishesImmediately: a node with NO beacon set configured
+// (single-node / dev / --skip-bootstrap) has no network frontier to reach, so it completes
+// at once — it must NOT hang waiting for a quorum that can never form. This is the
+// single-node case the connectivity-wait must preserve.
+func TestLoop_NoBeaconSet_SingleNodeFinishesImmediately(t *testing.T) {
 	const N = 10
 	chain, reg := chainOf(N, 0)
 	peer := newTestPeer(chain)
-	peer.hasFrontier = false // no peer responds with a frontier
+	peer.status = FrontierNoBeacons // no beacon set — nothing to sync to
 	node := newTestNode(reg, chain[N])
 
 	if err := runBootstrap(t, peer, node); err != nil {
-		t.Fatalf("no-peer bootstrap should finish cleanly, got %v", err)
+		t.Fatalf("single-node (no beacons) bootstrap should finish cleanly, got %v", err)
 	}
 	if node.accepts != 0 {
-		t.Fatalf("no peer ahead → nothing to accept, got %d accepts", node.accepts)
+		t.Fatalf("no beacon set → nothing to accept, got %d accepts", node.accepts)
+	}
+}
+
+// TestLoop_StaleNodeConvergesAfterDelayedBeaconConnect REPRODUCES THE MAINNET CANARY and
+// proves the fix. A STALE node sits at height M; the producers (beacons) are at N (gap
+// within the window). At boot the beacons have NOT connected yet, so the FIRST few frontier
+// queries return FrontierConnecting. THE BUG was: the loop read that as "nothing to sync to"
+// and declared caughtUp at the stale height M (then entered live consensus, never to
+// converge). THE FIX: the loop WAITS through the connecting passes — declaring caughtUp at M
+// is impossible — and only once the beacons connect and a ⅔ quorum names tip N does it
+// descend, execute the gap, and converge to N.
+func TestLoop_StaleNodeConvergesAfterDelayedBeaconConnect(t *testing.T) {
+	const N = 40 // producers' (beacon-named) frontier height
+	const M = 23 // our STALE local height (gap N-M = 17 — the canary's gap-17, within window)
+	chain, reg := chainOf(N, 0)
+	peer := newTestPeer(chain)
+	peer.connectAfter = 5 // beacons connect only after the 5th frontier query (boot race)
+	node := newTestNode(reg, chain[M])
+
+	if err := runBootstrap(t, peer, node); err != nil {
+		t.Fatalf("stale node must converge once beacons connect, got %v", err)
+	}
+	// It must NOT have false-completed at the stale height M: it reached the beacon frontier N.
+	if node.height != N {
+		t.Fatalf("CANARY: node did not converge to the beacon frontier — height %d, want %d (false-complete at M=%d?)", node.height, N, M)
+	}
+	if node.accepts != N-M {
+		t.Fatalf("expected exactly the gap accepted (M+1..N = %d), got %d", N-M, node.accepts)
+	}
+	// And it provably WAITED for connectivity rather than concluding caught-up immediately:
+	// at minimum it polled through the connecting passes before naming the frontier.
+	if peer.frontierCalls <= peer.connectAfter {
+		t.Fatalf("loop must have WAITED through the connecting passes (got %d frontier calls, want > %d)", peer.frontierCalls, peer.connectAfter)
+	}
+}
+
+// TestLoop_GenuinelyCaughtUp_CompletesPromptly: beacons ARE connected and name a tip equal
+// to our height (no peer ahead). The node completes at once with nothing fetched — the
+// connectivity-wait must not delay a node that is actually synced.
+func TestLoop_GenuinelyCaughtUp_CompletesPromptly(t *testing.T) {
+	const N = 25
+	chain, reg := chainOf(N, 0)
+	peer := newTestPeer(chain)               // FrontierNamed, tip = N
+	node := newTestNode(reg, chain[N])       // already at N — holds the frontier tip
+
+	if err := runBootstrap(t, peer, node); err != nil {
+		t.Fatalf("a genuinely caught-up node must complete promptly, got %v", err)
+	}
+	if node.accepts != 0 {
+		t.Fatalf("caught-up node fetches nothing, got %d accepts", node.accepts)
+	}
+}
+
+// TestLoop_BeaconsNeverConnect_FailsSafe (red's LOW, folded in): a node with beacons
+// configured but that NEVER reach the connectivity to form a ⅔ quorum must FAIL SAFE — it
+// stays un-bootstrapped (ErrBeaconsUnreachable), NEVER false-completing at its stale height.
+func TestLoop_BeaconsNeverConnect_FailsSafe(t *testing.T) {
+	const N = 30
+	const M = 10
+	chain, reg := chainOf(N, 0)
+	peer := newTestPeer(chain)
+	peer.status = FrontierConnecting // beacons configured but never enough connected
+	node := newTestNode(reg, chain[M])
+
+	err := runBootstrap(t, peer, node)
+	if err != ErrBeaconsUnreachable {
+		t.Fatalf("eclipsed-at-boot node must fail safe with ErrBeaconsUnreachable, got %v", err)
+	}
+	if node.height != M || node.accepts != 0 {
+		t.Fatalf("FALSE-COMPLETE: node advanced past its stale height (height %d, %d accepts) — must finalize nothing", node.height, node.accepts)
+	}
+}
+
+// TestLoop_BeaconsConnectedNoQuorum_FailsSafe: beacons ARE connected (enough to ask) but no
+// ⅔-by-stake supermajority agrees on a single frontier (eclipse/partition/disagreement).
+// The node must FAIL SAFE — not conclude caught-up at the stale height.
+func TestLoop_BeaconsConnectedNoQuorum_FailsSafe(t *testing.T) {
+	const N = 30
+	const M = 10
+	chain, reg := chainOf(N, 0)
+	peer := newTestPeer(chain)
+	peer.status = FrontierNoQuorum // connected, but no ⅔ agreement
+	node := newTestNode(reg, chain[M])
+
+	err := runBootstrap(t, peer, node)
+	if err != ErrNoBeaconQuorum {
+		t.Fatalf("no-⅔-quorum node must fail safe with ErrNoBeaconQuorum, got %v", err)
+	}
+	if node.height != M || node.accepts != 0 {
+		t.Fatalf("FALSE-COMPLETE: node advanced past its stale height (height %d, %d accepts) — must finalize nothing", node.height, node.accepts)
 	}
 }
 
