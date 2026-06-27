@@ -641,6 +641,44 @@ func (c *ChainConsensus) AcceptViaCert(blockID ids.ID, height uint64, parentID i
 	return nil
 }
 
+// AcceptBootstrapBlock commits a block accepted during INITIAL SYNC (bootstrap):
+// the node fetched it from the network's accepted frontier (the beacon/validator
+// set advertised it as accepted) and re-executed it (Verify) against the synced
+// parent state. It is the FRONTIER-TRUST finalization authority — distinct from
+// AcceptViaCert (the α-of-K cert authority) and ForceAccept (the 1-of-1 authority)
+// — but it commits through the SAME single per-height guard (markFinalizedLocked),
+// so a bootstrap accept is held to the IDENTICAL single-non-branching-chain
+// invariants every other finalize path obeys: ONE block per height, height
+// advances by EXACTLY one, parent == the current finalized tip. A gapped, out-of-
+// order, or forking block is REFUSED — a bootstrapping node cannot be fed a forked
+// history any more than a live one, and the parent-order requirement is what makes
+// the caller's "execute oldest-first against the accepted parent state" sound.
+//
+// It is NOT a second, weaker finality authority for live operation: the engine
+// permits the receive-side caller (Runtime.AcceptBootstrapBlock) to reach it ONLY
+// during the bootstrap phase (Transitive.InBootstrapPhase). Once the node reaches
+// the frontier and goes live, the bootstrap path is fail-closed and finality flows
+// only through the cert-witnessed α-of-K road.
+//
+// Caller holds nothing; this takes c.mu. `parentID` may be ids.Empty for a
+// genesis/first block.
+func (c *ChainConsensus) AcceptBootstrapBlock(blockID ids.ID, height uint64, parentID ids.ID) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// The single safety gate — same as the cert path. On any violation (already-
+	// finalized height, non-monotonic, parent != tip) nothing advances.
+	if err := c.markFinalizedLocked(blockID, height, parentID); err != nil {
+		return err
+	}
+	// Mark accepted when the block is tracked (bootstrap typically does NOT track
+	// every block in c.blocks — see Runtime.AcceptBootstrapBlock — so this is a
+	// no-op for an untracked block; the per-height ledger is the source of truth).
+	if block, exists := c.blocks[blockID]; exists {
+		block.accepted = true
+	}
+	return nil
+}
+
 // GetFinalizedTip returns the current finalized tip block ID.
 // This is useful for debugging and health checks.
 func (c *ChainConsensus) GetFinalizedTip() ids.ID {
