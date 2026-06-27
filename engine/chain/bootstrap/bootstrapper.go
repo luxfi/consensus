@@ -202,9 +202,15 @@ type Chain interface {
 	ParseBlock(ctx context.Context, b []byte) (block.Block, error)
 	// LastAccepted returns the local last-accepted block id and height.
 	LastAccepted(ctx context.Context) (id ids.ID, height uint64, err error)
-	// Has reports whether the node already holds block id — used to detect that the
-	// node has reached (already has) the frontier.
-	Has(ctx context.Context, id ids.ID) bool
+	// Accepted reports whether block id is on the node's ACCEPTED chain (finalized) —
+	// NOT merely present in the block store. This is the convergence predicate: the node
+	// has REACHED the named frontier only when it has ACCEPTED it. The mainnet luxd-2
+	// freeze was a store-vs-acceptance conflation: a frontier GOSSIPED into the store but
+	// not yet accepted (height ABOVE last-accepted) reported "present", short-circuiting
+	// the loop to caught-up at the stale last-accepted and never descending to accept it.
+	// A stored-but-unaccepted block MUST return false here so the descent drives its
+	// acceptance from last-accepted+1 up to the frontier through the cert/Verify path.
+	Accepted(ctx context.Context, id ids.ID) bool
 	// AcceptBootstrapBlock re-executes + finalizes a fetched block on frontier-trust
 	// (chain.Runtime.AcceptBootstrapBlock). A reject (invalid bytes, failed Verify, or
 	// out-of-order) returns a non-nil error and the loop stops advancing at that block.
@@ -441,16 +447,23 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome pas
 		return false, passNoQuorum, nil
 	}
 
-	if tipID == ids.Empty || b.cfg.Chain.Has(ctx, tipID) {
-		// The quorum named a tip we already hold — synced (no peer is ahead of us).
-		return false, passCaughtUp, nil
-	}
-
 	lastID, lastH, err := b.cfg.Chain.LastAccepted(ctx)
 	if err != nil {
 		return false, passWorking, err
 	}
-	if tipID == lastID {
+
+	// CAUGHT-UP iff the named frontier is ACCEPTED (it IS our last-accepted, or it is on our
+	// accepted chain at/below our last-accepted height) — NOT merely PRESENT in the block
+	// store. THE FREEZE: luxd-2 had the named frontier (1082796) and its run-up (1082781..95)
+	// GOSSIPED into its store but UNACCEPTED at last-accepted 1082780; the old Chain.Has(tip)
+	// returned true for that stored-but-unaccepted block and short-circuited to caught-up at
+	// the stale 1082780, never descending to accept it — self-reinforcing across restarts. The
+	// acceptance predicate falls through for a stored-unaccepted frontier, so the content-
+	// addressed descent below DRIVES ACCEPTANCE from last-accepted+1 up to the named frontier
+	// through the per-height-guarded Verify/finality path (it accepts the blocks already in the
+	// store — re-Verify + commit — advancing last-accepted, never marking them accepted merely
+	// because they are present).
+	if tipID == ids.Empty || tipID == lastID || b.cfg.Chain.Accepted(ctx, tipID) {
 		return false, passCaughtUp, nil
 	}
 

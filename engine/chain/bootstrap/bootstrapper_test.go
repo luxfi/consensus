@@ -142,19 +142,28 @@ func (p *testPeer) Ancestors(_ context.Context, blockID ids.ID, maxBlocks int) (
 // fetched blocks with the SAME contract as chain.Runtime.AcceptBootstrapBlock —
 // contiguity (height == last+1, parent == tip) + re-execute (valid) — so the loop is
 // exercised faithfully.
+//
+// It models the REAL VM's store-vs-acceptance distinction the prior mock missed: `have`
+// is the BLOCK STORE (a block PRESENT — e.g. gossiped ahead of acceptance — which the real
+// VM's GetBlock returns), and `accepted` is the ACCEPTED chain (finalized, what LastAccepted
+// advances). A block can be in `have` but not `accepted` — exactly the luxd-2 freeze: the
+// frontier and its run-up sat in the store unaccepted. `Has` reads the store; `Accepted`
+// reads the chain — and the loop's caught-up predicate uses `Accepted`, never `Has`.
 type testNode struct {
-	reg     map[string]*tBlock
-	have    map[ids.ID]bool
-	tipID   ids.ID
-	height  uint64
-	accepts int
+	reg      map[string]*tBlock
+	have     map[ids.ID]bool // BLOCK STORE: present (returnable by GetBlock), accepted-or-not
+	accepted map[ids.ID]bool // ACCEPTED chain: finalized blocks only
+	tipID    ids.ID
+	height   uint64
+	accepts  int
 }
 
 func newTestNode(reg map[string]*tBlock, seed *tBlock) *testNode {
-	n := &testNode{reg: reg, have: map[ids.ID]bool{}}
+	n := &testNode{reg: reg, have: map[ids.ID]bool{}, accepted: map[ids.ID]bool{}}
 	n.tipID = seed.id
 	n.height = seed.height
 	n.have[seed.id] = true
+	n.accepted[seed.id] = true
 	return n
 }
 
@@ -167,14 +176,21 @@ func (n *testNode) ParseBlock(_ context.Context, b []byte) (block.Block, error) 
 func (n *testNode) LastAccepted(context.Context) (ids.ID, uint64, error) {
 	return n.tipID, n.height, nil
 }
+// Has reports STORE presence (the block can be served by GetBlock) — accepted or not.
 func (n *testNode) Has(_ context.Context, id ids.ID) bool { return n.have[id] }
+
+// Accepted reports ACCEPTED-chain membership (finalized) — the loop's caught-up predicate.
+// A block in the store but NOT accepted returns false (the freeze precondition), so the loop
+// descends and accepts it instead of false-completing at the stale tip.
+func (n *testNode) Accepted(_ context.Context, id ids.ID) bool { return n.accepted[id] }
+
 func (n *testNode) AcceptBootstrapBlock(_ context.Context, b []byte) error {
 	blk, ok := n.reg[string(b)]
 	if !ok {
 		return errUnknownBytes
 	}
 	if blk.height <= n.height {
-		return nil // already have — responder overlap
+		return nil // already accepted — responder overlap
 	}
 	if blk.height != n.height+1 || blk.parent != n.tipID {
 		return errOutOfOrder
@@ -182,9 +198,12 @@ func (n *testNode) AcceptBootstrapBlock(_ context.Context, b []byte) error {
 	if !blk.valid {
 		return errInvalidBlock // re-execute (Verify) failed
 	}
+	// Accepting a block already PRESENT in the store (gossiped-ahead) is the freeze case:
+	// it advances the ACCEPTED chain regardless of prior store presence.
 	n.height = blk.height
 	n.tipID = blk.id
 	n.have[blk.id] = true
+	n.accepted[blk.id] = true
 	n.accepts++
 	return nil
 }
@@ -347,6 +366,187 @@ func TestLoop_GenuinelyCaughtUp_CompletesPromptly(t *testing.T) {
 	}
 	if node.accepts != 0 {
 		t.Fatalf("caught-up node fetches nothing, got %d accepts", node.accepts)
+	}
+}
+
+// TestLoop_StoredButUnacceptedFrontierDrivesAcceptance reproduces THE mainnet luxd-2 freeze
+// from production ground truth and proves the acceptance-vs-store fix. The node is at
+// last-accepted N, but blocks N+1..N+K are ALREADY IN ITS STORE (gossiped / a prior incomplete
+// sync) WITHOUT being accepted — and the beacons name the frontier at N+K, a tip the node HOLDS
+// but has NOT accepted. THE BUG: Chain.Has(tip) returned true for that stored-but-unaccepted
+// block, short-circuiting the loop to caught-up at the stale N (self-reinforcing — every restart
+// re-concluded caught-up). THE FIX: Chain.Accepted(tip) is false (present ≠ accepted), so the
+// loop DESCENDS and ACCEPTS N+1..N+K — through the per-height-guarded re-execute path, accepting
+// the blocks already in the store — reaching N+K, never going Ready at the stale N.
+func TestLoop_StoredButUnacceptedFrontierDrivesAcceptance(t *testing.T) {
+	const N, K = 100, 16 // gap-16, the exact ground-truth skew (1082780 → 1082796)
+	chain, reg := chainOf(N+K, 0)
+	peer := newTestPeer(chain)         // beacons hold + name the real frontier (tip N+K)
+	node := newTestNode(reg, chain[N]) // ACCEPTED only up to N
+	// GROUND TRUTH: N+1..N+K are PRESENT IN THE STORE (gossiped ahead) but UNACCEPTED.
+	for h := N + 1; h <= N+K; h++ {
+		node.have[chain[h].id] = true
+	}
+
+	ctx := context.Background()
+	// Precondition — the exact freeze state: the node HOLDS the named frontier yet has NOT
+	// accepted it (last-accepted is N).
+	if !node.Has(ctx, chain[N+K].id) {
+		t.Fatal("precondition: the frontier must be present in the store (gossiped ahead)")
+	}
+	if node.Accepted(ctx, chain[N+K].id) {
+		t.Fatal("precondition: the frontier must NOT be accepted (last-accepted is N)")
+	}
+
+	if err := runBootstrap(t, peer, node); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	// THE FREEZE ASSERTION: the node must ACCEPT the stored run-up and reach N+K — not freeze at N.
+	if node.height != N+K {
+		t.Fatalf("FREEZE: node concluded caught-up at the stale height %d — want %d (it held N+1..N+K stored-but-unaccepted)", node.height, N+K)
+	}
+	if !node.Accepted(ctx, chain[N+K].id) {
+		t.Fatal("the named frontier must be ACCEPTED after sync")
+	}
+	if node.accepts != K {
+		t.Fatalf("expected exactly the stored run-up accepted (N+1..N+K = %d), got %d", K, node.accepts)
+	}
+}
+
+// frozenLedgerNode models the REAL C-Chain freeze at the Chain-interface level (red HIGH-1):
+// LastAccepted is FROZEN at the boot height for the process life (the ZAP client caches its
+// last-accepted id at Initialize and a fire-and-forget Accept never refreshes it), while the
+// consensus finalized ledger (finalizedHeight/finalizedTip — what AcceptBootstrapBlock advances
+// and what Accepted reads) DOES advance. This is the separation the unified testNode could not
+// express (it advanced n.height for BOTH). It proves the loop drives convergence off the ADVANCING
+// source it queries through Accepted — NOT off the frozen LastAccepted: a Chain whose Accepted
+// advances converges in ONE Run even with LastAccepted pinned. The node side guarantees Accepted
+// reads the advancing ledger (bootstrap_sync.go) — here we lock in that the LOOP keeps trusting it.
+type frozenLedgerNode struct {
+	reg             map[string]*tBlock
+	frozenID        ids.ID          // LastAccepted id — FROZEN at boot for the run
+	frozenHeight    uint64          // LastAccepted height — FROZEN
+	finalizedTip    ids.ID          // advancing finalized ledger tip
+	finalizedHeight uint64          // advancing finalized ledger height
+	finalized       map[ids.ID]bool // advancing accepted set (what Accepted reads)
+	accepts         int
+}
+
+func newFrozenLedgerNode(reg map[string]*tBlock, seed *tBlock) *frozenLedgerNode {
+	return &frozenLedgerNode{
+		reg:             reg,
+		frozenID:        seed.id,
+		frozenHeight:    seed.height,
+		finalizedTip:    seed.id,
+		finalizedHeight: seed.height,
+		finalized:       map[ids.ID]bool{seed.id: true},
+	}
+}
+
+func (n *frozenLedgerNode) ParseBlock(_ context.Context, b []byte) (block.Block, error) {
+	if blk, ok := n.reg[string(b)]; ok {
+		return blk, nil
+	}
+	return nil, errUnknownBytes
+}
+
+// LastAccepted returns the FROZEN boot position — never advances, modeling the ZAP cache.
+func (n *frozenLedgerNode) LastAccepted(context.Context) (ids.ID, uint64, error) {
+	return n.frozenID, n.frozenHeight, nil
+}
+
+// Accepted reads the ADVANCING finalized ledger (the node side wires this to the in-process
+// consensus ledger, never the frozen cache).
+func (n *frozenLedgerNode) Accepted(_ context.Context, id ids.ID) bool { return n.finalized[id] }
+
+// AcceptBootstrapBlock advances the finalized ledger and no-ops blocks at/below the ADVANCING
+// finalizedHeight — exactly the real engine guard (consensus.GetFinalizedHeight), NOT LastAccepted.
+func (n *frozenLedgerNode) AcceptBootstrapBlock(_ context.Context, b []byte) error {
+	blk, ok := n.reg[string(b)]
+	if !ok {
+		return errUnknownBytes
+	}
+	if blk.height <= n.finalizedHeight {
+		return nil // already finalized — responder overlap (reads the LEDGER, not the frozen cache)
+	}
+	if blk.height != n.finalizedHeight+1 || blk.parent != n.finalizedTip {
+		return errOutOfOrder
+	}
+	if !blk.valid {
+		return errInvalidBlock
+	}
+	n.finalizedHeight = blk.height
+	n.finalizedTip = blk.id
+	n.finalized[blk.id] = true
+	n.accepts++
+	return nil
+}
+
+// TestLoop_FrozenLastAcceptedConvergesViaAdvancingLedger is the loop-contract guard for red HIGH-1:
+// the caught-up predicate must ride the ADVANCING acceptance oracle (Accepted), so a Chain whose
+// LastAccepted is FROZEN but whose finalized ledger ADVANCES still converges in ONE Run. If a
+// refactor ever made the loop conclude caught-up off LastAccepted alone, this node — frozen at M —
+// would re-descend every pass while AcceptBootstrapBlock no-ops the already-finalized run-up and
+// the run would ErrStalled instead of returning nil.
+func TestLoop_FrozenLastAcceptedConvergesViaAdvancingLedger(t *testing.T) {
+	const N, M = 60, 24 // stale node booted at M; the descent must finalize M+1..N
+	chain, reg := chainOf(N, 0)
+	peer := newTestPeer(chain)
+	node := newFrozenLedgerNode(reg, chain[M])
+
+	if err := runBootstrap(t, peer, node); err != nil {
+		t.Fatalf("Run must converge off the advancing finalized ledger despite a frozen LastAccepted: %v", err)
+	}
+	if node.finalizedHeight != N {
+		t.Fatalf("finalized ledger must reach the frontier: height %d, want %d", node.finalizedHeight, N)
+	}
+	if node.accepts != N-M {
+		t.Fatalf("expected exactly M+1..N accepted (%d), got %d", N-M, node.accepts)
+	}
+	// PREMISE: LastAccepted never moved — the bug only matters because the cache is frozen.
+	if _, h, _ := node.LastAccepted(context.Background()); h != M {
+		t.Fatalf("premise: LastAccepted must stay frozen at M=%d, got %d", M, h)
+	}
+}
+
+// TestLoop_ForgedStoredBlockNeverAccepted is the SAFETY control for the acceptance-vs-store fix
+// (C1 preserved): a block sitting in the node's STORE that is NOT on the beacon-named frontier's
+// content-addressed chain (a forged / uncertified block gossiped in) must NEVER be accepted
+// merely because it is present. The honest beacons name the REAL tip N; the content-addressed
+// descent accepts ONLY the real chain, and the forged stored block is finalized at no point —
+// the fix drives acceptance of stored blocks ON the frontier path, never of stored junk off it.
+func TestLoop_ForgedStoredBlockNeverAccepted(t *testing.T) {
+	const N = 40
+	chain, reg := chainOf(N, 0)
+	peer := newTestPeer(chain)           // honest beacons: name + serve the real chain, tip N
+	node := newTestNode(reg, chain[N/2]) // accepted up to N/2
+
+	// A FORGED block gossiped into the store at a height the node has NOT reached: present in the
+	// store (`have`) and decodable (registered), but OFF the honest chain (random parent), and
+	// even Verify-passing — to prove presence alone never finalizes it off the frontier path.
+	forged := &tBlock{
+		id:     ids.GenerateTestID(),
+		parent: ids.GenerateTestID(), // not the honest chain's link
+		height: uint64(N/2 + 1),
+		bytes:  []byte("forged@" + strconv.Itoa(N/2+1) + ":" + ids.GenerateTestID().String()),
+		valid:  true,
+	}
+	reg[string(forged.bytes)] = forged
+	node.have[forged.id] = true
+
+	ctx := context.Background()
+	if node.Accepted(ctx, forged.id) {
+		t.Fatal("precondition: the forged block must NOT be accepted")
+	}
+
+	if err := runBootstrap(t, peer, node); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if node.height != N {
+		t.Fatalf("node must converge to the honest frontier N=%d, got %d", N, node.height)
+	}
+	if node.Accepted(ctx, forged.id) {
+		t.Fatal("C1: a forged block in the store must NEVER be accepted just because it is present")
 	}
 }
 

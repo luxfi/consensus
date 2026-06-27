@@ -336,6 +336,47 @@ func (rt *Runtime) ValidatorCount() int {
 	return rt.validators.Count(rt.config.NetworkID)
 }
 
+// FinalizedLedger returns the in-process consensus finalized tip id and height, and
+// whether ANY block has been finalized yet (set=false on an un-seeded / empty-genesis
+// node before its first finalize).
+//
+// This is the SINGLE advancing source of truth for "where the node's accepted chain
+// actually is" — the SAME per-height ledger AcceptBootstrapBlock's contiguity guard
+// trusts (bootstrap_accept.go reads consensus.GetFinalizedHeight directly). It ADVANCES
+// as blocks finalize via markFinalizedLocked. It must NOT be confused with the VM's
+// LastAccepted, which a fire-and-forget Accept can leave FROZEN at the boot snapshot —
+// the staleness this engine already designs around (see fastFollowHeight above: "1.
+// VM.LastAccepted() is stale after Accept() calls"). The node's bootstrap caught-up /
+// height signals read THIS, not the VM cache, so a frozen VM.LastAccepted can never make
+// a converging node re-descend forever and false-stall.
+func (rt *Runtime) FinalizedLedger() (tip ids.ID, height uint64, set bool) {
+	if rt.Transitive == nil || rt.Transitive.consensus == nil {
+		return ids.Empty, 0, false
+	}
+	h, ok := rt.Transitive.consensus.GetFinalizedHeight()
+	if !ok {
+		return ids.Empty, 0, false
+	}
+	return rt.Transitive.consensus.GetFinalizedTip(), h, true
+}
+
+// FinalizedBlockAtHeight returns the block finalized at height h in the in-process
+// per-height ledger, with ok=false when the node has not finalized that height THIS
+// session (a height below the boot seed is never re-seeded, so it reads absent).
+//
+// It is the authoritative IN-PROCESS fork-sibling oracle — it replaces the dead coreth
+// height index the node's acceptance check used to call (block.ChainVM.GetBlockIDAtHeight
+// is unhandled over ZAP, so it returned nothing on the real C-Chain). When the ledger
+// knows h it rejects a stored-but-losing sibling (canonical != id); when it does not
+// (a height below the boot seed), the node degrades to the height-bound anchor
+// (h > finalizedHeight ⇒ not accepted), which the ⅔-by-stake frontier naming (C1) backs.
+func (rt *Runtime) FinalizedBlockAtHeight(h uint64) (ids.ID, bool) {
+	if rt.Transitive == nil || rt.Transitive.consensus == nil {
+		return ids.Empty, false
+	}
+	return rt.Transitive.consensus.FinalizedBlockAtHeight(h)
+}
+
 // ForwardVMNotifications reads from the VM's toEngine channel and forwards
 // PendingTxs notifications to trigger block building through consensus.
 //
