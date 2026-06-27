@@ -29,7 +29,7 @@ build: ## Build all tools and commands
 # === TEST TARGETS ===
 
 # Run all tests
-test: ## Run all tests
+test: guard-no-trusted-dealer ## Run all tests
 	@echo "🧪 Running tests..."
 	@go test -race -timeout 5m -tags="!integration" ./... 2>&1 | grep -v "warning.*LD_DYSYMTAB" | grep -v "has malformed LC_DYSYMTAB"
 
@@ -222,8 +222,13 @@ static-analysis: ## Run static analysis
 	@go vet ./...
 	@staticcheck ./... 2>/dev/null || echo "⚠️  staticcheck not found, skipping"
 
+# Guard: no trusted-dealer keygen in production (non-test) code
+guard-no-trusted-dealer: ## Fail if trusted-dealer keygen helpers exist in non-test code
+	@echo "🔒 Guard: no trusted-dealer keygen in non-test code..."
+	@bash scripts/no-trusted-dealer-guard.sh
+
 # Check for security vulnerabilities
-security: ## Check for security vulnerabilities
+security: guard-no-trusted-dealer ## Check for security vulnerabilities
 	@echo "🔒 Checking for vulnerabilities..."
 	@govulncheck ./... 2>/dev/null || echo "⚠️  govulncheck not found, install with: go install golang.org/x/vuln/cmd/govulncheck@latest"
 
