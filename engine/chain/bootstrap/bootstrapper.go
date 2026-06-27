@@ -81,6 +81,18 @@ const (
 	// watchdog (5 min), so the loop returns a clean named error before the watchdog
 	// force-stops the engine.
 	defaultConnectDeadline = 3 * time.Minute
+
+	// defaultMaxNoQuorumRounds bounds how many CONSECUTIVE FrontierNoQuorum rounds Run RETRIES
+	// before terminally failing SAFE with ErrNoBeaconQuorum (F2). On a LIVE chain (1–2 s blocks)
+	// the beacon-named frontier is a MOVING TARGET: a single GetAcceptedFrontier round at the
+	// instant connectivity first crosses the ⅔ floor can catch honest beacons momentarily SPLIT
+	// across ADJACENT finalized tips (finality-propagation skew) — a transient no-quorum that one
+	// more poll clears. Retrying this many rounds lets a transient split CONVERGE; a PERSISTENT
+	// no-quorum (genuine eclipse / ≥⅓ Byzantine beacon stake) still fails safe after the bound.
+	// 10 rounds × (the node's ~3 s frontier window + ~1 s pause) ≈ 40 s — a sane fail-safe window,
+	// far below monitorBootstrap's 5-min no-progress watchdog, yet ample for a transient (which
+	// clears in a round or two) to settle.
+	defaultMaxNoQuorumRounds = 10
 )
 
 var (
@@ -132,8 +144,16 @@ var (
 type FrontierStatus int
 
 const (
-	// FrontierNamed: a ⅔-by-stake beacon quorum agreed on the returned tip — sync to it.
-	FrontierNamed FrontierStatus = iota
+	// FrontierInvalid is the ZERO value — a deliberately MEANINGLESS status (F4). Making the
+	// zero value non-permissive is defense-in-depth: an uninitialized or out-of-range status can
+	// never be mistaken for "FrontierNamed" or "caught up". syncOnce's switch maps it (via the
+	// fail-safe default) to a bounded-retry-then-fail-safe, so a future bug that returns a zero
+	// status can NEVER false-complete a node at its stale height. It is never returned deliberately.
+	FrontierInvalid FrontierStatus = iota
+
+	// FrontierNamed: a ⅔-by-stake beacon quorum agreed on the returned tip — sync to it. This is
+	// the ONLY status the tip is meaningful in, and the ONLY one that proceeds to descend+execute.
+	FrontierNamed
 
 	// FrontierNoBeacons: NO beacon set is configured (single-node / dev / --skip-bootstrap).
 	// There is no network frontier to reach, so the node is genuinely caught up — COMPLETE
@@ -146,9 +166,12 @@ const (
 	// (then the quorum names the frontier) or the connect deadline elapses (then fail safe).
 	FrontierConnecting
 
-	// FrontierNoQuorum: enough beacon stake IS connected to ask, but no ⅔-by-stake
-	// agreement on a single tip is reachable (genuine eclipse / partition). The node is NOT
-	// caught up: fail SAFE (do NOT false-complete at the stale height).
+	// FrontierNoQuorum: enough beacon stake IS connected to ask, but THIS round saw no
+	// ⅔-by-stake agreement on a single tip — either a TRANSIENT finality-skew split (honest
+	// beacons momentarily on adjacent finalized tips; the live frontier is a moving target)
+	// that a retry clears, or a PERSISTENT eclipse / partition. The node is NOT caught up: the
+	// loop RETRIES a bounded number of rounds (a transient converges) then fails SAFE (a
+	// persistent no-quorum never false-completes at the stale height). See defaultMaxNoQuorumRounds.
 	FrontierNoQuorum
 )
 
@@ -206,6 +229,17 @@ type Config struct {
 	// caught up — it must wait until it can actually ask the network.
 	ConnectDeadline time.Duration // default 3m
 
+	// MaxNoQuorumRounds bounds how many CONSECUTIVE FrontierNoQuorum rounds Run RETRIES before
+	// terminally failing SAFE with ErrNoBeaconQuorum (F2). A LIVE frontier is a MOVING TARGET:
+	// one tally at the instant connectivity first crosses the ⅔ floor can catch honest beacons
+	// momentarily SPLIT across adjacent finalized tips (finality-propagation skew) — a transient
+	// no-quorum that one more poll clears. Retrying a bounded number of rounds lets a transient
+	// split CONVERGE while a PERSISTENT no-quorum (genuine eclipse / ≥⅓ Byzantine beacon stake)
+	// still fails safe after the bound. The counter RESETS the instant a frontier IS named (the
+	// no-quorum condition cleared). Default 10 (a seconds-to-low-minutes window, well below the
+	// 5-min watchdog). The transient/persistent boundary is exercised in the bounded-retry tests.
+	MaxNoQuorumRounds int // default 10
+
 	// WeakSubjectivityID + WeakSubjectivityHeight pin an OPTIONAL operator-supplied
 	// recent finalized checkpoint (block id at height). When both are set (id != Empty
 	// AND height > 0) and the checkpoint is AHEAD of the local last-accepted, the
@@ -241,6 +275,9 @@ func New(cfg Config) *Bootstrapper {
 	if cfg.ConnectDeadline <= 0 {
 		cfg.ConnectDeadline = defaultConnectDeadline
 	}
+	if cfg.MaxNoQuorumRounds <= 0 {
+		cfg.MaxNoQuorumRounds = defaultMaxNoQuorumRounds
+	}
 	if cfg.Log == nil {
 		cfg.Log = log.NewNoOpLogger()
 	}
@@ -254,6 +291,12 @@ func New(cfg Config) *Bootstrapper {
 // failure (so it is NOT masked as "ready").
 func (b *Bootstrapper) Run(ctx context.Context) error {
 	stalls := 0
+	// noQuorums counts CONSECUTIVE FrontierNoQuorum rounds (F2). A live frontier is a MOVING
+	// TARGET — a single tally at the instant connectivity crosses the ⅔ floor can catch honest
+	// beacons split across adjacent finalized tips. We RETRY a bounded number of rounds so a
+	// transient split CONVERGES; a persistent no-quorum still fails SAFE after the bound. It
+	// resets the instant a frontier IS named (passWorking) — the no-quorum condition cleared.
+	noQuorums := 0
 	// connectingSince times the WAIT for beacon connectivity. It starts at the first
 	// FrontierConnecting pass and resets the instant we get PAST connecting (a named
 	// frontier), so it bounds only the contiguous "cannot ask the network yet" window.
@@ -294,14 +337,34 @@ func (b *Bootstrapper) Run(ctx context.Context) error {
 			continue
 
 		case passNoQuorum:
-			// Enough beacon stake IS connected to ask, but no ⅔-by-stake supermajority names
-			// a single frontier — a genuine eclipse / partition. Fail SAFE: do NOT conclude
-			// caught-up at the stale height.
-			return ErrNoBeaconQuorum
+			// Enough beacon stake IS connected to ask, but THIS GetAcceptedFrontier round found
+			// no ⅔-by-stake supermajority on a single tip. On a live chain (1–2 s blocks) the
+			// beacon-named frontier MOVES: honest beacons momentarily split across ADJACENT
+			// finalized tips (finality-propagation skew), so a single tally at the instant
+			// connectivity first crosses the ⅔ floor can miss — a transient one more poll clears.
+			// RETRY a bounded number of rounds (the same shape as the stall/connect waits): a
+			// transient split CONVERGES on a later round (more beacons connect, finality settles);
+			// only a PERSISTENT no-quorum (genuine eclipse / ≥⅓ Byzantine beacon stake) exhausts
+			// the bound and fails SAFE. Either way the node NEVER false-completes at its stale
+			// height. The bound keeps a real eclipse failing within a sane window (≪ the watchdog).
+			noQuorums++
+			if noQuorums == 1 {
+				b.cfg.Log.Info("bootstrap: beacons connected but split with no ⅔ quorum — retrying (frontier is a moving target; not caught up)")
+			}
+			if noQuorums >= b.cfg.MaxNoQuorumRounds {
+				return ErrNoBeaconQuorum
+			}
+			if err := b.pause(ctx); err != nil {
+				return err
+			}
+			continue
 
 		case passWorking:
-			// A frontier IS named; the descent ran. We are past the connect phase.
+			// A frontier IS named; the descent ran. We are past BOTH the connect phase and any
+			// transient no-quorum, so reset both bounded waits — the next no-quorum (if any) is a
+			// fresh transient, counted from zero again.
 			connectingSince = time.Time{}
+			noQuorums = 0
 			if advanced {
 				stalls = 0
 				continue // immediately fetch the next segment toward the frontier
@@ -353,6 +416,9 @@ const (
 func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome passOutcome, err error) {
 	tipID, status := b.cfg.Source.FrontierTip(ctx)
 	switch status {
+	case FrontierNamed:
+		// A ⅔-stake beacon quorum named tipID — the ONLY permissive status. Fall through to
+		// descend + execute below.
 	case FrontierNoBeacons:
 		// No beacon set configured (single-node / dev / --skip-bootstrap). There is no
 		// network frontier to reach — genuinely caught up. A legit single node must not hang.
@@ -362,11 +428,17 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome pas
 		// boot race). The node cannot even ASK — it is NOT caught up. Run waits (bounded).
 		return false, passConnecting, nil
 	case FrontierNoQuorum:
-		// Beacons connected, but no ⅔-by-stake agreement is reachable (eclipse/partition).
-		// NOT caught up — Run fails safe.
+		// Beacons connected, but no ⅔-by-stake agreement reachable THIS round (transient
+		// finality skew or a genuine eclipse). NOT caught up — Run retries bounded then fails safe.
 		return false, passNoQuorum, nil
-	case FrontierNamed:
-		// A ⅔-stake beacon quorum named tipID — fall through to descend + execute below.
+	default:
+		// FrontierInvalid (the zero value) or any out-of-range status (F4). A status the type
+		// does not define can NEVER be read as caught-up — that would be the false-complete the
+		// whole decomplecting exists to prevent. Fail SAFE, identical to FrontierNoQuorum
+		// (bounded retry then ErrNoBeaconQuorum), so even an uninitialized status finalizes nothing.
+		b.cfg.Log.Warn("bootstrap: FrontierTip returned an undefined status — failing safe (not caught up)",
+			log.Int("status", int(status)))
+		return false, passNoQuorum, nil
 	}
 
 	if tipID == ids.Empty || b.cfg.Chain.Has(ctx, tipID) {
