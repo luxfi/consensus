@@ -82,6 +82,13 @@ test-cpp: $(STATIC_LIB)
 	@echo "Running C++ consumer..."
 	@./examples/bin/cpp_consumer
 
+test-keeper: $(STATIC_LIB)
+	@echo "Building Keeper-on-Quasar state machine proof (links libluxconsensus statically)..."
+	@mkdir -p examples/bin
+	$(CXX) -std=c++17 -Iinclude -o examples/bin/keeper_quasar examples/keeper_quasar.cpp $(STATIC_LIB) -pthread
+	@echo "Running Keeper-on-Quasar proof..."
+	@./examples/bin/keeper_quasar
+
 $(BENCHMARK_BIN): benchmark.c $(SHARED_LIB)
 	@echo "Building benchmark..."
 	$(CC) $(CFLAGS) -O3 -o $@ $< -L./lib -lluxconsensus -pthread
