@@ -1,7 +1,7 @@
 # Lux Consensus -- Agent Knowledge Base
 
 **Repository**: github.com/luxfi/consensus
-**Latest Tag**: v1.22.85
+**Latest Tag**: v1.26.0
 **Go**: 1.26.1
 
 ## Quasar Family of Consensus
@@ -37,17 +37,82 @@ post-quantum finality. All sub-protocols live in `protocol/`.
 
 The finality certificate is threshold **CERTIFICATION**, not threshold signing.
 One policy-gated envelope (`protocol/quasar/consensus_cert.go`,
-`VerifyConsensusCert`) with per-leg evidence modes:
-`EvidenceThresholdSig` (lattice O(1) — origin's `VerifyWithRealKeys`),
-`EvidenceWeightedSigSet` (independent FIPS sigs + weighted quorum — the
-`WeightedQuorumCert`; the **only** mode for SLH-DSA, never seed-reconstructed),
-`EvidenceStarkCompressedSigSet` (P3Q, same predicate, audit-gated stub), and
-`EvidenceClassicalAggregate` (BLS, classical-only, never satisfies a PQ leg).
-Required legs are **policy-derived** (`CertPolicy.RequiredLegs`), never cert
-bytes (the Red H3 anti-downgrade). One-sentence spec: *policy defines the
-required legs; cert bytes provide per-leg evidence; each mode proves the same
-weighted-quorum predicate over the same domain-separated message.* The
-`MLDSAProof`/Groth16 3-tuple below is the SUPERSEDED prior design.
+`VerifyConsensusCert`), released at **v1.26.0**. One-sentence spec: *policy
+defines the required legs; cert bytes provide per-leg evidence; each mode proves
+the same weighted-quorum predicate over the same domain-separated finality
+message M.* Required legs are **policy-derived** (`ConsensusCertPolicy.RequiredLegs`)
+and recomputed/checked against the cert's `RequiredLegsRoot` — never trusted from
+cert bytes (the anti-downgrade invariant).
+
+**Four typed `EvidenceKind`s** (`compact_evidence.go`) are the chain-facing
+vocabulary; each decomposes onto two orthogonal axes, `LegKind` (WHAT is required)
+× `EvidenceMode` (HOW it is proven):
+
+| `EvidenceKind` | wire | `LegKind` | `EvidenceMode` |
+|----------------|------|-----------|----------------|
+| `EvidenceBeamBLS` | `beam-bls` | `LegClassical` | `EvidenceClassicalAggregate` |
+| `EvidencePulsarThresholdMLDSA` | `pulsar-threshold-mldsa` | `LegPulsarMLDSA` | `EvidenceThresholdSig` |
+| `EvidenceCoronaRingtail` | `corona-ringtail` | `LegCoronaLattice` | `EvidenceThresholdSig` |
+| `EvidenceP3QMLDSARollup` | `p3q-mldsa-rollup` *(fallback)* | `LegPulsarMLDSA` | `EvidenceP3QRollup` |
+
+Pulsar and P3Q satisfy the SAME leg kind (Module-LWE ML-DSA finality) by different
+mechanisms — the policy-table "OR". The two enums are `LegKind` {`LegPulsarMLDSA`,
+`LegCoronaLattice`, `LegMagnetarSLHDSA`, `LegClassical`} and `EvidenceMode`
+{`EvidenceThresholdSig`, `EvidenceWeightedSigSet`, `EvidenceStarkCompressedSigSet`,
+`EvidenceClassicalAggregate`, `EvidenceP3QRollup`}. So there are four typed
+`EvidenceKind`s **plus the `LegMagnetarSLHDSA` leg** (hash-based FIPS-205, Polaris
+profile) outside this vocabulary — production-forbidden from `EvidenceThresholdSig`
+(no aggregatable threshold structure). Never "four legs total."
+
+**Policy table** (`cert_policy_table.go`) — exactly four operator postures:
+
+| posture | string | required legs |
+|---------|--------|---------------|
+| `PolicyBLSFast` | `BLS_FAST` | Beam |
+| `PolicyHybridPQCheckpoint` | `HYBRID_PQ_CHECKPOINT` | Beam ∧ (Pulsar OR P3Q) |
+| `PolicyStrictQuasar` | `STRICT_QUASAR` | Beam ∧ Pulsar ∧ Corona — full dual-lattice AND |
+| `PolicyRecoveryMode` | `RECOVERY_MODE` | Beam ∧ P3Q-rollup |
+
+AND-enforcement: `VerifyConsensusCert` rejects if any required leg is missing,
+mode-disallowed, or fails its verifier, plus a cardinality check (each required leg
+seen exactly once). STRICT permits ONLY the compact Pulsar threshold sig for the PQ
+leg; RECOVERY permits ONLY P3Q; HYBRID permits either.
+
+**KeyEra** (`key_era.go`, commit `3153aea93` — decomplect `PulsarKeyEra` → `KeyEra`,
+value-not-place): ONE generic `KeyEra` type pins one compact group key to one
+validator-set era, qualified by its `SchemeID` (ML-DSA vs Ringtail) — one type for
+both lanes, not a Pulsar-specific era plus a Corona one. It serves the two
+**threshold/group-key lanes — Pulsar and Corona — ONLY**; Beam (classical aggregate)
+and P3Q (per-validator rollup) are explicitly refused by `eraSuite()` (not compact
+group-key threshold lanes).
+
+**P3Q is FALLBACK only**, bound to the committed validator set (commit `73c280efe`
+closed a zero-stake forge): `verifyP3QDirect` commits the rollup root to the raw
+`MLDSACertSet`, then verifies it through the audited weighted-sig-set verifier —
+binding every leaf to `validators.Root()` by weighted-Merkle membership at the BFT
+weight floor. In the normal/STRICT path Pulsar compresses the whole quorum to ONE
+threshold signature, so the P3Q rollup of N independent sigs is the
+migration / recovery / bridge / audit object, never the primary finality object;
+STRICT structurally refuses it.
+
+**Compact — O(1), not O(N).** Beam / Pulsar / Corona are each ONE O(1) aggregate
+signature, so the cert footprint is byte-invariant in committee size
+(`TestCompact_O1NotON_For1000Validators` asserts naive/compact ≥ **100×**). At N=1000
+(ML-DSA-65) that test MEASURES/logs **957×** — a 3466-byte compact Beam+Pulsar
+checkpoint vs a 3,320,000-byte naive 1000-raw-ML-DSA object. 957× is the measured
+figure; the only asserted bound is ≥100×.
+
+**Boring verifier.** `VerifyConsensusCert` is deliberately straight-line: one leg at
+a time, typed rejects, registry-mediated suite dispatch (no suite string can reach the
+wrong lane's verifier), no clever shortcuts. It is NOT constant-time — it early-returns
+on the first failing leg.
+
+**Decomplect.** The dealerless PQ core (Pulsar / Corona, via `luxfi/threshold`) imports
+NEITHER `luxfi/mpc` NOR `luxfi/tee` — those are optional, cross-repo extensions (absent
+from this module's `go.mod`). Attestation verification is the separate `luxfi/cc` leaf
+with orthogonal vendor Kinds.
+
+The `MLDSAProof`/Groth16 3-tuple below is the SUPERSEDED prior design.
 
 ### Quasar Certificate (superseded — historical)
 
