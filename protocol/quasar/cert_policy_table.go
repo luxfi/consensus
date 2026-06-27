@@ -31,7 +31,7 @@
 // operator selects a posture (config.CertPolicy on the chain VM) which resolves
 // to one of these. Decomplected: this file owns ONLY the leg/mode requirement
 // table. It decides nothing about message construction (quasar_finality.go),
-// leg verification (the leg verifiers), or key eras (the PulsarKeyEra registry).
+// leg verification (the leg verifiers), or key eras (the KeyEra registry).
 package quasar
 
 import "fmt"
