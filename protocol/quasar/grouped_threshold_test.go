@@ -79,11 +79,15 @@ func TestGroupedEpochManager_ParallelKeygen(t *testing.T) {
 	t.Logf("999 validators → %d groups of 3, keygen: %v", stats.NumGroups, elapsed)
 	t.Logf("Naive 999-validator keygen would be ~500ms+")
 
-	// 333 groups × 3ms = ~1s sequential keygen (best case)
-	// Use 10s timeout to account for CI load while catching regressions
-	// Skip timing check with race detector (adds 10-20x overhead)
+	// 333 groups × 3ms ≈ 1s sequential keygen (best case). This is a COARSE
+	// pathological-regression guard, NOT an SLA: an absolute deadline near the
+	// real runtime flakes under CI parallelism (observed 15s+ under load 33). A
+	// 60s ceiling still catches the regression that matters — grouping broken so
+	// it falls back to naive full-DKG per validator (minutes for 999) — while
+	// never tripping on legitimate scheduler contention. Skipped under -race
+	// (10-20x overhead makes any wall-clock bound meaningless).
 	if !raceEnabled {
-		require.Less(t, elapsed, 10*time.Second, "Grouped keygen should complete in reasonable time")
+		require.Less(t, elapsed, 60*time.Second, "grouped keygen pathologically slow — grouping likely broke (naive full-DKG fallback)")
 	} else {
 		t.Logf("Skipping timing check with race detector enabled")
 	}
