@@ -10,26 +10,24 @@
 //     Ring-LWE threshold.
 //  2. Each named posture enforces its required legs / permitted modes:
 //     BLS_FAST = Beam only; HYBRID accepts Pulsar OR P3Q; RECOVERY accepts P3Q
-//     and REFUSES the Pulsar threshold mode; STRICT refuses the P3Q mode and a
-//     missing Corona.
+//     and REFUSES the Pulsar threshold mode; STRICT refuses the P3Q mode.
 //  3. COMPACTNESS: the Beam/Pulsar/Corona legs are O(1) in committee size — a
 //     cert for 1000 validators is the SAME size as for 4, and orders of
 //     magnitude smaller than the O(N) naive "1000 raw ML-DSA certs" object.
 //  4. Dispatch safety + boring VerifyPulsar: wrong-era, suite-mismatch,
 //     cross-lane suite, unknown suite and a corrupt signature all reject with
 //     distinct typed errors; no suite string reaches the wrong verifier.
-//  5. The P3Q fallback path verifies a rollup root (Direct), and rejects a
-//     tampered root, a corrupt leaf, a sub-threshold weight, an un-opted-in
+//  5. The P3Q fallback path verifies a rollup root (Direct) over a REAL
+//     validator-set-bound MLDSACertSet (a WeightedQuorumCert), and rejects a
+//     tampered root, a corrupt cert set, a sub-threshold floor, an un-opted-in
 //     classical proof, and an unaudited succinct backend.
 package quasar
 
 import (
-	"crypto/rand"
 	"errors"
 	"testing"
 
 	"github.com/luxfi/crypto/bls"
-	"github.com/luxfi/crypto/mldsa"
 )
 
 // ----------------------------------------------------------------------------
@@ -40,7 +38,7 @@ const compactThreshold = uint64(100)
 
 // compactHeader builds a fixed cert header for a posture with the given signer
 // root, and returns the header + validator-set root + the canonical message M
-// every leg signs.
+// every compact leg signs.
 func compactHeader(policy *QuasarEvidencePolicy, signerRoot [32]byte) (*ConsensusCert, [48]byte, []byte) {
 	var vsetRoot [48]byte
 	for i := range vsetRoot {
@@ -144,70 +142,56 @@ func aggN(t *testing.T, msg []byte, n int) (aggPub, aggSig []byte) {
 	return bls.PublicKeyToCompressedBytes(apk), bls.SignatureToBytes(asig)
 }
 
-// mldsaLeafKeys generates n distinct (id, sk) pairs for a P3Q rollup. The ids
-// are deterministic so the signer root is computable before signing.
-type mldsaLeafKey struct {
-	id [32]byte
-	sk *mldsa.PrivateKey
-}
+// p3qSuiteDirect is the production P3Q ML-DSA-65 Direct suite id.
+const p3qSuiteDirect = "Lux-P3Q-MLDSA65-Direct-v1"
 
-func mldsaLeafKeys(t *testing.T, n int) []mldsaLeafKey {
+// p3qDirectCert builds a {Beam, P3Q-Direct} cert for the given posture. The P3Q
+// leg wraps a REAL validator-set-bound WeightedQuorumCert (fourMLDSA, Σweight
+// 100, threshold 100) — the MLDSACertSet — in a rollup-root commitment. Returns
+// the store, validators (carrying the weighted config/envelope the inner verify
+// needs), the cert, M, and the inner WeightedQuorumCert bytes.
+func p3qDirectCert(t *testing.T, policy *QuasarEvidencePolicy) (*envStore, *envValidators, *ConsensusCert, []byte, []byte) {
 	t.Helper()
-	out := make([]mldsaLeafKey, n)
-	for i := 0; i < n; i++ {
-		sk, err := mldsa.GenerateKey(rand.Reader, mldsa.MLDSA65)
-		if err != nil {
-			t.Fatalf("mldsa keygen: %v", err)
-		}
-		var id [32]byte
-		id[0] = byte(i)
-		id[1] = byte(i >> 8)
-		id[31] = 0x77
-		out[i] = mldsaLeafKey{id: id, sk: sk}
+	sc := fourMLDSA(t)
+	innerWire, err := sc.cert.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal inner weighted cert: %v", err)
 	}
-	return out
-}
-
-// idLeaves projects the keys to id-only leaves (for the signer-root preimage).
-func idLeaves(keys []mldsaLeafKey) []MLDSAValidatorCert {
-	out := make([]MLDSAValidatorCert, len(keys))
-	for i, k := range keys {
-		out[i] = MLDSAValidatorCert{ValidatorID: k.id}
+	cert := &ConsensusCert{
+		Version:          consensusCertVersion,
+		Profile:          1,
+		ChainID:          sc.cert.ChainID,
+		Epoch:            sc.cert.Epoch,
+		Height:           sc.cert.Height,
+		Round:            sc.cert.Round,
+		BlockHash:        sc.cert.ValueHash,
+		ValidatorSetRoot: sc.cert.ValidatorSetRoot,
+		PolicyID:         policy.EvidencePolicyID(),
+		RequiredLegsRoot: HashRequiredLegs(policy.RequiredLegs()),
+		SignerRoot:       fixedSignerRoot(),
+		KeyEraID:         7,
+		AggregateWeight:  sc.cert.AggregateWeight,
 	}
-	return out
-}
+	msg := consensusCertMessage(cert, cert.RequiredLegsRoot)
+	aggPub, aggSig := aggN(t, msg, 3)
 
-// signLeaves signs msg with each key, producing the full MLDSACertSet.
-func signLeaves(t *testing.T, keys []mldsaLeafKey, msg []byte, weightEach uint64) []MLDSAValidatorCert {
-	t.Helper()
-	out := make([]MLDSAValidatorCert, len(keys))
-	for i, k := range keys {
-		sig, err := k.sk.Sign(rand.Reader, msg, nil)
-		if err != nil {
-			t.Fatalf("mldsa sign: %v", err)
-		}
-		out[i] = MLDSAValidatorCert{
-			ValidatorID: k.id,
-			Weight:      weightEach,
-			PubKey:      k.sk.PublicKey.Bytes(),
-			Sig:         sig,
-		}
-	}
-	return out
-}
-
-// p3qDirectEvidence builds a P3Q Direct-path LegEvidence over a signed cert set.
-func p3qDirectEvidence(leaves []MLDSAValidatorCert) LegEvidence {
-	suiteID := "Lux-P3Q-MLDSA65-Direct-v1"
-	return LegEvidence{
+	p3q := LegEvidence{
 		Leg:  LegSpec{Kind: LegPulsarMLDSA, ParamSetID: pqParam},
 		Mode: EvidenceP3QRollup,
 		Payload: encodeP3QRollupPayload(&P3QRollupPayload{
-			SuiteID:    suiteID,
-			RollupRoot: P3QRollupRoot(suiteID, leaves),
-			CertSet:    leaves,
+			SuiteID:    p3qSuiteDirect,
+			RollupRoot: P3QRollupRoot(p3qSuiteDirect, innerWire),
+			CertSet:    innerWire,
 		}),
 	}
+	cert.Evidence = []LegEvidence{beamEvidence(aggSig), p3q}
+
+	store := &envStore{policy: policy}
+	validators := &envValidators{
+		root: sc.cert.ValidatorSetRoot, epoch: sc.env.Epoch, cfg: sc.cfg, env: sc.env,
+		classKeys: map[ClassicalScheme][]byte{ClassicalSchemeBLS12381: aggPub},
+	}
+	return store, validators, cert, msg, innerWire
 }
 
 // ----------------------------------------------------------------------------
@@ -249,7 +233,7 @@ func TestCompact_StrictQuasar_AllThreeLegsVerify(t *testing.T) {
 }
 
 // ----------------------------------------------------------------------------
-// 2. Policy-mode required-legs enforcement (corona-free).
+// 2. Policy-mode required-legs enforcement.
 // ----------------------------------------------------------------------------
 
 func TestCompact_PolicyModes_RequiredLegsEnforced(t *testing.T) {
@@ -283,14 +267,7 @@ func TestCompact_PolicyModes_RequiredLegsEnforced(t *testing.T) {
 	// --- HYBRID accepts the P3Q rollup mode for the SAME PQ leg (the OR). ---
 	t.Run("HYBRID_AcceptsP3Q", func(t *testing.T) {
 		policy := NewQuasarEvidencePolicy(PolicyHybridPQCheckpoint, pqParam, compactThreshold)
-		store := &envStore{policy: policy}
-		keys := mldsaLeafKeys(t, 4)
-		signerRoot := p3qSignerRoot(idLeaves(keys))
-		cert, vsetRoot, msg := compactHeader(policy, signerRoot)
-		aggPub, aggSig := aggN(t, msg, 3)
-		leaves := signLeaves(t, keys, msg, 40) // 4×40 = 160 ≥ 100
-		cert.Evidence = []LegEvidence{beamEvidence(aggSig), p3qDirectEvidence(leaves)}
-		validators := &envValidators{root: vsetRoot, epoch: 9, classKeys: map[ClassicalScheme][]byte{ClassicalSchemeBLS12381: aggPub}}
+		store, validators, cert, _, _ := p3qDirectCert(t, policy)
 		if err := VerifyConsensusCert(store, validators, cert); err != nil {
 			t.Fatalf("HYBRID Beam+P3Q rejected: %v", err)
 		}
@@ -314,15 +291,9 @@ func TestCompact_PolicyModes_RequiredLegsEnforced(t *testing.T) {
 	// --- STRICT REFUSES the P3Q mode for the PQ leg (wants the compact sig). ---
 	t.Run("STRICT_RefusesP3QMode", func(t *testing.T) {
 		policy := NewQuasarEvidencePolicy(PolicyStrictQuasar, pqParam, compactThreshold)
-		store := &envStore{policy: policy}
-		keys := mldsaLeafKeys(t, 4)
-		signerRoot := p3qSignerRoot(idLeaves(keys))
-		cert, vsetRoot, msg := compactHeader(policy, signerRoot)
-		aggPub, aggSig := aggN(t, msg, 3)
-		leaves := signLeaves(t, keys, msg, 40)
-		// Beam + P3Q (no Corona); STRICT forbids the P3Q mode AND requires Corona.
-		cert.Evidence = []LegEvidence{beamEvidence(aggSig), p3qDirectEvidence(leaves)}
-		validators := &envValidators{root: vsetRoot, epoch: 9, classKeys: map[ClassicalScheme][]byte{ClassicalSchemeBLS12381: aggPub}}
+		store, validators, cert, _, _ := p3qDirectCert(t, policy)
+		// p3qDirectCert gives {Beam, P3Q}; STRICT forbids the P3Q mode AND
+		// additionally requires Corona — either way it must reject.
 		if err := VerifyConsensusCert(store, validators, cert); err == nil {
 			t.Fatal("STRICT accepted a P3Q PQ leg")
 		}
@@ -429,6 +400,7 @@ func TestCompact_VerifyPulsar_BoringAndDispatchSafe(t *testing.T) {
 		e.Signature = append([]byte(nil), pulsarSig...)
 		e.Signature[len(e.Signature)/2] ^= 0xFF
 	}, ErrBadSignature)
+
 	// wrong M (replay to a different finality position) — the sig no longer verifies.
 	otherM := QuasarFinalityMessage(QuasarFinalityParams{ChainID: 9, Epoch: 9, Height: 10, Round: 9, KeyEraID: 7, SignerSetID: signerSet, Profile: 1})
 	if !errors.Is(VerifyPulsar(good, otherM, era), ErrBadSignature) {
@@ -486,88 +458,78 @@ func TestCompact_SuiteRegistry_DispatchSafety(t *testing.T) {
 
 func TestCompact_P3QRollup_DirectPath(t *testing.T) {
 	policy := NewQuasarEvidencePolicy(PolicyRecoveryMode, pqParam, compactThreshold)
-	store := &envStore{policy: policy}
-	keys := mldsaLeafKeys(t, 5)
-	signerRoot := p3qSignerRoot(idLeaves(keys))
-	cert, vsetRoot, msg := compactHeader(policy, signerRoot)
-	aggPub, aggSig := aggN(t, msg, 3)
-	leaves := signLeaves(t, keys, msg, 30) // 5×30 = 150 ≥ 100
-	validators := &envValidators{root: vsetRoot, epoch: 9, classKeys: map[ClassicalScheme][]byte{ClassicalSchemeBLS12381: aggPub}}
+	store, validators, cert, msg, innerWire := p3qDirectCert(t, policy)
 
-	// Happy path: RECOVERY = Beam ∧ P3Q verifies end-to-end.
-	cert.Evidence = []LegEvidence{beamEvidence(aggSig), p3qDirectEvidence(leaves)}
+	// Happy path: RECOVERY = Beam ∧ P3Q verifies end-to-end over a real
+	// validator-set-bound MLDSACertSet.
 	if err := VerifyConsensusCert(store, validators, cert); err != nil {
 		t.Fatalf("RECOVERY Beam+P3Q rejected: %v", err)
 	}
 
-	// Direct-leg unit checks against the verifier.
-	p3qLeg := p3qDirectEvidence(leaves)
+	p3qLeg := cert.Evidence[1] // [Beam, P3Q]
 	if err := VerifyP3QRollupLeg(policy, validators, cert, msg, p3qLeg); err != nil {
 		t.Fatalf("valid P3Q rollup rejected: %v", err)
 	}
 
-	// Tampered rollup root.
-	badRoot := &P3QRollupPayload{SuiteID: "Lux-P3Q-MLDSA65-Direct-v1", CertSet: leaves}
-	badRoot.RollupRoot = P3QRollupRoot("Lux-P3Q-MLDSA65-Direct-v1", leaves)
-	badRoot.RollupRoot[0] ^= 0xFF
-	if err := VerifyP3QRollupLeg(policy, validators, cert, msg, LegEvidence{Leg: p3qLeg.Leg, Mode: EvidenceP3QRollup, Payload: encodeP3QRollupPayload(badRoot)}); !errors.Is(err, ErrP3QRootMismatch) {
+	// Tampered rollup root — commitment binding fails before any inner verify.
+	badRootPayload := &P3QRollupPayload{SuiteID: p3qSuiteDirect, CertSet: innerWire}
+	badRootPayload.RollupRoot = P3QRollupRoot(p3qSuiteDirect, innerWire)
+	badRootPayload.RollupRoot[0] ^= 0xFF
+	badRoot := LegEvidence{Leg: p3qLeg.Leg, Mode: EvidenceP3QRollup, Payload: encodeP3QRollupPayload(badRootPayload)}
+	if err := VerifyP3QRollupLeg(policy, validators, cert, msg, badRoot); !errors.Is(err, ErrP3QRootMismatch) {
 		t.Fatalf("tampered root: err = %v, want ErrP3QRootMismatch", err)
 	}
 
-	// Corrupt one leaf signature.
-	corrupt := make([]MLDSAValidatorCert, len(leaves))
-	copy(corrupt, leaves)
-	corrupt[2].Sig = append([]byte(nil), leaves[2].Sig...)
-	corrupt[2].Sig[10] ^= 0xFF
-	if err := VerifyP3QRollupLeg(policy, validators, cert, msg, p3qDirectEvidence(corrupt)); !errors.Is(err, ErrP3QRollupInvalid) {
-		t.Fatalf("corrupt leaf: err = %v, want ErrP3QRollupInvalid", err)
+	// Corrupt the MLDSACertSet (a signature byte). The rollup root is recomputed
+	// over the corrupted bytes (so the commitment passes) — the inner
+	// validator-set-bound verify must then reject.
+	corruptWire := append([]byte(nil), innerWire...)
+	corruptWire[len(corruptWire)/2] ^= 0xFF
+	corrupt := LegEvidence{Leg: p3qLeg.Leg, Mode: EvidenceP3QRollup, Payload: encodeP3QRollupPayload(&P3QRollupPayload{
+		SuiteID: p3qSuiteDirect, RollupRoot: P3QRollupRoot(p3qSuiteDirect, corruptWire), CertSet: corruptWire,
+	})}
+	if err := VerifyP3QRollupLeg(policy, validators, cert, msg, corrupt); err == nil {
+		t.Fatal("corrupt MLDSACertSet accepted")
 	}
 
-	// Sub-threshold weight (5×10 = 50 < 100). Same keys/ids ⇒ same signer root,
-	// so the existing cert/msg are reused; only the leaf weights change.
-	lightLeaves := signLeaves(t, keys, msg, 10)
-	if err := VerifyP3QRollupLeg(policy, validators, cert, msg, p3qDirectEvidence(lightLeaves)); !errors.Is(err, ErrInsufficientWeight) {
-		t.Fatalf("sub-threshold weight: err = %v, want ErrInsufficientWeight", err)
+	// Sub-threshold floor: a posture whose weight floor (200) exceeds the
+	// MLDSACertSet's Σweight (100). The inner weighted verify pins the floor and
+	// rejects — the threshold is enforced THROUGH the P3Q leg.
+	highPolicy := NewQuasarEvidencePolicy(PolicyRecoveryMode, pqParam, 200)
+	if err := VerifyP3QRollupLeg(highPolicy, validators, cert, msg, p3qLeg); err == nil {
+		t.Fatal("P3Q rollup accepted below the threshold floor")
 	}
 }
 
 func TestCompact_P3QRollup_SuccinctGated(t *testing.T) {
-	keys := mldsaLeafKeys(t, 3)
-	signerRoot := p3qSignerRoot(idLeaves(keys))
+	policy := NewQuasarEvidencePolicy(PolicyRecoveryMode, pqParam, compactThreshold)
+	cert, _, msg := compactHeader(policy, fixedSignerRoot())
+	validators := &envValidators{root: cert.ValidatorSetRoot, epoch: 9}
+
+	succinctLeg := func(suiteID string) LegEvidence {
+		return LegEvidence{
+			Leg:  LegSpec{Kind: LegPulsarMLDSA, ParamSetID: pqParam},
+			Mode: EvidenceP3QRollup,
+			Payload: encodeP3QRollupPayload(&P3QRollupPayload{
+				SuiteID:    suiteID,
+				RollupRoot: P3QRollupRoot(suiteID, []byte("committed-statement")),
+				Proof:      []byte("succinct-proof-bytes"),
+			}),
+		}
+	}
 
 	// STARK (PQ-succinct): audit-gated, fails closed.
-	starkPolicy := NewQuasarEvidencePolicy(PolicyRecoveryMode, pqParam, compactThreshold)
-	cert, vsetRoot, msg := compactHeader(starkPolicy, signerRoot)
-	leaves := signLeaves(t, keys, msg, 40)
-	validators := &envValidators{root: vsetRoot, epoch: 9}
-	stark := LegEvidence{
-		Leg:  LegSpec{Kind: LegPulsarMLDSA, ParamSetID: pqParam},
-		Mode: EvidenceP3QRollup,
-		Payload: encodeP3QRollupPayload(&P3QRollupPayload{
-			SuiteID:    "Lux-P3Q-MLDSA65-STARK-v1",
-			RollupRoot: P3QRollupRoot("Lux-P3Q-MLDSA65-STARK-v1", leaves),
-			Proof:      []byte("succinct-proof-bytes"),
-		}),
-	}
-	if err := VerifyP3QRollupLeg(starkPolicy, validators, cert, msg, stark); !errors.Is(err, ErrP3QBackendNotAuditGated) {
+	if err := VerifyP3QRollupLeg(policy, validators, cert, msg, succinctLeg("Lux-P3Q-MLDSA65-STARK-v1")); !errors.Is(err, ErrP3QBackendNotAuditGated) {
 		t.Fatalf("STARK P3Q: err = %v, want ErrP3QBackendNotAuditGated", err)
 	}
 
-	// Groth16 (classical succinct): refused unless policy opts in.
-	groth := LegEvidence{
-		Leg:  LegSpec{Kind: LegPulsarMLDSA, ParamSetID: pqParam},
-		Mode: EvidenceP3QRollup,
-		Payload: encodeP3QRollupPayload(&P3QRollupPayload{
-			SuiteID:    "Lux-P3Q-MLDSA65-Groth16-v1",
-			RollupRoot: P3QRollupRoot("Lux-P3Q-MLDSA65-Groth16-v1", leaves),
-			Proof:      []byte("groth16-proof-bytes"),
-		}),
-	}
-	if err := VerifyP3QRollupLeg(starkPolicy, validators, cert, msg, groth); !errors.Is(err, ErrClassicalProofAssumptionRefused) {
+	// Groth16 (classical succinct): refused unless the policy opts in.
+	groth := succinctLeg("Lux-P3Q-MLDSA65-Groth16-v1")
+	if err := VerifyP3QRollupLeg(policy, validators, cert, msg, groth); !errors.Is(err, ErrClassicalProofAssumptionRefused) {
 		t.Fatalf("Groth16 P3Q without opt-in: err = %v, want ErrClassicalProofAssumptionRefused", err)
 	}
-	// With explicit policy opt-in, the classical assumption is accepted but the
-	// backend is still unaudited ⇒ fail closed (PQ-safe raw data challengeable).
+	// With explicit opt-in, the classical assumption is accepted but the backend
+	// is still unaudited ⇒ fail closed (PQ-safe raw data challengeable).
 	optIn := NewQuasarEvidencePolicy(PolicyRecoveryMode, pqParam, compactThreshold).WithClassicalProofAssumption()
 	if err := VerifyP3QRollupLeg(optIn, validators, cert, msg, groth); !errors.Is(err, ErrP3QBackendNotAuditGated) {
 		t.Fatalf("Groth16 P3Q with opt-in: err = %v, want ErrP3QBackendNotAuditGated", err)

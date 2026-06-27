@@ -1,92 +1,83 @@
 // Copyright (C) 2025-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// p3q_rollup.go — the P3Q rollup leg: a compact root/proof over a set of
-// INDEPENDENT per-validator ML-DSA certificates (the MLDSACertSet).
+// p3q_rollup.go — the P3Q rollup leg: a compact root/proof over the raw
+// MLDSACertSet.
 //
-// ITS ROLE. P3Q is the FALLBACK lane. When a compact Pulsar/TALUS threshold
-// signature is unavailable (migration before the group key is installed,
-// recovery after a key loss, a bridge that only has independent validator
-// signatures, or an audit that wants per-validator attribution), the chain can
-// still finalise by COMPRESSING the independent validator ML-DSA certs into one
-// rollup object. The raw MLDSACertSet is the accountability / challenge data —
-// it is NEVER the normal finality object when Pulsar is live.
+// WHAT THE MLDSACertSet IS. "A set of independent per-validator ML-DSA certs
+// with a weighted-validator-set quorum" is EXACTLY the package's existing
+// WeightedQuorumCert (EvidenceWeightedSigSet): N stock FIPS-204 signatures,
+// each bound to the committed validator set by a weighted-Merkle inclusion
+// proof, meeting the BFT weight floor. P3Q does NOT reinvent per-validator
+// verification or validator-set binding — it COMPOSES the audited
+// WeightedQuorumCert and adds the one thing that makes it a rollup: a compact
+// commitment (RollupRoot) over the raw set, plus the option to replace the raw
+// set with a succinct PROOF of that commitment.
+//
+// ITS ROLE. P3Q is the FALLBACK lane. The raw MLDSACertSet is the
+// accountability / challenge object; it is NEVER the normal finality object
+// when a compact Pulsar/TALUS threshold sig is live. P3Q lets the chain finalise
+// from independent validator certs during migration (before the group key is
+// installed), recovery (after a key loss), a bridge (only independent sigs
+// available), or an audit (per-validator attribution wanted).
 //
 // ITS OWN PRIMITIVE. P3Q is its own evidence mode (EvidenceP3QRollup), its own
-// verifier (this file), and conceptually its own on-chain precompile slot
-// (0x012205). It is NOT bolted onto the Pulsar threshold-sig verifier; it
-// merely satisfies the SAME LegPulsarMLDSA requirement (Module-LWE ML-DSA
-// PQ-finality) by a different mechanism. That is the policy-table "OR".
+// verifier (this file), and conceptually its own precompile slot (0x012205). It
+// satisfies the SAME LegPulsarMLDSA requirement by a DIFFERENT mechanism than
+// the compact threshold sig — that is the policy-table "OR".
 //
 // THREE PROOF SYSTEMS (selected by the suite's ProofAssumption):
 //
-//	Direct (AssumptionDirect)              — the raw MLDSACertSet is carried and
-//	    re-verified: every independent ML-DSA-{44,65,87} signature is checked
-//	    over M, their weights summed against the threshold, and the rollup root
-//	    re-derived from the leaves. PQ-safe (FIPS-204), O(N), ALWAYS verifiable.
-//	    This is the audit / challenge path and the one the tests exercise.
+//	Direct (AssumptionDirect)              — the raw MLDSACertSet (a marshalled
+//	    WeightedQuorumCert) is carried; verification = the rollup-root commitment
+//	    binding PLUS the audited, validator-set-bound weighted-sig-set verify.
+//	    PQ-safe (FIPS-204), O(N), ALWAYS verifiable. The audit / challenge path.
 //
 //	STARK (AssumptionPQSuccinct)           — a succinct hash-based proof of the
-//	    same statement. PQ-safe by construction; AUDIT-GATED — fails closed
-//	    until the proving backend is reviewed (exactly like the StarkCompressed
-//	    sig-set mode), never silently accepted.
+//	    SAME public statement. PQ-safe; AUDIT-GATED — fails closed until the
+//	    proving backend is reviewed, never silently accepted.
 //
 //	Groth16 (AssumptionClassicalSuccinct)  — a succinct proof whose SOUNDNESS
-//	    rests on a CLASSICAL (pairing/DLOG) assumption. THE PQ-SAFETY CAVEAT:
-//	    the proof OBJECT is breakable by a CRQC, so it is admissible ONLY on a
-//	    policy that explicitly opts in (ProofAssumptionPolicy); even then it is
-//	    audit-gated. The RAW MLDSACertSet it attests stays PQ-safe and is
-//	    challengeable via the Direct path — a verifier who distrusts the
-//	    classical proof can always demand and re-check the underlying certs.
+//	    rests on a CLASSICAL (pairing/DLOG) assumption. THE PQ-SAFETY CAVEAT: the
+//	    proof OBJECT is breakable by a CRQC, so it is admissible ONLY on a policy
+//	    that explicitly opts in (ProofAssumptionPolicy); even then it is
+//	    audit-gated. The RAW set stays PQ-safe and is challengeable via Direct.
 //
-// Decomplected: this file owns ONLY P3Q rollup verification. Which legs are
-// required and whether classical proof assumptions are policy-acceptable live
-// in the policy; the canonical message M lives in quasar_finality.go.
+// "All lanes sign the same M" holds for the compact Beam/Pulsar/Corona legs. The
+// P3Q direct path is the independent-cert fallback: each underlying validator
+// signed the inner round-digest, and the leg is bound to the SAME consensus
+// POSITION (chain/epoch/height/round/value/validator-set-root) as the envelope —
+// the same position binding the audited weighted-sig-set leg already enforces.
+//
+// Decomplected: this file owns ONLY P3Q rollup verification. Validator-set
+// binding + per-validator FIPS verification live in the WeightedQuorumCert it
+// composes; which legs are required lives in the policy; M lives in
+// quasar_finality.go.
 package quasar
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-
-	"github.com/luxfi/crypto/mldsa"
 )
 
-// MLDSAValidatorCert is ONE independent validator's ML-DSA certificate: the
-// per-validator signature P3Q compresses. A set of these (the MLDSACertSet) is
-// what the rollup commits to.
-type MLDSAValidatorCert struct {
-	// ValidatorID is the signer's id (matches the committed validator set).
-	ValidatorID [32]byte
-
-	// Weight is the signer's stake weight, summed against the threshold.
-	Weight uint64
-
-	// PubKey is the validator's ML-DSA public key (parsed under the suite's
-	// parameter set).
-	PubKey []byte
-
-	// Sig is the validator's independent ML-DSA signature over M.
-	Sig []byte
-}
-
 // P3QRollupPayload is the EvidenceP3QRollup payload. For a Direct suite it
-// carries the raw CertSet (the challengeable MLDSACertSet) and the rollup root
-// derived from it; for a succinct suite it carries the Proof and the rollup
-// root the proof attests (CertSet empty).
+// carries the raw MLDSACertSet (a marshalled WeightedQuorumCert) and the rollup
+// root committing to it; for a succinct suite it carries the Proof and the
+// rollup root the proof attests (CertSet empty).
 type P3QRollupPayload struct {
 	// SuiteID names the concrete P3Q scheme (param set + proof system). Resolved
 	// through the suite registry so it can never route to a non-P3Q verifier.
 	SuiteID string
 
-	// RollupRoot is the canonical commitment over the MLDSACertSet (Direct) or
-	// the root the succinct proof attests. Bound to the leaves in the Direct
-	// path; pinned into the public statement in the succinct path.
+	// RollupRoot is the canonical commitment over the raw MLDSACertSet bytes
+	// (Direct) or the root the succinct proof attests (succinct). It is the
+	// bridge between the raw and compressed forms: the SAME root, two ways to
+	// satisfy it.
 	RollupRoot [32]byte
 
-	// CertSet is the raw MLDSACertSet (Direct path only). Empty for succinct
-	// suites.
-	CertSet []MLDSAValidatorCert
+	// CertSet is the raw MLDSACertSet — a marshalled WeightedQuorumCert (Direct
+	// path only). Empty for succinct suites.
+	CertSet []byte
 
 	// Proof is the succinct proof bytes (succinct suites only). Empty for Direct.
 	Proof []byte
@@ -95,25 +86,19 @@ type P3QRollupPayload struct {
 // p3qRollup domain tags (wire-stable).
 const (
 	p3qRollupRootCustomization = "LUX-P3Q-MLDSA-ROLLUP-ROOT-V1"
-	p3qSignerRootCustomization = "LUX-P3Q-MLDSA-SIGNER-ROOT-V1"
 	p3qStatementCustomization  = "LUX-P3Q-MLDSA-STATEMENT-V1"
 	p3qRollupRootProtocolTag   = "Lux/P3Q/MLDSARollup/Root"
-	p3qSignerRootProtocolTag   = "Lux/P3Q/MLDSARollup/SignerRoot"
 	p3qStatementProtocolTag    = "Lux/P3Q/MLDSARollup/Statement"
 )
 
 // Typed errors for the P3Q rollup leg.
 var (
 	// ErrP3QRootMismatch — the rollup root does not equal the canonical
-	// commitment over the carried cert set.
+	// commitment over the carried MLDSACertSet bytes.
 	ErrP3QRootMismatch = errors.New("quasar: p3q rollup root does not match the canonical commitment over the cert set")
 
 	// ErrP3QRollupEmpty — the rollup carries no cert set on the Direct path.
-	ErrP3QRollupEmpty = errors.New("quasar: p3q Direct rollup carries an empty cert set")
-
-	// ErrP3QRollupInvalid — a committed validator cert failed ML-DSA verification
-	// (a rollup is a set of VALID certs; one invalid member is a malformed rollup).
-	ErrP3QRollupInvalid = errors.New("quasar: p3q rollup contains a validator cert that failed ML-DSA verification")
+	ErrP3QRollupEmpty = errors.New("quasar: p3q Direct rollup carries an empty MLDSACertSet")
 
 	// ErrP3QBackendNotAuditGated — the succinct P3Q proving backend (STARK /
 	// Groth16) is not yet audit-gated. Fail closed; the raw cert set remains
@@ -124,9 +109,6 @@ var (
 	// proof was presented under a policy that does not accept classical proof
 	// assumptions (the PQ-safety caveat).
 	ErrClassicalProofAssumptionRefused = errors.New("quasar: p3q classical-assumption proof refused — policy does not accept classical proof assumptions")
-
-	// ErrP3QMLDSAMode — the suite parameter set does not name a valid ML-DSA mode.
-	ErrP3QMLDSAMode = errors.New("quasar: p3q suite parameter set is not a valid ML-DSA mode")
 )
 
 // ProofAssumptionPolicy is an OPTIONAL capability a ConsensusCertPolicy may
@@ -137,58 +119,18 @@ type ProofAssumptionPolicy interface {
 	AcceptsClassicalProofAssumption() bool
 }
 
-// mldsaModeForParam maps a quorum scheme parameter byte to an ML-DSA mode.
-func mldsaModeForParam(param uint8) (mldsa.Mode, bool) {
-	switch QuorumSchemeID(param) {
-	case QuorumSchemeMLDSA44:
-		return mldsa.MLDSA44, true
-	case QuorumSchemeMLDSA65:
-		return mldsa.MLDSA65, true
-	case QuorumSchemeMLDSA87:
-		return mldsa.MLDSA87, true
-	default:
-		return 0, false
-	}
-}
-
-// P3QRollupRoot is the canonical commitment over an MLDSACertSet under a suite.
-// Leaves are bound in a CANONICAL order (ascending by ValidatorID) so the root
-// is independent of cert ordering; each leaf binds (validator_id, weight,
-// pubkey, sig) length-prefixed (TupleHash256), so flipping any field changes
-// the root. The suite id is bound so a root cannot be transplanted across
-// parameter sets.
-func P3QRollupRoot(suiteID string, certs []MLDSAValidatorCert) [32]byte {
-	ordered := canonicalCertOrder(certs)
-	parts := make([][]byte, 0, 2+4*len(ordered))
-	parts = append(parts, []byte(p3qRollupRootProtocolTag))
-	parts = append(parts, []byte(suiteID))
-	parts = append(parts, u32be(uint32(len(ordered))))
-	for _, c := range ordered {
-		parts = append(parts, c.ValidatorID[:])
-		parts = append(parts, u64be(c.Weight))
-		parts = append(parts, c.PubKey)
-		parts = append(parts, c.Sig)
+// P3QRollupRoot is the canonical commitment over a raw MLDSACertSet under a
+// suite: TupleHash256(tag ‖ suite_id ‖ cert_set_bytes). Binding the suite id
+// stops a root being transplanted across parameter sets / proof systems;
+// length-prefixing (TupleHash) stops any field bleeding into a neighbour.
+func P3QRollupRoot(suiteID string, certSet []byte) [32]byte {
+	parts := [][]byte{
+		[]byte(p3qRollupRootProtocolTag),
+		[]byte(suiteID),
+		certSet,
 	}
 	var out [32]byte
 	copy(out[:], tupleHash256RoundDigest(parts, 32, p3qRollupRootCustomization))
-	return out
-}
-
-// p3qSignerRoot is the canonical commitment over the SIGNER SET of a rollup
-// (validator ids only, ascending). This is the rollup's accountability anchor:
-// the verifier checks it equals the cert's SignerRoot (which is bound into M),
-// proving the EXACT set of signers — stronger than the opaque echo a bare
-// threshold signature can offer.
-func p3qSignerRoot(certs []MLDSAValidatorCert) [32]byte {
-	ordered := canonicalCertOrder(certs)
-	parts := make([][]byte, 0, 2+len(ordered))
-	parts = append(parts, []byte(p3qSignerRootProtocolTag))
-	parts = append(parts, u32be(uint32(len(ordered))))
-	for _, c := range ordered {
-		parts = append(parts, c.ValidatorID[:])
-	}
-	var out [32]byte
-	copy(out[:], tupleHash256RoundDigest(parts, 32, p3qSignerRootCustomization))
 	return out
 }
 
@@ -207,33 +149,16 @@ func p3qPublicStatement(cert *ConsensusCert, msg []byte, rollupRoot [32]byte, th
 	return tupleHash256RoundDigest(parts, 32, p3qStatementCustomization)
 }
 
-// canonicalCertOrder returns a copy of certs sorted ascending by ValidatorID.
-// Stable canonical order makes the root independent of input ordering.
-func canonicalCertOrder(certs []MLDSAValidatorCert) []MLDSAValidatorCert {
-	out := make([]MLDSAValidatorCert, len(certs))
-	copy(out, certs)
-	// Insertion sort by 32-byte id — sets are small (audit/recovery scale) and
-	// this avoids pulling sort + a closure onto the verify path.
-	for i := 1; i < len(out); i++ {
-		j := i
-		for j > 0 && bytes.Compare(out[j-1].ValidatorID[:], out[j].ValidatorID[:]) > 0 {
-			out[j-1], out[j] = out[j], out[j-1]
-			j--
-		}
-	}
-	return out
-}
-
 // VerifyP3QRollupLeg verifies an EvidenceP3QRollup leg. It is the SAME-predicate
-// fallback for LegPulsarMLDSA: it establishes that a threshold weight of valid
-// independent ML-DSA signatures over M exist, bound to a compact rollup root and
-// to the cert's signer set.
+// fallback for LegPulsarMLDSA: it establishes that a validator-set-bound
+// weighted quorum of independent ML-DSA signatures over the consensus position
+// exists, committed to a compact rollup root.
 //
-// Direct suite: re-derive the root from the cert set, verify every independent
-// ML-DSA signature over M, sum the weights against policy.ThresholdWeight(), and
-// bind the signer root to the cert. Succinct suites: pin the public statement,
-// enforce the classical-assumption policy opt-in, and fail closed on the
-// unaudited backend.
+// Direct suite: bind the rollup root to the raw MLDSACertSet, then verify that
+// set with the audited, validator-set-bound weighted-sig-set verifier (which
+// pins the threshold floor and binds the envelope position). Succinct suites:
+// pin the public statement, enforce the classical-assumption policy opt-in, and
+// fail closed on the unaudited backend.
 func VerifyP3QRollupLeg(policy ConsensusCertPolicy, validators ConsensusValidatorSet, cert *ConsensusCert, msg []byte, ev LegEvidence) error {
 	// This mode satisfies ONLY the Module-LWE ML-DSA PQ-finality requirement.
 	if ev.Leg.Kind != LegPulsarMLDSA {
@@ -255,7 +180,7 @@ func VerifyP3QRollupLeg(policy ConsensusCertPolicy, validators ConsensusValidato
 
 	switch suite.Assumption {
 	case AssumptionDirect:
-		return verifyP3QDirect(policy, cert, msg, suite, payload)
+		return verifyP3QDirect(policy, validators, cert, msg, suite, payload, ev)
 	case AssumptionPQSuccinct:
 		// Pin the statement (so an audited backend can only attest THIS
 		// relation), then fail closed — the backend is not yet audit-gated.
@@ -275,55 +200,28 @@ func VerifyP3QRollupLeg(policy ConsensusCertPolicy, validators ConsensusValidato
 	}
 }
 
-// verifyP3QDirect verifies the Direct (raw cert set) P3Q rollup path.
-func verifyP3QDirect(policy ConsensusCertPolicy, cert *ConsensusCert, msg []byte, suite Suite, payload *P3QRollupPayload) error {
+// verifyP3QDirect verifies the Direct (raw MLDSACertSet) P3Q rollup path.
+func verifyP3QDirect(policy ConsensusCertPolicy, validators ConsensusValidatorSet, cert *ConsensusCert, msg []byte, suite Suite, payload *P3QRollupPayload, ev LegEvidence) error {
 	if len(payload.CertSet) == 0 {
 		return ErrP3QRollupEmpty
 	}
 
-	// (1) Root binding (cheap hash, done before the O(N) signature verifies):
-	// the rollup root MUST equal the canonical commitment over the cert set.
-	if got := P3QRollupRoot(suite.ID, payload.CertSet); got != payload.RollupRoot {
+	// (1) Commitment binding: the rollup root MUST equal the canonical
+	// commitment over the carried MLDSACertSet bytes. This is the bridge the
+	// succinct path attests; here it ties the root to the exact raw set.
+	if P3QRollupRoot(suite.ID, payload.CertSet) != payload.RollupRoot {
 		return ErrP3QRootMismatch
 	}
 
-	// (2) Accountability binding: the signer set committed by the rollup MUST
-	// equal the cert's SignerRoot (which is bound into M). This proves the exact
-	// signer set — no opaque echo.
-	if p3qSignerRoot(payload.CertSet) != cert.SignerRoot {
-		return ErrSignerRootMismatch
-	}
-
-	mode, ok := mldsaModeForParam(suite.ParamSet)
-	if !ok {
-		return fmt.Errorf("%w: 0x%02x", ErrP3QMLDSAMode, suite.ParamSet)
-	}
-
-	// (3) Every committed cert MUST verify under its own ML-DSA key over M, and
-	// duplicate signer ids are rejected (a signer cannot be double-counted
-	// toward the weight floor).
-	var total uint64
-	seen := make(map[[32]byte]bool, len(payload.CertSet))
-	for i := range payload.CertSet {
-		c := payload.CertSet[i]
-		if seen[c.ValidatorID] {
-			return fmt.Errorf("%w: duplicate signer in rollup", ErrP3QRollupInvalid)
-		}
-		seen[c.ValidatorID] = true
-
-		pub, perr := mldsa.PublicKeyFromBytes(c.PubKey, mode)
-		if perr != nil {
-			return fmt.Errorf("%w: pubkey parse: %v", ErrP3QRollupInvalid, perr)
-		}
-		if !pub.Verify(msg, c.Sig, nil) {
-			return ErrP3QRollupInvalid
-		}
-		total += c.Weight
-	}
-
-	// (4) Weight floor: the verified signers MUST meet the policy quorum.
-	if total < policy.ThresholdWeight() {
-		return fmt.Errorf("%w: have %d need %d", ErrInsufficientWeight, total, policy.ThresholdWeight())
-	}
-	return nil
+	// (2) Verify the raw MLDSACertSet via the audited, VALIDATOR-SET-BOUND
+	// weighted-sig-set verifier (composition, not reinvention). This is what
+	// makes the leaves real validators with real weights: the inner cert proves
+	// weighted-Merkle membership against validators.Root(), N stock FIPS-204
+	// verifies, and the BFT threshold floor — none of which a self-asserted leaf
+	// set could supply. The envelope position is cross-checked inside.
+	return VerifyWeightedSigSet(policy, validators, cert, msg, LegEvidence{
+		Leg:     ev.Leg,
+		Mode:    EvidenceWeightedSigSet,
+		Payload: payload.CertSet,
+	})
 }
