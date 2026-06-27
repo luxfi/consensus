@@ -55,8 +55,8 @@ type maliciousAncestrySource struct {
 	forged    []*tBlock // oldest-first; forged[0] is the shared genesis
 }
 
-func (m *maliciousAncestrySource) FrontierTip(context.Context) (ids.ID, bool) {
-	return m.honestTip, true
+func (m *maliciousAncestrySource) FrontierTip(context.Context) (ids.ID, FrontierStatus) {
+	return m.honestTip, FrontierNamed
 }
 
 func (m *maliciousAncestrySource) Ancestors(_ context.Context, _ ids.ID, maxBlocks int) ([][]byte, error) {
@@ -136,7 +136,9 @@ type dualSource struct {
 	byID      map[ids.ID]*tBlock // honest ∪ forged, for honest-style ancestry serving
 }
 
-func (d *dualSource) FrontierTip(context.Context) (ids.ID, bool) { return d.honestTip, true }
+func (d *dualSource) FrontierTip(context.Context) (ids.ID, FrontierStatus) {
+	return d.honestTip, FrontierNamed
+}
 func (d *dualSource) Ancestors(_ context.Context, blockID ids.ID, maxBlocks int) ([][]byte, error) {
 	tip, ok := d.byID[blockID]
 	if !ok {
