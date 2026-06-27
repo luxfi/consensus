@@ -5,16 +5,13 @@ package quasar
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"testing"
 	"time"
 
 	"github.com/luxfi/consensus/config"
-	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
-	"github.com/luxfi/ids"
 	magnetar "github.com/luxfi/magnetar/ref/go/pkg/magnetar"
 	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
 	"github.com/luxfi/threshold/protocols/pulsar"
@@ -120,25 +117,10 @@ func buildPolarisFixture(t *testing.T) polarisFixture {
 		dkgOuts[i] = out
 	}
 	pulsarGroupPK := dkgOuts[0].GroupPubkey
-	pulsarPool := make([]ids.NodeID, n)
-	pulsarShares := make(map[ids.NodeID]*pulsar.KeyShare, n)
-	for i := 0; i < n; i++ {
-		var id ids.NodeID
-		copy(id[:], committee[i][:])
-		pulsarPool[i] = id
-		pulsarShares[id] = dkgOuts[i].SecretShare
-	}
-	pulsarRoundSigner := &RoundSigner{
-		Params:    pulsarParams,
-		Cut:       prism.NewUniformCut(pulsarPool),
-		K:         3,
-		Threshold: 2,
-		Shares:    pulsarShares,
-	}
-	pulsarRoundRes, err := pulsarRoundSigner.RunRound(context.Background(), digest)
-	if err != nil {
-		t.Fatalf("Pulsar RoundSigner.RunRound: %v", err)
-	}
+	// Drive one t-of-n Pulsar threshold-sign ceremony over the fixed (3, 2)
+	// committee. Empty ctx: the Polaris cert's pulsar leg signs ctx-free and
+	// verification routes through the stateless empty-ctx FIPS 204 verifier.
+	pulsarSig := signPulsarThresholdLeg(t, pulsarParams, committee, threshold, identities, dkgOuts, digest, nil)
 
 	// --- Leg 2: Corona (Ring-LWE threshold ML-DSA). ---
 	coronaShares, coronaGroupKey, err := coronaThreshold.GenerateKeys(threshold, n, nil)
@@ -227,7 +209,7 @@ func buildPolarisFixture(t *testing.T) polarisFixture {
 
 	cert, err := ComposePolaris(PolarisLegs{
 		BLS:         blsSig,
-		Pulsar:      pulsarRoundRes.Signature,
+		Pulsar:      pulsarSig,
 		Corona:      coronaSig,
 		Magnetar:    magCert,
 		MLDSARollup: mldsaRollup,
