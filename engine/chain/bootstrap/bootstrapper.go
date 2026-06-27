@@ -70,6 +70,17 @@ const (
 	// before giving up (the peer set is unreachable / not serving). The caller
 	// (monitorBootstrap) then surfaces a real bootstrap failure rather than masking it.
 	maxStallRounds = 60
+
+	// defaultConnectDeadline bounds how long the loop WAITS for the beacon set to become
+	// reachable (enough connected stake to FORM a ⅔ quorum) before it gives up and fails
+	// SAFE (ErrBeaconsUnreachable). A freshly-booted node whose beacons have not finished
+	// the peer handshake is NOT caught up — it is not yet able to ASK the network for the
+	// frontier, so concluding "caught up" at the local (stale) height would be the
+	// false-complete the canary hit. This is GENEROUS (a healthy node connects to its
+	// beacon set in seconds) yet strictly LESS than monitorBootstrap's no-progress
+	// watchdog (5 min), so the loop returns a clean named error before the watchdog
+	// force-stops the engine.
+	defaultConnectDeadline = 3 * time.Minute
 )
 
 var (
@@ -93,16 +104,65 @@ var (
 	// is the defense-in-depth anchor for the empty-genesis case (where there is no
 	// local history for the contiguity guard to bind the first block to).
 	ErrFrontierNotDescendedFromCheckpoint = errors.New("bootstrap: α-agreed frontier does not descend from the weak-subjectivity checkpoint")
+
+	// ErrBeaconsUnreachable is returned when a beacon set IS configured but not enough of
+	// its stake ever connects (within the connect deadline) to FORM a ⅔ quorum — the node
+	// cannot even ASK the network for the frontier. This is fail-SAFE: the node stays
+	// un-bootstrapped (it does NOT false-complete at its local stale height) and the caller
+	// surfaces a health failure for the operator to fix peering / state-sync / restart. It
+	// is the bounded outcome of the canary boot race (FrontierTip ran before any beacon
+	// handshaked) when connectivity never recovers.
+	ErrBeaconsUnreachable = errors.New("bootstrap: beacon set never reached the connectivity needed to form a ⅔ quorum within the connect deadline — eclipsed/partitioned, failing safe (NOT caught up)")
+
+	// ErrNoBeaconQuorum is returned when enough beacon stake IS connected to ask, but no
+	// ⅔-by-stake supermajority names a single frontier (a genuine eclipse / partition /
+	// disagreement above the ⅓ stall threshold). Like ErrBeaconsUnreachable this is
+	// fail-SAFE: the node does NOT conclude caught-up at its stale height.
+	ErrNoBeaconQuorum = errors.New("bootstrap: beacons connected but no ⅔-by-stake quorum named a frontier — eclipsed/partitioned, failing safe (NOT caught up)")
+)
+
+// FrontierStatus decomplects the THREE distinct reasons a FrontierTip query may NOT yield
+// a named tip — which the loop MUST treat differently. Collapsing them into a single
+// "ok=false" (the pre-fix bug) made a freshly-booted node conclude "caught up" at its local
+// stale height the instant it asked the frontier BEFORE any beacon had connected: ok=false
+// meant "no beacon quorum reachable", but the loop read it as "nothing ahead, done". These
+// statuses keep "I cannot ask yet" (wait), "I asked and no one is ahead" (done), and "I
+// asked and the network disagrees / is unreachable" (fail safe) as the distinct values they
+// are.
+type FrontierStatus int
+
+const (
+	// FrontierNamed: a ⅔-by-stake beacon quorum agreed on the returned tip — sync to it.
+	FrontierNamed FrontierStatus = iota
+
+	// FrontierNoBeacons: NO beacon set is configured (single-node / dev / --skip-bootstrap).
+	// There is no network frontier to reach, so the node is genuinely caught up — COMPLETE
+	// (never wait, never stall — a legit single node must not hang).
+	FrontierNoBeacons
+
+	// FrontierConnecting: beacons ARE configured but not enough of their stake is connected
+	// YET to FORM a ⅔ quorum (the boot race — peers still handshaking). The node is NOT
+	// caught up: it cannot even ask the network. KEEP POLLING until connectivity comes up
+	// (then the quorum names the frontier) or the connect deadline elapses (then fail safe).
+	FrontierConnecting
+
+	// FrontierNoQuorum: enough beacon stake IS connected to ask, but no ⅔-by-stake
+	// agreement on a single tip is reachable (genuine eclipse / partition). The node is NOT
+	// caught up: fail SAFE (do NOT false-complete at the stale height).
+	FrontierNoQuorum
 )
 
 // BlockSource is the peer-fetch transport the bootstrapper drives. The node
 // implements it over its GetAcceptedFrontier / GetAncestors wire; a test implements
 // it in-memory. It is the ONLY network dependency — the loop has no other I/O.
 type BlockSource interface {
-	// FrontierTip returns the accepted-tip block id advertised by a sampled peer (the
-	// network frontier). ok=false when no peer answered (no peers, or all timed out) —
-	// the driver treats that as "nothing to sync to" and finishes.
-	FrontierTip(ctx context.Context) (tipID ids.ID, ok bool)
+	// FrontierTip names the network frontier from a ⅔-by-stake quorum of the configured
+	// BEACONS, returning the agreed tip and a FrontierStatus that decomplects WHY a tip
+	// might not be named (see FrontierStatus): FrontierNamed (tip valid — sync to it),
+	// FrontierNoBeacons (single-node — done), FrontierConnecting (beacons not connected
+	// yet — wait), FrontierNoQuorum (connected but no agreement — fail safe). The tip is
+	// meaningful ONLY when status == FrontierNamed.
+	FrontierTip(ctx context.Context) (tipID ids.ID, status FrontierStatus)
 
 	// Ancestors returns up to maxBlocks blocks ending at blockID, OLDEST-FIRST (the
 	// deepest ancestor first, blockID last) — the order the receiver must execute them
@@ -139,6 +199,13 @@ type Config struct {
 	MaxBufferBytes    int           // default 1 GiB (M3 — byte budget on the descent buffer)
 	RetryInterval     time.Duration // default 1s
 
+	// ConnectDeadline bounds how long Run WAITS for the beacon set to become reachable
+	// (FrontierConnecting) before failing SAFE with ErrBeaconsUnreachable. Default 3 min
+	// (generous for a healthy handshake, strictly below monitorBootstrap's 5-min
+	// no-progress watchdog). A freshly-booted node with zero connected beacons is NOT
+	// caught up — it must wait until it can actually ask the network.
+	ConnectDeadline time.Duration // default 3m
+
 	// WeakSubjectivityID + WeakSubjectivityHeight pin an OPTIONAL operator-supplied
 	// recent finalized checkpoint (block id at height). When both are set (id != Empty
 	// AND height > 0) and the checkpoint is AHEAD of the local last-accepted, the
@@ -171,6 +238,9 @@ func New(cfg Config) *Bootstrapper {
 	if cfg.RetryInterval <= 0 {
 		cfg.RetryInterval = defaultRetryInterval
 	}
+	if cfg.ConnectDeadline <= 0 {
+		cfg.ConnectDeadline = defaultConnectDeadline
+	}
 	if cfg.Log == nil {
 		cfg.Log = log.NewNoOpLogger()
 	}
@@ -184,64 +254,132 @@ func New(cfg Config) *Bootstrapper {
 // failure (so it is NOT masked as "ready").
 func (b *Bootstrapper) Run(ctx context.Context) error {
 	stalls := 0
+	// connectingSince times the WAIT for beacon connectivity. It starts at the first
+	// FrontierConnecting pass and resets the instant we get PAST connecting (a named
+	// frontier), so it bounds only the contiguous "cannot ask the network yet" window.
+	var connectingSince time.Time
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		advanced, caughtUp, err := b.syncOnce(ctx)
+		advanced, outcome, err := b.syncOnce(ctx)
 		if err != nil {
 			return err
 		}
-		if caughtUp {
+
+		switch outcome {
+		case passCaughtUp:
+			// Genuinely synced: a ⅔-beacon quorum names a tip we already hold (or none is
+			// ahead), OR there is no beacon set at all (single-node / dev). DONE.
 			b.cfg.Log.Info("bootstrap complete — reached the network frontier")
 			return nil
-		}
 
-		if advanced {
-			stalls = 0
-			continue // immediately fetch the next segment toward the frontier
-		}
+		case passConnecting:
+			// THE CANARY CASE. Beacons ARE configured but not enough stake is connected yet
+			// to FORM a ⅔ quorum — the node cannot even ASK the network for the frontier, so
+			// it is NOT caught up (concluding so here would false-complete at the stale
+			// height). WAIT for connectivity, bounded by ConnectDeadline; if it never comes
+			// the node is eclipsed/partitioned and we fail SAFE.
+			if connectingSince.IsZero() {
+				connectingSince = time.Now()
+				b.cfg.Log.Info("bootstrap waiting for beacon connectivity before naming the frontier (not caught up)")
+			}
+			if time.Since(connectingSince) >= b.cfg.ConnectDeadline {
+				return ErrBeaconsUnreachable
+			}
+			if err := b.pause(ctx); err != nil {
+				return err
+			}
+			continue
 
-		// No progress this round: a peer did not serve, or none is ahead yet. Re-sample
-		// after a short pause (never a hot loop); give up after maxStallRounds so a real
-		// unreachable-peer failure surfaces instead of spinning forever.
-		stalls++
-		if stalls >= maxStallRounds {
-			return ErrStalled
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(b.cfg.RetryInterval):
+		case passNoQuorum:
+			// Enough beacon stake IS connected to ask, but no ⅔-by-stake supermajority names
+			// a single frontier — a genuine eclipse / partition. Fail SAFE: do NOT conclude
+			// caught-up at the stale height.
+			return ErrNoBeaconQuorum
+
+		case passWorking:
+			// A frontier IS named; the descent ran. We are past the connect phase.
+			connectingSince = time.Time{}
+			if advanced {
+				stalls = 0
+				continue // immediately fetch the next segment toward the frontier
+			}
+			// No progress this round: the named-frontier peer did not serve the ancestry.
+			// Re-sample after a short pause (never a hot loop); give up after maxStallRounds
+			// so a real unreachable-peer failure surfaces instead of spinning forever.
+			stalls++
+			if stalls >= maxStallRounds {
+				return ErrStalled
+			}
+			if err := b.pause(ctx); err != nil {
+				return err
+			}
 		}
 	}
 }
+
+// pause sleeps one RetryInterval or returns ctx.Err() on cancellation — the single place
+// the loop backs off so a dead/withholding peer or a not-yet-connected beacon set is never
+// hot-looped.
+func (b *Bootstrapper) pause(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(b.cfg.RetryInterval):
+		return nil
+	}
+}
+
+// passOutcome is the result of ONE syncOnce pass — the decomplected signal Run acts on.
+// It separates the three FrontierStatus "not named" reasons (wait / done / fail safe) that
+// the pre-fix code collapsed into a single caughtUp bool.
+type passOutcome int
+
+const (
+	passWorking    passOutcome = iota // a frontier IS named; the descent ran (see advanced)
+	passCaughtUp                      // reached the frontier, or no beacon set: DONE
+	passConnecting                    // beacons not connected yet to form a quorum: WAIT
+	passNoQuorum                      // beacons connected but no ⅔ agreement: FAIL SAFE
+)
 
 // syncOnce performs ONE sync pass: discover the frontier, descend-and-buffer the
 // missing ancestry until it connects to our tip, then execute it oldest-first.
 //
 //	advanced — at least one block was accepted this pass.
-//	caughtUp — our last-accepted has reached the frontier (or no peer is ahead): DONE.
-func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, caughtUp bool, err error) {
-	tipID, ok := b.cfg.Source.FrontierTip(ctx)
-	if !ok {
-		// No peer answered the frontier query. Nothing to sync to — treat as caught up
-		// (e.g. a single-node / dev chain, or a momentarily peerless start; the live
-		// frontier poller keeps watching once we are live).
-		return false, true, nil
+//	outcome  — passCaughtUp (synced / single-node), passConnecting (wait for beacons),
+//	           passNoQuorum (eclipse — fail safe), or passWorking (frontier named, descent ran).
+func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome passOutcome, err error) {
+	tipID, status := b.cfg.Source.FrontierTip(ctx)
+	switch status {
+	case FrontierNoBeacons:
+		// No beacon set configured (single-node / dev / --skip-bootstrap). There is no
+		// network frontier to reach — genuinely caught up. A legit single node must not hang.
+		return false, passCaughtUp, nil
+	case FrontierConnecting:
+		// Beacons configured but not enough connected YET to form a ⅔ quorum (the canary
+		// boot race). The node cannot even ASK — it is NOT caught up. Run waits (bounded).
+		return false, passConnecting, nil
+	case FrontierNoQuorum:
+		// Beacons connected, but no ⅔-by-stake agreement is reachable (eclipse/partition).
+		// NOT caught up — Run fails safe.
+		return false, passNoQuorum, nil
+	case FrontierNamed:
+		// A ⅔-stake beacon quorum named tipID — fall through to descend + execute below.
 	}
+
 	if tipID == ids.Empty || b.cfg.Chain.Has(ctx, tipID) {
-		// We already hold the frontier tip — synced.
-		return false, true, nil
+		// The quorum named a tip we already hold — synced (no peer is ahead of us).
+		return false, passCaughtUp, nil
 	}
 
 	lastID, lastH, err := b.cfg.Chain.LastAccepted(ctx)
 	if err != nil {
-		return false, false, err
+		return false, passWorking, err
 	}
 	if tipID == lastID {
-		return false, true, nil
+		return false, passCaughtUp, nil
 	}
 
 	// CONTENT-ADDRESSED DESCENT from the α-agreed frontier (the C1 safety core).
@@ -271,13 +409,13 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, caughtUp bo
 	connected := false
 	for round := 0; round < maxDescentRounds; round++ {
 		if ctx.Err() != nil {
-			return advanced, false, ctx.Err()
+			return advanced, passWorking, ctx.Err()
 		}
 		batch, ferr := b.cfg.Source.Ancestors(ctx, want, b.cfg.MaxBlocksPerFetch)
 		if ferr != nil || len(batch) == 0 {
 			// Peer did not serve this segment; abandon the pass (no advance) so Run
 			// re-samples a fresh peer. Not fatal — another peer may have it.
-			return advanced, false, nil
+			return advanced, passWorking, nil
 		}
 
 		// Index the batch by content (block id). Unparseable bytes ⇒ a malformed peer
@@ -291,7 +429,7 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, caughtUp bo
 		for _, raw := range batch {
 			blk, perr := b.cfg.Chain.ParseBlock(ctx, raw)
 			if perr != nil {
-				return advanced, false, nil
+				return advanced, passWorking, nil
 			}
 			index[blk.ID()] = idxEntry{raw: raw, height: blk.Height(), parent: blk.ParentID()}
 		}
@@ -327,7 +465,7 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, caughtUp bo
 		if !haveLowest {
 			// The batch did not contain the block we asked for (`want`): the peer served
 			// off-path junk. Abandon the pass and re-sample a fresh peer.
-			return advanced, false, nil
+			return advanced, passWorking, nil
 		}
 
 		if lowestHeight <= lastH+1 {
@@ -335,13 +473,13 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, caughtUp bo
 			break
 		}
 		if len(buffer) >= b.cfg.MaxBuffer || bufferBytes >= b.cfg.MaxBufferBytes {
-			return advanced, false, ErrGapTooLarge
+			return advanced, passWorking, ErrGapTooLarge
 		}
 		// Descend: require the parent of the lowest on-path block next round.
 		want = lowestParent
 	}
 	if !connected {
-		return advanced, false, ErrCannotConnect
+		return advanced, passWorking, ErrCannotConnect
 	}
 
 	// WEAK SUBJECTIVITY (defense-in-depth). If an operator pinned a recent finalized
@@ -353,7 +491,7 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, caughtUp bo
 		b.cfg.Log.Warn("bootstrap: α-agreed frontier does not descend from the weak-subjectivity checkpoint — refusing the frontier",
 			log.Stringer("checkpoint", b.cfg.WeakSubjectivityID),
 			log.Uint64("checkpointHeight", b.cfg.WeakSubjectivityHeight))
-		return advanced, false, ErrFrontierNotDescendedFromCheckpoint
+		return advanced, passWorking, ErrFrontierNotDescendedFromCheckpoint
 	}
 
 	// EXECUTE oldest-first from lastH+1 up through the contiguous buffer. Each accept
@@ -372,5 +510,5 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, caughtUp bo
 		}
 		advanced = true
 	}
-	return advanced, false, nil
+	return advanced, passWorking, nil
 }
