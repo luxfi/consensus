@@ -9,15 +9,9 @@ package quasar
 
 import "encoding/binary"
 
-// u32be / u64be return a fresh big-endian byte slice for a fixed-width value.
-// Value-returning siblings of qblock.go's appendU32/appendU64, used where a
-// part list (TupleHash) wants a standalone slice rather than an append target.
-func u32be(v uint32) []byte {
-	var b [4]byte
-	binary.BigEndian.PutUint32(b[:], v)
-	return b[:]
-}
-
+// u64be returns a fresh big-endian byte slice for a uint64. Value-returning
+// sibling of qblock.go's appendU64, used where a TupleHash part list wants a
+// standalone slice rather than an append target.
 func u64be(v uint64) []byte {
 	var b [8]byte
 	binary.BigEndian.PutUint64(b[:], v)
@@ -28,24 +22,15 @@ func u64be(v uint64) []byte {
 //
 //	suite_id_len:4 suite_id:S
 //	rollup_root:32
-//	cert_count:4
-//	  for each: validator_id:32, weight:8, pubkey_len:4 pubkey:P, sig_len:4 sig:G
-//	proof_len:4 proof:R
+//	cert_set_len:4 cert_set:C   (marshalled WeightedQuorumCert; empty for succinct)
+//	proof_len:4    proof:R      (succinct proof; empty for Direct)
 func encodeP3QRollupPayload(p *P3QRollupPayload) []byte {
-	buf := make([]byte, 0, 4+len(p.SuiteID)+32+4+len(p.Proof)+4)
+	buf := make([]byte, 0, 4+len(p.SuiteID)+32+4+len(p.CertSet)+4+len(p.Proof))
 	buf = appendU32(buf, uint32(len(p.SuiteID)))
 	buf = append(buf, p.SuiteID...)
 	buf = append(buf, p.RollupRoot[:]...)
 	buf = appendU32(buf, uint32(len(p.CertSet)))
-	for i := range p.CertSet {
-		c := p.CertSet[i]
-		buf = append(buf, c.ValidatorID[:]...)
-		buf = appendU64(buf, c.Weight)
-		buf = appendU32(buf, uint32(len(c.PubKey)))
-		buf = append(buf, c.PubKey...)
-		buf = appendU32(buf, uint32(len(c.Sig)))
-		buf = append(buf, c.Sig...)
-	}
+	buf = append(buf, p.CertSet...)
 	buf = appendU32(buf, uint32(len(p.Proof)))
 	buf = append(buf, p.Proof...)
 	return buf
@@ -53,9 +38,7 @@ func encodeP3QRollupPayload(p *P3QRollupPayload) []byte {
 
 // decodeP3QRollupPayload is the strict inverse. Every read is bounds-checked by
 // the shared qcReader; a truncated frame, an over-long length prefix, or any
-// trailing byte is ErrEvidenceWireCorrupt. The cert count is NOT trusted as an
-// allocation hint — leaves are appended as they are read, so a lying count
-// fails on the first short read rather than pre-allocating.
+// trailing byte is ErrEvidenceWireCorrupt.
 func decodeP3QRollupPayload(data []byte) (*P3QRollupPayload, error) {
 	r := &qcReader{buf: data}
 
@@ -67,29 +50,10 @@ func decodeP3QRollupPayload(data []byte) (*P3QRollupPayload, error) {
 	if err := r.read32(&root); err != nil {
 		return nil, ErrEvidenceWireCorrupt
 	}
-	count, err := r.u32()
+	certSet, err := r.lenPrefixed()
 	if err != nil {
 		return nil, ErrEvidenceWireCorrupt
 	}
-
-	certs := make([]MLDSAValidatorCert, 0)
-	for i := uint32(0); i < count; i++ {
-		var c MLDSAValidatorCert
-		if err := r.read32(&c.ValidatorID); err != nil {
-			return nil, ErrEvidenceWireCorrupt
-		}
-		if c.Weight, err = r.u64(); err != nil {
-			return nil, ErrEvidenceWireCorrupt
-		}
-		if c.PubKey, err = r.lenPrefixed(); err != nil {
-			return nil, ErrEvidenceWireCorrupt
-		}
-		if c.Sig, err = r.lenPrefixed(); err != nil {
-			return nil, ErrEvidenceWireCorrupt
-		}
-		certs = append(certs, c)
-	}
-
 	proof, err := r.lenPrefixed()
 	if err != nil {
 		return nil, ErrEvidenceWireCorrupt
@@ -101,7 +65,7 @@ func decodeP3QRollupPayload(data []byte) (*P3QRollupPayload, error) {
 	return &P3QRollupPayload{
 		SuiteID:    string(suiteID),
 		RollupRoot: root,
-		CertSet:    certs,
+		CertSet:    certSet,
 		Proof:      proof,
 	}, nil
 }
