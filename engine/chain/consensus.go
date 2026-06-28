@@ -245,11 +245,13 @@ func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) error {
 	if lastAcceptedID != ids.Empty {
 		c.ledger = seedLedger(lastAcceptedID, height)
 	} else {
-		// genesis/teardown reset: clear the tip, leave the per-height record as-is
-		// (EXACT prior behavior; reachable only at height 0 via the INFO-6 guard above).
-		reset := c.ledger
-		reset.tip = ids.Empty
-		c.ledger = reset
+		// genesis/teardown reset (empty head at height 0): reset finality to a CLEAN
+		// genesis VALUE — Empty tip, height 0, unset, no per-height record. LOW-2: the
+		// prior code cleared ONLY the tip and left height/byHeight/set stale, which
+		// desynced the tip from the height — every future cert then wedged in pathFromTip
+		// (it seeks the now-Empty tip and never finds it). A whole-value reset cannot
+		// desync: the next cert simply seeds finality afresh (first-finalize).
+		c.ledger = FinalityLedger{}
 	}
 
 	// Mark as bootstrapped so new blocks can be proposed
