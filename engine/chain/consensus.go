@@ -13,44 +13,58 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// ErrForceAcceptRequiresSingleValidator is returned by ForceAccept when invoked
-// on a multi-validator engine (k != 1). Self-finality without α-of-K is only
-// sound when the sole validator's accept IS the quorum; in every multi-
-// validator deployment finality MUST flow through the cert-witnessed α-of-K
-// path. Fail-closed.
-var ErrForceAcceptRequiresSingleValidator = errors.New("chain: ForceAccept is only valid for a single-validator engine (k==1); multi-validator finality requires an alpha-of-K quorum cert")
-
-// The per-height finalization invariants. ANY attempt to finalize a block that
-// violates one of these is rejected by markFinalizedLocked and surfaced to the
-// caller — a second valid cert for an already-finalized height is equivocation
-// evidence, never a silent second VM.Accept. These are the safety properties
-// that make α-of-K finality non-forking even when Round is attacker-chosen and
-// two valid α-certs exist at one height.
+// The finalization safety invariants. A cert-driven finalize routes through
+// FinalizeBranch, which enforces these in ONE place. Two of them remain genuine
+// safety properties Avalanche's pure Snowman does not need but α-of-K (external,
+// attacker-chosen-Round) certs do: a SECOND valid cert for a DIFFERENT block at an
+// already-decided height is equivocation evidence, never a silent second VM.Accept;
+// and a cert for a block that does NOT descend from the finalized frontier conflicts
+// with finalized history and is refused. The THIRD property of pure Snowman — that
+// finalized history is a single non-branching chain — is now achieved the avalanchego
+// way: NOT by pre-emptively refusing siblings at admission, but by REORG (prune the
+// losing sibling subtree when the cert selects the winner). Siblings coexist BEFORE
+// the cert decides; the reorg is the recovery.
 var (
 	// ErrHeightAlreadyFinalized is returned when a DIFFERENT block is already
 	// finalized at the target height. This is the fork the per-height guard
 	// exists to stop: two valid α-certs at the same height across different
 	// rounds. The first finalizes; the second is rejected and is equivocation
-	// evidence (two distinct blocks signed-final at one height).
+	// evidence (two distinct blocks signed-final at one height). KEPT — this is a
+	// real α-of-K-cert safety property pure Snowman does not need.
 	ErrHeightAlreadyFinalized = errors.New("chain: a different block is already finalized at this height (equivocation: two finalized blocks at one height)")
 
-	// ErrNonMonotonicFinalizedHeight is returned when a finalize is attempted at
-	// a height at or below the current finalized height with a different block —
-	// finality only ever moves forward.
-	ErrNonMonotonicFinalizedHeight = errors.New("chain: finalized height must strictly increase (cannot re-finalize an old or equal height with a different block)")
+	// ErrNonMonotonicFinalizedHeight is returned when a finalize is attempted at a
+	// height at or below the current finalized height with a different block, or
+	// when the cert-selected branch is not CONTIGUOUS with the frontier (a height
+	// gap). Finality only ever moves forward, one height at a time, along a tracked
+	// ancestry chain.
+	ErrNonMonotonicFinalizedHeight = errors.New("chain: finalized height must strictly increase by contiguous steps (cannot re-finalize an old/equal height, nor jump a height gap)")
 
-	// ErrParentNotFinalizedTip is returned when a newly-finalized block's parent
-	// is not the current finalized tip. Finality is a single non-branching chain:
-	// every finalized block (after the first) extends the previously finalized
-	// one.
-	ErrParentNotFinalizedTip = errors.New("chain: newly-finalized block's parent is not the current finalized tip (would branch finalized history)")
+	// ErrConflictsWithFinalizedBranch is returned when a cert-selected block does
+	// NOT descend from the current finalized tip — its ancestry reaches a block at
+	// or below the finalized height that is NOT the finalized tip (a losing sibling
+	// branch, or an already-pruned one). Under <⅓ Byzantine this can only happen for
+	// a block on a branch the network did not finalize; finalizing it would branch
+	// finalized history, so it is refused. (Was ErrParentNotFinalizedTip — but it is
+	// no longer an ADMISSION refusal of any non-tip parent: siblings are admitted and
+	// resolved by the cert's reorg; only a block proven to be on a LOSING branch is
+	// refused here.)
+	ErrConflictsWithFinalizedBranch = errors.New("chain: cert-selected block does not extend the finalized frontier (it descends from a losing/pruned sibling branch)")
+
+	// ErrAncestorNotTracked is returned when FinalizeBranch cannot prove the path
+	// from the finalized tip up to the cert-selected block because an ANCESTOR on
+	// that path is not in the live DAG. This is a DEFER, not a conflict: the node is
+	// behind and must fetch the missing ancestors (the live cert path tracks them;
+	// bootstrap/catch-up feed oldest-first so the walk is single-step). The caller
+	// re-applies once the gap is filled — it must NEVER finalize on this error.
+	ErrAncestorNotTracked = errors.New("chain: cannot finalize — an ancestor between the finalized tip and the cert-selected block is not tracked (behind; fetch and retry)")
 
 	// ErrSyncStateRegression is returned by SyncState when an import
 	// (admin_importChain / state-sync reconcile) tries to seed the finalized
 	// head at a height BELOW the height already finalized locally. SyncState
-	// bypasses markFinalizedLocked by design (an import is an out-of-band
-	// reconcile, not an α-of-K finalize), so the monotonic invariant the per-
-	// height guard enforces must be re-asserted here explicitly: a backward
+	// bypasses FinalizeBranch by design (an import is an out-of-band
+	// reconcile, not an α-of-K finalize), so the monotonic invariant the finalize
+	// path enforces must be re-asserted here explicitly: a backward
 	// import must NOT silently regress local finalized height (which would let a
 	// shorter imported chain un-finalize blocks the node already finalized).
 	ErrSyncStateRegression = errors.New("chain: SyncState refused — import height is below the already-finalized height (would regress finalized history)")
@@ -139,15 +153,37 @@ type ChainConsensus struct {
 	bootstrapped bool
 	finalizedTip ids.ID
 
-	// Per-height finalization ledger — the single source of truth for "which
-	// block is finalized at height H". finalizedTip/finalizedHeight name the
-	// current head of finalized history; finalizedByHeight indexes the full set
-	// so a re-finalize of any past height with a different block is caught (not
-	// just the current one). Together they make finality a single non-branching
-	// chain: ONE block per height, height strictly increasing, parent == tip.
+	// Per-height finalization ledger — the source of truth for "which block is
+	// finalized at height H". finalizedTip/finalizedHeight name the head of
+	// finalized history; finalizedByHeight indexes the full set so a re-finalize of
+	// any past height with a different block is caught. This is a POST-finalization
+	// RECORD, not a pre-emptive admission gate: it is advanced ONLY by FinalizeBranch
+	// (the cert-driven finalize), and the single-non-branching-chain property is kept
+	// by the REORG that FinalizeBranch performs (prune the losing sibling subtree),
+	// never by refusing to track siblings. Maps avalanchego topological.go's
+	// lastAcceptedID/lastAcceptedHeight (the committed lower bound), with the
+	// per-height index added for α-of-K equivocation detection.
 	finalizedHeight    uint64
 	finalizedHeightSet bool // false until the first block is finalized
 	finalizedByHeight  map[uint64]ids.ID
+}
+
+// BranchFinalization is the plan a cert-driven finalize produces and the engine
+// applies to the VM. It mirrors avalanchego topological.go's accept/reject split:
+//
+//   - Accepted is the path from the OLD finalized tip up to the cert-selected block,
+//     in ASCENDING height order — the blocks to VM.Accept (one per height the cert
+//     advanced finality by; usually exactly one, more on a catch-up jump). This is
+//     acceptPreferredChild applied along a path.
+//   - Pruned is every block on a LOSING sibling subtree (a sibling of a path block,
+//     plus all its descendants) — the blocks to VM.Reject and drop. This is
+//     rejectTransitively.
+//
+// The consensus ledger has ALREADY been advanced when this value is returned; the
+// engine owns only the VM-side effects (Accept/Reject/SetPreference).
+type BranchFinalization struct {
+	Accepted []ids.ID // path blocks finalized this call, ascending height
+	Pruned   []ids.ID // losing-sibling subtrees (sibling + descendants), any order
 }
 
 // NewChainConsensus creates a real consensus engine
@@ -162,63 +198,199 @@ func NewChainConsensus(k, alpha, beta int) *ChainConsensus {
 	}
 }
 
-// markFinalizedLocked is the SINGLE place finality is committed. Every finalize
-// path — local α-of-K count (ProcessVote/Poll), cert-witnessed finality
-// (AcceptViaCert), and single-validator force (ForceAccept) — routes through
-// here so the per-height safety invariants are enforced in exactly one place
-// (decomplected: the invariant is not braided into each caller).
+// FinalizeBranch commits the cert-selected block `target` (at `height`, parent
+// `parentID`) and EVERY block on the path from the current finalized tip up to it,
+// then returns the plan the engine applies to the VM: the path to Accept and the
+// losing-sibling subtrees to prune. It is the SINGLE place finalized history is
+// advanced.
 //
-// It enforces, in order:
+// This REPLACES the old per-height admission gate. The old code refused any cert
+// whose block's parent != finalizedTip (invariant (c)) — which deadlocked a fresh
+// net the moment production explored a sibling, because a refusal cannot reorg. The
+// new model is avalanchego's: siblings are TRACKED (AddBlock admits any child of a
+// known block); when a cert SELECTS one, we walk the certified branch, finalize it,
+// and PRUNE the losers. The single-non-branching-chain property is the OUTPUT of the
+// reorg, not a precondition refused at admission.
 //
-//	(a) ONE finalized block per height. If a block is already finalized at this
-//	    height: same block → idempotent no-op (nil); DIFFERENT block →
-//	    ErrHeightAlreadyFinalized (the fork; equivocation evidence).
-//	(b) monotonic height: a finalize at or below the current finalized height
-//	    with a new block → ErrNonMonotonicFinalizedHeight. (After the first
-//	    finalize, only a strictly greater height is admissible.)
-//	(c) parent == current finalized tip (after the first finalize): the new
-//	    block extends finalized history, never branches it →
-//	    ErrParentNotFinalizedTip otherwise.
+// It enforces (mapped to the safety invariants α-of-K certs require):
 //
-// On success it records the block in the per-height ledger and advances
-// finalizedTip/finalizedHeight. It does NOT call into the VM or set block.accepted
-// — those are the caller's responsibility (the caller owns whether a tracked
-// Block exists); this method owns ONLY the safety ledger. Caller holds c.mu.
+//	(a) ONE finalized block per height. Same block already finalized here → idempotent
+//	    no-op. DIFFERENT block already finalized at a decided height →
+//	    ErrHeightAlreadyFinalized (equivocation evidence). [KEPT from the old gate.]
+//	(b) the certified block must DESCEND from the finalized tip via a tracked,
+//	    contiguous ancestry. A block whose ancestry reaches a non-tip block at/below
+//	    the finalized height is on a losing/pruned branch → ErrConflictsWithFinalizedBranch.
+//	    A height gap on the path → ErrNonMonotonicFinalizedHeight. An untracked
+//	    ancestor → ErrAncestorNotTracked (DEFER: behind, fetch and retry).
 //
-// `parentID` may be ids.Empty for a genesis/first block with no parent.
-func (c *ChainConsensus) markFinalizedLocked(blockID ids.ID, height uint64, parentID ids.ID) error {
-	// (a) one block per height.
+// On success the per-height ledger is advanced to `target` and the path blocks are
+// marked accepted in the consensus DAG; the losing subtrees are marked rejected and
+// removed from the live DAG/tips. The engine applies the returned VM effects. Takes
+// c.mu. `parentID` may be ids.Empty only for the genesis/first finalize.
+func (c *ChainConsensus) FinalizeBranch(target ids.ID, height uint64, parentID ids.ID) (BranchFinalization, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.finalizeBranchLocked(target, height, parentID)
+}
+
+// finalizeBranchLocked is FinalizeBranch's body. Caller holds c.mu.
+func (c *ChainConsensus) finalizeBranchLocked(target ids.ID, height uint64, parentID ids.ID) (BranchFinalization, error) {
+	// (a) idempotent / equivocation at the target height.
 	if existing, ok := c.finalizedByHeight[height]; ok {
-		if existing == blockID {
-			return nil // idempotent: this exact block already finalized here
+		if existing == target {
+			return BranchFinalization{}, nil // this exact block already finalized here
 		}
-		return fmt.Errorf("%w: height %d already finalized %s, refused %s",
-			ErrHeightAlreadyFinalized, height, existing, blockID)
+		return BranchFinalization{}, fmt.Errorf("%w: height %d already finalized %s, refused %s",
+			ErrHeightAlreadyFinalized, height, existing, target)
 	}
 
-	if c.finalizedHeightSet {
-		// (b) monotonic + CONTIGUOUS: finality advances by exactly one height.
-		// height ≤ finalized is a backward/equal fork attempt (equal-height-same-
-		// block was already idempotent in (a)); height > finalized+1 would leave a
-		// gap (and a valid α-cert cannot carry a height inconsistent with the
-		// block's true height unless > f validators are Byzantine). Requiring the
-		// strict successor makes finalized history a single CONTIGUOUS chain.
-		if height != c.finalizedHeight+1 {
-			return fmt.Errorf("%w: refused height %d at finalized height %d (block %s; finality advances by exactly 1)",
-				ErrNonMonotonicFinalizedHeight, height, c.finalizedHeight, blockID)
-		}
-		// (c) parent must be the current finalized tip — no branching.
-		if parentID != c.finalizedTip {
-			return fmt.Errorf("%w: block %s parent %s != finalized tip %s (height %d)",
-				ErrParentNotFinalizedTip, blockID, parentID, c.finalizedTip, height)
-		}
+	// First finalize seeds the ledger — there is no prior tip to extend or reorg.
+	if !c.finalizedHeightSet {
+		c.recordFinalizedLocked(target, height)
+		return BranchFinalization{Accepted: []ids.ID{target}}, nil
 	}
 
-	c.finalizedByHeight[height] = blockID
-	c.finalizedTip = blockID
+	// Below/at the frontier with no record for this height → stale or non-monotonic.
+	if height <= c.finalizedHeight {
+		return BranchFinalization{}, fmt.Errorf("%w: refused height %d at finalized height %d (block %s)",
+			ErrNonMonotonicFinalizedHeight, height, c.finalizedHeight, target)
+	}
+
+	// Walk the certified branch finalizedTip → target. This REPLACES invariant (c):
+	// instead of refusing parent != tip, prove the ancestry reaches the tip and
+	// finalize EVERY block on it (a cert may certify a descendant several heights
+	// above the tip — a catch-up jump — so the path is 1..k blocks).
+	path, err := c.pathFromTipLocked(target, height, parentID)
+	if err != nil {
+		return BranchFinalization{}, err
+	}
+
+	// Commit the path (ascending) and collect the losing-sibling subtrees to prune.
+	var fin BranchFinalization
+	for _, step := range path {
+		fin.Pruned = append(fin.Pruned, c.collectLosingSubtreesLocked(step.id, step.parentID)...)
+		c.recordFinalizedLocked(step.id, step.height)
+		if b, ok := c.blocks[step.id]; ok {
+			b.accepted = true
+		}
+		fin.Accepted = append(fin.Accepted, step.id)
+	}
+
+	// Reject + remove the pruned subtrees from the live DAG/tips (rejectTransitively).
+	for _, id := range fin.Pruned {
+		if b, ok := c.blocks[id]; ok {
+			b.rejected = true
+		}
+		delete(c.blocks, id)
+		delete(c.tips, id)
+	}
+	return fin, nil
+}
+
+// recordFinalizedLocked advances the per-height ledger head to (id, height). The
+// ONLY writer of finalizedTip/finalizedHeight/finalizedByHeight on the finalize path.
+func (c *ChainConsensus) recordFinalizedLocked(id ids.ID, height uint64) {
+	c.finalizedByHeight[height] = id
+	c.finalizedTip = id
 	c.finalizedHeight = height
 	c.finalizedHeightSet = true
-	return nil
+	delete(c.tips, id) // a finalized block is no longer an open build tip
+}
+
+// finalizeStep is one block on the path from the finalized tip to the cert target.
+type finalizeStep struct {
+	id       ids.ID
+	height   uint64
+	parentID ids.ID
+}
+
+// pathFromTipLocked returns the contiguous ancestry path finalizedTip → target in
+// ASCENDING height order, by walking target's parent links through the tracked DAG.
+// Errors distinguish the three non-extending cases:
+//   - ErrConflictsWithFinalizedBranch: an ancestor reaches the finalized height (or
+//     below) at a block that is NOT the finalized tip — target is on a losing branch.
+//   - ErrAncestorNotTracked: an ancestor is missing from the DAG — DEFER (behind).
+//   - ErrNonMonotonicFinalizedHeight: the path is not contiguous (a height gap), or
+//     a parent height does not strictly decrease (malformed linkage).
+//
+// Caller guarantees height > c.finalizedHeight and c.finalizedHeightSet. Caller holds c.mu.
+func (c *ChainConsensus) pathFromTipLocked(target ids.ID, height uint64, parentID ids.ID) ([]finalizeStep, error) {
+	steps := []finalizeStep{{id: target, height: height, parentID: parentID}}
+	cur := parentID
+	childHeight := height
+	for cur != c.finalizedTip {
+		pb, ok := c.blocks[cur]
+		if !ok {
+			// The path to the frontier is not fully tracked — the node is behind.
+			// Fail-closed DEFER: never finalize on a path we cannot prove.
+			return nil, fmt.Errorf("%w: ancestor %s of %s missing", ErrAncestorNotTracked, cur, target)
+		}
+		// Heights must strictly decrease as we walk toward the tip; a parent at/above
+		// its child's height is malformed linkage.
+		if pb.height >= childHeight {
+			return nil, fmt.Errorf("%w: ancestor %s height %d not below child height %d",
+				ErrNonMonotonicFinalizedHeight, pb.id, pb.height, childHeight)
+		}
+		// Reached the finalized height (or below) at a block that is not the tip →
+		// target descends from a branch the network did not finalize.
+		if pb.height <= c.finalizedHeight {
+			return nil, fmt.Errorf("%w: %s ancestry reaches %s (height %d) not finalized tip %s",
+				ErrConflictsWithFinalizedBranch, target, pb.id, pb.height, c.finalizedTip)
+		}
+		steps = append(steps, finalizeStep{id: pb.id, height: pb.height, parentID: pb.parentID})
+		cur = pb.parentID
+		childHeight = pb.height
+	}
+
+	// Reverse to ascending height and assert contiguity with the frontier: the first
+	// (lowest) step must be exactly finalizedHeight+1 and each step exactly +1. A
+	// gap means a height was skipped (defense-in-depth: a valid block's height is its
+	// parent's +1, so an honest path always passes; a malformed cert/linkage fails).
+	for i, j := 0, len(steps)-1; i < j; i, j = i+1, j-1 {
+		steps[i], steps[j] = steps[j], steps[i]
+	}
+	for i := range steps {
+		want := c.finalizedHeight + 1 + uint64(i)
+		if steps[i].height != want {
+			return nil, fmt.Errorf("%w: path height %d at position %d, want %d (gap)",
+				ErrNonMonotonicFinalizedHeight, steps[i].height, i, want)
+		}
+	}
+	return steps, nil
+}
+
+// collectLosingSubtreesLocked returns every tracked block on a LOSING sibling subtree
+// of `keepID`: the other children of `parentID` (siblings of keepID) plus all their
+// descendants. This is avalanchego rejectTransitively's reachable set. Caller holds c.mu.
+func (c *ChainConsensus) collectLosingSubtreesLocked(keepID ids.ID, parentID ids.ID) []ids.ID {
+	// Seed the frontier with direct siblings (children of parentID other than keepID).
+	var queue []ids.ID
+	for id, b := range c.blocks {
+		if b.parentID == parentID && id != keepID {
+			queue = append(queue, id)
+		}
+	}
+	if len(queue) == 0 {
+		return nil
+	}
+	// BFS the descendants of each losing sibling.
+	out := make([]ids.ID, 0, len(queue))
+	seen := make(map[ids.ID]bool, len(queue))
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+		for cid, cb := range c.blocks {
+			if cb.parentID == id && !seen[cid] {
+				queue = append(queue, cid)
+			}
+		}
+	}
+	return out
 }
 
 // AddBlock adds a block to consensus
@@ -269,14 +441,14 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept
 		block.rejectVotes++
 	}
 
-	// Check if acceptance quorum is reached (accept votes >= alpha). Finality is
-	// committed through the single per-height guard: if this block would fork an
-	// already-finalized height (or branch finalized history) the guard refuses
-	// and the block is NOT marked accepted — the count alone never finalizes.
+	// LIVENESS only (decomplected from finality). Reaching the α accept count marks
+	// the block worth a finalize ATTEMPT — block.accepted is the engine's
+	// DrainAccepted trigger — but it does NOT advance the per-height ledger. Finality
+	// is committed ONLY by the cert-driven FinalizeBranch (the α-of-K SIGNED witness),
+	// which also performs the sibling reorg. A sibling reaching α-count here is
+	// harmless: the cert decides which branch finalizes, and the loser is pruned.
 	if block.acceptVotes >= c.alpha && !block.accepted {
-		if err := c.markFinalizedLocked(blockID, block.height, block.parentID); err == nil {
-			block.accepted = true
-		}
+		block.accepted = true
 	}
 
 	// Check if rejection quorum is reached (reject votes >= alpha)
@@ -324,14 +496,12 @@ func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) err
 			shouldContinue := block.driver.Poll(blockResponses)
 			decided := block.driver.Decided()
 
-			// Check if block reached finality through Focus convergence
-			// AND we have sufficient accept votes (quorum reached). Commit through
-			// the single per-height guard — a block that would fork an already-
-			// finalized height is refused and stays un-accepted.
+			// Focus convergence + α accept count → LIVENESS: mark the block worth a
+			// finalize attempt. Finality (and the reorg) is the cert path's job
+			// (FinalizeBranch), never the count path's — so the count never advances
+			// the ledger nor branches it.
 			if !shouldContinue && decided && block.acceptVotes >= c.alpha {
-				if err := c.markFinalizedLocked(blockID, block.height, block.parentID); err == nil {
-					block.accepted = true
-				}
+				block.accepted = true
 			}
 		}
 	}
@@ -447,7 +617,7 @@ func (c *ChainConsensus) Stats() map[string]interface{} {
 // This is called by the syncer after admin_importChain to reconcile consensus
 // state with the EVM state database.
 //
-// MONOTONIC GUARD (defence-in-depth): SyncState bypasses markFinalizedLocked by
+// MONOTONIC GUARD (defence-in-depth): SyncState bypasses FinalizeBranch by
 // design — an import is an out-of-band reconcile with the VM's last-accepted
 // head, NOT an α-of-K finalize, so it legitimately seeds finalizedTip/Height
 // directly. But "bypasses the finalize path" must NOT mean "bypasses the
@@ -524,159 +694,24 @@ func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) error {
 // ForcePreference reaffirms the engine's preferred tip after a VM SetPreference
 // failure. It is a recovery mechanism used when SetPreference fails AFTER a block
 // was accepted — without it the VM and consensus engine could disagree on the
-// chain tip, causing a state-divergence death spiral.
+// chain tip, causing a state-divergence death spiral. Every legitimate caller invokes
+// it with the block that was JUST finalized ("SetPreference failed after Accept"), so
+// the block is already the finalized tip and this is a reaffirming no-op.
 //
-// SAFETY (decomplected from the per-height guard): finalizedTip is the per-height
-// guard's source of truth for invariant (c) (a new block's parent must equal the
-// finalized tip). This method therefore MUST NOT be able to move finalizedTip OFF
-// the finalized head — a recovery convenience may never corrupt the safety ledger.
-// Every legitimate caller invokes ForcePreference with the block that was JUST
-// finalized (its precondition: "SetPreference failed after Accept"), so the block
-// is already the finalized tip and this is a reaffirming no-op on finalizedTip.
-//
-// If invoked with a block that is NOT the current finalized head (a future
-// misuse / refactor bug), it does NOT overwrite finalizedTip — doing so would
-// leave finalizedTip disagreeing with finalizedHeight/finalizedByHeight and blind
-// invariant (c). It still records the block as a tip (harmless: tips only seed
-// block building; finality is gated by the guard, never by tips). Fail-safe.
+// finalizedTip is advanced ONLY by FinalizeBranch, atomically with
+// finalizedHeight/finalizedByHeight (the cert path's reorg is the sole authority on
+// the tip). So this method never moves finalizedTip off the recorded head — with the
+// per-height ADMISSION gate gone, there is no invariant for a stray preference to
+// corrupt. It only adopts blockID as the preliminary build preference before the
+// FIRST finalize, and always records it as a build tip.
 func (c *ChainConsensus) ForcePreference(blockID ids.ID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	// Only (re)assert the finalized tip when blockID IS the finalized head — i.e.
-	// the block finalized at the current finalized height (the universal caller
-	// precondition). Before the first finalize (no head yet) there is nothing to
-	// corrupt, so adopting blockID as the preliminary tip is safe.
 	if !c.finalizedHeightSet {
-		c.finalizedTip = blockID
-	} else if fin, ok := c.finalizedByHeight[c.finalizedHeight]; ok && fin == blockID {
-		c.finalizedTip = blockID // reaffirm — already the head, no desync
+		c.finalizedTip = blockID // no finalized head yet — preliminary preference
 	}
-	// else: blockID is not the finalized head — do NOT move finalizedTip (would
-	// desync the per-height guard's invariant). Only mark it a build tip below.
-
-	// Ensure the forced block is a tip for block-building purposes.
+	// After the first finalize the tip is authoritative and untouched here.
 	c.tips[blockID] = true
-}
-
-// ForceAccept marks a block as accepted WITHOUT a quorum — it is the
-// single-validator (K==1) finalization path and NOTHING ELSE.
-//
-// HISTORY / WHY IT IS GATED: ForceAccept used to be the proposer-self-accept
-// escape hatch — the proposer force-accepted its OWN block on its lone
-// self-vote when peer Chits arrived late. That was self-finality: a value
-// block could finalize with NO α-of-K agreement, so a Byzantine (or merely
-// equivocating) proposer could fork the chain. It is REMOVED for K>1. With
-// more than one validator, finality flows ONLY through the α-of-K path
-// (ProcessVote / Poll set accepted=true once acceptVotes>=alpha) and is
-// witnessed by a QuorumCert (quorum_cert.go) — there is no force path.
-//
-// For K==1 (a single-validator network, e.g. --dev / localnet) "α-of-K" is
-// "1-of-1": the sole validator's own accept IS the quorum, so ForceAccept is
-// the correct, safe finalization. The guard makes the abuse impossible to
-// reach in any multi-validator deployment:
-//
-//	returns ErrForceAcceptRequiresSingleValidator when k != 1 — fail-closed.
-//
-// Idempotent: subsequent calls on an already-accepted block no-op.
-func (c *ChainConsensus) ForceAccept(blockID ids.ID) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.k != 1 {
-		return ErrForceAcceptRequiresSingleValidator
-	}
-	block, exists := c.blocks[blockID]
-	if !exists {
-		return nil
-	}
-	if block.accepted {
-		return nil
-	}
-	// Even the single-validator path commits through the per-height guard: a
-	// K==1 node still must not finalize two blocks at one height or branch its
-	// own finalized history (e.g. a buggy double-build). The guard is cheap and
-	// keeps ONE finalization path.
-	if err := c.markFinalizedLocked(blockID, block.height, block.parentID); err != nil {
-		return err
-	}
-	block.accepted = true
-	return nil
-}
-
-// AcceptViaCert marks a block accepted because a verified QuorumCert proves
-// α-of-K validators accepted it. This is the multi-validator finalization
-// authority that replaces the deleted self-accept force path: the caller has
-// ALREADY verified the cert (cert.Verify) against the chain's VoteVerifier, so
-// this method records the decision the cert proves. It does not re-decide
-// quorum — the cert IS the quorum proof.
-//
-// CRITICAL — per-height single-finalize. The cert's Round is attacker-chosen, so
-// two VALID α-certs can exist for two DIFFERENT blocks at the SAME height (each
-// over a different round). Both would Verify. This method commits through
-// markFinalizedLocked, which finalizes the FIRST and returns
-// ErrHeightAlreadyFinalized for the SECOND — the second is rejected (no
-// VM.Accept) and the error is the caller's equivocation evidence. Without this
-// guard the second cert forks the chain (red's PoC).
-//
-// The block's (height, parentID) come from the cert position the caller already
-// verified — finality binds to the position the signatures cover, never to a
-// locally-tracked Block (a follower may finalize via cert before the block
-// enters local tracking). When the block IS tracked, it is also marked accepted.
-//
-// Returns nil on success (including the idempotent re-finalize of the same
-// block at the same height) or the guard error naming the violated invariant.
-func (c *ChainConsensus) AcceptViaCert(blockID ids.ID, height uint64, parentID ids.ID) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Commit to the per-height ledger FIRST — this is the single safety gate.
-	// On any violation (already-finalized height, non-monotonic, parent !=
-	// tip) nothing is accepted and the error propagates to the caller.
-	if err := c.markFinalizedLocked(blockID, height, parentID); err != nil {
-		return err
-	}
-
-	if block, exists := c.blocks[blockID]; exists {
-		block.accepted = true
-	}
-	return nil
-}
-
-// AcceptBootstrapBlock commits a block accepted during INITIAL SYNC (bootstrap):
-// the node fetched it from the network's accepted frontier (the beacon/validator
-// set advertised it as accepted) and re-executed it (Verify) against the synced
-// parent state. It is the FRONTIER-TRUST finalization authority — distinct from
-// AcceptViaCert (the α-of-K cert authority) and ForceAccept (the 1-of-1 authority)
-// — but it commits through the SAME single per-height guard (markFinalizedLocked),
-// so a bootstrap accept is held to the IDENTICAL single-non-branching-chain
-// invariants every other finalize path obeys: ONE block per height, height
-// advances by EXACTLY one, parent == the current finalized tip. A gapped, out-of-
-// order, or forking block is REFUSED — a bootstrapping node cannot be fed a forked
-// history any more than a live one, and the parent-order requirement is what makes
-// the caller's "execute oldest-first against the accepted parent state" sound.
-//
-// It is NOT a second, weaker finality authority for live operation: the engine
-// permits the receive-side caller (Runtime.AcceptBootstrapBlock) to reach it ONLY
-// during the bootstrap phase (Transitive.InBootstrapPhase). Once the node reaches
-// the frontier and goes live, the bootstrap path is fail-closed and finality flows
-// only through the cert-witnessed α-of-K road.
-//
-// Caller holds nothing; this takes c.mu. `parentID` may be ids.Empty for a
-// genesis/first block.
-func (c *ChainConsensus) AcceptBootstrapBlock(blockID ids.ID, height uint64, parentID ids.ID) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	// The single safety gate — same as the cert path. On any violation (already-
-	// finalized height, non-monotonic, parent != tip) nothing advances.
-	if err := c.markFinalizedLocked(blockID, height, parentID); err != nil {
-		return err
-	}
-	// Mark accepted when the block is tracked (bootstrap typically does NOT track
-	// every block in c.blocks — see Runtime.AcceptBootstrapBlock — so this is a
-	// no-op for an untracked block; the per-height ledger is the source of truth).
-	if block, exists := c.blocks[blockID]; exists {
-		block.accepted = true
-	}
-	return nil
 }
 
 // GetFinalizedTip returns the current finalized tip block ID.

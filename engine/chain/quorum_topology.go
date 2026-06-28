@@ -186,7 +186,7 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	//     (the height is already decided); and
 	//   - a cert whose height does not match the height of the block we are
 	//     tracking under that ID is internally inconsistent.
-	// This is the cheap front-line check; the per-height guard in AcceptViaCert
+	// This is the cheap front-line check; FinalizeBranch (inside AcceptWithCert)
 	// is the authoritative backstop that also produces equivocation evidence.
 	if fh, set := t.consensus.GetFinalizedHeight(); set && cert.Position.Height <= fh {
 		// If a DIFFERENT block is finalized at this exact height, the cert is an
@@ -281,12 +281,7 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		ctx = c
 	}
 
-	// Record the cert candidate, then commit through the per-height guard. The
-	// guard is the AUTHORITATIVE single-finalize gate: it finalizes the first
-	// block at a height and REFUSES a second (different) one — even if the cert
-	// itself verified — returning ErrHeightAlreadyFinalized, which we surface as
-	// equivocation evidence. Only on a clean accept do we run the shared finalize
-	// path (VM.Accept + SetPreference). This closes the two-certs-one-height fork.
+	// Record the cert candidate, then finalize through the SOLE finalizer.
 	t.mu.Lock()
 	if pending.Decided {
 		t.mu.Unlock()
@@ -295,21 +290,34 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	pending.cert = cert
 	t.mu.Unlock()
 
-	if err := t.consensus.AcceptViaCert(cert.Position.BlockID, cert.Position.Height, cert.Position.ParentID); err != nil {
-		// The cert verified but violates a per-height finalization invariant.
-		// This is the fork the guard exists to stop — do NOT VM.Accept.
+	// The cert cleared VerifyWeighted/Verify above (the SAME predicate
+	// BuildVerifiedQuorumCert runs), so promote it to the finality authority token.
+	vcert, ok := wrapVerifiedCert(cert)
+	if !ok {
+		return false
+	}
+
+	// AcceptWithCert is the SOLE finalizer: it commits the certified branch through
+	// FinalizeBranch (the per-height equivocation gate + the sibling REORG: prune the
+	// losers, accept the path) and applies the VM effects. A safety violation is
+	// returned here and NOTHING is VM-accepted:
+	//   - ErrHeightAlreadyFinalized → a SECOND cert at an already-finalized height:
+	//     surface the conflict as equivocation evidence (the two-certs-one-height fork);
+	//   - ErrConflictsWithFinalizedBranch → a cert for a losing/pruned branch: drop;
+	//   - ErrAncestorNotTracked → we are behind: drop (the gap fetch re-applies it).
+	if err := t.AcceptWithCert(ctx, cert.Position.BlockID, vcert); err != nil {
 		if errors.Is(err, ErrHeightAlreadyFinalized) {
 			if fin, ok := t.consensus.FinalizedBlockAtHeight(cert.Position.Height); ok {
 				rt.reportCertEquivocation(cert, fin)
 			}
 		}
 		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Warn("incoming cert: REFUSED by per-height finality guard (no VM.Accept)",
+			rt.config.Logger.Warn("incoming cert: REFUSED by finality guard (no VM.Accept)",
 				log.Stringer("blockID", cert.Position.BlockID),
 				log.Uint64("height", cert.Position.Height), log.Err(err))
 		}
 		// Roll back the speculative cert cache so a later legitimate finalize of
-		// this (already-decided-elsewhere) ID is not confused.
+		// this ID is not confused.
 		t.mu.Lock()
 		if pd, ok := t.pendingBlocks[cert.Position.BlockID]; ok && !pd.Decided {
 			pd.cert = nil
@@ -324,15 +332,6 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	}
 	rt.fastFollowMu.Unlock()
 
-	// The cert cleared VerifyWeighted/Verify above (the SAME predicate
-	// BuildVerifiedQuorumCert runs) and the per-height guard via AcceptViaCert, so
-	// promote it to the finality authority token and finalize through the SOLE
-	// finalizer. wrapVerifiedCert refuses only a nil cert; this cert is non-nil.
-	vcert, ok := wrapVerifiedCert(cert)
-	if !ok {
-		return false
-	}
-	_ = t.AcceptWithCert(ctx, cert.Position.BlockID, vcert)
 	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Info("finalized block via α-of-K quorum cert",
 			log.Stringer("blockID", cert.Position.BlockID),

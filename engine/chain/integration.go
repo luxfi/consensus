@@ -341,9 +341,9 @@ func (rt *Runtime) ValidatorCount() int {
 // node before its first finalize).
 //
 // This is the SINGLE advancing source of truth for "where the node's accepted chain
-// actually is" — the SAME per-height ledger AcceptBootstrapBlock's contiguity guard
-// trusts (bootstrap_accept.go reads consensus.GetFinalizedHeight directly). It ADVANCES
-// as blocks finalize via markFinalizedLocked. It must NOT be confused with the VM's
+// actually is" — the SAME per-height ledger the bootstrap contiguity check trusts
+// (bootstrap_accept.go reads consensus.GetFinalizedHeight directly). It ADVANCES as
+// blocks finalize via FinalizeBranch. It must NOT be confused with the VM's
 // LastAccepted, which a fire-and-forget Accept can leave FROZEN at the boot snapshot —
 // the staleness this engine already designs around (see fastFollowHeight above: "1.
 // VM.LastAccepted() is stale after Accept() calls"). The node's bootstrap caught-up /

@@ -31,7 +31,8 @@ const (
 	ModeUnknown ConsensusMode = iota
 
 	// ModeSingleValidator is a K==1 engine: the sole validator's own accept IS
-	// the 1-of-1 quorum (ForceAccept). Correct for --dev / localnet. A single
+	// the 1-of-1 quorum (a 1-of-1 cert → FinalizeBranch). Correct for --dev /
+	// localnet. A single
 	// validator can author any history, so it is NOT a multi-party quorum-finality
 	// regime.
 	ModeSingleValidator
