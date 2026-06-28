@@ -1,7 +1,7 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// quorum_cert_quasar_test.go — proves the engine→quasar bridge is REAL: an
+// quasar_test.go — proves the engine→quasar bridge is REAL: an
 // engine QuorumCert maps to a protocol/quasar.WeightedQuorumCert that quasar's
 // OWN Verify accepts, AND that the bridge fails closed when the node has not
 // supplied the weighted PQ validator-set material.

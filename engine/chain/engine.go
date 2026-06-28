@@ -505,7 +505,7 @@ type Transitive struct {
 
 	// cryptoWitness (optional) is the post-quantum finality witness source a strict-PQ
 	// chain wires (the SAME node-layer CryptoWitnessSource that upgrades an engine
-	// QuorumCert into a quasar.WeightedQuorumCert — see quorum_cert_quasar.go). It is
+	// QuorumCert into a quasar.WeightedQuorumCert — see quasar.go). It is
 	// REQUIRED for Mode() to report ModeQuorumFinality on a strict-PQ chain: without it the
 	// cert path cannot produce the PQ (quasar) witness the profile demands, so the value-
 	// DEX gate must not certify a quorum-finality regime that cannot be witnessed post-
@@ -1158,7 +1158,7 @@ const (
 // (processPendingBlocks) only CHECKS consensus.IsAccepted; it never re-requests.
 // So a single lagging validator at height 0 wedged finality forever — the devnet
 // freeze. This loop implements the "poll-timeout re-request" the topology doc
-// (quorum_topology.go) already promises but that was never wired.
+// (topology.go) already promises but that was never wired.
 //
 // It is a pure liveness retry: it re-solicits votes and re-attempts cert
 // assembly, and changes NOTHING about the finality predicate. A block still
