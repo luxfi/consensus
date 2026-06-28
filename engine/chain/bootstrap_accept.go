@@ -29,11 +29,11 @@
 // against). It does NOT trust the bytes: every fetched block is RE-EXECUTED
 // (block.Verify) against the already-accepted parent state, so a malicious peer cannot
 // advance the sync with an invalid block — Verify fails and the block is REJECTED. And
-// it does NOT trust ORDER: the per-height guard (markFinalizedLocked, via
-// consensus.AcceptBootstrapBlock) requires height == finalizedHeight+1 AND
-// parent == finalizedTip, so the chain can only be extended by the contiguous next
-// block, never gapped or forked. The result is exactly avalanche's: a bootstrapping
-// node converges to the beacon set's frontier by re-execution, with no quorum to join.
+// it does NOT trust ORDER: the single finalize (consensus.FinalizeBranch) finalizes
+// only the contiguous ancestry from the finalized tip, so a bootstrap fed oldest-first
+// single-steps (height == finalizedHeight+1, parent == finalizedTip) and a gapped or
+// forked block is refused. The result is exactly avalanche's: a bootstrapping node
+// converges to the beacon set's frontier by re-execution, with no quorum to join.
 //
 // WHERE BOOTSTRAP ENDS AND LIVE CONSENSUS BEGINS. This path is permitted ONLY while
 // Transitive.InBootstrapPhase() is true. The node ends the phase (FinishBootstrap)
@@ -118,11 +118,12 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 		if blk.Height() > fh+1 {
 			return ErrBootstrapBlockRejected
 		}
-		// height == fh+1: parent == finalizedTip is enforced by markFinalizedLocked.
+		// height == fh+1: parent == finalizedTip is enforced by FinalizeBranch's walk.
 	} else {
 		// M2 — FIRST-BLOCK ANCHOR. The finalized-height tracker is UNSET (the un-seeded
 		// / empty-genesis path: SyncState only sets it when the VM has a non-empty last
-		// accepted). In that state markFinalizedLocked would record WHATEVER (height,
+		// accepted). In that state the first FinalizeBranch would SEED the ledger with
+		// WHATEVER (height,
 		// parent) the peer's first block claims — so a peer could seed finality at an
 		// arbitrary height/parent. Bind the first bootstrap block to the VM's ACTUAL
 		// last-accepted instead of trusting Verify alone.
@@ -155,10 +156,14 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 		return errors.Join(ErrBootstrapBlockRejected, err)
 	}
 
-	// LEDGER COMMIT through the single per-height guard (frontier-trust authority).
-	// markFinalizedLocked authoritatively enforces height == finalized+1 AND
-	// parent == finalized tip; on any violation NOTHING advances and we reject.
-	if err := rt.Transitive.consensus.AcceptBootstrapBlock(blk.ID(), blk.Height(), blk.ParentID()); err != nil {
+	// LEDGER COMMIT through the single finalize (frontier-trust authority). Bootstrap
+	// feeds blocks oldest-first and contiguously (the checks above), so this is always
+	// a SINGLE-STEP FinalizeBranch: parent == finalized tip, height == finalized+1, no
+	// siblings to prune. FinalizeBranch advances finalized history and (defensively)
+	// returns a prune plan; bootstrap never produces one (single-branch). On any
+	// violation NOTHING advances and we reject — a bootstrapping node cannot be fed a
+	// forked/gapped history any more than a live one.
+	if _, err := rt.Transitive.consensus.FinalizeBranch(blk.ID(), blk.Height(), blk.ParentID()); err != nil {
 		return errors.Join(ErrBootstrapBlockRejected, err)
 	}
 
