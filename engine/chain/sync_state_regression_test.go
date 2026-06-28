@@ -25,7 +25,7 @@ func TestSyncState_RefusesBackwardRegression(t *testing.T) {
 	// Seed a finalized head at height 100 through the real finalize path so the
 	// per-height ledger is in the exact shape SyncState must respect.
 	h100 := ids.GenerateTestID()
-	if err := c.AcceptViaCert(h100, 100, ids.Empty); err != nil {
+	if _, err := c.FinalizeBranch(h100, 100, ids.Empty); err != nil {
 		t.Fatalf("seed finalize at height 100: %v", err)
 	}
 
@@ -57,7 +57,7 @@ func TestSyncState_EqualHeightDifferentBlockRefused(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
 	h100 := ids.GenerateTestID()
-	if err := c.AcceptViaCert(h100, 100, ids.Empty); err != nil {
+	if _, err := c.FinalizeBranch(h100, 100, ids.Empty); err != nil {
 		t.Fatalf("seed finalize: %v", err)
 	}
 
@@ -84,7 +84,7 @@ func TestSyncState_ForwardImportAdvances(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
 	h100 := ids.GenerateTestID()
-	if err := c.AcceptViaCert(h100, 100, ids.Empty); err != nil {
+	if _, err := c.FinalizeBranch(h100, 100, ids.Empty); err != nil {
 		t.Fatalf("seed finalize: %v", err)
 	}
 
@@ -113,7 +113,7 @@ func TestSyncState_EmptyResetAllowed(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
 	h100 := ids.GenerateTestID()
-	if err := c.AcceptViaCert(h100, 100, ids.Empty); err != nil {
+	if _, err := c.FinalizeBranch(h100, 100, ids.Empty); err != nil {
 		t.Fatalf("seed finalize: %v", err)
 	}
 
@@ -138,7 +138,7 @@ func TestSyncState_EmptyHeadWithPositiveHeightRefused(t *testing.T) {
 
 	// Finalized head at height 100.
 	h100 := ids.GenerateTestID()
-	if err := c.AcceptViaCert(h100, 100, ids.Empty); err != nil {
+	if _, err := c.FinalizeBranch(h100, 100, ids.Empty); err != nil {
 		t.Fatalf("seed finalize at height 100: %v", err)
 	}
 	// Seed a low-height block in the pool so we can prove the refused import does

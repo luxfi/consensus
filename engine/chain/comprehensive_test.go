@@ -237,20 +237,25 @@ func TestChainConsensusPollFinalization(t *testing.T) {
 	// Initial state
 	require.False(consensus.IsAccepted(blockID))
 
-	// Process accept votes to meet the alpha threshold
-	// With alpha=1, we need at least 1 accept vote
+	// The α-count path (ProcessVote/Poll) is LIVENESS only: it marks the block worth a
+	// finalize ATTEMPT (IsAccepted) but does NOT advance finalized history — finality is
+	// committed by FinalizeBranch (the cert path). Decomplected: count ≠ finalize.
 	for i := 0; i < 10; i++ {
 		require.NoError(consensus.ProcessVote(ctx, blockID, true))
 	}
-
-	// Poll to achieve finalization
 	responses := map[ids.ID]int{blockID: 10}
 	for i := 0; i < 5; i++ {
-		err := consensus.Poll(ctx, responses)
-		require.NoError(err)
+		require.NoError(consensus.Poll(ctx, responses))
 	}
 
-	// Check finalized tip
+	// Liveness reached, but finalized history is still empty (a cert is required).
+	require.True(consensus.IsAccepted(blockID))
+	_, set := consensus.GetFinalizedHeight()
+	require.False(set, "the count path must not advance finalized history")
+
+	// FinalizeBranch (the cert path) commits finality and advances the tip.
+	_, err := consensus.FinalizeBranch(blockID, 0, ids.Empty)
+	require.NoError(err)
 	require.Equal(blockID, consensus.finalizedTip)
 }
 

@@ -448,26 +448,31 @@ func TestSingleValidator_StillFinalizes(t *testing.T) {
 	}
 }
 
-// TestForceAccept_RefusedForMultiValidator is the direct unit guard: ForceAccept
-// fails closed for K>1.
-func TestForceAccept_RefusedForMultiValidator(t *testing.T) {
+// TestCountPath_NeverFinalizes_OnlyCertDoes replaces the old ForceAccept K-guard test.
+// ForceAccept is removed: finality is committed ONLY by FinalizeBranch (the cert path).
+// This proves the SAFETY property the old guard protected — a multi-validator engine
+// cannot finalize a block from the α-COUNT alone — now holds STRUCTURALLY: the count
+// path (ProcessVote) sets only the liveness flag; FinalizeBranch is the sole committer
+// of finalized history.
+func TestCountPath_NeverFinalizes_OnlyCertDoes(t *testing.T) {
+	// K>1: the α-count is liveness only, never finality.
 	c := NewChainConsensus(5, 3, 2)
 	blk := &Block{id: ids.GenerateTestID(), height: 1}
 	_ = c.AddBlock(context.Background(), blk)
-	if err := c.ForceAccept(blk.id); err == nil {
-		t.Fatal("SAFETY: ForceAccept must refuse on a multi-validator (K=5) engine")
+	for i := 0; i < 3; i++ {
+		_ = c.ProcessVote(context.Background(), blk.id, true)
 	}
-	if c.IsAccepted(blk.id) {
-		t.Fatal("SAFETY: ForceAccept must not accept on K>1")
+	if c.IsAccepted(blk.id) != true {
+		t.Fatal("α-count must set the liveness flag")
 	}
-	// K=1 path works.
-	c1 := NewChainConsensus(1, 1, 1)
-	blk1 := &Block{id: ids.GenerateTestID(), height: 1}
-	_ = c1.AddBlock(context.Background(), blk1)
-	if err := c1.ForceAccept(blk1.id); err != nil {
-		t.Fatalf("ForceAccept must succeed on K=1: %v", err)
+	if _, ok := c.FinalizedBlockAtHeight(1); ok {
+		t.Fatal("SAFETY: a K>1 engine must NOT finalize from the α-count alone (cert required)")
 	}
-	if !c1.IsAccepted(blk1.id) {
-		t.Fatal("K=1 ForceAccept must accept")
+	// FinalizeBranch (the cert path) is the sole committer of finality.
+	if _, err := c.FinalizeBranch(blk.id, 1, ids.Empty); err != nil {
+		t.Fatalf("FinalizeBranch must commit finality: %v", err)
+	}
+	if fin, ok := c.FinalizedBlockAtHeight(1); !ok || fin != blk.id {
+		t.Fatalf("FinalizeBranch must finalize blk, got (%s, ok=%v)", fin, ok)
 	}
 }
