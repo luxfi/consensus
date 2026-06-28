@@ -3,6 +3,7 @@ package chain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -2165,7 +2166,15 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// propagates (HandleIncomingCert surfaces equivocation; a DEFER simply retries).
 	// Called WITHOUT t.mu so the consensus lock is never nested under it.
 	pos := cert.Cert().Position
-	plan, err := t.consensus.ApplyCert(Cert{Block: blockID, Parent: pos.ParentID, Height: pos.Height})
+	// LOW-1 (defense-in-depth): the cert α-attests the FULL position {BlockID, ParentID,
+	// Height}; build the finalize Cert ENTIRELY from it so the fold can never be fed a
+	// Block from one source and Parent/Height from another. blockID is only the pending
+	// lookup key above — a verified cert's position must name that same block, else the
+	// trio is inconsistent and we fail closed rather than finalize the wrong block.
+	if pos.BlockID != blockID {
+		return fmt.Errorf("cert position block %s != finalize target %s (inconsistent cert trio)", pos.BlockID, blockID)
+	}
+	plan, err := t.consensus.ApplyCert(Cert{Block: pos.BlockID, Parent: pos.ParentID, Height: pos.Height})
 	if err != nil {
 		return err
 	}
