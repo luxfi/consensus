@@ -347,11 +347,24 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 // safety-equivocation. Each voter in the conflicting cert signed-final a block
 // at a height already finalized to `finalized`, so each is recorded as a
 // DoubleVote (it asserts a different block at the same height than the one that
-// finalized). The event is also logged at CRIT — this is a Byzantine-fault
-// signal, not a routine drop. Best effort: never blocks the safety reject.
+// finalized).
+//
+// LOGGED AT ERROR — NOT Crit. DO NOT "upgrade" this back to Crit. The conflict
+// is a Byzantine-fault signal, but safety has ALREADY been preserved by the time
+// we get here: the per-height guard (AcceptViaCert → ErrHeightAlreadyFinalized,
+// or the GetFinalizedHeight gate in HandleIncomingCert) REJECTED the second cert,
+// so there is no double-Accept and no fork. luxfi/log Crit is Fatal → os.Exit(1):
+// logging a CORRECTLY-HANDLED safety event at Crit converts it into a FLEET-WIDE
+// LIVENESS KILL — every honest node that merely OBSERVES the conflicting cert
+// (which is gossiped to all of them) calls os.Exit and the whole network goes
+// down at once. It also made the slashing-evidence recording below DEAD CODE: the
+// process exited before the loop ran, so the Byzantine voters were never even
+// slashed. The correct BFT response to a handled safety event is to log it and
+// record evidence so the offender is slashed — a safety event must NEVER be a
+// self-DoS. Best effort: never blocks the safety reject.
 func (rt *Runtime) reportCertEquivocation(cert *QuorumCert, finalized ids.ID) {
 	if !rt.config.Logger.IsZero() {
-		rt.config.Logger.Crit("EQUIVOCATION: conflicting finality cert at finalized height",
+		rt.config.Logger.Error("EQUIVOCATION: conflicting finality cert at finalized height",
 			log.Uint64("height", cert.Position.Height),
 			log.Stringer("finalizedBlock", finalized),
 			log.Stringer("conflictingBlock", cert.Position.BlockID),
