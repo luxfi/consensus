@@ -12,6 +12,7 @@ require (
 	github.com/luxfi/constants v1.5.8
 	github.com/luxfi/crypto v1.19.26
 	github.com/luxfi/database v1.19.3
+	github.com/luxfi/dkg v0.3.0
 	github.com/luxfi/ids v1.2.15
 	github.com/luxfi/lattice/v7 v7.1.4
 	github.com/luxfi/log v1.4.3
