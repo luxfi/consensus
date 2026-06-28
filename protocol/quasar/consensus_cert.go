@@ -160,6 +160,16 @@ const (
 	// migration / recovery / bridge / audit, NEVER as the primary finality
 	// object when a compact Pulsar threshold leg is available.
 	EvidenceP3QRollup
+
+	// EvidenceMagnetarRollup — the Magnetar-Quorum (Track A) mode: a compact
+	// root/proof over a set of INDEPENDENT per-validator SLH-DSA (FIPS-205)
+	// certificates. It is its OWN primitive (own verifier in magnetar_quorum.go,
+	// the p3q STARK verifier at slot 0x012205 for the succinct seam), not bolted
+	// onto the Pulsar / P3Q ML-DSA verifier. It satisfies the hash-based
+	// LegMagnetarSLHDSA requirement of the POLARIS postures with NO dealer / DKG /
+	// shared secret — each validator signs independently with its own FIPS-205
+	// key and the rollup proves a weighted quorum verified under stock FIPS-205.
+	EvidenceMagnetarRollup
 )
 
 // String returns the canonical wire name of the evidence mode.
@@ -175,6 +185,8 @@ func (m EvidenceMode) String() string {
 		return "classical-aggregate"
 	case EvidenceP3QRollup:
 		return "p3q-rollup"
+	case EvidenceMagnetarRollup:
+		return "magnetar-rollup"
 	default:
 		return fmt.Sprintf("evidence-mode(0x%02x)", uint8(m))
 	}
