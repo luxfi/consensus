@@ -369,6 +369,57 @@ func TestLoop_GenuinelyCaughtUp_CompletesPromptly(t *testing.T) {
 	}
 }
 
+// TestLoop_FreshNet_FullSetConnected_CaughtUpAtGenesis_Completes proves THE FRESH-NET FIX at the
+// loop level. On a fresh network the node holds ONLY genesis and so does every connected validator.
+// A node whose own stake makes the PEER-ONLY responder weight fall below the stake-majority NAMING
+// floor (a heavy validator, a small beacon set, or skewed stake) can NEVER name a frontier even with
+// the WHOLE validator set connected — the fresh-net hang (it sat in FrontierConnecting forever). The
+// fixed BlockSource instead PROVES caught-up under FULL connectivity (the entire beacon set plus the
+// node itself unanimously hold a tip the node already accepted — nothing ahead) and reports
+// FrontierCaughtUp. The loop MUST complete at the node's own genesis height, fetching nothing — the
+// decomplected caught-up signal, distinct from a named-tip descent.
+func TestLoop_FreshNet_FullSetConnected_CaughtUpAtGenesis_Completes(t *testing.T) {
+	chain, reg := chainOf(0, 0) // a FRESH chain: genesis only
+	peer := newTestPeer(chain)
+	peer.status = FrontierCaughtUp     // the source PROVED caught-up (full set + self all at genesis)
+	node := newTestNode(reg, chain[0]) // the node is at genesis
+
+	if err := runBootstrap(t, peer, node); err != nil {
+		t.Fatalf("a fresh node the source proved caught-up must complete, got %v", err)
+	}
+	if node.accepts != 0 {
+		t.Fatalf("caught-up at genesis fetches nothing, got %d accepts", node.accepts)
+	}
+	if node.height != 0 {
+		t.Fatalf("fresh node must stay at its genesis height (caught up, not synced ahead), got %d", node.height)
+	}
+}
+
+// TestLoop_FreshNet_ConnectingThenCaughtUp_WaitsThenCompletes proves the loop WAITS through the
+// boot-race connecting passes — it must NOT false-complete while the beacon set is still forming —
+// and then completes the INSTANT the source PROVES caught-up. This is the fresh-net analogue of the
+// stale-node canary (TestLoop_StaleNodeConvergesAfterDelayedBeaconConnect), but it ends in
+// FrontierCaughtUp (nothing to sync, the node IS the frontier) rather than a named-tip descent — so
+// it guards the decomplecting: FrontierConnecting still means WAIT, only FrontierCaughtUp means DONE.
+func TestLoop_FreshNet_ConnectingThenCaughtUp_WaitsThenCompletes(t *testing.T) {
+	chain, reg := chainOf(0, 0)
+	peer := newTestPeer(chain)
+	peer.connectAfter = 4          // the full beacon set is still connecting for the first 4 queries
+	peer.status = FrontierCaughtUp // then it has the full set + self and PROVES caught-up at genesis
+	node := newTestNode(reg, chain[0])
+
+	if err := runBootstrap(t, peer, node); err != nil {
+		t.Fatalf("fresh node must complete once the source proves caught-up, got %v", err)
+	}
+	if node.accepts != 0 {
+		t.Fatalf("nothing to fetch on a fresh net, got %d accepts", node.accepts)
+	}
+	// It provably WAITED through the connecting passes rather than concluding caught-up immediately.
+	if peer.frontierCalls <= peer.connectAfter {
+		t.Fatalf("loop must have WAITED through the connecting passes (got %d frontier calls, want > %d)", peer.frontierCalls, peer.connectAfter)
+	}
+}
+
 // TestLoop_StoredButUnacceptedFrontierDrivesAcceptance reproduces THE mainnet luxd-2 freeze
 // from production ground truth and proves the acceptance-vs-store fix. The node is at
 // last-accepted N, but blocks N+1..N+K are ALREADY IN ITS STORE (gossiped / a prior incomplete
