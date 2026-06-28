@@ -154,138 +154,134 @@ func TestHeightGuard_SecondCertSameBlockIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestHeightGuard_MonotonicAndParent unit-tests markFinalizedLocked's invariants
-// directly on ChainConsensus: one-per-height, monotonic, parent==tip.
-func TestHeightGuard_MonotonicAndParent(t *testing.T) {
+// TestHeightGuard_EquivocationAndMonotonic unit-tests FinalizeBranch's KEPT safety
+// invariants directly on ChainConsensus: ONE finalized block per height (equivocation
+// detection) and strictly-forward, contiguous finalized height. The old
+// parent==finalizedTip ADMISSION refusal is GONE — siblings are admitted and resolved
+// by the cert's reorg (TestFinalizeBranch_* and TestSiblingReorg_* cover that).
+func TestHeightGuard_EquivocationAndMonotonic(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
 	g := ids.GenerateTestID() // height 1 (genesis-ish, empty parent)
 	h2 := ids.GenerateTestID()
-	// Finalize height 1.
-	if err := c.AcceptViaCert(g, 1, ids.Empty); err != nil {
+	// Finalize height 1 (first finalize seeds the ledger).
+	if _, err := c.FinalizeBranch(g, 1, ids.Empty); err != nil {
 		t.Fatalf("finalize height 1: %v", err)
 	}
-	// (a) different block at the SAME height → ErrHeightAlreadyFinalized.
-	if err := c.AcceptViaCert(ids.GenerateTestID(), 1, ids.Empty); !errors.Is(err, ErrHeightAlreadyFinalized) {
+	// (a) a DIFFERENT block at the SAME height → ErrHeightAlreadyFinalized (equivocation).
+	if _, err := c.FinalizeBranch(ids.GenerateTestID(), 1, ids.Empty); !errors.Is(err, ErrHeightAlreadyFinalized) {
 		t.Fatalf("expected ErrHeightAlreadyFinalized, got %v", err)
 	}
-	// (c) child whose parent != tip → ErrParentNotFinalizedTip.
-	if err := c.AcceptViaCert(h2, 2, ids.GenerateTestID()); !errors.Is(err, ErrParentNotFinalizedTip) {
-		t.Fatalf("expected ErrParentNotFinalizedTip, got %v", err)
-	}
-	// Correct child (parent == tip g, height 2) → ok.
-	if err := c.AcceptViaCert(h2, 2, g); err != nil {
+	// Correct child (parent == tip g, height 2) → single-step finalize, no prune.
+	if plan, err := c.FinalizeBranch(h2, 2, g); err != nil {
 		t.Fatalf("valid child must finalize: %v", err)
+	} else if len(plan.Accepted) != 1 || plan.Accepted[0] != h2 || len(plan.Pruned) != 0 {
+		t.Fatalf("single-step plan wrong: accepted=%v pruned=%v", plan.Accepted, plan.Pruned)
 	}
-	// (b) re-finalize an OLD height with a new block → non-monotonic.
-	if err := c.AcceptViaCert(ids.GenerateTestID(), 1, ids.Empty); !errors.Is(err, ErrHeightAlreadyFinalized) {
-		// height 1 is already occupied → caught as already-finalized (a) which
-		// precedes the monotonic check; either is a correct rejection.
-		if !errors.Is(err, ErrNonMonotonicFinalizedHeight) {
-			t.Fatalf("expected a rejection re-finalizing height 1, got %v", err)
-		}
+	// Re-finalize an OLD height with a new block → rejected (equivocation at height 1).
+	if _, err := c.FinalizeBranch(ids.GenerateTestID(), 1, ids.Empty); !errors.Is(err, ErrHeightAlreadyFinalized) {
+		t.Fatalf("expected a rejection re-finalizing height 1, got %v", err)
 	}
-	// Same block, same height → idempotent nil.
-	if err := c.AcceptViaCert(h2, 2, g); err != nil {
-		t.Fatalf("idempotent re-finalize must be nil, got %v", err)
+	// Same block, same height → idempotent: empty plan, nil error.
+	if plan, err := c.FinalizeBranch(h2, 2, g); err != nil || len(plan.Accepted) != 0 {
+		t.Fatalf("idempotent re-finalize must be a nil-error no-op, got plan=%+v err=%v", plan, err)
 	}
 	if fh, set := c.GetFinalizedHeight(); !set || fh != 2 {
 		t.Fatalf("finalized height must be 2, got (%d, %v)", fh, set)
 	}
 }
 
-// TestHeightGuard_RejectsHeightGap proves finality is CONTIGUOUS: a cert that
-// would jump the finalized height by more than one (leaving a gap) is rejected
-// even though its parent links to the tip. Defense-in-depth — a valid α-cert
-// cannot carry a height inconsistent with its block without >f Byzantine voters,
-// but the guard refuses the gap regardless.
+// TestHeightGuard_RejectsHeightGap proves finality stays CONTIGUOUS: a cert whose
+// block sits more than one height above the tip with the tip as its DIRECT parent (a
+// skipped height) is rejected. Defense-in-depth — an honest block's height is its
+// parent's +1, so an honest single-step always passes; only a malformed cert fails.
 func TestHeightGuard_RejectsHeightGap(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 	g := ids.GenerateTestID()
-	if err := c.AcceptViaCert(g, 1, ids.Empty); err != nil {
+	if _, err := c.FinalizeBranch(g, 1, ids.Empty); err != nil {
 		t.Fatalf("finalize height 1: %v", err)
 	}
-	// height 3 with parent==tip(g) — a GAP over height 2 → rejected.
-	if err := c.AcceptViaCert(ids.GenerateTestID(), 3, g); !errors.Is(err, ErrNonMonotonicFinalizedHeight) {
+	// height 3 with parent==tip(g, height 1) — a GAP over height 2 → rejected.
+	if _, err := c.FinalizeBranch(ids.GenerateTestID(), 3, g); !errors.Is(err, ErrNonMonotonicFinalizedHeight) {
 		t.Fatalf("a height gap must be rejected, got %v", err)
 	}
-	// The strict successor (height 2, parent g) is accepted.
-	if err := c.AcceptViaCert(ids.GenerateTestID(), 2, g); err != nil {
+	// The strict successor (height 2, parent g) finalizes.
+	if _, err := c.FinalizeBranch(ids.GenerateTestID(), 2, g); err != nil {
 		t.Fatalf("contiguous successor must finalize: %v", err)
 	}
 }
 
-// TestForcePreference_CannotDesyncFinalizedLedger proves the recovery hatch
-// ForcePreference can never move finalizedTip off the finalized head — a
-// preference-recovery convenience must not corrupt the per-height guard's source
-// of truth (invariant (c): parent == finalized tip). A misuse with a NON-finalized
-// block must leave finalizedTip/finalizedHeight/finalizedByHeight intact, so a
-// subsequent finalize still checks the parent against the TRUE finalized block.
-func TestForcePreference_CannotDesyncFinalizedLedger(t *testing.T) {
+// TestForcePreference_DoesNotMoveFinalizedTip proves the recovery hatch never moves
+// finalizedTip off the recorded head. With the per-height ADMISSION gate gone there is
+// no invariant for a stray preference to corrupt, but ForcePreference must still never
+// rewrite finalized history — only (re)assert a build tip.
+func TestForcePreference_DoesNotMoveFinalizedTip(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
 	g := ids.GenerateTestID() // finalized head at height 1
-	if err := c.AcceptViaCert(g, 1, ids.Empty); err != nil {
+	if _, err := c.FinalizeBranch(g, 1, ids.Empty); err != nil {
 		t.Fatalf("finalize height 1: %v", err)
 	}
 
-	// Legit recovery: ForcePreference on the just-finalized head is a reaffirming
-	// no-op — finalizedTip stays g.
+	// Reaffirm the head — finalizedTip stays g.
 	c.ForcePreference(g)
 	if c.GetFinalizedTip() != g {
-		t.Fatalf("ForcePreference(head) must reaffirm finalized tip g, got %s", c.GetFinalizedTip())
+		t.Fatalf("ForcePreference(head) must keep finalized tip g, got %s", c.GetFinalizedTip())
 	}
 
-	// MISUSE: force preference to an UNRELATED, non-finalized block. This must NOT
-	// overwrite finalizedTip (doing so would blind invariant (c)).
+	// MISUSE: force preference to an UNRELATED block. This must NOT move finalizedTip.
 	rogue := ids.GenerateTestID()
 	c.ForcePreference(rogue)
 	if c.GetFinalizedTip() != g {
-		t.Fatalf("CRITICAL: ForcePreference(non-finalized) desynced finalized tip: got %s want %s (g)", c.GetFinalizedTip(), g)
+		t.Fatalf("ForcePreference(non-head) moved finalized tip: got %s want g", c.GetFinalizedTip())
 	}
 	if fh, set := c.GetFinalizedHeight(); !set || fh != 1 {
-		t.Fatalf("finalized height must be unchanged at 1, got (%d,%v)", fh, set)
+		t.Fatalf("finalized height must stay 1, got (%d,%v)", fh, set)
 	}
 
-	// PROOF the guard still works against the TRUE tip: a child at height 2 whose
-	// parent is the rogue (forced-preference) block must be REJECTED — the guard
-	// checks against g, not rogue. If the desync had happened, this would wrongly
-	// pass.
-	if err := c.AcceptViaCert(ids.GenerateTestID(), 2, rogue); !errors.Is(err, ErrParentNotFinalizedTip) {
-		t.Fatalf("child parented on the rogue forced-pref block must be rejected by the guard, got %v", err)
-	}
 	// The correct child (parent == true tip g) finalizes.
-	h2 := ids.GenerateTestID()
-	if err := c.AcceptViaCert(h2, 2, g); err != nil {
+	if _, err := c.FinalizeBranch(ids.GenerateTestID(), 2, g); err != nil {
 		t.Fatalf("correct child (parent g) must finalize: %v", err)
 	}
 }
 
-// TestHeightGuard_LocalVotePathAlsoGuarded proves the LOCAL α-count path
-// (ProcessVote) is guarded too: two conflicting blocks at one height, each
-// reaching α via local votes, finalize only ONE.
-func TestHeightGuard_LocalVotePathAlsoGuarded(t *testing.T) {
+// TestLocalVotePath_IsLivenessOnly proves the α-count path (ProcessVote/Poll) is now
+// pure LIVENESS, decomplected from finality: reaching α marks a block worth a finalize
+// ATTEMPT (IsAccepted, the engine's DrainAccepted trigger) but advances NO finalized
+// history. Finality — and the single-block-per-height guarantee — is the cert path's
+// job (FinalizeBranch). Two conflicting blocks can both reach α-count; neither is
+// finalized without a cert, and a cert then finalizes exactly one.
+func TestLocalVotePath_IsLivenessOnly(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2) // α=3 (count)
 	a := &Block{id: ids.GenerateTestID(), parentID: ids.Empty, height: 1}
 	b := &Block{id: ids.GenerateTestID(), parentID: ids.Empty, height: 1}
 	_ = c.AddBlock(context.Background(), a)
 	_ = c.AddBlock(context.Background(), b)
 
-	// Drive A to the α=3 accept count.
+	// Drive BOTH siblings to the α=3 accept count.
 	for i := 0; i < 3; i++ {
 		_ = c.ProcessVote(context.Background(), a.id, true)
-	}
-	if !c.IsAccepted(a.id) {
-		t.Fatal("A must be accepted at the local α count")
-	}
-	// Drive B to α at the SAME height — must NOT be accepted (guard refuses).
-	for i := 0; i < 3; i++ {
 		_ = c.ProcessVote(context.Background(), b.id, true)
 	}
-	if c.IsAccepted(b.id) {
-		t.Fatal("FORK via local vote path: B finalized at an already-finalized height")
+	// Both reach the α-count LIVENESS flag...
+	if !c.IsAccepted(a.id) || !c.IsAccepted(b.id) {
+		t.Fatal("both siblings must reach the α-count liveness flag")
+	}
+	// ...but the count path finalizes NOTHING: the per-height ledger is untouched.
+	if _, set := c.GetFinalizedHeight(); set {
+		t.Fatal("the count path must NOT advance finalized history — finality is cert-only")
+	}
+	if _, ok := c.FinalizedBlockAtHeight(1); ok {
+		t.Fatal("no block may be finalized at height 1 without a cert")
+	}
+	// A cert finalizes exactly ONE; the conflicting one is then refused by gate (a).
+	if _, err := c.FinalizeBranch(a.id, 1, ids.Empty); err != nil {
+		t.Fatalf("cert for a must finalize: %v", err)
+	}
+	if _, err := c.FinalizeBranch(b.id, 1, ids.Empty); !errors.Is(err, ErrHeightAlreadyFinalized) {
+		t.Fatalf("a SECOND finalize at height 1 must be refused as equivocation, got %v", err)
 	}
 	if fin, _ := c.FinalizedBlockAtHeight(1); fin != a.id {
-		t.Fatalf("height 1 must remain finalized to A, got %s", fin)
+		t.Fatalf("height 1 must be finalized to a, got %s", fin)
 	}
 }
