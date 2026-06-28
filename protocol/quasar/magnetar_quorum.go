@@ -220,3 +220,127 @@ func (mc *MagnetarQuorumCert) Encode() []byte {
 func isHashBasedScheme(s QuorumSchemeID) bool {
 	return s.FIPS() == "205"
 }
+
+// ----------------------------------------------------------------------------
+// The Magnetar-Quorum relation (verifier).
+// ----------------------------------------------------------------------------
+
+// VerifyMagnetarQuorum verifies a Magnetar-Quorum (Track A) cert against the
+// canonical message M. It establishes the trustless hash-based statement:
+//
+//	a subset of the registered validator SLH-DSA public keys whose total voting
+//	weight is >= the policy threshold each produced a valid STOCK-FIPS-205
+//	signature over the SAME message M, and each is a committed member of the
+//	validator set.
+//
+// Direct suite: bind the rollup root to the raw SLH-DSA cert set, enforce the
+// cross-family diversity invariant (every record is SLH-DSA), then verify that
+// set with the audited, validator-set-bound weighted-sig-set verifier (which
+// re-checks N stock FIPS-205 verifies, the weighted-Merkle membership against
+// validators.Root(), the BFT threshold floor, and the envelope position).
+// Succinct suite: pin the public statement (so an audited backend can only ever
+// attest THIS relation) and fail closed — the backend is not yet audit-gated.
+//
+// There is NO dealer, NO DKG, NO shared secret anywhere in this path: the
+// signers hold INDEPENDENT FIPS-205 keys and the verifier checks independent
+// signatures. msg is the canonical Quasar subject M; mc is the decoded cert.
+func VerifyMagnetarQuorum(policy ConsensusCertPolicy, validators ConsensusValidatorSet, cert *ConsensusCert, msg []byte, mc *MagnetarQuorumCert) error {
+	// The suite carries its own param set (the standalone entry does not pin an
+	// external leg param); the leg entry pins it explicitly. expectParam == 0.
+	return verifyMagnetarQuorum(policy, validators, cert, msg, mc, 0)
+}
+
+// VerifyMagnetarQuorumLeg verifies an EvidenceMagnetarRollup leg. It is the
+// LegEvidence dispatch form (called from dispatchEvidence) of
+// VerifyMagnetarQuorum: it pins the leg's parameter set against the suite and
+// decodes the payload, then delegates to the shared core.
+func VerifyMagnetarQuorumLeg(policy ConsensusCertPolicy, validators ConsensusValidatorSet, cert *ConsensusCert, msg []byte, ev LegEvidence) error {
+	// This mode satisfies ONLY the hash-based (SLH-DSA / FIPS-205) PQ-finality
+	// requirement; never any lattice leg.
+	if ev.Leg.Kind != LegMagnetarSLHDSA {
+		return fmt.Errorf("%w: magnetar rollup on leg kind %s", ErrDisallowedEvidenceMode, ev.Leg.Kind)
+	}
+	mc, err := DecodeMagnetarQuorumCert(ev.Payload)
+	if err != nil {
+		return err
+	}
+	return verifyMagnetarQuorum(policy, validators, cert, msg, mc, ev.Leg.ParamSetID)
+}
+
+// verifyMagnetarQuorum is the shared core. expectParam == 0 means "do not pin
+// the param set here" (the standalone entry; the suite carries its own param);
+// a non-zero expectParam (the leg entry) asserts the suite's param equals the
+// leg's so a leg cannot claim one SLH-DSA param while the suite names another.
+func verifyMagnetarQuorum(policy ConsensusCertPolicy, validators ConsensusValidatorSet, cert *ConsensusCert, msg []byte, mc *MagnetarQuorumCert, expectParam uint8) error {
+	// Dispatch safety: the suite MUST resolve to a Magnetar SLH-DSA lane. No
+	// suite string can reach this verifier for another lane, and (when the leg
+	// pins it) no param-set downgrade is possible.
+	suite, err := resolveSuiteForLane(mc.SuiteID, EvidenceMagnetarP3QSLHDSARollup, expectParam)
+	if err != nil {
+		return err
+	}
+	// Defence in depth on the registry: a Magnetar suite's param set is, by
+	// construction, an SLH-DSA scheme. Assert it so the hash-based invariant
+	// holds even if the registry were ever mis-edited.
+	if !isHashBasedScheme(QuorumSchemeID(suite.ParamSet)) {
+		return fmt.Errorf("%w: suite %q param 0x%02x", ErrMagnetarNotHashBased, suite.ID, suite.ParamSet)
+	}
+
+	switch suite.Assumption {
+	case AssumptionDirect:
+		return verifyMagnetarDirect(policy, validators, cert, msg, suite, mc)
+	case AssumptionPQSuccinct:
+		// Pin the statement (so an audited backend can only attest THIS relation),
+		// then fail closed — the STARK/FRI backend is not yet audit-gated. The raw
+		// SLH-DSA cert set remains challengeable via the Direct suite.
+		_ = magnetarPublicStatement(cert, msg, mc.RollupRoot, policy.ThresholdWeight())
+		return ErrMagnetarBackendNotAuditGated
+	default:
+		// No classical-assumption suite exists for the hash-based lane; any other
+		// assumption is disallowed.
+		return fmt.Errorf("%w: magnetar suite %q assumption %s", ErrDisallowedEvidenceMode, suite.ID, suite.Assumption)
+	}
+}
+
+// verifyMagnetarDirect verifies the Direct (raw SLH-DSA cert set) Magnetar
+// rollup path — the trustless transparent-aggregation lane that is live today.
+func verifyMagnetarDirect(policy ConsensusCertPolicy, validators ConsensusValidatorSet, cert *ConsensusCert, msg []byte, suite Suite, mc *MagnetarQuorumCert) error {
+	if len(mc.CertSet) == 0 {
+		return ErrMagnetarRollupEmpty
+	}
+
+	// (1) Commitment binding: the rollup root MUST equal the canonical commitment
+	// over the carried SLH-DSA cert set bytes. This is the bridge the succinct
+	// path attests; here it ties the root to the exact raw set.
+	if MagnetarRollupRoot(suite.ID, mc.CertSet) != mc.RollupRoot {
+		return ErrMagnetarRootMismatch
+	}
+
+	// (2) Cross-family diversity invariant: every signer record in the inner cert
+	// MUST be SLH-DSA (FIPS-205). This is the load-bearing check that makes this
+	// the HASH-BASED leg — a lattice (ML-DSA / Ringtail) record can never satisfy
+	// it, so a single Module-LWE break cannot silently satisfy the Magnetar
+	// requirement of POLARIS_MAX. Caught here with a precise typed error before
+	// the (audited) inner verify.
+	inner, err := UnmarshalWeightedQuorumCert(mc.CertSet)
+	if err != nil {
+		return fmt.Errorf("%w: magnetar inner cert: %v", ErrEvidenceWireCorrupt, err)
+	}
+	for i := range inner.Signers {
+		if !isHashBasedScheme(inner.Signers[i].Scheme) {
+			return fmt.Errorf("%w: record %d scheme %s", ErrMagnetarNotHashBased, i, inner.Signers[i].Scheme)
+		}
+	}
+
+	// (3) Verify the raw SLH-DSA cert set via the audited, VALIDATOR-SET-BOUND
+	// weighted-sig-set verifier (composition, not reinvention). This is what makes
+	// the leaves real validators with real weights: the inner cert proves
+	// weighted-Merkle membership against validators.Root(), N stock FIPS-205
+	// verifies, and the BFT threshold floor — none of which a self-asserted leaf
+	// set could supply. The envelope position is cross-checked inside.
+	return VerifyWeightedSigSet(policy, validators, cert, msg, LegEvidence{
+		Leg:     LegSpec{Kind: LegMagnetarSLHDSA, ParamSetID: suite.ParamSet},
+		Mode:    EvidenceWeightedSigSet,
+		Payload: mc.CertSet,
+	})
+}
