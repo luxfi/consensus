@@ -76,6 +76,42 @@ func TestSyncState_EqualHeightDifferentBlockRefused(t *testing.T) {
 	}
 }
 
+// TestSyncState_EmptyResetYieldsCleanGenesis is the LOW-2 regression: an empty import
+// head (ids.Empty, height 0) on a ledger ALREADY finalized above genesis resets finality
+// to a CLEAN genesis VALUE — tip Empty, height 0, unset — never the prior half-reset that
+// nulled the tip while leaving height/byHeight stale (a tip-vs-height desync that wedged
+// every future cert in pathFromTip). The proof the desync is gone: a fresh cert finalizes
+// cleanly afterward instead of wedging.
+func TestSyncState_EmptyResetYieldsCleanGenesis(t *testing.T) {
+	c := NewChainConsensus(4, 3, 2)
+
+	h100 := ids.GenerateTestID()
+	if _, err := c.FinalizeBranch(h100, 100, ids.Empty); err != nil {
+		t.Fatalf("seed finalize: %v", err)
+	}
+
+	// Empty reset of a live ledger → clean genesis value, no error.
+	if err := c.SyncState(ids.Empty, 0); err != nil {
+		t.Fatalf("empty reset SyncState(Empty,0) should succeed, got: %v", err)
+	}
+	if got := c.GetFinalizedTip(); got != ids.Empty {
+		t.Fatalf("empty reset should clear the tip, got %s", got)
+	}
+	// No desync: height/set are reset too (not left stale at 100/true).
+	if h, set := c.GetFinalizedHeight(); set || h != 0 {
+		t.Fatalf("empty reset left a tip-vs-height desync: got (%d,%v) want (0,false)", h, set)
+	}
+	// No wedge: a fresh cert finalizes cleanly (first-finalize seeds), proving the
+	// post-reset ledger is usable rather than permanently stuck seeking an Empty tip.
+	next := ids.GenerateTestID()
+	if _, err := c.FinalizeBranch(next, 7, ids.Empty); err != nil {
+		t.Fatalf("post-reset finalize wedged (the LOW-2 desync): %v", err)
+	}
+	if got := c.GetFinalizedTip(); got != next {
+		t.Fatalf("post-reset finalize did not advance: got %s want %s", got, next)
+	}
+}
+
 // TestSyncState_ForwardImportAdvances verifies the guard does NOT impede the
 // legitimate forward case: an import at a height above the current finalized
 // head advances finalizedTip/Height (this is the normal admin_importChain /
