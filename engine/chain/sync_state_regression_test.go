@@ -38,13 +38,13 @@ func TestSyncState_RefusesBackwardRegression(t *testing.T) {
 	if got := c.GetFinalizedTip(); got != h100 {
 		t.Fatalf("finalized tip regressed: got %s want %s (height-100 head must be untouched)", got, h100)
 	}
-	if c.finalizedHeight != 100 || !c.finalizedHeightSet {
-		t.Fatalf("finalizedHeight regressed: got %d set=%v want 100/true", c.finalizedHeight, c.finalizedHeightSet)
+	if h, set := c.GetFinalizedHeight(); h != 100 || !set {
+		t.Fatalf("finalizedHeight regressed: got %d set=%v want 100/true", h, set)
 	}
-	if existing, ok := c.finalizedByHeight[100]; !ok || existing != h100 {
+	if existing, ok := c.FinalizedBlockAtHeight(100); !ok || existing != h100 {
 		t.Fatalf("per-height ledger at 100 corrupted: ok=%v existing=%s", ok, existing)
 	}
-	if _, ok := c.finalizedByHeight[99]; ok {
+	if _, ok := c.FinalizedBlockAtHeight(99); ok {
 		t.Fatalf("backward import leaked a ledger entry at the rejected height 99")
 	}
 }
@@ -96,12 +96,12 @@ func TestSyncState_ForwardImportAdvances(t *testing.T) {
 	if got := c.GetFinalizedTip(); got != h5000 {
 		t.Fatalf("forward import did not advance tip: got %s want %s", got, h5000)
 	}
-	if c.finalizedHeight != 5000 {
-		t.Fatalf("forward import did not advance height: got %d want 5000", c.finalizedHeight)
+	if h, _ := c.GetFinalizedHeight(); h != 5000 {
+		t.Fatalf("forward import did not advance height: got %d want 5000", h)
 	}
 	// The import re-seeds the per-height ledger to the imported head; the stale
 	// height-100 entry is no longer the source of truth.
-	if _, ok := c.finalizedByHeight[5000]; !ok {
+	if _, ok := c.FinalizedBlockAtHeight(5000); !ok {
 		t.Fatalf("forward import did not seed the ledger at the imported height 5000")
 	}
 }
@@ -157,10 +157,10 @@ func TestSyncState_EmptyHeadWithPositiveHeightRefused(t *testing.T) {
 	if got := c.GetFinalizedTip(); got != h100 {
 		t.Fatalf("refused empty-at-height import desynced the tip: got %s want %s", got, h100)
 	}
-	if c.finalizedHeight != 100 || !c.finalizedHeightSet {
-		t.Fatalf("refused import corrupted finalizedHeight: got %d set=%v want 100/true", c.finalizedHeight, c.finalizedHeightSet)
+	if h, set := c.GetFinalizedHeight(); h != 100 || !set {
+		t.Fatalf("refused import corrupted finalizedHeight: got %d set=%v want 100/true", h, set)
 	}
-	if existing, ok := c.finalizedByHeight[100]; !ok || existing != h100 {
+	if existing, ok := c.FinalizedBlockAtHeight(100); !ok || existing != h100 {
 		t.Fatalf("refused import corrupted the per-height ledger at 100: ok=%v existing=%s", ok, existing)
 	}
 	// The low-height block MUST still be present — the refused import pruned nothing.

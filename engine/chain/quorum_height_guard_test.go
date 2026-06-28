@@ -175,15 +175,15 @@ func TestHeightGuard_EquivocationAndMonotonic(t *testing.T) {
 	// Correct child (parent == tip g, height 2) → single-step finalize, no prune.
 	if plan, err := c.FinalizeBranch(h2, 2, g); err != nil {
 		t.Fatalf("valid child must finalize: %v", err)
-	} else if len(plan.Accepted) != 1 || plan.Accepted[0] != h2 || len(plan.Pruned) != 0 {
-		t.Fatalf("single-step plan wrong: accepted=%v pruned=%v", plan.Accepted, plan.Pruned)
+	} else if len(plan.Accept) != 1 || plan.Accept[0] != h2 || len(plan.Reject) != 0 {
+		t.Fatalf("single-step plan wrong: accepted=%v pruned=%v", plan.Accept, plan.Reject)
 	}
 	// Re-finalize an OLD height with a new block → rejected (equivocation at height 1).
 	if _, err := c.FinalizeBranch(ids.GenerateTestID(), 1, ids.Empty); !errors.Is(err, ErrHeightAlreadyFinalized) {
 		t.Fatalf("expected a rejection re-finalizing height 1, got %v", err)
 	}
 	// Same block, same height → idempotent: empty plan, nil error.
-	if plan, err := c.FinalizeBranch(h2, 2, g); err != nil || len(plan.Accepted) != 0 {
+	if plan, err := c.FinalizeBranch(h2, 2, g); err != nil || len(plan.Accept) != 0 {
 		t.Fatalf("idempotent re-finalize must be a nil-error no-op, got plan=%+v err=%v", plan, err)
 	}
 	if fh, set := c.GetFinalizedHeight(); !set || fh != 2 {

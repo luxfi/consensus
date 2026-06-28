@@ -21,9 +21,9 @@
 //     cert ledger.
 //   - FINALITY (safety): FinalizeBranch is the SINGLE committer of finalized
 //     history. A cert SELECTS a block; FinalizeBranch walks the certified branch
-//     from the finalized tip, finalizes the contiguous path (BranchFinalization
-//     .Accepted, ascending) and prunes the losing-sibling subtrees
-//     (.Pruned) — exactly acceptPreferredChild + rejectTransitively.
+//     from the finalized tip, finalizes the contiguous path (Plan.Accept,
+//     ascending) and prunes the losing-sibling subtrees (Plan.Reject) — exactly
+//     acceptPreferredChild + rejectTransitively.
 //
 // So each ava "RecordPoll that ACCEPTS X and REJECTS its sibling Y" maps to a
 // FinalizeBranch(X) whose plan accepts X's path and prunes Y's subtree; the ava
@@ -42,8 +42,8 @@
 //	Add(block)                  -> AddBlock(ctx, &Block{...})        (tracking-only)
 //	RecordPoll -> ACCEPT path   -> FinalizeBranch(target,h,parent)   (cert finality)
 //	RecordPoll -> α confidence  -> ProcessVote(id, accept)           (liveness only)
-//	block.Status == Accepted    -> IsAccepted(id) / plan.Accepted / ledger
-//	block.Status == Rejected    -> retained *Block.rejected / plan.Pruned
+//	block.Status == Accepted    -> IsAccepted(id) / plan.Accept / ledger
+//	block.Status == Rejected    -> retained *Block.rejected / plan.Reject
 //	NumProcessing()             -> numProcessing(c)  (tracked && !decided)
 //	Preference()                -> GetFinalizedTip() (== Preference() once finalized)
 //	IsPreferred / tail          -> build-tips set (siblings coexist pre-cert)
@@ -367,8 +367,8 @@ func TestConformance_RecordPollAcceptSingleBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finalize: %v", err)
 	}
-	if len(plan.Accepted) != 1 || plan.Accepted[0] != blkID || len(plan.Pruned) != 0 {
-		t.Fatalf("single-block plan: accepted=%v pruned=%v", plan.Accepted, plan.Pruned)
+	if len(plan.Accept) != 1 || plan.Accept[0] != blkID || len(plan.Reject) != 0 {
+		t.Fatalf("single-block plan: accepted=%v pruned=%v", plan.Accept, plan.Reject)
 	}
 	if !c.IsAccepted(blkID) {
 		t.Fatal("block must be accepted")
@@ -400,11 +400,11 @@ func TestConformance_RecordPollAcceptAndReject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finalize first: %v", err)
 	}
-	if len(plan.Accepted) != 1 || plan.Accepted[0] != firstID {
-		t.Fatalf("first must be the finalized path, got %v", plan.Accepted)
+	if len(plan.Accept) != 1 || plan.Accept[0] != firstID {
+		t.Fatalf("first must be the finalized path, got %v", plan.Accept)
 	}
-	if len(plan.Pruned) != 1 || plan.Pruned[0] != secondID {
-		t.Fatalf("the sibling second must be the pruned set, got %v", plan.Pruned)
+	if len(plan.Reject) != 1 || plan.Reject[0] != secondID {
+		t.Fatalf("the sibling second must be the pruned set, got %v", plan.Reject)
 	}
 	if !c.IsAccepted(firstID) || !firstB.accepted {
 		t.Fatal("first must be accepted")
@@ -479,7 +479,7 @@ func TestConformance_RecordPollWhenFinalized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("idempotent re-finalize must be nil-error: %v", err)
 	}
-	if len(plan.Accepted) != 0 || len(plan.Pruned) != 0 {
+	if len(plan.Accept) != 0 || len(plan.Reject) != 0 {
 		t.Fatalf("idempotent finalize must be an empty plan, got %+v", plan)
 	}
 	if numProcessing(c) != 0 {
@@ -493,7 +493,7 @@ func TestConformance_RecordPollWhenFinalized(t *testing.T) {
 // TestConformance_RecordPollRejectTransitively ports RecordPollRejectTransitivelyTest
 // — reject a block AND all its descendants. g->{block0}, g->block1->block2. A cert
 // selects block0; block1 and its descendant block2 are pruned as one subtree
-// (== BranchFinalization.Pruned == rejectTransitively).
+// (== Plan.Reject == rejectTransitively).
 func TestConformance_RecordPollRejectTransitively(t *testing.T) {
 	c := NewChainConsensus(1, 1, 1)
 	g := seedGenesis(t, c)
@@ -509,8 +509,8 @@ func TestConformance_RecordPollRejectTransitively(t *testing.T) {
 	if !c.IsAccepted(block0) {
 		t.Fatal("block0 must be accepted")
 	}
-	if len(plan.Pruned) != 2 || !idIn(plan.Pruned, block1) || !idIn(plan.Pruned, block2) {
-		t.Fatalf("the losing subtree {block1,block2} must be pruned, got %v", plan.Pruned)
+	if len(plan.Reject) != 2 || !idIn(plan.Reject, block1) || !idIn(plan.Reject, block2) {
+		t.Fatalf("the losing subtree {block1,block2} must be pruned, got %v", plan.Reject)
 	}
 	if !block1B.rejected || !block2B.rejected {
 		t.Fatal("block1 and its descendant block2 must be rejected transitively")
@@ -627,11 +627,11 @@ func TestConformance_RecordPollTransitiveVoting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finalize block2: %v", err)
 	}
-	if len(plan.Accepted) != 2 || plan.Accepted[0] != block1 || plan.Accepted[1] != block2 {
-		t.Fatalf("path must be {block1,block2} ascending, got %v", plan.Accepted)
+	if len(plan.Accept) != 2 || plan.Accept[0] != block1 || plan.Accept[1] != block2 {
+		t.Fatalf("path must be {block1,block2} ascending, got %v", plan.Accept)
 	}
-	if len(plan.Pruned) != 2 || !idIn(plan.Pruned, block3) || !idIn(plan.Pruned, block4) {
-		t.Fatalf("losing subtree {block3,block4} must be pruned, got %v", plan.Pruned)
+	if len(plan.Reject) != 2 || !idIn(plan.Reject, block3) || !idIn(plan.Reject, block4) {
+		t.Fatalf("losing subtree {block3,block4} must be pruned, got %v", plan.Reject)
 	}
 	for _, id := range []ids.ID{block0, block1, block2} {
 		if !c.IsAccepted(id) {
@@ -707,11 +707,11 @@ func TestConformance_RecordPollChangePreferredChain(t *testing.T) {
 			if err != nil {
 				t.Fatalf("finalize a-chain: %v", err)
 			}
-			if len(plan.Accepted) != 2 || plan.Accepted[0] != a1 || plan.Accepted[1] != a2 {
-				t.Fatalf("a-chain path must be {a1,a2} ascending, got %v", plan.Accepted)
+			if len(plan.Accept) != 2 || plan.Accept[0] != a1 || plan.Accept[1] != a2 {
+				t.Fatalf("a-chain path must be {a1,a2} ascending, got %v", plan.Accept)
 			}
-			if len(plan.Pruned) != 2 || !idIn(plan.Pruned, b1) || !idIn(plan.Pruned, b2) {
-				t.Fatalf("b-chain must be pruned, got %v", plan.Pruned)
+			if len(plan.Reject) != 2 || !idIn(plan.Reject, b1) || !idIn(plan.Reject, b2) {
+				t.Fatalf("b-chain must be pruned, got %v", plan.Reject)
 			}
 			if !a1B.accepted || !a2B.accepted {
 				t.Fatal("a-chain must be accepted")
@@ -727,11 +727,11 @@ func TestConformance_RecordPollChangePreferredChain(t *testing.T) {
 			if err != nil {
 				t.Fatalf("finalize b-chain: %v", err)
 			}
-			if len(plan.Accepted) != 2 || plan.Accepted[0] != b1 || plan.Accepted[1] != b2 {
-				t.Fatalf("b-chain path must be {b1,b2} ascending, got %v", plan.Accepted)
+			if len(plan.Accept) != 2 || plan.Accept[0] != b1 || plan.Accept[1] != b2 {
+				t.Fatalf("b-chain path must be {b1,b2} ascending, got %v", plan.Accept)
 			}
-			if len(plan.Pruned) != 2 || !idIn(plan.Pruned, a1) || !idIn(plan.Pruned, a2) {
-				t.Fatalf("a-chain must be pruned, got %v", plan.Pruned)
+			if len(plan.Reject) != 2 || !idIn(plan.Reject, a1) || !idIn(plan.Reject, a2) {
+				t.Fatalf("a-chain must be pruned, got %v", plan.Reject)
 			}
 			if !b1B.accepted || !b2B.accepted {
 				t.Fatal("b-chain must be accepted")
@@ -835,8 +835,8 @@ func TestConformance_ErrorOnAccept(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finalize: %v", err)
 	}
-	if len(plan.Accepted) != 1 || plan.Accepted[0] != block0 {
-		t.Fatalf("block0 must be the Accept target, got %v", plan.Accepted)
+	if len(plan.Accept) != 1 || plan.Accept[0] != block0 {
+		t.Fatalf("block0 must be the Accept target, got %v", plan.Accept)
 	}
 	if !c.IsAccepted(block0) || !block0B.accepted {
 		t.Fatal("block0 must be accepted")
@@ -856,8 +856,8 @@ func TestConformance_ErrorOnRejectSibling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finalize block0: %v", err)
 	}
-	if len(plan.Pruned) != 1 || plan.Pruned[0] != block1 {
-		t.Fatalf("the sibling block1 must be the Reject set, got %v", plan.Pruned)
+	if len(plan.Reject) != 1 || plan.Reject[0] != block1 {
+		t.Fatalf("the sibling block1 must be the Reject set, got %v", plan.Reject)
 	}
 	if !block1B.rejected {
 		t.Fatal("block1 must be rejected")
@@ -879,8 +879,8 @@ func TestConformance_ErrorOnTransitiveRejection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finalize block0: %v", err)
 	}
-	if len(plan.Pruned) != 2 || !idIn(plan.Pruned, block1) || !idIn(plan.Pruned, block2) {
-		t.Fatalf("the transitive Reject set {block1,block2}, got %v", plan.Pruned)
+	if len(plan.Reject) != 2 || !idIn(plan.Reject, block1) || !idIn(plan.Reject, block2) {
+		t.Fatalf("the transitive Reject set {block1,block2}, got %v", plan.Reject)
 	}
 	if !block1B.rejected || !block2B.rejected {
 		t.Fatal("block1 and block2 must be rejected transitively")
@@ -960,8 +960,8 @@ func TestConformance_RecordPollRegressionIndegree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finalize blk3: %v", err)
 	}
-	if len(plan.Accepted) != 3 || plan.Accepted[0] != blk1 || plan.Accepted[1] != blk2 || plan.Accepted[2] != blk3 {
-		t.Fatalf("the whole path must finalize ascending {blk1,blk2,blk3}, got %v", plan.Accepted)
+	if len(plan.Accept) != 3 || plan.Accept[0] != blk1 || plan.Accept[1] != blk2 || plan.Accept[2] != blk3 {
+		t.Fatalf("the whole path must finalize ascending {blk1,blk2,blk3}, got %v", plan.Accept)
 	}
 	for _, id := range []ids.ID{blk1, blk2, blk3} {
 		if !c.IsAccepted(id) {
@@ -1049,20 +1049,20 @@ func TestConformance_RandomizedConsistency(t *testing.T) {
 		if err != nil {
 			t.Fatalf("iter %d: finalize: %v", it, err)
 		}
-		// (5) plan.Accepted == the winner path, ascending and exact.
-		if len(plan.Accepted) != len(acceptedPath) {
-			t.Fatalf("iter %d: accepted size %d want %d", it, len(plan.Accepted), len(acceptedPath))
+		// (5) plan.Accept == the winner path, ascending and exact.
+		if len(plan.Accept) != len(acceptedPath) {
+			t.Fatalf("iter %d: accepted size %d want %d", it, len(plan.Accept), len(acceptedPath))
 		}
 		for i := range acceptedPath {
-			if plan.Accepted[i] != acceptedPath[i] {
-				t.Fatalf("iter %d: accepted[%d]=%s want %s", it, i, plan.Accepted[i], acceptedPath[i])
+			if plan.Accept[i] != acceptedPath[i] {
+				t.Fatalf("iter %d: accepted[%d]=%s want %s", it, i, plan.Accept[i], acceptedPath[i])
 			}
 		}
-		// (5) plan.Pruned == the loser set, exact (order-independent: prune walks a map).
-		if len(plan.Pruned) != len(prunedExpect) {
-			t.Fatalf("iter %d: pruned size %d want %d", it, len(plan.Pruned), len(prunedExpect))
+		// (5) plan.Reject == the loser set, exact (order-independent: prune walks a map).
+		if len(plan.Reject) != len(prunedExpect) {
+			t.Fatalf("iter %d: pruned size %d want %d", it, len(plan.Reject), len(prunedExpect))
 		}
-		for _, id := range plan.Pruned {
+		for _, id := range plan.Reject {
 			if !prunedExpect[id] {
 				t.Fatalf("iter %d: unexpected prune %s", it, id)
 			}

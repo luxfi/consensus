@@ -63,16 +63,16 @@ func TestFinalizeBranch_MultiStepFinalizesPathAndPrunes(t *testing.T) {
 	}
 	// The whole path is finalized in ascending order.
 	want := []ids.ID{a1, a2, a3}
-	if len(plan.Accepted) != 3 || plan.Accepted[0] != a1 || plan.Accepted[1] != a2 || plan.Accepted[2] != a3 {
-		t.Fatalf("path must be finalized ascending %v, got %v", want, plan.Accepted)
+	if len(plan.Accept) != 3 || plan.Accept[0] != a1 || plan.Accept[1] != a2 || plan.Accept[2] != a3 {
+		t.Fatalf("path must be finalized ascending %v, got %v", want, plan.Accept)
 	}
 	// The losing fork off the path is pruned (B1 + descendant B2).
 	prunedSet := map[ids.ID]bool{}
-	for _, id := range plan.Pruned {
+	for _, id := range plan.Reject {
 		prunedSet[id] = true
 	}
-	if !prunedSet[b1] || !prunedSet[b2] || len(plan.Pruned) != 2 {
-		t.Fatalf("losing fork {B1,B2} must be pruned, got %v", plan.Pruned)
+	if !prunedSet[b1] || !prunedSet[b2] || len(plan.Reject) != 2 {
+		t.Fatalf("losing fork {B1,B2} must be pruned, got %v", plan.Reject)
 	}
 	// Ledger: tip is A3 at height 3, each height finalized to its path block.
 	if fh, set := c.GetFinalizedHeight(); !set || fh != 3 || c.GetFinalizedTip() != a3 {
