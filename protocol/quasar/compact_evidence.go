@@ -71,6 +71,15 @@ const (
 	// set of independent validator ML-DSA certs (the MLDSACertSet). Used for
 	// migration / recovery / bridge / audit, NOT primary when Pulsar is live.
 	EvidenceP3QMLDSARollup EvidenceKind = "p3q-mldsa-rollup"
+
+	// EvidenceMagnetarP3QSLHDSARollup — the Magnetar-Quorum (Track A) lane: a
+	// compact root/proof over a set of INDEPENDENT validator SLH-DSA (FIPS-205)
+	// certs. The trustless-TODAY hash-based diversity lane — NO dealer / DKG /
+	// shared secret. Each validator signs independently with its own FIPS-205
+	// key; the rollup proves a >= policy-threshold weighted quorum verified under
+	// the stock FIPS-205 verifier. Distinct lattice-free cross-family backstop to
+	// the Module-LWE (Pulsar) and Ring-LWE (Corona) legs.
+	EvidenceMagnetarP3QSLHDSARollup EvidenceKind = "magnetar-p3q-slhdsa-rollup"
 )
 
 // evidenceLane is the orthogonal (LegKind, EvidenceMode) pair a named evidence
@@ -88,6 +97,7 @@ var laneByKind = map[EvidenceKind]evidenceLane{
 	EvidencePulsarThresholdMLDSA: {leg: LegPulsarMLDSA, mode: EvidenceThresholdSig},
 	EvidenceCoronaRingtail:       {leg: LegCoronaLattice, mode: EvidenceThresholdSig},
 	EvidenceP3QMLDSARollup:       {leg: LegPulsarMLDSA, mode: EvidenceP3QRollup},
+	EvidenceMagnetarP3QSLHDSARollup: {leg: LegMagnetarSLHDSA, mode: EvidenceMagnetarRollup},
 }
 
 // ----------------------------------------------------------------------------
@@ -217,6 +227,16 @@ var productionSuites = []Suite{
 	{ID: "Lux-P3Q-MLDSA87-Direct-v1", Kind: EvidenceP3QMLDSARollup, ParamSet: uint8(QuorumSchemeMLDSA87), Assumption: AssumptionDirect},
 	{ID: "Lux-P3Q-MLDSA65-STARK-v1", Kind: EvidenceP3QMLDSARollup, ParamSet: uint8(QuorumSchemeMLDSA65), Assumption: AssumptionPQSuccinct},
 	{ID: "Lux-P3Q-MLDSA65-Groth16-v1", Kind: EvidenceP3QMLDSARollup, ParamSet: uint8(QuorumSchemeMLDSA65), Assumption: AssumptionClassicalSuccinct},
+
+	// Magnetar-Quorum (Track A) — the trustless-TODAY hash-based diversity lane:
+	// a rollup over INDEPENDENT validator SLH-DSA (FIPS-205) certs. Direct (raw
+	// SLH-DSA cert set, PQ-safe, O(N), always-verifiable) per param set, plus a
+	// STARK (succinct, PQ-safe, audit-gated) optimization seam. There is NO
+	// classical-assumption suite: a hash-based diversity lane must never rest on
+	// a pairing/DLOG proof object.
+	{ID: "Lux-Magnetar-SLHDSA192s-Direct-v1", Kind: EvidenceMagnetarP3QSLHDSARollup, ParamSet: uint8(QuorumSchemeSLHDSA192s), Assumption: AssumptionDirect},
+	{ID: "Lux-Magnetar-SLHDSA256s-Direct-v1", Kind: EvidenceMagnetarP3QSLHDSARollup, ParamSet: uint8(QuorumSchemeSLHDSA256s), Assumption: AssumptionDirect},
+	{ID: "Lux-Magnetar-SLHDSA192s-STARK-v1", Kind: EvidenceMagnetarP3QSLHDSARollup, ParamSet: uint8(QuorumSchemeSLHDSA192s), Assumption: AssumptionPQSuccinct},
 }
 
 // suiteByID is the built, validated suite registry. Populated in init from
