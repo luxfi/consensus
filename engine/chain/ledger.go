@@ -177,6 +177,7 @@ func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan
 		next.height = s.height
 		plan.Accept = append(plan.Accept, s.id)
 	}
+	next.pruneBelowWindow() // keep byHeight (and the next clone) O(window), not O(chain height)
 	return next, plan, nil
 }
 
@@ -191,13 +192,39 @@ func seedLedger(id ids.ID, height uint64) FinalityLedger {
 }
 
 // clone returns a deep copy of the ledger (a fresh byHeight map) so the fold never
-// mutates the receiver value's map. One copy per Finalize, regardless of path length.
+// mutates the receiver value's map. One copy per Finalize. byHeight is bounded to
+// equivocationWindow entries (pruneBelowWindow), so this copy is O(window) — constant
+// cost at any chain height — never O(chain height).
 func (l FinalityLedger) clone() FinalityLedger {
 	bh := make(map[uint64]ids.ID, len(l.byHeight)+1)
 	for h, id := range l.byHeight {
 		bh[h] = id
 	}
 	return FinalityLedger{tip: l.tip, height: l.height, set: l.set, byHeight: bh}
+}
+
+// equivocationWindow bounds how many heights below the finalized tip the per-height
+// index is retained. Equivocation is only actionable near the tip — a fork is attempted
+// at or above the last finalized height; an older height is refused outright by the
+// monotonic guard (cert.Height <= led.height) without consulting the index. Bounding
+// byHeight to this window keeps the ledger — and therefore clone() — O(window) rather
+// than O(chain height), and bounds its memory. Same "evidence is only useful near the
+// tip" rationale as engine.go's slashingRetentionHeights.
+const equivocationWindow = 1024
+
+// pruneBelowWindow drops index entries older than equivocationWindow below the tip, so
+// byHeight stays O(window) as the chain grows without bound. Pure: it mutates only the
+// receiver's own already-cloned map (never the caller's input ledger).
+func (l *FinalityLedger) pruneBelowWindow() {
+	if l.height < equivocationWindow {
+		return
+	}
+	cutoff := l.height - equivocationWindow
+	for h := range l.byHeight {
+		if h < cutoff {
+			delete(l.byHeight, h)
+		}
+	}
 }
 
 // step is one block on the certified path from the finalized tip to the cert target.
