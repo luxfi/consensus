@@ -13,6 +13,7 @@ package chain
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/luxfi/ids"
@@ -295,5 +296,84 @@ func TestLedger_PureNoInputMutation(t *testing.T) {
 	}
 	if _, ok := led0.byHeight[1]; ok {
 		t.Fatal("input byHeight gained height 1 — the fold mutated its input map (NOT a pure value)")
+	}
+}
+
+// TestLedger_WindowPrune: finalizing far past the equivocation window drops the index
+// for ancient heights (so clone() stays O(window) — the HIGH-1 fix) while keeping the
+// recent window. A pruned-out old height is still safely UN-finalizable: the monotonic
+// guard refuses it (cert.Height <= led.height) without the index, so dropping the entry
+// never opens a double-finalize.
+func TestLedger_WindowPrune(t *testing.T) {
+	dag := mapDAG{}
+	g := ids.GenerateTestID()
+	dag.add(g, ids.Empty, 0)
+	led := seedFold(t, g, dag)
+
+	const n = equivocationWindow + 50 // finalize well past the window
+	parent := g
+	for h := uint64(1); h <= n; h++ {
+		id := ids.GenerateTestID()
+		dag.add(id, parent, h)
+		var err error
+		led, _, err = Finalize(led, Cert{Block: id, Parent: parent, Height: h}, dag)
+		if err != nil {
+			t.Fatalf("finalize height %d: %v", h, err)
+		}
+		parent = id
+	}
+
+	// Recent heights (>= tip-window) retained; ancient heights (< tip-window) pruned.
+	if _, ok := led.At(n); !ok {
+		t.Fatalf("tip height %d must be retained", n)
+	}
+	if _, ok := led.At(n - equivocationWindow); !ok {
+		t.Fatalf("lowest in-window height %d must be retained", n-equivocationWindow)
+	}
+	if _, ok := led.At(n - equivocationWindow - 1); ok {
+		t.Fatalf("height %d below the window must be pruned", n-equivocationWindow-1)
+	}
+	if _, ok := led.At(0); ok {
+		t.Fatal("genesis height 0 must be pruned below the window")
+	}
+	// byHeight is bounded — this is what keeps clone() O(window).
+	if len(led.byHeight) > equivocationWindow+1 {
+		t.Fatalf("byHeight=%d exceeds the window bound %d", len(led.byHeight), equivocationWindow+1)
+	}
+	// SAFETY: a stale cert at a pruned height is still refused (monotonic guard), never
+	// silently double-finalized just because its index entry was dropped.
+	stale := ids.GenerateTestID()
+	if _, _, err := Finalize(led, Cert{Block: stale, Parent: g, Height: 0}, dag); !errors.Is(err, ErrNonMonotonicFinalizedHeight) {
+		t.Fatalf("stale cert at pruned height: err=%v want ErrNonMonotonicFinalizedHeight", err)
+	}
+}
+
+// BenchmarkFinalize_FlatCost is the HIGH-1 proof: per-finalize cost is FLAT regardless
+// of chain height, because the window-bounded byHeight keeps clone() O(window). Before
+// the fix clone copied the whole unbounded index — ~87ms/op and 100MB/op at 10^6 heights
+// (measured). A near-constant ns/op across the four tip heights below is the fix.
+func BenchmarkFinalize_FlatCost(b *testing.B) {
+	for _, start := range []uint64{1 << 6, 1 << 12, 1 << 18, 1 << 20} {
+		b.Run(fmt.Sprintf("height_%d", start), func(b *testing.B) {
+			led := seedLedger(ids.GenerateTestID(), start)
+			base := uint64(0)
+			if start >= equivocationWindow {
+				base = start - equivocationWindow + 1
+			}
+			for h := base; h <= start; h++ { // fill a full window so clone copies window-many
+				led.byHeight[h] = ids.GenerateTestID()
+			}
+			parent := led.tip
+			next := ids.GenerateTestID()
+			dag := mapDAG{}
+			dag.add(parent, ids.Empty, start)
+			dag.add(next, parent, start+1)
+			cert := Cert{Block: next, Parent: parent, Height: start + 1}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, _, _ = Finalize(led, cert, dag)
+			}
+		})
 	}
 }
