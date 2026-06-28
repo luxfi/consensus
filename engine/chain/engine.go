@@ -2165,7 +2165,7 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// propagates (HandleIncomingCert surfaces equivocation; a DEFER simply retries).
 	// Called WITHOUT t.mu so the consensus lock is never nested under it.
 	pos := cert.Cert().Position
-	plan, err := t.consensus.FinalizeBranch(blockID, pos.Height, pos.ParentID)
+	plan, err := t.consensus.ApplyCert(Cert{Block: blockID, Parent: pos.ParentID, Height: pos.Height})
 	if err != nil {
 		return err
 	}
@@ -2214,12 +2214,12 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 // finalizedByCert is written ONLY here (via the sole finalizer acceptWithCertCore),
 // so engine finality is exactly "FinalizeBranch committed this block", never the
 // count-driven consensus liveness flag.
-func (t *Transitive) applyBranchFinalization(ctx context.Context, plan BranchFinalization, certifiedTip ids.ID, cert VerifiedQuorumCert) {
+func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, certifiedTip ids.ID, cert VerifiedQuorumCert) {
 	var toAccept, toReject []block.Block
 
 	t.mu.Lock()
-	// ACCEPT the finalized path (ascending height — plan.Accepted is ordered).
-	for _, id := range plan.Accepted {
+	// ACCEPT the finalized path (ascending height — plan.Accept is ordered).
+	for _, id := range plan.Accept {
 		t.finalizedByCert[id] = struct{}{}
 		pending, ok := t.pendingBlocks[id]
 		if !ok || pending.Decided {
@@ -2237,7 +2237,7 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan BranchFin
 	// PRUNE the losing-sibling subtrees: drop from tracking and reject. THIS is the
 	// reorg the old engine never performed — without it, production ran away on a
 	// losing branch and every cert for it was permanently refused.
-	for _, id := range plan.Pruned {
+	for _, id := range plan.Reject {
 		pending, ok := t.pendingBlocks[id]
 		if !ok || pending.Decided {
 			continue
