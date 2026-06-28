@@ -173,6 +173,25 @@ const (
 	// loop RETRIES a bounded number of rounds (a transient converges) then fails SAFE (a
 	// persistent no-quorum never false-completes at the stale height). See defaultMaxNoQuorumRounds.
 	FrontierNoQuorum
+
+	// FrontierCaughtUp: the BlockSource has PROVEN the node is already AT OR ABOVE the network
+	// frontier — DONE — even though no ⅔-by-stake beacon quorum actively NAMED a tip this round.
+	// This decomplects "a quorum named a tip I hold" (FrontierNamed, which still drives the descend+
+	// execute + Accepted() shortcut) from "I proved there is nothing ahead of me" (this), which the
+	// pre-fix code CONFLATED by returning FrontierNamed(ownTip) for the caught-up case.
+	//
+	// THE FRESH-NET CASE this fixes: on a fresh network every validator — INCLUDING this node, which
+	// is itself a beacon and knows its own accepted tip with certainty — holds only genesis. A node
+	// whose own stake makes the PEER-ONLY responder weight fall below the stake-majority NAMING floor
+	// (a heavy validator, a small beacon set, or skewed stake) can then NEVER name a frontier even
+	// with the WHOLE validator set connected — it hangs in FrontierConnecting forever. But when the
+	// node has reached its ENTIRE beacon set (so no eclipse can be hiding an ahead-tip) and that full
+	// set PLUS itself unanimously report a tip it has ALREADY ACCEPTED, it IS at the frontier. The
+	// BlockSource returns this ONLY after proving caught-up under that FULL-connectivity condition, so
+	// it can NEVER false-complete a partially-connected (eclipsed) node — a suppressed beacon breaks
+	// full-connectivity and the source falls back to the partition-capture floor (fail safe). The
+	// stale-go-live guard is preserved: an eclipse cannot tip a partial view into a false caught-up.
+	FrontierCaughtUp
 )
 
 // BlockSource is the peer-fetch transport the bootstrapper drives. The node
@@ -183,8 +202,11 @@ type BlockSource interface {
 	// BEACONS, returning the agreed tip and a FrontierStatus that decomplects WHY a tip
 	// might not be named (see FrontierStatus): FrontierNamed (tip valid — sync to it),
 	// FrontierNoBeacons (single-node — done), FrontierConnecting (beacons not connected
-	// yet — wait), FrontierNoQuorum (connected but no agreement — fail safe). The tip is
-	// meaningful ONLY when status == FrontierNamed.
+	// yet — wait), FrontierNoQuorum (connected but no agreement — fail safe), and
+	// FrontierCaughtUp (the full beacon set plus the node itself prove nothing is ahead —
+	// done, even though no quorum NAMED a tip; the fresh-net / tip-holder case). The tip is
+	// meaningful (the named frontier to sync to) ONLY when status == FrontierNamed; for
+	// FrontierCaughtUp the source has already established the node is at/above the frontier.
 	FrontierTip(ctx context.Context) (tipID ids.ID, status FrontierStatus)
 
 	// Ancestors returns up to maxBlocks blocks ending at blockID, OLDEST-FIRST (the
@@ -437,6 +459,13 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome pas
 		// Beacons connected, but no ⅔-by-stake agreement reachable THIS round (transient
 		// finality skew or a genuine eclipse). NOT caught up — Run retries bounded then fails safe.
 		return false, passNoQuorum, nil
+	case FrontierCaughtUp:
+		// The BlockSource PROVED the node is at/above the network frontier (the fresh-net / tip-holder
+		// case: the FULL beacon set plus the node itself unanimously report a tip the node already
+		// holds, so nothing is ahead) even though no quorum NAMED a tip. There is nothing to descend —
+		// DONE. Distinct from FrontierNamed, which falls through to the descend+execute path; here the
+		// source has already established caught-up under its FULL-connectivity (eclipse-free) condition.
+		return false, passCaughtUp, nil
 	default:
 		// FrontierInvalid (the zero value) or any out-of-range status (F4). A status the type
 		// does not define can NEVER be read as caught-up — that would be the false-complete the
