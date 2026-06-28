@@ -4,7 +4,6 @@
 package quasar
 
 import (
-	"bytes"
 	"crypto/rand"
 	"testing"
 	"time"
@@ -64,63 +63,15 @@ func buildPolarisFixture(t *testing.T) polarisFixture {
 
 	digest := []byte("h3-policy-verify-enforced-and-of-legs-digest")
 
-	// --- Leg 1: Pulsar (Module-LWE threshold ML-DSA). ---
+	// --- Leg 1: Pulsar (Module-LWE, FIPS-204 ML-DSA-65). ---
+	// Stock single-key signature under the group key. The Pulsar leg of a
+	// Quasar cert verifies through the unmodified empty-ctx FIPS-204 verifier
+	// (pulsarwire.VerifyBytes), so a group-key signature is valid leg evidence —
+	// the no-reconstruct t-of-n producer is gate-C, and permissionless safety
+	// comes from the dealerless Corona leg in AND-mode. See signPulsarLegStock.
 	pulsarParams := pulsar.MustParamsFor(pulsar.ModeP65)
-	committee := []pulsar.NodeID{{0x01, 0x00, 'V'}, {0x02, 0x00, 'V'}, {0x03, 0x00, 'V'}}
 	const n, threshold = 3, 2
-
-	identities := make(map[pulsar.NodeID]*pulsar.IdentityKey, n)
-	dirEntries := make(map[pulsar.NodeID]*pulsar.IdentityPublicKey, n)
-	for i := 0; i < n; i++ {
-		ik, err := pulsar.GenerateIdentity(rand.Reader)
-		if err != nil {
-			t.Fatalf("pulsar.GenerateIdentity[%d]: %v", i, err)
-		}
-		identities[committee[i]] = ik
-		dirEntries[committee[i]] = ik.PublicKey()
-	}
-	directory, err := pulsar.NewIdentityDirectory(dirEntries)
-	if err != nil {
-		t.Fatalf("pulsar.NewIdentityDirectory: %v", err)
-	}
-	dkg := make([]*pulsar.DKGSession, n)
-	for i := 0; i < n; i++ {
-		rng := bytes.NewReader(append([]byte{byte(i + 0xA0)}, bytes.Repeat([]byte{0xCA, 0xFE, 0xBA, 0xBE}, 32)...))
-		s, err := pulsar.NewDKGSession(pulsarParams, committee, threshold, committee[i], identities[committee[i]], directory, rng)
-		if err != nil {
-			t.Fatalf("pulsar.NewDKGSession[%d]: %v", i, err)
-		}
-		dkg[i] = s
-	}
-	r1 := make([]*pulsar.DKGRound1Msg, n)
-	for i, s := range dkg {
-		m, err := s.Round1()
-		if err != nil {
-			t.Fatalf("pulsar.Round1[%d]: %v", i, err)
-		}
-		r1[i] = m
-	}
-	r2 := make([]*pulsar.DKGRound2Msg, n)
-	for i, s := range dkg {
-		m, err := s.Round2(r1)
-		if err != nil {
-			t.Fatalf("pulsar.Round2[%d]: %v", i, err)
-		}
-		r2[i] = m
-	}
-	dkgOuts := make([]*pulsar.DKGOutput, n)
-	for i, s := range dkg {
-		out, err := s.Round3(r1, r2)
-		if err != nil {
-			t.Fatalf("pulsar.Round3[%d]: %v", i, err)
-		}
-		dkgOuts[i] = out
-	}
-	pulsarGroupPK := dkgOuts[0].GroupPubkey
-	// Drive one t-of-n Pulsar threshold-sign ceremony over the fixed (3, 2)
-	// committee. Empty ctx: the Polaris cert's pulsar leg signs ctx-free and
-	// verification routes through the stateless empty-ctx FIPS 204 verifier.
-	pulsarSig := signPulsarThresholdLeg(t, pulsarParams, committee, threshold, identities, dkgOuts, digest, nil)
+	pulsarSig, pulsarGroupPK := signPulsarLegStock(t, pulsarParams, digest)
 
 	// --- Leg 2: Corona (Ring-LWE threshold ML-DSA). ---
 	coronaShares, coronaGroupKey, err := coronaThreshold.GenerateKeys(threshold, n, nil)
