@@ -17,6 +17,16 @@
 //	    (full dual-lattice AND-mode strict finality)
 //	RECOVERY_MODE         require Beam ∧ P3Q-rollup
 //	    (recovery / migration / bridge: independent ML-DSA certs, no Pulsar key)
+//	POLARIS_HASH_PQ       require Beam ∧ Pulsar ∧ Magnetar-Quorum
+//	    (adds hash-based diversity: a trustless rollup of independent SLH-DSA certs)
+//	POLARIS_MAX           require Beam ∧ Pulsar ∧ Corona ∧ Magnetar-Quorum
+//	    (maximum trustless assurance: Module-LWE ∥ Ring-LWE ∥ hash-based diversity)
+//
+// THE POLARIS POSTURES admit Magnetar ONLY as the trustless Magnetar-Quorum
+// rollup (EvidenceMagnetarRollup) — independent per-validator FIPS-205 sigs with
+// NO dealer / DKG / shared secret. Magnetar-Threshold (THBS-SE reveal-and-
+// aggregate, a signing-time TCB) is NEVER admitted: SLH-DSA can never be proven
+// by a threshold-sig mode here (I7), and no SLH-DSA threshold-sig mode exists.
 //
 // The required PQ leg KIND is LegPulsarMLDSA in HYBRID / STRICT / RECOVERY; the
 // MODE the policy permits for it differs: STRICT permits ONLY the compact
@@ -51,6 +61,14 @@ const (
 
 	// PolicyRecoveryMode — Beam ∧ P3Q-rollup.
 	PolicyRecoveryMode
+
+	// PolicyPolarisHashPQ — Beam ∧ Pulsar ∧ Magnetar-Quorum (adds hash-based
+	// diversity via the trustless SLH-DSA rollup).
+	PolicyPolarisHashPQ
+
+	// PolicyPolarisMax — Beam ∧ Pulsar ∧ Corona ∧ Magnetar-Quorum (maximum
+	// trustless assurance: Module-LWE ∥ Ring-LWE ∥ hash-based diversity).
+	PolicyPolarisMax
 )
 
 // String returns the canonical posture name.
@@ -64,6 +82,10 @@ func (m QuasarEvidenceMode) String() string {
 		return "STRICT_QUASAR"
 	case PolicyRecoveryMode:
 		return "RECOVERY_MODE"
+	case PolicyPolarisHashPQ:
+		return "POLARIS_HASH_PQ"
+	case PolicyPolarisMax:
+		return "POLARIS_MAX"
 	default:
 		return fmt.Sprintf("quasar-policy(%d)", uint8(m))
 	}
@@ -76,10 +98,11 @@ const blsParam = uint8(ClassicalSchemeBLS12381)
 // QuasarEvidencePolicy is the concrete ConsensusCertPolicy for one posture. It
 // also implements ProofAssumptionPolicy (the optional classical-proof opt-in).
 type QuasarEvidencePolicy struct {
-	mode       QuasarEvidenceMode
-	mldsaParam uint8  // ML-DSA param byte for the PQ legs (default 0x42 = ML-DSA-65)
-	threshold  uint64 // BFT quorum weight floor
-	policyID   uint32 // EvidencePolicyID, bound into M
+	mode          QuasarEvidenceMode
+	mldsaParam    uint8  // ML-DSA param byte for the lattice PQ legs (default 0x42 = ML-DSA-65)
+	magnetarParam uint8  // SLH-DSA param byte for the Magnetar leg (default 0x06 = SLH-DSA-192s)
+	threshold     uint64 // BFT quorum weight floor
+	policyID      uint32 // EvidencePolicyID, bound into M
 
 	// acceptClassicalProof opts the policy into classical-assumption succinct
 	// P3Q proofs (the Groth16 suite). Default false — fail closed, PQ-safe.
@@ -100,11 +123,22 @@ func NewQuasarEvidencePolicy(mode QuasarEvidenceMode, mldsaParam uint8, threshol
 		mldsaParam = uint8(QuorumSchemeMLDSA65)
 	}
 	return &QuasarEvidencePolicy{
-		mode:       mode,
-		mldsaParam: mldsaParam,
-		threshold:  threshold,
-		policyID:   stablePolicyID(mode),
+		mode:          mode,
+		mldsaParam:    mldsaParam,
+		magnetarParam: uint8(QuorumSchemeSLHDSA192s),
+		threshold:     threshold,
+		policyID:      stablePolicyID(mode),
 	}
+}
+
+// WithMagnetarParam overrides the SLH-DSA parameter byte the Magnetar leg is
+// gated under (default SLH-DSA-192s). Must be an SLH-DSA scheme; used by the
+// POLARIS postures whose Magnetar leg targets a different FIPS-205 param set.
+func (p *QuasarEvidencePolicy) WithMagnetarParam(magnetarParam uint8) *QuasarEvidencePolicy {
+	if magnetarParam != 0 {
+		p.magnetarParam = magnetarParam
+	}
+	return p
 }
 
 // WithClassicalProofAssumption opts the policy into classical-assumption
@@ -127,6 +161,7 @@ func (p *QuasarEvidencePolicy) RequiredLegs() []LegSpec {
 	beam := LegSpec{Kind: LegClassical, ParamSetID: blsParam}
 	pq := LegSpec{Kind: LegPulsarMLDSA, ParamSetID: p.mldsaParam}
 	corona := LegSpec{Kind: LegCoronaLattice, ParamSetID: p.mldsaParam}
+	magnetar := LegSpec{Kind: LegMagnetarSLHDSA, ParamSetID: p.magnetarParam}
 	switch p.mode {
 	case PolicyBLSFast:
 		return []LegSpec{beam}
@@ -136,6 +171,12 @@ func (p *QuasarEvidencePolicy) RequiredLegs() []LegSpec {
 		return []LegSpec{beam, pq, corona}
 	case PolicyRecoveryMode:
 		return []LegSpec{beam, pq}
+	case PolicyPolarisHashPQ:
+		// Beam ∧ Pulsar ∧ Magnetar-Quorum (hash-based diversity).
+		return []LegSpec{beam, pq, magnetar}
+	case PolicyPolarisMax:
+		// Beam ∧ Pulsar ∧ Corona ∧ Magnetar-Quorum (max trustless assurance).
+		return []LegSpec{beam, pq, corona, magnetar}
 	default:
 		return nil
 	}
@@ -164,14 +205,27 @@ func (p *QuasarEvidencePolicy) Allows(leg LegSpec, mode EvidenceMode, paramSet u
 		case PolicyRecoveryMode:
 			// P3Q rollup ONLY.
 			return mode == EvidenceP3QRollup
+		case PolicyPolarisHashPQ, PolicyPolarisMax:
+			// The compact Pulsar threshold sig (the "∧ Pulsar" of the POLARIS
+			// postures). The hash-based diversity comes from the Magnetar leg.
+			return mode == EvidenceThresholdSig
 		default:
 			return false
 		}
 
 	case LegCoronaLattice:
-		// Corona — only in STRICT, only as a compact threshold sig.
-		return p.mode == PolicyStrictQuasar &&
+		// Corona — a compact threshold sig, in STRICT and POLARIS_MAX.
+		return (p.mode == PolicyStrictQuasar || p.mode == PolicyPolarisMax) &&
 			mode == EvidenceThresholdSig && paramSet == p.mldsaParam
+
+	case LegMagnetarSLHDSA:
+		// Magnetar — ONLY the trustless Magnetar-Quorum rollup, ONLY in the
+		// POLARIS postures, ONLY under the policy's SLH-DSA param. NEVER a
+		// threshold sig: SLH-DSA has no aggregatable threshold structure, and the
+		// reveal-and-aggregate (THBS-SE) path is a signing-time TCB — forbidden as
+		// a strict trustless lane (also hard-rejected by VerifyThresholdSigLeg, I7).
+		return (p.mode == PolicyPolarisHashPQ || p.mode == PolicyPolarisMax) &&
+			mode == EvidenceMagnetarRollup && paramSet == p.magnetarParam
 
 	default:
 		return false
