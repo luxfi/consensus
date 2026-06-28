@@ -268,8 +268,8 @@ func WithLogger(l log.Logger) Option {
 // chainID and nodeID identify this node's position for vote/cert binding.
 //
 // Without this option the engine runs in single-validator (K==1) mode: the sole
-// validator's local accept is the quorum, finality uses the ForceAccept path,
-// and no certs or signatures are produced. The engine REFUSES to start a
+// validator's local accept is the quorum, finality goes through the 1-of-1 cert →
+// FinalizeBranch, and no peer certs or signatures are produced. The engine REFUSES to start a
 // multi-validator (K>1) configuration without a verifier (fail-closed) — see
 // Start.
 func WithQuorumCert(chainID ids.ID, nodeID ids.NodeID, verifier VoteVerifier, gossiper CertGossiper, signer VoteSigner) Option {
@@ -1963,9 +1963,9 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 //     (assembleVerifiedCertLocked → BuildVerifiedQuorumCert semantics). The
 //     verified cert is gossiped so followers finalize on the same proof.
 //   - K==1: there are no peers; the sole validator's own accept IS the 1-of-1
-//     quorum. We commit it through the per-height guard (ForceAccept, which
-//     refuses K>1) and wrap the resulting decision as a 1-of-1 VerifiedQuorumCert
-//     so even this path finalizes ONLY through AcceptWithCert — one finalizer.
+//     quorum. We wrap it as a 1-of-1 VerifiedQuorumCert so even this path finalizes
+//     ONLY through AcceptWithCert → FinalizeBranch (whose per-height gate keeps a
+//     K==1 node from finalizing two blocks at one height) — one finalizer.
 func (t *Transitive) TryAccept(ctx context.Context, blockID ids.ID) error {
 	t.mu.Lock()
 	pending, exists := t.pendingBlocks[blockID]
@@ -1976,15 +1976,10 @@ func (t *Transitive) TryAccept(ctx context.Context, blockID ids.ID) error {
 	singleValidator := t.consensus.K() == 1
 
 	if singleValidator {
-		// 1-of-1 quorum. Commit through the per-height guard (ForceAccept refuses
-		// K>1) so a K==1 node still cannot finalize two blocks at one height, then
-		// authorize the shared finalizer with a 1-of-1 verified cert.
-		if err := t.consensus.ForceAccept(blockID); err != nil {
-			t.mu.Unlock()
-			t.log.Crit("ForceAccept refused — engine misconfigured (K>1 reached single-validator path)",
-				"blockID", blockID, "error", err)
-			return err
-		}
+		// 1-of-1 quorum: the sole validator's own accept IS the α-of-K. Build the
+		// 1-of-1 verified cert and finalize through the SOLE finalizer (AcceptWithCert
+		// → FinalizeBranch), whose per-height gate (a) keeps a K==1 node from
+		// finalizing two blocks at one height. No separate force path.
 		cert := t.buildSingleValidatorCertLocked(pending, blockID)
 		t.mu.Unlock()
 		return t.AcceptWithCert(ctx, blockID, cert)
@@ -2075,18 +2070,19 @@ func (t *Transitive) assembleVerifiedCertLocked(pending *PendingBlock, blockID i
 }
 
 // buildSingleValidatorCertLocked produces the 1-of-1 VerifiedQuorumCert for the
-// K==1 path so the single-validator node finalizes through the SAME sole
-// finalizer (AcceptWithCert) as every other path — one finalization road. Caller
-// holds t.mu and has already committed the decision via ForceAccept (which itself
-// passes the per-height guard). On a K==1 chain α==1 and the sole validator's own
-// signed accept (recordOwnVoteLocked, captured at build time) is the entire
-// quorum; assembleCertLocked verifies that single signature and the (trivially
-// satisfied) stake gate. If a verifier/signer is not wired (a pure single-node
-// dev chain with no vote crypto), there is no signature to certify — we authorize
-// the commit with a degenerate non-zero token whose cert carries the position,
-// because ForceAccept already established the 1-of-1 finality and the per-height
-// guard already prevented equivocation. This degenerate token exists ONLY for
-// K==1 and can never arise for K>1 (TryAccept's K>1 branch never calls here).
+// K==1 path so the single-validator node finalizes through the SAME sole finalizer
+// (AcceptWithCert → FinalizeBranch) as every other path — one finalization road. The
+// FinalizeBranch inside that finalizer is what commits the decision and enforces the
+// per-height equivocation gate; this function only builds the authorizing token.
+// Caller holds t.mu. On a K==1 chain α==1 and the sole validator's own signed accept
+// (recordOwnVoteLocked, captured at build time) is the entire quorum; assembleCertLocked
+// verifies that single signature and the (trivially satisfied) stake gate. If a
+// verifier/signer is not wired (a pure single-node dev chain with no vote crypto), there
+// is no signature to certify — we authorize the commit with a degenerate non-zero token
+// whose cert carries the position, and FinalizeBranch (the real single-node safety gate:
+// one block per height, contiguous, reorg-on-conflict) does the commit. This degenerate
+// token exists ONLY for K==1 and can never arise for K>1 (TryAccept's K>1 branch never
+// calls here).
 func (t *Transitive) buildSingleValidatorCertLocked(pending *PendingBlock, blockID ids.ID) VerifiedQuorumCert {
 	// Prefer the VERIFIED 1-of-1 cert: when vote crypto is wired the proposer
 	// recorded its own signed accept (recordOwnVoteLocked), so assembleCertLocked
@@ -2097,11 +2093,11 @@ func (t *Transitive) buildSingleValidatorCertLocked(pending *PendingBlock, block
 	}
 	// Only when NO vote crypto is wired (a pure single-node dev chain, voteVerifier
 	// nil) is there no signature to certify. Synthesize the 1-of-1 finality witness
-	// from the position: ForceAccept has ALREADY committed this block through the
-	// per-height guard (the real single-node safety gate — one block per height, no
-	// branching), so the token only authorizes the VM.Accept. This branch is
-	// K==1-only (both callers gate on K()==1) and verifier-nil-only, so it can
-	// never substitute for a real α-of-K cert on any multi-validator chain.
+	// from the position; FinalizeBranch (inside the finalizer this token authorizes)
+	// is the real single-node safety gate — one block per height, contiguous, no
+	// branching. This branch is K==1-only (both callers gate on K()==1) and
+	// verifier-nil-only, so it can never substitute for a real α-of-K cert on any
+	// multi-validator chain.
 	if t.voteVerifier != nil {
 		// Verifier wired but the self-vote did not assemble (should not happen on a
 		// healthy K==1 node). Do NOT fabricate a witness when crypto is available —
@@ -2148,44 +2144,38 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 		return ErrNoVerifiedQC
 	}
 
-	t.mu.Lock()
+	// Fast idempotent out: an already-decided (or untracked) block needs no
+	// re-finalize. FinalizeBranch is itself idempotent, but skipping it avoids the
+	// consensus lock on the hot re-delivery path.
+	t.mu.RLock()
 	pending, exists := t.pendingBlocks[blockID]
-	if !exists || pending.Decided {
-		t.mu.Unlock()
+	decided := exists && pending.Decided
+	t.mu.RUnlock()
+	if !exists || decided {
 		return nil
 	}
-	pending.Decided = true
-	t.blocksAccepted++
-	delete(t.pendingBlocks, blockID)
-	// A decided block can never need parked votes again — drop any so the buffer
-	// cannot leak for an already-finalized block (the drain handles the happy path
-	// where the block arrived; this handles the already-decided path).
-	delete(t.bufferedVotes, blockID)
-	// Likewise reclaim its catch-up throttle entry: a finalized block is no longer
-	// "missing", so no future fetch for it can fire — keep catchupRequested bounded.
-	delete(t.catchupRequested, blockID)
-	// Record engine-level finality. This is the ONLY place finalizedByCert is
-	// written, and it is written ONLY here — the sole finalizer, reachable only
-	// with a non-zero VerifiedQuorumCert. Transitive.IsAccepted reads this set, so
-	// engine finality is exactly "AcceptWithCert ran for this block", never the
-	// count-driven consensus.IsAccepted.
-	t.finalizedByCert[blockID] = struct{}{}
-	// Retain the cert that just authorized this finalize so this node can serve it
-	// to a peer catching up (CertForBlock). cert is the SAME VerifiedQuorumCert that
-	// cleared the predicate above; marshaling it here — the one finalizer — captures
-	// every finalize path (local assembly, incoming gossiped cert, K==1) in one spot.
-	if qc := cert.Cert(); qc != nil {
-		if b, err := qc.MarshalBinary(); err == nil {
-			t.storeServedCertLocked(blockID, b)
-		}
-	}
-	t.mu.Unlock()
 
-	if pending.VMBlock != nil {
-		_ = pending.VMBlock.Accept(ctx)
+	// COMMIT FINALITY to the consensus ledger — the single finalize. FinalizeBranch
+	// walks the certified branch from the finalized tip up to blockID, advances
+	// finalized history, and returns the REORG plan: the path to Accept (ascending
+	// height) and the losing-sibling subtrees to prune. On a safety violation —
+	// equivocation (ErrHeightAlreadyFinalized), a conflicting/losing branch
+	// (ErrConflictsWithFinalizedBranch), or a not-yet-tracked ancestor
+	// (ErrAncestorNotTracked, a behind-node DEFER) — NOTHING is applied and the error
+	// propagates (HandleIncomingCert surfaces equivocation; a DEFER simply retries).
+	// Called WITHOUT t.mu so the consensus lock is never nested under it.
+	pos := cert.Cert().Position
+	plan, err := t.consensus.FinalizeBranch(blockID, pos.Height, pos.ParentID)
+	if err != nil {
+		return err
 	}
 
-	// SetPreference must follow Accept to keep VM and consensus in sync.
+	// Apply the plan to the VM + engine bookkeeping: VM.Accept the finalized path,
+	// VM.Reject the pruned losers, record engine finality, store the serving cert.
+	t.applyBranchFinalization(ctx, plan, blockID, cert)
+
+	// REORG production onto the certified branch: SetPreference to the new tip keeps
+	// the VM building on the block consensus just finalized.
 	t.mu.RLock()
 	vm := t.vm
 	t.mu.RUnlock()
@@ -2210,6 +2200,73 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// memory-exhaustion vector. Prune everything older than the window.
 	t.pruneSlashingBelowWindow()
 	return nil
+}
+
+// applyBranchFinalization applies a consensus FinalizeBranch plan to the VM and
+// engine bookkeeping. It mirrors avalanchego topological.go's accept/reject split:
+// VM.Accept the finalized path (child.Accept, ascending height) and VM.Reject the
+// pruned losing-sibling subtrees (rejectTransitively). The certified tip carries the
+// cert retained for serving catch-up peers. The engine maps (finalizedByCert,
+// pendingBlocks, bufferedVotes, catchupRequested) are reconciled under t.mu; the VM
+// Accept/Reject calls run OUTSIDE the lock, Accept-before-Reject (the avalanchego
+// order: accept the preferred child, then reject the conflicting siblings).
+//
+// finalizedByCert is written ONLY here (via the sole finalizer acceptWithCertCore),
+// so engine finality is exactly "FinalizeBranch committed this block", never the
+// count-driven consensus liveness flag.
+func (t *Transitive) applyBranchFinalization(ctx context.Context, plan BranchFinalization, certifiedTip ids.ID, cert VerifiedQuorumCert) {
+	var toAccept, toReject []block.Block
+
+	t.mu.Lock()
+	// ACCEPT the finalized path (ascending height — plan.Accepted is ordered).
+	for _, id := range plan.Accepted {
+		t.finalizedByCert[id] = struct{}{}
+		pending, ok := t.pendingBlocks[id]
+		if !ok || pending.Decided {
+			continue // not locally tracked, or already applied — the ledger is the truth
+		}
+		pending.Decided = true
+		t.blocksAccepted++
+		delete(t.pendingBlocks, id)
+		delete(t.bufferedVotes, id)
+		delete(t.catchupRequested, id)
+		if pending.VMBlock != nil {
+			toAccept = append(toAccept, pending.VMBlock)
+		}
+	}
+	// PRUNE the losing-sibling subtrees: drop from tracking and reject. THIS is the
+	// reorg the old engine never performed — without it, production ran away on a
+	// losing branch and every cert for it was permanently refused.
+	for _, id := range plan.Pruned {
+		pending, ok := t.pendingBlocks[id]
+		if !ok || pending.Decided {
+			continue
+		}
+		pending.Decided = true
+		t.blocksRejected++
+		delete(t.pendingBlocks, id)
+		delete(t.bufferedVotes, id)
+		delete(t.catchupRequested, id)
+		if pending.VMBlock != nil {
+			toReject = append(toReject, pending.VMBlock)
+		}
+	}
+	// Retain the cert that authorized this finalize so a catching-up peer can fetch it.
+	if qc := cert.Cert(); qc != nil {
+		if b, err := qc.MarshalBinary(); err == nil {
+			t.storeServedCertLocked(certifiedTip, b)
+		}
+	}
+	t.mu.Unlock()
+
+	// VM effects OUTSIDE the lock. Accept the path first (ascending), then reject the
+	// losers — avalanchego's acceptPreferredChild order.
+	for _, vmb := range toAccept {
+		_ = vmb.Accept(ctx)
+	}
+	for _, vmb := range toReject {
+		_ = vmb.Reject(ctx)
+	}
 }
 
 // slashingRetentionHeights is how many heights below the finalized tip the
@@ -2365,32 +2422,22 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		singleValidator := t.consensus.K() == 1
 
 		if singleValidator {
-			// K==1: the sole validator's accept IS the 1-of-1 quorum. Commit it
-			// through the per-height guard (ForceAccept) and build the 1-of-1
-			// VerifiedQuorumCert — both UNDER the lock we already hold — then
-			// release the lock only for the VM Accept/SetPreference inside
-			// AcceptWithCert. Doing this INLINE (not via the async poll loop) is
-			// load-bearing for correctness, not just speed: the VM advances its
-			// parent only on SetPreference, and the per-height guard requires each
-			// block's parent to equal the finalized tip and its height to be the
-			// strict successor. If the next BuildBlock ran before this block's
-			// SetPreference, it would read a stale parent and the commit would be
-			// refused (ErrParentNotFinalizedTip), stalling the chain. Finalizing
-			// here keeps build→accept→SetPreference→next-build in lockstep, exactly
-			// as the pre-collapse inline accept did — only now routed through the
-			// one finalizer.
-			if err := t.consensus.ForceAccept(blockID); err != nil {
-				t.log.Crit("ForceAccept refused — engine misconfigured (K>1 reached single-validator path)",
-					"blockID", blockID, "error", err)
-			} else {
-				cert := t.buildSingleValidatorCertLocked(pb, blockID)
-				t.mu.Unlock()
-				// signalNext=false: we are inside the build loop, which drives the
-				// next build itself. Re-signaling would spawn a concurrent builder
-				// and gap the VM block counter (the K=1 burst-throughput stall).
-				_ = t.acceptWithCertCore(ctx, blockID, cert, false)
-				t.mu.Lock()
-			}
+			// K==1: the sole validator's accept IS the 1-of-1 quorum. Build the 1-of-1
+			// cert and finalize INLINE through the sole finalizer (FinalizeBranch).
+			// signalNext=false: we are inside the build loop, which drives the next
+			// build itself — re-signaling would spawn a concurrent builder and gap the
+			// VM block counter (the K=1 burst-throughput stall).
+			//
+			// The old code REQUIRED this to run in lockstep with SetPreference because
+			// the per-height ADMISSION gate refused any block whose parent != finalized
+			// tip (ErrParentNotFinalizedTip) — so a build that outran SetPreference
+			// stalled. That gate is GONE: FinalizeBranch reorgs instead of refusing, so
+			// finalizing here is now purely the K==1 finalize trigger, not a lockstep
+			// safety requirement.
+			cert := t.buildSingleValidatorCertLocked(pb, blockID)
+			t.mu.Unlock()
+			_ = t.acceptWithCertCore(ctx, blockID, cert, false)
+			t.mu.Lock()
 		} else if proposerWired {
 			// K>1 with a network proposer: attempt finality now via the verified
 			// α-of-K cert. The cert may already be assemblable from collected votes;

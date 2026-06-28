@@ -48,8 +48,8 @@ var ErrCatchupCertRejected = errors.New("chain: catch-up cert rejected — block
 // hard-bounded so the store can never grow without limit. A node lagging by more
 // than this window is not a "catch-up" case — it bootstraps/state-syncs instead.
 // Eviction is by ascending finalized height (oldest-first), which equals insertion
-// order because finality is monotonic (markFinalizedLocked: height advances by
-// exactly one).
+// order because finality is monotonic (FinalizeBranch advances finalized history
+// forward by contiguous heights).
 const maxServedCerts = 4096
 
 // storeServedCertLocked records the marshaled finality cert for a just-finalized
