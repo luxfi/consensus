@@ -35,7 +35,7 @@ type testSigner struct {
 }
 
 // sign produces this signer's independent signature over message under ctx.
-func (s *testSigner) sign(t *testing.T, message, ctx []byte) []byte {
+func (s *testSigner) sign(t testing.TB, message, ctx []byte) []byte {
 	t.Helper()
 	switch {
 	case s.mldsaPriv != nil:
@@ -59,7 +59,7 @@ func (s *testSigner) sign(t *testing.T, message, ctx []byte) []byte {
 }
 
 // newMLDSASigner builds a real ML-DSA-65 signer at the given id/weight.
-func newMLDSASigner(t *testing.T, idByte byte, weight uint64) *testSigner {
+func newMLDSASigner(t testing.TB, idByte byte, weight uint64) *testSigner {
 	t.Helper()
 	priv, err := mldsa.GenerateKey(rand.Reader, mldsa.MLDSA65)
 	if err != nil {
@@ -81,7 +81,7 @@ func newMLDSASigner(t *testing.T, idByte byte, weight uint64) *testSigner {
 }
 
 // newSLHDSASigner builds a real SLH-DSA-192s signer at the given id/weight.
-func newSLHDSASigner(t *testing.T, idByte byte, weight uint64) *testSigner {
+func newSLHDSASigner(t testing.TB, idByte byte, weight uint64) *testSigner {
 	t.Helper()
 	priv, err := magnetar.GenerateKey(magnetar.ParamsM192s, rand.Reader)
 	if err != nil {
@@ -135,7 +135,7 @@ type scenario struct {
 // buildScenario assembles a real, valid cert from real signers. threshold is
 // the quorum-weight floor; ctx is the FIPS context (nil for the SLH-DSA
 // path). The value hash is fixed and bound into the message + cert.
-func buildScenario(t *testing.T, signers []*testSigner, threshold uint64, ctx []byte) scenario {
+func buildScenario(t testing.TB, signers []*testSigner, threshold uint64, ctx []byte) scenario {
 	t.Helper()
 
 	env := testEnv()
