@@ -256,7 +256,7 @@ func TestChainConsensusPollFinalization(t *testing.T) {
 	// FinalizeBranch (the cert path) commits finality and advances the tip.
 	_, err := consensus.FinalizeBranch(blockID, 0, ids.Empty)
 	require.NoError(err)
-	require.Equal(blockID, consensus.finalizedTip)
+	require.Equal(blockID, consensus.GetFinalizedTip())
 }
 
 // TestChainConsensusIsAccepted tests the IsAccepted method
@@ -325,8 +325,9 @@ func TestChainConsensusPreference(t *testing.T) {
 	pref := consensus.Preference()
 	require.Equal(blockID, pref)
 
-	// Set finalized tip
-	consensus.finalizedTip = blockID
+	// Finalizing the block makes it the finalized tip; Preference surfaces it.
+	_, err := consensus.FinalizeBranch(blockID, 0, ids.Empty)
+	require.NoError(err)
 	require.Equal(blockID, consensus.Preference())
 }
 
@@ -356,8 +357,9 @@ func TestChainConsensusPreferenceFinalizedTip(t *testing.T) {
 	}
 	require.NoError(consensus.AddBlock(ctx, block2))
 
-	// Set finalized tip to block1
-	consensus.finalizedTip = block1ID
+	// Finalizing block1 makes it the finalized tip; Preference surfaces it.
+	_, err := consensus.FinalizeBranch(block1ID, 0, ids.Empty)
+	require.NoError(err)
 
 	// Preference should be the finalized tip
 	require.Equal(block1ID, consensus.Preference())
@@ -410,7 +412,8 @@ func TestChainConsensusStats(t *testing.T) {
 	consensus.blocks[pendingID] = &Block{id: pendingID}
 
 	consensus.tips[pendingID] = true
-	consensus.finalizedTip = acceptedID
+	_, err := consensus.FinalizeBranch(acceptedID, 0, ids.Empty)
+	require.NoError(err)
 
 	stats := consensus.Stats()
 
@@ -1000,9 +1003,8 @@ func TestChainConsensusPreferenceEmptyTips(t *testing.T) {
 
 	consensus := NewChainConsensus(3, 2, 2)
 
-	// Clear tips
+	// Clear tips; a fresh consensus has no finalized ledger, so Preference is Empty.
 	consensus.tips = make(map[ids.ID]bool)
-	consensus.finalizedTip = ids.Empty
 
 	// Should return Empty
 	require.Equal(ids.Empty, consensus.Preference())
