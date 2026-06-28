@@ -817,6 +817,8 @@ func dispatchEvidence(policy ConsensusCertPolicy, validators ConsensusValidatorS
 		return VerifyClassicalAggregateLeg(policy, validators, cert, msg, ev)
 	case EvidenceP3QRollup:
 		return VerifyP3QRollupLeg(policy, validators, cert, msg, ev)
+	case EvidenceMagnetarRollup:
+		return VerifyMagnetarQuorumLeg(policy, validators, cert, msg, ev)
 	default:
 		return fmt.Errorf("%w: 0x%02x", ErrUnknownEvidenceMode, uint8(ev.Mode))
 	}
