@@ -11,8 +11,9 @@
 // It has no receiver, no lock, no VM, and reads the preference DAG only through the
 // read-only Ancestry interface. Because the ledger is replaced as a whole value
 // (never mutated in place) and there is no field-poking method, "accept =
-// markFinalized(...)" is structurally unwriteable: the only way finality advances
-// is the single assignment `c.ledger = Finalize(...)` in the engine shell.
+// markFinalized(...)" is structurally unwriteable: finality advances only by folding a
+// cert and replacing the ledger (applyCertLocked) — the import reconcile (SyncState) is
+// the one other whole-value replacement.
 //
 // This mirrors avalanchego snow/consensus/snowman/topological.go, with finality's
 // trigger swapped from β-consecutive-polls to a quorum CERT: the preference tree +

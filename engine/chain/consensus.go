@@ -4,12 +4,10 @@
 package chain
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync"
 
-	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/ids"
 )
 
@@ -55,48 +53,6 @@ var (
 	ErrEpochRegression = errors.New("chain: gossiped block refused — its P-chain epoch height regresses below its parent's recorded epoch (a Byzantine proposer cannot pin a fresh block to a stale validator set)")
 )
 
-// Block represents a block in the chain
-type Block struct {
-	id        ids.ID
-	parentID  ids.ID
-	height    uint64
-	timestamp int64
-	data      []byte
-
-	// pChainHeight is the P-CHAIN epoch height the block's weighted validator set
-	// is pinned to (MEDIUM-1 / CRITICAL-1): the set-root commitment, the ⅔-by-stake
-	// tally, AND the per-voter pubkey resolution are ALL read from the height-
-	// indexed validators.State at THIS height — never the value-chain `height`.
-	// They differ fundamentally: platformvm.GetValidatorSet interprets its argument
-	// as a P-CHAIN height and returns errUnfinalizedHeight when the current P-chain
-	// height < the argument, and the value-chain height races far ahead of the
-	// P-chain height on a busy chain — feeding `height` there yields an empty set
-	// and stalls finality FOREVER (the mainnet-bricking bug this fixes).
-	//
-	// Source: a proposervm signed block carries its PChainHeight
-	// (block.SignedBlock.PChainHeight); pChainHeightOf reads it off the VM block at
-	// the engine boundary. When the block does NOT expose one (the VM is not
-	// proposervm-wrapped at the engine boundary, which is the case for the current
-	// in-process chain stack), this is 0 → the set is read at P-chain height 0, the
-	// GENESIS validator set. That is non-empty, identical on every node (everyone
-	// agrees on genesis), and ≤ the current P-chain height, so finality is LIVE and
-	// consistent — and EXACT for any chain whose validator set is unchanged since
-	// genesis. The refinement that pins post-genesis STAKING-CHANGE epochs requires
-	// the proposervm to deliver its PChainHeight to the engine's block (the
-	// remaining (b2) wiring); the mechanism here is proven by
-	// TestPChainEpochFinality_RealWiring, which feeds a block that DOES carry it.
-	pChainHeight uint64
-
-	// Consensus state - Photon -> Wave -> Focus finality
-	driver   *engine.Driver
-	accepted bool
-	rejected bool
-
-	// Vote tracking for rejection support
-	acceptVotes int
-	rejectVotes int
-}
-
 // ChainConsensus implements real Lux consensus for linear chains using Photon → Wave → Focus
 type ChainConsensus struct {
 	mu sync.RWMutex
@@ -114,12 +70,12 @@ type ChainConsensus struct {
 	bootstrapped bool
 
 	// ledger is the committed finality VALUE — the append-only prefix of finalized
-	// history (ledger.go). It is the SINGLE source of truth for "which block is
-	// finalized at height H" and advances ONLY by being replaced wholesale after the
-	// pure Finalize fold (the `c.ledger = led` assignment in applyCertLocked). No
-	// method pokes a finality field, which is what makes a stray markFinalized
-	// unwriteable. The single-non-branching-chain property is the OUTPUT of the cert's
-	// reorg (prune the losing sibling subtree), never an admission refusal.
+	// history (ledger.go), the one source of truth for which block is final at each
+	// height. It is only ever REPLACED WHOLE, never poked field-by-field, so there is
+	// no markFinalized to call. Exactly two paths replace it: the cert fold
+	// (applyCertLocked, the production path) and SyncState (the out-of-band import
+	// reconcile). A single non-branching finalized chain is the OUTPUT of the cert's
+	// reorg — pruning the losing sibling subtree — never an admission refusal.
 	ledger FinalityLedger
 
 	// preference is the preliminary BUILD tip used BEFORE the first finalize — the
@@ -140,11 +96,10 @@ func NewChainConsensus(k, alpha, beta int) *ChainConsensus {
 	}
 }
 
-// ApplyCert is THE canonical finalize: fold a Cert into the committed ledger, advance
-// finality, and return the plan the engine applies to the VM. It is the production
-// finality path (engine.acceptWithCertCore calls it). Finality advances ONLY here, via
-// the single `c.ledger = led` assignment after the pure Finalize fold — there is no
-// markFinalized method to call, so accept-by-mutation is structurally unwriteable.
+// ApplyCert is THE canonical finalize: fold a Cert into the committed ledger and return
+// the plan the engine applies to the VM. It is the production finality path
+// (engine.acceptWithCertCore calls it) — finality advances by replacing the ledger with
+// the fold's result, never by a field poke, so there is no markFinalized to call.
 //
 // cert.Parent may be ids.Empty only for the genesis / first finalize. On a safety
 // violation — equivocation (ErrHeightAlreadyFinalized), a losing/conflicting branch
@@ -168,9 +123,9 @@ func (c *ChainConsensus) FinalizeBranch(target ids.ID, height uint64, parentID i
 }
 
 // applyCertLocked is the engine SHELL around the pure fold: fold the cert into a NEW
-// ledger value, advance finality with the ONE assignment that exists, then apply the
-// plan's DAG effects. Caller holds c.mu. This method is the ENTIRE writable surface of
-// finality — `grep "c.ledger ="` finds exactly this line and nothing else.
+// ledger value, replace the ledger with it, then apply the plan's DAG effects. Caller
+// holds c.mu. This is the production finality writer; the only other ledger replacement
+// is SyncState (the out-of-band import reconcile). Neither pokes a finality field.
 func (c *ChainConsensus) applyCertLocked(cert Cert) (Plan, error) {
 	led, plan, err := Finalize(c.ledger, cert, c.ancestry())
 	if err != nil {
@@ -200,223 +155,6 @@ func (c *ChainConsensus) applyPlan(plan Plan) {
 		delete(c.blocks, id)
 		delete(c.tips, id)
 	}
-}
-
-// ancestry exposes the live block tree to the pure fold as a read-only Ancestry. The
-// fold reads parent/height links and sibling children through this view ONLY; it never
-// mutates the DAG. Caller holds c.mu (the view is used only within the locked fold).
-func (c *ChainConsensus) ancestry() Ancestry { return blocksAncestry{blocks: c.blocks} }
-
-// blocksAncestry is the Ancestry over c.blocks. Parent/Children are exact reads of the
-// linkage the prior in-struct walk used (pathFromTipLocked / collectLosingSubtreesLocked),
-// now expressed behind the interface so Finalize stays engine-free and unit-testable.
-type blocksAncestry struct{ blocks map[ids.ID]*Block }
-
-func (a blocksAncestry) Parent(id ids.ID) (ids.ID, uint64, bool) {
-	b, ok := a.blocks[id]
-	if !ok {
-		return ids.Empty, 0, false
-	}
-	return b.parentID, b.height, true
-}
-
-func (a blocksAncestry) Children(id ids.ID) []ids.ID {
-	var out []ids.ID
-	for cid, b := range a.blocks {
-		if b.parentID == id {
-			out = append(out, cid)
-		}
-	}
-	return out
-}
-
-// AddBlock adds a block to consensus
-func (c *ChainConsensus) AddBlock(ctx context.Context, block *Block) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Check if block already exists
-	if _, exists := c.blocks[block.id]; exists {
-		return fmt.Errorf("block already exists: %s", block.id)
-	}
-
-	// Initialize Lux consensus for this block using Photon → Wave → Focus
-	block.driver = engine.NewLuxConsensus(c.k, c.alpha, c.beta)
-
-	// Add to blocks map
-	c.blocks[block.id] = block
-
-	// Update tips
-	if block.parentID != ids.Empty {
-		// Remove parent from tips (no longer a tip)
-		delete(c.tips, block.parentID)
-	}
-	c.tips[block.id] = true
-
-	return nil
-}
-
-// ProcessVote processes a vote for a block
-func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept bool) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	block, exists := c.blocks[blockID]
-	if !exists {
-		return fmt.Errorf("block not found: %s", blockID)
-	}
-
-	if block.driver == nil {
-		return fmt.Errorf("block not initialized for consensus")
-	}
-
-	// Track both accept and reject votes
-	if accept {
-		block.acceptVotes++
-		block.driver.RecordVote(blockID)
-	} else {
-		block.rejectVotes++
-	}
-
-	// LIVENESS only (decomplected from finality). Reaching the α accept count marks
-	// the block worth a finalize ATTEMPT — block.accepted is the engine's
-	// DrainAccepted trigger — but it does NOT advance the per-height ledger. Finality
-	// is committed ONLY by the cert-driven FinalizeBranch (the α-of-K SIGNED witness),
-	// which also performs the sibling reorg. A sibling reaching α-count here is
-	// harmless: the cert decides which branch finalizes, and the loser is pruned.
-	if block.acceptVotes >= c.alpha && !block.accepted {
-		block.accepted = true
-	}
-
-	// Check if rejection quorum is reached (reject votes >= alpha)
-	if block.rejectVotes >= c.alpha {
-		block.rejected = true
-		// Remove from tips since this block is rejected
-		delete(c.tips, blockID)
-	}
-
-	return nil
-}
-
-// Poll conducts a consensus poll
-func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Poll each block's Lux consensus instance using Wave → Focus protocols
-	for blockID, votes := range responses {
-		block, exists := c.blocks[blockID]
-		if !exists {
-			continue
-		}
-
-		// Skip already decided blocks
-		if block.accepted || block.rejected {
-			continue
-		}
-
-		// Check if rejection quorum already reached (reject votes >= alpha)
-		if block.rejectVotes >= c.alpha {
-			block.rejected = true
-			delete(c.tips, blockID)
-			continue
-		}
-
-		// Only consider acceptance if we have enough accept votes
-		// This prevents premature acceptance with insufficient quorum
-		if block.acceptVotes < c.alpha {
-			continue
-		}
-
-		if block.driver != nil {
-			blockResponses := map[ids.ID]int{blockID: votes}
-			shouldContinue := block.driver.Poll(blockResponses)
-			decided := block.driver.Decided()
-
-			// Focus convergence + α accept count → LIVENESS: mark the block worth a
-			// finalize attempt. Finality (and the reorg) is the cert path's job
-			// (FinalizeBranch), never the count path's — so the count never advances
-			// the ledger nor branches it.
-			if !shouldContinue && decided && block.acceptVotes >= c.alpha {
-				block.accepted = true
-			}
-		}
-	}
-
-	return nil
-}
-
-// IsAccepted checks if a block is accepted
-func (c *ChainConsensus) IsAccepted(blockID ids.ID) bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	block, exists := c.blocks[blockID]
-	if !exists {
-		return false
-	}
-
-	return block.accepted
-}
-
-// IsRejected checks if a block is rejected
-func (c *ChainConsensus) IsRejected(blockID ids.ID) bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	block, exists := c.blocks[blockID]
-	if !exists {
-		return false
-	}
-
-	return block.rejected
-}
-
-// Preference returns current preferred block
-func (c *ChainConsensus) Preference() ids.ID {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	// The committed finalized tip wins once finality has advanced.
-	if c.ledger.set {
-		return c.ledger.tip
-	}
-	// Before the first finalize: the preliminary build preference, then any build tip.
-	if c.preference != ids.Empty {
-		return c.preference
-	}
-	for tip := range c.tips {
-		return tip
-	}
-	return ids.Empty
-}
-
-// GetBlock returns a block by ID
-func (c *ChainConsensus) GetBlock(blockID ids.ID) (*Block, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	block, exists := c.blocks[blockID]
-	return block, exists
-}
-
-// EpochHeightOf returns the P-CHAIN epoch height recorded for a tracked block
-// (the height its weighted validator set, set-root, and ⅔-stake tally are pinned
-// to — Block.pChainHeight), and whether the block is tracked at all. It is the
-// SINGLE authoritative read of "what epoch did we record for this block", used by
-// the receive-side monotonicity gate to reject a child whose stamped epoch
-// regresses below its parent's recorded epoch (the far-past attack: a Byzantine
-// proposer stamps a stale H where its old coalition held ≥⅔). A miss (false) means
-// the parent is not yet tracked — the caller treats that fail-closed.
-func (c *ChainConsensus) EpochHeightOf(blockID ids.ID) (uint64, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	block, exists := c.blocks[blockID]
-	if !exists {
-		return 0, false
-	}
-	return block.pChainHeight, true
 }
 
 // Stats returns consensus statistics
@@ -530,29 +268,6 @@ func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) error {
 		}
 	}
 	return nil
-}
-
-// ForcePreference reaffirms the engine's preferred tip after a VM SetPreference
-// failure. It is a recovery mechanism used when SetPreference fails AFTER a block
-// was accepted — without it the VM and consensus engine could disagree on the
-// chain tip, causing a state-divergence death spiral. Every legitimate caller invokes
-// it with the block that was JUST finalized ("SetPreference failed after Accept"), so
-// the block is already the finalized tip and this is a reaffirming no-op.
-//
-// finalizedTip is advanced ONLY by FinalizeBranch, atomically with
-// finalizedHeight/finalizedByHeight (the cert path's reorg is the sole authority on
-// the tip). So this method never moves finalizedTip off the recorded head — with the
-// per-height ADMISSION gate gone, there is no invariant for a stray preference to
-// corrupt. It only adopts blockID as the preliminary build preference before the
-// FIRST finalize, and always records it as a build tip.
-func (c *ChainConsensus) ForcePreference(blockID ids.ID) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.ledger.set {
-		c.preference = blockID // no finalized head yet — preliminary build preference
-	}
-	// After the first finalize the ledger tip is authoritative and untouched here.
-	c.tips[blockID] = true
 }
 
 // GetFinalizedTip returns the current finalized tip block ID.
