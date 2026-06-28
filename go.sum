@@ -204,6 +204,8 @@ github.com/luxfi/crypto/ipa v1.2.4 h1:6xfwhI9/HrcDkF3Ti5/NxsNQIWbwYDJmRSNIHRQ/xf
 github.com/luxfi/crypto/ipa v1.2.4/go.mod h1:43J6f6rcfUMrZt4cQectMOZb6Ps+fAEj8ZTPC3Kk+gE=
 github.com/luxfi/database v1.19.3 h1:flss7/VSGf29l1yZvPwazbtp87X5qfnZGPCU5ObqttQ=
 github.com/luxfi/database v1.19.3/go.mod h1:S/LvmfzNYWVNslcEcZwDrntqUO2ksaL8ql1nRmLUA/Q=
+github.com/luxfi/dkg v0.3.0 h1:6CZS9GW/zPPSDVY6IrcYYhFBeZfjXI7cmLBI12a9ifM=
+github.com/luxfi/dkg v0.3.0/go.mod h1:M+WH7GFRN+YUD851Rlnumdp0Md98kplNN8pVx65U8I8=
 github.com/luxfi/geth v1.17.11 h1:opyVqYiH3t4qglAdMymudxKIO09O1LWB9tKGc57o9sA=
 github.com/luxfi/geth v1.17.11/go.mod h1:3vQfQJd9JC+AVBjxNXa9PYQOqpbE2dKu8E3jqhPZ3LU=
 github.com/luxfi/ids v1.2.15 h1:omE+E4+0Poj9DzM11ejSFgteaSQ3KDHi5g54iH6jcxI=

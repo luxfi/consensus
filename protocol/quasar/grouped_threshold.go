@@ -132,6 +132,17 @@ func NewGroupedEpochManager(groupSize, groupThreshold, historyLimit int) *Groupe
 	if groupSize < 3 {
 		groupSize = DefaultGroupSize
 	}
+	// Cap the signing group at the Mithril dealerless-RSS viability bound: a
+	// Pulsar (ML-DSA / FIPS-204) group key produced WITHOUT a trusted dealer is
+	// only stock-signable for N ≤ MithrilMaxCommittee (see mithril_committee.go
+	// for the bound and the Avalanche-subsampling security argument). Groups are
+	// the small, rotating, per-epoch signing committees; the chain's security
+	// budget lives in subsampling + rotation + the 2/3 group quorum + dual-PQ
+	// AND-mode, not in group size. The default group size (3) already complies;
+	// this only constrains an over-large explicit configuration.
+	if groupSize > MithrilMaxCommittee {
+		groupSize = MithrilMaxCommittee
+	}
 	if groupThreshold < 2 || groupThreshold >= groupSize {
 		groupThreshold = (groupSize * 2) / 3 // default 2/3
 	}
