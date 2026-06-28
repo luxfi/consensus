@@ -1,7 +1,7 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// quorum_cert_codec.go — deterministic wire codec for the engine-level
+// cert_codec.go — deterministic wire codec for the engine-level
 // QuorumCert. A finality cert is gossiped so followers can verify α-of-K
 // finality without re-collecting votes themselves; this is its on-wire form.
 //

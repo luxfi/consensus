@@ -1,7 +1,7 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// quorum_topology.go — the vote/cert distribution handlers that make α-of-K
+// topology.go — the vote/cert distribution handlers that make α-of-K
 // finality both SAFE and LIVE.
 //
 // The topology in one paragraph: a follower verifies a gossiped block and
