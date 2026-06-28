@@ -1,7 +1,7 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// sibling_reorg_test.go — the SIBLING-TOLERANT finality regression.
+// reorg_test.go — the SIBLING-TOLERANT finality regression.
 //
 // THE BUG (fresh-net deadlock). The engine forked avalanchego's Snowman model by
 // adding a hard per-height gate (the old markFinalizedLocked invariant (c): a

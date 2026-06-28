@@ -1,12 +1,12 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// quorum_cert_quasar.go — the forward bridge from the engine-level QuorumCert
+// quasar.go — the forward bridge from the engine-level QuorumCert
 // to protocol/quasar.WeightedQuorumCert, the canonical PQ finality witness.
 //
 // WHY A BRIDGE AND NOT A DIRECT WIRING:
 //
-// The engine-level QuorumCert (quorum_cert.go) and quasar's WeightedQuorumCert
+// The engine-level QuorumCert (cert.go) and quasar's WeightedQuorumCert
 // witness the SAME relation — "α-of-K validators accepted this value" — at two
 // abstraction levels:
 //

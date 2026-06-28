@@ -1,7 +1,7 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// quorum_guard.go — the engine's HONEST finality-regime introspection.
+// guard.go — the engine's HONEST finality-regime introspection.
 //
 // Mode() reports, from the SAME fields that select and drive finalization, which
 // finality regime the engine is actually operating under: single-validator

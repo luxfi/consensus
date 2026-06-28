@@ -1,7 +1,7 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// quorum_cert.go — the engine-level finality witness for chain consensus.
+// cert.go — the engine-level finality witness for chain consensus.
 //
 // THE FINALITY RULE (one rule, one place):
 //
@@ -32,7 +32,7 @@
 //     key material and weighted-set root plumbed through the node layer, a
 //     QuorumCert UPGRADES to carry a quasar.WeightedQuorumCert as its crypto
 //     witness with NO change to the finality rule (see CryptoWitness / the
-//     quasar bridge in quorum_cert_quasar.go). One rule; the witness format is
+//     quasar bridge in quasar.go). One rule; the witness format is
 //     orthogonal and forward-compatible.
 //
 // This is a quorum CERTIFICATE, not threshold signing: nothing is aggregated,
