@@ -1,7 +1,7 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// quorum_height_guard_test.go — round-2 safety tests for the per-height
+// height_test.go — round-2 safety tests for the per-height
 // single-finalize guard (CRITICAL-1) and the BFT parameter floor (CRITICAL-2).
 //
 // CRITICAL-1 was a PROVEN fork: AcceptViaCert finalized unconditionally and the
