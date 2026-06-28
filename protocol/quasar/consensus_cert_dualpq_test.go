@@ -121,7 +121,7 @@ type coronaNode struct {
 // the produced signature does not verify under the group key (the sub-quorum
 // proof). Returns (sig, groupKey, nodes, err) — nodes is returned so a caller
 // can assert the per-node single-share structure.
-func signCoronaLegMultiNode(t *testing.T, participants, thr, n int, msg []byte) (*coronaThreshold.Signature, *coronaThreshold.GroupKey, []coronaNode) {
+func signCoronaLegMultiNode(t testing.TB, participants, thr, n int, msg []byte) (*coronaThreshold.Signature, *coronaThreshold.GroupKey, []coronaNode) {
 	t.Helper()
 
 	// Genesis keygen. GenerateKeys is the trusted-dealer fixture for the test
@@ -177,7 +177,7 @@ func signCoronaLegMultiNode(t *testing.T, participants, thr, n int, msg []byte) 
 // pulsarwire.VerifyBytes accepts this byte-for-byte (empty FIPS-204 context,
 // matching the verifier). See the HONEST SCOPE note in the file header for why
 // this is a group-key signature rather than a no-reconstruct t-of-n ceremony.
-func signPulsarLegFIPS204(t *testing.T, msg []byte) (sigWire, gkWire []byte) {
+func signPulsarLegFIPS204(t testing.TB, msg []byte) (sigWire, gkWire []byte) {
 	t.Helper()
 	params := pulsarwire.MustParamsFor(pulsarwire.ModeP65)
 	var seed [pulsarwire.SeedSize]byte
