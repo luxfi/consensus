@@ -28,7 +28,7 @@ func (r *mapResolver) ResolveCommitteeKey(id ids.ID, _, _ uint64) (CommitteeKeyE
 // key stand-in — the verify layer treats a dealerless Mithril group signature as
 // an ordinary FIPS-204 signature, which is exactly the point) and signs M. The
 // signature verifies under the UNMODIFIED FIPS-204 verifier (pulsarwire.VerifyBytes).
-func signCommittee(t *testing.T, M []byte, idx int) (sigWire, gkWire []byte) {
+func signCommittee(t testing.TB, M []byte, idx int) (sigWire, gkWire []byte) {
 	t.Helper()
 	params := pulsarwire.MustParamsFor(pulsarwire.ModeP65)
 	var seed [pulsarwire.SeedSize]byte
@@ -63,7 +63,7 @@ type sampledFixture struct {
 // committees of the re-derived plan each contribute a valid stock-ML-DSA
 // signature over the canonical M, with their dealerless key-eras registered in
 // the resolver. params drives the plan; numValid committees sign.
-func newSampledFixture(t *testing.T, params SortitionParams, numValid int) *sampledFixture {
+func newSampledFixture(t testing.TB, params SortitionParams, numValid int) *sampledFixture {
 	t.Helper()
 	var prev ids.ID
 	copy(prev[:], "prev-finalized-block-id-32bytes!")
