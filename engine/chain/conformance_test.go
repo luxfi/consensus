@@ -34,7 +34,7 @@
 // faithful ChainConsensus scenario with a comment; the safety assertion is never
 // weakened. The naming follows the Lux convention (no Snowman in identifiers; it
 // is named here only as the upstream MODEL being conformed to, consistent with
-// sibling_reorg_test.go).
+// reorg_test.go).
 //
 // API mapping cheat-sheet (ava -> ours):
 //
@@ -68,7 +68,7 @@ import (
 
 // seedGenesis enters genesis as the height-0 finalized head. ChainConsensus has
 // no separate Initialize(genesis); the first cert-finalize seeds the per-height
-// ledger (the same pattern sibling_reorg_test.go uses).
+// ledger (the same pattern reorg_test.go uses).
 func seedGenesis(t *testing.T, c *ChainConsensus) ids.ID {
 	t.Helper()
 	g := ids.GenerateTestID()
