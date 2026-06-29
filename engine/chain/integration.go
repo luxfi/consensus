@@ -756,6 +756,20 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	// quorum. Drain after unlock — drainBufferedVotes takes the engine lock.
 	rt.Transitive.drainBufferedVotes(blockID)
 
+	// CONVERGENCE (avalanchego snowman voter.go: SetPreference(Consensus.Preference())
+	// after every poll): steer the inner VM to build on the engine's preferred BUILD
+	// tip — the deepest verified block — now that this gossiped block is tracked. Without
+	// it the VM keeps building on the last FINALIZED block, so when a proposer is down
+	// every validator builds its own competing sibling at the same height, the α-of-K
+	// votes split across the siblings, no cert assembles, and the chain HALTS. Steering
+	// to the verified tip makes validators build H+1 on top of one verified block at H
+	// and converge. Build hint only (Preference is not a finality decision); best effort.
+	if rt.config.VM != nil {
+		if tip := rt.Transitive.PreferredBuildTip(); tip != ids.Empty {
+			_ = rt.config.VM.SetPreference(ctx, tip)
+		}
+	}
+
 	// Single-validator / no-signer engines do not gossip votes; nothing to do.
 	if signer == nil || verifier == nil {
 		return
