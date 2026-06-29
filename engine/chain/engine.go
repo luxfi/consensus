@@ -971,6 +971,14 @@ func (t *Transitive) Preference() ids.ID {
 	return t.consensus.Preference()
 }
 
+// PreferredBuildTip returns the deterministic build target — the deepest verified
+// block extending the finalized chain — so the VM builds on the convergent tip
+// (one block per height) instead of a competing sibling. See
+// ChainConsensus.PreferredBuildTip.
+func (t *Transitive) PreferredBuildTip() ids.ID {
+	return t.consensus.PreferredBuildTip()
+}
+
 // GetBlock handles a block request.
 func (t *Transitive) GetBlock(ctx context.Context, nodeID ids.NodeID, requestID uint32, blockID ids.ID) error {
 	return nil
