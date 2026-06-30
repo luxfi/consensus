@@ -46,7 +46,7 @@ import (
 	"errors"
 	"testing"
 
-	pulsarwire "github.com/luxfi/pulsar/ref/go/pkg/pulsar"
+	pulsarwire "github.com/luxfi/pulsar/pkg/pulsar"
 	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
 )
 

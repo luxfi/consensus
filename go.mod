@@ -13,19 +13,19 @@ require (
 	github.com/luxfi/crypto v1.19.26
 	github.com/luxfi/database v1.19.3
 	github.com/luxfi/dkg v0.3.5
-	github.com/luxfi/ids v1.2.15
+	github.com/luxfi/ids v1.3.0
 	github.com/luxfi/lattice/v7 v7.1.4
 	github.com/luxfi/log v1.4.3
 	github.com/luxfi/magnetar v1.2.3
 	github.com/luxfi/math v1.4.1
 	github.com/luxfi/metric v1.5.8
 	github.com/luxfi/p2p v1.21.1
-	github.com/luxfi/pulsar v1.8.0
+	github.com/luxfi/pulsar v1.9.0
 	github.com/luxfi/runtime v1.1.1
-	github.com/luxfi/threshold v1.10.2
+	github.com/luxfi/threshold v1.12.0
 	github.com/luxfi/validators v1.2.0
 	github.com/luxfi/version v1.0.1
-	github.com/luxfi/warp v1.19.3
+	github.com/luxfi/warp v1.24.0
 	github.com/luxfi/zap v0.8.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
