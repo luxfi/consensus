@@ -223,13 +223,27 @@ func TestRecovery_RePollBacksOffExponentially(t *testing.T) {
 //    is per-block: a DIFFERENT stuck block still gets its own attempts.
 // -----------------------------------------------------------------------------
 
-func TestRecovery_StuckBlockAbandonedAfterCap(t *testing.T) {
+// TestRecovery_OwnProposalNeverAbandoned_GossipedBlockAbandoned proves the
+// per-source re-poll policy that fixes the down/wedged/forked-proposer halt while
+// keeping the gossip-spam guard:
+//
+//   - An UNDECIDED OWN proposal is NEVER abandoned. This node built it on the
+//     finalized tip (its voters HAVE the parent and CAN vote), so the proposer must
+//     keep re-soliciting until it finalizes — matching avalanchego (re-poll a
+//     processing block until decided). Abandoning it was the mainnet halt.
+//   - A NON-OWN (gossiped) block whose voters may be behind its parent STILL
+//     abandons after maxRePollAttempts: re-soliciting it is spam that re-poll can't
+//     fix (catch-up recovers it). The cap remains for that path.
+//
+// Driven synchronously (long RoundTO parks the background ticker) so the per-block
+// attempt budget is exercised deterministically.
+func TestRecovery_OwnProposalNeverAbandoned_GossipedBlockAbandoned(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	chainID := ids.GenerateTestID()
 	prop := &countingProposer{}
 
 	p := params5()
-	p.RoundTO = 5 * time.Millisecond
+	p.RoundTO = 10 * time.Second // park the background ticker; drive re-poll manually
 	p.BlockTime = 50 * time.Millisecond
 
 	e := NewWithConfig(Config{Params: p},
@@ -241,46 +255,52 @@ func TestRecovery_StuckBlockAbandonedAfterCap(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = e.Stop(context.Background()) })
 
-	blk := newTestBlock(1, ids.Empty, "abandon-me")
-	_ = trackProposal(e, chainID, blk, 0)
+	// Own proposal (built locally): only the self-vote, never reaches α — but it is
+	// canonical and must keep being driven to finality.
+	own := newTestBlock(1, ids.Empty, "own-stuck")
+	_ = trackProposal(e, chainID, own, 0)
 
-	// Let the re-poll loop exhaust the attempt budget.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		e.mu.RLock()
-		pb, ok := e.pendingBlocks[blk.id]
-		abandoned := ok && pb.rePollAbandoned
-		e.mu.RUnlock()
-		if abandoned {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
+	// Gossiped follower block (IsOwnProposal=false): models a block received from an
+	// ahead peer whose voters we lack — re-poll can't recover it, so it abandons.
+	gossiped := newTestBlock(2, ids.Empty, "gossiped-stuck")
+	cb := &Block{id: gossiped.id, parentID: gossiped.parentID, height: gossiped.height, timestamp: gossiped.timestamp.Unix(), data: gossiped.bytes}
+	_ = e.consensus.AddBlock(context.Background(), cb)
+	e.mu.Lock()
+	e.pendingBlocks[gossiped.id] = &PendingBlock{
+		ConsensusBlock: cb, VMBlock: gossiped, ProposedAt: time.Now(),
+		VoteCount: 0, Decided: false, IsOwnProposal: false,
 	}
+	e.mu.Unlock()
+
+	// Drive far past the attempt cap.
+	driveRePoll(e, maxRePollAttempts*4)
 
 	e.mu.RLock()
-	pb, ok := e.pendingBlocks[blk.id]
-	abandoned := ok && pb.rePollAbandoned
-	attempts := 0
-	if ok {
-		attempts = pb.rePollAttempts
+	ownPB, ownOK := e.pendingBlocks[own.id]
+	gosPB, gosOK := e.pendingBlocks[gossiped.id]
+	ownAbandoned := ownOK && ownPB.rePollAbandoned
+	gosAbandoned := gosOK && gosPB.rePollAbandoned
+	ownAttempts := 0
+	if ownOK {
+		ownAttempts = ownPB.rePollAttempts
 	}
 	e.mu.RUnlock()
-	if !ok {
-		t.Fatal("stuck block must remain pending (recoverable by catch-up), not deleted")
-	}
-	if !abandoned {
-		t.Fatalf("stuck block must be marked abandoned after the cap, attempts=%d", attempts)
-	}
 
-	// After abandonment the proposer count must STOP climbing.
-	before := prop.count()
-	time.Sleep(20 * p.RoundTO)
-	after := prop.count()
-	if after != before {
-		t.Fatalf("an abandoned block must NOT be re-polled: count moved %d -> %d", before, after)
+	if !ownOK || !gosOK {
+		t.Fatal("both stuck blocks must remain pending (recoverable), not deleted")
 	}
-	if attempts > maxRePollAttempts {
-		t.Fatalf("attempts (%d) must not exceed the cap (%d)", attempts, maxRePollAttempts)
+	// LIVENESS: the own proposal is never abandoned and is re-solicited past the cap.
+	if ownAbandoned {
+		t.Fatalf("LIVENESS HALT: own proposal was abandoned for re-poll (attempts=%d) — a substitute's "+
+			"canonical block must be re-solicited until it decides, never given up on.", ownAttempts)
+	}
+	if ownAttempts <= maxRePollAttempts {
+		t.Fatalf("own proposal must keep being re-solicited past the cap, attempts=%d", ownAttempts)
+	}
+	// SPAM GUARD: the gossiped block still abandons after the cap.
+	if !gosAbandoned {
+		t.Fatal("a gossiped (non-own) block must still be abandoned after the attempt cap — the spam guard " +
+			"for a block whose voters are behind its parent must remain.")
 	}
 }
 
