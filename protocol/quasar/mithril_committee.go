@@ -67,11 +67,26 @@ const (
 )
 
 // ValidateMithrilSigningCommittee enforces 2 ≤ T ≤ N ≤ MithrilMaxCommittee for a
-// Pulsar dealerless-RSS signing committee, delegating the canonical check to
-// luxfi/dkg/rss so the bound has exactly one definition across the stack.
-// Fail-closed: an out-of-range committee is rejected, never silently resized to
-// a weaker mode.
+// Pulsar dealerless-RSS signing committee. Two layered gates, fail-closed:
+//
+//  1. The consensus POLICY cap N ≤ MithrilMaxCommittee (= rss.MaxParties = 6).
+//     Lux deliberately operates SMALL signing committees (see the design note
+//     above): the chain's security budget lives in Avalanche subsampling +
+//     rotation + multi-committee certs, not in a large signing group. This cap
+//     is the consensus operating point, not a crypto limit — luxfi/dkg/rss
+//     itself admits any norm-viable committee up to MaxBitmaskParties = 63.
+//  2. The canonical crypto bound rss.ValidateCommittee (2 ≤ T ≤ N and
+//     τ·C(N,N−T+1)·η < γ2) — the one definition of "stock-FIPS-204-signable",
+//     never re-typed here (DRY).
+//
+// The policy cap is applied first and explicitly: rss loosened its own gate from
+// a hard N ≤ 6 to the norm bound (dkg ≥ v0.3.4), so consensus must assert its
+// small-committee operating point itself rather than free-ride on rss.
+// An out-of-range committee is rejected, never silently resized to a weaker mode.
 func ValidateMithrilSigningCommittee(t, n int) error {
+	if n > MithrilMaxCommittee {
+		return fmt.Errorf("quasar: Pulsar dealerless-RSS signing committee N=%d exceeds the consensus small-committee cap %d", n, MithrilMaxCommittee)
+	}
 	if err := rss.ValidateCommittee(t, n); err != nil {
 		return fmt.Errorf("quasar: Pulsar dealerless-RSS signing committee: %w", err)
 	}
