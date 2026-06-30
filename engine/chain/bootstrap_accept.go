@@ -163,7 +163,16 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 	// returns a prune plan; bootstrap never produces one (single-branch). On any
 	// violation NOTHING advances and we reject — a bootstrapping node cannot be fed a
 	// forked/gapped history any more than a live one.
-	if _, err := rt.Transitive.consensus.FinalizeBranch(blk.ID(), blk.Height(), blk.ParentID()); err != nil {
+	// The canonical execution commitment is what byHeight records (the authoritative
+	// finality id); for a non-wrapped block canonicalIDOf falls back to the outer id.
+	// Bootstrap uses the canonical-aware ApplyCert so a proposervm-wrapped bootstrap
+	// block records its INNER id, not the envelope.
+	if _, err := rt.Transitive.consensus.ApplyCert(Cert{
+		Block:     blk.ID(),
+		Parent:    blk.ParentID(),
+		Height:    blk.Height(),
+		Canonical: canonicalIDOf(blk),
+	}); err != nil {
 		return errors.Join(ErrBootstrapBlockRejected, err)
 	}
 
