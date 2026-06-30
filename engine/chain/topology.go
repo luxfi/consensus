@@ -191,14 +191,39 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	if fh, set := t.consensus.GetFinalizedHeight(); set && cert.Position.Height <= fh {
 		// Equivocation is decided on the CANONICAL commitment, NEVER the outer envelope
 		// (the incident-1082814 fix). A DIFFERENT canonical block already finalized at
-		// this exact height is the real fork → surface it. The SAME canonical id under a
-		// different envelope is a harmless DUPLICATE alias (and an identical envelope is a
-		// stale replay) → drop quietly, NO equivocation, NO halt.
+		// this height is a POTENTIAL fork; the SAME canonical id under a different
+		// envelope is a harmless DUPLICATE alias (and an identical envelope is a stale
+		// replay). Either way the cert finalizes nothing new.
 		certCanonical := cert.Position.CanonicalID
 		if certCanonical == ids.Empty {
 			certCanonical = cert.Position.BlockID
 		}
-		if finCanonical, ok := t.consensus.FinalizedBlockAtHeight(cert.Position.Height); ok && finCanonical != certCanonical {
+		finCanonical, have := t.consensus.FinalizedBlockAtHeight(cert.Position.Height)
+		if have && finCanonical != certCanonical {
+			// HARD GATE on equivocation STATE (H1): a conflicting cert is fork EVIDENCE
+			// only if it is a VERIFIED QC. Run the FULL predicate (α distinct in-set
+			// signatures over the canonical position, stake-weighted when wired) BEFORE
+			// recording ANY slashing evidence. The pre-fix code recorded a DoubleVote per
+			// NAMED voter here before checking a single signature — so a forged cert (junk
+			// signatures naming honest validators, a random different canonical, height ≤
+			// finalized) could jail honest validators below quorum and re-halt the chain.
+			// Resolve the epoch from the tracked block if we have it; on a fixed-set chain
+			// the verifier ignores epoch (equal-stake admission invariant), and on a
+			// stake-weighted chain an unresolvable epoch fails verification → no evidence
+			// (fail-closed: we never false-slash, we may miss-slash).
+			var epochHeight uint64
+			if exists && pending.ConsensusBlock != nil {
+				epochHeight = pending.ConsensusBlock.pChainHeight
+			}
+			if verr := t.verifyCert(cert, epochHeight); verr != nil {
+				if !rt.config.Logger.IsZero() {
+					rt.config.Logger.Warn("incoming cert: UNVERIFIED conflicting cert at a finalized height — dropping, NO evidence (forged/junk signatures cannot slash)",
+						log.Uint64("certHeight", cert.Position.Height), log.Err(verr))
+				}
+				return false
+			}
+			// A VERIFIED α-of-K cert over a DIFFERENT canonical at a decided height — a
+			// genuine, attributable equivocation. Now (and only now) it is evidence.
 			rt.reportCertEquivocation(cert, finCanonical)
 		} else if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("incoming cert: height at/below finalized; dropping (duplicate or stale, not a fork)",
@@ -237,7 +262,6 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	// from a different validator-set epoch. nil source ⟹ Empty on both sides (no
 	// epoch bound), so this is a no-op for a fixed-set chain.
 	t.mu.RLock()
-	stake := t.stakeSource
 	setRootSrc := t.setRootSource
 	t.mu.RUnlock()
 	if setRootSrc != nil && exists {
@@ -252,17 +276,11 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		}
 	}
 
-	// On a stake-weighted chain the incoming cert must clear the ⅔-of-stake
-	// supermajority (HIGH-3), not just the count predicate — otherwise a
-	// low-stake coalition's count-α cert would finalize. Count-only chains use
-	// Verify (equal-stake invariant enforced at admission).
-	var verr error
-	if stake != nil {
-		verr = cert.VerifyWeighted(verifier, stake, epochHeight)
-	} else {
-		verr = cert.Verify(verifier, epochHeight)
-	}
-	if verr != nil {
+	// THE finality predicate — the SAME gate the equivocation-evidence path runs
+	// (verifyCert): α distinct in-set signatures over the canonical position,
+	// stake-weighted to a strict ⅔ when a stake source is wired (HIGH-3), count-only
+	// otherwise (equal-stake admission invariant). A forged cert dies here.
+	if verr := t.verifyCert(cert, epochHeight); verr != nil {
 		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Warn("incoming cert: verification failed",
 				log.Stringer("blockID", cert.Position.BlockID), log.Err(verr))
@@ -271,13 +289,18 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	}
 
 	// Cert is a valid α-of-K finality proof. Finalize the block IF we have
-	// verified it locally. If we have not yet seen/verified the block, we cannot
-	// safely Accept it — record nothing; the block gossip will arrive and the
-	// cert can be re-requested/re-applied. (A production node may also fetch the
-	// block by ID here; that fetch path is the node layer's responsibility.)
+	// verified it locally. If we do NOT track the block (an eclipsed follower that
+	// adopted a losing sibling envelope, or a node behind the frontier), we cannot
+	// safely Accept it — but we must NOT silently drop a VERIFIED finality proof
+	// either (M1). Trigger a throttled, best-effort catch-up fetch for the certified
+	// block so finalization resumes once a reachable peer serves it; the fetch is
+	// gated on the cert having VERIFIED above, so a forged cert can never make us
+	// fetch arbitrary ids. Peer selection is the node layer's job (EmptyNodeID ⇒
+	// sample a peer); claimCatchupLocked rate-limits the request.
 	if !exists {
+		rt.requestCatchup(cert.Position.BlockID, ids.EmptyNodeID)
 		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Debug("incoming cert: valid but block not locally verified yet; deferring",
+			rt.config.Logger.Debug("incoming cert: valid but block not locally tracked; fetching the certified block",
 				log.Stringer("blockID", cert.Position.BlockID))
 		}
 		return false
@@ -346,6 +369,28 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 			log.Int("voters", cert.VoterCount()))
 	}
 	return true
+}
+
+// verifyCert runs the FULL finality predicate — α distinct in-set signatures over
+// the cert's CANONICAL position, stake-weighted to a strict ⅔ when a stake source is
+// wired (HIGH-3), count-only otherwise. It is the SINGLE gate a cert must pass before
+// it is treated as finality (the finalize path) OR as equivocation evidence (the
+// height-gate fork path, H1): a forged cert with junk signatures fails here and can
+// neither finalize a block nor slash a validator. epochHeight is the P-chain height
+// the per-voter pubkeys / stake are resolved at (MEDIUM-1). A nil verifier fails
+// closed.
+func (t *Transitive) verifyCert(cert *QuorumCert, epochHeight uint64) error {
+	t.mu.RLock()
+	verifier := t.voteVerifier
+	stake := t.stakeSource
+	t.mu.RUnlock()
+	if verifier == nil {
+		return ErrQCVerifierNil
+	}
+	if stake != nil {
+		return cert.VerifyWeighted(verifier, stake, epochHeight)
+	}
+	return cert.Verify(verifier, epochHeight)
 }
 
 // reportCertEquivocation records that a SECOND, conflicting finality cert was
