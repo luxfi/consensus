@@ -20,7 +20,7 @@ require (
 	github.com/luxfi/math v1.4.1
 	github.com/luxfi/metric v1.5.8
 	github.com/luxfi/p2p v1.21.1
-	github.com/luxfi/pulsar v1.7.1
+	github.com/luxfi/pulsar v1.8.0
 	github.com/luxfi/runtime v1.1.1
 	github.com/luxfi/threshold v1.10.2
 	github.com/luxfi/validators v1.2.0
@@ -104,7 +104,7 @@ require (
 	github.com/luxfi/compress v0.0.5 // indirect
 	github.com/luxfi/concurrent v0.0.3 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
-	github.com/luxfi/corona v0.10.2 // indirect
+	github.com/luxfi/corona v0.10.3 // indirect
 	github.com/luxfi/crypto/ipa v1.2.4 // indirect
 	github.com/luxfi/geth v1.17.11 // indirect
 	github.com/luxfi/lens v0.1.4 // indirect
