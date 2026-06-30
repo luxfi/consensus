@@ -72,10 +72,26 @@ import (
 // This is a deliberate forward-only break: a v2 signature (outer-id finality) and
 // a v3 signature (canonical finality) are over different messages and carry
 // different versions, so a mixed-version cert fails clause-1 (version) and
-// clause-6 (signature) loudly rather than silently mis-parsing. The whole
-// validator set upgrades together in one atomic roll (the collapsed-timeline
-// directive — all 5 validators per net roll together); there is no partial
+// clause-6 (signature) loudly rather than silently mis-parsing. There is no partial
 // QCv1→QCv2 interop and no read-only legacy window.
+//
+// ROLL DISCIPLINE (M2 — fail-safe, but NOT fail-live across the version skew).
+// Because the version is bound into the signed message, a v2 cert and a v3 cert can
+// NEVER be confused and NEVER fork — cross-version verification fails closed. But
+// fail-CLOSED means finality STALLS while fewer than α validators run v3: v3 nodes
+// reject v2 certs (wrong version) and vice-versa, so no α-quorum of one version
+// forms during a mixed window, and any v2 node still alive keeps the old outer-id
+// equivocation-halt behavior. Therefore:
+//
+//   1. Cut ≥ α validators per net to v3 ATOMICALLY (≥4 of 5) — the same coordinated
+//      all-validator roll the incident recovery already performs. A trickle upgrade
+//      that straddles α on each version halts finality on BOTH.
+//   2. The v2 baseline image MUST already carry the converge-on-A seed-recovery (the
+//      live recovery on v1.31.x), so the brief mixed window is not itself halt-prone
+//      before the v3 cut completes.
+//
+// We control all 5 validators per net and roll them together, so the skew window is
+// a single coordinated restart, not a staged migration.
 const QuorumCertVersion uint16 = 3
 
 // QCType names a certificate's semantic role so a signature gathered for one
