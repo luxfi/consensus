@@ -2555,6 +2555,19 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			// if not, TryAccept no-ops (ErrNoVerifiedQC) and the poll loop / cert
 			// gossip retry. NEVER forces a K>1 block on the lone self-vote.
 			t.mu.Unlock()
+			// STORM BOUND (avalanchego deliver()→SetPreference, the SAME steer
+			// followVerifiedBlock applies on the receive side): advance the VM's build
+			// target to the just-built tip so the proposervm's WaitForEvent moves to the
+			// NEXT height instead of re-returning "build THIS height" every time the
+			// mempool is non-empty and the block has not yet finalized. Without it the
+			// node rebuilt one height hundreds of times while awaiting votes (the mainnet
+			// 511-rebuild-in-4-min spin). This is a build hint only — it never changes
+			// WHICH block finalizes or WHEN; finality is still the α-of-K cert.
+			if t.vm != nil {
+				if tip := t.PreferredBuildTip(); tip != ids.Empty {
+					_ = t.vm.SetPreference(ctx, tip)
+				}
+			}
 			t.finalizeOwnProposal(ctx, blockID)
 			t.mu.Lock()
 		}

@@ -32,11 +32,13 @@ package chain
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/luxfi/consensus/config"
+	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/ids"
 )
 
@@ -288,5 +290,123 @@ func TestProposerSafety_ForgedAndOutOfSetVotes_NeverCount(t *testing.T) {
 
 	if waitFor(500*time.Millisecond, func() bool { return e.IsAccepted(blk.id) }) {
 		t.Fatal("SAFETY VIOLATION: forged/out-of-set/wrong-position votes were counted toward the quorum.")
+	}
+}
+
+// -----------------------------------------------------------------------------
+// STORM BOUND — after building its own proposal the engine advances the VM's
+// build preference to the just-built tip, so the proposervm's WaitForEvent moves
+// to the NEXT height instead of re-signalling the same height until it finalizes
+// (the mainnet 511-rebuild-in-4-min spin). This is avalanchego's deliver()→
+// SetPreference, the SAME steer followVerifiedBlock applies on the receive side.
+// -----------------------------------------------------------------------------
+
+// prefRecordingVM is a minimal BlockBuilder that builds one fixed block and records
+// every SetPreference call, so a test can assert the own-build path advances the
+// VM's build target.
+type prefRecordingVM struct {
+	mu    sync.Mutex
+	build block.Block
+	prefs []ids.ID
+}
+
+func (m *prefRecordingVM) BuildBlock(context.Context) (block.Block, error) { return m.build, nil }
+func (m *prefRecordingVM) GetBlock(_ context.Context, id ids.ID) (block.Block, error) {
+	if m.build != nil && m.build.ID() == id {
+		return m.build, nil
+	}
+	return nil, errors.New("not found")
+}
+func (m *prefRecordingVM) ParseBlock(context.Context, []byte) (block.Block, error) {
+	return nil, errors.New("no parse")
+}
+func (m *prefRecordingVM) LastAccepted(context.Context) (ids.ID, error) { return ids.Empty, nil }
+func (m *prefRecordingVM) SetPreference(_ context.Context, id ids.ID) error {
+	m.mu.Lock()
+	m.prefs = append(m.prefs, id)
+	m.mu.Unlock()
+	return nil
+}
+func (m *prefRecordingVM) setPrefCount(id ids.ID) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, p := range m.prefs {
+		if p == id {
+			n++
+		}
+	}
+	return n
+}
+
+// TestProposerStorm_AdvancesBuildPreferenceAfterOwnBuild is the fails-before/
+// passes-after proof of the storm bound. Pre-fix the own-build path NEVER called
+// SetPreference, so the proposervm WaitForEvent kept returning "build this height"
+// and the node rebuilt one block hundreds of times while awaiting votes. Post-fix
+// the engine steers the VM to the just-built tip after building.
+func TestProposerStorm_AdvancesBuildPreferenceAfterOwnBuild(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	params := params5Prod() // K=5 → the proposerWired (multi-validator) build path
+	params.RoundTO = 10 * time.Second
+	rec := &recordingGossiper{}
+	e, _ := newQuorumEngine(t, params, vs, 0, rec)
+	e.SetProposer(newReSolicitProbe())
+
+	blk := newTestBlock(1, ids.Empty, "own-build")
+	vm := &prefRecordingVM{build: blk}
+	e.SetVM(vm)
+
+	// Drive exactly one build (the substitute building the canonical next height).
+	if err := e.Notify(context.Background(), Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("Notify: %v", err)
+	}
+
+	if n := vm.setPrefCount(blk.id); n == 0 {
+		t.Fatalf("STORM: engine must SetPreference to the just-built tip %s after an own build (got 0 "+
+			"calls) — without it the proposervm WaitForEvent re-signals the same height and the node "+
+			"rebuilds one block hundreds of times (the 511-rebuild spin).", blk.id)
+	}
+}
+
+// TestProposerSafety_PersistentRePoll_NoDoubleFinalizeAtHeight proves the liveness
+// fix opens NO safety hole at the height level: once a block finalizes at height H
+// with a real α-of-K cert, a CONFLICTING sibling at H — even one that is itself
+// re-solicited forever and gathers its own α-of-K quorum — is REFUSED. Exactly one
+// block finalizes per height; persistent re-solicitation cannot fork the chain.
+func TestProposerSafety_PersistentRePoll_NoDoubleFinalizeAtHeight(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	params := params5Prod()
+	params.RoundTO = 10 * time.Second
+	rec := &recordingGossiper{}
+	e, chainID := newQuorumEngine(t, params, vs, 0, rec)
+	e.SetProposer(newReSolicitProbe())
+
+	// Block A at height 1 reaches the 4-of-5 quorum and finalizes.
+	a := newTestBlock(1, ids.Empty, "branch-A")
+	posA := trackProposal(e, chainID, a, 0) // self = 1
+	e.ReceiveVote(vs.signedVote(1, posA))
+	e.ReceiveVote(vs.signedVote(2, posA))
+	e.ReceiveVote(vs.signedVote(3, posA)) // 4 of 5 → finalizes
+	if !waitFor(2*time.Second, func() bool { return e.IsAccepted(a.id) }) {
+		t.Fatal("setup: branch A must finalize with its α-of-K quorum")
+	}
+
+	// A CONFLICTING sibling B at the SAME height 1, re-solicited forever, and given
+	// its OWN full 4-of-5 quorum. It must NOT finalize — height 1 is already decided.
+	b := newTestBlock(1, ids.Empty, "branch-B")
+	posB := trackProposal(e, chainID, b, 0)
+	e.ReceiveVote(vs.signedVote(1, posB))
+	e.ReceiveVote(vs.signedVote(2, posB))
+	e.ReceiveVote(vs.signedVote(3, posB))
+	e.ReceiveVote(vs.signedVote(4, posB)) // a full quorum for the conflicting sibling
+
+	driveRePoll(e, 40) // re-solicit B forever — must still not finalize
+
+	if waitFor(500*time.Millisecond, func() bool { return e.IsAccepted(b.id) }) {
+		t.Fatal("SAFETY VIOLATION: a conflicting sibling finalized at an already-finalized height — " +
+			"persistent re-solicitation must never enable a double-finalize / fork.")
+	}
+	if !e.IsAccepted(a.id) {
+		t.Fatal("the originally-finalized block must remain final (no reorg by a re-solicited sibling)")
 	}
 }
