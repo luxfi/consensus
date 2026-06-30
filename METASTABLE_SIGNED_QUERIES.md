@@ -138,6 +138,6 @@ For k=32 sampling with β=15 rounds, expected unique signers ≈ 50-80.
 ## References
 
 - Existing Quasar family: `~/work/lux/consensus/protocol/{photon,wave,flare,focus,horizon,ray,nova,nebula,prism,quasar}`
-- Avalanche/Snowman metastable family (academic prior art; superseded by Quasar/Nova per LP-020, LP-134)
+- the classical metastable consensus family (academic prior art; superseded by Quasar/Nova per LP-020, LP-134)
 - LP-045 hierarchical quorum certs
 - `~/work/lux/proofs/pq-finality-no-bls.tex`

@@ -200,11 +200,17 @@ func TestRecovery_RePollBacksOffExponentially(t *testing.T) {
 	time.Sleep(window)
 
 	got := prop.count()
-	// Linear would be ~ window/RoundTO = 50. Backoff (10,20,40,80,160,...) capped
-	// at maxRePollAttempts (8) yields at most maxRePollAttempts re-polls EVER.
-	if got > int64(maxRePollAttempts) {
-		t.Fatalf("re-poll must be bounded by the attempt cap (%d), got %d over %v — poll storm not fixed",
-			maxRePollAttempts, got, window)
+	// Linear (a fixed-cadence storm) would be ~ window/RoundTO = 50. EXPONENTIAL
+	// backoff (10,20,40,80,160,…) makes the count GEOMETRIC in the window —
+	// log2(window/RoundTO) ≈ log2(50) ≈ 6 — so it is bounded far below linear. This
+	// is the storm-safety invariant, and it does NOT depend on the attempt cap: an
+	// own proposal is re-solicited until it decides (never abandoned), but the
+	// backoff keeps that a slow trickle, not a 250ms storm. Ceiling 12 is a safe
+	// geometric bound for this window, still ≪ the linear 50.
+	const geometricCeiling = 12
+	if got > geometricCeiling {
+		t.Fatalf("re-poll must be bounded by exponential backoff (geometric ≈%d), got %d over %v — poll storm not fixed",
+			geometricCeiling, got, window)
 	}
 	if got == 0 {
 		t.Fatalf("liveness: a stuck own block must be re-polled at least once, got 0")
