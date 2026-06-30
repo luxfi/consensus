@@ -49,30 +49,41 @@ func TestSyncState_RefusesBackwardRegression(t *testing.T) {
 	}
 }
 
-// TestSyncState_EqualHeightDifferentBlockRefused verifies that a re-import at the
-// already-finalized height with a DIFFERENT block is refused as equivocation
-// (two distinct blocks at one finalized height), while a re-import with the SAME
-// block at the SAME height is an idempotent success.
-func TestSyncState_EqualHeightDifferentBlockRefused(t *testing.T) {
+// TestSyncState_DifferentBlockIsHintNotEquivocation is the incident-1082814 PART-A
+// regression at the SyncState level. The PRE-FIX code SEEDED FINALITY from
+// vm.LastAccepted, so a re-import at the already-finalized height with a DIFFERENT
+// block was treated as equivocation (the fatal path). That was the BUG: a local
+// import is not a finality source. Under the fix, SyncState is a NON-AUTHORITATIVE
+// recovery HINT — a different block at a certified height does NOT equivocate, does
+// NOT touch the certified frontier, and returns cleanly. Equivocation is decided
+// EXCLUSIVELY by conflicting CERTS over canonical commitments, never by a seed.
+func TestSyncState_DifferentBlockIsHintNotEquivocation(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
 	h100 := ids.GenerateTestID()
 	if _, err := c.FinalizeBranch(h100, 100, ids.Empty); err != nil {
-		t.Fatalf("seed finalize: %v", err)
+		t.Fatalf("seed certified finalize: %v", err)
 	}
 
-	// Same block, same height → idempotent OK (a benign reconcile).
+	// Same block, same height → still fine (a benign reconcile hint).
 	if err := c.SyncState(h100, 100); err != nil {
-		t.Fatalf("idempotent SyncState(same block @100) should succeed, got: %v", err)
+		t.Fatalf("SyncState(same block @100) should succeed, got: %v", err)
 	}
 
-	// Different block at the same finalized height → equivocation, refused.
+	// DIFFERENT block at the same certified height → a HINT, NOT equivocation. The
+	// pre-fix code returned ErrHeightAlreadyFinalized here (the bug). The fix accepts
+	// it as a non-authoritative hint and leaves certified finality untouched.
 	other := ids.GenerateTestID()
-	if err := c.SyncState(other, 100); !errors.Is(err, ErrHeightAlreadyFinalized) {
-		t.Fatalf("SyncState(different block @100) should return ErrHeightAlreadyFinalized, got: %v", err)
+	if err := c.SyncState(other, 100); err != nil {
+		t.Fatalf("SyncState(different block @100) must be a clean hint, got: %v", err)
 	}
-	if got := c.GetFinalizedTip(); got != h100 {
-		t.Fatalf("finalized tip changed on a refused equal-height import: got %s want %s", got, h100)
+	// The CERTIFIED frontier is untouched: height stays 100, the canonical tip is
+	// still h100's canonical (== h100 here, a non-wrapped block).
+	if h, set := c.GetFinalizedHeight(); !set || h != 100 {
+		t.Fatalf("certified height moved on a hint import: got (%d,%v) want (100,true)", h, set)
+	}
+	if got := c.GetCertifiedTip(); got != h100 {
+		t.Fatalf("certified tip changed on a hint import: got %s want %s", got, h100)
 	}
 }
 
@@ -112,33 +123,40 @@ func TestSyncState_EmptyResetYieldsCleanGenesis(t *testing.T) {
 	}
 }
 
-// TestSyncState_ForwardImportAdvances verifies the guard does NOT impede the
-// legitimate forward case: an import at a height above the current finalized
-// head advances finalizedTip/Height (this is the normal admin_importChain /
-// state-sync path and must remain a clean success).
-func TestSyncState_ForwardImportAdvances(t *testing.T) {
+// TestSyncState_ForwardImportAdvancesBuildAnchorNotFinality verifies the corrected
+// (incident-1082814 PART-A) semantics of a forward import: it advances the BUILD
+// ANCHOR (where the VM builds — GetFinalizedTip) so the node builds on the imported
+// head, but it does NOT advance CERTIFIED finality. vm.LastAccepted / import is a
+// recovery HINT, never a finality source: the certified height stays at the last
+// QC-backed height and byHeight gains NO entry at the imported height (only a cert
+// can write there). Finality at the imported height is established later via the
+// bootstrap/cert path, not by the import claiming it.
+func TestSyncState_ForwardImportAdvancesBuildAnchorNotFinality(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
 	h100 := ids.GenerateTestID()
 	if _, err := c.FinalizeBranch(h100, 100, ids.Empty); err != nil {
-		t.Fatalf("seed finalize: %v", err)
+		t.Fatalf("seed certified finalize: %v", err)
 	}
 
-	// Forward import to a mature height.
+	// Forward import (hint) to a mature height.
 	h5000 := ids.GenerateTestID()
 	if err := c.SyncState(h5000, 5000); err != nil {
 		t.Fatalf("forward SyncState(h=5000) should succeed, got: %v", err)
 	}
+	// BUILD ANCHOR advances to the imported head (the forward hint outranks the lower
+	// certified tip) so the VM builds where the node has state.
 	if got := c.GetFinalizedTip(); got != h5000 {
-		t.Fatalf("forward import did not advance tip: got %s want %s", got, h5000)
+		t.Fatalf("forward import did not advance the build anchor: got %s want %s", got, h5000)
 	}
-	if h, _ := c.GetFinalizedHeight(); h != 5000 {
-		t.Fatalf("forward import did not advance height: got %d want 5000", h)
+	// CERTIFIED finality does NOT advance — an import is a hint, never a finality
+	// source. The certified height stays 100 (the last QC-backed finalize).
+	if h, set := c.GetFinalizedHeight(); !set || h != 100 {
+		t.Fatalf("forward import wrongly advanced CERTIFIED height: got (%d,%v) want (100,true)", h, set)
 	}
-	// The import re-seeds the per-height ledger to the imported head; the stale
-	// height-100 entry is no longer the source of truth.
-	if _, ok := c.FinalizedBlockAtHeight(5000); !ok {
-		t.Fatalf("forward import did not seed the ledger at the imported height 5000")
+	// No certified ledger entry was written at the imported height (only a cert can).
+	if _, ok := c.FinalizedBlockAtHeight(5000); ok {
+		t.Fatalf("forward import wrote a CERTIFIED ledger entry at 5000 — a hint must not finalize")
 	}
 }
 
