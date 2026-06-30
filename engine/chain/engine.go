@@ -162,16 +162,20 @@ type PendingBlock struct {
 	rePollBackoff time.Duration
 
 	// rePollAttempts counts how many times the re-poll loop has re-solicited this
-	// block. Once it reaches maxRePollAttempts the block is ABANDONED for re-poll
-	// purposes (rePollAbandoned) — re-soliciting the SAME block to peers who
-	// cannot vote (they are behind its parent) is pure spam and never recovers it;
-	// the catch-up path (requestCatchup) is what recovers a behind frontier.
+	// block. For a NON-OWN (gossiped) block, once it reaches maxRePollAttempts the
+	// block is ABANDONED for re-poll purposes (rePollAbandoned) — re-soliciting a
+	// gossiped block to peers who cannot vote (they are behind its parent) is pure
+	// spam and never recovers it; the catch-up path (requestCatchup) is what recovers
+	// a behind frontier. An OWN proposal is never abandoned (the proposer drives it to
+	// finality), so this counter only paces its bounded-backoff re-solicitation.
 	rePollAttempts int
 
-	// rePollAbandoned is set once rePollAttempts hits the cap. An abandoned block
-	// is NEVER re-polled again (no infinite spam), but is NOT deleted: it remains
-	// pending and recoverable — a late cert (HandleIncomingCert) or a catch-up
-	// that fills its parent can still finalize it.
+	// rePollAbandoned is set once a NON-OWN block's rePollAttempts hits the cap. An
+	// abandoned block is NEVER re-polled again (no infinite spam), but is NOT deleted:
+	// it remains pending and recoverable — a late cert (HandleIncomingCert) or a
+	// catch-up that fills its parent can still finalize it. An OWN proposal never sets
+	// this flag: it is re-solicited until it decides, so a down/wedged/forked
+	// designated proposer cannot halt the chain by starving the substitute's votes.
 	rePollAbandoned bool
 
 	// IsOwnProposal is true when this node built and proposed the block. It now
@@ -1106,11 +1110,15 @@ const (
 	// every maxRePollBackoff, turning a 250ms storm into a trickle.
 	maxRePollBackoff = 16 * time.Second
 
-	// maxRePollAttempts is the hard cap on re-poll attempts per block. After this
-	// many re-solicitations the block is abandoned for re-poll (rePollAbandoned)
-	// — it is never re-polled again (but stays pending, recoverable via cert or
-	// catch-up). With doubling from a 250ms base, 8 attempts span
-	// 0.25+0.5+1+2+4+8+16+16 ≈ 48s of backstop before giving up on re-poll.
+	// maxRePollAttempts is the hard cap on re-poll attempts for a NON-OWN (gossiped)
+	// block. After this many re-solicitations such a block is abandoned for re-poll
+	// (rePollAbandoned) — it is never re-polled again (but stays pending, recoverable
+	// via cert or catch-up): re-soliciting a gossiped block whose voters are behind
+	// its parent is spam that re-poll cannot fix. An UNDECIDED OWN proposal is NEVER
+	// abandoned (see rePollAllPending): the proposer keeps re-soliciting it until it
+	// finalizes, matching avalanchego's "re-poll a processing block until decided".
+	// With doubling from a 250ms base, 8 attempts span
+	// 0.25+0.5+1+2+4+8+16+16 ≈ 48s of backstop before giving up on a gossiped block.
 	maxRePollAttempts = 8
 
 	// catchupCooldown rate-limits ancestor fetches per missing parent: at most one
@@ -1261,8 +1269,9 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 			continue
 		}
 
-		// This block is due. Record the attempt, advance the backoff (double, cap),
-		// and abandon once the cap is hit so it is NEVER re-polled again.
+		// This block is due. Record the attempt and advance the backoff (double,
+		// cap) so re-solicitation is a bounded trickle (≤ maxRePollBackoff), never a
+		// storm.
 		pending.lastRePoll = now
 		pending.rePollAttempts++
 		next := window * 2
@@ -1270,9 +1279,26 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 			next = maxRePollBackoff
 		}
 		pending.rePollBackoff = next
-		if pending.rePollAttempts >= maxRePollAttempts {
+		// LIVENESS (the down/wedged/forked-proposer halt): an UNDECIDED OWN proposal
+		// is NEVER abandoned. This node BUILT it on the finalized tip (its voters
+		// therefore HAVE the parent and CAN vote), and as the proposer it owns driving
+		// it to an α-of-K cert — so it must keep re-soliciting until the block decides
+		// (then it leaves pendingBlocks and the re-poll quiesces). This is exactly
+		// avalanchego's contract: re-poll a PROCESSING block until it is decided, and
+		// only quiesce at NumProcessing()==0 (snow/engine/snowman voter.go +
+		// Engine.Gossip's 100ms repoll). Abandoning an own proposal after a fixed
+		// attempt cap was the Lux-only divergence that froze mainnet C-Chain: the
+		// substitute's canonical block stopped being re-solicited and the chain halted
+		// even though the honest majority was ready to vote (zero-margin 4-of-5 once a
+		// 5th validator forks/wedges). The bounded backoff above keeps this storm-safe.
+		//
+		// A NON-own (gossiped) block keeps the attempt cap: re-soliciting a block whose
+		// voters are BEHIND its parent (the gossip-from-an-ahead-peer case) is pure spam
+		// and never recovers it — that block recovers via cert-gossip or the catch-up
+		// fetch, not by re-poll. So the cap still bounds the follower path.
+		if !pending.IsOwnProposal && pending.rePollAttempts >= maxRePollAttempts {
 			pending.rePollAbandoned = true
-			t.log.Warn("re-poll: block abandoned after attempt cap — not re-soliciting further (recoverable via cert/catch-up)",
+			t.log.Warn("re-poll: gossiped block abandoned after attempt cap — not re-soliciting further (recoverable via cert/catch-up)",
 				"blockID", blockID, "attempts", pending.rePollAttempts)
 		}
 
