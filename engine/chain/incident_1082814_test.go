@@ -32,6 +32,7 @@
 package chain
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -401,6 +402,118 @@ func TestE2E_GenuineForkCertStillSlashes(t *testing.T) {
 	// Genuine fork → equivocation evidence recorded for the conflicting voters.
 	if recs := db.GetAllRecords(); len(recs) == 0 {
 		t.Fatal("a genuine canonical fork must still record equivocation evidence (safety backstop)")
+	}
+}
+
+// TestE2E_ForgedConflictingCertSlashesNobody is the H1 regression (RED finding): a
+// forged cert at an already-finalized height, with a DIFFERENT canonical id and
+// JUNK signatures naming honest validators, must record ZERO equivocation evidence
+// and jail NOBODY. The pre-fix code recorded a DoubleVote per named voter on the
+// height-gate branch BEFORE verifying a single signature — so an attacker could jail
+// honest validators below quorum and re-halt the chain. Evidence now traces to a
+// VERIFIED QC: verifyCert runs before reportCertEquivocation.
+func TestE2E_ForgedConflictingCertSlashesNobody(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	chainID := ids.GenerateTestID()
+	db := slashing.NewDB(time.Hour)
+
+	follower := NewWithConfig(Config{Params: params5()},
+		WithQuorumCert(chainID, vs.nodeID(4), vs, &recordingGossiper{}, vs.signerFor(4)),
+		WithSlashing(slashing.NewDetector(64, 0.5), db))
+	if err := follower.Start(context.Background(), true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = follower.Stop(context.Background()) })
+	rt := &Runtime{Transitive: follower, config: NetworkConfig{ChainID: chainID, Logger: log.Noop()}}
+
+	// Genuinely finalize a canonical block at height 1 via a REAL 4-of-5 cert.
+	innerC := ids.GenerateTestID()
+	outerA := ids.GenerateTestID()
+	trackEnvelope(rt, outerA, ids.Empty, innerC, ids.Empty, 1, 0)
+	if !rt.HandleIncomingCert(canonicalCert(t, vs, chainID, outerA, ids.Empty, innerC, ids.Empty, 1, 0, 4)) {
+		t.Fatal("setup: real cert must finalize height 1")
+	}
+
+	// FORGE a conflicting cert: height 1 (already finalized), a DIFFERENT canonical
+	// id, threshold 4, votes naming 4 honest validators with JUNK signatures.
+	innerEvil := ids.GenerateTestID()
+	outerEvil := ids.GenerateTestID()
+	forgedPos := canonPos(chainID, outerEvil, ids.Empty, innerEvil, ids.Empty, 1, 9)
+	junk := make([]SignedVote, 0, 4)
+	for i := 0; i < 4; i++ {
+		junk = append(junk, SignedVote{
+			NodeID:    vs.nodeID(i), // honest validator id…
+			Accept:    true,         // …with a forged signature
+			Signature: bytes.Repeat([]byte{byte(i + 1)}, 64),
+		})
+	}
+	forged, err := AssembleQuorumCert(forgedPos, 4, junk)
+	if err != nil {
+		t.Fatalf("assemble forged cert: %v", err)
+	}
+	forgedBytes, _ := forged.MarshalBinary()
+
+	// Feed it. It must be REFUSED and slash NOBODY.
+	if rt.HandleIncomingCert(forgedBytes) {
+		t.Fatal("a forged conflicting cert must not finalize")
+	}
+	if recs := db.GetAllRecords(); len(recs) != 0 {
+		t.Fatalf("H1: forged junk-sig cert recorded %d slashing record(s) — honest validators false-slashed", len(recs))
+	}
+	for i := 0; i < 4; i++ {
+		if db.IsJailed(vs.nodeID(i)) {
+			t.Fatalf("H1: honest validator %d was jailed by a forged cert (would drop below quorum and re-halt)", i)
+		}
+	}
+	// The real finalized canonical is untouched.
+	if fin, ok := follower.consensus.FinalizedBlockAtHeight(1); !ok || fin != innerC {
+		t.Fatalf("finalized canonical at 1 = (%s,%v) want innerC", fin, ok)
+	}
+}
+
+// TestE2E_DeferredValidCertTriggersFetch is the M1 regression: a VERIFIED finality
+// proof for a block we do NOT track (an eclipsed follower that adopted a losing
+// sibling envelope) must trigger a best-effort, throttled catch-up FETCH for the
+// certified block — not be silently dropped (which stalls finalization forever under
+// a targeted eclipse). The fetch is gated on verification, so a forged cert can
+// never make us fetch arbitrary ids.
+func TestE2E_DeferredValidCertTriggersFetch(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	cu := &recordingCatchup{}
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 4, &recordingGossiper{}, WithCatchup(cu))
+	rt := &Runtime{Transitive: e, config: NetworkConfig{ChainID: chainID, Logger: log.Noop(), Catchup: cu}}
+
+	// A VALID 4-of-5 cert for a block the follower does NOT track.
+	innerWin := ids.GenerateTestID()
+	outerWin := ids.GenerateTestID()
+	cert := canonicalCert(t, vs, chainID, outerWin, ids.Empty, innerWin, ids.Empty, 1, 0, 4)
+
+	if rt.HandleIncomingCert(cert) {
+		t.Fatal("a cert for an untracked block must not finalize (we have not validated the block)")
+	}
+	// …but it must have triggered a fetch for the certified (winning) block.
+	if cu.count() == 0 {
+		t.Fatal("M1: a verified deferred cert was dropped without fetching the certified block")
+	}
+	if got, ok := cu.lastMissing(); !ok || got != outerWin {
+		t.Fatalf("M1: fetch targeted %s, want the certified block %s", got, outerWin)
+	}
+
+	// SAFETY: a FORGED cert (junk sigs) for an untracked block must NOT trigger a
+	// fetch (no fetch-amplification on unverified ids).
+	before := cu.count()
+	badPos := canonPos(chainID, ids.GenerateTestID(), ids.Empty, ids.GenerateTestID(), ids.Empty, 2, 0)
+	bad := make([]SignedVote, 0, 4)
+	for i := 0; i < 4; i++ {
+		bad = append(bad, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: bytes.Repeat([]byte{0xEE}, 64)})
+	}
+	badCert, _ := AssembleQuorumCert(badPos, 4, bad)
+	badBytes, _ := badCert.MarshalBinary()
+	if rt.HandleIncomingCert(badBytes) {
+		t.Fatal("a forged cert must not finalize")
+	}
+	if cu.count() != before {
+		t.Fatal("M1: a FORGED cert triggered a fetch — verification must gate the fetch (no amplification)")
 	}
 }
 
