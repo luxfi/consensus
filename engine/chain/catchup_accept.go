@@ -193,6 +193,7 @@ func (rt *Runtime) trackVerifiedForCatchup(ctx context.Context, blk block.Block)
 		data:         blk.Bytes(),
 		pChainHeight: pChainHeightOf(blk), // epoch for the weighted set (MEDIUM-1)
 	}
+	setCanonicalFromVM(consensusBlock, blk) // stamp the inner execution commitment
 	// AddBlock is idempotent-ish (errors if already present); the error is ignored
 	// because a re-track is harmless and the pendingBlocks guard below is the gate.
 	_ = rt.Transitive.consensus.AddBlock(ctx, consensusBlock)

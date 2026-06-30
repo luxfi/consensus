@@ -112,13 +112,16 @@ func (c *ChainConsensus) ApplyCert(cert Cert) (Plan, error) {
 	return c.applyCertLocked(cert)
 }
 
-// FinalizeBranch is the back-compat wrapper for call sites that hold a
-// (target, height, parent) triple rather than a Cert (bootstrap/catch-up accept and the
-// safety tests). It builds the Cert and folds it — behavior identical to ApplyCert.
-// parentID may be ids.Empty only for the genesis / first finalize.
+// FinalizeBranch finalizes a block whose CANONICAL commitment equals its OUTER id —
+// the non-proposervm-wrapped convenience (canonical == outer). It is the call shape
+// for the safety tests and any in-process chain where there is no inner/outer split.
+// A block that DOES carry a distinct inner commitment must use ApplyCert with an
+// explicit Cert.Canonical (the production cert path and bootstrap do). parentID may
+// be ids.Empty only for the genesis / first finalize.
 func (c *ChainConsensus) FinalizeBranch(target ids.ID, height uint64, parentID ids.ID) (Plan, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// Canonical left ids.Empty ⇒ the fold treats canonical == target (outer == inner).
 	return c.applyCertLocked(Cert{Block: target, Parent: parentID, Height: height})
 }
 
@@ -182,7 +185,7 @@ func (c *ChainConsensus) Stats() map[string]interface{} {
 		"rejected":      rejected,
 		"pending":       pending,
 		"tips":          len(c.tips),
-		"finalized_tip": c.ledger.tip.String(),
+		"finalized_tip": c.ledger.Tip().String(),
 	}
 }
 
@@ -223,34 +226,38 @@ func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) error {
 		return fmt.Errorf("%w: refused empty head at height %d", ErrSyncStateEmptyWithHeight, height)
 	}
 
-	// Refuse a backward regression of finalized history. Only enforced once a
-	// height is established and for a concrete (non-empty) import head; an empty
-	// reset is a deliberate teardown, not a regression.
+	// Refuse a backward regression of CERTIFIED finalized history. Only enforced once
+	// a cert has finalized and for a concrete (non-empty) import head; an empty reset
+	// is a deliberate teardown, not a regression. A hint can NEVER un-finalize a
+	// QC-backed block: an import below the certified height is refused outright.
 	if c.ledger.set && lastAcceptedID != ids.Empty && height < c.ledger.height {
 		return fmt.Errorf("%w: import height %d < finalized height %d (block %s)",
 			ErrSyncStateRegression, height, c.ledger.height, lastAcceptedID)
 	}
-	// Equal-height re-import must agree on the block (a different block at the
-	// already-finalized height is equivocation, not a reconcile).
-	if c.ledger.set && lastAcceptedID != ids.Empty && height == c.ledger.height {
-		if existing, ok := c.ledger.At(height); ok && existing != lastAcceptedID {
-			return fmt.Errorf("%w: import height %d already finalized %s, refused %s",
-				ErrHeightAlreadyFinalized, height, existing, lastAcceptedID)
-		}
-	}
+	// NOTE (incident-1082814 PART-A): the pre-fix code ALSO ran an equal-height
+	// "different block ⇒ equivocation" check here, because SyncState used to SEED
+	// FINALITY from vm.LastAccepted. It no longer does — the import is a
+	// non-authoritative HINT — so there is nothing to equivocate against and that
+	// check is deliberately gone. Equivocation is decided EXCLUSIVELY by the cert fold
+	// over canonical commitments (Finalize), never from a local seed. This is the
+	// single most important line of the fix: a locally-seeded sibling can no longer
+	// manufacture a finalized entry that a peer's legitimate cert then "conflicts"
+	// with.
 
-	// Seed a NEW ledger value at the synced head so the next finalize (the first block
-	// built on the import) satisfies the monotonic-height + descends-from-tip invariants
-	// against the imported head. A whole-value assignment — not a field poke.
+	// Apply the import as a RECOVERY HINT — a build anchor only, never finality
+	// (PART-A). vm.LastAccepted is the local node's boot/import snapshot; after a crash
+	// it can name an UNCERTIFIED local block whose inner block the network actually
+	// finalized under a different envelope. As a HINT, Height() stays (0,false) until a
+	// real cert, byHeight stays empty, and no cert can ever equivocate against it.
 	if lastAcceptedID != ids.Empty {
-		c.ledger = seedLedger(lastAcceptedID, height)
+		// Preserve any CERTIFIED history (whole-value copy) and update only the hint
+		// fields — a hint must never wipe a QC-backed frontier. When no certified
+		// history exists, this is just the hint anchor.
+		c.ledger = c.ledger.withHint(lastAcceptedID, height)
 	} else {
 		// genesis/teardown reset (empty head at height 0): reset finality to a CLEAN
-		// genesis VALUE — Empty tip, height 0, unset, no per-height record. LOW-2: the
-		// prior code cleared ONLY the tip and left height/byHeight/set stale, which
-		// desynced the tip from the height — every future cert then wedged in pathFromTip
-		// (it seeks the now-Empty tip and never finds it). A whole-value reset cannot
-		// desync: the next cert simply seeds finality afresh (first-finalize).
+		// genesis VALUE — no certified state, no hint, no per-height record. A whole-
+		// value reset cannot desync: the next cert simply seeds finality afresh.
 		c.ledger = FinalityLedger{}
 	}
 
@@ -272,12 +279,26 @@ func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) error {
 	return nil
 }
 
-// GetFinalizedTip returns the current finalized tip block ID.
-// This is useful for debugging and health checks.
+// GetFinalizedTip returns the BUILD ANCHOR — the certified finalized tip (outer
+// id) once a cert has finalized, else the recovery hint (vm.LastAccepted). This is
+// the "what is the VM building on" view used by health checks and preference; it is
+// NOT the finality-authority height (that is GetFinalizedHeight, certified-only).
 func (c *ChainConsensus) GetFinalizedTip() ids.ID {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.ledger.tip
+	if anchor, ok := c.ledger.BuildAnchor(); ok {
+		return anchor
+	}
+	return ids.Empty
+}
+
+// GetCertifiedTip returns the canonical execution commitment of the certified head
+// (ids.Empty before the first cert) — the true finality identity, used for
+// equivocation evidence and conformance assertions.
+func (c *ChainConsensus) GetCertifiedTip() ids.ID {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.ledger.CanonicalTip()
 }
 
 // GetFinalizedHeight returns the current finalized height and whether any block
@@ -290,10 +311,11 @@ func (c *ChainConsensus) GetFinalizedHeight() (uint64, bool) {
 	return c.ledger.Height()
 }
 
-// FinalizedBlockAtHeight returns the block finalized at the given height, if
-// any. Used to produce equivocation evidence: when a second cert is refused at
-// an already-finalized height, the caller reports BOTH the finalized block and
-// the refused one.
+// FinalizedBlockAtHeight returns the CANONICAL execution commitment finalized at
+// the given height, if any. Used to produce equivocation evidence and to recognise
+// duplicates: a second cert at an already-finalized height is equivocation ONLY if
+// its canonical id differs from this one (a different envelope wrapping the same
+// canonical id is a harmless alias).
 func (c *ChainConsensus) FinalizedBlockAtHeight(height uint64) (ids.ID, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
