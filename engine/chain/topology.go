@@ -189,12 +189,19 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	// This is the cheap front-line check; FinalizeBranch (inside AcceptWithCert)
 	// is the authoritative backstop that also produces equivocation evidence.
 	if fh, set := t.consensus.GetFinalizedHeight(); set && cert.Position.Height <= fh {
-		// If a DIFFERENT block is finalized at this exact height, the cert is an
-		// equivocation proof — surface it. (Same block = harmless stale replay.)
-		if fin, ok := t.consensus.FinalizedBlockAtHeight(cert.Position.Height); ok && fin != cert.Position.BlockID {
-			rt.reportCertEquivocation(cert, fin)
+		// Equivocation is decided on the CANONICAL commitment, NEVER the outer envelope
+		// (the incident-1082814 fix). A DIFFERENT canonical block already finalized at
+		// this exact height is the real fork → surface it. The SAME canonical id under a
+		// different envelope is a harmless DUPLICATE alias (and an identical envelope is a
+		// stale replay) → drop quietly, NO equivocation, NO halt.
+		certCanonical := cert.Position.CanonicalID
+		if certCanonical == ids.Empty {
+			certCanonical = cert.Position.BlockID
+		}
+		if finCanonical, ok := t.consensus.FinalizedBlockAtHeight(cert.Position.Height); ok && finCanonical != certCanonical {
+			rt.reportCertEquivocation(cert, finCanonical)
 		} else if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Debug("incoming cert: height at/below finalized; dropping",
+			rt.config.Logger.Debug("incoming cert: height at/below finalized; dropping (duplicate or stale, not a fork)",
 				log.Uint64("certHeight", cert.Position.Height),
 				log.Uint64("finalizedHeight", fh))
 		}
@@ -342,18 +349,25 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 }
 
 // reportCertEquivocation records that a SECOND, conflicting finality cert was
-// presented for a height already finalized to a DIFFERENT block — a provable
-// safety-equivocation. Each voter in the conflicting cert signed-final a block
-// at a height already finalized to `finalized`, so each is recorded as a
-// DoubleVote (it asserts a different block at the same height than the one that
-// finalized). The event is also logged at CRIT — this is a Byzantine-fault
-// signal, not a routine drop. Best effort: never blocks the safety reject.
-func (rt *Runtime) reportCertEquivocation(cert *QuorumCert, finalized ids.ID) {
+// presented for a height already finalized to a DIFFERENT CANONICAL commitment — a
+// provable safety-equivocation (a genuine fork: two valid certs select different
+// execution blocks at one height). `finalizedCanonical` is the canonical id already
+// final at this height; the conflicting cert's canonical id differs. This is keyed
+// on canonical identity, so a duplicate ENVELOPE wrapping the same canonical block
+// NEVER reaches here (that is the bug this whole change removes). Each voter is
+// recorded as a DoubleVote. Logged at CRIT — a Byzantine-fault signal. Best effort:
+// never blocks the safety reject.
+func (rt *Runtime) reportCertEquivocation(cert *QuorumCert, finalizedCanonical ids.ID) {
+	conflicting := cert.Position.CanonicalID
+	if conflicting == ids.Empty {
+		conflicting = cert.Position.BlockID
+	}
 	if !rt.config.Logger.IsZero() {
-		rt.config.Logger.Crit("EQUIVOCATION: conflicting finality cert at finalized height",
+		rt.config.Logger.Crit("EQUIVOCATION: conflicting finality cert at finalized height (different canonical block)",
 			log.Uint64("height", cert.Position.Height),
-			log.Stringer("finalizedBlock", finalized),
-			log.Stringer("conflictingBlock", cert.Position.BlockID),
+			log.Stringer("finalizedCanonical", finalizedCanonical),
+			log.Stringer("conflictingCanonical", conflicting),
+			log.Stringer("conflictingEnvelope", cert.Position.BlockID),
 			log.Int("conflictingVoters", cert.VoterCount()))
 	}
 	t := rt.Transitive
@@ -364,8 +378,8 @@ func (rt *Runtime) reportCertEquivocation(cert *QuorumCert, finalized ids.ID) {
 		return
 	}
 	for i := range cert.Votes {
-		proof := fmt.Appendf(nil, "height=%d finalized=%s conflicting=%s",
-			cert.Position.Height, finalized, cert.Position.BlockID)
+		proof := fmt.Appendf(nil, "height=%d finalizedCanonical=%s conflictingCanonical=%s",
+			cert.Position.Height, finalizedCanonical, conflicting)
 		sdb.RecordEvidence(slashing.Evidence{
 			Type:        slashing.DoubleVote,
 			ValidatorID: cert.Votes[i].NodeID,
