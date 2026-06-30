@@ -1794,6 +1794,55 @@ func pChainHeightOf(b block.Block) uint64 {
 // function the engine uses. Exported only for that cross-module test reach.
 func PChainHeightOfForTest(b block.Block) uint64 { return pChainHeightOf(b) }
 
+// canonicalCommitter is the OPTIONAL block interface that exposes the inner
+// EXECUTION commitment (the incident-1082814 canonical identity), plumbed up from
+// the proposervm wrapper. A proposervm signed block that wraps an inner execution
+// block implements it; a bare/in-process VM block does not. Defined locally so the
+// engine depends only on the four methods it reads.
+//
+// THE CONTRACT: CanonicalID is the inner execution block id — the value finality is
+// defined over. Two outer proposervm envelopes wrapping the SAME inner block return
+// the SAME CanonicalID, which is exactly what collapses them to duplicates instead
+// of forks. ParentCanonicalID / ExecutionStateRoot / PayloadRoot bind the canonical
+// ancestry and the exact execution result into the signed cert.
+type canonicalCommitter interface {
+	CanonicalID() ids.ID
+	ParentCanonicalID() ids.ID
+	ExecutionStateRoot() ids.ID
+	PayloadRoot() ids.ID
+}
+
+// canonicalIDOf returns the block's inner EXECUTION commitment, or — for a block
+// that does not expose one (bare/in-process VM, no proposervm wrapping at the engine
+// boundary) — the block's OWN outer id. The fallback makes the scheme degrade
+// EXACTLY to the pre-fix outer-id behavior on a non-wrapped chain (canonical ==
+// outer ⇒ no two envelopes can share a canonical id ⇒ the duplicate-alias path is
+// simply inert), while a real proposervm delivers the distinct inner id that
+// distinguishes a duplicate envelope from a genuine fork. This is the SOLE place the
+// engine reads the canonical id off a VM block.
+func canonicalIDOf(b block.Block) ids.ID {
+	if c, ok := b.(canonicalCommitter); ok {
+		if id := c.CanonicalID(); id != ids.Empty {
+			return id
+		}
+	}
+	return b.ID()
+}
+
+// setCanonicalFromVM stamps the canonical execution-commitment fields onto a
+// consensus Block from its VM block — the ONE boundary where the inner commitment
+// enters consensus state. For a non-wrapped block canonicalID == outer id and the
+// roots are Empty (unbound), so the position/cert are byte-compatible with the
+// pre-canonical behavior. Called at every Block construction site (DRY).
+func setCanonicalFromVM(cb *Block, vmBlock block.Block) {
+	cb.canonicalID = canonicalIDOf(vmBlock)
+	if c, ok := vmBlock.(canonicalCommitter); ok {
+		cb.parentCanonicalID = c.ParentCanonicalID()
+		cb.execStateRoot = c.ExecutionStateRoot()
+		cb.payloadRoot = c.PayloadRoot()
+	}
+}
+
 // epochHeightLocked returns the P-CHAIN height the block's weighted validator set
 // is pinned to — the SINGLE height used for the set-root commitment, the
 // ⅔-by-stake tally, AND per-voter pubkey resolution (membership, pubkey,
@@ -1811,10 +1860,20 @@ func (t *Transitive) epochHeightLocked(pending *PendingBlock) uint64 {
 func (t *Transitive) blockPositionLocked(pending *PendingBlock, blockID ids.ID) VotePosition {
 	var parentID ids.ID
 	var height uint64
+	var canonicalID, parentCanonicalID, execStateRoot, payloadRoot ids.ID
 	if pending.ConsensusBlock != nil {
 		parentID = pending.ConsensusBlock.parentID
 		height = pending.ConsensusBlock.height
+		canonicalID = pending.ConsensusBlock.canonicalID
+		parentCanonicalID = pending.ConsensusBlock.parentCanonicalID
+		execStateRoot = pending.ConsensusBlock.execStateRoot
+		payloadRoot = pending.ConsensusBlock.payloadRoot
 	}
+	// canonicalID/parentCanonicalID are left as the block's RAW canonical fields: the
+	// real inner id for a proposervm-wrapped block, or ids.Empty for a bare block. The
+	// non-wrapped degrade (Empty ⇒ bind the outer id) is resolved in ONE place,
+	// canonicalVoteMessageFor, so the signed bytes are identical for every producer of
+	// a position (engine or test), for the same block.
 	// Stamp the active weighted-validator-set commitment at the block's P-CHAIN
 	// EPOCH height (the MEDIUM-1 / CRITICAL-1 fix) — NOT its value-chain height.
 	// Every path that builds a position — sign (recordOwnVoteLocked), assemble +
@@ -1830,12 +1889,16 @@ func (t *Transitive) blockPositionLocked(pending *PendingBlock, blockID ids.ID) 
 		setRoot = t.setRootSource.ValidatorSetRoot(t.epochHeightLocked(pending))
 	}
 	return VotePosition{
-		ChainID:          t.chainID,
-		Height:           height,
-		Round:            pending.Round,
-		BlockID:          blockID,
-		ParentID:         parentID,
-		ValidatorSetRoot: setRoot,
+		ChainID:            t.chainID,
+		Height:             height,
+		Round:              pending.Round,
+		BlockID:            blockID,
+		ParentID:           parentID,
+		CanonicalID:        canonicalID,
+		ParentCanonicalID:  parentCanonicalID,
+		ExecutionStateRoot: execStateRoot,
+		PayloadRoot:        payloadRoot,
+		ValidatorSetRoot:   setRoot,
 	}
 }
 
@@ -1869,6 +1932,7 @@ func (t *Transitive) TrackOwnProposalForTest(ctx context.Context, blk block.Bloc
 		data:         blk.Bytes(),
 		pChainHeight: pChainHeightOf(blk), // the boundary capture under test (b2)
 	}
+	setCanonicalFromVM(cb, blk) // stamp the inner execution commitment
 	_ = t.consensus.AddBlock(ctx, cb)
 	_ = t.consensus.ProcessVote(ctx, blk.ID(), true)
 	t.mu.Lock()
@@ -2175,14 +2239,17 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// Called WITHOUT t.mu so the consensus lock is never nested under it.
 	pos := cert.Cert().Position
 	// LOW-1 (defense-in-depth): the cert α-attests the FULL position {BlockID, ParentID,
-	// Height}; build the finalize Cert ENTIRELY from it so the fold can never be fed a
-	// Block from one source and Parent/Height from another. blockID is only the pending
-	// lookup key above — a verified cert's position must name that same block, else the
-	// trio is inconsistent and we fail closed rather than finalize the wrong block.
+	// Height, CanonicalID}; build the finalize Cert ENTIRELY from it so the fold can
+	// never be fed a Block from one source and Parent/Height/Canonical from another.
+	// blockID is only the pending lookup key above — a verified cert's position must
+	// name that same outer block, else the trio is inconsistent and we fail closed
+	// rather than finalize the wrong block. (When a cert is resolved by CANONICAL id
+	// across a differing envelope, HandleIncomingCert finalizes the LOCAL outer id and
+	// the cert's canonical, so this equality holds on the resolved target.)
 	if pos.BlockID != blockID {
 		return fmt.Errorf("cert position block %s != finalize target %s (inconsistent cert trio)", pos.BlockID, blockID)
 	}
-	plan, err := t.consensus.ApplyCert(Cert{Block: pos.BlockID, Parent: pos.ParentID, Height: pos.Height})
+	plan, err := t.consensus.ApplyCert(Cert{Block: pos.BlockID, Parent: pos.ParentID, Height: pos.Height, Canonical: pos.CanonicalID})
 	if err != nil {
 		return err
 	}
@@ -2368,6 +2435,7 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			data:         vmBlock.Bytes(),
 			pChainHeight: pChainHeightOf(vmBlock), // epoch for the weighted set (MEDIUM-1)
 		}
+		setCanonicalFromVM(consensusBlock, vmBlock) // stamp the inner execution commitment
 
 		// Verify BEFORE consensus — prevents accepting invalid blocks in K=1 mode
 		// where self-vote causes immediate acceptance. If Verify fails, the block

@@ -21,22 +21,33 @@ import (
 // ErrQCWireCorrupt is returned by the decoder on any structural defect.
 var ErrQCWireCorrupt = errors.New("chain: quorum cert wire corrupt")
 
-// Wire layout (big-endian):
+// Wire layout (big-endian). The wire carries BOTH the canonical execution
+// identity (the signed primary object) and the outer transport ids (the
+// non-authoritative cache key used for block lookup/gossip):
 //
 //	version:2
 //	type:1
 //	chain_id:32
 //	height:8
 //	round:4
-//	block_id:32
-//	parent_id:32
-//	validator_set_root:32   (epoch/weighted-set commitment; Empty = unbound)
+//	block_id:32             (OUTER/envelope — transport cache key; NOT signed)
+//	parent_id:32            (OUTER/envelope parent — transport; NOT signed)
+//	canonical_block_id:32   (inner execution commitment — PRIMARY; signed)
+//	parent_canonical_id:32  (inner parent commitment — signed)
+//	execution_state_root:32 (post-execution state root — signed)
+//	payload_root:32         (tx/payload root — signed)
+//	validator_set_root:32   (epoch/weighted-set commitment; Empty = unbound; signed)
 //	threshold:4
 //	vote_count:4
 //	then vote_count records, each:
 //	  node_id:20          (ids.NodeID is a 20-byte value)
 //	  accept:1
 //	  sig_len:4  sig:sig_len
+//
+// The outer ids are encoded so a receiver can locate the block, but they are
+// NOT part of CanonicalVoteMessage — a signature commits only to the canonical
+// identity, so a cert is identical regardless of which envelope wrapped the
+// inner block.
 
 // qcVoteFixed is the fixed-size prefix of one encoded vote (node_id + accept +
 // sig_len). Used to cap vote_count against the buffer before allocation.
@@ -44,8 +55,9 @@ const qcVoteFixed = ids.NodeIDLen + 1 + 4
 
 // qcHeaderSize is the fixed header byte length preceding the vote records.
 // (version + type + chain_id + height + round + block_id + parent_id +
+// canonical_block_id + parent_canonical_id + execution_state_root + payload_root +
 // validator_set_root + threshold + vote_count.)
-const qcHeaderSize = 2 + 1 + 32 + 8 + 4 + 32 + 32 + 32 + 4 + 4
+const qcHeaderSize = 2 + 1 + 32 + 8 + 4 + 32 + 32 + 32 + 32 + 32 + 32 + 32 + 4 + 4
 
 // MarshalBinary encodes the cert deterministically. Equal certs encode to equal
 // bytes (votes are kept in the strictly-increasing order Assemble produced).
@@ -67,6 +79,10 @@ func (c *QuorumCert) MarshalBinary() ([]byte, error) {
 	buf = append(buf, u32[:]...)
 	buf = append(buf, c.Position.BlockID[:]...)
 	buf = append(buf, c.Position.ParentID[:]...)
+	buf = append(buf, c.Position.CanonicalID[:]...)
+	buf = append(buf, c.Position.ParentCanonicalID[:]...)
+	buf = append(buf, c.Position.ExecutionStateRoot[:]...)
+	buf = append(buf, c.Position.PayloadRoot[:]...)
 	buf = append(buf, c.Position.ValidatorSetRoot[:]...)
 	binary.BigEndian.PutUint32(u32[:], c.Threshold)
 	buf = append(buf, u32[:]...)
@@ -117,6 +133,18 @@ func UnmarshalQuorumCert(data []byte) (*QuorumCert, error) {
 		return nil, ErrQCWireCorrupt
 	}
 	if err = r.readIDInto(&c.Position.ParentID); err != nil {
+		return nil, ErrQCWireCorrupt
+	}
+	if err = r.readIDInto(&c.Position.CanonicalID); err != nil {
+		return nil, ErrQCWireCorrupt
+	}
+	if err = r.readIDInto(&c.Position.ParentCanonicalID); err != nil {
+		return nil, ErrQCWireCorrupt
+	}
+	if err = r.readIDInto(&c.Position.ExecutionStateRoot); err != nil {
+		return nil, ErrQCWireCorrupt
+	}
+	if err = r.readIDInto(&c.Position.PayloadRoot); err != nil {
 		return nil, ErrQCWireCorrupt
 	}
 	if err = r.readIDInto(&c.Position.ValidatorSetRoot); err != nil {
