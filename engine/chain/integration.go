@@ -723,6 +723,7 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 		data:         blk.Bytes(),
 		pChainHeight: childEpoch,
 	}
+	setCanonicalFromVM(consensusBlock, blk) // stamp the inner execution commitment
 
 	// Add to consensus tracking (idempotent: AddBlock errors if already present).
 	_ = rt.Transitive.consensus.AddBlock(ctx, consensusBlock)

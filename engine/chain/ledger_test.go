@@ -28,12 +28,13 @@ type dagNode struct {
 	height uint64
 }
 
-func (d mapDAG) Parent(id ids.ID) (ids.ID, uint64, bool) {
+func (d mapDAG) Parent(id ids.ID) (ids.ID, uint64, ids.ID, bool) {
 	n, ok := d[id]
 	if !ok {
-		return ids.Empty, 0, false
+		return ids.Empty, 0, ids.Empty, false
 	}
-	return n.parent, n.height, true
+	// This pure-fold harness has no inner/outer split: canonical == the block's own id.
+	return n.parent, n.height, id, true
 }
 
 func (d mapDAG) Children(id ids.ID) []ids.ID {
@@ -240,7 +241,7 @@ func TestLedger_StaleHeightBelowFrontier(t *testing.T) {
 	a := ids.GenerateTestID()
 	x := ids.GenerateTestID()
 	// hand-built sparse ledger: head at height 2, height 1 NOT indexed.
-	led := FinalityLedger{tip: a, height: 2, set: true, byHeight: map[uint64]ids.ID{2: a}}
+	led := FinalityLedger{tip: a, canonical: a, height: 2, set: true, byHeight: map[uint64]finalizedEntry{2: {canonical: a, envelope: a}}}
 	if _, _, err := Finalize(led, Cert{Block: x, Parent: ids.Empty, Height: 1}, mapDAG{}); !errors.Is(err, ErrNonMonotonicFinalizedHeight) {
 		t.Fatalf("a stale below-frontier height must be refused, got %v", err)
 	}
@@ -355,13 +356,15 @@ func TestLedger_WindowPrune(t *testing.T) {
 func BenchmarkFinalize_FlatCost(b *testing.B) {
 	for _, start := range []uint64{1 << 6, 1 << 12, 1 << 18, 1 << 20} {
 		b.Run(fmt.Sprintf("height_%d", start), func(b *testing.B) {
-			led := seedLedger(ids.GenerateTestID(), start)
+			seed := ids.GenerateTestID()
+			led := seedLedger(seed, seed, start)
 			base := uint64(0)
 			if start >= equivocationWindow {
 				base = start - equivocationWindow + 1
 			}
 			for h := base; h <= start; h++ { // fill a full window so clone copies window-many
-				led.byHeight[h] = ids.GenerateTestID()
+				id := ids.GenerateTestID()
+				led.byHeight[h] = finalizedEntry{canonical: id, envelope: id}
 			}
 			parent := led.tip
 			next := ids.GenerateTestID()

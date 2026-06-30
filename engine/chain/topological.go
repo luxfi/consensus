@@ -47,6 +47,17 @@ type Block struct {
 	timestamp int64
 	data      []byte
 
+	// canonicalID / parentCanonicalID / execStateRoot / payloadRoot are the inner
+	// EXECUTION commitment (the incident-1082814 canonical identity). For a
+	// proposervm-wrapped block these are the inner block's identity; for a bare block
+	// canonicalID == id (graceful degrade). canonicalID is what finality, the
+	// per-height equivocation index, and the cert position all key on; the outer
+	// id/parentID stay the transport/DAG keys. ids.Empty roots mean "not exposed".
+	canonicalID       ids.ID
+	parentCanonicalID ids.ID
+	execStateRoot     ids.ID
+	payloadRoot       ids.ID
+
 	// pChainHeight is the P-CHAIN epoch height the block's weighted validator set
 	// is pinned to (MEDIUM-1 / CRITICAL-1): the set-root commitment, the ⅔-by-stake
 	// tally, AND the per-voter pubkey resolution are ALL read from the height-
@@ -241,11 +252,12 @@ func (c *ChainConsensus) Preference() ids.ID {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	// The committed finalized tip wins once finality has advanced.
-	if c.ledger.set {
-		return c.ledger.tip
+	// The committed finalized (certified) tip wins once finality has advanced; before
+	// any cert, the recovery hint (vm.LastAccepted) is the build anchor.
+	if anchor, ok := c.ledger.BuildAnchor(); ok {
+		return anchor
 	}
-	// Before the first finalize: the preliminary build preference, then any build tip.
+	// No certified tip and no hint: the preliminary build preference, then any tip.
 	if c.preference != ids.Empty {
 		return c.preference
 	}
@@ -284,9 +296,10 @@ func (c *ChainConsensus) PreferredBuildTip() ids.ID {
 // Caller holds c.mu.
 func (c *ChainConsensus) buildTipLocked() ids.ID {
 	var cur ids.ID
+	anchor, hasAnchor := c.ledger.BuildAnchor()
 	switch {
-	case c.ledger.set:
-		cur = c.ledger.tip
+	case hasAnchor:
+		cur = anchor
 	case c.preference != ids.Empty:
 		cur = c.preference
 	default:
@@ -381,12 +394,16 @@ func (c *ChainConsensus) ancestry() Ancestry { return blocksAncestry{blocks: c.b
 // interface so the Finalize fold stays engine-free and unit-testable.
 type blocksAncestry struct{ blocks map[ids.ID]*Block }
 
-func (a blocksAncestry) Parent(id ids.ID) (ids.ID, uint64, bool) {
+func (a blocksAncestry) Parent(id ids.ID) (ids.ID, uint64, ids.ID, bool) {
 	b, ok := a.blocks[id]
 	if !ok {
-		return ids.Empty, 0, false
+		return ids.Empty, 0, ids.Empty, false
 	}
-	return b.parentID, b.height, true
+	canonical := b.canonicalID
+	if canonical == ids.Empty {
+		canonical = b.id // bare block: canonical == outer
+	}
+	return b.parentID, b.height, canonical, true
 }
 
 func (a blocksAncestry) Children(id ids.ID) []ids.ID {

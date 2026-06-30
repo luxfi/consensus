@@ -145,7 +145,12 @@ func catchupCertFor(t *testing.T, vs *testValidatorSet, chainID ids.ID, blk *ver
 func seedBehindAt(t *testing.T, rt *Runtime, vm *catchupVM, tip *verifyOnceBlock) {
 	t.Helper()
 	vm.register(tip)
-	if err := rt.Transitive.consensus.SyncState(tip.id, tip.height); err != nil {
+	// Establish CERTIFIED finality at N (a node that legitimately finalized up to N
+	// in-process). Post-incident-1082814, SyncState is only a non-authoritative HINT —
+	// it no longer seeds certified finality — so the certified baseline is set through
+	// the real finalize fold (first-finalize seeds at tip.height). The distinct
+	// restart-from-hint recovery is covered by the incident regression suite.
+	if _, err := rt.Transitive.consensus.FinalizeBranch(tip.id, tip.height, ids.Empty); err != nil {
 		t.Fatalf("seed behind at height %d: %v", tip.height, err)
 	}
 	if fh, set := rt.Transitive.consensus.GetFinalizedHeight(); !set || fh != tip.height {

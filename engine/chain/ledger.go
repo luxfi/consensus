@@ -63,31 +63,109 @@ var (
 	ErrAncestorNotTracked = errors.New("chain: cannot finalize — an ancestor between the finalized tip and the cert-selected block is not tracked (behind; fetch and retry)")
 )
 
+// finalizedEntry is the CERTIFIED record at one finalized height: the canonical
+// execution commitment (the authoritative finality identity) and the outer
+// envelope id (transport, retained for serving/diagnostics). Equivocation and
+// idempotency are decided on `canonical` ONLY — the envelope is non-authoritative.
+type finalizedEntry struct {
+	canonical ids.ID // inner execution commitment — THE finalized identity at this height
+	envelope  ids.ID // outer/proposervm id — transport cache key (non-authoritative)
+}
+
 // FinalityLedger is the committed, append-only prefix of finalized history — an
 // immutable VALUE. It is never mutated in place; Finalize returns a NEW one.
 //
-// tip/height name the head of finalized history (avalanchego's
-// lastAcceptedID/lastAcceptedHeight — the committed lower bound); byHeight indexes
-// every finalized height so a re-finalize of any past height with a different block
-// is caught (α-of-K equivocation evidence). All fields are unexported and read-only
-// after construction: the projections (Tip/Height/At) are the only outside view.
+// THE CERTIFIED FRONTIER vs THE RECOVERY HINT (the incident-1082814 durable rule).
+// The ledger separates two notions that the pre-fix code fatally conflated:
+//
+//   - The CERTIFIED frontier (tip/canonical/height/set + byHeight) advances ONLY
+//     by folding a verified quorum cert (or the bootstrap frontier-trust path).
+//     byHeight indexes the CANONICAL commitment finalized at each height; a second
+//     cert for a DIFFERENT canonical id at an already-certified height is the ONLY
+//     thing that is equivocation. Two outer envelopes wrapping the SAME canonical
+//     block are duplicates, never a fork.
+//   - The recovery HINT (hint/hintHeight/hasHint) is seeded from vm.LastAccepted on
+//     boot/import. It is NON-AUTHORITATIVE: it never registers as finalized height,
+//     never enters byHeight, and can NEVER trigger equivocation. It is a build
+//     anchor only — "where to build next" until a real cert arrives. A cert at the
+//     hint's height with a different canonical id simply seeds certified history;
+//     the wrong local guess is silently superseded by network truth.
+//
+// All fields are unexported and read-only after construction; the projections
+// (CertifiedTip/Height/At/BuildAnchor) are the only outside view.
 type FinalityLedger struct {
-	tip      ids.ID            // head of finalized history (committed lower bound)
-	height   uint64            // height of tip
-	set      bool              // false until the first block is finalized
-	byHeight map[uint64]ids.ID // every finalized height -> its block (equivocation index)
+	// Certified frontier — advanced ONLY by a verified QC fold (or bootstrap
+	// frontier-trust). `tip` is the OUTER envelope id of the certified head (the
+	// join point the ancestry walk seeks in the transport DAG); `canonical` is its
+	// canonical commitment.
+	tip       ids.ID
+	canonical ids.ID
+	height    uint64
+	set       bool // false until the first CERT (or bootstrap) finalizes
+	byHeight  map[uint64]finalizedEntry
+
+	// Recovery hint — from vm.LastAccepted. Non-authoritative build anchor only.
+	hint       ids.ID // outer id to build on until a cert finalizes
+	hintHeight uint64
+	hasHint    bool
 }
 
-// Tip is the head of finalized history (ids.Empty before the first finalize).
+// Tip is the OUTER envelope id of the certified head (ids.Empty before the first
+// cert). This is the true finalized tip — backed by a QC. The recovery hint is NOT
+// returned here (use BuildAnchor for the build view).
 func (l FinalityLedger) Tip() ids.ID { return l.tip }
 
-// Height returns the finalized height and whether anything is finalized yet.
+// CanonicalTip is the canonical execution commitment of the certified head
+// (ids.Empty before the first cert).
+func (l FinalityLedger) CanonicalTip() ids.ID { return l.canonical }
+
+// Height returns the CERTIFIED finalized height and whether any cert has
+// finalized yet. The recovery hint does NOT count: a hint-only ledger returns
+// (0,false), so the finality height gate and equivocation index see no finalized
+// height until a real cert exists.
 func (l FinalityLedger) Height() (uint64, bool) { return l.height, l.set }
 
-// At returns the block finalized at height, if any (equivocation evidence lookup).
+// At returns the CANONICAL commitment finalized at height, if a CERTIFIED entry
+// exists there (equivocation evidence lookup). Hints are never returned.
 func (l FinalityLedger) At(height uint64) (ids.ID, bool) {
-	id, ok := l.byHeight[height]
-	return id, ok
+	e, ok := l.byHeight[height]
+	if !ok {
+		return ids.Empty, false
+	}
+	return e.canonical, true
+}
+
+// EnvelopeAt returns the outer transport id finalized at height (for serving /
+// diagnostics), if a certified entry exists there.
+func (l FinalityLedger) EnvelopeAt(height uint64) (ids.ID, bool) {
+	e, ok := l.byHeight[height]
+	if !ok {
+		return ids.Empty, false
+	}
+	return e.envelope, true
+}
+
+// BuildAnchor returns the outer id the VM should build/prefer on, and whether any
+// anchor exists. It is the HIGHER of {certified tip, recovery hint}: the certified
+// tip normally, but a forward recovery hint (vm.LastAccepted above the certified
+// height — e.g. a state-sync import) wins so the VM builds where the node actually
+// has state. This is a BUILD concern (transport), strictly decoupled from the
+// finality Height() — advancing the build anchor past the certified tip touches no
+// finality decision (a hint can never finalize), so it affects only liveness.
+func (l FinalityLedger) BuildAnchor() (ids.ID, bool) {
+	switch {
+	case l.set && l.hasHint:
+		if l.hintHeight > l.height {
+			return l.hint, true
+		}
+		return l.tip, true
+	case l.set:
+		return l.tip, true
+	case l.hasHint:
+		return l.hint, true
+	default:
+		return ids.Empty, false
+	}
 }
 
 // Ancestry is the READ-ONLY view of the preference DAG the fold needs. The
@@ -95,19 +173,28 @@ func (l FinalityLedger) At(height uint64) (ids.ID, bool) {
 // Finalize NEVER mutates the DAG — it reads ancestry to prove the certified path and
 // to collect the losing-sibling subtrees to prune.
 type Ancestry interface {
-	// Parent returns id's parent and id's OWN height; ok is false if id is untracked.
-	Parent(id ids.ID) (parent ids.ID, height uint64, ok bool)
+	// Parent returns id's OUTER parent, id's OWN height, and id's CANONICAL execution
+	// commitment; ok is false if id is untracked. The canonical id is what the
+	// per-height equivocation index records for an intermediate catch-up-path block.
+	Parent(id ids.ID) (parent ids.ID, height uint64, canonical ids.ID, ok bool)
 	// Children returns the ids of every tracked block whose parent is id.
 	Children(id ids.ID) []ids.ID
 }
 
 // Cert is the minimal finality subject — the block a quorum certificate selects,
 // decoupled from the wire VerifiedQuorumCert. Finality is "fold a Cert into the
-// ledger". Parent is ids.Empty only for the genesis / first finalize.
+// ledger".
+//
+// Block/Parent are the OUTER transport ids (used to walk the transport DAG and as
+// the VM accept target); Canonical is the inner execution commitment — the
+// AUTHORITATIVE finality identity the fold keys equivocation/idempotency on. For a
+// non-wrapped block Canonical == Block. Parent is ids.Empty only for the genesis /
+// first finalize.
 type Cert struct {
-	Block  ids.ID
-	Parent ids.ID
-	Height uint64
+	Block     ids.ID
+	Parent    ids.ID
+	Height    uint64
+	Canonical ids.ID
 }
 
 // Plan is what Finalize decides and the engine applies to the VM and DAG. It mirrors
@@ -128,28 +215,48 @@ type Plan struct {
 // unchanged (the caller assigns nothing). On success it returns the advanced ledger
 // (a fresh value) and the plan the engine applies.
 //
-// It enforces (ported verbatim from the prior finalizeBranchLocked):
+// It enforces:
 //
-//	(a) ONE finalized block per height. The same block already finalized here is an
-//	    idempotent no-op; a DIFFERENT block at an already-finalized height is
-//	    equivocation → ErrHeightAlreadyFinalized.
+//	(a) ONE CANONICAL commitment finalized per height. Keyed on the inner execution
+//	    commitment (cert.Canonical), NOT the outer envelope: the SAME canonical id
+//	    already finalized here is an idempotent no-op regardless of which envelope the
+//	    cert names (a duplicate alias — the incident-1082814 case); a DIFFERENT
+//	    canonical id at an already-finalized height is equivocation →
+//	    ErrHeightAlreadyFinalized.
 //	(b) the certified block must DESCEND from the finalized tip via a tracked,
 //	    contiguous ancestry: a non-tip ancestor at/below the finalized height →
 //	    ErrConflictsWithFinalizedBranch; an untracked ancestor → ErrAncestorNotTracked
 //	    (DEFER, behind); a height gap / malformed linkage → ErrNonMonotonicFinalizedHeight.
 func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan, error) {
-	// (a) idempotent / equivocation at the target height.
-	if existing, ok := led.byHeight[cert.Height]; ok {
-		if existing == cert.Block {
-			return led, Plan{}, nil // this exact block already finalized here — no-op
-		}
-		return led, Plan{}, fmt.Errorf("%w: height %d already finalized %s, refused %s",
-			ErrHeightAlreadyFinalized, cert.Height, existing, cert.Block)
+	// The AUTHORITATIVE finality identity is the canonical commitment, never the
+	// outer envelope. A cert that omits it (canonical == Empty) is degenerate; fall
+	// back to the outer id so a non-wrapped chain (outer == canonical) is unchanged.
+	canonical := cert.Canonical
+	if canonical == ids.Empty {
+		canonical = cert.Block
 	}
 
-	// First finalize seeds the ledger — no prior tip to extend or reorg.
+	// (a) idempotent / equivocation at the target height — keyed on the CANONICAL
+	// commitment. byHeight holds CERTIFIED entries only (hints never enter it), so a
+	// hit here is always a prior QC-backed finalization.
+	if existing, ok := led.byHeight[cert.Height]; ok {
+		if existing.canonical == canonical {
+			// SAME inner block already certified here — a no-op regardless of which
+			// outer envelope this cert names (duplicate alias, NOT a fork).
+			return led, Plan{}, nil
+		}
+		// A DIFFERENT canonical commitment is already CERTIFIED at this height: two
+		// valid certs select different execution blocks at one height — the real fork.
+		return led, Plan{}, fmt.Errorf("%w: height %d already finalized canonical %s (envelope %s), refused canonical %s (envelope %s)",
+			ErrHeightAlreadyFinalized, cert.Height, existing.canonical, existing.envelope, canonical, cert.Block)
+	}
+
+	// First CERT finalize seeds certified history — no prior certified tip to
+	// extend or reorg. The recovery hint (if any) is non-authoritative and is simply
+	// superseded here: a cert at the hint's height, even for a different canonical id
+	// than the hint guessed, finalizes cleanly (the hint never blocks a cert).
 	if !led.set {
-		return seedLedger(cert.Block, cert.Height), Plan{Accept: []ids.ID{cert.Block}}, nil
+		return seedLedger(cert.Block, canonical, cert.Height), Plan{Accept: []ids.ID{cert.Block}}, nil
 	}
 
 	// Below/at the frontier with no record for this height → stale or non-monotonic.
@@ -167,13 +274,15 @@ func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan
 	}
 
 	// Build the NEXT ledger by COPY (never mutate the input map) and the plan: Accept
-	// the path ascending, Reject every losing-sibling subtree along it.
+	// the path ascending, Reject every losing-sibling subtree along it. byHeight
+	// records the CANONICAL commitment of each step (the authoritative finality id).
 	next := led.clone()
 	var plan Plan
 	for _, s := range path {
 		plan.Reject = append(plan.Reject, losingSubtrees(s.id, s.parentID, dag)...)
-		next.byHeight[s.height] = s.id
+		next.byHeight[s.height] = finalizedEntry{canonical: s.canonical, envelope: s.id}
 		next.tip = s.id
+		next.canonical = s.canonical
 		next.height = s.height
 		plan.Accept = append(plan.Accept, s.id)
 	}
@@ -181,14 +290,31 @@ func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan
 	return next, plan, nil
 }
 
-// seedLedger constructs the first ledger value from the seed (id, height).
-func seedLedger(id ids.ID, height uint64) FinalityLedger {
+// seedLedger constructs the first CERTIFIED ledger value from the seed (outer
+// envelope id, canonical commitment, height). Clears any recovery hint — certified
+// history now dominates the build anchor.
+func seedLedger(envelope, canonical ids.ID, height uint64) FinalityLedger {
 	return FinalityLedger{
-		tip:      id,
-		height:   height,
-		set:      true,
-		byHeight: map[uint64]ids.ID{height: id},
+		tip:       envelope,
+		canonical: canonical,
+		height:    height,
+		set:       true,
+		byHeight:  map[uint64]finalizedEntry{height: {canonical: canonical, envelope: envelope}},
 	}
+}
+
+// withHint returns a COPY of the ledger with the recovery-hint fields set to
+// (envelope, height), PRESERVING any certified frontier. The hint is
+// NON-AUTHORITATIVE: it sets no certified state (Height stays (0,false) until a
+// cert; byHeight is untouched), so equivocation can never fire from it. It is a
+// build anchor only. A hint must never wipe a QC-backed frontier — hence the copy
+// rather than a fresh value.
+func (l FinalityLedger) withHint(envelope ids.ID, height uint64) FinalityLedger {
+	next := l.clone()
+	next.hint = envelope
+	next.hintHeight = height
+	next.hasHint = true
+	return next
 }
 
 // clone returns a deep copy of the ledger (a fresh byHeight map) so the fold never
@@ -196,11 +322,14 @@ func seedLedger(id ids.ID, height uint64) FinalityLedger {
 // equivocationWindow entries (pruneBelowWindow), so this copy is O(window) — constant
 // cost at any chain height — never O(chain height).
 func (l FinalityLedger) clone() FinalityLedger {
-	bh := make(map[uint64]ids.ID, len(l.byHeight)+1)
-	for h, id := range l.byHeight {
-		bh[h] = id
+	bh := make(map[uint64]finalizedEntry, len(l.byHeight)+1)
+	for h, e := range l.byHeight {
+		bh[h] = e
 	}
-	return FinalityLedger{tip: l.tip, height: l.height, set: l.set, byHeight: bh}
+	return FinalityLedger{
+		tip: l.tip, canonical: l.canonical, height: l.height, set: l.set, byHeight: bh,
+		hint: l.hint, hintHeight: l.hintHeight, hasHint: l.hasHint,
+	}
 }
 
 // equivocationWindow bounds how many heights below the finalized tip the per-height
@@ -229,21 +358,27 @@ func (l *FinalityLedger) pruneBelowWindow() {
 
 // step is one block on the certified path from the finalized tip to the cert target.
 type step struct {
-	id       ids.ID
-	height   uint64
-	parentID ids.ID
+	id        ids.ID
+	height    uint64
+	parentID  ids.ID
+	canonical ids.ID // canonical commitment of this step (recorded in byHeight)
 }
 
 // pathFromTip returns the contiguous ancestry finalizedTip → target in ASCENDING
 // height order, by walking target's parent links through the DAG. Errors distinguish
 // the three non-extending cases (conflict / behind / gap). Caller guarantees
-// cert.Height > led.height and led.set.
+// cert.Height > led.height and led.set. The top step's canonical comes from the
+// cert; intermediate steps' canonical come from the tracked DAG.
 func pathFromTip(led FinalityLedger, cert Cert, dag Ancestry) ([]step, error) {
-	steps := []step{{id: cert.Block, height: cert.Height, parentID: cert.Parent}}
+	topCanonical := cert.Canonical
+	if topCanonical == ids.Empty {
+		topCanonical = cert.Block
+	}
+	steps := []step{{id: cert.Block, height: cert.Height, parentID: cert.Parent, canonical: topCanonical}}
 	cur := cert.Parent
 	childHeight := cert.Height
 	for cur != led.tip {
-		parent, curHeight, ok := dag.Parent(cur)
+		parent, curHeight, curCanonical, ok := dag.Parent(cur)
 		if !ok {
 			// The path to the frontier is not fully tracked — the node is behind.
 			// Fail-closed DEFER: never finalize on a path we cannot prove.
@@ -261,7 +396,11 @@ func pathFromTip(led FinalityLedger, cert Cert, dag Ancestry) ([]step, error) {
 			return nil, fmt.Errorf("%w: %s ancestry reaches %s (height %d) not finalized tip %s",
 				ErrConflictsWithFinalizedBranch, cert.Block, cur, curHeight, led.tip)
 		}
-		steps = append(steps, step{id: cur, height: curHeight, parentID: parent})
+		stepCanonical := curCanonical
+		if stepCanonical == ids.Empty {
+			stepCanonical = cur
+		}
+		steps = append(steps, step{id: cur, height: curHeight, parentID: parent, canonical: stepCanonical})
 		cur = parent
 		childHeight = curHeight
 	}

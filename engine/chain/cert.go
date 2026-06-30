@@ -56,14 +56,43 @@ import (
 // certificate. Bound into the canonical vote message and the cert digest so a
 // version bump is non-malleable.
 //
-// v2 adds VotePosition.ValidatorSetRoot to BOTH the canonical signed message and
-// the wire codec (the MEDIUM epoch-binding fix). This is a deliberate
-// forward-only break: a v1 signature (no set-root) and a v2 signature (with
-// set-root) are over different messages and carry different versions, so a
-// mixed-version cert fails clause-1 (version) and clause-6 (signature) loudly
-// rather than silently mis-parsing. The whole validator set upgrades together in
-// one release cascade; there is no partial-upgrade finality interop.
-const QuorumCertVersion uint16 = 2
+// Wire v2 added VotePosition.ValidatorSetRoot (the MEDIUM epoch-binding fix).
+//
+// Wire v3 is the design's "QCv2" — the CANONICAL-COMMITMENT cert (incident
+// 1082814 durable fix). It makes the inner execution commitment the PRIMARY
+// consensus object: the signed message binds {canonical_block_id,
+// parent_canonical_id, execution_state_root, payload_root} and DROPS the outer
+// proposervm envelope id from the signature entirely. The outer id is demoted to
+// a non-authoritative transport cache key (carried in the wire for block lookup,
+// excluded from the signed message and from every finality/equivocation
+// decision). Two outer envelopes that wrap the SAME inner block therefore produce
+// IDENTICAL signed messages — their votes interoperate and their certs are
+// duplicates (harmless aliases), never a fork.
+//
+// This is a deliberate forward-only break: a v2 signature (outer-id finality) and
+// a v3 signature (canonical finality) are over different messages and carry
+// different versions, so a mixed-version cert fails clause-1 (version) and
+// clause-6 (signature) loudly rather than silently mis-parsing. There is no partial
+// QCv1→QCv2 interop and no read-only legacy window.
+//
+// ROLL DISCIPLINE (M2 — fail-safe, but NOT fail-live across the version skew).
+// Because the version is bound into the signed message, a v2 cert and a v3 cert can
+// NEVER be confused and NEVER fork — cross-version verification fails closed. But
+// fail-CLOSED means finality STALLS while fewer than α validators run v3: v3 nodes
+// reject v2 certs (wrong version) and vice-versa, so no α-quorum of one version
+// forms during a mixed window, and any v2 node still alive keeps the old outer-id
+// equivocation-halt behavior. Therefore:
+//
+//   1. Cut ≥ α validators per net to v3 ATOMICALLY (≥4 of 5) — the same coordinated
+//      all-validator roll the incident recovery already performs. A trickle upgrade
+//      that straddles α on each version halts finality on BOTH.
+//   2. The v2 baseline image MUST already carry the converge-on-A seed-recovery (the
+//      live recovery on v1.31.x), so the brief mixed window is not itself halt-prone
+//      before the v3 cut completes.
+//
+// We control all 5 validators per net and roll them together, so the skew window is
+// a single coordinated restart, not a staged migration.
+const QuorumCertVersion uint16 = 3
 
 // QCType names a certificate's semantic role so a signature gathered for one
 // role can never be replayed as another. The chain engine finalizes blocks, so
@@ -117,16 +146,54 @@ type SignedVote struct {
 	Signature []byte
 }
 
-// VotePosition is the consensus position a vote (and a cert) binds to. Every
-// axis here is folded into the canonical signed message, so a signature for one
-// position can never be replayed at another (height/round/block/parent/chain/
-// validator-set epoch).
+// VotePosition is the consensus position a vote (and a cert) binds to.
+//
+// THE CANONICAL/TRANSPORT SPLIT (the incident-1082814 durable fix). The position
+// carries TWO identities for the block:
+//
+//   - the CANONICAL execution identity — {CanonicalID, ParentCanonicalID,
+//     ExecutionStateRoot, PayloadRoot}. This is the PRIMARY consensus object: the
+//     inner execution block commitment that finality, equivocation, ancestry, and
+//     idempotency are ALL defined over. It is folded into the canonical signed
+//     message, so a signature is bound to the exact execution result.
+//   - the TRANSPORT/envelope identity — {BlockID, ParentID}, the outer proposervm
+//     wrapper ids. These are a CACHE KEY for block lookup/gossip only. They are
+//     DELIBERATELY EXCLUDED from the signed message (CanonicalVoteMessage) and from
+//     every finality decision, so two different outer envelopes wrapping the SAME
+//     inner block sign the SAME message and are duplicates, never a fork.
+//
+// Every CANONICAL axis (plus chain/height/round/set-root) is folded into the
+// signed message; a signature for one canonical position can never be replayed at
+// another. The transport ids are not signed — they are non-authoritative.
 type VotePosition struct {
-	ChainID  ids.ID
-	Height   uint64
-	Round    uint32
+	ChainID ids.ID
+	Height  uint64
+	Round   uint32
+
+	// BlockID / ParentID are the OUTER proposervm envelope ids — the TRANSPORT
+	// cache keys (block lookup, gossip, DAG tracking). NON-AUTHORITATIVE: excluded
+	// from the signed message and from finality/equivocation. For a block that is
+	// not proposervm-wrapped at the engine boundary, BlockID == CanonicalID (the
+	// scheme degrades to outer==canonical and behaves exactly as before this split).
 	BlockID  ids.ID
 	ParentID ids.ID
+
+	// CanonicalID is the inner EXECUTION block commitment — THE primary consensus
+	// object. Finality certifies THIS; the per-height equivocation index keys on
+	// THIS; two certs at one height conflict iff THIS differs. It is bound into the
+	// signed message. For a non-wrapped block it equals BlockID.
+	CanonicalID ids.ID
+	// ParentCanonicalID is the inner execution commitment of the parent — binds the
+	// certified block into the canonical ancestry. Bound into the signed message.
+	ParentCanonicalID ids.ID
+	// ExecutionStateRoot is the post-execution state root the block commits to.
+	// Bound into the signed message so a cert pins the exact execution result (a
+	// block claiming the same canonical id but a different state root would be a
+	// distinct signed message). ids.Empty when the VM does not expose one.
+	ExecutionStateRoot ids.ID
+	// PayloadRoot is the transaction/payload root (tx_root) the block commits to.
+	// Bound into the signed message. ids.Empty when the VM does not expose one.
+	PayloadRoot ids.ID
 	// ValidatorSetRoot binds the cert to the EXACT weighted validator set the
 	// vote was cast under (the MEDIUM fix). It is a commitment to the active
 	// set+weights at this position's height/epoch — mirroring quasar's
@@ -165,22 +232,36 @@ func CanonicalVoteMessage(pos VotePosition) []byte {
 // against (pos,true) and reject votes against (pos,false); the cert only ever
 // uses (pos,true).
 //
+// THE MESSAGE BINDS THE CANONICAL EXECUTION IDENTITY, NOT THE OUTER ENVELOPE
+// (the incident-1082814 fix). The outer proposervm ids (pos.BlockID/ParentID)
+// are NOT in this message — they are transport cache keys. The signed identity is
+// the inner execution commitment {canonical_id, parent_canonical_id,
+// execution_state_root, payload_root}. Consequence: two validators that executed
+// the SAME inner block sign byte-identical messages even if they received
+// different outer envelopes, so their votes interoperate and a cert assembled
+// from them verifies on every node. A locally-derived wrapper id can NEVER reach
+// a signature.
+//
 // Layout (big-endian, fixed-width, length-free because every field is fixed):
 //
-//	"LUX/chain/vote/v1\x00"   domain tag (NUL-terminated, role separator)
+//	"LUX/chain/vote/v2\x00"   domain tag (NUL-terminated; v2 == canonical-commitment)
 //	version:2  qc_type:1
-//	chain_id:32  height:8  round:4  block_id:32  parent_id:32
-//	validator_set_root:32    (epoch/weighted-set commitment; Empty = unbound)
+//	chain_id:32  height:8  round:4
+//	canonical_block_id:32      <- PRIMARY consensus object (inner execution commitment)
+//	parent_canonical_id:32
+//	execution_state_root:32
+//	payload_root:32            <- tx_root
+//	validator_set_root:32      (epoch/weighted-set commitment; Empty = unbound)
 //	accept:1   (0x01 accept | 0x00 reject)
 //
 // validator_set_root is bound BEFORE the accept byte so a vote is committed to
 // the exact weighted validator set it was cast under (the MEDIUM fix): a cert
 // gathered under set-root R cannot be re-verified as certifying under a
-// different set R' — every signature was over R, so a message rebuilt with R'
-// fails verification.
+// different set R'. The domain tag is bumped v1→v2 so a canonical-commitment
+// signature can never be confused with a legacy outer-id signature.
 func canonicalVoteMessageFor(pos VotePosition, accept bool) []byte {
-	const tag = "LUX/chain/vote/v1\x00"
-	buf := make([]byte, 0, len(tag)+2+1+32+8+4+32+32+32+1)
+	const tag = "LUX/chain/vote/v2\x00"
+	buf := make([]byte, 0, len(tag)+2+1+32+8+4+32+32+32+32+32+1)
 	buf = append(buf, tag...)
 	var u16 [2]byte
 	binary.BigEndian.PutUint16(u16[:], QuorumCertVersion)
@@ -193,8 +274,26 @@ func canonicalVoteMessageFor(pos VotePosition, accept bool) []byte {
 	var u32 [4]byte
 	binary.BigEndian.PutUint32(u32[:], pos.Round)
 	buf = append(buf, u32[:]...)
-	buf = append(buf, pos.BlockID[:]...)
-	buf = append(buf, pos.ParentID[:]...)
+	// CANONICAL execution identity — the signed primary object. Outer ids omitted.
+	// FALLBACK (the non-wrapped degrade, in ONE place): a position whose canonical
+	// fields are unset (a bare/in-process VM block with no inner/outer split, or a
+	// fixed-set chain) binds its OUTER id under the canonical slot — byte-identical to
+	// the pre-canonical message for that block. A proposervm-wrapped block carries a
+	// distinct CanonicalID and binds THAT. Resolving the fallback here (not at the
+	// position-build sites) guarantees every producer of a position — engine or test —
+	// signs/verifies the SAME bytes for the same block.
+	canonicalID := pos.CanonicalID
+	if canonicalID == ids.Empty {
+		canonicalID = pos.BlockID
+	}
+	parentCanonicalID := pos.ParentCanonicalID
+	if parentCanonicalID == ids.Empty {
+		parentCanonicalID = pos.ParentID
+	}
+	buf = append(buf, canonicalID[:]...)
+	buf = append(buf, parentCanonicalID[:]...)
+	buf = append(buf, pos.ExecutionStateRoot[:]...)
+	buf = append(buf, pos.PayloadRoot[:]...)
 	buf = append(buf, pos.ValidatorSetRoot[:]...)
 	if accept {
 		buf = append(buf, 0x01)
