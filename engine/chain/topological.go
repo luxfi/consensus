@@ -232,7 +232,11 @@ func (c *ChainConsensus) IsRejected(blockID ids.ID) bool {
 	return block.rejected
 }
 
-// Preference returns current preferred block (avalanchego Topological.Preference).
+// Preference returns the FINALITY preference — the cert-selected/finalized tip
+// (avalanchego Topological.Preference). It stays at the finalized tip until a
+// quorum cert selects a child; a mere build-tip move does NOT advance it. This is
+// the finality-reporting concern and MUST NOT be conflated with the build target
+// (see PreferredBuildTip) — the conformance suite pins this contract.
 func (c *ChainConsensus) Preference() ids.ID {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -249,6 +253,72 @@ func (c *ChainConsensus) Preference() ids.ID {
 		return tip
 	}
 	return ids.Empty
+}
+
+// PreferredBuildTip returns the deterministic BUILD target — the deepest VERIFIED
+// block extending the finalized chain (NOT merely the finalized tip). The node
+// steers the VM to build its next block on THIS, so when a verified-but-unfinalized
+// block exists at height H every validator builds H+1 ON TOP of it and they
+// CONVERGE — instead of each building a competing sibling at height H, which splits
+// the α-of-K vote so no single block ever reaches the cert and the chain HALTS the
+// moment one proposer is down (the down-leader liveness bug). Sibling ties break on
+// lowest block ID so every node with the same block tree picks the SAME chain.
+//
+// This is the DECOMPLECTED build concern (separate from the finality Preference):
+// it is a BUILD hint only — finality stays governed exclusively by the α-of-K cert
+// folded into c.ledger (applyCertLocked), so advancing the build target past the
+// finalized tip touches no finality decision and cannot affect safety, only
+// liveness — exactly as avalanchego's snowman steers the VM to its preferred
+// non-finalized tip.
+func (c *ChainConsensus) PreferredBuildTip() ids.ID {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.buildTipLocked()
+}
+
+// buildTipLocked descends from the finalized tip (or, before the first finalize,
+// the preliminary preference, else the lowest-ID tracked tip) through VERIFIED,
+// non-rejected children — choosing the lowest-ID child at each level — and returns
+// the first block with no such child: the deterministic build tip. The descent is
+// bounded by the tracked-block count so a malformed tree can never spin forever.
+// Caller holds c.mu.
+func (c *ChainConsensus) buildTipLocked() ids.ID {
+	var cur ids.ID
+	switch {
+	case c.ledger.set:
+		cur = c.ledger.tip
+	case c.preference != ids.Empty:
+		cur = c.preference
+	default:
+		// No finalized head and no preliminary preference yet: anchor on the
+		// lowest-ID tracked tip so the choice is deterministic across nodes.
+		for id := range c.tips {
+			if cur == ids.Empty || id.Compare(cur) < 0 {
+				cur = id
+			}
+		}
+		if cur == ids.Empty {
+			return ids.Empty
+		}
+	}
+	anc := c.ancestry()
+	for range c.blocks {
+		best := ids.Empty
+		for _, ch := range anc.Children(cur) {
+			b, ok := c.blocks[ch]
+			if !ok || b.rejected {
+				continue
+			}
+			if best == ids.Empty || ch.Compare(best) < 0 {
+				best = ch
+			}
+		}
+		if best == ids.Empty {
+			break // cur has no verified child — it is the build tip
+		}
+		cur = best
+	}
+	return cur
 }
 
 // GetBlock returns a block by ID
