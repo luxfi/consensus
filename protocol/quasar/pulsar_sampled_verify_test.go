@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/luxfi/ids"
-	pulsarwire "github.com/luxfi/pulsar/ref/go/pkg/pulsar"
+	pulsarwire "github.com/luxfi/pulsar/pkg/pulsar"
 )
 
 // mapResolver is a test CommitteeKeyResolver backed by a map. A committee with

@@ -32,7 +32,7 @@ import (
 
 	"github.com/luxfi/crypto/bls"
 	magnetar "github.com/luxfi/magnetar/ref/go/pkg/magnetar"
-	pulsarwire "github.com/luxfi/pulsar/ref/go/pkg/pulsar"
+	pulsarwire "github.com/luxfi/pulsar/pkg/pulsar"
 	coronaThreshold "github.com/luxfi/threshold/protocols/corona"
 	pulsar "github.com/luxfi/threshold/protocols/pulsar"
 )
