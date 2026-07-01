@@ -151,12 +151,21 @@ type testValidatorSet struct {
 	keys map[ids.NodeID]ed25519.PrivateKey
 	pub  map[ids.NodeID]ed25519.PublicKey
 	ids  []ids.NodeID
+
+	// committed models each honest validator running the fixed engine's per-height
+	// vote-once discipline (reserveSlotForSign): keyed (validatorIndex,height) →
+	// the canonical it first signed. Asking a validator to sign a DIFFERENT block at
+	// a height it already signed returns an unsigned (refused) vote — an honest
+	// validator never equivocates. So a real cross-node fork needs ≥ intersection
+	// (≥3 of 5 here) ACTUAL Byzantine equivocators — f ≥ n/3, beyond the guarantee.
+	committed map[[2]uint64]ids.ID
 }
 
 func newTestValidatorSet(n int) *testValidatorSet {
 	s := &testValidatorSet{
-		keys: make(map[ids.NodeID]ed25519.PrivateKey, n),
-		pub:  make(map[ids.NodeID]ed25519.PublicKey, n),
+		keys:      make(map[ids.NodeID]ed25519.PrivateKey, n),
+		pub:       make(map[ids.NodeID]ed25519.PublicKey, n),
+		committed: make(map[[2]uint64]ids.ID),
 	}
 	for i := 0; i < n; i++ {
 		nodeID := ids.GenerateTestNodeID()
@@ -228,8 +237,24 @@ func (s *testValidatorSet) sign(i int, pos VotePosition) []byte {
 	return ed25519.Sign(priv, CanonicalVoteMessage(pos))
 }
 
-// signedVote builds validator i's signed accept Vote for a position.
+// signedVote builds validator i's signed accept Vote for a position, HONORING the
+// per-validator vote-once discipline: an honest validator signs at most one canonical
+// per height. If validator i was already asked to sign a DIFFERENT canonical at this
+// height, it REFUSES — returns an unsigned vote (empty signature) that fails
+// verification and is never counted, exactly as a fixed-engine honest validator would.
+// The same canonical is idempotent. This makes the test set model reality post-fix, so
+// a cross-node fork can only be forced by ACTUAL Byzantine equivocators (f ≥ n/3).
 func (s *testValidatorSet) signedVote(i int, pos VotePosition) Vote {
+	key := [2]uint64{uint64(i), pos.Height}
+	canonical := slotCanonical(pos)
+	s.mu.Lock()
+	if bound, ok := s.committed[key]; ok && bound != canonical {
+		s.mu.Unlock()
+		// honest validator refuses to equivocate: unsigned vote (won't verify).
+		return Vote{BlockID: pos.BlockID, NodeID: s.ids[i], Accept: true, SignedAt: time.Now(), ParentID: pos.ParentID, Round: pos.Round}
+	}
+	s.committed[key] = canonical
+	s.mu.Unlock()
 	return Vote{
 		BlockID:   pos.BlockID,
 		NodeID:    s.ids[i],

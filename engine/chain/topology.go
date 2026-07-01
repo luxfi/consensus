@@ -362,6 +362,11 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	}
 	rt.fastFollowMu.Unlock()
 
+	// A height is now decided by an α-of-K cert; its equivocation guard can never
+	// again legitimately fire, so drop it (keeps committedSlot bounded to the live
+	// unfinalized window).
+	rt.Transitive.pruneCommittedSlotsBelow(cert.Position.Height)
+
 	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Info("finalized block via α-of-K quorum cert",
 			log.Stringer("blockID", cert.Position.BlockID),
