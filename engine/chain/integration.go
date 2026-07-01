@@ -776,6 +776,17 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 		return
 	}
 
+	// NON-EQUIVOCATION (fork guard): a follower must NOT sign a conflicting sibling
+	// at a height it has already committed to — that is the cross-node fork (two
+	// valid siblings each gathering a ⅔-stake cert). Same canonical ⇒ idempotent.
+	if !rt.Transitive.reserveSlotForSign(pos.Height, slotCanonical(pos)) {
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("vote-once: follower refusing conflicting sibling at an already-committed height",
+				log.Uint64("height", pos.Height), log.Stringer("blockID", blockID))
+		}
+		return
+	}
+
 	// Sign our accept vote over the canonical position message.
 	message := CanonicalVoteMessage(pos)
 	sig, err := signer.SignVote(message)
