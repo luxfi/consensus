@@ -81,6 +81,17 @@ type Parameters struct {
 	RoundTO               time.Duration // For compatibility
 	GasLimit              uint64        // Per-block gas limit (0 = use chain default)
 
+	// ConvergenceSettleWindow is how long a contested fork slot is observed (since the
+	// last competing sibling was tracked) before this node casts its ONE per-height
+	// accept signature for the converged (lowest-canonical) winner. It MUST exceed the
+	// sibling-gossip latency of the deployment: a settle shorter than gossip lets a node
+	// bind its vote to an incomplete sibling set (a non-global-minimum block), which —
+	// under the height-only vote-once rule — is an UNRECOVERABLE vote split. It is
+	// decoupled from RoundTO on purpose so an operator can lengthen it for high-latency
+	// (WAN) validator sets WITHOUT slowing the round cadence. Zero ⇒ auto (RoundTO/2,
+	// clamped [150ms, 2s]); see Transitive.convergenceSettleWindow.
+	ConvergenceSettleWindow time.Duration
+
 	// PQMode selects which post-quantum signature paths the engine runs
 	// alongside BLS. Zero value (PQModeBLSOnly) preserves the classical
 	// fast path. See pq_mode.go for the full enum.

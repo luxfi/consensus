@@ -12,13 +12,73 @@ package chain
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/luxfi/ids"
 )
+
+// TestVoteGuard_LegacyMultiEpochFold proves the durable guard's UPGRADE path (N3): a
+// snapshot written by the OLD (height,epoch)-keyed build can hold MULTIPLE records at one
+// height (different epochs). The height-only decoder must FOLD them into the single height
+// slot and keep the LOWEST canonical — the fail-safe direction (refuse every sibling above
+// the min at that recovered contested height). This exercises the exact collision branch
+// in decodeVoteGuard that no test covered.
+func TestVoteGuard_LegacyMultiEpochFold(t *testing.T) {
+	// Two records at the SAME height 7 with DIFFERENT epochs and DIFFERENT canonicals —
+	// exactly what the buggy epoch-keyed build could persist.
+	epochA := ids.GenerateTestID()
+	epochB := ids.GenerateTestID()
+	hi := ids.ID{0xff} // a HIGH canonical
+	lo := ids.ID{0x01} // a LOW canonical (< hi) — the fold must keep THIS one
+	// Also a distinct height 9 (single record) to prove non-collision heights survive.
+	epochC := ids.GenerateTestID()
+	other := ids.GenerateTestID()
+
+	rec := func(h uint64, epoch, canon ids.ID) []byte {
+		var b []byte
+		var u64 [8]byte
+		binary.BigEndian.PutUint64(u64[:], h)
+		b = append(b, u64[:]...)
+		b = append(b, epoch[:]...)
+		b = append(b, canon[:]...)
+		return b
+	}
+	body := []byte(voteGuardMagic)
+	body = append(body, voteGuardVersion)
+	var cnt [4]byte
+	binary.BigEndian.PutUint32(cnt[:], 3)
+	body = append(body, cnt[:]...)
+	body = append(body, rec(7, epochA, hi)...) // higher canonical FIRST (order must not matter)
+	body = append(body, rec(7, epochB, lo)...) // lower canonical — must win the fold
+	body = append(body, rec(9, epochC, other)...)
+	var crc [4]byte
+	binary.BigEndian.PutUint32(crc[:], crc32.Checksum(body, voteGuardCRC))
+	raw := append(body, crc[:]...)
+
+	path := filepath.Join(t.TempDir(), "vote-guard")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	s, err := OpenVoteGuard(path)
+	if err != nil {
+		t.Fatalf("OpenVoteGuard on a legacy multi-epoch snapshot must succeed (fold, not fail): %v", err)
+	}
+	snap := s.Snapshot()
+	if len(snap) != 2 {
+		t.Fatalf("expected 2 folded height slots (7 and 9), got %d: %v", len(snap), snap)
+	}
+	if got := snap[SlotKey{Height: 7}]; got != lo {
+		t.Fatalf("fold collision at height 7 must keep the LOWEST canonical %s (fail-safe), got %s", lo, got)
+	}
+	if got := snap[SlotKey{Height: 9}]; got != other {
+		t.Fatalf("non-colliding height 9 must survive intact, got %s want %s", got, other)
+	}
+}
 
 // failingGuard is a VoteGuardStore whose durable write always fails — proves the
 // engine FAILS CLOSED (refuses the signature) and rolls back the in-memory binding.
