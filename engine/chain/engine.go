@@ -484,19 +484,27 @@ type Transitive struct {
 	chainID      ids.ID
 	nodeID       ids.NodeID
 
-	// committedSlot enforces the per-height NON-EQUIVOCATION safety rule (ported
-	// from consensus2 committed_slot_): this node signs an accept vote for AT MOST
-	// ONE canonical block per value-chain height. Signing two conflicting siblings
-	// at one height would place this node's stake in two conflicting ⅔-quorums and
-	// break the quorum-intersection argument that gives f<n/3 safety — the exact
-	// cross-node fork Red proved (two valid siblings each gathering a legit cert).
-	// Keyed height → bound canonical id: a second DIFFERENT canonical at a bound
-	// height is REFUSED (never signed); the SAME one is idempotent (safe re-solicit).
-	// Guarded by its own slotMu so BOTH signing sites can call it — recordOwnVoteLocked
-	// (under t.mu) and the follower path in followVerifiedBlock (t.mu released). Pruned
-	// below the finalized height (a finalized height can never legitimately re-sign).
+	// committedSlot enforces the per-(height,epoch) NON-EQUIVOCATION safety rule
+	// (ported from consensus2 committed_slot_, SlotKey={height,epoch}): this node
+	// signs an accept vote for AT MOST ONE canonical block per (value-chain height,
+	// validator-set epoch). Signing two conflicting siblings at one slot would place
+	// this node's stake in two conflicting ⅔-quorums and break the quorum-intersection
+	// argument that gives f<n/3 safety — the exact cross-node fork Red proved (two
+	// valid siblings each gathering a legit cert). Keyed SlotKey → bound canonical id:
+	// a second DIFFERENT canonical at a bound slot is REFUSED (never signed); the SAME
+	// one is idempotent (safe re-solicit). Guarded by its own slotMu so BOTH signing
+	// sites can call it — recordOwnVoteLocked (under t.mu) and the follower path in
+	// followVerifiedBlock (t.mu released). Pruned below the finalized height (a
+	// finalized height can never legitimately re-sign — pruneCommittedSlotsBelow, run
+	// from the sole finalizer acceptWithCertCore).
+	//
+	// voteGuard (optional) is the DURABLE backing (HIGH-1): every new binding is
+	// fsync'd BEFORE the vote is cast and reloaded on startup, so the guard's memory
+	// spans a crash/restart. nil = memory-only (verify-only nodes and tests; Start
+	// warns a signer that has none). See vote_guard.go.
 	slotMu        sync.Mutex
-	committedSlot map[uint64]ids.ID
+	committedSlot map[SlotKey]ids.ID
+	voteGuard     VoteGuardStore
 
 	// stakeSource (optional) makes finality STAKE-WEIGHTED instead of a raw voter
 	// count (HIGH-3). When set (a value/PoS chain with unequal stake), a cert is
@@ -684,7 +692,7 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		pendingBlocks:    make(map[ids.ID]*PendingBlock),
 		finalizedByCert:  make(map[ids.ID]struct{}),
 		certBytesByBlock: make(map[ids.ID][]byte),
-		committedSlot:    make(map[uint64]ids.ID),
+		committedSlot:    make(map[SlotKey]ids.ID),
 		catchupRequested: make(map[ids.ID]time.Time),
 		bufferedVotes:    make(map[ids.ID][]Vote),
 		voteRequests:     make(chan VoteRequest, cfg.VoteRequestBuffer),
@@ -730,6 +738,16 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 	// (K==1) needs no verifier: its own accept is the quorum.
 	if t.params.K > 1 && t.voteVerifier == nil {
 		return ErrQuorumVerifierRequired
+	}
+
+	// A signing validator SHOULD have a durable equivocation guard so a crash between
+	// signing and finalizing cannot forget a per-height binding and permit a fork
+	// (HIGH-1). Memory-only is correct for verify-only nodes and tests; in production
+	// the node wires WithVoteGuard. Warn (don't fail) so tests/dev keep working while
+	// the gap is visible.
+	if t.voteSigner != nil && t.voteGuard == nil {
+		t.log.Warn("vote-once: signing WITHOUT a durable equivocation guard — a crash between " +
+			"signing and finalizing may permit equivocation; wire WithVoteGuard in production")
 	}
 
 	t.ctx, t.cancel = context.WithCancel(ctx)
@@ -1794,10 +1812,12 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 		return
 	}
 	pos := t.blockPositionLocked(pending, blockID)
-	// NON-EQUIVOCATION (fork guard): refuse to sign a conflicting sibling at a height
-	// this node has already committed to. Idempotent for the same canonical block.
-	if !t.reserveSlotForSign(pos.Height, slotCanonical(pos)) {
-		t.log.Warn("vote-once: refusing to sign a conflicting sibling at an already-committed height",
+	// NON-EQUIVOCATION (fork guard): refuse to sign a conflicting sibling at a
+	// (height,epoch) this node has already committed to — and DURABLY record the
+	// binding before signing so a crash cannot forget it (HIGH-1). Idempotent for the
+	// same canonical block. epoch = the block's ValidatorSetRoot (Empty on a fixed set).
+	if !t.reserveSlotForSign(pos.Height, pos.ValidatorSetRoot, slotCanonical(pos)) {
+		t.log.Warn("vote-once: refusing to sign a conflicting sibling at an already-committed slot",
 			"height", pos.Height, "blockID", blockID)
 		return
 	}
@@ -1816,35 +1836,65 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 	})
 }
 
-// reserveSlotForSign enforces the per-height non-equivocation rule before this
-// node casts an accept signature. `canonical` is the block's inner execution
-// commitment (the id finality certifies). Returns true if signing is permitted:
-// the height is unbound (binds it now) or already bound to THIS canonical
-// (idempotent — a legitimate re-solicit of the same block). Returns FALSE if the
-// height is already bound to a DIFFERENT canonical — a conflicting sibling this
-// node must NEVER sign (the cross-node fork Red proved). Self-locking (slotMu) so
-// both signing sites — recordOwnVoteLocked (t.mu held) and the follower path in
-// followVerifiedBlock (t.mu released) — share the one guard without deadlock.
-func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
+// reserveSlotForSign enforces the per-(height,epoch) non-equivocation rule before
+// this node casts an accept signature, and DURABLY records the binding first so it
+// survives a crash (HIGH-1). `canonical` is the block's inner execution commitment
+// (the id finality certifies); `epoch` is the block's ValidatorSetRoot (Empty on a
+// fixed set → the slot degrades to height-only). Returns true if signing is
+// permitted: the slot is unbound (binds it now, AFTER the durable write commits) or
+// already bound to THIS canonical (idempotent — a legitimate re-solicit of the same
+// block, already durable). Returns FALSE if the slot is bound to a DIFFERENT
+// canonical — a conflicting sibling this node must NEVER sign (the cross-node fork
+// Red proved) — OR if the durable write FAILS (fail-closed: no memory of the
+// binding ⇒ no signature). Self-locking (slotMu) so both signing sites —
+// recordOwnVoteLocked (t.mu held) and the follower path in followVerifiedBlock
+// (t.mu released) — share the one guard without deadlock; the durable write also
+// runs under slotMu, so the fixed-name temp file is never contended.
+func (t *Transitive) reserveSlotForSign(height uint64, epoch ids.ID, canonical ids.ID) bool {
+	key := SlotKey{Height: height, Epoch: epoch}
 	t.slotMu.Lock()
 	defer t.slotMu.Unlock()
-	if bound, ok := t.committedSlot[height]; ok {
-		return bound == canonical // same block ⇒ idempotent; sibling ⇒ refuse
+	if bound, ok := t.committedSlot[key]; ok {
+		return bound == canonical // same block ⇒ idempotent (already durable); sibling ⇒ refuse
 	}
-	t.committedSlot[height] = canonical
+	// First binding at this slot. PERSIST it durably BEFORE permitting the signature —
+	// a crash after signing but before finalizing must not forget it. Mutate the map,
+	// snapshot it to stable storage, and ROLL BACK on failure so in-memory state stays
+	// consistent with what is durable and we FAIL CLOSED (return false ⇒ no signature).
+	t.committedSlot[key] = canonical
+	if t.voteGuard != nil {
+		if err := t.voteGuard.Persist(t.committedSlot); err != nil {
+			delete(t.committedSlot, key)
+			t.log.Error("vote-once: durable equivocation-guard write FAILED — refusing to sign (fail-closed)",
+				"height", height, "epoch", epoch, "error", err)
+			return false
+		}
+	}
 	return true
 }
 
 // pruneCommittedSlotsBelow drops equivocation-guard entries at or below a
-// finalized height — those heights are decided and can never legitimately be
-// re-signed, so their guard is dead weight. Keeps committedSlot bounded to the
-// live (unfinalized) window.
+// finalized height (across ALL epochs at those heights) — those heights are decided
+// and can never legitimately be re-signed, so their guard is dead weight. Keeps
+// committedSlot (and its durable snapshot) bounded to the live unfinalized window.
+// Called from the sole finalizer acceptWithCertCore, so EVERY finality path — local
+// vote-assembly AND incoming-cert — prunes (MEDIUM-1). The durable shrink is
+// best-effort: a stale-LARGER durable set only ever REFUSES more (fail-safe
+// direction), and it is corrected on the next successful Persist.
 func (t *Transitive) pruneCommittedSlotsBelow(height uint64) {
 	t.slotMu.Lock()
 	defer t.slotMu.Unlock()
-	for h := range t.committedSlot {
-		if h <= height {
-			delete(t.committedSlot, h)
+	changed := false
+	for k := range t.committedSlot {
+		if k.Height <= height {
+			delete(t.committedSlot, k)
+			changed = true
+		}
+	}
+	if changed && t.voteGuard != nil {
+		if err := t.voteGuard.Persist(t.committedSlot); err != nil {
+			t.log.Warn("vote-once: durable equivocation-guard shrink failed (non-fatal; corrected on next bind)",
+				"belowHeight", height, "error", err)
 		}
 	}
 }
@@ -2375,6 +2425,13 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// actionable near the tip; retaining every height's records unboundedly is a
 	// memory-exhaustion vector. Prune everything older than the window.
 	t.pruneSlashingBelowWindow()
+	// MEDIUM-1: drop the equivocation guard for the height just finalized. This is
+	// the ONE funnel EVERY finality path passes through — local vote-assembly
+	// (handleVote → tryFinalizeBlock) AND incoming-cert (HandleIncomingCert →
+	// AcceptWithCert) — so committedSlot stays bounded to the live unfinalized window
+	// on every validator (a locally-finalizing node never reaches HandleIncomingCert's
+	// prune). pos.Height is the finalized tip; every slot at or below it is decided.
+	t.pruneCommittedSlotsBelow(pos.Height)
 	return nil
 }
 
