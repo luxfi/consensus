@@ -85,6 +85,14 @@ type NetworkConfig struct {
 	// missing block and rejoining the frontier. nil keeps the legacy no-self-heal
 	// behaviour (a behind follower is stranded).
 	Catchup Catchup
+
+	// VoteGuard (optional) is the DURABLE per-(height,epoch) non-equivocation guard
+	// (HIGH-1). A signing validator supplies one — opened by the node from the chain's
+	// data dir (chain.OpenVoteGuard) so the fail-closed-on-corrupt decision lives at
+	// the node boundary — so a per-height binding survives a crash and the node cannot
+	// sign a conflicting sibling at a height it already committed to before a restart.
+	// nil runs the guard memory-only (Start warns a signer that has none).
+	VoteGuard VoteGuardStore
 }
 
 // Gossiper abstracts the network layer for consensus message broadcasting.
@@ -248,6 +256,15 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		if cfg.ValidatorSetRoot != nil {
 			WithValidatorSetRoot(cfg.ValidatorSetRoot)(engine)
 		}
+	}
+
+	// Durable non-equivocation guard (HIGH-1): persist each (height,epoch)→canonical
+	// binding before this node signs, and reload it on startup, so a crash between
+	// signing and finalizing cannot forget it and permit a fork. The node opens the
+	// store (fail-closed on a corrupt file) and passes it here; nil keeps the guard
+	// memory-only.
+	if cfg.VoteGuard != nil {
+		WithVoteGuard(cfg.VoteGuard)(engine)
 	}
 
 	rt := &Runtime{
@@ -777,11 +794,13 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	}
 
 	// NON-EQUIVOCATION (fork guard): a follower must NOT sign a conflicting sibling
-	// at a height it has already committed to — that is the cross-node fork (two
-	// valid siblings each gathering a ⅔-stake cert). Same canonical ⇒ idempotent.
-	if !rt.Transitive.reserveSlotForSign(pos.Height, slotCanonical(pos)) {
+	// at a (height,epoch) it has already committed to — that is the cross-node fork
+	// (two valid siblings each gathering a ⅔-stake cert). The binding is DURABLY
+	// recorded before the signature so a crash cannot forget it (HIGH-1). Same
+	// canonical ⇒ idempotent. epoch = the block's ValidatorSetRoot (Empty on a fixed set).
+	if !rt.Transitive.reserveSlotForSign(pos.Height, pos.ValidatorSetRoot, slotCanonical(pos)) {
 		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Warn("vote-once: follower refusing conflicting sibling at an already-committed height",
+			rt.config.Logger.Warn("vote-once: follower refusing conflicting sibling at an already-committed slot",
 				log.Uint64("height", pos.Height), log.Stringer("blockID", blockID))
 		}
 		return

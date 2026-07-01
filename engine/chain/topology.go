@@ -362,10 +362,9 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	}
 	rt.fastFollowMu.Unlock()
 
-	// A height is now decided by an α-of-K cert; its equivocation guard can never
-	// again legitimately fire, so drop it (keeps committedSlot bounded to the live
-	// unfinalized window).
-	rt.Transitive.pruneCommittedSlotsBelow(cert.Position.Height)
+	// The equivocation guard for this (now-decided) height was already dropped inside
+	// the finalizer AcceptWithCert → acceptWithCertCore (the one funnel every finality
+	// path shares — MEDIUM-1), so no separate prune is needed here.
 
 	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Info("finalized block via α-of-K quorum cert",
