@@ -284,6 +284,13 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	WithCatchup(cfg.Catchup)(engine)
 	engine.requestMissing = rt.requestCatchup
 
+	// Wire the convergence voter: the engine defers this node's one per-height accept
+	// signature to the Runtime, which owns the sign+broadcast path and emits it for the
+	// deterministically-converged winner at each height (see followVerifiedBlock /
+	// buildBlocksLocked). This is what makes honest nodes place their single vote on the
+	// SAME block per height, so a fresh-net storm converges to one α-of-K cert.
+	engine.convergenceVoter = rt
+
 	// Log validator set status for debugging
 	hasLogger := cfg.Logger != nil && !cfg.Logger.IsZero()
 	if validatorCount >= 0 {
@@ -758,11 +765,8 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 		}
 		rt.Transitive.pendingBlocks[blockID] = pending
 	}
-	chainID := rt.Transitive.chainID
-	nodeID := rt.Transitive.nodeID
 	signer := rt.Transitive.voteSigner
 	verifier := rt.Transitive.voteVerifier
-	pos := rt.Transitive.blockPositionLocked(pending, blockID)
 	rt.Transitive.mu.Unlock()
 
 	// THE SELF-HEAL DRAIN: this block is now tracked, so replay any votes a peer
@@ -793,34 +797,68 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 		return
 	}
 
-	// NON-EQUIVOCATION (fork guard): a follower must NOT sign a conflicting sibling
-	// at a (height,epoch) it has already committed to — that is the cross-node fork
-	// (two valid siblings each gathering a ⅔-stake cert). The binding is DURABLY
-	// recorded before the signature so a crash cannot forget it (HIGH-1). Same
-	// canonical ⇒ idempotent. epoch = the block's ValidatorSetRoot (Empty on a fixed set).
-	if !rt.Transitive.reserveSlotForSign(pos.Height, pos.ValidatorSetRoot, slotCanonical(pos)) {
-		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Warn("vote-once: follower refusing conflicting sibling at an already-committed slot",
-				log.Uint64("height", pos.Height), log.Stringer("blockID", blockID))
-		}
+	// This node's accept vote is NOT cast on receipt. Binding our one per-height
+	// signature to the FIRST-SEEN block is exactly what split the vote across siblings and
+	// stalled the fresh-net storm. The block is now TRACKED (above); the convergence loop
+	// (RunSettlePass) casts this node's single vote for the settled, converged winner at
+	// this height — the lowest-canonical live sibling — so every honest node signs the
+	// SAME block and one α-of-K cert forms. Receipt only tracks + drains buffered votes +
+	// steers the build tip.
+	_ = verifier
+}
+
+// emitConvergedVote casts this node's SINGLE per-height accept vote for the
+// deterministically-converged winner at the (height, parentID) fork slot: the
+// lowest-canonical live sibling (convergedWinnerAtHeightLocked) — which may be a DIFFERENT
+// block than any this node built or first-saw. Every honest node with the same tracked set
+// selects the identical winner, so their one-vote-per-height signatures converge onto ONE
+// block and exactly one α-of-K cert forms. It is called only from RunSettlePass, i.e. after
+// the slot's settle window has elapsed (the sibling set has gossiped in). The height-only
+// vote-once guard (reserveSlotForSign) makes it idempotent: at most one signature per height.
+func (rt *Runtime) emitConvergedVote(_ context.Context, height uint64, parentID ids.ID) {
+	t := rt.Transitive
+	if t.voteSigner == nil || t.voteVerifier == nil {
+		return // single-validator / no vote crypto: finality via the 1-of-1 path, no gossip
+	}
+	if t.hasSignedHeight(height) {
+		return // already cast our ONE vote at this height — never re-emit/re-broadcast
+	}
+
+	t.mu.Lock()
+	winnerID, _, ok := t.convergedWinnerAtHeightLocked(height, parentID)
+	if !ok {
+		t.mu.Unlock()
+		return
+	}
+	pending := t.pendingBlocks[winnerID]
+	if pending == nil || pending.Decided {
+		t.mu.Unlock()
+		return
+	}
+	pos := t.blockPositionLocked(pending, winnerID)
+	signer := t.voteSigner
+	nodeID := t.nodeID
+	chainID := t.chainID
+	t.mu.Unlock()
+
+	// One signature per HEIGHT (height-only non-equivocation). A conflicting canonical at
+	// an already-signed height is refused here — the atomic backstop for the race where
+	// two EmitVote calls target this height concurrently.
+	if !t.reserveSlotForSign(pos.Height, slotCanonical(pos)) {
 		return
 	}
 
-	// Sign our accept vote over the canonical position message.
 	message := CanonicalVoteMessage(pos)
 	sig, err := signer.SignVote(message)
 	if err != nil {
 		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Warn("follow: failed to sign accept vote",
-				log.Stringer("blockID", blockID), log.Err(err))
+			rt.config.Logger.Warn("converge: failed to sign converged accept vote",
+				log.Stringer("blockID", winnerID), log.Err(err))
 		}
 		return
 	}
-
-	// Record our own vote locally toward the cert (so a node that is itself
-	// near-quorum can assemble), then broadcast it to ALL validators.
 	ownVote := Vote{
-		BlockID:   blockID,
+		BlockID:   winnerID,
 		NodeID:    nodeID,
 		Accept:    true,
 		SignedAt:  time.Now(),
@@ -829,15 +867,29 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 		Round:     pos.Round,
 	}
 	rt.Transitive.ReceiveVote(ownVote)
-
 	if qg, ok := rt.config.Gossiper.(QuorumGossiper); ok {
 		if voteBytes, encErr := encodeSignedVote(nodeID, sig); encErr == nil {
-			qg.BroadcastVote(chainID, rt.config.NetworkID, blockID, voteBytes)
+			qg.BroadcastVote(chainID, rt.config.NetworkID, winnerID, voteBytes)
 		}
-	} else if rt.config.Gossiper != nil {
-		// Legacy gossiper without quorum support: at least notify the proposer
-		// (keeps a degraded path working) — but finality still requires a cert.
-		_ = rt.config.Gossiper.SendVote(rt.config.ChainID, fromNodeID, blockID)
+	}
+}
+
+// RunSettlePass implements ConvergenceVoter. It sweeps every undecided, not-yet-signed
+// (height, parent) fork slot whose settle window has elapsed and casts the converged
+// winner's vote. This is the mechanism that breaks a fresh-net storm: no node bound its
+// vote at build/receipt; one settle window later this pass makes every honest node sign
+// the SAME lowest-canonical winner, so a single α-of-K cert assembles and the height
+// finalizes. The convergence loop drives it on a fast tick.
+func (rt *Runtime) RunSettlePass(ctx context.Context) {
+	t := rt.Transitive
+	if t.voteSigner == nil || t.voteVerifier == nil {
+		return
+	}
+	t.mu.Lock()
+	slots := t.snapshotVotableSlotsLocked()
+	t.mu.Unlock()
+	for _, s := range slots {
+		rt.emitConvergedVote(ctx, s.height, s.parentID)
 	}
 }
 
