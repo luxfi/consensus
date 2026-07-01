@@ -2448,8 +2448,27 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 
 		t.blocksBuilt++
 
-		// Skip if already tracked
-		if _, exists := t.pendingBlocks[vmBlock.ID()]; exists {
+		// A rebuild of an ALREADY-TRACKED block is our own UNDECIDED proposal that
+		// the VM re-offered (mempool still non-empty, this height not yet finalized).
+		// avalanchego never silently drops such a rebuild — its repoll keeps
+		// re-querying the still-processing preferred block until it decides (snowman
+		// engine.go repoll, quiescing only at Consensus.NumProcessing()==0). Mirror
+		// that on the build path: RE-SOLICIT the block's votes instead of dropping the
+		// signal, so a peer that missed the first PushQuery is re-asked IMMEDIATELY
+		// (not only on the slower rePollAllPending backoff — the zero-margin 4-of-5
+		// mainnet condition needs the prompt re-ask). This re-sends the SAME block and
+		// the SAME position: it can never manufacture a vote or change WHICH block
+		// finalizes (finality is still the α-of-K cert), so it is a pure liveness
+		// retry. OWN proposals only — a gossiped (non-own) block keeps the rePoll
+		// attempt cap, since re-soliciting a block whose voters are behind its parent
+		// is spam that never recovers it (see rePollAllPending).
+		if pb, exists := t.pendingBlocks[vmBlock.ID()]; exists {
+			if pb.IsOwnProposal && !pb.Decided && t.proposer != nil {
+				t.proposer.RequestVotes(ctx, VoteRequest{
+					BlockID:   vmBlock.ID(),
+					BlockData: vmBlock.Bytes(),
+				})
+			}
 			continue
 		}
 
