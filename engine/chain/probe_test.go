@@ -59,18 +59,17 @@ func newStakeWeightedRuntime(t *testing.T, vs *testValidatorSet, self int, stake
 
 // RED-INT-1 — STAKE GATE HOLDS ACROSS THE LIVE (CHANNEL) VOTE PATH.
 //
-// 5 validators, stake {96,1,1,1,1} (total 100). The four 1-stake nodes {1,2,3,4}
-// are an α=3 COUNT supermajority but hold only 4/100 of stake. They each send a
-// GENUINE signed accept via the live channel path (ReceiveVote → handleVote →
-// recordCertVoteLocked → ProcessVote → tryFinalizeBlock → assembleCertLocked).
-// The block is locally tracked. acceptVotes climbs ≥ α, so the COUNT predicate
-// (HasEnoughResponsesForRetry) flips true and TryAccept is REACHED — but
-// assembleCertLocked runs VerifyWeighted, which must REFUSE (4% < ⅔). The block
-// MUST NOT finalize. self(0), the 96-stake node, deliberately does NOT vote, so
-// no honest supermajority forms.
+// 5 validators, stake {1,1,1,1,96} (total 100). The engine-under-test is self(0), a
+// 1-stake node; its convergence loop legitimately auto-votes the tracked block, and
+// the three other 1-stake nodes {1,2,3} send GENUINE signed accepts via the live
+// channel path. That is a COUNT supermajority (4 voters ≥ α=3) holding only 4/100 of
+// stake. acceptVotes climbs ≥ α, so the COUNT predicate (HasEnoughResponsesForRetry)
+// flips true and TryAccept is REACHED — but assembleCertLocked runs VerifyWeighted,
+// which must REFUSE (4% < ⅔). The block MUST NOT finalize. node4, the 96-stake node,
+// deliberately ABSTAINS, so no ⅔-stake supermajority forms.
 func TestRED_INT_LowStakeCoalition_LiveVotePath_DoesNotFinalize(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	stake := newStakeMap(vs, 96, 1, 1, 1, 1) // total 100; {1,2,3,4} = 4
+	stake := newStakeMap(vs, 1, 1, 1, 1, 96) // total 100; the low-stake coalition {0,1,2,3} = 4
 	cu := &deliveringCatchup{store: map[ids.ID]*verifyOnceBlock{}}
 	rt, chainID := newStakeWeightedRuntime(t, vs, 0, stake, cu)
 	cu.mu.Lock()
@@ -78,13 +77,14 @@ func TestRED_INT_LowStakeCoalition_LiveVotePath_DoesNotFinalize(t *testing.T) {
 	cu.mu.Unlock()
 
 	blk := newTestBlock(1, ids.Empty, "lowstake-live")
-	// Track the block locally WITHOUT casting self's vote (trackVerifiedBlock does
-	// not self-vote), so the only votes are the low-stake coalition's.
+	// Track the block so self(0)'s convergence loop will legitimately vote it — self is
+	// a 1-stake node, so its vote plus the injected {1,2,3} is a COUNT supermajority of
+	// only 4/100 stake.
 	trackVerifiedBlock(rt, blk, 0)
 	pos := posFor(chainID, blk)
 
-	// The α=3 COUNT is met (4 voters) but the STAKE is 4/100. Each vote is genuine.
-	for _, i := range []int{1, 2, 3, 4} {
+	// The other low-stake nodes vote via the live channel path. Each vote is genuine.
+	for _, i := range []int{1, 2, 3} {
 		rt.ReceiveVote(vs.signedVote(i, pos))
 	}
 
@@ -108,7 +108,7 @@ func TestRED_INT_LowStakeCoalition_LiveVotePath_DoesNotFinalize(t *testing.T) {
 	// LIVENESS CONTROL (anti-vacuity): once the 96-stake node ALSO votes, stake is
 	// 100/100 > ⅔ and the SAME block finalizes — so the refusal above was the stake
 	// gate, not a stuck engine.
-	rt.ReceiveVote(vs.signedVote(0, pos))
+	rt.ReceiveVote(vs.signedVote(4, pos))
 	if !waitFor(2*time.Second, func() bool { return rt.IsAccepted(blk.id) }) {
 		t.Fatalf("liveness: block did not finalize once the 96-stake node voted (stake>⅔) — "+
 			"VerifyWeighted is over-strict (Accept=%d)", blk.AcceptCalled())
@@ -125,7 +125,7 @@ func TestRED_INT_LowStakeCoalition_LiveVotePath_DoesNotFinalize(t *testing.T) {
 // Gossip path is a count-only finality road.
 func TestRED_INT_LowStakeCoalition_GossipVoteEntry_DoesNotFinalize(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	stake := newStakeMap(vs, 96, 1, 1, 1, 1)
+	stake := newStakeMap(vs, 1, 1, 1, 1, 96) // self(0) is 1-stake; node4 (96) is the abstainer
 	cu := &deliveringCatchup{store: map[ids.ID]*verifyOnceBlock{}}
 	rt, chainID := newStakeWeightedRuntime(t, vs, 0, stake, cu)
 	cu.mu.Lock()
@@ -133,15 +133,16 @@ func TestRED_INT_LowStakeCoalition_GossipVoteEntry_DoesNotFinalize(t *testing.T)
 	cu.mu.Unlock()
 
 	blk := newTestBlock(1, ids.Empty, "lowstake-gossip")
-	trackVerifiedBlock(rt, blk, 0)
+	trackVerifiedBlock(rt, blk, 0) // self(0) will converge-vote this (1 stake)
 	pos := posFor(chainID, blk)
 
 	// Encode each coalition vote as the Gossip envelope payload and feed it through
 	// the demux entry the router now reaches (HandleIncomingVote). Each returns true
 	// (sig verifies) — we are NOT testing the sig gate here, we are testing that a
-	// verified-but-low-stake set still cannot finalize.
+	// verified-but-low-stake set (self's converge-vote + {1,2,3} = 4/100) still cannot
+	// finalize.
 	accepted := 0
-	for _, i := range []int{1, 2, 3, 4} {
+	for _, i := range []int{1, 2, 3} {
 		voteBytes, err := encodeSignedVote(vs.nodeID(i), vs.sign(i, pos))
 		if err != nil {
 			t.Fatalf("encode vote %d: %v", i, err)
@@ -150,8 +151,8 @@ func TestRED_INT_LowStakeCoalition_GossipVoteEntry_DoesNotFinalize(t *testing.T)
 			accepted++
 		}
 	}
-	if accepted != 4 {
-		t.Fatalf("precondition: all 4 genuine coalition votes should verify+count via the Gossip "+
+	if accepted != 3 {
+		t.Fatalf("precondition: all 3 genuine coalition votes should verify+count via the Gossip "+
 			"entry, got %d — probe wiring is wrong (would be vacuous)", accepted)
 	}
 
@@ -166,11 +167,11 @@ func TestRED_INT_LowStakeCoalition_GossipVoteEntry_DoesNotFinalize(t *testing.T)
 
 	// Anti-vacuity: the 96-stake node's vote (via the SAME Gossip entry) tips stake
 	// over ⅔ and finalizes.
-	vb0, err := encodeSignedVote(vs.nodeID(0), vs.sign(0, pos))
+	vb4, err := encodeSignedVote(vs.nodeID(4), vs.sign(4, pos))
 	if err != nil {
-		t.Fatalf("encode node0 vote: %v", err)
+		t.Fatalf("encode node4 vote: %v", err)
 	}
-	if !rt.HandleIncomingVote(blk.id, vb0) {
+	if !rt.HandleIncomingVote(blk.id, vb4) {
 		t.Fatalf("the 96-stake node's genuine vote must verify via the Gossip entry")
 	}
 	if !waitFor(2*time.Second, func() bool { return rt.IsAccepted(blk.id) }) {

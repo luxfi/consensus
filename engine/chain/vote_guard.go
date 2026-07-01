@@ -31,25 +31,34 @@ import (
 // signature) ONLY after the durable write commits — a persistence failure FAILS
 // CLOSED (the vote is refused, never cast).
 
-// SlotKey identifies one per-(height, epoch) non-equivocation slot. The epoch is
-// the block's ValidatorSetRoot — the validator-set commitment ALREADY folded into
-// the signed vote message (cert.go: canonicalVoteMessageFor). Keying by
-// (height, epoch) rather than height alone matches the consensus2 reference
-// (SlotKey = {height, epoch}) and is what lets a contested height be re-proposed
-// under a NEW validator set at a set-change boundary without every validator that
-// signed the OLD-epoch block refusing the new one (a liveness stall — Red's
-// HIGH-2). Cross-epoch SAFETY is preserved independently: the ledger's per-height
-// finalize gate (ErrHeightAlreadyFinalized) admits at most one finalized block per
-// height, and the validator set at a height is a deterministic function of the
-// uniquely-finalized lower chain, so two distinct epochs can co-exist at one
-// height only atop a lower-height fork — which the SAME guard prevents by
-// induction.
+// SlotKey identifies one per-HEIGHT non-equivocation slot. An honest validator
+// signs AT MOST ONE canonical block per consensus height — full stop. This is the
+// quorum-intersection invariant that makes the α-of-K cert SOUND: two ⅔ certs at
+// one height would require |signers(A)| + |signers(B)| ≥ 2·α over n validators, so
+// |A ∩ B| ≥ 2α − n honest signers signed BOTH — impossible under this rule unless
+// f ≥ 2α − n (beyond the BFT budget). One slot per height is the ONLY correct key.
 //
-// A fixed-set chain leaves Epoch == ids.Empty, so SlotKey degrades to height-only
-// — byte-identical to the pre-epoch guard (backward-safe no-op).
+// WHY NOT (height, epoch): an earlier revision keyed the slot on (height, epoch)
+// where epoch = the block's ValidatorSetRoot(pChainHeight). That FRAGMENTED the
+// slot: two honest sibling blocks at the SAME consensus height can pin DIFFERENT
+// proposervm P-chain heights (a bare/pre-fork block reports height 0, a wrapped
+// block reports P; or two wrapped blocks pick different heights within the
+// proposer window), and ValidatorSetRoot(0) (empty/error ⇒ ids.Empty) ≠
+// ValidatorSetRoot(P). Different epoch ⇒ different SlotKey ⇒ the SAME honest
+// validator signed BOTH siblings ⇒ two α-of-K certs at one height ⇒ the
+// double-finalization fatal on fresh multi-node chains. The P-chain-height epoch is
+// a PROPOSER-CHOSEN axis, NOT a function of the finalized value-chain prefix, so
+// the "one epoch per height by induction" argument was false. Safety must never be
+// keyed on a proposer-controlled value.
+//
+// The validator-set-root epoch binding still lives where it belongs — in the SIGNED
+// vote message (cert.go: canonicalVoteMessageFor folds ValidatorSetRoot) and in
+// cert VERIFICATION (topology.go: the set-root cross-check + stake@epoch) — so a
+// cert remains bound to the exact set that signed it (anti-cross-epoch-forgery).
+// It is removed ONLY from the equivocation SLOT, where it added no safety and only
+// fragmented the one-signature-per-height rule.
 type SlotKey struct {
 	Height uint64
-	Epoch  ids.ID
 }
 
 // VoteGuardStore is the durable backing a SIGNING validator uses so a per-height
@@ -192,7 +201,11 @@ func (g *fileVoteGuard) Close() error { return nil }
 
 // encodeVoteGuard serializes the binding set: magic | ver | count | records | crc.
 // Record order is unspecified (the decoder rebuilds a map); every field is
-// fixed-width so the frame is length-free.
+// fixed-width so the frame is length-free. The record retains a 32-byte RESERVED
+// field (written as all-zero) where the now-removed epoch used to live, so the wire
+// layout is byte-identical to the pre-fix format: an existing validator's on-disk
+// snapshot still decodes across the upgrade (decodeVoteGuard folds any non-zero
+// epoch bytes away), and no version bump is needed.
 func encodeVoteGuard(bindings map[SlotKey]ids.ID) []byte {
 	buf := make([]byte, 0, voteGuardHdrLen+voteGuardRecLen*len(bindings)+4)
 	buf = append(buf, voteGuardMagic...)
@@ -201,10 +214,11 @@ func encodeVoteGuard(bindings map[SlotKey]ids.ID) []byte {
 	binary.BigEndian.PutUint32(u32[:], uint32(len(bindings)))
 	buf = append(buf, u32[:]...)
 	var u64 [8]byte
+	var reserved [32]byte // reserved (was epoch); always zero on write
 	for k, canonical := range bindings {
 		binary.BigEndian.PutUint64(u64[:], k.Height)
 		buf = append(buf, u64[:]...)
-		buf = append(buf, k.Epoch[:]...)
+		buf = append(buf, reserved[:]...)
 		buf = append(buf, canonical[:]...)
 	}
 	var crc [4]byte
@@ -243,12 +257,21 @@ func decodeVoteGuard(data []byte) (map[SlotKey]ids.ID, error) {
 	for i := uint32(0); i < count; i++ {
 		height := binary.BigEndian.Uint64(data[off : off+8])
 		off += 8
-		var epoch, canonical ids.ID
-		copy(epoch[:], data[off:off+32])
+		// The 32-byte reserved field (formerly epoch) is read and DISCARDED: the slot
+		// is now height-only. A legacy snapshot written by the (height,epoch)-keyed
+		// build can therefore hold MULTIPLE records at one height (different epochs);
+		// they FOLD into the single height slot here. On a fold collision keep the
+		// LOWEST canonical (deterministic) — the recovered height is contested and
+		// will be pruned the moment it finalizes; refusing every sibling above the
+		// min is the fail-safe direction.
 		off += 32
+		var canonical ids.ID
 		copy(canonical[:], data[off:off+32])
 		off += 32
-		out[SlotKey{Height: height, Epoch: epoch}] = canonical
+		key := SlotKey{Height: height}
+		if prev, ok := out[key]; !ok || canonical.Compare(prev) < 0 {
+			out[key] = canonical
+		}
 	}
 	return out, nil
 }

@@ -398,6 +398,19 @@ type Transitive struct {
 	vm       BlockBuilder
 	proposer BlockProposer
 
+	// convergenceVoter, when wired by the Runtime, is the SOLE per-height accept-vote
+	// emitter for a multi-validator (K>1) engine. Rather than binding this node's one
+	// signature to whatever block it BUILT or FIRST-SAW — which fragments the vote
+	// across conflicting siblings during a fresh-net storm and stalls the quorum with
+	// no single block reaching α — it emits the signature for the DETERMINISTICALLY
+	// CONVERGED winner at a height: the lowest signed-canonical among the live
+	// siblings. Every honest node with the same tracked set picks the SAME winner, so
+	// they converge their one vote onto ONE block and exactly one α-of-K cert forms
+	// per height (the cert thus CERTIFIES the converged decision — it is never an
+	// independent finality path that could certify a conflicting sibling). nil in
+	// single-engine tests (which inject votes directly); wired in NewRuntime.
+	convergenceVoter ConvergenceVoter
+
 	// Runtime state
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -484,13 +497,18 @@ type Transitive struct {
 	chainID      ids.ID
 	nodeID       ids.NodeID
 
-	// committedSlot enforces the per-(height,epoch) NON-EQUIVOCATION safety rule
-	// (ported from consensus2 committed_slot_, SlotKey={height,epoch}): this node
-	// signs an accept vote for AT MOST ONE canonical block per (value-chain height,
-	// validator-set epoch). Signing two conflicting siblings at one slot would place
-	// this node's stake in two conflicting ⅔-quorums and break the quorum-intersection
-	// argument that gives f<n/3 safety — the exact cross-node fork Red proved (two
-	// valid siblings each gathering a legit cert). Keyed SlotKey → bound canonical id:
+	// committedSlot enforces the per-HEIGHT NON-EQUIVOCATION safety rule (SlotKey =
+	// {height}): this node signs an accept vote for AT MOST ONE canonical block per
+	// value-chain height — regardless of the block's validator-set epoch. Signing two
+	// conflicting siblings at one height would place this node's stake in two
+	// conflicting ⅔-quorums and break the quorum-intersection argument that gives
+	// f<n/3 safety — the exact cross-node fork (two valid siblings each gathering a
+	// legit cert). The epoch was DELIBERATELY removed from the key: it is a
+	// proposer-chosen axis (ValidatorSetRoot(block.pChainHeight)) that differs between
+	// honest siblings at one height, so keying on it FRAGMENTED the slot and let one
+	// validator sign both siblings → the fresh-net double-finalization fatal. The
+	// epoch binding remains in the SIGNED message + cert verification, where it stops
+	// cross-epoch cert forgery. Keyed SlotKey → bound canonical id:
 	// a second DIFFERENT canonical at a bound slot is REFUSED (never signed); the SAME
 	// one is idempotent (safe re-solicit). Guarded by its own slotMu so BOTH signing
 	// sites can call it — recordOwnVoteLocked (under t.mu) and the follower path in
@@ -757,11 +775,12 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 	// Capture ctx in local variable to avoid race with struct field access
 	engineCtx := t.ctx
 
-	t.wg.Add(4)
+	t.wg.Add(5)
 	go t.pollLoopWithCtx(engineCtx)
 	go t.voteHandlerWithCtx(engineCtx)
 	go t.pipelineLoop(engineCtx)
 	go t.rePollLoopWithCtx(engineCtx)
+	go t.convergenceLoopWithCtx(engineCtx)
 
 	return nil
 }
@@ -1243,6 +1262,65 @@ func (t *Transitive) rePollLoopWithCtx(ctx context.Context) {
 				return
 			}
 			t.rePollAllPending(ctx, interval)
+		}
+	}
+}
+
+// convergenceSettleWindow is how long a fork slot must have been OBSERVED (since this
+// node first tracked any block at that height) before this node casts its one accept
+// vote for the converged winner. It gives near-simultaneous sibling proposals time to
+// gossip in, so every honest node has the SAME sibling set and selects the SAME
+// lowest-canonical winner — the difference between a converging quorum and a permanent
+// vote split. Derived from the round budget but clamped to a small band: long enough to
+// cover intra-cluster gossip, short enough to add negligible per-block latency.
+func (t *Transitive) convergenceSettleWindow() time.Duration {
+	// Half the round budget: collect competing proposals for half a round, then vote the
+	// lowest-canonical winner. This must comfortably exceed the sibling-gossip latency so
+	// every honest node has the SAME sibling set before it binds its one signature — a
+	// settle shorter than gossip lets a node settle on its OWN block before peers' arrive,
+	// which splits the vote and, under one-signature-per-height, is unrecoverable. Clamped
+	// so a tiny test round still gives a workable window and a huge production round does
+	// not stall block production waiting to vote.
+	w := t.params.RoundTO / 2
+	if w < 150*time.Millisecond {
+		w = 150 * time.Millisecond
+	}
+	if w > 2*time.Second {
+		w = 2 * time.Second
+	}
+	return w
+}
+
+// convergenceLoopWithCtx drives the per-height vote CONVERGENCE. On a fast tick it asks
+// the wired ConvergenceVoter to sweep every undecided, still-unsigned fork slot whose
+// settle window has elapsed and cast this node's one accept vote for the deterministic
+// winner (lowest-canonical live sibling). This is what makes a fresh-net storm — where
+// many validators build competing siblings at one height — converge: instead of each
+// node binding its signature to the block it built or first-saw (a 5-way split that
+// never reaches α), all honest nodes independently pick the SAME winner and one α-of-K
+// cert assembles. A no-op when no convergence voter is wired (single-engine tests, which
+// inject votes directly) or on a single-validator (K==1) chain (its own accept is the
+// quorum — no convergence needed).
+func (t *Transitive) convergenceLoopWithCtx(ctx context.Context) {
+	defer t.wg.Done()
+	if t.convergenceVoter == nil || t.consensus.K() <= 1 {
+		return
+	}
+	tick := t.convergenceSettleWindow() / 3
+	if tick < 20*time.Millisecond {
+		tick = 20 * time.Millisecond
+	}
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if ctx.Err() != nil {
+				return
+			}
+			t.convergenceVoter.RunSettlePass(ctx)
 		}
 	}
 }
@@ -1812,11 +1890,12 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 		return
 	}
 	pos := t.blockPositionLocked(pending, blockID)
-	// NON-EQUIVOCATION (fork guard): refuse to sign a conflicting sibling at a
-	// (height,epoch) this node has already committed to — and DURABLY record the
-	// binding before signing so a crash cannot forget it (HIGH-1). Idempotent for the
-	// same canonical block. epoch = the block's ValidatorSetRoot (Empty on a fixed set).
-	if !t.reserveSlotForSign(pos.Height, pos.ValidatorSetRoot, slotCanonical(pos)) {
+	// NON-EQUIVOCATION (fork guard): refuse to sign a conflicting sibling at a HEIGHT
+	// this node has already committed to — and DURABLY record the binding before
+	// signing so a crash cannot forget it (HIGH-1). Idempotent for the same canonical
+	// block. One signature per consensus height is the invariant that keeps two
+	// α-of-K certs at one height impossible.
+	if !t.reserveSlotForSign(pos.Height, slotCanonical(pos)) {
 		t.log.Warn("vote-once: refusing to sign a conflicting sibling at an already-committed slot",
 			"height", pos.Height, "blockID", blockID)
 		return
@@ -1836,11 +1915,11 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 	})
 }
 
-// reserveSlotForSign enforces the per-(height,epoch) non-equivocation rule before
-// this node casts an accept signature, and DURABLY records the binding first so it
-// survives a crash (HIGH-1). `canonical` is the block's inner execution commitment
-// (the id finality certifies); `epoch` is the block's ValidatorSetRoot (Empty on a
-// fixed set → the slot degrades to height-only). Returns true if signing is
+// reserveSlotForSign enforces the per-HEIGHT non-equivocation rule before this node
+// casts an accept signature, and DURABLY records the binding first so it survives a
+// crash (HIGH-1). `canonical` is the block's inner execution commitment (the id
+// finality certifies). The slot is epoch-BLIND: one signature per consensus height,
+// full stop, so no proposer-chosen epoch can fragment it. Returns true if signing is
 // permitted: the slot is unbound (binds it now, AFTER the durable write commits) or
 // already bound to THIS canonical (idempotent — a legitimate re-solicit of the same
 // block, already durable). Returns FALSE if the slot is bound to a DIFFERENT
@@ -1850,8 +1929,8 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 // recordOwnVoteLocked (t.mu held) and the follower path in followVerifiedBlock
 // (t.mu released) — share the one guard without deadlock; the durable write also
 // runs under slotMu, so the fixed-name temp file is never contended.
-func (t *Transitive) reserveSlotForSign(height uint64, epoch ids.ID, canonical ids.ID) bool {
-	key := SlotKey{Height: height, Epoch: epoch}
+func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
+	key := SlotKey{Height: height}
 	t.slotMu.Lock()
 	defer t.slotMu.Unlock()
 	if bound, ok := t.committedSlot[key]; ok {
@@ -1866,11 +1945,22 @@ func (t *Transitive) reserveSlotForSign(height uint64, epoch ids.ID, canonical i
 		if err := t.voteGuard.Persist(t.committedSlot); err != nil {
 			delete(t.committedSlot, key)
 			t.log.Error("vote-once: durable equivocation-guard write FAILED — refusing to sign (fail-closed)",
-				"height", height, "epoch", epoch, "error", err)
+				"height", height, "error", err)
 			return false
 		}
 	}
 	return true
+}
+
+// hasSignedHeight reports whether this node has already bound its ONE accept
+// signature at the given consensus height (any canonical). The convergence voter
+// checks it to emit at most one vote per height and never re-broadcast. Self-locking
+// (slotMu).
+func (t *Transitive) hasSignedHeight(height uint64) bool {
+	t.slotMu.Lock()
+	_, ok := t.committedSlot[SlotKey{Height: height}]
+	t.slotMu.Unlock()
+	return ok
 }
 
 // pruneCommittedSlotsBelow drops equivocation-guard entries at or below a
@@ -1908,6 +1998,110 @@ func slotCanonical(pos VotePosition) ids.ID {
 		return pos.CanonicalID
 	}
 	return pos.BlockID
+}
+
+// ConvergenceVoter casts this node's single per-height accept vote for the
+// deterministically-converged winner at each fork slot. It decouples the (binding,
+// one-per-height) signature from block build/receipt: a node NEVER binds its vote to
+// the block it merely built or first-saw (that fragments the α-of-K vote across
+// siblings and stalls a fresh-net storm). Instead RunSettlePass — driven by the
+// convergence tick — sweeps every undecided, still-unsigned fork slot whose settle
+// window has elapsed and casts the vote for the lowest-canonical live sibling, so every
+// honest node signs the SAME block and exactly one cert forms per height. Wired by the
+// Runtime (which owns the sign+gossip path); nil in single-engine tests.
+type ConvergenceVoter interface {
+	RunSettlePass(ctx context.Context)
+}
+
+// convergedWinnerAtHeightLocked returns the block THIS node must place its one
+// per-height accept signature on at the (height, parentID) fork slot: the LOWEST
+// slotCanonical among tracked, undecided, non-abandoned sibling blocks extending
+// parentID at that height, plus the count of such siblings. The tie-break is the
+// signed canonical id (the exact identity a cert binds), so every honest node with
+// the same tracked set selects the IDENTICAL winner and their one-vote-per-height
+// signatures converge onto it. Abandoned blocks (a dead proposer's sibling that
+// stopped being re-solicited) are excluded, so the winner advances to the
+// lowest-canonical LIVE sibling — the f=1 self-heal. Caller holds t.mu.
+func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.ID) (ids.ID, int, bool) {
+	var winner, winnerCanon ids.ID
+	count := 0
+	for id, pb := range t.pendingBlocks {
+		cb := pb.ConsensusBlock
+		if cb == nil || pb.Decided || pb.rePollAbandoned {
+			continue
+		}
+		if cb.height != height || cb.parentID != parentID {
+			continue
+		}
+		canon := cb.canonicalID
+		if canon == ids.Empty {
+			canon = id
+		}
+		count++
+		if winner == ids.Empty || canon.Compare(winnerCanon) < 0 {
+			winner, winnerCanon = id, canon
+		}
+	}
+	if winner == ids.Empty {
+		return ids.Empty, 0, false
+	}
+	return winner, count, true
+}
+
+// votableSlot identifies one (height, parentID) fork slot the settle pass may need to
+// cast a converged vote for.
+type votableSlot struct {
+	height   uint64
+	parentID ids.ID
+}
+
+// snapshotVotableSlotsLocked returns the DISTINCT (height, parentID) fork slots that
+// (a) have an undecided, non-abandoned tracked block, (b) this node has NOT yet signed
+// (committedSlot has no binding at that height), and (c) have SETTLED — the earliest
+// local track time of any sibling at that slot is at least one settle window ago, so
+// near-simultaneous sibling proposals have had time to gossip in and the winner is
+// stable. The settle window is the whole point: it is what lets every honest node see
+// the SAME sibling set before it binds its one signature, so they all pick the SAME
+// lowest-canonical winner instead of racing to bind their own first-seen block. Caller
+// holds t.mu (and takes slotMu internally to read committedSlot).
+func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
+	// Read the set of already-signed heights once, under slotMu.
+	t.slotMu.Lock()
+	signed := make(map[uint64]struct{}, len(t.committedSlot))
+	for k := range t.committedSlot {
+		signed[k.Height] = struct{}{}
+	}
+	t.slotMu.Unlock()
+
+	settle := t.convergenceSettleWindow()
+	now := time.Now()
+	// Track the LATEST local track time of any sibling at each slot. Settling from the
+	// LAST sibling (not the first) means a slot becomes votable only once NO new sibling
+	// has arrived for a full window — so while proposals are still dribbling in (slow or
+	// contended gossip) the node keeps waiting, and it binds its one signature only after
+	// the sibling set has gone quiet. That is what makes every honest node vote the SAME
+	// lowest-canonical winner instead of racing to bind an incomplete set.
+	latest := make(map[votableSlot]time.Time)
+	for _, pb := range t.pendingBlocks {
+		cb := pb.ConsensusBlock
+		if cb == nil || pb.Decided || pb.rePollAbandoned {
+			continue
+		}
+		if _, ok := signed[cb.height]; ok {
+			continue // already cast our one vote at this height
+		}
+		s := votableSlot{height: cb.height, parentID: cb.parentID}
+		if t1, ok := latest[s]; !ok || pb.ProposedAt.After(t1) {
+			latest[s] = pb.ProposedAt
+		}
+	}
+	var out []votableSlot
+	for s, t1 := range latest {
+		if now.Sub(t1) >= settle {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // pChainHeighter is the subset of block.SignedBlock the engine needs to pin a
@@ -2642,11 +2836,23 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			IsOwnProposal:  true,
 		}
 		t.pendingBlocks[vmBlock.ID()] = pb
-		// The proposer is one of the α signers: record its OWN signed accept
-		// vote into the cert set so the assembled cert includes it (its
-		// ProcessVote above counted it toward acceptVotes; this puts the
-		// matching SIGNED record in certVotes so count and cert agree).
-		t.recordOwnVoteLocked(pb, vmBlock.ID())
+		// VOTE EMISSION.
+		//
+		// K==1 (sole validator, no siblings ever): the proposer's own accept IS the
+		// 1-of-1 quorum — record its signed self-vote now so the 1-of-1 cert assembles.
+		//
+		// K>1: DO NOT bind this node's one per-height signature to its own freshly-built
+		// block. On a fresh-net storm many validators build competing siblings at one
+		// height; if each self-votes its OWN block at build, all 5 lock to distinct
+		// blocks, the α-of-K vote splits 5 ways, and NOTHING finalizes (the net-wide
+		// stall). Instead the vote is emitted for the DETERMINISTICALLY CONVERGED winner
+		// at this height (convergenceVoter) — which may be this node's block or a peer's
+		// lower-canonical sibling — so every honest node signs the SAME block. The
+		// confidence driver still counts the own proposal (ProcessVote above); only the
+		// binding SIGNATURE is deferred to convergence.
+		if t.consensus.K() == 1 {
+			t.recordOwnVoteLocked(pb, vmBlock.ID())
+		}
 
 		// Gossip the block + request peer votes. These calls are done while
 		// holding t.mu — keep them short (msg creation + queue, no waiting).
@@ -2710,6 +2916,13 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 					_ = t.vm.SetPreference(ctx, tip)
 				}
 			}
+			// This node's accept vote for its OWN block is NOT cast here. On a fresh-net
+			// storm many validators build competing siblings at one height; binding this
+			// node's one signature to its own block at build time is exactly the 5-way
+			// split that stalls the quorum. The convergence loop casts this node's single
+			// vote for the settled, converged winner (which may be this block or a peer's
+			// lower-canonical sibling). Finalization is still attempted below in case a
+			// verified α-of-K cert is already assemblable from earlier heights.
 			t.finalizeOwnProposal(ctx, blockID)
 			t.mu.Lock()
 		}
