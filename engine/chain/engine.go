@@ -484,6 +484,20 @@ type Transitive struct {
 	chainID      ids.ID
 	nodeID       ids.NodeID
 
+	// committedSlot enforces the per-height NON-EQUIVOCATION safety rule (ported
+	// from consensus2 committed_slot_): this node signs an accept vote for AT MOST
+	// ONE canonical block per value-chain height. Signing two conflicting siblings
+	// at one height would place this node's stake in two conflicting ⅔-quorums and
+	// break the quorum-intersection argument that gives f<n/3 safety — the exact
+	// cross-node fork Red proved (two valid siblings each gathering a legit cert).
+	// Keyed height → bound canonical id: a second DIFFERENT canonical at a bound
+	// height is REFUSED (never signed); the SAME one is idempotent (safe re-solicit).
+	// Guarded by its own slotMu so BOTH signing sites can call it — recordOwnVoteLocked
+	// (under t.mu) and the follower path in followVerifiedBlock (t.mu released). Pruned
+	// below the finalized height (a finalized height can never legitimately re-sign).
+	slotMu        sync.Mutex
+	committedSlot map[uint64]ids.ID
+
 	// stakeSource (optional) makes finality STAKE-WEIGHTED instead of a raw voter
 	// count (HIGH-3). When set (a value/PoS chain with unequal stake), a cert is
 	// accepted only if its voters hold a strict ⅔ supermajority of stake at the
@@ -670,6 +684,7 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		pendingBlocks:    make(map[ids.ID]*PendingBlock),
 		finalizedByCert:  make(map[ids.ID]struct{}),
 		certBytesByBlock: make(map[ids.ID][]byte),
+		committedSlot:    make(map[uint64]ids.ID),
 		catchupRequested: make(map[ids.ID]time.Time),
 		bufferedVotes:    make(map[ids.ID][]Vote),
 		voteRequests:     make(chan VoteRequest, cfg.VoteRequestBuffer),
@@ -1779,6 +1794,13 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 		return
 	}
 	pos := t.blockPositionLocked(pending, blockID)
+	// NON-EQUIVOCATION (fork guard): refuse to sign a conflicting sibling at a height
+	// this node has already committed to. Idempotent for the same canonical block.
+	if !t.reserveSlotForSign(pos.Height, slotCanonical(pos)) {
+		t.log.Warn("vote-once: refusing to sign a conflicting sibling at an already-committed height",
+			"height", pos.Height, "blockID", blockID)
+		return
+	}
 	sig, err := t.voteSigner.SignVote(CanonicalVoteMessage(pos))
 	if err != nil {
 		t.log.Warn("failed to sign own accept vote for cert", "blockID", blockID, "error", err)
@@ -1792,6 +1814,50 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 		ParentID:  pos.ParentID,
 		Round:     pos.Round,
 	})
+}
+
+// reserveSlotForSign enforces the per-height non-equivocation rule before this
+// node casts an accept signature. `canonical` is the block's inner execution
+// commitment (the id finality certifies). Returns true if signing is permitted:
+// the height is unbound (binds it now) or already bound to THIS canonical
+// (idempotent — a legitimate re-solicit of the same block). Returns FALSE if the
+// height is already bound to a DIFFERENT canonical — a conflicting sibling this
+// node must NEVER sign (the cross-node fork Red proved). Self-locking (slotMu) so
+// both signing sites — recordOwnVoteLocked (t.mu held) and the follower path in
+// followVerifiedBlock (t.mu released) — share the one guard without deadlock.
+func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
+	t.slotMu.Lock()
+	defer t.slotMu.Unlock()
+	if bound, ok := t.committedSlot[height]; ok {
+		return bound == canonical // same block ⇒ idempotent; sibling ⇒ refuse
+	}
+	t.committedSlot[height] = canonical
+	return true
+}
+
+// pruneCommittedSlotsBelow drops equivocation-guard entries at or below a
+// finalized height — those heights are decided and can never legitimately be
+// re-signed, so their guard is dead weight. Keeps committedSlot bounded to the
+// live (unfinalized) window.
+func (t *Transitive) pruneCommittedSlotsBelow(height uint64) {
+	t.slotMu.Lock()
+	defer t.slotMu.Unlock()
+	for h := range t.committedSlot {
+		if h <= height {
+			delete(t.committedSlot, h)
+		}
+	}
+}
+
+// slotCanonical is the effective canonical identity a VotePosition binds for the
+// equivocation guard: the inner execution commitment (CanonicalID) for a
+// proposervm-wrapped block, else the outer id (bare-block degrade — matches
+// canonicalVoteMessageFor, so the guarded identity is exactly the SIGNED one).
+func slotCanonical(pos VotePosition) ids.ID {
+	if pos.CanonicalID != ids.Empty {
+		return pos.CanonicalID
+	}
+	return pos.BlockID
 }
 
 // pChainHeighter is the subset of block.SignedBlock the engine needs to pin a
