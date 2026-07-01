@@ -55,23 +55,23 @@ func TestRedIndep_ReserveSlotUnit(t *testing.T) {
 	X := ids.GenerateTestID()
 	Y := ids.GenerateTestID()
 
-	if !e.reserveSlotForSign(7, ids.Empty, X) {
+	if !e.reserveSlotForSign(7, X) {
 		t.Fatal("first bind at an unbound height must be permitted")
 	}
-	if !e.reserveSlotForSign(7, ids.Empty, X) {
+	if !e.reserveSlotForSign(7, X) {
 		t.Fatal("re-presenting the SAME canonical must be idempotent (safe re-solicit)")
 	}
-	if e.reserveSlotForSign(7, ids.Empty, Y) {
+	if e.reserveSlotForSign(7, Y) {
 		t.Fatal("a DIFFERENT canonical at a bound height MUST be refused (the fork guard)")
 	}
-	if !e.reserveSlotForSign(8, ids.Empty, Y) {
+	if !e.reserveSlotForSign(8, Y) {
 		t.Fatal("a different height is an independent slot and must be permitted")
 	}
 	// Document the prune->reopen behavior (this is exactly why the in-memory-only
 	// map forgets across a restart — the reason HIGH-1 makes it durable: a pruned/absent
 	// slot is freely re-bindable).
 	e.pruneCommittedSlotsBelow(7)
-	if !e.reserveSlotForSign(7, ids.Empty, Y) {
+	if !e.reserveSlotForSign(7, Y) {
 		t.Fatal("after prune the height is unbound again — a DIFFERENT canonical is now accepted " +
 			"(this is the post-finalize reopen; the post-CRASH reopen is what the durable guard prevents)")
 	}
@@ -111,10 +111,10 @@ func TestRedIndep_OwnVoteRefusedForSibling(t *testing.T) {
 	}
 
 	// Belt: the funnel itself must now refuse B's canonical and accept A's (idempotent).
-	if !e.reserveSlotForSign(1, ids.Empty, A.id) {
+	if !e.reserveSlotForSign(1, A.id) {
 		t.Fatalf("height 1 must be bound to A (idempotent re-check failed)")
 	}
-	if e.reserveSlotForSign(1, ids.Empty, B.id) {
+	if e.reserveSlotForSign(1, B.id) {
 		t.Fatalf("height 1 must REFUSE B's canonical")
 	}
 }
@@ -216,7 +216,7 @@ func TestRedIndep_ReserveSlotConcurrent(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			results[i] = e.reserveSlotForSign(height, ids.Empty, cands[i])
+			results[i] = e.reserveSlotForSign(height, cands[i])
 		}(i)
 	}
 	close(start)
@@ -236,7 +236,7 @@ func TestRedIndep_ReserveSlotConcurrent(t *testing.T) {
 	// The winner is stable/idempotent; all losers remain refused.
 	for i := 0; i < G; i++ {
 		want := i == winnerIdx
-		if got := e.reserveSlotForSign(height, ids.Empty, cands[i]); got != want {
+		if got := e.reserveSlotForSign(height, cands[i]); got != want {
 			t.Fatalf("post-settle non-idempotency at %d: got %v want %v", i, got, want)
 		}
 	}

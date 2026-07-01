@@ -70,12 +70,12 @@ func TestBlue_VoteGuard_CrashRestart_RefusesSiblingAfterRestart(t *testing.T) {
 	// --- post-crash: engine 2 built on the reopened store REFUSES a conflicting sibling.
 	e2, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
 	B := newTestBlock(7, ids.Empty, "restart-B")
-	if e2.reserveSlotForSign(7, ids.Empty, B.id) {
+	if e2.reserveSlotForSign(7, B.id) {
 		t.Fatalf("POST-CRASH FORK: engine 2 signed a conflicting sibling B at height 7 after restart — the "+
 			"durable guard failed to carry the binding across the crash (A=%s B=%s)", A.id, B.id)
 	}
 	// It still accepts the SAME canonical A (idempotent — a legitimate re-solicit post-restart).
-	if !e2.reserveSlotForSign(7, ids.Empty, A.id) {
+	if !e2.reserveSlotForSign(7, A.id) {
 		t.Fatal("engine 2 must still accept the SAME canonical A at height 7 (idempotent re-solicit)")
 	}
 }
@@ -87,7 +87,7 @@ func TestBlue_VoteGuard_PersistFailure_FailsClosed(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(failingGuard{}))
 
-	if e.reserveSlotForSign(9, ids.Empty, ids.GenerateTestID()) {
+	if e.reserveSlotForSign(9, ids.GenerateTestID()) {
 		t.Fatal("reserveSlotForSign MUST fail closed (return false) when the durable write fails")
 	}
 	e.slotMu.Lock()
@@ -110,10 +110,10 @@ func TestBlue_VoteGuard_FileRoundTrip(t *testing.T) {
 		t.Fatal("a fresh store (no file) must reload an empty snapshot")
 	}
 	want := map[SlotKey]ids.ID{
-		{Height: 1, Epoch: ids.Empty}:             ids.GenerateTestID(),
-		{Height: 2, Epoch: ids.GenerateTestID()}:  ids.GenerateTestID(),
-		{Height: 1_000_000, Epoch: ids.Empty}:     ids.GenerateTestID(),
-		{Height: 42, Epoch: ids.GenerateTestID()}: ids.GenerateTestID(),
+		{Height: 1}:         ids.GenerateTestID(),
+		{Height: 2}:         ids.GenerateTestID(),
+		{Height: 1_000_000}: ids.GenerateTestID(),
+		{Height: 42}:        ids.GenerateTestID(),
 	}
 	if err := s.Persist(want); err != nil {
 		t.Fatalf("Persist: %v", err)
@@ -165,49 +165,62 @@ func TestBlue_VoteGuard_CorruptFileFailsClosed(t *testing.T) {
 	}
 }
 
-// TestBlue_CrossEpochLiveness_NoStall is the HIGH-2 teeth. Keying the guard by
-// (height, epoch) — epoch = ValidatorSetRoot — lets a contested height be re-proposed
-// under a NEW validator set at a set-change boundary WITHOUT the quorum stalling, while
-// preserving intra-epoch non-equivocation. On the old height-only keying the cross-epoch
-// re-proposal (H,e2,B) collided with (H,e1) and was refused → this test FAILS there.
-func TestBlue_CrossEpochLiveness_NoStall(t *testing.T) {
+// TestVoteOnce_EpochBlind_OneSignaturePerHeight is the REGRESSION for the fresh-net
+// double-finalization fatal (two α-of-K certs at one height). The slot is keyed on
+// HEIGHT ALONE: once this node has signed ANY canonical at height H, EVERY different
+// canonical at H is refused — no matter what validator-set epoch it claims.
+//
+// This reproduces the production trigger and proves it closed. In the field two honest
+// sibling blocks at one consensus height pinned DIFFERENT proposervm P-chain heights (a
+// bare/pre-fork block reports 0, a wrapped block reports P), so ValidatorSetRoot(0)=Empty
+// ≠ ValidatorSetRoot(P). Under the earlier (height,epoch) keying those landed in
+// DIFFERENT slots, so one honest validator signed BOTH → two certs → the exit(1)
+// equivocation crash at height 7. With the epoch removed from the slot, the second
+// sibling is refused REGARDLESS of epoch, so a validator contributes its stake to AT
+// MOST ONE block per height and two conflicting certs can never both form (quorum
+// intersection: two ⅔ certs need ≥2α−n honest double-signers = f≥n/3).
+//
+// The prior TestBlue_CrossEpochLiveness_NoStall asserted the OPPOSITE (that a
+// different-epoch sibling at H is a distinct, independently-signable slot) — it encoded
+// the bug as the invariant. The "cross-epoch stall" it feared is not a stall: refusing a
+// conflicting sibling at H is exactly the non-equivocation we require; convergence on the
+// single decided block is a liveness concern resolved by the preferred-sibling vote path,
+// NEVER by letting a validator sign twice at one height.
+func TestVoteOnce_EpochBlind_OneSignaturePerHeight(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	e, _ := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
 
 	const H = uint64(42)
-	e1 := ids.GenerateTestID() // validator-set epoch 1 (set-root R1)
-	e2 := ids.GenerateTestID() // validator-set epoch 2 (set changed → R2)
-	A := ids.GenerateTestID()
-	Aprime := ids.GenerateTestID()
-	B := ids.GenerateTestID()
+	A := ids.GenerateTestID()      // wrapped sibling (its own P-chain-height epoch R)
+	Aprime := ids.GenerateTestID() // same-epoch conflicting sibling
+	B := ids.GenerateTestID()      // bare sibling (P-chain height 0 → epoch Empty)
 
-	// Intra-epoch SAFETY: bind A at (H,e1); a conflicting sibling A' at (H,e1) is REFUSED.
-	if !e.reserveSlotForSign(H, e1, A) {
-		t.Fatal("first bind at (H, epoch1) must be permitted")
+	// Bind A at height H.
+	if !e.reserveSlotForSign(H, A) {
+		t.Fatal("first bind at height H must be permitted")
 	}
-	if e.reserveSlotForSign(H, e1, Aprime) {
-		t.Fatal("intra-epoch conflicting sibling at (H, epoch1) MUST be refused (safety preserved)")
+	// Same-epoch conflicting sibling A' — refused (basic non-equivocation).
+	if e.reserveSlotForSign(H, Aprime) {
+		t.Fatal("conflicting sibling at height H MUST be refused")
 	}
-
-	// Cross-epoch LIVENESS: the SAME height under a NEW epoch is a DIFFERENT slot and MUST
-	// be permitted — else a set-change re-proposal strands the quorum (every node that
-	// signed the old-epoch block refuses the new one). Load-bearing: height-only keying
-	// returns false here.
-	if !e.reserveSlotForSign(H, e2, B) {
-		t.Fatal("CROSS-EPOCH STALL: the same height under a NEW epoch was refused — height-only keying " +
-			"would strand a quorum at a validator-set change (HIGH-2)")
+	// THE FIX: a DIFFERENT-epoch sibling B at the SAME height is ALSO refused. Under the
+	// old (height,epoch) keying this returned TRUE (a new slot) — the double-vote that
+	// finalized two blocks at height 7 on the fresh devnet.
+	if e.reserveSlotForSign(H, B) {
+		t.Fatal("DOUBLE-VOTE REGRESSION: a different-validator-set-epoch sibling at an " +
+			"already-signed height was admitted — the slot must be epoch-BLIND (height-only), " +
+			"else a bare/pre-fork sibling (epoch Empty) and a wrapped sibling (epoch R) each " +
+			"gather an α-of-K cert at one height → the exit(1) equivocation fatal")
 	}
-
-	// The new epoch keeps its OWN intra-epoch safety.
-	if e.reserveSlotForSign(H, e2, Aprime) {
-		t.Fatal("intra-epoch conflicting sibling at (H, epoch2) MUST be refused (per-epoch safety)")
+	// A stays idempotent; every other canonical at H stays refused.
+	if !e.reserveSlotForSign(H, A) {
+		t.Fatal("H->A must remain idempotent (safe re-solicit of the SAME block)")
 	}
-
-	// The original (H, epoch1) binding is untouched by the cross-epoch activity.
-	if !e.reserveSlotForSign(H, e1, A) {
-		t.Fatal("(H, epoch1)->A must remain idempotent after cross-epoch binding")
+	if e.reserveSlotForSign(H, Aprime) || e.reserveSlotForSign(H, B) {
+		t.Fatal("all non-A canonicals at H must stay refused")
 	}
-	if e.reserveSlotForSign(H, e1, Aprime) {
-		t.Fatal("(H, epoch1) conflicting sibling must STILL be refused after cross-epoch binding")
+	// A DIFFERENT height is an independent slot (progress is never blocked across heights).
+	if !e.reserveSlotForSign(H+1, B) {
+		t.Fatal("a different height is an independent slot and must be permitted")
 	}
 }
