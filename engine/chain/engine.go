@@ -1274,9 +1274,21 @@ func (t *Transitive) rePollLoopWithCtx(ctx context.Context) {
 // vote split. Derived from the round budget but clamped to a small band: long enough to
 // cover intra-cluster gossip, short enough to add negligible per-block latency.
 func (t *Transitive) convergenceSettleWindow() time.Duration {
-	// Half the round budget: collect competing proposals for half a round, then vote the
-	// lowest-canonical winner. This must comfortably exceed the sibling-gossip latency so
-	// every honest node has the SAME sibling set before it binds its one signature — a
+	// An operator-set window wins outright — DECOUPLED from RoundTO so a high-latency (WAN)
+	// validator set can lengthen the settle for its p99 gossip WITHOUT slowing the round
+	// cadence (the M-liveness / N4 gate: prod RoundTO 250-400ms yields a 150ms auto window,
+	// too tight for a 100-300ms-p99 WAN under a storm). A floor is still applied so a
+	// misconfigured near-zero value cannot disable the settle entirely.
+	if t.params.ConvergenceSettleWindow > 0 {
+		w := t.params.ConvergenceSettleWindow
+		if w < 150*time.Millisecond {
+			w = 150 * time.Millisecond
+		}
+		return w
+	}
+	// AUTO: half the round budget — collect competing proposals for half a round, then vote
+	// the lowest-canonical winner. This must comfortably exceed the sibling-gossip latency
+	// so every honest node has the SAME sibling set before it binds its one signature — a
 	// settle shorter than gossip lets a node settle on its OWN block before peers' arrive,
 	// which splits the vote and, under one-signature-per-height, is unrecoverable. Clamped
 	// so a tiny test round still gives a workable window and a huge production round does
@@ -1299,11 +1311,13 @@ func (t *Transitive) convergenceSettleWindow() time.Duration {
 // node binding its signature to the block it built or first-saw (a 5-way split that
 // never reaches α), all honest nodes independently pick the SAME winner and one α-of-K
 // cert assembles. A no-op when no convergence voter is wired (single-engine tests, which
-// inject votes directly) or on a single-validator (K==1) chain (its own accept is the
-// quorum — no convergence needed).
+// inject votes directly). K is re-checked EVERY tick, NOT captured once (N2): a net that
+// grows from K==1 (its own accept is the quorum, no convergence needed) to K>1 without an
+// engine restart must begin converging the moment the set expands — gating the whole
+// goroutine on the K seen at start would leave such a chain permanently unable to converge.
 func (t *Transitive) convergenceLoopWithCtx(ctx context.Context) {
 	defer t.wg.Done()
-	if t.convergenceVoter == nil || t.consensus.K() <= 1 {
+	if t.convergenceVoter == nil {
 		return
 	}
 	tick := t.convergenceSettleWindow() / 3
@@ -1319,6 +1333,9 @@ func (t *Transitive) convergenceLoopWithCtx(ctx context.Context) {
 		case <-ticker.C:
 			if ctx.Err() != nil {
 				return
+			}
+			if t.consensus.K() <= 1 {
+				continue // single-validator right now: its own accept is the quorum
 			}
 			t.convergenceVoter.RunSettlePass(ctx)
 		}
@@ -2022,6 +2039,20 @@ type ConvergenceVoter interface {
 // signatures converge onto it. Abandoned blocks (a dead proposer's sibling that
 // stopped being re-solicited) are excluded, so the winner advances to the
 // lowest-canonical LIVE sibling — the f=1 self-heal. Caller holds t.mu.
+//
+// GRINDABILITY (RED M-grind, a testnet/mainnet gate — NOT a safety or halt break):
+// the tie-break is the block's content hash (CanonicalID), which the PROPOSER controls.
+// A validator eligible at a CONTESTED height can grind ~2^k block variants in the settle
+// window to obtain the lowest canonical and make every honest node converge on ITS block
+// — a censorship/MEV lever. It is bounded to MULTI-PROPOSER CONTENTION only: at a
+// height with a single proposervm-eligible proposer (the steady state) there are no
+// siblings to win, so the grind buys nothing; it bites only during the fresh-net /
+// down-designated-proposer transient. Progress and single-block finality are UNAFFECTED
+// (one block per height still finalizes). The grind-RESISTANT replacement is a tie-break
+// the proposer cannot bias — a VRF over height‖parentID keyed to the staking key, or the
+// proposervm eligibility VRF already carried in the wrapped block — which requires
+// plumbing the proposer's VRF output into the consensus Block (a node-layer change) and
+// is the tracked follow-up before adversarial-validator mainnet promotion.
 func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.ID) (ids.ID, int, bool) {
 	var winner, winnerCanon ids.ID
 	count := 0
@@ -2046,6 +2077,44 @@ func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.I
 		return ids.Empty, 0, false
 	}
 	return winner, count, true
+}
+
+// parentIsProvenLoserLocked reports whether parentID has DEFINITIVELY lost the
+// convergence at its OWN height: a tracked, non-abandoned SIBLING of parentID (same
+// height, same grandparent) carries a strictly-lower signed-canonical. Such a parent is
+// on a branch every honest node is converging AWAY from, so a height-H block extending it
+// can never finalize; binding this node's one height-H signature to it would waste the
+// vote under the height-only vote-once rule and could STALL height H — the transient
+// H-1-fork case (N1). Conservative on purpose: an UNTRACKED parent (the finalized tip, or
+// a block this node is behind) returns false — it cannot be PROVEN a loser and must not be
+// filtered, or the normal H = finalizedHeight+1 path would itself stall. Caller holds t.mu.
+func (t *Transitive) parentIsProvenLoserLocked(parentID ids.ID) bool {
+	pb, ok := t.pendingBlocks[parentID]
+	if !ok || pb.ConsensusBlock == nil {
+		return false
+	}
+	p := pb.ConsensusBlock
+	pc := p.canonicalID
+	if pc == ids.Empty {
+		pc = parentID
+	}
+	for sibID, sib := range t.pendingBlocks {
+		cb := sib.ConsensusBlock
+		if cb == nil || sib.rePollAbandoned || sibID == parentID {
+			continue
+		}
+		if cb.height != p.height || cb.parentID != p.parentID {
+			continue
+		}
+		sc := cb.canonicalID
+		if sc == ids.Empty {
+			sc = sibID
+		}
+		if sc.Compare(pc) < 0 {
+			return true // a strictly-lower-canonical sibling of the parent exists ⇒ parent lost
+		}
+	}
+	return false
 }
 
 // votableSlot identifies one (height, parentID) fork slot the settle pass may need to
@@ -2097,9 +2166,13 @@ func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 	}
 	var out []votableSlot
 	for s, t1 := range latest {
-		if now.Sub(t1) >= settle {
-			out = append(out, s)
+		if now.Sub(t1) < settle {
+			continue // not settled — siblings may still be arriving
 		}
+		if t.parentIsProvenLoserLocked(s.parentID) {
+			continue // N1: parent lost its own height's convergence — its children are a dead branch
+		}
+		out = append(out, s)
 	}
 	return out
 }
