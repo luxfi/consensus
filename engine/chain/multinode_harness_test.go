@@ -278,6 +278,7 @@ const (
 	msgBlock busMsgKind = iota
 	msgVote
 	msgCert
+	msgPrevote
 )
 
 type busMsg struct {
@@ -383,6 +384,13 @@ func (g *busGossiper) GossipCert(_ ids.ID, _ ids.ID, blockID ids.ID, certBytes [
 	return g.bus.deliver(g.self, busMsg{kind: msgCert, from: g.self, blockID: blockID, payload: append([]byte(nil), certBytes...)})
 }
 
+func (g *busGossiper) BroadcastPrevote(_ ids.ID, _ ids.ID, _ uint64, _ uint32, canonical ids.ID, voteBytes []byte) int {
+	if g.dropOut() {
+		return 0
+	}
+	return g.bus.deliver(g.self, busMsg{kind: msgPrevote, from: g.self, blockID: canonical, payload: append([]byte(nil), voteBytes...)})
+}
+
 // Unused legacy transport methods (single-recipient pull/vote) — no-ops in the
 // broadcast topology under test.
 func (g *busGossiper) SendPullQuery(ids.ID, ids.ID, ids.ID, []ids.NodeID) int { return 0 }
@@ -446,6 +454,8 @@ func (n *simNode) run() {
 				n.rt.HandleIncomingVote(m.blockID, m.payload)
 			case msgCert:
 				n.rt.HandleIncomingCert(m.payload)
+			case msgPrevote:
+				n.rt.HandleIncomingPrevote(m.payload)
 			}
 		}
 	}
