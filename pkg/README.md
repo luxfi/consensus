@@ -22,12 +22,12 @@ src/
 - **Features**: Full integration with Lux node, concurrent processing
 
 ### C (`/src/c/`)
-- **Status**: Production-ready
+- **Status**: Data structures only — not real consensus (per SDK audit)
 - **Use Case**: Embedded systems, performance-critical applications
 - **Features**: Minimal dependencies, ZeroMQ networking, SIMD optimizations
 
 ### Rust (`/src/rust/`)
-- **Status**: Production-ready
+- **Status**: FFI wrapper around the C library — inherits C limitations, not native consensus (per SDK audit)
 - **Use Case**: Memory-safe systems, async applications
 - **Features**: Zero-cost abstractions, async/await, compile-time guarantees
 
@@ -93,6 +93,13 @@ All implementations support these consensus engines (Quasar family):
 | Go             | 12,000+      | < 20 MB      | < 2ms   |
 | C++ (w/ MLX)   | 15,000+      | < 25 MB      | < 1ms   |
 | Python         | 5,000+       | < 50 MB      | < 5ms   |
+
+> **Note.** These per-implementation votes/sec figures are unverified and, per
+> the SDK audit, several measure data-structure insertion on stub/wrapper SDKs
+> (C = data structures only, Rust = FFI wrapper over C, C++ = Wave-only stub);
+> only the Python SDK implements real consensus. Treat as illustrative, not
+> measured consensus throughput. See `.github/workflows/README.md` and the
+> "Honest Assessment" block in `LLM.md`.
 
 ## Protocol Compatibility
 
