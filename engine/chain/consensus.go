@@ -358,6 +358,27 @@ func (c *ChainConsensus) K() int {
 	return c.k
 }
 
+// Reclamp updates the committee sample size k and quorum alpha to track a CHANGED live
+// validator set. The committee is otherwise fixed at NewChainConsensus (the construction-time
+// bftCommittee clamp); without a re-clamp a chain that LAUNCHED single-validator would keep k
+// stuck at 1, and after it added validators via its PoS staking contract the lone validator
+// would still take the K==1 path (synthesize a 1-of-1 cert / accept a single-signer stake cert
+// at alpha=1) and finalize UNILATERALLY — a cross-node fork against validators 2..N who require
+// a real k=N quorum (RED HIGH, the 1→N decentralization path). beta (the confidence threshold)
+// is committee-size-independent and is left unchanged. A degenerate update (k<1, alpha<1, or
+// alpha>k) is ignored so a mis-derived call can never open a sub-quorum. The engine only ever
+// calls this to move the committee UP toward the live count (reclampCommitteeLocked, up-only),
+// so a transient low read can never shrink the quorum here.
+func (c *ChainConsensus) Reclamp(k, alpha int) {
+	if k < 1 || alpha < 1 || alpha > k {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.k = k
+	c.alpha = alpha
+}
+
 // Alpha returns the acceptance quorum threshold (α of α-of-K). A block is
 // accepted once acceptVotes >= Alpha; a QuorumCert proves exactly this many
 // distinct signed accepts.
