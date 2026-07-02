@@ -96,6 +96,18 @@ type Parameters struct {
 	// alongside BLS. Zero value (PQModeBLSOnly) preserves the classical
 	// fast path. See pq_mode.go for the full enum.
 	PQMode PQMode
+
+	// ViewChange enables the round-scoped view-change convergence (Tendermint-style
+	// prevote/POL/precommit/lock — engine/chain/round_view.go). When true, a node
+	// PREVOTES fluidly across rounds (so a competing-sibling split re-converges) and
+	// PRECOMMITS the irrevocable α-of-K cert signature only on a POL, LOCKING on it —
+	// which RESTORES liveness under a down proposer + zero-margin quorum that the
+	// timing-fragile one-signature-per-height convergence deadlocks on (the 415→416
+	// freeze). When false (default), the engine keeps the legacy single-phase
+	// convergence — the safe-but-halt-prone behavior — so the change is opt-in and
+	// owner-gated per network. Safety is a REFINEMENT: one-sig-per-height becomes
+	// one-precommit-per-(height,round) + the lock rule.
+	ViewChange bool
 }
 
 // WithPQMode returns a copy of Parameters with the given PQ mode set.

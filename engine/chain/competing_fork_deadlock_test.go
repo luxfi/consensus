@@ -30,8 +30,76 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/ids"
 )
+
+// stormParams5VC is stormParams5 with the round-scoped VIEW-CHANGE enabled — the fix.
+func stormParams5VC() config.Parameters {
+	p := stormParams5()
+	p.ViewChange = true
+	return p
+}
+
+// TestViewChange_CompetingFork_AsymmetricSplit_Converges runs the EXACT deadlock scenario
+// of TestRepro_CompetingFork_AsymmetricSplit_Deadlocks — designated proposer dead (α=4,
+// zero margin), two live validators build competing siblings, a partition that outlasts
+// the settle window splits the vote — but with ViewChange ON, driving the two-phase
+// prevote/POL/precommit/lock through the FULL engine. It must CONVERGE + finalize a single
+// head after the partition heals (the liveness the legacy path deadlocks on), with NO
+// double-finalization.
+func TestViewChange_CompetingFork_AsymmetricSplit_Converges(t *testing.T) {
+	net := newSimNet(t, 5, stormParams5VC())
+	net.down(0)
+
+	nid := func(i int) ids.NodeID { return net.vs.nodeID(i) }
+	group := map[ids.NodeID]int{nid(1): 1, nid(3): 1, nid(2): 2, nid(4): 2}
+	var partitioned atomic.Bool
+	partitioned.Store(true)
+	net.bus.setLink(func(from, to ids.NodeID, _ busMsgKind) bool {
+		if !partitioned.Load() {
+			return true
+		}
+		gf, gt := group[from], group[to]
+		if gf == 0 || gt == 0 {
+			return true
+		}
+		return gf == gt
+	})
+
+	A := newHonestBlock(ids.Empty, simGenesisRoot(), 1, "vc-split-A")
+	B := newHonestBlock(ids.Empty, simGenesisRoot(), 1, "vc-split-B")
+	net.build(1, A)
+	net.build(2, B)
+
+	// Partition longer than the settle window: under view-change, no group of 2 reaches a
+	// POL (α=4), so NO node precommits/locks — the crucial property that lets the split
+	// re-converge safely once the partition heals.
+	time.Sleep(2 * time.Second)
+	if _, ok1 := net.nodes[1].rt.FinalizedBlockAtHeight(1); ok1 {
+		t.Fatalf("nothing may finalize under a 2|2 partition with α=4")
+	}
+	partitioned.Store(false) // HEAL
+
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		heads := net.headsAtHeight(1)
+		if len(heads) > 1 {
+			t.Fatalf("DOUBLE-FINALIZATION at height 1 (safety break): %v", heads)
+		}
+		if len(heads) == 1 {
+			for _, c := range heads {
+				if c >= net.upCount() {
+					t.Logf("VIEW-CHANGE PASS: split→heal converged all %d live nodes on a single head through the FULL engine", net.upCount())
+					return
+				}
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("VIEW-CHANGE LIVENESS FAIL: height 1 did not converge after heal (heads=%v, up=%d)",
+		net.headsAtHeight(1), net.upCount())
+}
 
 func TestRepro_CompetingFork_AsymmetricSplit_Deadlocks(t *testing.T) {
 	if os.Getenv("LUX_REPRO_DEADLOCK") == "" {
