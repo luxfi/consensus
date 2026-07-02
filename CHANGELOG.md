@@ -128,10 +128,11 @@ This release introduces complete multi-language support for the Lux consensus en
 - Example implementation provided
 
 #### Performance Achievements
-- C: 9M+ blocks/sec, 19M+ votes/sec
-- Rust: 607ns engine creation
-- Python: 6.7M blocks/sec
-- Go: 14M+ blocks/sec
+- Per-second throughput figures from this release were retracted by the
+  2025-11-10 SDK audit: the C/Rust/Python/Go SDKs measure data-structure
+  insertion (or the Rust `u8` overflow bug), not consensus. The honest
+  consensus-bound rate is ≈21K votes/sec (C FFI). See
+  `.github/workflows/README.md` and the "Honest Assessment" block in `LLM.md`.
 
 ### 📊 Test Coverage
 - 100% test parity across all 4 implementations
