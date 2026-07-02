@@ -147,6 +147,18 @@ func (t *Transitive) viewForLocked(height uint64, alpha, n int) *roundView {
 		return v
 	}
 	v := newRoundView(height, alpha, n)
+	// RESTART SEED: if a v3-recovered lock round exists for this height, seed the machine's
+	// lock (round + value) so a restarted node re-converges under the unlock rule instead of
+	// starting unlocked (which would let it precommit a conflicting value — the double-precommit
+	// the durable lock prevents). Only fires for a RECOVERED height: a fresh in-session height
+	// has no lockRounds entry at view-creation time (it is set on precommit, after this).
+	if round, ok := t.lockRounds[height]; ok {
+		if bound, ok2 := t.committedSlot[SlotKey{Height: height}]; ok2 {
+			v.haveLocked = true
+			v.lockRound = round
+			v.lockBlock = bound
+		}
+	}
 	t.views[height] = v
 	return v
 }
