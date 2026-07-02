@@ -332,7 +332,19 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	var selfVoter func(ids.ID)
 	if params.K == 1 {
 		selfVoter = func(blockID ids.ID) {
-			engine.ReceiveVote(Vote{
+			// ASYNC — MUST NOT reenter the engine lock on the caller's goroutine. RequestVotes
+			// invokes this selfVoter while buildBlocksLocked HOLDS t.mu (write), and
+			// engine.ReceiveVote acquires t.mu.RLock; a SYNCHRONOUS call self-deadlocks —
+			// sync.RWMutex is not reentrant, so the same goroutine blocks forever on RLock while
+			// holding the write lock. That is the live single-validator freeze: the node logs
+			// "single-node mode: self-voting" and then hangs there, so the inline K==1 finalize
+			// (which runs AFTER RequestVotes) never executes and no block ever decides. Handing the
+			// vote to a fresh goroutine lets buildBlocksLocked finish its inline finalize and release
+			// t.mu; ReceiveVote then runs and delivers the (redundant, for the own-proposal path)
+			// self-vote — and is the finality trigger for the rebuild / re-poll paths that have no
+			// inline finalize. ReceiveVote is non-blocking (bounded channel + started check), so the
+			// goroutine returns immediately (no leak).
+			go engine.ReceiveVote(Vote{
 				BlockID:  blockID,
 				NodeID:   cfg.NodeID,
 				Accept:   true,
