@@ -2820,6 +2820,17 @@ func (t *Transitive) reclampCommitteeLocked() {
 	if t.liveValidatorCount == nil || t.presetK <= 0 {
 		return
 	}
+	// RESOLVED-SET GATE (do not trust the sampler until the chain is actually running). A FRESH
+	// single-validator chain can transiently over-report its validator count before the set is
+	// resolved (the genesis/staking set not yet pruned to the active validator); reclamping K→N on
+	// that read would skip the K==1 inline finalize and wedge the chain at block 0. Requiring at
+	// least one FINALIZED block (GetFinalizedHeight set) means the chain has already produced +
+	// finalized a block under its construction committee, so the live set read is now authoritative.
+	// A genuinely single-validator chain (count==1) never reclamps regardless; a chain that
+	// decentralizes has long since finalized blocks, so this never blocks the real 1→N transition.
+	if _, set := t.consensus.GetFinalizedHeight(); !set {
+		return
+	}
 	count := t.liveValidatorCount()
 	if count < 1 {
 		return // set not resolved/loaded for this network — keep the construction committee
@@ -2859,9 +2870,16 @@ func (t *Transitive) buildSingleValidatorCertLocked(pending *PendingBlock, block
 	// peers' votes arrive). count<1 (unwired sampler / --dev / a not-yet-resolved set) keeps the
 	// genuine-single-validator + dev path (the n=1 fix) — a fresh chain that knows of no other
 	// validator has no fork to create.
+	// RESOLVED-SET GATE (mirrors reclampCommitteeLocked): only refuse to synthesize once the chain
+	// has FINALIZED at least one block, so a fresh single-validator chain that transiently
+	// over-reports its count cannot wedge its own first block by refusing the 1-of-1 cert. Once the
+	// set is authoritative, a live count > 1 means this stuck-K==1 engine must NOT finalize
+	// unilaterally (the 1→N fork) — return ZERO and let a real quorum finalize.
 	if t.liveValidatorCount != nil {
-		if count := t.liveValidatorCount(); count > 1 {
-			return VerifiedQuorumCert{}
+		if _, resolved := t.consensus.GetFinalizedHeight(); resolved {
+			if count := t.liveValidatorCount(); count > 1 {
+				return VerifiedQuorumCert{}
+			}
 		}
 	}
 	// K==1 FALLBACK — synthesize the 1-of-1 finality witness from the position. Both callers
@@ -3297,12 +3315,18 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 				ParentID:  vmBlock.ParentID(),
 			}
 			t.proposer.Propose(ctx, proposal)
-			voteReq := VoteRequest{
-				BlockID:    vmBlock.ID(),
-				BlockData:  vmBlock.Bytes(),
-				Validators: nil,
+			// Solicit peer votes ONLY on a multi-validator chain. A K==1 chain has no peers to
+			// poll and finalizes SOLELY through the inline finalizer below — calling RequestVotes
+			// here was the entry to the removed single-node self-vote shortcut that self-deadlocked
+			// on t.mu. (Propose above is kept so non-validating FOLLOWERS still receive the block.)
+			if t.consensus.K() > 1 {
+				voteReq := VoteRequest{
+					BlockID:    vmBlock.ID(),
+					BlockData:  vmBlock.Bytes(),
+					Validators: nil,
+				}
+				t.proposer.RequestVotes(ctx, voteReq)
 			}
-			t.proposer.RequestVotes(ctx, voteReq)
 		}
 
 		// Self-finalize the just-built own block through the SOLE cert-gated
