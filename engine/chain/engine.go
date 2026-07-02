@@ -544,6 +544,12 @@ type Transitive struct {
 	// finalizes it via the α-of-K cert gossip (HandleIncomingCert), not a local re-precommit.
 	// A height leaves this set once it finalizes (pruned). Guarded by slotMu.
 	recoveredLocks map[uint64]struct{}
+	// lockRounds is the round-scoped view-change LOCK ROUND per height (the round this node
+	// precommitted+locked the height's binding). Persisted in the v3 vote-guard so a restarted
+	// node seeds its roundView lock and re-converges under the unlock rule (instead of the
+	// conservative recoveredLocks hard-lock). Updated on precommit; pruned on finalize. Guarded
+	// by slotMu.
+	lockRounds map[uint64]uint32
 	// decidedFloor is the DURABLE, MONOTONIC decided-through height: the highest height
 	// this node has ever finalized. The sign gate refuses signing at any height <= it, so a
 	// decided height is permanently unsignable EVEN AFTER its committedSlot entry is pruned
@@ -750,6 +756,7 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		views:            make(map[uint64]*roundView),
 		prevoteSigs:      make(map[pvSigKey]map[ids.NodeID][]byte),
 		recoveredLocks:   make(map[uint64]struct{}),
+		lockRounds:       make(map[uint64]uint32),
 		catchupRequested: make(map[ids.ID]time.Time),
 		bufferedVotes:    make(map[ids.ID][]Vote),
 		voteRequests:     make(chan VoteRequest, cfg.VoteRequestBuffer),
@@ -2089,7 +2096,7 @@ func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
 	// consistent with what is durable and we FAIL CLOSED (return false ⇒ no signature).
 	t.committedSlot[key] = canonical
 	if t.voteGuard != nil {
-		if err := t.voteGuard.Persist(t.committedSlot, t.decidedFloor); err != nil {
+		if err := t.voteGuard.Persist(t.committedSlot, t.lockRounds, t.decidedFloor); err != nil {
 			delete(t.committedSlot, key)
 			t.log.Error("vote-once: durable equivocation-guard write FAILED — refusing to sign (fail-closed)",
 				"height", height, "error", err)
@@ -2159,8 +2166,13 @@ func (t *Transitive) pruneCommittedSlotsBelow(height uint64) {
 			delete(t.recoveredLocks, h)
 		}
 	}
+	for h := range t.lockRounds {
+		if h < height {
+			delete(t.lockRounds, h) // strictly-below, mirroring committedSlot (retain the tip's lock round)
+		}
+	}
 	if (changed || floorAdvanced) && t.voteGuard != nil {
-		if err := t.voteGuard.Persist(t.committedSlot, t.decidedFloor); err != nil {
+		if err := t.voteGuard.Persist(t.committedSlot, t.lockRounds, t.decidedFloor); err != nil {
 			t.log.Warn("vote-once: durable equivocation-guard shrink failed (non-fatal; floor re-persisted on next bind)",
 				"belowHeight", height, "error", err)
 		}

@@ -84,12 +84,13 @@ func TestVoteGuard_LegacyMultiEpochFold(t *testing.T) {
 // engine FAILS CLOSED (refuses the signature) and rolls back the in-memory binding.
 type failingGuard struct{}
 
-func (failingGuard) Persist(map[SlotKey]ids.ID, uint64) error {
+func (failingGuard) Persist(map[SlotKey]ids.ID, map[uint64]uint32, uint64) error {
 	return errors.New("simulated durable-write failure")
 }
-func (failingGuard) Snapshot() map[SlotKey]ids.ID { return map[SlotKey]ids.ID{} }
-func (failingGuard) FinalizedThrough() uint64     { return 0 }
-func (failingGuard) Close() error                 { return nil }
+func (failingGuard) Snapshot() map[SlotKey]ids.ID           { return map[SlotKey]ids.ID{} }
+func (failingGuard) LockRoundsSnapshot() map[uint64]uint32  { return map[uint64]uint32{} }
+func (failingGuard) FinalizedThrough() uint64               { return 0 }
+func (failingGuard) Close() error                           { return nil }
 
 // TestBlue_VoteGuard_CrashRestart_RefusesSiblingAfterRestart is the HIGH-1 teeth: a
 // node that signs canonical A at a height, then CRASHES before that height finalizes,
@@ -351,7 +352,8 @@ func TestBlue_VoteGuard_FileRoundTrip(t *testing.T) {
 		{Height: 42}:        ids.GenerateTestID(),
 	}
 	const wantFloor = uint64(1_000_005)
-	if err := s.Persist(want, wantFloor); err != nil {
+	wantLockRounds := map[uint64]uint32{1: 0, 2: 7, 1_000_000: 42, 42: 3}
+	if err := s.Persist(want, wantLockRounds, wantFloor); err != nil {
 		t.Fatalf("Persist: %v", err)
 	}
 	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
@@ -373,6 +375,14 @@ func TestBlue_VoteGuard_FileRoundTrip(t *testing.T) {
 	if got := s2.FinalizedThrough(); got != wantFloor {
 		t.Fatalf("reloaded finalizedThrough %d, want %d (the durable decided-through floor must round-trip)", got, wantFloor)
 	}
+	// v3: the per-height lock rounds must round-trip too (so a restarted view-change node seeds
+	// its roundView lock and re-converges under the unlock rule).
+	gotLR := s2.LockRoundsSnapshot()
+	for h, r := range wantLockRounds {
+		if gotLR[h] != r {
+			t.Fatalf("v3 lockRound for height %d: reloaded %d, want %d", h, gotLR[h], r)
+		}
+	}
 }
 
 // TestBlue_VoteGuard_CorruptFileFailsClosed proves a tampered/torn snapshot is a HARD
@@ -384,7 +394,7 @@ func TestBlue_VoteGuard_CorruptFileFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard: %v", err)
 	}
-	if err := s.Persist(map[SlotKey]ids.ID{{Height: 5}: ids.GenerateTestID()}, 4); err != nil {
+	if err := s.Persist(map[SlotKey]ids.ID{{Height: 5}: ids.GenerateTestID()}, nil, 4); err != nil {
 		t.Fatalf("Persist: %v", err)
 	}
 	data, err := os.ReadFile(path)
@@ -522,5 +532,63 @@ func TestViewChange_RecoveredLock_NoCrossRestartDoublePrecommit(t *testing.T) {
 	}
 	if !e2.reserveSlotForSign(H2, B) {
 		t.Fatal("in-session re-precommit B@H2 must be PERMITTED under ViewChange (round+lock governs re-convergence)")
+	}
+}
+
+// TestViewChange_V3LockRound_SeedsRoundViewLock proves the v3 upgrade: a binding persisted
+// WITH a view-change lock round (round+1 sentinel) is recovered as a SEEDED roundView lock
+// (haveLocked/lockRound/lockBlock) rather than the conservative hard-lock — so a restarted
+// node re-converges LOCALLY at the recovered height under the unlock rule. Also asserts the
+// v2→v3 window: a legacy (no-lock-round) binding still hard-locks.
+func TestViewChange_V3LockRound_SeedsRoundViewLock(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vote-guard")
+	vs := newTestValidatorSet(5)
+	p := params5Prod()
+	p.ViewChange = true
+
+	const Hlocked = uint64(80) // has a v3 lock round
+	const R = uint32(4)
+	const Hlegacy = uint64(81) // no lock round (legacy/direct binding)
+	X := ids.GenerateTestID()
+	L := ids.GenerateTestID()
+
+	store1, err := OpenVoteGuard(path)
+	if err != nil {
+		t.Fatalf("OpenVoteGuard: %v", err)
+	}
+	// Hlocked carries a real lock round; Hlegacy carries none (absent from the lockRounds map).
+	if err := store1.Persist(
+		map[SlotKey]ids.ID{{Height: Hlocked}: X, {Height: Hlegacy}: L},
+		map[uint64]uint32{Hlocked: R},
+		0,
+	); err != nil {
+		t.Fatalf("Persist: %v", err)
+	}
+
+	store2, err := OpenVoteGuard(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if got := store2.LockRoundsSnapshot()[Hlocked]; got != R {
+		t.Fatalf("v3 lock round must round-trip: got %d want %d", got, R)
+	}
+	if _, ok := store2.LockRoundsSnapshot()[Hlegacy]; ok {
+		t.Fatal("a legacy (no-lock-round) binding must NOT surface a lock round (0-sentinel)")
+	}
+
+	e, _ := newQuorumEngineOpts(t, p, vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
+	e.slotMu.Lock()
+	defer e.slotMu.Unlock()
+	if _, hard := e.recoveredLocks[Hlocked]; hard {
+		t.Fatal("a v3-recovered height (lock round on disk) must NOT be a hard-lock — it re-converges")
+	}
+	if _, hard := e.recoveredLocks[Hlegacy]; !hard {
+		t.Fatal("a legacy-recovered height (no lock round) MUST be a conservative hard-lock")
+	}
+	v := e.viewForLocked(Hlocked, 4, 5)
+	if !v.haveLocked || v.lockRound != R || v.lockBlock != X {
+		t.Fatalf("viewForLocked must SEED the recovered lock: haveLocked=%v lockRound=%d lockBlock=%s (want true,%d,%s)",
+			v.haveLocked, v.lockRound, v.lockBlock, R, X)
 	}
 }
