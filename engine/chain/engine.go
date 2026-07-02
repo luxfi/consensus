@@ -497,6 +497,21 @@ type Transitive struct {
 	chainID      ids.ID
 	nodeID       ids.NodeID
 
+	// presetK is the TARGET committee sample size — the configured K BEFORE the construction-time
+	// clamp to the live validator count (bftCommittee). reclampCommitteeLocked re-clamps the live
+	// committee UP toward it as the validator set grows, so a chain that launched single-validator
+	// tracks its set instead of staying stuck at K=1 (the 1→N decentralization fork). 0 ⇒ no
+	// re-clamp (K stays exactly as constructed — the path for tests / --dev / a chain with no
+	// preset). Wired by the Runtime.
+	presetK int
+	// liveValidatorCount reports the CURRENT validator count for THIS chain's network (wired by the
+	// Runtime from the validator sampler); nil for tests / --dev without a sampler. It is read at
+	// each finalize decision so both the committee (reclampCommitteeLocked) and the single-validator
+	// synthesis guard (buildSingleValidatorCertLocked) track the LIVE set rather than the frozen
+	// construction-time count. A wired sampler returns 0 when the set is not yet resolved for this
+	// network, ≥1 once loaded.
+	liveValidatorCount func() int
+
 	// committedSlot enforces the per-HEIGHT NON-EQUIVOCATION safety rule (SlotKey =
 	// {height}): this node signs an accept vote for AT MOST ONE canonical block per
 	// value-chain height — regardless of the block's validator-set epoch. Signing two
@@ -2677,6 +2692,10 @@ func (t *Transitive) TryAccept(ctx context.Context, blockID ids.ID) error {
 		t.mu.Unlock()
 		return nil // nothing to accept (gone or already finalized) — not an error
 	}
+	// Track the live validator set: re-clamp the committee UP before choosing the single-validator
+	// vs multi-validator finality path, so a chain that launched single-validator does not keep
+	// finalizing unilaterally after it decentralizes (RED's 1→N fork).
+	t.reclampCommitteeLocked()
 	singleValidator := t.consensus.K() == 1
 
 	if singleValidator {
@@ -2787,6 +2806,40 @@ func (t *Transitive) assembleVerifiedCertLocked(pending *PendingBlock, blockID i
 // one block per height, contiguous, reorg-on-conflict) does the commit. This degenerate
 // token exists ONLY for K==1 and can never arise for K>1 (TryAccept's K>1 branch never
 // calls here).
+// reclampCommitteeLocked re-clamps the live committee (k, alpha) UP to track the CURRENT
+// validator count, so a chain that launched single-validator does not keep k stuck at 1 after it
+// adds validators (the 1→N decentralization fork: a stuck-k=1 validator would finalize
+// unilaterally via a synthesized 1-of-1 cert OR a single-signer stake cert at alpha=1). It is
+// UP-ONLY: it never shrinks the committee here, so a transient low read (a syncing node, an
+// unresolved set) can never DROP the quorum and enable a unilateral finalize; a genuine shrink is
+// an operator/governance action. No-op without a wired sampler or preset (tests / --dev), or when
+// the set is unresolved (count<1). Called from the finalize decision points (buildBlocksLocked,
+// TryAccept) under t.mu — the same nesting order (t.mu → c.mu) K() already uses, and k is written
+// only here so the K() read + Reclamp cannot race.
+func (t *Transitive) reclampCommitteeLocked() {
+	if t.liveValidatorCount == nil || t.presetK <= 0 {
+		return
+	}
+	count := t.liveValidatorCount()
+	if count < 1 {
+		return // set not resolved/loaded for this network — keep the construction committee
+	}
+	newK := t.presetK
+	if count < newK {
+		newK = count
+	}
+	if newK <= t.consensus.K() {
+		return // UP-ONLY (never auto-shrink)
+	}
+	newAlpha := 2*newK/3 + 1 // the BFT ⅔ supermajority (matches bftCommittee)
+	t.consensus.Reclamp(newK, newAlpha)
+	if t.log != nil {
+		t.log.Warn("committee re-clamped UP to the live validator set (decentralization) — "+
+			"single-validator finality is no longer permitted",
+			"newK", newK, "newAlpha", newAlpha, "liveCount", count, "presetK", t.presetK)
+	}
+}
+
 func (t *Transitive) buildSingleValidatorCertLocked(pending *PendingBlock, blockID ids.ID) VerifiedQuorumCert {
 	// Prefer the VERIFIED 1-of-1 cert: when vote crypto is wired the proposer
 	// recorded its own signed accept (recordOwnVoteLocked), so assembleCertLocked
@@ -2794,6 +2847,22 @@ func (t *Transitive) buildSingleValidatorCertLocked(pending *PendingBlock, block
 	// finalize on a real witness — even on a single-validator chain.
 	if cert, ok := t.assembleVerifiedCertLocked(pending, blockID); ok {
 		return cert
+	}
+	// DECENTRALIZATION FORK GUARD (belt over reclampCommitteeLocked). Re-read the LIVE validator
+	// count and REFUSE to synthesize a 1-of-1 cert if the set has grown past ONE validator. K is
+	// clamped at construction and re-clamped UP by reclampCommitteeLocked before the
+	// single-validator decision, so K()==1 should already imply a one-validator set — but a lone
+	// validator must NEVER finalize a synthesized 1-of-1 cert on a multi-validator chain: RED's
+	// 1→N fork is that validators 2..N reject the unsigned cert (VerifyWeighted / real quorum)
+	// while validator-1 serves a DIVERGENT finalized chain over RPC. Returning ZERO makes
+	// acceptWithCertCore refuse, so finality waits for a real k-of-N cert (assembled once the
+	// peers' votes arrive). count<1 (unwired sampler / --dev / a not-yet-resolved set) keeps the
+	// genuine-single-validator + dev path (the n=1 fix) — a fresh chain that knows of no other
+	// validator has no fork to create.
+	if t.liveValidatorCount != nil {
+		if count := t.liveValidatorCount(); count > 1 {
+			return VerifiedQuorumCert{}
+		}
 	}
 	// K==1 FALLBACK — synthesize the 1-of-1 finality witness from the position. Both callers
 	// gate on K()==1, so this is a genuinely SINGLE-validator engine: the dynamic committee
@@ -3208,6 +3277,11 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		// lower-canonical sibling — so every honest node signs the SAME block. The
 		// confidence driver still counts the own proposal (ProcessVote above); only the
 		// binding SIGNATURE is deferred to convergence.
+		//
+		// Track the live validator set FIRST: re-clamp the committee UP so a chain that launched
+		// single-validator switches to the real k-of-N quorum path the moment it decentralizes,
+		// rather than continuing to self-vote+synthesize a 1-of-1 cert (RED's 1→N fork).
+		t.reclampCommitteeLocked()
 		if t.consensus.K() == 1 {
 			t.recordOwnVoteLocked(pb, vmBlock.ID())
 		}

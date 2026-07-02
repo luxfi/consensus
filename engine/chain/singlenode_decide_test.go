@@ -5,6 +5,7 @@ package chain
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -95,5 +96,86 @@ func TestBlue_SingleValidator_DecidesWithNoCrypto(t *testing.T) {
 
 	if got := blk.AcceptCalled(); got != 1 {
 		t.Fatalf("pure single-node (no crypto) must finalize via the synthesized 1-of-1 cert; got AcceptCalled=%d", got)
+	}
+}
+
+// TestBlue_Decentralization_NoUnilateralFinalizeAfterSecondValidator is the RED HIGH 1→N fork
+// regression. A chain that LAUNCHES single-validator (K clamped to 1 at construction) must NOT
+// keep finalizing unilaterally after it ADDS a validator: K is re-clamped UP to the live count so
+// validator-1 switches to the real k-of-N quorum path, and the 1-of-1 synthesize is refused when
+// the live set > 1.
+func TestBlue_Decentralization_NoUnilateralFinalizeAfterSecondValidator(t *testing.T) {
+	self := ids.GenerateTestNodeID()
+	// Verifier wired (a value chain) that rejects — so finality can ONLY come from the synthesized
+	// 1-of-1 cert (single-validator) or, once decentralized, a real quorum (which never assembles
+	// here because the verifier rejects → the block must simply NOT finalize, never fork).
+	e := New(WithParams(config.SingleValidatorParams()), WithQuorumCert(ids.Empty, self, rejectingVerifier{}, nil, testAuth.signerFor(self)))
+	e.presetK = 20 // the chain's TARGET committee (it will grow toward this as validators join)
+	var live int32 = 1
+	e.liveValidatorCount = func() int { return int(atomic.LoadInt32(&live)) }
+
+	ctx := context.Background()
+	if err := e.Start(ctx, true); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+
+	blk1 := &trackingMockBlock{id: ids.GenerateTestID(), parentID: ids.Empty, height: 1, timestamp: time.Now(), bytes: []byte("b1")}
+	blk2 := &trackingMockBlock{id: ids.GenerateTestID(), parentID: blk1.id, height: 2, timestamp: time.Now(), bytes: []byte("b2")}
+	vm := &trackingMockVM{blocks: []*trackingMockBlock{blk1, blk2}}
+	e.SetVM(vm)
+
+	// Phase 1 — genuine single validator: block 1 finalizes via the synthesized 1-of-1 cert.
+	if err := e.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("notify(1): %v", err)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if blk1.AcceptCalled() != 1 {
+		t.Fatalf("block 1 must finalize while single-validator; AcceptCalled=%d", blk1.AcceptCalled())
+	}
+	if k := e.consensus.K(); k != 1 {
+		t.Fatalf("K must still be 1 while the set is 1; got %d", k)
+	}
+
+	// Phase 2 — validator-2 joins the staking set.
+	atomic.StoreInt32(&live, 2)
+	if err := e.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("notify(2): %v", err)
+	}
+	time.Sleep(150 * time.Millisecond)
+
+	// The committee must re-clamp UP so validator-1 no longer takes the single-validator path.
+	if k := e.consensus.K(); k != 2 {
+		t.Fatalf("committee must re-clamp UP to the live count (2) after validator-2 joined; got K=%d", k)
+	}
+	// And block 2 must NOT finalize unilaterally — no synthesized 1-of-1 cert, and the real 2-of-N
+	// quorum never assembles (verifier rejects), so it stays pending (fail-secure: stall, not fork).
+	if blk2.AcceptCalled() != 0 {
+		t.Fatalf("DECENTRALIZATION FORK: block 2 finalized UNILATERALLY after validator-2 joined "+
+			"(AcceptCalled=%d) — validator-1 must require a real 2-of-N quorum", blk2.AcceptCalled())
+	}
+}
+
+// TestBlue_Decentralization_UnwiredSamplerStillSynthesizes guards the fix from regressing the
+// genuine single-validator / --dev path: with no live-count sampler wired, the 1-of-1 synthesize
+// (the n=1 fix) is preserved.
+func TestBlue_Decentralization_UnwiredSamplerStillSynthesizes(t *testing.T) {
+	self := ids.GenerateTestNodeID()
+	e := New(WithParams(config.SingleValidatorParams()), WithQuorumCert(ids.Empty, self, rejectingVerifier{}, nil, testAuth.signerFor(self)))
+	// presetK=0 and liveValidatorCount=nil (unwired) → no re-clamp, synthesize allowed.
+	ctx := context.Background()
+	if err := e.Start(ctx, true); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+	blk := &trackingMockBlock{id: ids.GenerateTestID(), parentID: ids.Empty, height: 1, timestamp: time.Now(), bytes: []byte("b1")}
+	vm := &trackingMockVM{blocks: []*trackingMockBlock{blk}}
+	e.SetVM(vm)
+	if err := e.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if blk.AcceptCalled() != 1 {
+		t.Fatalf("unwired sampler must preserve the single-validator synthesize (n=1 fix); AcceptCalled=%d", blk.AcceptCalled())
 	}
 }
