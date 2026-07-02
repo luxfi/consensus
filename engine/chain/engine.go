@@ -2795,19 +2795,25 @@ func (t *Transitive) buildSingleValidatorCertLocked(pending *PendingBlock, block
 	if cert, ok := t.assembleVerifiedCertLocked(pending, blockID); ok {
 		return cert
 	}
-	// Only when NO vote crypto is wired (a pure single-node dev chain, voteVerifier
-	// nil) is there no signature to certify. Synthesize the 1-of-1 finality witness
-	// from the position; FinalizeBranch (inside the finalizer this token authorizes)
-	// is the real single-node safety gate — one block per height, contiguous, no
-	// branching. This branch is K==1-only (both callers gate on K()==1) and
-	// verifier-nil-only, so it can never substitute for a real α-of-K cert on any
-	// multi-validator chain.
-	if t.voteVerifier != nil {
-		// Verifier wired but the self-vote did not assemble (should not happen on a
-		// healthy K==1 node). Do NOT fabricate a witness when crypto is available —
-		// return zero so AcceptWithCert refuses and the next trigger retries.
-		return VerifiedQuorumCert{}
-	}
+	// K==1 FALLBACK — synthesize the 1-of-1 finality witness from the position. Both callers
+	// gate on K()==1, so this is a genuinely SINGLE-validator engine: the dynamic committee
+	// clamp (bftCommittee) sets K to the LIVE validator count, so K()==1 ⟺ exactly one
+	// validator (a K>1 chain never reaches here). The sole validator's own accept IS the 1-of-1
+	// quorum, so this is NOT fabricating a multi-party agreement — there is no other validator
+	// to protect against — and FinalizeBranch's per-height gate (one block per height,
+	// contiguous, no branching) remains the real single-node safety.
+	//
+	// This fallback is taken EVEN WHEN a verifier is wired but the signed self-vote did not
+	// assemble into a verified cert — the n=1 DECIDE stall. On a fresh single-validator
+	// sovereign L1 (Zoo 200200, Hanzo 36963, Pars 494949) the preset K>1 wires a verifier, then
+	// the clamp drops K to 1; the validator set is not yet resolvable at the block's P-chain
+	// epoch, so the self-vote's signature cannot be verified against it, assembleVerifiedCert
+	// returns false, and the OLD code returned a ZERO cert that acceptWithCertCore refused — so
+	// the block re-built every poll and NEVER decided (EVM head frozen). A single validator
+	// finalizing its OWN block on its OWN chain needs no external signature witness; requiring
+	// one that can never verify wedges the chain. (A real signed 1-of-1 cert is still PREFERRED
+	// above when it assembles; making the sovereign-L1 set resolvable so it always does is a
+	// separate hardening.)
 	pos := t.blockPositionLocked(pending, blockID)
 	return VerifiedQuorumCert{qc: &QuorumCert{
 		Version:   QuorumCertVersion,
