@@ -331,6 +331,7 @@ type trackingMockBlock struct {
 	bytes        []byte
 	acceptCalled int64
 	rejectCalled int64
+	acceptErr    error // when set, Accept fails (still counted) — exercises the fail-closed finalize path
 }
 
 func (b *trackingMockBlock) ID() ids.ID                   { return b.id }
@@ -342,7 +343,7 @@ func (b *trackingMockBlock) Status() uint8                { return 0 }
 func (b *trackingMockBlock) Verify(context.Context) error { return nil }
 func (b *trackingMockBlock) Accept(context.Context) error {
 	atomic.AddInt64(&b.acceptCalled, 1)
-	return nil
+	return b.acceptErr
 }
 func (b *trackingMockBlock) Reject(context.Context) error {
 	atomic.AddInt64(&b.rejectCalled, 1)
