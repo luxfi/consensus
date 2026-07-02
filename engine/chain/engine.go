@@ -782,6 +782,17 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 			"signing and finalizing may permit equivocation; wire WithVoteGuard in production")
 	}
 
+	// BOOT SEED (v1.35.5): seed the durable decided-height floor DIRECTLY from the VM's
+	// last-accepted height BEFORE the signing goroutines launch. This makes the sign gate
+	// safe from the first instant of boot — even for a node upgrading in place from a legacy
+	// v1 vote-guard file (finalizedThrough=0) whose certified ledger is a (0,false) hint
+	// until the first post-upgrade finalize (PART-A). Without it, the floor would be 0 in
+	// that window and a re-gossiped sibling at a decided-below-tip height could be signed
+	// (the mainnet v1→v2 in-place upgrade window). vm.LastAccepted is a durable, sound lower
+	// bound on the decided height (every accepted block was finalized). SIGN-GATE ONLY — it
+	// only advances t.decidedFloor, never the finality ledger / byHeight (PART-A intact).
+	t.seedDecidedFloorFromVMLocked(ctx)
+
 	t.ctx, t.cancel = context.WithCancel(ctx)
 	t.bootstrapped = true
 	t.started = true
@@ -897,6 +908,19 @@ func (t *Transitive) SyncState(ctx context.Context, lastAcceptedID ids.ID, heigh
 		if err := t.consensus.SyncState(lastAcceptedID, height); err != nil {
 			return err
 		}
+	}
+
+	// Seed the durable decided-height floor DIRECTLY from the reconciled last-accepted
+	// height (v1.35.5). SyncStateFromVM passes vm.LastAccepted here, so this keeps
+	// t.decidedFloor at the VM head independently of the consensus ledger's hint — which
+	// lives on a different lock and can be cleared by an empty/genesis reset. Monotonic,
+	// sign-gate-only (never touches byHeight / ledger.Height() — PART-A intact).
+	if height > 0 {
+		t.slotMu.Lock()
+		if height > t.decidedFloor {
+			t.decidedFloor = height
+		}
+		t.slotMu.Unlock()
 	}
 
 	// Clear any pending blocks that are now stale (below the synced height)
@@ -2081,6 +2105,36 @@ func (t *Transitive) pruneCommittedSlotsBelow(height uint64) {
 				"belowHeight", height, "error", err)
 		}
 	}
+}
+
+// seedDecidedFloorFromVMLocked advances the durable decided-height floor from the VM's
+// last-accepted height. It runs at boot (from Start, before the signing goroutines launch)
+// so the sign gate has a real floor from the first instant — the fix for the mainnet v1→v2
+// vote-guard upgrade window, where the file floor is 0 and the certified ledger is a
+// (0,false) hint until the first post-upgrade finalize. vm.LastAccepted is DURABLE and a
+// sound lower bound on the decided height (every accepted block was finalized), so seeding
+// the floor from it can only ever REFUSE MORE signing (fail-safe). SIGN-GATE ONLY: it
+// touches only t.decidedFloor (under slotMu), never the finality ledger / byHeight — PART-A
+// intact. Best-effort: any VM error / empty head leaves the floor as-is (the vote-guard
+// file floor and the SyncState seed remain). Caller holds t.mu.
+func (t *Transitive) seedDecidedFloorFromVMLocked(ctx context.Context) {
+	if t.vm == nil {
+		return
+	}
+	id, err := t.vm.LastAccepted(ctx)
+	if err != nil || id == ids.Empty {
+		return
+	}
+	blk, err := t.vm.GetBlock(ctx, id)
+	if err != nil || blk == nil {
+		return
+	}
+	h := blk.Height()
+	t.slotMu.Lock()
+	if h > t.decidedFloor {
+		t.decidedFloor = h
+	}
+	t.slotMu.Unlock()
 }
 
 // slotCanonical is the effective canonical identity a VotePosition binds for the

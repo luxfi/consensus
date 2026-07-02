@@ -243,6 +243,78 @@ func TestRed_CrossRestart_DecidedHeightUnsignable(t *testing.T) {
 	}
 }
 
+// TestRed_V1ToV2Upgrade_BootSeedFromVM is the RED fix-priority #1 regression for the
+// MAINNET in-place v1→v2 vote-guard upgrade window. A live mainnet node upgrading from the
+// old consensus carries a LEGACY v1 guard file (no finalizedThrough → floor 0) whose
+// below-tip decided-height slots were already pruned by the old build, and its certified
+// ledger is a (0,false) hint until the first post-upgrade finalize (PART-A). Without a boot
+// seed the sign gate's floor would be 0 in that window, so a re-gossiped sibling at a
+// decided-below-tip height could be signed — the exact fork, now on mainnet.
+//
+// v1.35.5 seeds decidedFloor DIRECTLY from vm.LastAccepted (a durable, sound lower bound on
+// the decided height) at Start, BEFORE the signing goroutines launch — so the floor is real
+// from the first instant of boot, with no reliance on the transient SyncState hint or a
+// post-upgrade finalize. This test builds exactly that state and proves a decided-below-tip
+// height is refused immediately on boot. It FAILS without the boot seed (B is signed) and
+// PASSES with it.
+func TestRed_V1ToV2Upgrade_BootSeedFromVM(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vote-guard")
+
+	// Write a LEGACY v1 vote-guard file: version 1, ZERO records (the below-tip slots were
+	// pruned pre-upgrade), NO finalizedThrough field → decodes with floor 0.
+	body := []byte(voteGuardMagic)
+	body = append(body, voteGuardVersionV1)
+	var cnt [4]byte
+	binary.BigEndian.PutUint32(cnt[:], 0)
+	body = append(body, cnt[:]...)
+	var crc [4]byte
+	binary.BigEndian.PutUint32(crc[:], crc32.Checksum(body, voteGuardCRC))
+	if err := os.WriteFile(path, append(body, crc[:]...), 0o600); err != nil {
+		t.Fatalf("WriteFile(legacy v1): %v", err)
+	}
+	store, err := OpenVoteGuard(path)
+	if err != nil {
+		t.Fatalf("OpenVoteGuard(legacy v1): %v", err)
+	}
+	if store.FinalizedThrough() != 0 {
+		t.Fatalf("a legacy v1 file must decode with floor 0, got %d", store.FinalizedThrough())
+	}
+
+	// A VM whose LAST-ACCEPTED head is the decided tip at height T. vm.LastAccepted is
+	// durable and available from the first instant of boot — the seed source.
+	const T = uint64(100)
+	const belowTip = uint64(60) // a decided-below-tip height whose slot was pruned pre-upgrade
+	vm := newMockImportVM()
+	tipID := ids.GenerateTestID()
+	vm.lastAcceptedID = tipID
+	vm.blocks[tipID] = &mockBlock{id: tipID, height: T}
+
+	vs := newTestValidatorSet(5)
+	// Construct + Start: Start runs the boot seed from vm.LastAccepted BEFORE any signing.
+	// NO SyncState is called — this isolates the DIRECT boot seed (not the transient hint).
+	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store), WithVM(vm))
+
+	// Immediately on boot — legacy floor 0, no hint, no post-upgrade finalize — the decided
+	// frontier must already be T, so a sibling at the decided-below-tip height is REFUSED.
+	if fh, ok := e.consensus.GetFinalizedHeight(); ok {
+		t.Fatalf("precondition: certified frontier must be unset on a fresh boot, got (%d,%v)", fh, ok)
+	}
+	B := ids.GenerateTestID()
+	if e.reserveSlotForSign(belowTip, B) {
+		t.Fatalf("V1→V2 UPGRADE-WINDOW FORK: engine signed sibling B at decided-below-tip height %d on boot from "+
+			"a legacy v1 guard (floor 0). decidedFloor must be seeded from vm.LastAccepted (=%d) at Start, before "+
+			"any post-upgrade finalize.", belowTip, T)
+	}
+	// The tip itself is refused; a height above the VM head stays signable (no false stall).
+	if e.reserveSlotForSign(T, ids.GenerateTestID()) {
+		t.Fatalf("the decided tip height %d must be unsignable on boot (the boot seed covers it)", T)
+	}
+	if !e.reserveSlotForSign(T+1, ids.GenerateTestID()) {
+		t.Fatalf("a height above the VM head (%d) must remain signable — the boot seed must not stall progress", T)
+	}
+}
+
 // TestBlue_VoteGuard_PersistFailure_FailsClosed proves the fail-closed contract: when
 // the durable write fails, reserveSlotForSign returns false (no signature) AND the
 // in-memory map is rolled back (no un-persisted binding left behind).
