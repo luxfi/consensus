@@ -2885,12 +2885,37 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 		return err
 	}
 
-	// Apply the plan to the VM + engine bookkeeping: VM.Accept the finalized path,
-	// VM.Reject the pruned losers, record engine finality, store the serving cert.
-	t.applyBranchFinalization(ctx, plan, blockID, cert)
+	// Apply the plan to the VM + engine bookkeeping: VM.Accept the finalized path (fail-closed
+	// — stops at the first VM.Accept error), VM.Reject the pruned losers, record engine
+	// finality, store the serving cert. highestAccepted is the highest height the VM ACTUALLY
+	// applied; the durable floor advances only to it (never past the VM's state).
+	highestAccepted, acceptErr := t.applyBranchFinalization(ctx, plan, blockID, cert)
 
-	// REORG production onto the certified branch: SetPreference to the new tip keeps
-	// the VM building on the block consensus just finalized.
+	// MEDIUM-1: drop the equivocation guard + view machines STRICTLY at/below what the VM
+	// accepted — NEVER to pos.Height when the VM applied less (the fail-closed invariant: the
+	// decided-floor can never run ahead of the EVM's accepted head, which is exactly the
+	// consensus-finalize→VM-accept divergence this fix kills). Only advance if we accepted
+	// something.
+	if highestAccepted > 0 {
+		t.pruneCommittedSlotsBelow(highestAccepted)
+		if t.params.ViewChange {
+			t.pruneViewsBelow(highestAccepted)
+		}
+	}
+	// MED-6: bound the slashing detector's per-height maps to a sliding window (memory).
+	t.pruneSlashingBelowWindow()
+
+	if acceptErr != nil {
+		// FAIL-CLOSED: the VM refused to apply a consensus-finalized block. The floor did NOT
+		// advance past the VM's applied state, so consensus and the EVM stay in lock-step. The
+		// block stays pending and the finalize retries; the chain HALTS at the un-appliable
+		// block rather than DIVERGING (floor ahead of the EVM). Recovery is the VM-side fix
+		// (apply the finalized block regardless of emptiness) — then the retry finalizes it.
+		return acceptErr
+	}
+
+	// FULL SUCCESS: REORG production onto the certified branch: SetPreference to the new tip
+	// keeps the VM building on the block consensus just finalized.
 	t.mu.RLock()
 	vm := t.vm
 	t.mu.RUnlock()
@@ -2908,24 +2933,6 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	if signalNext {
 		t.signalPipeline()
 	}
-
-	// MED-6: bound the slashing detector's per-height vote/block maps to a
-	// sliding window below the finalized height. Equivocation is only
-	// actionable near the tip; retaining every height's records unboundedly is a
-	// memory-exhaustion vector. Prune everything older than the window.
-	t.pruneSlashingBelowWindow()
-	// MEDIUM-1: drop the equivocation guard for the height just finalized. This is
-	// the ONE funnel EVERY finality path passes through — local vote-assembly
-	// (handleVote → tryFinalizeBlock) AND incoming-cert (HandleIncomingCert →
-	// AcceptWithCert) — so committedSlot stays bounded to the live unfinalized window
-	// on every validator (a locally-finalizing node never reaches HandleIncomingCert's
-	// prune). pos.Height is the finalized tip; every slot at or below it is decided.
-	t.pruneCommittedSlotsBelow(pos.Height)
-	// View-change: drop the round machines for the just-decided height and below (bounded
-	// memory); a decided height is permanently unsignable via the decided-floor gate.
-	if t.params.ViewChange {
-		t.pruneViewsBelow(pos.Height)
-	}
 	return nil
 }
 
@@ -2941,29 +2948,80 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 // finalizedByCert is written ONLY here (via the sole finalizer acceptWithCertCore),
 // so engine finality is exactly "FinalizeBranch committed this block", never the
 // count-driven consensus liveness flag.
-func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, certifiedTip ids.ID, cert VerifiedQuorumCert) {
-	var toAccept, toReject []block.Block
-
-	t.mu.Lock()
-	// ACCEPT the finalized path (ascending height — plan.Accept is ordered).
+// It is FAIL-CLOSED (the 2026-07 fix): VM.Accept is called BEFORE the engine commits a
+// block's finality, and its error is CHECKED, not swallowed. If VM.Accept returns an error
+// (e.g. the EVM refuses to apply the block), that block and every higher one in the plan are
+// NOT marked finalized and the returned highestAccepted stops at the last block the VM
+// actually applied — so the caller advances the durable decided-floor ONLY to the VM's
+// applied state and NEVER past it. This kills the divergence where a swallowed VM.Accept
+// error let the consensus finalized floor run ahead of the EVM's accepted head (the
+// consensus-finalize→VM-accept disconnect: floor at 427 while the EVM stuck at 415). Returns
+// the highest height the VM accepted and the first VM.Accept error (nil ⇒ full success).
+func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, certifiedTip ids.ID, cert VerifiedQuorumCert) (highestAccepted uint64, acceptErr error) {
+	// Snapshot the finalized path (ascending) WITHOUT committing finality yet.
+	type pathBlock struct {
+		id     ids.ID
+		vmb    block.Block
+		height uint64
+	}
+	t.mu.RLock()
+	path := make([]pathBlock, 0, len(plan.Accept))
 	for _, id := range plan.Accept {
-		t.finalizedByCert[id] = struct{}{}
 		pending, ok := t.pendingBlocks[id]
 		if !ok || pending.Decided {
-			continue // not locally tracked, or already applied — the ledger is the truth
+			// Untracked or already applied: treat as accepted for floor purposes (the ledger
+			// is the truth) but nothing to Accept on the VM.
+			var h uint64
+			if ok && pending.ConsensusBlock != nil {
+				h = pending.ConsensusBlock.height
+			}
+			path = append(path, pathBlock{id: id, vmb: nil, height: h})
+			continue
 		}
-		pending.Decided = true
-		t.blocksAccepted++
-		delete(t.pendingBlocks, id)
-		delete(t.bufferedVotes, id)
-		delete(t.catchupRequested, id)
-		if pending.VMBlock != nil {
-			toAccept = append(toAccept, pending.VMBlock)
+		var h uint64
+		if pending.ConsensusBlock != nil {
+			h = pending.ConsensusBlock.height
+		}
+		path = append(path, pathBlock{id: id, vmb: pending.VMBlock, height: h})
+	}
+	t.mu.RUnlock()
+
+	// Accept ascending; commit each block's finality ONLY after the VM applied it. Stop (fail
+	// closed) at the first VM.Accept error — the floor will advance only to the last success.
+	for _, pb := range path {
+		if pb.vmb != nil {
+			if err := pb.vmb.Accept(ctx); err != nil {
+				acceptErr = fmt.Errorf("VM.Accept(%s height=%d) failed — refusing to advance finality past the "+
+					"VM's applied state (fail-closed): %w", pb.id, pb.height, err)
+				break
+			}
+		}
+		t.mu.Lock()
+		if pending, ok := t.pendingBlocks[pb.id]; ok && !pending.Decided {
+			t.finalizedByCert[pb.id] = struct{}{}
+			pending.Decided = true
+			t.blocksAccepted++
+			delete(t.pendingBlocks, pb.id)
+			delete(t.bufferedVotes, pb.id)
+			delete(t.catchupRequested, pb.id)
+		} else {
+			t.finalizedByCert[pb.id] = struct{}{}
+		}
+		t.mu.Unlock()
+		if pb.height > highestAccepted {
+			highestAccepted = pb.height
 		}
 	}
-	// PRUNE the losing-sibling subtrees: drop from tracking and reject. THIS is the
-	// reorg the old engine never performed — without it, production ran away on a
-	// losing branch and every cert for it was permanently refused.
+
+	// Reject the losing-sibling subtrees + retain the serving cert ONLY on a full, clean
+	// accept. A partial accept (VM.Accept failed) leaves the reorg incomplete — do NOT prune
+	// the losers (they may still be the live branch) and do NOT serve a cert for a tip the VM
+	// never applied.
+	if acceptErr != nil {
+		return highestAccepted, acceptErr
+	}
+	var toReject []block.Block
+	t.mu.Lock()
 	for _, id := range plan.Reject {
 		pending, ok := t.pendingBlocks[id]
 		if !ok || pending.Decided {
@@ -2978,22 +3036,16 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 			toReject = append(toReject, pending.VMBlock)
 		}
 	}
-	// Retain the cert that authorized this finalize so a catching-up peer can fetch it.
 	if qc := cert.Cert(); qc != nil {
 		if b, err := qc.MarshalBinary(); err == nil {
 			t.storeServedCertLocked(certifiedTip, b)
 		}
 	}
 	t.mu.Unlock()
-
-	// VM effects OUTSIDE the lock. Accept the path first (ascending), then reject the
-	// losers — avalanchego's acceptPreferredChild order.
-	for _, vmb := range toAccept {
-		_ = vmb.Accept(ctx)
-	}
 	for _, vmb := range toReject {
 		_ = vmb.Reject(ctx)
 	}
+	return highestAccepted, nil
 }
 
 // slashingRetentionHeights is how many heights below the finalized tip the
