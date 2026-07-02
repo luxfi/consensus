@@ -326,32 +326,14 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		}
 	}
 
-	// Wire the proposer (adapts Gossiper to BlockProposer interface).
-	// In single-node mode (K=1, e.g. --dev), provide a self-voter callback
-	// so the proposer can accept its own blocks without network round-trips.
-	var selfVoter func(ids.ID)
-	if params.K == 1 {
-		selfVoter = func(blockID ids.ID) {
-			// ASYNC — MUST NOT reenter the engine lock on the caller's goroutine. RequestVotes
-			// invokes this selfVoter while buildBlocksLocked HOLDS t.mu (write), and
-			// engine.ReceiveVote acquires t.mu.RLock; a SYNCHRONOUS call self-deadlocks —
-			// sync.RWMutex is not reentrant, so the same goroutine blocks forever on RLock while
-			// holding the write lock. That is the live single-validator freeze: the node logs
-			// "single-node mode: self-voting" and then hangs there, so the inline K==1 finalize
-			// (which runs AFTER RequestVotes) never executes and no block ever decides. Handing the
-			// vote to a fresh goroutine lets buildBlocksLocked finish its inline finalize and release
-			// t.mu; ReceiveVote then runs and delivers the (redundant, for the own-proposal path)
-			// self-vote — and is the finality trigger for the rebuild / re-poll paths that have no
-			// inline finalize. ReceiveVote is non-blocking (bounded channel + started check), so the
-			// goroutine returns immediately (no leak).
-			go engine.ReceiveVote(Vote{
-				BlockID:  blockID,
-				NodeID:   cfg.NodeID,
-				Accept:   true,
-				SignedAt: time.Now(),
-			})
-		}
-	}
+	// Wire the proposer (adapts Gossiper to BlockProposer interface). There is NO single-node
+	// self-voter shortcut: a K==1 chain has no peers to solicit, so it finalizes SOLELY through the
+	// inline build-path finalizer (buildBlocksLocked → buildSingleValidatorCertLocked →
+	// acceptWithCertCore) — one finalize path, matching avalanchego's "a lone validator's own
+	// decision finalizes locally." The removed shortcut called engine.ReceiveVote from inside
+	// RequestVotes while buildBlocksLocked held t.mu, self-deadlocking on the non-reentrant
+	// t.mu.RLock (the live n=1 freeze), and delivered a redundant vote that could sit uncounted in
+	// handleVote's not-yet-tracked buffer. Both hazards are gone with the path removed.
 	engine.SetProposer(&gossiperProposer{
 		gossiper:   cfg.Gossiper,
 		chainID:    cfg.ChainID,
@@ -360,7 +342,6 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		validators: cfg.Validators,
 		nodeID:     cfg.NodeID,
 		k:          params.K,
-		selfVoter:  selfVoter,
 	})
 
 	// Set the VM for block building
@@ -528,7 +509,6 @@ type gossiperProposer struct {
 	validators ValidatorSampler // For k-peer sampling
 	nodeID     ids.NodeID       // This node's ID (to exclude from samples)
 	k          int              // Sample size from consensus params
-	selfVoter  func(ids.ID)     // Callback for single-node self-voting (--dev mode)
 }
 
 var _ BlockProposer = (*gossiperProposer)(nil)
@@ -592,17 +572,14 @@ func (p *gossiperProposer) RequestVotes(ctx context.Context, req VoteRequest) er
 			}
 			validators = filtered
 
-			// Single-node mode: all sampled validators were self.
-			// Deliver a self-vote directly — no network round-trip needed.
-			if len(filtered) == 0 && p.k == 1 && p.selfVoter != nil {
-				if p.logger != nil && !p.logger.IsZero() {
-					p.logger.Info("single-node mode: self-voting for proposed block",
-						log.Stringer("blockID", req.BlockID))
-				}
-				p.selfVoter(req.BlockID)
+			// NO single-node self-vote shortcut: a K==1 chain finalizes via the inline build-path
+			// finalizer (buildBlocksLocked), not by soliciting/self-delivering a vote here (see
+			// NewRuntime). When the sample resolves to NO peers (single validator, or every sampled
+			// node was self) there is nobody to poll — return without sending, so RequestVotes is a
+			// true no-op rather than a query to an empty recipient set.
+			if len(filtered) == 0 {
 				return nil
 			}
-
 			if p.logger != nil && !p.logger.IsZero() {
 				p.logger.Debug("sampled k validators for poll",
 					log.Stringer("blockID", req.BlockID),
