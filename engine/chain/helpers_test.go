@@ -327,6 +327,9 @@ func (g *certQuorumGossiper) GossipCert(c, n, b ids.ID, cb []byte) int {
 	_ = g.rec.GossipCert(c, b, cb)
 	return 1
 }
+func (g *certQuorumGossiper) BroadcastPrevote(_, _ ids.ID, _ uint64, _ uint32, _ ids.ID, _ []byte) int {
+	return 0 // single-engine tests inject votes directly; view-change prevotes are unused here
+}
 
 // newQuorumEngine builds a started multi-validator engine for validator index
 // `self`, wired with the test validator set as verifier+signer and the given
