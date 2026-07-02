@@ -91,13 +91,37 @@ func (rt *Runtime) ReconcilePhantomFloor(ctx context.Context, target uint64) (ui
 	if rt.Transitive == nil {
 		return 0, fmt.Errorf("reconcile: nil engine")
 	}
-	// localVMHeight — the intrinsic-guard input: never abandon a block THIS node applied.
-	// A VM error / empty head leaves it 0 (the target then governs; the durable floor and
-	// the below-safeFloor bindings are untouched regardless).
+	// localVMHeight — the intrinsic-guard input. FAIL CLOSED when the VM reports a
+	// last-accepted block whose height we cannot read. A transiently-unreadable VM — exactly
+	// the recovery regime (a corrupt / half-written store) — must NEVER be treated as height
+	// 0, or the guard would degrade to max(target,0)=target and could abandon a committed
+	// range the VM actually holds (a self-inflicted fork). localLastAccepted returns
+	// (id,0,nil) on a GetBlock failure — a build-anchor convenience for bootstrap that is
+	// fail-OPEN for this safety gate — so read the VM DIRECTLY here and distinguish:
+	//   - VM.LastAccepted errors                -> refuse (cannot determine our own head).
+	//   - LastAccepted is a real id but its
+	//     block is unreadable                    -> refuse (VM is present-but-corrupt;
+	//                                               abandoning its range would be a fork).
+	//   - LastAccepted is ids.Empty              -> genuinely empty VM (a fresh/wiped node):
+	//                                               height 0 is CORRECT; the reconcile no-ops
+	//                                               (decidedFloor 0 <= safeFloor) or the
+	//                                               target governs a truly-empty node.
 	var localVMHeight uint64
 	if rt.config.VM != nil {
-		if _, h, err := rt.localLastAccepted(ctx); err == nil {
-			localVMHeight = h
+		id, err := rt.config.VM.LastAccepted(ctx)
+		if err != nil {
+			return 0, fmt.Errorf(
+				"reconcile: cannot read VM last-accepted — refusing to reconcile (fail-closed, floor unchanged): %w", err)
+		}
+		if id != ids.Empty {
+			blk, gerr := rt.config.VM.GetBlock(ctx, id)
+			if gerr != nil || blk == nil {
+				return 0, fmt.Errorf(
+					"reconcile: VM last-accepted %s is unreadable — refusing to reconcile (fail-closed; never treat "+
+						"a present-but-unreadable VM head as height 0, which would degrade the intrinsic guard and "+
+						"could abandon a committed range): %w", id, gerr)
+			}
+			localVMHeight = blk.Height()
 		}
 	}
 	return rt.Transitive.reconcilePhantomFloor(target, localVMHeight)
