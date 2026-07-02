@@ -67,13 +67,26 @@ func TestRedIndep_ReserveSlotUnit(t *testing.T) {
 	if !e.reserveSlotForSign(8, Y) {
 		t.Fatal("a different height is an independent slot and must be permitted")
 	}
-	// Document the prune->reopen behavior (this is exactly why the in-memory-only
-	// map forgets across a restart — the reason HIGH-1 makes it durable: a pruned/absent
-	// slot is freely re-bindable).
+	// PRUNE CONTRACT (strictly below): pruneCommittedSlotsBelow(h) drops heights strictly
+	// BELOW h and RETAINS slot{h}, mirroring avalanchego keeping the last accepted block in
+	// its tree. So a prune AT the bound height keeps its slot and the conflicting canonical
+	// stays refused — the in-memory belt against the prune-then-resign fork.
 	e.pruneCommittedSlotsBelow(7)
-	if !e.reserveSlotForSign(7, Y) {
-		t.Fatal("after prune the height is unbound again — a DIFFERENT canonical is now accepted " +
-			"(this is the post-finalize reopen; the post-CRASH reopen is what the durable guard prevents)")
+	if e.reserveSlotForSign(7, Y) {
+		t.Fatal("prune STRICTLY BELOW must RETAIN slot{7} (the finalized tip's guard) — Y must stay refused")
+	}
+	// A prune ABOVE height 7 (i.e. height 8 finalized) reclaims slot{7} from the in-memory
+	// map to keep it bounded. In production this happens ONLY once height 8 finalizes, which
+	// (by contiguity) means height 7 is finalized too, so the DURABLE decided-height gate
+	// (reserveSlotForSign consulting GetFinalizedHeight) refuses height 7 regardless — proven
+	// end-to-end in TestFinalizeThenResign_DecidedHeightIsUnsignable. This white-box unit wires
+	// no ledger finalize, so here we assert only the memory reclaim.
+	e.pruneCommittedSlotsBelow(8)
+	e.slotMu.Lock()
+	_, slot7Held := e.committedSlot[SlotKey{Height: 7}]
+	e.slotMu.Unlock()
+	if slot7Held {
+		t.Fatal("prune above height 7 must reclaim slot{7} from the in-memory map (bounded growth)")
 	}
 }
 
@@ -248,13 +261,21 @@ func TestRedIndep_ReserveSlotConcurrent(t *testing.T) {
 // which a LOCALLY-finalizing node never reaches (it short-circuits at pending.Decided
 // before the prune). v1.33.3 moves the prune into the sole finalizer acceptWithCertCore,
 // so EVERY finality path prunes. This test drives a LOCAL vote-assembly finalize
-// (handleVote -> tryFinalizeBlock, NOT HandleIncomingCert) and ASSERTS the slot is gone.
+// (handleVote -> tryFinalizeBlock, NOT HandleIncomingCert) and ASSERTS bounded growth.
+//
+// UPDATED for the decided-height fix (v1.35.3): the prune is now STRICTLY BELOW the
+// finalized height, so a local finalize of height 1 RETAINS slot{1} (the tip) and drops
+// everything below — committedSlot stays bounded (window + 1 tip), not the empty set the
+// old inclusive prune left. The finalized height itself is protected DURABLY by the
+// decided-height gate, not by deleting its slot. So this gate now asserts the local path
+// (a) advances the certified frontier, (b) keeps committedSlot bounded to the tip, and
+// (c) makes the decided height permanently unsignable.
 func TestRedIndep_CommittedSlotLeak_LocalFinalizePrunes(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	e, chainID := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
 
 	A := newTestBlock(1, ids.Empty, "leak-A")
-	posA := trackProposal(e, chainID, A, 0) // binds committedSlot[{1,Empty}]=A; own vote recorded
+	posA := trackProposal(e, chainID, A, 0) // binds committedSlot[{1}]=A; own vote recorded
 	// Drive A to a full alpha-of-K quorum with RAW votes so it finalizes via the LOCAL
 	// path (handleVote -> tryFinalizeBlock), NOT via HandleIncomingCert.
 	for _, i := range []int{1, 2, 3} {
@@ -271,21 +292,31 @@ func TestRedIndep_CommittedSlotLeak_LocalFinalizePrunes(t *testing.T) {
 		t.Fatal("A must finalize via local vote-assembly")
 	}
 
-	// The prune is enqueued inside acceptWithCertCore on the finalize path; give the
-	// async finalize a beat to complete, then require the slot to be GONE.
-	pruned := waitFor(3*time.Second, func() bool {
-		e.slotMu.Lock()
-		_, stillBound := e.committedSlot[SlotKey{Height: 1}]
-		e.slotMu.Unlock()
-		return !stillBound
+	// The local finalize path must advance the certified frontier to height 1 (proving it
+	// reached acceptWithCertCore, where the prune runs) and leave committedSlot bounded to
+	// exactly the tip slot{1}=A — the MEDIUM-1 no-unbounded-growth guarantee, now realized as
+	// "retain only the tip" rather than "drop everything".
+	settled := waitFor(3*time.Second, func() bool {
+		fh, ok := e.consensus.GetFinalizedHeight()
+		return ok && fh == 1
 	})
-	if !pruned {
-		e.slotMu.Lock()
-		n := len(e.committedSlot)
-		e.slotMu.Unlock()
-		t.Fatalf("MEDIUM-1 REGRESSION: after finalizing height 1 via the LOCAL path, committedSlot still "+
-			"holds it (len=%d). pruneCommittedSlotsBelow must run from the sole finalizer acceptWithCertCore "+
-			"so the local path prunes too — else committedSlot grows ~1 entry per finalized height.", n)
+	if !settled {
+		t.Fatal("local finalize must advance the certified frontier to height 1 (the prune runs there)")
+	}
+	e.slotMu.Lock()
+	n := len(e.committedSlot)
+	tip, tipHeld := e.committedSlot[SlotKey{Height: 1}]
+	e.slotMu.Unlock()
+	if n != 1 || !tipHeld || tip != A.id {
+		t.Fatalf("MEDIUM-1: after the LOCAL finalize committedSlot must retain ONLY the tip slot{1}=A "+
+			"(bounded growth; strictly-below prune ran on the local path): len=%d tipHeld=%v tip=%s",
+			n, tipHeld, tip)
+	}
+	// The decided height is now permanently unsignable — a late/differently-enveloped sibling
+	// at height 1 can never collect this node's SECOND signature (the durable decided-height
+	// gate, not slot deletion, is what closes the prune-then-resign fork).
+	if e.reserveSlotForSign(1, ids.GenerateTestID()) {
+		t.Fatal("decided height 1 must be unsignable after the local finalize (decided-height gate)")
 	}
 }
 
