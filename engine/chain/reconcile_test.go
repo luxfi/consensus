@@ -281,3 +281,46 @@ func TestReconcile_Runtime_UsesVMHeightAsIntrinsicGuard(t *testing.T) {
 		t.Fatalf("Runtime reconcile floor=%d, want 421", got)
 	}
 }
+
+// TestReconcile_Runtime_FailsClosed_WhenVMHeadUnreadable is the RED fail-open fix: a VM that
+// reports a last-accepted block whose block is UNREADABLE (GetBlock errors — the transient-
+// corruption recovery regime) MUST refuse to reconcile, NEVER treat the head as height 0. If it
+// did, the guard would degrade to max(target,0)=target and a node whose VM is actually ahead
+// would abandon its own committed range.
+func TestReconcile_Runtime_FailsClosed_WhenVMHeadUnreadable(t *testing.T) {
+	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()}, nil)
+	// lastAcceptedID is set (VM claims a head) but it is NOT in the mock's blocks map, so
+	// GetBlock returns an error — a present-but-unreadable head.
+	rt := &Runtime{Transitive: e, config: NetworkConfig{VM: &mockVM{lastAcceptedID: ids.GenerateTestID()}}}
+	got, err := rt.ReconcilePhantomFloor(context.Background(), 415 /*target BELOW a possibly-ahead VM*/)
+	if err == nil {
+		t.Fatal("reconcile MUST fail closed when the VM head is present but unreadable (never treat as height 0)")
+	}
+	if got != 0 {
+		t.Fatalf("failed reconcile must return 0 (no floor applied), got %d", got)
+	}
+	e.slotMu.Lock()
+	defer e.slotMu.Unlock()
+	if e.decidedFloor != 429 {
+		t.Fatalf("FAIL-OPEN VIOLATED: decidedFloor moved to %d despite an unreadable VM head (must stay 429)", e.decidedFloor)
+	}
+	if _, ok := e.committedSlot[SlotKey{Height: 429}]; !ok {
+		t.Fatal("FAIL-OPEN VIOLATED: binding dropped despite an unreadable VM head")
+	}
+}
+
+// TestReconcile_Runtime_EmptyVM_ProceedsTargetGoverns distinguishes the genuinely-empty VM (a
+// fresh/wiped node: VM.LastAccepted == ids.Empty) from the unreadable-head case above. An empty
+// VM legitimately has localVM=0 (nothing committed to abandon), so the reconcile PROCEEDS and
+// the target governs — it must NOT fail closed here.
+func TestReconcile_Runtime_EmptyVM_ProceedsTargetGoverns(t *testing.T) {
+	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()}, nil)
+	rt := &Runtime{Transitive: e, config: NetworkConfig{VM: &mockVM{lastAcceptedID: ids.Empty}}}
+	got, err := rt.ReconcilePhantomFloor(context.Background(), 415)
+	if err != nil {
+		t.Fatalf("an empty (fresh/wiped) VM must NOT fail closed — it is genuinely empty, not corrupt: %v", err)
+	}
+	if got != 415 { // localVM=0, target=415 → safeFloor=415; decidedFloor 429>415 → reconcile to 415
+		t.Fatalf("empty-VM reconcile with target 415 should land at 415, got %d", got)
+	}
+}
