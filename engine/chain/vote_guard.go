@@ -108,6 +108,14 @@ func WithVoteGuard(store VoteGuardStore) Option {
 		}
 		for k, v := range store.Snapshot() {
 			t.committedSlot[k] = v
+			// Mark this height as a RECOVERED hard lock so a rolling-restart node keeps the
+			// strict conflicting-canonical refusal there even under ViewChange (the lock ROUND
+			// is not on disk, so the unlock rule cannot be evaluated — fail-safe). See
+			// recoveredLocks. Cleared when the height finalizes (pruneCommittedSlotsBelow).
+			if t.recoveredLocks == nil {
+				t.recoveredLocks = make(map[uint64]struct{})
+			}
+			t.recoveredLocks[k.Height] = struct{}{}
 		}
 		// Seed the durable decided-through floor so the sign gate refuses any height this
 		// node had already finalized before the crash — even the below-tip heights whose

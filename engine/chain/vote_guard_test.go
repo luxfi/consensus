@@ -463,3 +463,64 @@ func TestVoteOnce_EpochBlind_OneSignaturePerHeight(t *testing.T) {
 		t.Fatal("a different height is an independent slot and must be permitted")
 	}
 }
+
+// TestViewChange_RecoveredLock_NoCrossRestartDoublePrecommit is the ROLLING-RESTART safety
+// gate for the round-scoped view-change (RED item 2). Under ViewChange the in-session guard
+// is RELAXED (the round+lock rule governs re-precommit) — but a binding RECOVERED from the
+// durable vote-guard has no persisted lock ROUND, so the unlock rule cannot be evaluated. The
+// engine must therefore treat a recovered binding as a HARD lock and REFUSE a conflicting
+// value at that height even under ViewChange, so a rolling upgrade / correlated crash cannot
+// make a node precommit a SECOND, conflicting value at a pre-crash height (double-precommit).
+// A NEW (in-session) height still re-precommits freely.
+func TestViewChange_RecoveredLock_NoCrossRestartDoublePrecommit(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vote-guard")
+	vs := newTestValidatorSet(5)
+	p := params5Prod()
+	p.ViewChange = true
+
+	const H = uint64(50)
+	X := ids.GenerateTestID()
+	Y := ids.GenerateTestID()
+
+	// pre-crash: bind X@H (unfinalized), fsync, "crash".
+	store1, err := OpenVoteGuard(path)
+	if err != nil {
+		t.Fatalf("OpenVoteGuard(store1): %v", err)
+	}
+	e1, _ := newQuorumEngineOpts(t, p, vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
+	if !e1.reserveSlotForSign(H, X) {
+		t.Fatal("engine 1 must bind X@H")
+	}
+	_ = e1.Stop(context.Background())
+
+	// post-crash: recover under ViewChange. The recovered height is a HARD lock.
+	store2, err := OpenVoteGuard(path)
+	if err != nil {
+		t.Fatalf("OpenVoteGuard(store2): %v", err)
+	}
+	if _, ok := store2.Snapshot()[SlotKey{Height: H}]; !ok {
+		t.Fatal("precondition: X@H must be recovered from the durable guard")
+	}
+	e2, _ := newQuorumEngineOpts(t, p, vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
+
+	if !e2.reserveSlotForSign(H, X) {
+		t.Fatal("the recovered value X@H must stay idempotently signable (safe re-solicit)")
+	}
+	if e2.reserveSlotForSign(H, Y) {
+		t.Fatal("ROLLING-RESTART DOUBLE-PRECOMMIT: a RECOVERED height accepted a CONFLICTING value under " +
+			"ViewChange — the lock round is not on disk, so a recovered binding MUST be a hard lock")
+	}
+
+	// A NEW in-session height is governed by the round+lock rule: it binds AND re-precommits
+	// a conflicting value freely (that re-convergence is exactly what restores liveness).
+	const H2 = uint64(51)
+	A := ids.GenerateTestID()
+	B := ids.GenerateTestID()
+	if !e2.reserveSlotForSign(H2, A) {
+		t.Fatal("in-session A@H2 must bind")
+	}
+	if !e2.reserveSlotForSign(H2, B) {
+		t.Fatal("in-session re-precommit B@H2 must be PERMITTED under ViewChange (round+lock governs re-convergence)")
+	}
+}
