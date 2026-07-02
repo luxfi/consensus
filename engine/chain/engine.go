@@ -2662,6 +2662,12 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	if err != nil {
 		return err
 	}
+	// DIAG-1082814 (devnet artifact): dump the FULL signer set of every cert that
+	// actually finalizes a height, so the equivocation triage can compare the
+	// winning cert's signers against the later conflicting cert's signers.
+	if !t.log.IsZero() {
+		t.log.Info("FINALIZE-ARTIFACT " + certArtifact(cert.Cert()))
+	}
 
 	// Apply the plan to the VM + engine bookkeeping: VM.Accept the finalized path,
 	// VM.Reject the pruned losers, record engine finality, store the serving cert.
