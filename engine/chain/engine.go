@@ -388,7 +388,21 @@ func WithVoteBuffers(requests, votes int) Option {
 //
 // Lifecycle: New -> Start -> (running) -> Stop
 type Transitive struct {
-	mu sync.RWMutex
+	// Consensus lock discipline:
+	// Do not call VM.Accept, ReceiveVote, network send, poll delivery,
+	// certificate callbacks, or any external callback while holding Transitive.mu.
+	// Queue work or release the lock before call-out.
+	//
+	// WHY (the deadlock class this bans, not one instance): mu is a sync.RWMutex — NOT reentrant.
+	// A call-out invoked while a goroutine holds mu (write) that reenters the engine and takes
+	// mu.RLock self-deadlocks that goroutine forever (the live single-validator freeze: the
+	// selfVoter called ReceiveVote from RequestVotes under mu). Network sends under mu are equally
+	// banned — they must never sit behind the engine lock. The pattern everywhere is: capture what
+	// the call-out needs UNDER mu, Unlock, do EVERY call-out (VM.Accept/Reject, Propose,
+	// RequestVotes, GossipCert, SetPreference, ReceiveVote, the finalizer, signalPipeline) with mu
+	// RELEASED, then re-Lock. Enforced by TestBlue_NoCallOutUnderEngineLock (a lock-instrumented
+	// runtime run) + the source audit in that file.
+	mu engineMutex // sync.RWMutex + a test-time write-holder instrument (lock_invariant.go)
 
 	// Core consensus
 	consensus *ChainConsensus
@@ -838,7 +852,12 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 	// (the mainnet v1→v2 in-place upgrade window). vm.LastAccepted is a durable, sound lower
 	// bound on the decided height (every accepted block was finalized). SIGN-GATE ONLY — it
 	// only advances t.decidedFloor, never the finality ledger / byHeight (PART-A intact).
-	t.seedDecidedFloorFromVMLocked(ctx)
+	// UNLOCK-BEFORE-CALL-OUT: the seed reads the VM (LastAccepted/GetBlock). Release t.mu around it
+	// (the signing goroutines have not launched yet, but the discipline is global — no external
+	// call-out under the engine lock). The seed touches only t.vm (stable pre-Start) + slotMu.
+	t.mu.Unlock()
+	t.seedDecidedFloorFromVM(ctx)
+	t.mu.Lock()
 
 	t.ctx, t.cancel = context.WithCancel(ctx)
 	t.bootstrapped = true
@@ -2204,7 +2223,7 @@ func (t *Transitive) pruneCommittedSlotsBelow(height uint64) {
 // touches only t.decidedFloor (under slotMu), never the finality ledger / byHeight — PART-A
 // intact. Best-effort: any VM error / empty head leaves the floor as-is (the vote-guard
 // file floor and the SyncState seed remain). Caller holds t.mu.
-func (t *Transitive) seedDecidedFloorFromVMLocked(ctx context.Context) {
+func (t *Transitive) seedDecidedFloorFromVM(ctx context.Context) {
 	if t.vm == nil {
 		return
 	}
@@ -3196,8 +3215,16 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		return nil
 	}
 
-	for t.pendingBuildBlocks > 0 {
+	for {
+		if t.pendingBuildBlocks <= 0 {
+			break
+		}
+		// UNLOCK-BEFORE-CALL-OUT: BuildBlock is an external VM call — release t.mu around it, then
+		// re-acquire to process (buildBlocksLocked is entered and returns with t.mu held). The loop
+		// re-checks pendingBuildBlocks after re-lock, so a concurrent change is handled.
+		t.mu.Unlock()
 		vmBlock, err := t.vm.BuildBlock(ctx)
+		t.mu.Lock()
 		if err != nil {
 			t.log.Error("BuildBlock failed, will retry next tick",
 				"error", err,
@@ -3225,12 +3252,16 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		// attempt cap, since re-soliciting a block whose voters are behind its parent
 		// is spam that never recovers it (see rePollAllPending).
 		if pb, exists := t.pendingBlocks[vmBlock.ID()]; exists {
-			if pb.IsOwnProposal && !pb.Decided && t.proposer != nil {
-				t.proposer.RequestVotes(ctx, VoteRequest{
-					BlockID:   vmBlock.ID(),
-					BlockData: vmBlock.Bytes(),
-				})
+			// UNLOCK-BEFORE-CALL-OUT: decide under the lock, re-solicit (a network send) AFTER
+			// releasing it. Re-solicit is a K>1 liveness retry only — a K==1 chain has no peers and
+			// finalizes inline. Re-sends the SAME block/position: never manufactures a vote.
+			reSolicit := pb.IsOwnProposal && !pb.Decided && t.proposer != nil && t.consensus.K() > 1
+			reqBlockID, reqBlockData := vmBlock.ID(), vmBlock.Bytes()
+			t.mu.Unlock()
+			if reSolicit {
+				t.proposer.RequestVotes(ctx, VoteRequest{BlockID: reqBlockID, BlockData: reqBlockData})
 			}
+			t.mu.Lock()
 			continue
 		}
 
@@ -3304,84 +3335,61 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			t.recordOwnVoteLocked(pb, vmBlock.ID())
 		}
 
-		// Gossip the block + request peer votes. These calls are done while
-		// holding t.mu — keep them short (msg creation + queue, no waiting).
+		// UNLOCK-BEFORE-CALL-OUT (the global invariant — see the Transitive.mu doc). Capture
+		// everything the call-outs need UNDER t.mu, then RELEASE it and do EVERY call-out — the
+		// network Propose/RequestVotes, VM.SetPreference, and the finalizer — with t.mu NOT held. A
+		// call-out that reenters t.mu self-deadlocks (the removed selfVoter class); network sends
+		// must also never sit under the engine lock. buildSingleValidatorCertLocked reads
+		// pendingBlocks/position so its cert is built here (locked); its finalize runs unlocked.
 		proposerWired := t.proposer != nil
+		blockID := vmBlock.ID()
+		singleValidator := t.consensus.K() == 1
+		var proposal BlockProposal
 		if proposerWired {
-			proposal := BlockProposal{
-				BlockID:   vmBlock.ID(),
+			proposal = BlockProposal{
+				BlockID:   blockID,
 				BlockData: vmBlock.Bytes(),
 				Height:    vmBlock.Height(),
 				ParentID:  vmBlock.ParentID(),
 			}
-			t.proposer.Propose(ctx, proposal)
-			// Solicit peer votes ONLY on a multi-validator chain. A K==1 chain has no peers to
-			// poll and finalizes SOLELY through the inline finalizer below — calling RequestVotes
-			// here was the entry to the removed single-node self-vote shortcut that self-deadlocked
-			// on t.mu. (Propose above is kept so non-validating FOLLOWERS still receive the block.)
-			if t.consensus.K() > 1 {
-				voteReq := VoteRequest{
-					BlockID:    vmBlock.ID(),
-					BlockData:  vmBlock.Bytes(),
-					Validators: nil,
-				}
-				t.proposer.RequestVotes(ctx, voteReq)
-			}
 		}
-
-		// Self-finalize the just-built own block through the SOLE cert-gated
-		// finalizer (AcceptWithCert). The block was verified locally above, so the
-		// proposer has committed to its correctness; waiting only on peer Chits to
-		// drive finality causes the lux-devnet stall when Chits arrive late.
-		blockID := vmBlock.ID()
-		singleValidator := t.consensus.K() == 1
-
+		var singleCert VerifiedQuorumCert
 		if singleValidator {
-			// K==1: the sole validator's accept IS the 1-of-1 quorum. Build the 1-of-1
-			// cert and finalize INLINE through the sole finalizer (FinalizeBranch).
-			// signalNext=false: we are inside the build loop, which drives the next
-			// build itself — re-signaling would spawn a concurrent builder and gap the
-			// VM block counter (the K=1 burst-throughput stall).
-			//
-			// The old code REQUIRED this to run in lockstep with SetPreference because
-			// the per-height ADMISSION gate refused any block whose parent != finalized
-			// tip (ErrParentNotFinalizedTip) — so a build that outran SetPreference
-			// stalled. That gate is GONE: FinalizeBranch reorgs instead of refusing, so
-			// finalizing here is now purely the K==1 finalize trigger, not a lockstep
-			// safety requirement.
-			cert := t.buildSingleValidatorCertLocked(pb, blockID)
-			t.mu.Unlock()
-			_ = t.acceptWithCertCore(ctx, blockID, cert, false)
-			t.mu.Lock()
+			singleCert = t.buildSingleValidatorCertLocked(pb, blockID)
+		}
+		vm := t.vm
+		t.mu.Unlock()
+
+		// ---- ALL CALL-OUTS, t.mu RELEASED ----
+		if proposerWired {
+			// Gossip the block so non-validating FOLLOWERS receive it. Solicit peer votes ONLY on a
+			// multi-validator chain — a K==1 chain has no peers and finalizes via the inline
+			// finalizer below (the removed single-node self-vote shortcut was the t.mu-reentrant
+			// deadlock).
+			t.proposer.Propose(ctx, proposal)
+			if !singleValidator {
+				t.proposer.RequestVotes(ctx, VoteRequest{BlockID: blockID, BlockData: proposal.BlockData})
+			}
+		}
+		if singleValidator {
+			// The sole validator's accept IS the 1-of-1 quorum — finalize inline through the sole
+			// cert-gated finalizer. signalNext=false: the build loop drives the next build itself
+			// (re-signaling would spawn a concurrent builder and gap the VM block counter).
+			_ = t.acceptWithCertCore(ctx, blockID, singleCert, false)
 		} else if proposerWired {
-			// K>1 with a network proposer: attempt finality now via the verified
-			// α-of-K cert. The cert may already be assemblable from collected votes;
-			// if not, TryAccept no-ops (ErrNoVerifiedQC) and the poll loop / cert
-			// gossip retry. NEVER forces a K>1 block on the lone self-vote.
-			t.mu.Unlock()
-			// STORM BOUND (avalanchego deliver()→SetPreference, the SAME steer
-			// followVerifiedBlock applies on the receive side): advance the VM's build
-			// target to the just-built tip so the proposervm's WaitForEvent moves to the
-			// NEXT height instead of re-returning "build THIS height" every time the
-			// mempool is non-empty and the block has not yet finalized. Without it the
-			// node rebuilt one height hundreds of times while awaiting votes (the mainnet
-			// 511-rebuild-in-4-min spin). This is a build hint only — it never changes
-			// WHICH block finalizes or WHEN; finality is still the α-of-K cert.
-			if t.vm != nil {
+			// K>1: STORM BOUND — steer the VM build target to the just-built tip so proposervm's
+			// WaitForEvent advances to the NEXT height instead of re-returning "build THIS height"
+			// (the mainnet 511-rebuild spin). A build hint only; finality is still the α-of-K cert.
+			// This node does NOT self-vote its own block here (the convergence loop casts the single
+			// vote for the settled winner); finalize only if a verified cert is already assemblable.
+			if vm != nil {
 				if tip := t.PreferredBuildTip(); tip != ids.Empty {
-					_ = t.vm.SetPreference(ctx, tip)
+					_ = vm.SetPreference(ctx, tip)
 				}
 			}
-			// This node's accept vote for its OWN block is NOT cast here. On a fresh-net
-			// storm many validators build competing siblings at one height; binding this
-			// node's one signature to its own block at build time is exactly the 5-way
-			// split that stalls the quorum. The convergence loop casts this node's single
-			// vote for the settled, converged winner (which may be this block or a peer's
-			// lower-canonical sibling). Finalization is still attempted below in case a
-			// verified α-of-K cert is already assemblable from earlier heights.
 			t.finalizeOwnProposal(ctx, blockID)
-			t.mu.Lock()
 		}
+		t.mu.Lock()
 	}
 	return nil
 }
