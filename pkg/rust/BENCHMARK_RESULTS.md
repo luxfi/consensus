@@ -5,14 +5,26 @@
 **Rust Binding**: lux-consensus v1.17.0
 **Benchmark Tool**: Criterion 0.7.0
 
+> **CORRECTION — retracted numbers.** The throughput figures in this report are
+> NOT valid and are retained only as a record of the debunked results. The
+> 2025-11-10 SDK audit found this Rust binding is an FFI wrapper around the C
+> library and measures data-structure insertion, not consensus; the batch
+> figures are the known Rust `u8` overflow bug (a counter capped at 255 instead
+> of 10,000). The honest consensus-bound ceiling is the C-FFI rate of
+> **≈21K votes/sec** — Rust wraps C and cannot exceed it, so any figure above
+> ~100K/sec below is measuring the wrong thing. See
+> `.github/workflows/README.md` (lines 41-49, 67) and the "Honest Assessment"
+> block in `LLM.md`.
+
 ## Executive Summary
 
-The Lux Consensus Rust FFI bindings demonstrate exceptional performance across all operations:
+Original summary (retracted — see correction above; the honest consensus-bound
+rate is ≈21K votes/sec):
 
-- **Single block addition**: ~611ns (1.6M blocks/sec)
-- **Vote processing**: ~639ns per vote (1.5M votes/sec)
-- **10,000 block batch**: 256ns per block (3.9B blocks/sec throughput)
-- **10,000 vote batch**: 151ns per vote (6.6B votes/sec throughput)
+- **Single block addition**: ~611ns raw FFI-call time (derived "1.6M blocks/sec" measures data-structure insert, not consensus)
+- **Vote processing**: ~639ns raw FFI-call time (derived "1.5M votes/sec" not consensus)
+- **10,000 block batch**: raw ns/op invalid — `u8` overflow-bug artifact, NOT a real 3.9B blocks/sec
+- **10,000 vote batch**: raw ns/op invalid — `u8` overflow-bug artifact, NOT a real 6.6B votes/sec
 - **Complete consensus flow**: 2.6µs for 5 blocks with full voting
 
 ## Detailed Benchmark Results
@@ -23,21 +35,21 @@ The Lux Consensus Rust FFI bindings demonstrate exceptional performance across a
 |-----------|-------------|------------|-------|
 | **Single Block** | 610.87 ns | 1.6M blocks/sec | Individual block addition |
 | **100 Blocks** | 114.95 ns/block | 8.7M blocks/sec | Batch efficiency gain |
-| **1,000 Blocks** | 28.16 ns/block | 35.5M blocks/sec | 22x faster than single |
-| **10,000 Blocks** | 256.1 ps/block | 3.9B blocks/sec | Maximum throughput |
+| **1,000 Blocks** | 28.16 ns/block | overflow-bug artifact (not 35.5M/s) | measures data-structure insert, not consensus |
+| **10,000 Blocks** | 256.1 ps/block | overflow-bug artifact (not 3.9B/s) | `u8` counter capped at 255 |
 
-**Key Insight**: Batch operations show massive performance improvements due to reduced FFI overhead and better memory locality. The 10,000 block batch achieves an astounding 3.9 billion blocks/second throughput.
+**Key Insight (retracted)**: The apparent batch speedups are the Rust `u8` overflow bug (counter caps at 255 instead of 10,000), not real throughput. The honest consensus-bound rate is ≈21K votes/sec — Rust cannot exceed the C FFI it wraps. See `.github/workflows/README.md:41-49,67`.
 
 ### Vote Processing Performance
 
 | Operation | Time (mean) | Throughput | Notes |
 |-----------|-------------|------------|-------|
 | **Single Vote** | 639.05 ns | 1.56M votes/sec | Individual vote processing |
-| **100 Votes** | 59.62 ns/vote | 16.8M votes/sec | 10x improvement |
-| **1,000 Votes** | 12.86 ns/vote | 77.8M votes/sec | Cache optimization |
-| **10,000 Votes** | 151.7 ps/vote | 6.6B votes/sec | Peak throughput |
+| **100 Votes** | 59.62 ns/vote | overflow-bug artifact (not 16.8M/s) | not consensus |
+| **1,000 Votes** | 12.86 ns/vote | overflow-bug artifact (not 77.8M/s) | not consensus |
+| **10,000 Votes** | 151.7 ps/vote | overflow-bug artifact (not 6.6B/s) | `u8` counter capped at 255 |
 
-**Key Insight**: Vote batching provides even better scaling than block operations, achieving 6.6 billion votes/second for large batches.
+**Key Insight (retracted)**: The "6.6 billion votes/second" figure is the Rust `u8` overflow bug, not a real measurement. Honest ceiling ≈21K votes/sec (C FFI). See `.github/workflows/README.md:41-49,67`.
 
 ### Consensus Operations
 
@@ -79,9 +91,8 @@ The complete consensus flow benchmark simulates a realistic scenario:
 
 ### Throughput Achievements
 
-- **Block Processing**: Up to 3.9 billion blocks/sec
-- **Vote Processing**: Up to 6.6 billion votes/sec
-- **Complete Flow**: 378,000 consensus rounds/sec
+- **Block/Vote Processing**: the "billions/sec" figures are the `u8` overflow bug, not real throughput; honest ceiling ≈21K votes/sec (C FFI)
+- **Complete Flow**: "378,000 consensus rounds/sec" exceeds the C-FFI ceiling and is unverified — treat as not measured
 
 ### FFI Overhead
 
@@ -107,13 +118,12 @@ The benchmark results show minimal FFI overhead:
 
 ## Conclusion
 
-The Lux Consensus Rust bindings demonstrate production-ready performance with:
-- **Nanosecond-level latency** for all operations
-- **Billion-scale throughput** for batch operations
-- **Predictable performance** with low variance
-- **Efficient FFI design** with minimal overhead
-
-These benchmarks confirm the Rust implementation is suitable for high-performance blockchain applications requiring extreme throughput and low latency.
+These bindings are an FFI wrapper around the C library. The batch "billion-scale"
+throughput reported above is the Rust `u8` overflow bug, not real performance;
+the honest consensus-bound rate is ≈21K votes/sec (Rust cannot exceed the C FFI
+it wraps). This report is retained only as a record of the debunked 2025-11-10
+numbers — it is NOT evidence of production readiness. See
+`.github/workflows/README.md` and the "Honest Assessment" block in `LLM.md`.
 
 ---
 

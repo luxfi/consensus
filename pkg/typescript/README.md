@@ -9,7 +9,7 @@ Native performance through NAPI-RS with full TypeScript type safety.
 - **Native Performance**: Rust-based consensus engine compiled to native Node.js addon
 - **Type Safety**: Full TypeScript definitions for all APIs
 - **69% Byzantine Tolerance**: Industry-leading fault tolerance (2% above standard 67%)
-- **Sub-second Finality**: ~500ms block time with 2-round finality
+- **2-round finality API** (block time / finality latency not measured for this binding)
 - **Quantum-Ready**: Optional ML-DSA (FIPS 204) post-quantum signatures
 - **GPU Acceleration**: Optional MLX (Apple Silicon) and CUDA support
 
@@ -190,13 +190,12 @@ pnpm test
 
 ## Performance
 
-Benchmarks on Apple M2 Pro:
-
-| Operation      | Throughput      |
-| -------------- | --------------- |
-| Add block      | 1.2M blocks/sec |
-| Record vote    | 850K votes/sec  |
-| Batch votes    | 1.5M votes/sec  |
+Not independently benchmarked. This package is a NAPI wrapper around the Rust
+FFI binding, which itself wraps the C library — it measures data-structure
+insertion, not consensus. The honest consensus-bound ceiling is the C-FFI rate
+of ≈21K votes/sec; a wrapper cannot exceed it. Earlier per-second throughput
+figures here were retracted. See `.github/workflows/README.md` and the "Honest
+Assessment" block in `LLM.md`.
 
 ## Related Packages
 

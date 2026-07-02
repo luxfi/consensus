@@ -41,7 +41,7 @@ Skipped:            0
 Performance:
 ─────────────────────────────────
 1000 blocks:        < 0.001 seconds
-Throughput:         > 1M blocks/second
+Throughput:         data-structure inserts only, not consensus (real C-FFI ≈21K votes/sec)
 Memory Footprint:   < 10 MB
 ```
 
@@ -75,10 +75,17 @@ Ignored:            0
 | Metric                | Go        | C          | Rust      | Python   | C++      |
 |-----------------------|-----------|------------|-----------|----------|----------|
 | **Latency**           | 1.7 μs    | < 1 μs     | 607 ns    | ~10 μs   | TBD      |
-| **Throughput**        | 660K/s    | 1M+/s      | -         | ~100K/s  | TBD      |
+| **Throughput**        | see note  | see note   | -         | see note | TBD      |
 | **Memory (typical)**  | 912 B     | < 10 MB    | < 15 MB   | ~50 MB   | TBD      |
 | **Test Coverage**     | 74.5%     | 100%       | 100%      | -        | -        |
-| **Status**            | ✅ Prod   | ✅ Prod    | ✅ Prod   | 🔬 Res   | 🚧 Dev   |
+| **Status**            | ⚠️ core   | ⚠️ structs | ⚠️ FFI    | 🔬 Res   | 🚧 Dev   |
+
+> **Note (throughput / status).** The per-second figures above measured the
+> AI-package microbench and data-structure insertion, not consensus, and any
+> value >100K/s exceeds the honest consensus-bound C-FFI ceiling of
+> ≈21K votes/sec. Per the SDK audit, C is data-structures-only, Rust is an FFI
+> wrapper over C, and only the Python SDK implements real consensus. See
+> `.github/workflows/README.md` and the "Honest Assessment" block in `LLM.md`.
 
 ## AI Consensus Performance Deep Dive
 
@@ -143,8 +150,12 @@ Ignored:            0
 
 | Version | Go AI Decision | C Throughput | Coverage |
 |---------|----------------|--------------|----------|
-| v1.21.0 | 1.70 μs        | 1M+ blocks/s | 74.5%    |
-| v1.17.0 | 1.50 μs        | 9M+ blocks/s | -        |
+| v1.21.0 | 1.70 μs        | see note*    | 74.5%    |
+| v1.17.0 | 1.50 μs        | see note*    | -        |
+
+\* C throughput figures ("1M+/9M+ blocks/s") retracted — they measured
+data-structure insertion, not consensus (real C-FFI ≈21K votes/sec). See
+`.github/workflows/README.md` and the "Honest Assessment" block in `LLM.md`.
 
 **Observation**: Go latency increased slightly (1.5→1.7 μs) but with better accuracy and test coverage.
 

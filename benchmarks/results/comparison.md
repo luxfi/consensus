@@ -195,11 +195,11 @@ BenchmarkSigmoid-10                214260781      5.600 ns/op      0 B/op    0 a
 
 ### Performance Summary
 
-✅ **Current Performance**: Excellent for production use  
+✅ **Current Performance**: Good for the measured microbench workload (not a consensus-throughput claim)  
 ✅ **Scalability**: Linear to 10 nodes, tested to 3  
 ✅ **Memory Efficiency**: Minimal allocations, low overhead  
 ✅ **Latency**: Sub-millisecond for critical operations  
-✅ **Throughput**: Multi-million operations per second  
+✅ **Throughput**: Multi-million *microbench* ops/sec (Sigmoid / state ops) — NOT consensus block/vote throughput  
 
 ### Recommendations
 
