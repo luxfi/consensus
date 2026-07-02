@@ -1,0 +1,184 @@
+// Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+// reconcile.go — BOUNDED PHANTOM-FLOOR RECONCILE: the recovery that un-sticks a chain
+// whose durable decided-floor ran AHEAD of every VM's applied head.
+//
+// THE INCIDENT. Before the fail-closed finalize→VM-accept fix, applyBranchFinalization
+// SWALLOWED VM.Accept's error and advanced the durable decided-floor (vote-guard
+// finalizedThrough) ANYWAY. So a height could be α-of-K FINALIZED in consensus while the
+// EVM refused to apply it — and the floor moved past it regardless. On the frozen testnet
+// C-Chain this left finalizedThrough = 429 uniform across all 5 validators while the EVM
+// heads sat at 421 (luxd-0/4) and 415 (luxd-1/2/3). On every reboot WithVoteGuard re-seeds
+// decidedFloor = 429, the sign gate treats 416..429 as decided (permanently unsignable),
+// the view-change can NEVER re-finalize them, and the chain is wedged forever.
+//
+// THE GAP SPLITS at the fleet-max VM-applied height (421 = the highest height ANY node
+// actually applied to its EVM):
+//
+//   - 416..421 COMMITTED-DIVERGENT — luxd-0/4 VM-applied these (real, non-empty blocks in
+//     their coreth store, served over RPC). They are recoverable and were externalized, so
+//     they MUST NOT be abandoned; a behind node ADOPTS the exact same blocks via the
+//     cert-carrying catch-up path (AcceptCatchupBlock), never re-finalizes a different block.
+//
+//   - 422..429 PHANTOM — NO VM in the fleet ever applied them (all EVM heads <= 421;
+//     eth_getBlockByNumber(422) returns "cannot query unfinalized data" on every node). The
+//     block bytes are gone (the in-memory pendingBlocks / finalizedByCert / served-cert
+//     window were cleared on restart; the durable vote-guard stores NO block bytes and NO
+//     signatures — only the floor, the pruned bindings, and the lock rounds). They can be
+//     neither applied nor served. The ONLY recovery is to abandon them and let the
+//     view-change re-finalize 422+ fresh on the caught-up, consistent state.
+//
+// THE SAFETY PROOF (no observable double-certification). Reconciling the floor down to
+// safeFloor and abandoning the in-consensus finalizations at heights (safeFloor, decidedFloor]
+// cannot produce an observable fork — a state where two parties present two valid α-of-K
+// certs for DIFFERENT blocks at one height — PROVIDED safeFloor >= the fleet-max VM-applied
+// height. Under that bound, for every abandoned height h:
+//
+//   P1. No VM applied h (h > fleet-max). [caller's contract; verified out of band per node]
+//   P2. The EVM serves a block over RPC / to a bridge / to a light client / in a warp
+//       attestation ONLY after it ACCEPTS it; a never-accepted height returns "cannot query
+//       unfinalized data". So by P1, no block at h was ever externalized — the finalization
+//       at h was purely INTERNAL to the consensus layer.
+//   P3. The cert material for h (the α-of-K precommit signatures and the assembled cert)
+//       lived ONLY in memory (finalizedByCert, the served-cert window, the roundView
+//       precommit sets) — all cleared on the restart this reconcile runs within. The durable
+//       vote-guard persists NO signatures. So after the restart NO node holds or can
+//       reconstruct a presentable cert for h.
+//   P4. From P2 (never externalized) + P3 (cert unrecoverable): no party holds two certs for
+//       h. Re-finalizing a fresh block at h yields exactly ONE presentable cert there. No
+//       double-cert is observable. ∎
+//
+// The bound safeFloor >= fleet-max is enforced two ways: (a) the caller supplies target =
+// the operator-VERIFIED fleet-max VM height (a read-only probe of every node's accepted
+// head), and (b) an INTRINSIC GUARD raises safeFloor to at least THIS node's own applied
+// head, so the reconcile can never abandon a block this node itself committed even under a
+// wrong-low target. Heights at/below safeFloor stay decided in the floor (unsignable) and
+// are recovered by cert-carrying catch-up, never re-finalized — so a peer's externalized
+// block is adopted exactly, never replaced.
+
+package chain
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/luxfi/ids"
+)
+
+// ReconcilePhantomFloor lowers this node's durable decided-through floor to a SAFE height so
+// the sign gate stops treating a range of never-applied heights as decided — the fix for a
+// phantom floor left by the pre-fix swallowed-VM.Accept bug (see the file header for the full
+// incident + safety proof). It is a DELIBERATE, one-shot recovery action driven by the node
+// at boot when an operator-verified reconcile target is configured.
+//
+//	safeFloor = max(target, localVMHeight)
+//
+// target is the fleet-max VM-applied height (verified out of band). localVMHeight is THIS
+// node's own applied head, an intrinsic guard that only ever RAISES safeFloor — so the
+// reconcile can never abandon a block this node committed, even under a wrong-low target.
+//
+// It abandons EXACTLY the range (safeFloor, decidedFloor], and only when decidedFloor >
+// safeFloor. It is idempotent: after a successful reconcile decidedFloor == safeFloor, so a
+// reboot with the same target is a no-op. A zero target is "not configured" → no-op (a
+// reconcile MUST carry an explicit verified target; an unset one never abandons anything).
+//
+// Returns the floor it reconciled to (the resulting decidedFloor); nil error on a clean
+// reconcile OR a no-op. A durable-write failure returns the UNCHANGED floor and an error
+// (fail-closed: nothing in memory changed, the node stays safely un-recovered, the operator
+// retries).
+func (rt *Runtime) ReconcilePhantomFloor(ctx context.Context, target uint64) (uint64, error) {
+	if rt.Transitive == nil {
+		return 0, fmt.Errorf("reconcile: nil engine")
+	}
+	// localVMHeight — the intrinsic-guard input: never abandon a block THIS node applied.
+	// A VM error / empty head leaves it 0 (the target then governs; the durable floor and
+	// the below-safeFloor bindings are untouched regardless).
+	var localVMHeight uint64
+	if rt.config.VM != nil {
+		if _, h, err := rt.localLastAccepted(ctx); err == nil {
+			localVMHeight = h
+		}
+	}
+	return rt.Transitive.reconcilePhantomFloor(target, localVMHeight)
+}
+
+// reconcilePhantomFloor is the engine core of the bounded floor reconcile, taking an explicit
+// localVMHeight so it is directly unit-testable without standing up a VM. It runs entirely
+// under slotMu (the same lock the sign gate and the finalize prune hold), so a concurrent
+// signer sees either the pre- or the post-reconcile floor+bindings atomically. FAIL-CLOSED:
+// it durably commits the lowered floor + pruned bindings FIRST and only then mutates memory,
+// so a store-write failure leaves the node exactly as it was.
+func (t *Transitive) reconcilePhantomFloor(target, localVMHeight uint64) (uint64, error) {
+	if target == 0 {
+		// Not configured: a reconcile with no explicit target is a no-op — never derive an
+		// abandonment bound implicitly (that could abandon another node's committed range).
+		t.slotMu.Lock()
+		floor := t.decidedFloor
+		t.slotMu.Unlock()
+		return floor, nil
+	}
+
+	// INTRINSIC GUARD: safeFloor is at least this node's own applied head, so no block this
+	// node committed can ever be abandoned (a wrong-low target only ever fails to recover,
+	// never violates safety on the local node).
+	safeFloor := target
+	if localVMHeight > safeFloor {
+		safeFloor = localVMHeight
+	}
+
+	t.slotMu.Lock()
+	defer t.slotMu.Unlock()
+
+	if t.decidedFloor <= safeFloor {
+		// No phantom gap above the safe height (or already reconciled): idempotent no-op.
+		return t.decidedFloor, nil
+	}
+	abandonedTo := t.decidedFloor
+
+	// Build the pruned binding / lock-round sets: keep the committed window (height <=
+	// safeFloor), drop the phantom range (height > safeFloor). Copies, so the live maps are
+	// swapped in ONLY after the durable write commits.
+	prunedBindings := make(map[SlotKey]ids.ID, len(t.committedSlot))
+	for k, v := range t.committedSlot {
+		if k.Height <= safeFloor {
+			prunedBindings[k] = v
+		}
+	}
+	prunedLocks := make(map[uint64]uint32, len(t.lockRounds))
+	for h, r := range t.lockRounds {
+		if h <= safeFloor {
+			prunedLocks[h] = r
+		}
+	}
+
+	// FAIL-CLOSED: durably rewrite the LOWERED floor + pruned bindings FIRST via the one store
+	// writer permitted to decrease the floor. On failure, mutate NOTHING in memory — the node
+	// stays in the (safe, un-recovered) phantom state and the operator retries.
+	if t.voteGuard != nil {
+		if err := t.voteGuard.Reconcile(prunedBindings, prunedLocks, safeFloor); err != nil {
+			return t.decidedFloor, fmt.Errorf(
+				"reconcile: durable floor write failed (fail-closed, nothing changed): %w", err)
+		}
+	}
+
+	// Durable write committed — swap the in-memory state to match.
+	t.committedSlot = prunedBindings
+	t.lockRounds = prunedLocks
+	for h := range t.recoveredLocks {
+		if h > safeFloor {
+			delete(t.recoveredLocks, h)
+		}
+	}
+	t.decidedFloor = safeFloor
+
+	t.log.Warn("PHANTOM-RECONCILE: lowered durable decided-floor — abandoned internal-only "+
+		"finalizations that no VM applied and no observer saw (heights re-finalizable fresh "+
+		"once every VM has caught up to the safe floor)",
+		"from", abandonedTo,
+		"to", safeFloor,
+		"target", target,
+		"localVM", localVMHeight,
+		"abandonedRange", fmt.Sprintf("(%d,%d]", safeFloor, abandonedTo))
+	return safeFloor, nil
+}
