@@ -11,7 +11,63 @@ import (
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/log"
 )
+
+// singleSelfSampler is a ValidatorSampler for a genuinely single-validator chain: the only
+// validator is this node. Sample returns [self] so RequestVotes filters it out (len(filtered)==0)
+// and takes the single-node selfVoter branch; Count==1 marks the live set as one validator.
+type singleSelfSampler struct{ self ids.NodeID }
+
+func (s singleSelfSampler) Sample(ids.ID, int) ([]ids.NodeID, error) {
+	return []ids.NodeID{s.self}, nil
+}
+func (s singleSelfSampler) Count(ids.ID) int { return 1 }
+
+// TestBlue_SingleValidator_DecidesThroughFullRuntimePath drives the REAL runtime path a live
+// single-validator luxd uses — NewRuntime wires the gossiperProposer + selfVoter, so a build
+// runs Propose → RequestVotes → selfVoter → engine.ReceiveVote AND the inline build-loop finalize.
+// (The earlier tests used raw New with no proposer, so they never exercised the selfVoter path —
+// that is why they passed while the live chain froze.) With VM.Accept succeeding, the block MUST
+// DECIDE and the finalized height advance to 1.
+func TestBlue_SingleValidator_DecidesThroughFullRuntimePath(t *testing.T) {
+	self := ids.GenerateTestNodeID()
+	p := config.SingleValidatorParams() // K=1
+	blk := &trackingMockBlock{id: ids.GenerateTestID(), parentID: ids.Empty, height: 1, timestamp: time.Now(), bytes: []byte("b1")}
+	vm := &trackingMockVM{blocks: []*trackingMockBlock{blk}}
+
+	rt := NewRuntime(NetworkConfig{
+		ChainID:      ids.GenerateTestID(),
+		NetworkID:    ids.GenerateTestID(),
+		NodeID:       self,
+		Validators:   singleSelfSampler{self: self},
+		Logger:       log.Noop(),
+		Gossiper:     &recordingGossiper{}, // all sends return 0 (no peers) — the single-node condition
+		VM:           vm,
+		Params:       &p,
+		VoteVerifier: rejectingVerifier{},        // wired like a value chain; rejects → my n=1 synthesize path
+		VoteSigner:   testAuth.signerFor(self),
+	})
+	ctx := context.Background()
+	if err := rt.Start(ctx, true); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() { _ = rt.Stop(context.Background()) })
+
+	// Drive the build through the FULL runtime path.
+	if err := rt.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	time.Sleep(400 * time.Millisecond)
+
+	if got := blk.AcceptCalled(); got != 1 {
+		t.Fatalf("FULL-RUNTIME single-validator STALL: the block did not DECIDE through the real "+
+			"NewRuntime path (Propose→RequestVotes→selfVoter→ReceiveVote + inline finalize); AcceptCalled=%d", got)
+	}
+	if h, ok := rt.consensus.GetFinalizedHeight(); !ok || h != 1 {
+		t.Fatalf("consensus finalized height must be 1 after the single-validator block decides; got (%d,%v)", h, ok)
+	}
+}
 
 // rejectingVerifier is a VoteVerifier that rejects EVERY signature — the exact runtime
 // condition on a fresh single-validator sovereign L1 (zood / Zoo 200200) whose validator set
