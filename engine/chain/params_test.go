@@ -117,13 +117,10 @@ func TestConsensusConfigurations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			nodeID, sampler := makeValidators(tc.totalValidators)
 			gossiper := &testGossiper{}
-			selfVoted := false
 
-			var selfVoter func(ids.ID)
-			if tc.k == 1 {
-				selfVoter = func(_ ids.ID) { selfVoted = true }
-			}
-
+			// DECOMPLECTED: there is no single-node self-voter. A K==1 proposer polls NOBODY (no
+			// peers) and finalizes via the inline build-path finalizer; a K>1 proposer polls the
+			// network. RequestVotes never self-votes.
 			proposer := &gossiperProposer{
 				gossiper:   gossiper,
 				chainID:    ids.GenerateTestID(),
@@ -131,7 +128,6 @@ func TestConsensusConfigurations(t *testing.T) {
 				validators: sampler,
 				nodeID:     nodeID,
 				k:          tc.k,
-				selfVoter:  selfVoter,
 			}
 
 			blockID := ids.GenerateTestID()
@@ -143,12 +139,7 @@ func TestConsensusConfigurations(t *testing.T) {
 				t.Fatalf("RequestVotes failed: %v", err)
 			}
 
-			if tc.expectSelfVote && !selfVoted {
-				t.Error("expected self-vote but didn't get one")
-			}
-			if !tc.expectSelfVote && selfVoted {
-				t.Error("got unexpected self-vote")
-			}
+			_ = tc.expectSelfVote // self-vote path removed; field retained as documentation only
 			if tc.expectNetworkPoll && gossiper.pushQueries == 0 {
 				t.Error("expected network poll but no PushQuery sent")
 			}
@@ -265,9 +256,8 @@ func TestSelfVoteOnlyForK1(t *testing.T) {
 		t.Run("K="+string(rune('0'+k/10))+string(rune('0'+k%10)), func(t *testing.T) {
 			nodeID, sampler := makeValidators(k)
 			gossiper := &testGossiper{}
-			selfVoted := false
 
-			// selfVoter should NOT be set for K>1
+			// DECOMPLECTED: no self-voter exists. A K>1 proposer polls the network.
 			proposer := &gossiperProposer{
 				gossiper:   gossiper,
 				chainID:    ids.GenerateTestID(),
@@ -275,7 +265,6 @@ func TestSelfVoteOnlyForK1(t *testing.T) {
 				validators: sampler,
 				nodeID:     nodeID,
 				k:          k,
-				selfVoter:  nil, // Correct: nil for K>1
 			}
 
 			_ = proposer.RequestVotes(context.Background(), VoteRequest{
@@ -283,9 +272,6 @@ func TestSelfVoteOnlyForK1(t *testing.T) {
 				BlockData: []byte("block"),
 			})
 
-			if selfVoted {
-				t.Fatalf("K=%d should NOT self-vote", k)
-			}
 			if gossiper.pushQueries == 0 {
 				t.Fatalf("K=%d should send network queries", k)
 			}
