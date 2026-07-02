@@ -25,16 +25,18 @@ func (s singleSelfSampler) Sample(ids.ID, int) ([]ids.NodeID, error) {
 func (s singleSelfSampler) Count(ids.ID) int { return 1 }
 
 // TestBlue_SingleValidator_DecidesThroughFullRuntimePath drives the REAL runtime path a live
-// single-validator luxd uses — NewRuntime wires the gossiperProposer + selfVoter, so a build
-// runs Propose → RequestVotes → selfVoter → engine.ReceiveVote AND the inline build-loop finalize.
-// (The earlier tests used raw New with no proposer, so they never exercised the selfVoter path —
-// that is why they passed while the live chain froze.) With VM.Accept succeeding, the block MUST
-// DECIDE and the finalized height advance to 1.
+// single-validator luxd uses — NewRuntime wires the gossiperProposer, so a build runs Propose +
+// (for K>1) RequestVotes AND the inline build-loop finalize. There is NO self-voter shortcut: the
+// block finalizes SOLELY through the inline finalizer. (The earlier cert-fn-in-isolation tests
+// used raw New with no proposer and passed while the live chain froze on the removed selfVoter's
+// t.mu-reentrant deadlock.) With VM.Accept succeeding, the block MUST DECIDE and the finalized
+// height advance to 1.
 func TestBlue_SingleValidator_DecidesThroughFullRuntimePath(t *testing.T) {
 	self := ids.GenerateTestNodeID()
 	p := config.SingleValidatorParams() // K=1
-	blk := &trackingMockBlock{id: ids.GenerateTestID(), parentID: ids.Empty, height: 1, timestamp: time.Now(), bytes: []byte("b1")}
-	vm := &trackingMockVM{blocks: []*trackingMockBlock{blk}}
+	blk1 := &trackingMockBlock{id: ids.GenerateTestID(), parentID: ids.Empty, height: 1, timestamp: time.Now(), bytes: []byte("b1")}
+	blk2 := &trackingMockBlock{id: ids.GenerateTestID(), parentID: blk1.id, height: 2, timestamp: time.Now(), bytes: []byte("b2")}
+	vm := &trackingMockVM{blocks: []*trackingMockBlock{blk1, blk2}}
 
 	rt := NewRuntime(NetworkConfig{
 		ChainID:      ids.GenerateTestID(),
@@ -45,7 +47,7 @@ func TestBlue_SingleValidator_DecidesThroughFullRuntimePath(t *testing.T) {
 		Gossiper:     &recordingGossiper{}, // all sends return 0 (no peers) — the single-node condition
 		VM:           vm,
 		Params:       &p,
-		VoteVerifier: rejectingVerifier{},        // wired like a value chain; rejects → my n=1 synthesize path
+		VoteVerifier: rejectingVerifier{},        // wired like a value chain; rejects → the synthesize path
 		VoteSigner:   testAuth.signerFor(self),
 	})
 	ctx := context.Background()
@@ -54,18 +56,29 @@ func TestBlue_SingleValidator_DecidesThroughFullRuntimePath(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = rt.Stop(context.Background()) })
 
-	// Drive the build through the FULL runtime path.
+	// Drive TWO builds through the FULL runtime path — height must advance 0→1→2, each block
+	// finalized (VM.Accept called once). Pre-fix this HANGS at the first build (selfVoter reentrant
+	// deadlock, 25s test timeout); post-decomplect both blocks DECIDE.
 	if err := rt.Notify(ctx, Message{Type: PendingTxs}); err != nil {
-		t.Fatalf("notify: %v", err)
+		t.Fatalf("notify(1): %v", err)
 	}
-	time.Sleep(400 * time.Millisecond)
-
-	if got := blk.AcceptCalled(); got != 1 {
-		t.Fatalf("FULL-RUNTIME single-validator STALL: the block did not DECIDE through the real "+
-			"NewRuntime path (Propose→RequestVotes→selfVoter→ReceiveVote + inline finalize); AcceptCalled=%d", got)
+	time.Sleep(300 * time.Millisecond)
+	if got := blk1.AcceptCalled(); got != 1 {
+		t.Fatalf("FULL-RUNTIME STALL at height 1: block did not DECIDE (VM.Accept AcceptCalled=%d)", got)
 	}
 	if h, ok := rt.consensus.GetFinalizedHeight(); !ok || h != 1 {
-		t.Fatalf("consensus finalized height must be 1 after the single-validator block decides; got (%d,%v)", h, ok)
+		t.Fatalf("finalized height must be 1 after block 1; got (%d,%v)", h, ok)
+	}
+
+	if err := rt.Notify(ctx, Message{Type: PendingTxs}); err != nil {
+		t.Fatalf("notify(2): %v", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if got := blk2.AcceptCalled(); got != 1 {
+		t.Fatalf("FULL-RUNTIME STALL at height 2: block did not DECIDE (VM.Accept AcceptCalled=%d)", got)
+	}
+	if h, ok := rt.consensus.GetFinalizedHeight(); !ok || h != 2 {
+		t.Fatalf("finalized height must advance to 2; got (%d,%v)", h, ok)
 	}
 }
 
