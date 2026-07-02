@@ -21,6 +21,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/luxfi/consensus/core/slashing"
@@ -411,6 +412,13 @@ func (rt *Runtime) reportCertEquivocation(cert *QuorumCert, finalizedCanonical i
 	if conflicting == ids.Empty {
 		conflicting = cert.Position.BlockID
 	}
+	// DIAG-1082814 (devnet artifact): dump the conflicting cert's FULL signer set +
+	// position at Warn BEFORE the Crit below — Logger.Crit calls os.Exit(1), so this
+	// is the last chance to emit the raw bytes the safety triage needs (distinct vs
+	// shared signer sets, per-cert Round, canonical vs envelope).
+	if !rt.config.Logger.IsZero() {
+		rt.config.Logger.Warn("EQUIV-ARTIFACT conflicting-cert " + certArtifact(cert))
+	}
 	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Crit("EQUIVOCATION: conflicting finality cert at finalized height (different canonical block)",
 			log.Uint64("height", cert.Position.Height),
@@ -437,4 +445,39 @@ func (rt *Runtime) reportCertEquivocation(cert *QuorumCert, finalizedCanonical i
 			Proof:       proof,
 		})
 	}
+}
+
+// certArtifact renders a cert's FULL signer set + position for the devnet
+// equivocation diagnostic (issue 1082814). DIAG-ONLY. Format:
+//
+//	h=<height> round=<r> canonical=<id> envelope=<blockID> parent=<id>
+//	exec=<stateRoot> payload=<root> setroot=<vsr> voters=<n>
+//	signers=[<NodeID>/<sig[:8]hex>,...]
+//
+// The decisive fields: signers (distinct vs shared across the two conflicting
+// certs) and round (a prune-then-re-sign at a finalized height shows a later
+// round on the losing sibling's cert). canonical vs envelope distinguishes a
+// genuine fork from a duplicate proposervm envelope of one execution block.
+func certArtifact(cert *QuorumCert) string {
+	if cert == nil {
+		return "<nil>"
+	}
+	p := cert.Position
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "h=%d round=%d canonical=%s envelope=%s parent=%s exec=%s payload=%s setroot=%s voters=%d signers=[",
+		p.Height, p.Round, p.CanonicalID, p.BlockID, p.ParentID,
+		p.ExecutionStateRoot, p.PayloadRoot, p.ValidatorSetRoot, cert.VoterCount())
+	for i := range cert.Votes {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sig := cert.Votes[i].Signature
+		n := 8
+		if len(sig) < n {
+			n = len(sig)
+		}
+		fmt.Fprintf(&sb, "%s/%x", cert.Votes[i].NodeID, sig[:n])
+	}
+	sb.WriteByte(']')
+	return sb.String()
 }
