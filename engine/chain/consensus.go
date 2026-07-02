@@ -311,6 +311,33 @@ func (c *ChainConsensus) GetFinalizedHeight() (uint64, bool) {
 	return c.ledger.Height()
 }
 
+// GetDecidedFloor returns a SIGN-GATE-ONLY lower bound on the height this node has
+// decided through: max(certified frontier height, recovery-hint height). It is the floor
+// the equivocation sign gate (reserveSlotForSign) consults so a decided height stays
+// unsignable ACROSS A RESTART — where the certified frontier is a (0,false) hint until
+// the first post-restart cert (incident-1082814 PART-A), but the hint (seeded from
+// vm.LastAccepted by SyncStateFromVM on boot) is a valid lower bound on the accepted chain.
+//
+// HARD CONSTRAINT (PART-A): this is a read-only fail-safe bound. It NEVER writes to, and
+// its value NEVER enters, byHeight / the equivocation index / the authoritative
+// ledger.Height() — it reads the hint HEIGHT only, never the hint's (untrustworthy)
+// identity, so it cannot manufacture a byHeight equivocation entry or regress finality. It
+// can only ever cause the node to REFUSE MORE signing (the fail-safe direction). The hint
+// may LAG the true decision (a frozen vm.LastAccepted), so the engine also folds in the
+// vote-guard's fsync'd finalizedThrough, which never lags — the two are complementary.
+func (c *ChainConsensus) GetDecidedFloor() uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	floor := uint64(0)
+	if h, ok := c.ledger.Height(); ok {
+		floor = h
+	}
+	if c.ledger.hasHint && c.ledger.hintHeight > floor {
+		floor = c.ledger.hintHeight
+	}
+	return floor
+}
+
 // FinalizedBlockAtHeight returns the CANONICAL execution commitment finalized at
 // the given height, if any. Used to produce equivocation evidence and to recognise
 // duplicates: a second cert at an already-finalized height is equivocation ONLY if
