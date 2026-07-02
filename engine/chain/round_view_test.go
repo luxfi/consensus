@@ -69,7 +69,7 @@ func newRVSim(t *testing.T, n, alpha int) *rvSim {
 		id[0] = byte(i + 1)
 		s.nodes = append(s.nodes, &rvNode{
 			id:   id,
-			view: newRoundView(1, alpha),
+			view: newRoundView(1, alpha, n),
 			seen: map[ids.ID]struct{}{},
 			up:   true,
 		})
@@ -146,15 +146,35 @@ func (s *rvSim) stepOnce() bool {
 			bus = append(bus, rvMsg{kind: rvPrevote, from: n.id, round: act.CurRound, block: act.Prevote})
 		}
 		if act.Precommit != ids.Empty {
-			if n.view.recordOwnPrecommit(act.Precommit) {
-				n.view.observePrecommit(n.id, act.CurRound, act.Precommit) // count self
-				bus = append(bus, rvMsg{kind: rvPrecommit, from: n.id, round: act.CurRound, block: act.Precommit})
+			if n.view.recordOwnPrecommit(act.Precommit, act.PrecommitRound) {
+				n.view.observePrecommit(n.id, act.PrecommitRound, act.Precommit) // count self
+				bus = append(bus, rvMsg{kind: rvPrecommit, from: n.id, round: act.PrecommitRound, block: act.Precommit})
 			}
 		}
 	}
+	s.deliver(polCertMsgs(s.nodes)) // gossip validValue POLs so every node converges validValue
 	s.deliver(bus)
 	s.assertNoFork()
 	return s.allFinalized()
+}
+
+// polCertMsgs relays each up node's validValue POL (its constituent prevotes) as gossip so a
+// peer that missed those prevotes can form the same POL and adopt the same validValue.
+func polCertMsgs(nodes []*rvNode) []rvMsg {
+	var out []rvMsg
+	for _, n := range nodes {
+		if !n.up {
+			continue
+		}
+		block, round, voters, ok := n.view.polCert()
+		if !ok {
+			continue
+		}
+		for _, voter := range voters {
+			out = append(out, rvMsg{kind: rvPrevote, from: voter, round: round, block: block})
+		}
+	}
+	return out
 }
 
 // run steps up to maxTicks macro-ticks. Returns true if every up node finalized.
@@ -257,6 +277,80 @@ func TestRoundView_AsymmetricSplit_Converges_NoFork(t *testing.T) {
 		}
 	}
 	t.Logf("LIVENESS PASS: split→heal converged all 4 live nodes onto %s (no fork)", want)
+}
+
+// -----------------------------------------------------------------------------
+// LIVENESS under NON-UNIFORM VISIBILITY + round drift (the residual-freeze gate). Blue's
+// original stress seeded both siblings to ALL nodes at once (uniform visibility), which
+// masked the phase-offset drift RED found: under asymmetric gossip an honest node lags ~1
+// round permanently → its 3<α prevotes never form a POL → ~3% permanent stall. Here each
+// sibling is seeded to ONE random node and propagates only via block gossip, and the
+// partition flips randomly then heals — so honest nodes genuinely drift in round. The
+// ROUND-SKIP rule (jump to a round with ≥f+1 senders) must re-align them: this MUST reach
+// 0/200 stalls (every seed converges) with NO fork.
+// -----------------------------------------------------------------------------
+func TestRoundView_NonUniformVisibility_HonestLiveness_NoStall(t *testing.T) {
+	stalls := 0
+	for seed := int64(0); seed < 200; seed++ {
+		rng := rand.New(rand.NewSource(seed + 7))
+		s := newRVSim(t, 5, 4)
+		down := rng.Intn(5)
+		s.node(down).up = false // zero-margin: 4 live = α=4
+
+		up := []int{}
+		for i := 0; i < 5; i++ {
+			if i != down {
+				up = append(up, i)
+			}
+		}
+		A := rvBlockID(0xA0)
+		B := rvBlockID(0xB0)
+		// NON-UNIFORM: each sibling seeded to ONE up node; it spreads only by block gossip.
+		s.node(up[rng.Intn(len(up))]).seen[A] = struct{}{}
+		s.node(up[rng.Intn(len(up))]).seen[B] = struct{}{}
+
+		healAt := 10 + rng.Intn(10)
+		finalizedAll := false
+		for tick := 0; tick < 260 && !finalizedAll; tick++ {
+			if tick < healAt {
+				side := map[ids.NodeID]int{}
+				for _, i := range up {
+					side[s.node(i).id] = rng.Intn(2)
+				}
+				s.link = func(from, to ids.NodeID) bool { return side[from] == side[to] }
+			} else {
+				s.link = nil // permanent heal
+			}
+			finalizedAll = s.stepOnce()
+		}
+		if !finalizedAll {
+			stalls++
+			t.Errorf("seed %d: STALL — honest nodes drifted and did not converge after heal (down=%d)", seed, down)
+		}
+		if forked, a, b := func() (bool, ids.ID, ids.ID) {
+			var h ids.ID
+			set := false
+			for _, n := range s.nodes {
+				if !n.up || !n.view.finalized {
+					continue
+				}
+				if !set {
+					h, set = n.view.finalizedBlock, true
+					continue
+				}
+				if n.view.finalizedBlock != h {
+					return true, h, n.view.finalizedBlock
+				}
+			}
+			return false, ids.Empty, ids.Empty
+		}(); forked {
+			t.Fatalf("seed %d: FORK %s vs %s", seed, a, b)
+		}
+	}
+	if stalls != 0 {
+		t.Fatalf("NON-UNIFORM LIVENESS: %d/200 stalls — round-skip did not eliminate the freeze", stalls)
+	}
+	t.Logf("NON-UNIFORM LIVENESS PASS: 0/200 stalls under non-uniform visibility + round drift + heal (round-skip works)")
 }
 
 // -----------------------------------------------------------------------------

@@ -522,6 +522,17 @@ type Transitive struct {
 	// warns a signer that has none). See vote_guard.go.
 	slotMu        sync.Mutex
 	committedSlot map[SlotKey]ids.ID
+	// views holds the round-scoped view-change machine per unfinalized height (guarded by
+	// slotMu), used ONLY when params.ViewChange is set. It makes the α-of-K precommit LIVE
+	// and re-convergent under competing siblings: fluid prevotes across rounds + precommit
+	// only on a POL + lock. Lazily created per height; pruned on finalize. See round_view.go.
+	views map[uint64]*roundView
+	// prevoteSigs stores the SIGNED prevotes observed (own + peers), keyed
+	// {height,round,canonical} → nodeID → signature, so a node can RELAY the validValue POL's
+	// constituent prevotes to a peer that missed them (the POL-propagation the isolated proof
+	// showed is required for a 2|N split where one side holds a POL to converge). Guarded by
+	// slotMu; pruned with views on finalize.
+	prevoteSigs map[pvSigKey]map[ids.NodeID][]byte
 	// decidedFloor is the DURABLE, MONOTONIC decided-through height: the highest height
 	// this node has ever finalized. The sign gate refuses signing at any height <= it, so a
 	// decided height is permanently unsignable EVEN AFTER its committedSlot entry is pruned
@@ -725,6 +736,8 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		finalizedByCert:  make(map[ids.ID]struct{}),
 		certBytesByBlock: make(map[ids.ID][]byte),
 		committedSlot:    make(map[SlotKey]ids.ID),
+		views:            make(map[uint64]*roundView),
+		prevoteSigs:      make(map[pvSigKey]map[ids.NodeID][]byte),
 		catchupRequested: make(map[ids.ID]time.Time),
 		bufferedVotes:    make(map[ids.ID][]Vote),
 		voteRequests:     make(chan VoteRequest, cfg.VoteRequestBuffer),
@@ -1944,6 +1957,14 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 	if t.voteSigner == nil {
 		return
 	}
+	// VIEW-CHANGE: a proposer must NOT precommit its own block at build time — it must
+	// PREVOTE it and precommit only on a POL (round_view.go). Recording an immediate own
+	// precommit here would be an unjustified precommit (no POL) that the lock rule forbids.
+	// The view-change driver (runViewChangePass) casts this node's prevote+precommit for the
+	// converged winner instead. Skip the build-time self-precommit under view-change.
+	if t.params.ViewChange {
+		return
+	}
 	pos := t.blockPositionLocked(pending, blockID)
 	// NON-EQUIVOCATION (fork guard): refuse to sign a conflicting sibling at a HEIGHT
 	// this node has already committed to — and DURABLY record the binding before
@@ -2029,7 +2050,19 @@ func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
 		return false // decided height — permanently unsignable (durable across restart)
 	}
 	if bound, ok := t.committedSlot[key]; ok {
-		return bound == canonical // same block ⇒ idempotent (already durable); sibling ⇒ refuse
+		if bound == canonical {
+			return true // same block ⇒ idempotent (already durable)
+		}
+		// VIEW-CHANGE: a conflicting canonical at an UN-finalized height is permitted here —
+		// the round-scoped lock rule (round_view.go recordOwnPrecommit) already governs WHICH
+		// value this node may precommit and at what round, so the height-only refusal would
+		// wrongly freeze the re-convergence. The DURABLE decided-floor gate above still makes a
+		// FINALIZED height unsignable (the v1.35.5 PART-A / HIGH-1 finalized-floor safety is
+		// untouched). For the legacy single-phase path, keep the strict height-only refusal.
+		if !t.params.ViewChange {
+			return false // legacy: sibling at an already-signed height ⇒ refuse
+		}
+		// fall through: re-bind to the newly-precommitted canonical (persist below).
 	}
 	// First binding at this slot. PERSIST it durably BEFORE permitting the signature —
 	// a crash after signing but before finalizing must not forget it. Mutate the map,
@@ -2849,6 +2882,11 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// on every validator (a locally-finalizing node never reaches HandleIncomingCert's
 	// prune). pos.Height is the finalized tip; every slot at or below it is decided.
 	t.pruneCommittedSlotsBelow(pos.Height)
+	// View-change: drop the round machines for the just-decided height and below (bounded
+	// memory); a decided height is permanently unsignable via the decided-floor gate.
+	if t.params.ViewChange {
+		t.pruneViewsBelow(pos.Height)
+	}
 	return nil
 }
 
