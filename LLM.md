@@ -147,7 +147,7 @@ Crypto: `luxfi/crypto/bls`, `luxfi/crypto/mldsa`, `luxfi/corona/threshold`.
 ### PQ Mode Selection
 
 `config/pq_mode.go` defines the configurable PQ mode enum, selectable via
-the `LUX_CONSENSUS_PQ_MODE` env var or `Parameters.PQMode` field:
+the `CONSENSUS_PQ_MODE` env var or `Parameters.PQMode` field:
 
 | Mode | Value | Description |
 |------|-------|-------------|
@@ -275,11 +275,14 @@ path only unless noted. See `BENCHMARKS.md` for full raw output and reproduce
 commands.
 
 ### ZAP Wire Protocol (bench/)
-| Config | Throughput |
-|--------|------------|
-| Single connection | 114K TPS |
-| 20 parallel connections | 376K TPS |
-| 50 conns + batch 1000 | 20.26M TPS |
+
+Raw wire message throughput (ZAP transport microbench), NOT consensus finality TPS.
+
+| Config | Wire messages/sec |
+|--------|-------------------|
+| Single connection | 114K msg/s |
+| 20 parallel connections | 376K msg/s |
+| 50 conns + batch 1000 | 20.26M msg/s |
 
 ### Protocol Microbenchmarks
 | Component | Operation | Time/Op |
@@ -364,7 +367,8 @@ chain-read; unrelated to consensus correctness but flagged for evmgpu repo.
 
 ### Lux vs prior-gen EVM (bench/)
 ZAP deserialization: 157x faster than protobuf (21 ns vs 3231 ns, zero allocs).
-End-to-end throughput: 11.5M TPS (Lux) vs 246K (prior-gen baseline).
+Wire deserialization throughput: 11.5M msg/s (Lux ZAP) vs 246K (protobuf baseline)
+— a raw serialization microbench, NOT consensus finality TPS.
 Run: `GOWORK=off go test -v -run TestLuxVsLegacy_EndToEnd -bench=. ./bench/`
 
 ## Key Technical Notes

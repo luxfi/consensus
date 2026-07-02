@@ -138,7 +138,7 @@ PASS
 ✅ **Interoperability**: Languages can coexist in the same consensus network
 ✅ **Consistency**: Consensus logic is correct across all implementations
 ✅ **Scalability**: Can be embedded in any programming environment
-✅ **Production Ready**: Cross-language consensus works end-to-end
+⚠️ **Not production-ready**: only the Go node runs real consensus; the C/C++/Rust/Python nodes are stubs that simulate consensus (see status table below)
 
 ## Implementation Status
 
@@ -197,4 +197,4 @@ cd pkg/python && pip uninstall -y lux-consensus && pip install -e . && cd ../..
 
 ---
 
-**This E2E test is the ultimate proof that Lux Consensus is truly language-agnostic and production-ready for any platform.**
+**This E2E test is a scaffold: today only the Go node runs real consensus; the C/C++/Rust/Python nodes are stubs that simulate consensus. It is not yet proof of language-agnostic or production-ready cross-language consensus.**
