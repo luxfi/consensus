@@ -290,6 +290,13 @@ type busMsg struct {
 type simBus struct {
 	mu    sync.Mutex
 	nodes map[ids.NodeID]*simNode
+	// link, when non-nil, gates delivery on a per-(from,to,kind) basis so a test can
+	// model a transient network PARTITION (a link that drops block/vote gossip between
+	// two groups for a window). nil ⇒ every link up (the default full-broadcast bus).
+	// This is what lets a test reproduce the ASYMMETRIC sibling arrival that splits the
+	// α-of-K vote across siblings — the production down-proposer + WAN-latency condition
+	// the broadcast bus (uniform, instant delivery) cannot express.
+	link func(from, to ids.NodeID, kind busMsgKind) bool
 }
 
 func newSimBus() *simBus { return &simBus{nodes: map[ids.NodeID]*simNode{}} }
@@ -300,21 +307,37 @@ func (bus *simBus) register(n *simNode) {
 	bus.mu.Unlock()
 }
 
-// deliver enqueues msg to every node except `from` that is currently reachable.
+// setLink installs (or clears, with nil) the per-link delivery gate.
+func (bus *simBus) setLink(f func(from, to ids.NodeID, kind busMsgKind) bool) {
+	bus.mu.Lock()
+	bus.link = f
+	bus.mu.Unlock()
+}
+
+// deliver enqueues msg to every node except `from` that is currently reachable AND
+// whose link from `from` is up (per bus.link, if set).
 func (bus *simBus) deliver(from ids.NodeID, m busMsg) int {
 	bus.mu.Lock()
-	targets := make([]*simNode, 0, len(bus.nodes))
+	type target struct {
+		id ids.NodeID
+		n  *simNode
+	}
+	targets := make([]target, 0, len(bus.nodes))
 	for id, n := range bus.nodes {
 		if id == from {
 			continue
 		}
-		targets = append(targets, n)
+		targets = append(targets, target{id: id, n: n})
 	}
+	link := bus.link
 	bus.mu.Unlock()
 	sent := 0
-	for _, n := range targets {
-		if n.reachable() {
-			n.enqueue(m)
+	for _, t := range targets {
+		if link != nil && !link(from, t.id, m.kind) {
+			continue // partitioned link — drop this message toward this target
+		}
+		if t.n.reachable() {
+			t.n.enqueue(m)
 			sent++
 		}
 	}
