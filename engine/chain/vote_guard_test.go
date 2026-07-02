@@ -49,7 +49,7 @@ func TestVoteGuard_LegacyMultiEpochFold(t *testing.T) {
 		return b
 	}
 	body := []byte(voteGuardMagic)
-	body = append(body, voteGuardVersion)
+	body = append(body, voteGuardVersionV1) // a LEGACY v1 snapshot (no finalizedThrough field)
 	var cnt [4]byte
 	binary.BigEndian.PutUint32(cnt[:], 3)
 	body = append(body, cnt[:]...)
@@ -84,10 +84,11 @@ func TestVoteGuard_LegacyMultiEpochFold(t *testing.T) {
 // engine FAILS CLOSED (refuses the signature) and rolls back the in-memory binding.
 type failingGuard struct{}
 
-func (failingGuard) Persist(map[SlotKey]ids.ID) error {
+func (failingGuard) Persist(map[SlotKey]ids.ID, uint64) error {
 	return errors.New("simulated durable-write failure")
 }
 func (failingGuard) Snapshot() map[SlotKey]ids.ID { return map[SlotKey]ids.ID{} }
+func (failingGuard) FinalizedThrough() uint64     { return 0 }
 func (failingGuard) Close() error                 { return nil }
 
 // TestBlue_VoteGuard_CrashRestart_RefusesSiblingAfterRestart is the HIGH-1 teeth: a
@@ -140,6 +141,108 @@ func TestBlue_VoteGuard_CrashRestart_RefusesSiblingAfterRestart(t *testing.T) {
 	}
 }
 
+// TestRed_CrossRestart_DecidedHeightUnsignable is the RED CRITICAL-1 regression: the
+// decided-height gate must survive a RESTART. It reproduces the cross-restart
+// prune-then-resign fork and proves the DURABLE floor closes it.
+//
+// Sequence (mirrors acceptWithCertCore's ApplyCert-then-prune): a node signs winner A at
+// height H, finalizes H, then finalizes H+1. The strictly-below prune deletes slot{H} from
+// memory AND persists that deletion to the fsync'd vote-guard file — so slot{H} is GONE on
+// disk. On the pre-v1.35.4 build, a restart then had: no slot{H} (pruned) AND a certified
+// ledger.Height() of (0,false) (a boot HINT is non-authoritative — incident-1082814
+// PART-A) ⇒ the decided-height gate was DEAD and a re-gossiped sibling B at the decided
+// height H collected this node's SECOND signature. On a correlated rolling restart of a
+// storming fresh net that assembled a second α-of-K cert → os.Exit(1) fleet-wide.
+//
+// The fix persists the decided-through FLOOR in the vote-guard file (fsync'd atomically
+// with the pruned map) and seeds decidedFloor from it on boot, so a below-tip decided
+// height stays unsignable across the restart with NO reliance on the certified frontier.
+// This test fails on v1.35.3 (B is admitted) and passes on v1.35.4.
+func TestRed_CrossRestart_DecidedHeightUnsignable(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vote-guard")
+	vs := newTestValidatorSet(5)
+
+	const H = uint64(42)
+	A := ids.GenerateTestID()  // winner at height H
+	A2 := ids.GenerateTestID() // winner at height H+1, child of A
+	B := ids.GenerateTestID()  // a losing sibling at height H (different outer parent — escapes losingSubtrees)
+
+	// --- pre-crash: engine 1 signs A@H, then finalizes H and H+1 (ApplyCert then prune,
+	// exactly as acceptWithCertCore does). The prune of H+1 deletes slot{H} from memory AND
+	// the durable file, while advancing the persisted floor to H+1.
+	store1, err := OpenVoteGuard(path)
+	if err != nil {
+		t.Fatalf("OpenVoteGuard(store1): %v", err)
+	}
+	e1, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
+	if !e1.reserveSlotForSign(H, A) {
+		t.Fatal("engine 1 must bind height H to A")
+	}
+	if _, err := e1.consensus.FinalizeBranch(A, H, ids.Empty); err != nil {
+		t.Fatalf("FinalizeBranch(H): %v", err)
+	}
+	e1.pruneCommittedSlotsBelow(H) // retains slot{H}, floor→H
+	if _, err := e1.consensus.FinalizeBranch(A2, H+1, A); err != nil {
+		t.Fatalf("FinalizeBranch(H+1): %v", err)
+	}
+	e1.pruneCommittedSlotsBelow(H + 1) // drops slot{H} from memory + file, floor→H+1
+	_ = e1.Stop(context.Background())   // simulate crash/shutdown
+
+	// --- the reopened durable store must have FORGOTTEN slot{H} (pruned) but REMEMBERED the
+	// decided-through floor H+1 (fsync'd atomically with the prune).
+	store2, err := OpenVoteGuard(path)
+	if err != nil {
+		t.Fatalf("OpenVoteGuard(store2): %v", err)
+	}
+	if _, ok := store2.Snapshot()[SlotKey{Height: H}]; ok {
+		t.Fatal("precondition: the strictly-below prune must have removed slot{H} from the durable file")
+	}
+	if got := store2.FinalizedThrough(); got != H+1 {
+		t.Fatalf("durable floor lost across restart: FinalizedThrough=%d want %d "+
+			"(this is the field that keeps a decided height unsignable when its slot is gone)", got, H+1)
+	}
+
+	// --- post-crash engine 2, built ONLY on the reopened store (NO SyncState hint), must
+	// still REFUSE a sibling at the decided-below-tip height H. This isolates the durable
+	// vote-guard FLOOR as the sole protection: no slot{H}, no certified frontier, no hint.
+	e2, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
+	if fh, ok := e2.consensus.GetFinalizedHeight(); ok {
+		t.Fatalf("precondition: a freshly-booted engine's certified frontier must be (unset), got (%d,%v) — "+
+			"the whole point is that the gate cannot rely on it after a restart", fh, ok)
+	}
+	if e2.reserveSlotForSign(H, B) {
+		t.Fatalf("CROSS-RESTART PRUNE-THEN-RESIGN FORK: engine 2 signed sibling B at the decided height %d "+
+			"after a restart. slot{%d} was pruned+persisted-away and the certified frontier is a boot hint, so "+
+			"only the durable vote-guard floor (=%d) can refuse it — and it did not. (A=%s B=%s)",
+			H, H, store2.FinalizedThrough(), A, B)
+	}
+	// The just-below tip and the tip itself are also refused; a height ABOVE the floor is signable.
+	if e2.reserveSlotForSign(H+1, ids.GenerateTestID()) {
+		t.Fatal("the decided tip height H+1 must also be unsignable across the restart (floor covers it)")
+	}
+	if !e2.reserveSlotForSign(H+2, ids.GenerateTestID()) {
+		t.Fatal("a height ABOVE the decided floor must remain signable — the durable floor must not stall progress")
+	}
+
+	// --- and the complementary path: a boot that ALSO seeds the SyncState hint (vm.LastAccepted)
+	// refuses just the same (belt), even if the vote-guard file were absent/fresh.
+	store3, err := OpenVoteGuard(filepath.Join(dir, "vote-guard-fresh"))
+	if err != nil {
+		t.Fatalf("OpenVoteGuard(store3): %v", err)
+	}
+	e3, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store3))
+	if err := e3.consensus.SyncState(A2, H+1); err != nil { // the boot hint from vm.LastAccepted
+		t.Fatalf("SyncState hint: %v", err)
+	}
+	if e3.reserveSlotForSign(H, B) {
+		t.Fatal("with a fresh vote-guard, the vm.LastAccepted boot HINT floor must still refuse a decided height H")
+	}
+	if !e3.reserveSlotForSign(H+2, ids.GenerateTestID()) {
+		t.Fatal("hint floor must not refuse a height above the hint (no false stall)")
+	}
+}
+
 // TestBlue_VoteGuard_PersistFailure_FailsClosed proves the fail-closed contract: when
 // the durable write fails, reserveSlotForSign returns false (no signature) AND the
 // in-memory map is rolled back (no un-persisted binding left behind).
@@ -175,7 +278,8 @@ func TestBlue_VoteGuard_FileRoundTrip(t *testing.T) {
 		{Height: 1_000_000}: ids.GenerateTestID(),
 		{Height: 42}:        ids.GenerateTestID(),
 	}
-	if err := s.Persist(want); err != nil {
+	const wantFloor = uint64(1_000_005)
+	if err := s.Persist(want, wantFloor); err != nil {
 		t.Fatalf("Persist: %v", err)
 	}
 	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
@@ -194,6 +298,9 @@ func TestBlue_VoteGuard_FileRoundTrip(t *testing.T) {
 			t.Fatalf("binding %v: reloaded %s, want %s", k, got[k], v)
 		}
 	}
+	if got := s2.FinalizedThrough(); got != wantFloor {
+		t.Fatalf("reloaded finalizedThrough %d, want %d (the durable decided-through floor must round-trip)", got, wantFloor)
+	}
 }
 
 // TestBlue_VoteGuard_CorruptFileFailsClosed proves a tampered/torn snapshot is a HARD
@@ -205,7 +312,7 @@ func TestBlue_VoteGuard_CorruptFileFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard: %v", err)
 	}
-	if err := s.Persist(map[SlotKey]ids.ID{{Height: 5}: ids.GenerateTestID()}); err != nil {
+	if err := s.Persist(map[SlotKey]ids.ID{{Height: 5}: ids.GenerateTestID()}, 4); err != nil {
 		t.Fatalf("Persist: %v", err)
 	}
 	data, err := os.ReadFile(path)
