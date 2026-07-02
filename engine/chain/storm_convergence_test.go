@@ -81,13 +81,11 @@ func TestStorm_AllValidatorsBuild_SingleHeadPerHeight(t *testing.T) {
 	if testing.Short() {
 		t.Skip("storm test is timing-heavy; skipped in -short")
 	}
-	if underRace {
-		t.Skip("vote-convergence is timing-sensitive; -race's ~10x slowdown pushes sim gossip past any " +
-			"bounded settle window (not a production condition). Safety (no double-finalization) is timing-" +
-			"independent and asserted in the non-race run; the convergence goroutine is race-checked by the " +
-			"multinode proposer/liveness suites under -race.")
-	}
-	net := newSimNet(t, 5, stormParams5()) // K=5, α=4, settle window > gossip latency
+	// ROUND-SCOPED VIEW-CHANGE: the -race skip is GONE. The legacy single-phase convergence
+	// deadlocks when -race's slowdown pushes gossip past the settle window (that skip was
+	// hiding the freeze); the view-change re-converges any split via rounds, so the storm
+	// converges under -race.
+	net := newSimNet(t, 5, stormParams5VC()) // K=5, α=4, round-scoped view-change
 
 	const heights = 24
 	parentID := ids.Empty
@@ -130,13 +128,8 @@ func TestStorm_KillOneMidRun_KeepsProducing(t *testing.T) {
 	if testing.Short() {
 		t.Skip("storm test is timing-heavy; skipped in -short")
 	}
-	if underRace {
-		t.Skip("vote-convergence is timing-sensitive; -race's ~10x slowdown pushes sim gossip past any " +
-			"bounded settle window (not a production condition). Safety (no double-finalization) is timing-" +
-			"independent and asserted in the non-race run; the convergence goroutine is race-checked by the " +
-			"multinode proposer/liveness suites under -race.")
-	}
-	net := newSimNet(t, 5, stormParams5())
+	// Round-scoped view-change (see TestStorm_AllValidatorsBuild): no -race skip.
+	net := newSimNet(t, 5, stormParams5VC())
 
 	const heights = 22
 	const killAt = 8
