@@ -268,10 +268,10 @@ func newRoundView(height uint64, alpha, n int) *roundView {
 	}
 }
 
-// safeConfig reports whether this committee meets the fork-safety bound 2α−n > f. When
-// false, ONE equivocator can sit in two α-quorums and double-finalize (RED proved this at
-// α=3, n=5). The engine MUST refuse to run view-change on a config that fails this.
-func (v *roundView) safeConfig() bool { return 2*v.alpha-v.n > v.f }
+// The fork-safety bound 2α−n > f is enforced in ONE place — runViewChangePass (integration.go),
+// which fail-secure HALTS the view-change on any committee that fails it (RED proved a single
+// equivocator double-finalizes at 2α−n = f, e.g. n=5,α=3). roundView carries n/f only so
+// noteSender's round-skip can use f+1; there is no second α-bound predicate to drift.
 
 // noteSender records that `nodeID` sent a message at `round` and applies the ROUND-SKIP
 // rule: if some round r strictly above the current round has ≥ f+1 distinct senders, at
