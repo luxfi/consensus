@@ -1947,6 +1947,29 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 // (t.mu released) — share the one guard without deadlock; the durable write also
 // runs under slotMu, so the fixed-name temp file is never contended.
 func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
+	// DECIDED-HEIGHT GATE (avalanchego's lastAcceptedHeight frontier, lifted to the sign
+	// path). A height at or below the finalized frontier is DECIDED: exactly one block was
+	// certified there, and — as in topological.go's acceptPreferredChild + rejectTransitively
+	// — its every sibling is permanently unsignable and any vote for it is dropped. We
+	// enforce that same invariant on the cert layer here: never sign at a decided height.
+	//
+	// This is the DURABLE, MONOTONIC backstop that closes the prune-then-resign fork. The
+	// per-height committedSlot below refuses a conflicting sibling only WHILE the slot lives;
+	// but the slot is pruned as the window advances, and a losing sibling with a DIFFERENT
+	// outer parent (a bare/pre-fork envelope vs a wrapped one) is NOT in losingSubtrees, so it
+	// stays tracked and undecided after the winner finalizes. Without this gate, once the
+	// winner's height slot is pruned, that late/differently-enveloped sibling would pass the
+	// (now empty) slot check and get this node's SECOND signature at the height — the exact
+	// path that assembled two α-of-K certs at one height on the fresh devnet (artifacts-A:
+	// the conflicting cert's canonical == its envelope, i.e. the bare sibling). GetFinalizedHeight
+	// reports the CERTIFIED frontier (monotonic, regression-guarded, reconstructed from the VM's
+	// last-accepted head on restart), so the refusal spans a crash — no epoch/slot memory needed.
+	// Read before slotMu so this method never holds slotMu while touching the consensus lock.
+	if t.consensus != nil {
+		if fh, ok := t.consensus.GetFinalizedHeight(); ok && height <= fh {
+			return false
+		}
+	}
 	key := SlotKey{Height: height}
 	t.slotMu.Lock()
 	defer t.slotMu.Unlock()
@@ -1980,20 +2003,34 @@ func (t *Transitive) hasSignedHeight(height uint64) bool {
 	return ok
 }
 
-// pruneCommittedSlotsBelow drops equivocation-guard entries at or below a
-// finalized height (across ALL epochs at those heights) — those heights are decided
-// and can never legitimately be re-signed, so their guard is dead weight. Keeps
-// committedSlot (and its durable snapshot) bounded to the live unfinalized window.
+// pruneCommittedSlotsBelow drops equivocation-guard entries STRICTLY BELOW a finalized
+// height — retaining the just-finalized tip's slot, exactly as avalanchego keeps the last
+// accepted block in ts.blocks. Heights strictly below the tip are guaranteed unsignable by
+// the decided-height gate in reserveSlotForSign (height <= finalizedHeight ⇒ refuse), which
+// is durable and monotonic, so their in-memory slot is dead weight and is dropped to keep
+// committedSlot (and its snapshot) bounded to the live window. The tip's slot is KEPT as a
+// second, in-memory belt: it refuses a conflicting sibling at the tip height even in the
+// window before finalizedHeight is observed. It is itself pruned only once the NEXT height
+// finalizes (k.Height < height at the higher finalize), by which point the decided-height
+// gate covers it durably.
+//
+// CRITICAL — why STRICTLY below, not at-or-below: an inclusive prune (k.Height <= height)
+// deleted the just-finalized height's slot, opening the prune-then-resign fork. A losing
+// sibling with a DIFFERENT outer parent than the winner (bare vs wrapped envelope) is not in
+// losingSubtrees, so it stays tracked+undecided after the winner finalizes; with the slot
+// deleted and no decided-height gate, the convergence pass would then place this node's
+// SECOND signature on it — two α-of-K certs at one height → the exit(1) equivocation fatal.
+//
 // Called from the sole finalizer acceptWithCertCore, so EVERY finality path — local
-// vote-assembly AND incoming-cert — prunes (MEDIUM-1). The durable shrink is
-// best-effort: a stale-LARGER durable set only ever REFUSES more (fail-safe
-// direction), and it is corrected on the next successful Persist.
+// vote-assembly AND incoming-cert — prunes (MEDIUM-1). The durable shrink is best-effort: a
+// stale-LARGER durable set only ever REFUSES more (fail-safe direction), corrected on the
+// next successful Persist.
 func (t *Transitive) pruneCommittedSlotsBelow(height uint64) {
 	t.slotMu.Lock()
 	defer t.slotMu.Unlock()
 	changed := false
 	for k := range t.committedSlot {
-		if k.Height <= height {
+		if k.Height < height {
 			delete(t.committedSlot, k)
 			changed = true
 		}
@@ -2142,6 +2179,17 @@ func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 	}
 	t.slotMu.Unlock()
 
+	// DECIDED-HEIGHT FILTER (liveness): never OFFER a slot at or below the finalized
+	// frontier. Such a height is decided — reserveSlotForSign would refuse it anyway
+	// (the decided-height gate), but because a refused sign leaves committedSlot empty,
+	// the slot would otherwise resurface on every tick and the pass would busy-replay it.
+	// Mirrors avalanchego dropping votes for a Decided() block. Read outside slotMu so
+	// this method never holds slotMu while touching the consensus lock.
+	finalizedHeight, hasFinal := uint64(0), false
+	if t.consensus != nil {
+		finalizedHeight, hasFinal = t.consensus.GetFinalizedHeight()
+	}
+
 	settle := t.convergenceSettleWindow()
 	now := time.Now()
 	// Track the LATEST local track time of any sibling at each slot. Settling from the
@@ -2155,6 +2203,9 @@ func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 		cb := pb.ConsensusBlock
 		if cb == nil || pb.Decided || pb.rePollAbandoned {
 			continue
+		}
+		if hasFinal && cb.height <= finalizedHeight {
+			continue // decided height — permanently unsignable, never offer it
 		}
 		if _, ok := signed[cb.height]; ok {
 			continue // already cast our one vote at this height
