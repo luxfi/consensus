@@ -1008,6 +1008,7 @@ func (rt *Runtime) stepViewChange(ctx context.Context, height uint64, winnerID, 
 	if act.Precommit != ids.Empty && v.recordOwnPrecommit(act.Precommit, act.PrecommitRound) {
 		v.observePrecommit(nodeID, act.PrecommitRound, act.Precommit)
 		precommitCanon = act.Precommit
+		t.lockRounds[height] = act.PrecommitRound // persist the lock round (v3 guard) for restart re-convergence
 	}
 	// POL relay: gather the validValue POL's constituent signed prevotes so a peer that
 	// missed them can form the same POL and converge validValue (the propagation the
