@@ -224,6 +224,10 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	// that already fits (K ≤ count) is untouched. The ⅔-STAKE cert
 	// (WithStakeWeighting, below) still layers weighted BFT safety on top of this
 	// count floor, so a smaller committee never weakens the supermajority guarantee.
+	// presetK is the TARGET committee size BEFORE the construction-time clamp — the engine
+	// re-clamps UP toward it as the validator set grows (reclampCommitteeLocked), so a chain that
+	// launches single-validator does not stay stuck at K=1 after it decentralizes (RED's 1→N fork).
+	presetK := params.K
 	validatorCount := -1
 	if cfg.Validators != nil {
 		validatorCount = cfg.Validators.Count(cfg.NetworkID)
@@ -235,6 +239,14 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	}
 
 	engine := NewWithParams(params)
+	// Wire the live-committee tracking so the engine re-clamps K UP and gates 1-of-1 synthesis on
+	// the CURRENT validator count (not the frozen construction count). Without a sampler (tests /
+	// --dev) this stays unwired and the committee is fixed at construction (presetK unused).
+	engine.presetK = presetK
+	if cfg.Validators != nil {
+		sampler, netID := cfg.Validators, cfg.NetworkID
+		engine.liveValidatorCount = func() int { return sampler.Count(netID) }
+	}
 
 	// Wire α-of-K quorum-cert finality for multi-validator chains. The engine
 	// refuses to Start a K>1 engine without a verifier (fail-closed), so a
