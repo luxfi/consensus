@@ -19,6 +19,8 @@
 package chain
 
 import (
+	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -134,4 +136,64 @@ func TestStorm_IdleWindows_ZeroMargin(t *testing.T) {
 		t.Fatalf("ZERO-MARGIN IDLE STALL: only reached height %d of %d", h, total)
 	}
 	t.Logf("ZERO-MARGIN IDLE-STORM PASS: α=4 exact quorum, %d heights across %d idle windows, no stall", total, cycles)
+}
+
+// TestStorm_IdleWindows_AsyncGossip_ZeroMargin is the async-gossip variant — the
+// closest in-process analogue of the live WAN condition. It gives the bus a heavy-tail
+// delivery latency (most messages fast, ~10% arrive AFTER the RoundTO/2 settle window),
+// so prevotes arrive in DIFFERENT orders at different nodes and each round-view advances
+// on a different arrival order — the p99-exceeds-settle regime the live fleet stalled in.
+// Combined with exact α=4 (zero margin) + idle windows. If the round-skip/POL machinery
+// has a live-only convergence gap, this reproduces it as a per-height stall.
+func TestStorm_IdleWindows_AsyncGossip_ZeroMargin(t *testing.T) {
+	if testing.Short() {
+		t.Skip("async idle storm is timing-heavy; skipped in -short")
+	}
+	params := stormParams5VC()
+	net := newSimNet(t, 5, params)
+
+	rng := rand.New(rand.NewSource(1)) // seeded for reproducibility
+	var rngMu sync.Mutex
+	net.bus.setDelay(func() time.Duration {
+		rngMu.Lock()
+		defer rngMu.Unlock()
+		if rng.Intn(10) == 0 {
+			return time.Duration(300+rng.Intn(600)) * time.Millisecond // slow tail 300-900ms (> 500ms settle)
+		}
+		return time.Duration(rng.Intn(50)) * time.Millisecond // fast 0-50ms
+	})
+
+	net.down(4) // exact α=4 — zero margin (the mainnet condition)
+
+	const cycles = 8
+	const heightsPerBurst = 3
+	idle := 3 * params.RoundTO
+
+	parentID := ids.Empty
+	parentStateRoot := simGenesisRoot()
+	var h uint64
+	for c := 0; c < cycles; c++ {
+		for b := 0; b < heightsPerBurst; b++ {
+			h++
+			blocks := make(map[ids.ID]*simBlock)
+			for i := 0; i < 5; i++ {
+				if !net.nodes[i].reachable() {
+					continue
+				}
+				blk := newHonestBlock(parentID, parentStateRoot, h, "async-"+itoa(i)+"-h"+itoa(int(h%10)))
+				blocks[blk.ID()] = blk
+				net.build(i, blk)
+			}
+			head := stormAwaitSingleHead(t, net, h)
+			won, ok := blocks[head]
+			if !ok {
+				t.Fatalf("cycle %d height %d: head %s not among siblings", c, h, head)
+			}
+			parentID = head
+			parentStateRoot = won.stateRoot
+		}
+		t.Logf("async cycle %d done at height %d, idling %s", c, h, idle)
+		time.Sleep(idle)
+	}
+	t.Logf("ASYNC IDLE-STORM PASS: %d heights, WAN heavy-tail jitter + idle + zero-margin, no stall", h)
 }
