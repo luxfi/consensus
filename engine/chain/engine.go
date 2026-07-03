@@ -2290,12 +2290,20 @@ type ConvergenceVoter interface {
 // proposervm eligibility VRF already carried in the wrapped block — which requires
 // plumbing the proposer's VRF output into the consensus Block (a node-layer change) and
 // is the tracked follow-up before adversarial-validator mainnet promotion.
-func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.ID) (ids.ID, int, bool) {
+// includeAbandoned selects whether rePoll-abandoned siblings still count as convergence
+// candidates. The VIEW-CHANGE path passes true: abandonment only stops rePoll's RequestVotes
+// re-solicitation (spam control), it is a PER-NODE decision (each node abandons on its own
+// attempt clock), so excluding abandoned siblings would make different nodes compute a
+// DIFFERENT lowest-canonical winner from the SAME sibling set → prevotes never align → no POL
+// → the distributed liveness stall. Counting every live (undecided) sibling keeps the winner
+// globally identical, which is what lets α aligned prevotes form. The LEGACY path passes false
+// (unchanged behaviour). Never manufactures a vote or bypasses the α-of-K cert → safety intact.
+func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.ID, includeAbandoned bool) (ids.ID, int, bool) {
 	var winner, winnerCanon ids.ID
 	count := 0
 	for id, pb := range t.pendingBlocks {
 		cb := pb.ConsensusBlock
-		if cb == nil || pb.Decided || pb.rePollAbandoned {
+		if cb == nil || pb.Decided || (!includeAbandoned && pb.rePollAbandoned) {
 			continue
 		}
 		if cb.height != height || cb.parentID != parentID {
