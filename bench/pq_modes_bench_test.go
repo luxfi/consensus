@@ -318,9 +318,9 @@ type coronaFixture struct {
 }
 
 func newCoronaFixture(t, n int) (*coronaFixture, error) {
-	cfg, err := quasar.GenerateDualKeys(t, n)
+	cfg, err := benchDualKeys(t, n)
 	if err != nil {
-		return nil, fmt.Errorf("GenerateDualKeys(%d,%d): %w", t, n, err)
+		return nil, fmt.Errorf("benchDualKeys(%d,%d): %w", t, n, err)
 	}
 	s, err := quasar.NewSignerWithDualThreshold(*cfg)
 	if err != nil {
