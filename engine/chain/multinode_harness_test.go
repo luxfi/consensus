@@ -298,6 +298,12 @@ type simBus struct {
 	// α-of-K vote across siblings — the production down-proposer + WAN-latency condition
 	// the broadcast bus (uniform, instant delivery) cannot express.
 	link func(from, to ids.NodeID, kind busMsgKind) bool
+	// delay, when non-nil, returns a per-message-per-target delivery latency. It turns
+	// the uniform instant bus into an ASYNC bus with jitter/reorder — the WAN condition
+	// where node A sees B's prevote before C's and every node's round-view advances on a
+	// DIFFERENT message-arrival order. This is the async-gossip regime the live fleet
+	// stalls in and the synchronous bus (0/200) cannot express. nil ⇒ instant (default).
+	delay func() time.Duration
 }
 
 func newSimBus() *simBus { return &simBus{nodes: map[ids.NodeID]*simNode{}} }
@@ -312,6 +318,13 @@ func (bus *simBus) register(n *simNode) {
 func (bus *simBus) setLink(f func(from, to ids.NodeID, kind busMsgKind) bool) {
 	bus.mu.Lock()
 	bus.link = f
+	bus.mu.Unlock()
+}
+
+// setDelay installs (or clears, with nil) the per-message async delivery latency.
+func (bus *simBus) setDelay(f func() time.Duration) {
+	bus.mu.Lock()
+	bus.delay = f
 	bus.mu.Unlock()
 }
 
@@ -331,6 +344,7 @@ func (bus *simBus) deliver(from ids.NodeID, m busMsg) int {
 		targets = append(targets, target{id: id, n: n})
 	}
 	link := bus.link
+	delay := bus.delay
 	bus.mu.Unlock()
 	sent := 0
 	for _, t := range targets {
@@ -338,7 +352,19 @@ func (bus *simBus) deliver(from ids.NodeID, m busMsg) int {
 			continue // partitioned link — drop this message toward this target
 		}
 		if t.n.reachable() {
-			t.n.enqueue(m)
+			if delay != nil {
+				// ASYNC delivery: each target receives after its own jittered latency, so
+				// messages arrive in DIFFERENT orders at different nodes (the WAN reorder).
+				tn, mm, d := t.n, m, delay()
+				go func() {
+					time.Sleep(d)
+					if tn.reachable() {
+						tn.enqueue(mm)
+					}
+				}()
+			} else {
+				t.n.enqueue(m)
+			}
 			sent++
 		}
 	}
