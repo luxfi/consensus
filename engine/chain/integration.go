@@ -182,7 +182,19 @@ func bftCommittee(k, count int) (newK, alpha int, clamped bool) {
 	if count <= 0 || k <= count {
 		return k, 0, false
 	}
-	return count, 2*count/3 + 1, true
+	return count, bftAlpha(count), true
+}
+
+// bftAlpha is the BFT accept quorum (the integer α COUNT) for a committee of `count` members: the
+// smallest integer strictly greater than ⅔ of the members, ⌊2·count/3⌋+1. It reuses the SINGLE
+// ⅔-supermajority definition (config.TwoThirdsStakeFloor) so the formula lives in exactly one place
+// — the count quorum here and the stake quorum inside VerifyWeighted are literally the same rational
+// threshold, never two hand-inlined copies that could drift.
+func bftAlpha(count int) int {
+	if count <= 0 {
+		return 0
+	}
+	return int(config.TwoThirdsStakeFloor(uint64(count))) + 1
 }
 
 // NewRuntime creates a fully wired consensus runtime ready for production use.

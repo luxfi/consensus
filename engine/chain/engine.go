@@ -2861,7 +2861,7 @@ func (t *Transitive) reclampCommitteeLocked() {
 	if newK <= t.consensus.K() {
 		return // UP-ONLY (never auto-shrink)
 	}
-	newAlpha := 2*newK/3 + 1 // the BFT ⅔ supermajority (matches bftCommittee)
+	newAlpha := bftAlpha(newK) // the BFT ⅔ supermajority — ONE formula (config.TwoThirdsStakeFloor)
 	t.consensus.Reclamp(newK, newAlpha)
 	if t.log != nil {
 		t.log.Warn("committee re-clamped UP to the live validator set (decentralization) — "+
