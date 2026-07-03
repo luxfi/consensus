@@ -844,7 +844,7 @@ func (rt *Runtime) emitConvergedVote(_ context.Context, height uint64, parentID 
 	}
 
 	t.mu.Lock()
-	winnerID, _, ok := t.convergedWinnerAtHeightLocked(height, parentID)
+	winnerID, _, ok := t.convergedWinnerAtHeightLocked(height, parentID, false) // legacy: exclude abandoned (unchanged)
 	if !ok {
 		t.mu.Unlock()
 		return
@@ -972,14 +972,20 @@ func (rt *Runtime) runViewChangePass(ctx context.Context) {
 	parents := map[uint64]ids.ID{}
 	for _, pb := range t.pendingBlocks {
 		cb := pb.ConsensusBlock
-		if cb == nil || pb.Decided || pb.rePollAbandoned || cb.height <= floor {
+		// A rePollAbandoned sibling is deliberately NOT skipped here. Abandonment only stops
+		// rePoll's RequestVotes re-solicitation (spam control); it must never remove a height
+		// from the view-change pass, or the round machinery stops being stepped and the height
+		// goes SILENT — the "nothing re-drives convergence after rePoll gives up after 8" stall
+		// the goroutine dump captured. The round-scoped prevote/POL/precommit converges a height
+		// independent of rePoll; it stays live here until the height decides.
+		if cb == nil || pb.Decided || cb.height <= floor {
 			continue
 		}
 		parents[cb.height] = cb.parentID
 	}
 	var slots []vcSlot
 	for h, parent := range parents {
-		winnerID, _, ok := t.convergedWinnerAtHeightLocked(h, parent)
+		winnerID, _, ok := t.convergedWinnerAtHeightLocked(h, parent, true) // view-change: count abandoned siblings so the winner is globally identical
 		if !ok {
 			continue
 		}
@@ -1011,6 +1017,21 @@ func (rt *Runtime) stepViewChange(ctx context.Context, height uint64, winnerID, 
 	t.slotMu.Lock()
 	v := t.viewForLocked(height, alpha, n)
 	act := v.step(winnerCanon, 1, viewSettleTicks)
+	// LIVENESS OBSERVABILITY (view-change): emit a line only on a round transition so a live
+	// idle-inclusive re-storm shows convergence (POL forms → precommit → finalize) vs the stall
+	// signature (rounds climbing with no POL) without parsing every tick. Skipped when logging
+	// is off (tests use a Noop logger), so it is free on the hot path there.
+	if act.NewRound && !rt.config.Logger.IsZero() {
+		_, _, _, hasPOL := v.polCert()
+		rt.config.Logger.Debug("vc round advanced",
+			log.Uint64("height", height), log.Uint32("round", v.round),
+			log.Bool("hasPOL", hasPOL), log.Bool("locked", v.haveLocked), log.Bool("finalized", v.finalized))
+		if v.round >= 8 && !hasPOL && !v.finalized {
+			rt.config.Logger.Warn("vc height STUCK: many rounds, no POL (liveness-stall signature)",
+				log.Uint64("height", height), log.Uint32("round", v.round),
+				log.Stringer("winner", winnerCanon), log.Int("alpha", alpha), log.Int("n", n))
+		}
+	}
 	var prevoteCanon, precommitCanon ids.ID
 	curRound := act.CurRound
 	if act.Prevote != ids.Empty {
