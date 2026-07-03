@@ -11,6 +11,19 @@
 // banned for the same class of reason. This file gives the mutex a test-time instrument so a
 // runtime test can PROVE no call-out runs under the write lock, turning the rule from a comment
 // into a checked invariant.
+//
+// CALL-OUT vs LEAF-LOCK (the exact boundary the rule draws). What is BANNED under t.mu is a
+// CALL-OUT: an invocation whose callee is OUTSIDE the engine's own state and may (a) re-enter the
+// engine (take t.mu → self-deadlock) or (b) block on I/O while the lock is held. The banned set is
+// every external surface: VM.Accept / BuildBlock / GetBlock / SetPreference, gossiper sends
+// (Propose, RequestVotes, GossipCert, BroadcastVote), ReceiveVote, poll delivery, and any
+// registered callback. What is SAFE — and NOT a call-out — is acquiring an internal LEAF lock under
+// t.mu: c.mu (ChainConsensus, via t.consensus.* ) and the vote-guard store mutex. A leaf holder does
+// pure in-memory work under its own mutex and RETURNS; it never calls back into the engine, so it
+// cannot re-enter t.mu. The lock ORDER is fixed and acyclic — t.mu → c.mu, never c.mu → t.mu — so
+// there is no lock-order cycle and the nesting is deadlock-free. In short: hold t.mu across leaf
+// state mutations; RELEASE it (or hand to an async queue) before any call-out. The instrument below
+// checks precisely the call-out half of this boundary.
 package chain
 
 import (
