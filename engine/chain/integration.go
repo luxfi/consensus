@@ -361,32 +361,14 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		engine.SetVM(cfg.VM)
 	}
 
-	// BOOT-TIME STALE-LOCK MIGRATION (the block-1082880 incident): canonicalize — or,
-	// when unresolvable, prune — pre-fix outer-wrapper view-change locks persisted
-	// ABOVE the decided floor, so a fleet whose canonical identity flipped
-	// (outer→inner) cannot stay wedged prevoting stale aliases. Runs after the
-	// vote-guard reload (WithVoteGuard) and the VM wire (the boot resolver reads the
-	// durable VM store), before any view is stepped. Idempotent, and internally
-	// safety-gated: nothing at/below the floor is touched, and a height with a formed
-	// cert or divergent inner canonicals STOPs with no write (manual recovery) rather
-	// than guess.
-	if report, err := rt.MigrateStaleLocks(context.Background()); err != nil {
-		if hasLogger {
-			cfg.Logger.Error("stale-lock migration failed — chain stays frozen-safe, manual recovery required",
-				log.Err(err))
-		}
-	} else if hasLogger {
-		switch {
-		case report.Stop:
-			cfg.Logger.Error("stale-lock migration STOP — no write applied, manual recovery required",
-				log.String("reason", report.StopReason),
-				log.Uint64("decidedFloor", report.DecidedFloor))
-		case report.Changed:
-			cfg.Logger.Info("stale-lock migration applied",
-				log.Uint64("decidedFloor", report.DecidedFloor),
-				log.Int("locks", len(report.Entries)))
-		}
-	}
+	// STALE-LOCK MIGRATION (the block-1082880 incident) is deliberately NOT invoked here.
+	// It is OPERATOR-GATED at the node boundary (LUX_CONSENSUS_MIGRATE_STALE_LOCKS=
+	// inspect | apply:<floor> — node/chains/manager.go), after NewRuntime and before
+	// Start, with an explicit floor target that self-disarms once the chain recovers.
+	// An unconditional every-boot invocation here would prune GENUINE crash-restart
+	// locks whose inner canonical the proposervm-backed VM store cannot resolve by
+	// inner id — regressing the HIGH-1 double-precommit protection (red R1/vector-10:
+	// ≥3 correlated crash-restarts under a partition can then double-finalize).
 
 	return rt
 }
@@ -956,6 +938,7 @@ func (rt *Runtime) RunSettlePass(ctx context.Context) {
 //     a split re-converges), and
 //   - on a POL (α prevotes for one value at the current round), casts the irrevocable
 //     PRECOMMIT (the existing α-of-K accept vote for that block) and LOCKS on it.
+//
 // The precommit reuses the existing per-block cert machinery (recordCertVote/assembleCert)
 // unchanged — all round logic lives in the prevote/POL/lock layer, so a cert is still
 // "α precommits for one block at a height". Safety = the lock rule (a conflicting value
@@ -985,9 +968,9 @@ func (rt *Runtime) runViewChangePass(ctx context.Context) {
 		consensusFloor = t.consensus.GetDecidedFloor()
 	}
 	type vcSlot struct {
-		height  uint64
-		winner  ids.ID // winner block id
-		canon   ids.ID // winner canonical (what the roundView votes on)
+		height uint64
+		winner ids.ID // winner block id
+		canon  ids.ID // winner canonical (what the roundView votes on)
 	}
 	t.mu.Lock()
 	t.slotMu.Lock()

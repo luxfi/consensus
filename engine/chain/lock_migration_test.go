@@ -24,10 +24,11 @@ import (
 
 // mapResolver is a deterministic outer→inner canonical resolver for the migration tests. A
 // fixpoint entry (m[I]=I) models an already-canonical id, which is what makes the migration
-// idempotent on re-run.
+// idempotent on re-run. It ignores the height binding (the production vmCanonicalResolver
+// enforces it — see TestLockMigration_ResolverHeightGuard).
 type mapResolver map[ids.ID]ids.ID
 
-func (m mapResolver) CanonicalOf(id ids.ID) (ids.ID, bool) {
+func (m mapResolver) CanonicalOf(id ids.ID, _ uint64) (ids.ID, bool) {
 	c, ok := m[id]
 	return c, ok
 }
@@ -289,7 +290,7 @@ func TestLockMigration_Idempotent(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestRoundView_StaleOuterLock_SuppressesWinnerPrevote(t *testing.T) {
-	winnerI := ids.GenerateTestID()  // the inner canonical winner (unanimous)
+	winnerI := ids.GenerateTestID()    // the inner canonical winner (unanimous)
 	staleOuter := ids.GenerateTestID() // a DIFFERENT (stale) outer wrapper id this node is locked on
 
 	// A node locked on the stale OUTER at round 8450, stepping with winner = inner I.
