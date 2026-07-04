@@ -14,7 +14,7 @@ import (
 	"github.com/luxfi/crypto/bls"
 	"github.com/luxfi/crypto/mldsa"
 	"github.com/luxfi/crypto/threshold"
-	_ "github.com/luxfi/crypto/threshold/bls" // Register BLS threshold scheme
+	_ "github.com/luxfi/threshold/scheme/bls" // Register BLS threshold scheme
 
 	// Pulsar threshold is the corrected lattice kernel that replaced
 	// upstream Nasua. Type aliasing preserves the historical
