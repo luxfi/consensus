@@ -445,9 +445,26 @@ type Transitive struct {
 	// when it signals the chain bootstrapped.
 	bootstrapPhase bool
 
-	// Block management
-	pendingBlocks      map[ids.ID]*PendingBlock
-	pendingBuildBlocks int
+	// Block management.
+	//
+	// Two indices over the SAME *PendingBlock values, answering two DIFFERENT
+	// questions (the decomplected proposal-identity model):
+	//
+	//   pendingBlocks[outerID]  — TRANSPORT/DAG lookup: "do I know this exact
+	//     envelope ID?" (from a vote, a fetch, or an exact-ID rebuild). The
+	//     outer ID is a place — proposervm re-mints it on every rebuild.
+	//
+	//   pendingOwnProposals[ProposalKey] — CONSENSUS IDENTITY: "do I already
+	//     hold my own undecided proposal for this consensus position?" Keyed on
+	//     the STABLE (parentID, height), not the churning envelope ID. There is
+	//     exactly ONE own proposal per ProposalKey — this is the single rule
+	//     that stops the mempool/proposervm re-wrap from spawning vote-splitting
+	//     siblings (the mainnet 1082880 freeze).
+	//
+	// Every write pairs the two; dropPendingBlockLocked is the ONE unwrite.
+	pendingBlocks       map[ids.ID]*PendingBlock
+	pendingOwnProposals map[ProposalKey]*PendingBlock
+	pendingBuildBlocks  int
 
 	// finalizedByCert is the engine's authoritative finality record: the set of
 	// block IDs that were committed through the SOLE cert-gated finalizer
@@ -658,6 +675,15 @@ type Transitive struct {
 	//     maxCatchupRequested.
 	catchupRequested map[ids.ID]time.Time
 
+	// certCatchupRequested rate-limits the STUCK-ROUND cert-catch-up (the one-lagging-
+	// validator freeze fix). Keyed by HEIGHT, not block ID, because that case fetches the
+	// finality CERT for a block we ALREADY hold (tracked, but unfinalizable because the
+	// fleet finalized this height and will not re-vote it): the block-ID gate
+	// (claimCatchupLocked) would wrongly SUPPRESS it as "already tracked". Same cooldown +
+	// hard cap as catchupRequested; reaped at/below the finalized floor (a height, once
+	// decided, is never fetched again). See claimCertCatchupLocked / Runtime.requestCertCatchup.
+	certCatchupRequested map[uint64]time.Time
+
 	// bufferedVotes parks signed accept/reject votes that arrived for a block this
 	// node does not yet TRACK (the gossip race: a peer's vote can outrun the block
 	// bytes). The old handleVote DROPPED such a vote — and because votes are only
@@ -773,24 +799,26 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 	}
 
 	t := &Transitive{
-		consensus:        NewChainConsensus(cfg.Params.K, cfg.Params.AlphaPreference, int(cfg.Params.Beta)),
-		params:           cfg.Params,
-		vm:               cfg.VM,
-		proposer:         cfg.Proposer,
-		bootstrapPhase:   true, // a fresh engine is initial-syncing until it reaches the frontier
-		pendingBlocks:    make(map[ids.ID]*PendingBlock),
-		finalizedByCert:  make(map[ids.ID]struct{}),
-		certBytesByBlock: make(map[ids.ID][]byte),
-		committedSlot:    make(map[SlotKey]ids.ID),
-		views:            make(map[uint64]*roundView),
-		prevoteSigs:      make(map[pvSigKey]map[ids.NodeID][]byte),
-		recoveredLocks:   make(map[uint64]struct{}),
-		lockRounds:       make(map[uint64]uint32),
-		catchupRequested: make(map[ids.ID]time.Time),
-		bufferedVotes:    make(map[ids.ID][]Vote),
-		voteRequests:     make(chan VoteRequest, cfg.VoteRequestBuffer),
-		votes:            make(chan Vote, cfg.VoteBuffer),
-		pipelineSignal:   make(chan struct{}, 1),
+		consensus:            NewChainConsensus(cfg.Params.K, cfg.Params.AlphaPreference, int(cfg.Params.Beta)),
+		params:               cfg.Params,
+		vm:                   cfg.VM,
+		proposer:             cfg.Proposer,
+		bootstrapPhase:       true, // a fresh engine is initial-syncing until it reaches the frontier
+		pendingBlocks:        make(map[ids.ID]*PendingBlock),
+		pendingOwnProposals:  make(map[ProposalKey]*PendingBlock),
+		finalizedByCert:      make(map[ids.ID]struct{}),
+		certBytesByBlock:     make(map[ids.ID][]byte),
+		committedSlot:        make(map[SlotKey]ids.ID),
+		views:                make(map[uint64]*roundView),
+		prevoteSigs:          make(map[pvSigKey]map[ids.NodeID][]byte),
+		recoveredLocks:       make(map[uint64]struct{}),
+		lockRounds:           make(map[uint64]uint32),
+		catchupRequested:     make(map[ids.ID]time.Time),
+		certCatchupRequested: make(map[uint64]time.Time),
+		bufferedVotes:        make(map[ids.ID][]Vote),
+		voteRequests:         make(chan VoteRequest, cfg.VoteRequestBuffer),
+		votes:                make(chan Vote, cfg.VoteBuffer),
+		pipelineSignal:       make(chan struct{}, 1),
 	}
 
 	for _, opt := range opts {
@@ -992,7 +1020,7 @@ func (t *Transitive) SyncState(ctx context.Context, lastAcceptedID ids.ID, heigh
 	// Clear any pending blocks that are now stale (below the synced height)
 	for blockID, pending := range t.pendingBlocks {
 		if pending.ConsensusBlock != nil && pending.ConsensusBlock.height <= height {
-			delete(t.pendingBlocks, blockID)
+			t.dropPendingBlockLocked(blockID)
 			// Votes parked for a stale (now-synced-past) block will never be drained
 			// — drop them so a sync cannot leave buffered-vote residue.
 			delete(t.bufferedVotes, blockID)
@@ -1300,6 +1328,17 @@ const (
 	// so a still-young entry at the cap signals an active forged flood — which we
 	// answer by refusing new claims, never by unbounded growth.
 	catchupRequestTTL = 30 * time.Second
+
+	// stuckRoundThreshold is the view-change round count past which a height that has
+	// spun with NO POL and is NOT finalized is treated as the "fleet passed me"
+	// liveness-stall signature — the one-lagging-validator freeze. A healthy split
+	// re-converges in a handful of rounds (round-skip + POL), so ≥8 fruitless rounds
+	// means the OTHER validators finalized this height and will not re-vote it: no POL
+	// can ever form here. At that point the node stops waiting for a quorum that will
+	// never come and pulls the accepted block + its α-of-K cert directly
+	// (Runtime.requestCertCatchup → AcceptCatchupBlock). Same value as the historical
+	// STUCK log threshold, now shared by the log and the self-heal trigger.
+	stuckRoundThreshold = uint32(8)
 
 	// maxBufferedVotesPerBlock caps how many votes we park for ONE missing block.
 	// One vote per validator per block is the natural ceiling, so this must be ≥ the
@@ -1629,6 +1668,46 @@ func (t *Transitive) claimCatchupLocked(missingID ids.ID) bool {
 	return true
 }
 
+// claimCertCatchupLocked is the HEIGHT-keyed idempotency + rate-limit gate for the
+// stuck-round cert-catch-up (Runtime.requestCertCatchup). It is the height-domain
+// twin of claimCatchupLocked: that gate keys on a MISSING block ID and suppresses a
+// fetch once the block is tracked; this gate deliberately does NOT consult tracking,
+// because the stuck-round case fetches the CERT for a block we already hold. Caller
+// holds t.mu. Returns true iff the caller should issue exactly one cert-fetch for
+// `height` now; false when the catchup seam is unwired, the height is already
+// finalized (reaped), throttled within catchupCooldown, or the map is saturated with
+// active entries (fail-closed, same hard cap as catchupRequested).
+func (t *Transitive) claimCertCatchupLocked(height uint64) bool {
+	if t.catchup == nil {
+		return false
+	}
+	// Already decided ⇒ never fetch again; reclaim any throttle entry (layer 1).
+	if fh, set := t.consensus.GetFinalizedHeight(); set && height <= fh {
+		delete(t.certCatchupRequested, height)
+		return false
+	}
+	now := time.Now()
+	if last, ok := t.certCatchupRequested[height]; ok && now.Sub(last) < catchupCooldown {
+		return false // throttled — one cert-fetch per stuck height per cooldown
+	}
+	// HARD bound (layer 2): only when at the cap and inserting a NEW key. Reap entries
+	// at/below the finalized floor (a decided height is never fetched again), then, if
+	// still full, fail closed. The map can never exceed maxCatchupRequested.
+	if _, existing := t.certCatchupRequested[height]; !existing && len(t.certCatchupRequested) >= maxCatchupRequested {
+		fh, _ := t.consensus.GetFinalizedHeight()
+		for h := range t.certCatchupRequested {
+			if h <= fh {
+				delete(t.certCatchupRequested, h)
+			}
+		}
+		if len(t.certCatchupRequested) >= maxCatchupRequested {
+			return false
+		}
+	}
+	t.certCatchupRequested[height] = now
+	return true
+}
+
 // pipelineLoop implements pipelined block production: as soon as a block is
 // finalized, immediately build the next block. This decouples throughput from
 // latency — with a 10-stage pipeline, a 10ms round produces 1 block/ms.
@@ -1742,7 +1821,7 @@ func (t *Transitive) processPendingBlocks() {
 		found[i] = true
 		pending.Decided = true
 		t.blocksRejected++
-		delete(t.pendingBlocks, action.blockID)
+		t.dropPendingBlockLocked(action.blockID)
 		// Drop any votes parked for a now-rejected block (it will never be tracked
 		// to drain them) so the buffer cannot leak.
 		delete(t.bufferedVotes, action.blockID)
@@ -3121,7 +3200,7 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 			t.finalizedByCert[pb.id] = struct{}{}
 			pending.Decided = true
 			t.blocksAccepted++
-			delete(t.pendingBlocks, pb.id)
+			t.dropPendingBlockLocked(pb.id)
 			delete(t.bufferedVotes, pb.id)
 			delete(t.catchupRequested, pb.id)
 		} else {
@@ -3149,7 +3228,7 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 		}
 		pending.Decided = true
 		t.blocksRejected++
-		delete(t.pendingBlocks, id)
+		t.dropPendingBlockLocked(id)
 		delete(t.bufferedVotes, id)
 		delete(t.catchupRequested, id)
 		if pending.VMBlock != nil {
@@ -3228,32 +3307,6 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			break
 		}
 
-		// PRE-BUILD GATE (avalanchego alignment: mempool event = permission to
-		// build LATER, not a mandate to rebuild the in-flight candidate). If we
-		// already hold our OWN UNDECIDED candidate on the current preference, the
-		// VM would only re-wrap that same (parent,height) into a fresh envelope —
-		// the exact churn that froze mainnet 1082880 under a 15-30s heartbeat/
-		// gas-escalator. Consensus owns proposal identity; the mempool only owns
-		// tx availability. So DRAIN this signal without the (expensive) BuildBlock
-		// and RE-SOLICIT the existing candidate instead of manufacturing a sibling.
-		//
-		// This is a pure FAST-PATH: it never changes WHICH block finalizes. The
-		// post-build guards below remain the correctness backstop — if preference
-		// has moved (candidate no longer on the tip) this returns nil and we fall
-		// through to build on the new parent normally. Own proposals + K>1 only
-		// (K==1 has no peers and finalizes inline; a gossiped block is never our
-		// candidate to stabilize).
-		if t.proposer != nil && t.consensus.K() > 1 {
-			if existing := t.ownUndecidedCandidateOnParentLocked(t.consensus.Preference()); existing != nil {
-				t.pendingBuildBlocks--
-				reqBlockID, reqBlockData := existing.ConsensusBlock.id, existing.ConsensusBlock.data
-				t.mu.Unlock()
-				t.proposer.RequestVotes(ctx, VoteRequest{BlockID: reqBlockID, BlockData: reqBlockData})
-				t.mu.Lock()
-				continue
-			}
-		}
-
 		// UNLOCK-BEFORE-CALL-OUT: BuildBlock is an external VM call — release t.mu around it, then
 		// re-acquire to process (buildBlocksLocked is entered and returns with t.mu held). The loop
 		// re-checks pendingBuildBlocks after re-lock, so a concurrent change is handled.
@@ -3272,34 +3325,6 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 
 		t.blocksBuilt++
 
-		// A rebuild of an ALREADY-TRACKED block is our own UNDECIDED proposal that
-		// the VM re-offered (mempool still non-empty, this height not yet finalized).
-		// avalanchego never silently drops such a rebuild — its repoll keeps
-		// re-querying the still-processing preferred block until it decides (snowman
-		// engine.go repoll, quiescing only at Consensus.NumProcessing()==0). Mirror
-		// that on the build path: RE-SOLICIT the block's votes instead of dropping the
-		// signal, so a peer that missed the first PushQuery is re-asked IMMEDIATELY
-		// (not only on the slower rePollAllPending backoff — the zero-margin 4-of-5
-		// mainnet condition needs the prompt re-ask). This re-sends the SAME block and
-		// the SAME position: it can never manufacture a vote or change WHICH block
-		// finalizes (finality is still the α-of-K cert), so it is a pure liveness
-		// retry. OWN proposals only — a gossiped (non-own) block keeps the rePoll
-		// attempt cap, since re-soliciting a block whose voters are behind its parent
-		// is spam that never recovers it (see rePollAllPending).
-		if pb, exists := t.pendingBlocks[vmBlock.ID()]; exists {
-			// UNLOCK-BEFORE-CALL-OUT: decide under the lock, re-solicit (a network send) AFTER
-			// releasing it. Re-solicit is a K>1 liveness retry only — a K==1 chain has no peers and
-			// finalizes inline. Re-sends the SAME block/position: never manufactures a vote.
-			reSolicit := pb.IsOwnProposal && !pb.Decided && t.proposer != nil && t.consensus.K() > 1
-			reqBlockID, reqBlockData := vmBlock.ID(), vmBlock.Bytes()
-			t.mu.Unlock()
-			if reSolicit {
-				t.proposer.RequestVotes(ctx, VoteRequest{BlockID: reqBlockID, BlockData: reqBlockData})
-			}
-			t.mu.Lock()
-			continue
-		}
-
 		consensusBlock := &Block{
 			id:           vmBlock.ID(),
 			parentID:     vmBlock.ParentID(),
@@ -3309,6 +3334,31 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			pChainHeight: pChainHeightOf(vmBlock), // epoch for the weighted set (MEDIUM-1)
 		}
 		setCanonicalFromVM(consensusBlock, vmBlock) // stamp the inner execution commitment
+
+		// THE ONE OWN-PROPOSAL REUSE DECISION (decomplected).
+		//
+		// Outer block ID is a TRANSPORT ALIAS; ProposalKey (parent,height) is
+		// CONSENSUS IDENTITY. There is exactly one own proposal per ProposalKey.
+		// If we already hold an undecided proposal for this slot, the VM just
+		// re-wrapped it (proposervm off a stale parent, or a mempool mutation
+		// churning the envelope) — DROP the sibling and RE-SOLICIT the one stable
+		// candidate so peer votes accumulate on ONE block ID to α instead of
+		// scattering (the mainnet 1082880 no-cert freeze). This can never
+		// manufacture a vote or change WHICH block finalizes (still the α-of-K
+		// cert); it is a pure liveness stabilizer. A genuine new parent/height is
+		// a new ProposalKey and builds normally; a decided slot was pruned by
+		// dropPendingBlockLocked so it won't match. Re-solicit is K>1 only — a
+		// K==1 chain has no peers and finalizes inline.
+		if existing := t.pendingOwnProposals[t.proposalKeyOf(consensusBlock)]; existing != nil && !existing.Decided {
+			reSolicit := t.proposer != nil && t.consensus.K() > 1
+			reqBlockID, reqBlockData := existing.ConsensusBlock.id, existing.ConsensusBlock.data
+			t.mu.Unlock()
+			if reSolicit {
+				t.proposer.RequestVotes(ctx, VoteRequest{BlockID: reqBlockID, BlockData: reqBlockData})
+			}
+			t.mu.Lock()
+			continue
+		}
 
 		// Verify BEFORE consensus — prevents accepting invalid blocks in K=1 mode
 		// where self-vote causes immediate acceptance. If Verify fails, the block
@@ -3338,15 +3388,12 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		// commits the 1-of-1 quorum (ForceAccept) and finalizes through
 		// AcceptWithCert; the call is synchronous (see below) so it runs before the
 		// next BuildBlock.
-		pb := &PendingBlock{
-			ConsensusBlock: consensusBlock,
-			VMBlock:        vmBlock,
-			ProposedAt:     time.Now(),
-			VoteCount:      1,
-			Decided:        false,
-			IsOwnProposal:  true,
-		}
-		t.pendingBlocks[vmBlock.ID()] = pb
+		//
+		// Registered in BOTH indices via the ONE writer: pendingBlocks[outerID]
+		// for transport lookup + pendingOwnProposals[ProposalKey] for consensus
+		// identity. The reuse branch above already returned for a re-wrapped slot,
+		// so this path is a genuinely new proposal.
+		pb, _ := t.registerOrReuseOwnProposalLocked(consensusBlock, vmBlock)
 		// VOTE EMISSION.
 		//
 		// K==1 (sole validator, no siblings ever): the proposer's own accept IS the
@@ -3429,54 +3476,70 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 	return nil
 }
 
-// PROPOSAL-IDENTITY STABILITY.
-// ProposerVM may return a fresh envelope/block ID when rebuilding at the SAME parent
-// and height (off a stale parent, or on any mempool mutation). Consensus must not let
-// mempool/build churn create unbounded own siblings that split votes. The invariant:
-// for a fixed OWN proposal at (parentID, height), keep ONE undecided candidate stable
-// until it DECIDES, the PARENT changes, the HEIGHT changes, the VIEW/SLOT changes, the
-// candidate is INVALIDATED, or explicit ABANDONMENT occurs — nothing else (and never a
-// mempool change alone) may replace it. Finality still requires the normal α/weighted
-// cert; this only prevents identity churn from defeating vote accumulation.
+// ProposalKey is a proposal's CONSENSUS IDENTITY: which (parent, height) fork
+// slot it occupies. It is deliberately NOT the proposervm envelope ID — that
+// outer ID is a transport alias the VM re-mints on every rebuild. Two rebuilds
+// of "my block at (P, H)" share ONE ProposalKey however many envelope IDs the
+// VM churns through. This is the single value the own-proposal reuse rule keys
+// on, so identity churn can never split votes across siblings.
 //
-// ownUndecidedCandidateLocked returns this node's OWN, still-UNDECIDED proposal at
-// (parentID, height), or nil if none. buildBlocksLocked calls it so a re-wrapped
-// rebuild is collapsed onto the FIRST candidate we already proposed there (re-solicit
-// ITS votes) instead of adding a sibling — votes accumulate on ONE block ID to α
-// instead of scattering (the 1082880 no-cert freeze). It never returns a decided block
-// (those are finalized+pruned) or a gossiped (non-own) one, so it can only stabilize
-// OUR liveness, never change WHICH block finalizes. Callers hold t.mu.
-func (t *Transitive) ownUndecidedCandidateLocked(parentID ids.ID, height uint64) *PendingBlock {
-	for _, pb := range t.pendingBlocks {
-		if pb == nil || pb.ConsensusBlock == nil {
-			continue
-		}
-		if pb.IsOwnProposal && !pb.Decided &&
-			pb.ConsensusBlock.height == height && pb.ConsensusBlock.parentID == parentID {
-			return pb
-		}
-	}
-	return nil
+// (parentID, height) is the whole key: a genuine new parent or new height is a
+// new slot and a legitimately new proposal; only the same-slot re-wrap collapses.
+type ProposalKey struct {
+	ParentID ids.ID
+	Height   uint64
 }
 
-// ownUndecidedCandidateOnParentLocked returns our own undecided candidate that
-// builds directly on parentID (typically the current preference), or nil. It is
-// the PRE-BUILD twin of ownUndecidedCandidateLocked: that one keys on (parent,
-// height) AFTER a build has told us the height; this one keys on parent ALONE so
-// the engine can decide — BEFORE the VM call — that a build would only re-wrap
-// the slot already occupied on the tip. Conservative by construction: if no
-// candidate sits on this exact parent (preference moved, or the height was
-// decided and pruned), it returns nil and the caller builds normally.
-func (t *Transitive) ownUndecidedCandidateOnParentLocked(parentID ids.ID) *PendingBlock {
-	for _, pb := range t.pendingBlocks {
-		if pb == nil || pb.ConsensusBlock == nil {
-			continue
-		}
-		if pb.IsOwnProposal && !pb.Decided && pb.ConsensusBlock.parentID == parentID {
-			return pb
+// proposalKeyOf derives the consensus identity of a tracked block.
+func (t *Transitive) proposalKeyOf(b *Block) ProposalKey {
+	return ProposalKey{ParentID: b.parentID, Height: b.height}
+}
+
+// registerOrReuseOwnProposalLocked is THE single own-proposal reuse decision.
+// Given a freshly built own block, it returns the existing undecided proposal
+// for that consensus position (reused=true) — so the caller re-solicits that ONE
+// stable candidate and drops the re-wrapped sibling — or registers the block as
+// the position's proposal in BOTH indices and returns it (reused=false).
+//
+// This is the one-way replacement for the former trio of overlapping checks
+// (pre-build parent scan, post-build exact-ID dedup, post-build parent+height
+// scan). There is exactly one question and exactly one place that answers it.
+// Callers hold t.mu.
+func (t *Transitive) registerOrReuseOwnProposalLocked(consensusBlock *Block, vmBlock block.Block) (*PendingBlock, bool) {
+	key := t.proposalKeyOf(consensusBlock)
+	if existing := t.pendingOwnProposals[key]; existing != nil && !existing.Decided {
+		return existing, true
+	}
+	pb := &PendingBlock{
+		ConsensusBlock: consensusBlock,
+		VMBlock:        vmBlock,
+		ProposedAt:     time.Now(),
+		VoteCount:      1,
+		Decided:        false,
+		IsOwnProposal:  true,
+	}
+	t.pendingBlocks[consensusBlock.id] = pb // transport/DAG lookup
+	t.pendingOwnProposals[key] = pb         // consensus identity
+	return pb, false
+}
+
+// dropPendingBlockLocked is the ONE unwrite: it removes a tracked block from the
+// transport index and, if that block owned its consensus-identity slot, from the
+// own-proposal index too (identity-checked so a sibling at the same slot never
+// evicts the live owner). Every pendingBlocks deletion goes through here so the
+// two indices can never drift. Callers hold t.mu.
+func (t *Transitive) dropPendingBlockLocked(id ids.ID) {
+	pb, ok := t.pendingBlocks[id]
+	if !ok {
+		return
+	}
+	if pb.IsOwnProposal && pb.ConsensusBlock != nil {
+		key := t.proposalKeyOf(pb.ConsensusBlock)
+		if t.pendingOwnProposals[key] == pb {
+			delete(t.pendingOwnProposals, key)
 		}
 	}
-	return nil
+	delete(t.pendingBlocks, id)
 }
 
 // -----------------------------------------------------------------------------
