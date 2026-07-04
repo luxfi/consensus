@@ -445,23 +445,10 @@ type Transitive struct {
 	// when it signals the chain bootstrapped.
 	bootstrapPhase bool
 
-	// Block management.
-	//
-	// Two indices over the SAME *PendingBlock values, answering two DIFFERENT
-	// questions (the decomplected proposal-identity model):
-	//
-	//   pendingBlocks[outerID]  — TRANSPORT/DAG lookup: "do I know this exact
-	//     envelope ID?" (from a vote, a fetch, or an exact-ID rebuild). The
-	//     outer ID is a place — proposervm re-mints it on every rebuild.
-	//
-	//   pendingOwnProposals[ProposalKey] — CONSENSUS IDENTITY: "do I already
-	//     hold my own undecided proposal for this consensus position?" Keyed on
-	//     the STABLE (parentID, height), not the churning envelope ID. There is
-	//     exactly ONE own proposal per ProposalKey — this is the single rule
-	//     that stops the mempool/proposervm re-wrap from spawning vote-splitting
-	//     siblings (the mainnet 1082880 freeze).
-	//
-	// Every write pairs the two; dropPendingBlockLocked is the ONE unwrite.
+	// Two views of the same *PendingBlock: pendingBlocks by outer envelope ID
+	// (transport), pendingOwnProposals by ProposalKey (consensus position).
+	// One own proposal per ProposalKey — this is what stops proposervm
+	// re-wraps from splitting votes. dropPendingBlockLocked is the sole unwrite.
 	pendingBlocks       map[ids.ID]*PendingBlock
 	pendingOwnProposals map[ProposalKey]*PendingBlock
 	pendingBuildBlocks  int
@@ -3335,20 +3322,10 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		}
 		setCanonicalFromVM(consensusBlock, vmBlock) // stamp the inner execution commitment
 
-		// THE ONE OWN-PROPOSAL REUSE DECISION (decomplected).
-		//
-		// Outer block ID is a TRANSPORT ALIAS; ProposalKey (parent,height) is
-		// CONSENSUS IDENTITY. There is exactly one own proposal per ProposalKey.
 		// If we already hold an undecided proposal for this slot, the VM just
-		// re-wrapped it (proposervm off a stale parent, or a mempool mutation
-		// churning the envelope) — DROP the sibling and RE-SOLICIT the one stable
-		// candidate so peer votes accumulate on ONE block ID to α instead of
-		// scattering (the mainnet 1082880 no-cert freeze). This can never
-		// manufacture a vote or change WHICH block finalizes (still the α-of-K
-		// cert); it is a pure liveness stabilizer. A genuine new parent/height is
-		// a new ProposalKey and builds normally; a decided slot was pruned by
-		// dropPendingBlockLocked so it won't match. Re-solicit is K>1 only — a
-		// K==1 chain has no peers and finalizes inline.
+		// re-wrapped it: drop the sibling and re-solicit the one stable candidate
+		// so peer votes accumulate on one ID to α instead of scattering. A new
+		// parent/height is a new key and builds normally. Re-solicit is K>1 only.
 		if existing := t.pendingOwnProposals[t.proposalKeyOf(consensusBlock)]; existing != nil && !existing.Decided {
 			reSolicit := t.proposer != nil && t.consensus.K() > 1
 			reqBlockID, reqBlockData := existing.ConsensusBlock.id, existing.ConsensusBlock.data
@@ -3476,35 +3453,22 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 	return nil
 }
 
-// ProposalKey is a proposal's CONSENSUS IDENTITY: which (parent, height) fork
-// slot it occupies. It is deliberately NOT the proposervm envelope ID — that
-// outer ID is a transport alias the VM re-mints on every rebuild. Two rebuilds
-// of "my block at (P, H)" share ONE ProposalKey however many envelope IDs the
-// VM churns through. This is the single value the own-proposal reuse rule keys
-// on, so identity churn can never split votes across siblings.
-//
-// (parentID, height) is the whole key: a genuine new parent or new height is a
-// new slot and a legitimately new proposal; only the same-slot re-wrap collapses.
+// ProposalKey is a proposal's consensus position — the (parent, height) fork
+// slot, not the proposervm envelope ID (which the VM re-mints per rebuild).
+// Every rebuild of "my block at (P,H)" shares one key, so identity churn can't
+// split votes.
 type ProposalKey struct {
 	ParentID ids.ID
 	Height   uint64
 }
 
-// proposalKeyOf derives the consensus identity of a tracked block.
 func (t *Transitive) proposalKeyOf(b *Block) ProposalKey {
 	return ProposalKey{ParentID: b.parentID, Height: b.height}
 }
 
-// registerOrReuseOwnProposalLocked is THE single own-proposal reuse decision.
-// Given a freshly built own block, it returns the existing undecided proposal
-// for that consensus position (reused=true) — so the caller re-solicits that ONE
-// stable candidate and drops the re-wrapped sibling — or registers the block as
-// the position's proposal in BOTH indices and returns it (reused=false).
-//
-// This is the one-way replacement for the former trio of overlapping checks
-// (pre-build parent scan, post-build exact-ID dedup, post-build parent+height
-// scan). There is exactly one question and exactly one place that answers it.
-// Callers hold t.mu.
+// registerOrReuseOwnProposalLocked returns the existing undecided proposal for
+// this slot (reused=true), else registers b in both indices (reused=false).
+// The sole own-proposal reuse decision. Holds t.mu.
 func (t *Transitive) registerOrReuseOwnProposalLocked(consensusBlock *Block, vmBlock block.Block) (*PendingBlock, bool) {
 	key := t.proposalKeyOf(consensusBlock)
 	if existing := t.pendingOwnProposals[key]; existing != nil && !existing.Decided {
@@ -3515,19 +3479,16 @@ func (t *Transitive) registerOrReuseOwnProposalLocked(consensusBlock *Block, vmB
 		VMBlock:        vmBlock,
 		ProposedAt:     time.Now(),
 		VoteCount:      1,
-		Decided:        false,
 		IsOwnProposal:  true,
 	}
-	t.pendingBlocks[consensusBlock.id] = pb // transport/DAG lookup
-	t.pendingOwnProposals[key] = pb         // consensus identity
+	t.pendingBlocks[consensusBlock.id] = pb
+	t.pendingOwnProposals[key] = pb
 	return pb, false
 }
 
-// dropPendingBlockLocked is the ONE unwrite: it removes a tracked block from the
-// transport index and, if that block owned its consensus-identity slot, from the
-// own-proposal index too (identity-checked so a sibling at the same slot never
-// evicts the live owner). Every pendingBlocks deletion goes through here so the
-// two indices can never drift. Callers hold t.mu.
+// dropPendingBlockLocked removes a block from both indices — the sole unwrite,
+// so they never drift. The identity check keeps a same-slot sibling from
+// evicting the live owner. Holds t.mu.
 func (t *Transitive) dropPendingBlockLocked(id ids.ID) {
 	pb, ok := t.pendingBlocks[id]
 	if !ok {
