@@ -361,14 +361,13 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		engine.SetVM(cfg.VM)
 	}
 
-	// STALE-LOCK MIGRATION (the block-1082880 incident) is deliberately NOT invoked here.
-	// It is OPERATOR-GATED at the node boundary (LUX_CONSENSUS_MIGRATE_STALE_LOCKS=
-	// inspect | apply:<floor> — node/chains/manager.go), after NewRuntime and before
-	// Start, with an explicit floor target that self-disarms once the chain recovers.
-	// An unconditional every-boot invocation here would prune GENUINE crash-restart
-	// locks whose inner canonical the proposervm-backed VM store cannot resolve by
-	// inner id — regressing the HIGH-1 double-precommit protection (red R1/vector-10:
-	// ≥3 correlated crash-restarts under a partition can then double-finalize).
+	// STALE-LOCK MIGRATION is deliberately NOT invoked here. It is operator-gated at the
+	// node boundary (LUX_CONSENSUS_MIGRATE_STALE_LOCKS=inspect | apply:<floor>), after
+	// NewRuntime and before Start, with an explicit floor target that self-disarms once
+	// the chain recovers. An unconditional every-boot invocation would prune GENUINE
+	// crash-restart locks the VM store cannot resolve by inner id — reopening the
+	// crash-restart double-precommit window (≥3 correlated crash-restarts under a
+	// partition could then double-finalize).
 
 	return rt
 }
