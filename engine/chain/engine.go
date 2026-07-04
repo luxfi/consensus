@@ -3227,6 +3227,33 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		if t.pendingBuildBlocks <= 0 {
 			break
 		}
+
+		// PRE-BUILD GATE (avalanchego alignment: mempool event = permission to
+		// build LATER, not a mandate to rebuild the in-flight candidate). If we
+		// already hold our OWN UNDECIDED candidate on the current preference, the
+		// VM would only re-wrap that same (parent,height) into a fresh envelope —
+		// the exact churn that froze mainnet 1082880 under a 15-30s heartbeat/
+		// gas-escalator. Consensus owns proposal identity; the mempool only owns
+		// tx availability. So DRAIN this signal without the (expensive) BuildBlock
+		// and RE-SOLICIT the existing candidate instead of manufacturing a sibling.
+		//
+		// This is a pure FAST-PATH: it never changes WHICH block finalizes. The
+		// post-build guards below remain the correctness backstop — if preference
+		// has moved (candidate no longer on the tip) this returns nil and we fall
+		// through to build on the new parent normally. Own proposals + K>1 only
+		// (K==1 has no peers and finalizes inline; a gossiped block is never our
+		// candidate to stabilize).
+		if t.proposer != nil && t.consensus.K() > 1 {
+			if existing := t.ownUndecidedCandidateOnParentLocked(t.consensus.Preference()); existing != nil {
+				t.pendingBuildBlocks--
+				reqBlockID, reqBlockData := existing.ConsensusBlock.id, existing.ConsensusBlock.data
+				t.mu.Unlock()
+				t.proposer.RequestVotes(ctx, VoteRequest{BlockID: reqBlockID, BlockData: reqBlockData})
+				t.mu.Lock()
+				continue
+			}
+		}
+
 		// UNLOCK-BEFORE-CALL-OUT: BuildBlock is an external VM call — release t.mu around it, then
 		// re-acquire to process (buildBlocksLocked is entered and returns with t.mu held). The loop
 		// re-checks pendingBuildBlocks after re-lock, so a concurrent change is handled.
@@ -3398,6 +3425,56 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			t.finalizeOwnProposal(ctx, blockID)
 		}
 		t.mu.Lock()
+	}
+	return nil
+}
+
+// PROPOSAL-IDENTITY STABILITY.
+// ProposerVM may return a fresh envelope/block ID when rebuilding at the SAME parent
+// and height (off a stale parent, or on any mempool mutation). Consensus must not let
+// mempool/build churn create unbounded own siblings that split votes. The invariant:
+// for a fixed OWN proposal at (parentID, height), keep ONE undecided candidate stable
+// until it DECIDES, the PARENT changes, the HEIGHT changes, the VIEW/SLOT changes, the
+// candidate is INVALIDATED, or explicit ABANDONMENT occurs — nothing else (and never a
+// mempool change alone) may replace it. Finality still requires the normal α/weighted
+// cert; this only prevents identity churn from defeating vote accumulation.
+//
+// ownUndecidedCandidateLocked returns this node's OWN, still-UNDECIDED proposal at
+// (parentID, height), or nil if none. buildBlocksLocked calls it so a re-wrapped
+// rebuild is collapsed onto the FIRST candidate we already proposed there (re-solicit
+// ITS votes) instead of adding a sibling — votes accumulate on ONE block ID to α
+// instead of scattering (the 1082880 no-cert freeze). It never returns a decided block
+// (those are finalized+pruned) or a gossiped (non-own) one, so it can only stabilize
+// OUR liveness, never change WHICH block finalizes. Callers hold t.mu.
+func (t *Transitive) ownUndecidedCandidateLocked(parentID ids.ID, height uint64) *PendingBlock {
+	for _, pb := range t.pendingBlocks {
+		if pb == nil || pb.ConsensusBlock == nil {
+			continue
+		}
+		if pb.IsOwnProposal && !pb.Decided &&
+			pb.ConsensusBlock.height == height && pb.ConsensusBlock.parentID == parentID {
+			return pb
+		}
+	}
+	return nil
+}
+
+// ownUndecidedCandidateOnParentLocked returns our own undecided candidate that
+// builds directly on parentID (typically the current preference), or nil. It is
+// the PRE-BUILD twin of ownUndecidedCandidateLocked: that one keys on (parent,
+// height) AFTER a build has told us the height; this one keys on parent ALONE so
+// the engine can decide — BEFORE the VM call — that a build would only re-wrap
+// the slot already occupied on the tip. Conservative by construction: if no
+// candidate sits on this exact parent (preference moved, or the height was
+// decided and pruned), it returns nil and the caller builds normally.
+func (t *Transitive) ownUndecidedCandidateOnParentLocked(parentID ids.ID) *PendingBlock {
+	for _, pb := range t.pendingBlocks {
+		if pb == nil || pb.ConsensusBlock == nil {
+			continue
+		}
+		if pb.IsOwnProposal && !pb.Decided && pb.ConsensusBlock.parentID == parentID {
+			return pb
+		}
 	}
 	return nil
 }
