@@ -2364,7 +2364,40 @@ type ConvergenceVoter interface {
 // → the distributed liveness stall. Counting every live (undecided) sibling keeps the winner
 // globally identical, which is what lets α aligned prevotes form. The LEGACY path passes false
 // (unchanged behaviour). Never manufactures a vote or bypasses the α-of-K cert → safety intact.
+// canonicalRep is the block's own EXECUTION identity — its inner canonicalID, or its
+// outer id for a bare (non-wrapped) block. Two proposervm wrappers of the SAME inner
+// block share this: they are ALIASES, not forks. Fork-choice keys on this, never the
+// outer id (a transport/DAG alias).
+func (b *Block) canonicalRep() ids.ID {
+	if b.canonicalID != ids.Empty {
+		return b.canonicalID
+	}
+	return b.id
+}
+
+// parentCanonicalRep is the block's PARENT execution identity — the parent's inner
+// canonicalID, or the outer parentID when not exposed. Children of canonical-equivalent
+// parent wrappers share this, so they belong to the SAME convergence group even though
+// their outer parentIDs differ. Grouping by the outer parentID instead splits a forked
+// parent's children across passes and lets different nodes pick different winners →
+// prevotes never align → the liveness stall (the block-1082879 storm).
+func (b *Block) parentCanonicalRep() ids.ID {
+	if b.parentCanonicalID != ids.Empty {
+		return b.parentCanonicalID
+	}
+	return b.parentID
+}
+
 func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.ID, includeAbandoned bool) (ids.ID, int, bool) {
+	// Resolve the target parent's CANONICAL identity so canonical-equivalent parent
+	// wrappers (same inner block, different outer envelope) collapse to one group. An
+	// unaccepted (possibly forked) parent is tracked in pendingBlocks and resolves to its
+	// canonical; the accepted tip (height floor+1's parent) is not tracked, is single/
+	// un-forked, and its children are matched by the outer parentID branch below.
+	parentCanon := parentID
+	if ppb, ok := t.pendingBlocks[parentID]; ok && ppb.ConsensusBlock != nil {
+		parentCanon = ppb.ConsensusBlock.canonicalRep()
+	}
 	var winner, winnerCanon ids.ID
 	count := 0
 	for id, pb := range t.pendingBlocks {
@@ -2372,15 +2405,20 @@ func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.I
 		if cb == nil || pb.Decided || (!includeAbandoned && pb.rePollAbandoned) {
 			continue
 		}
-		if cb.height != height || cb.parentID != parentID {
+		// Group by (height, parent CANONICAL) — alias-collapsing. Match a child whose
+		// parent is the target outer id (accepted tip, single wrapper) OR whose parent is
+		// canonical-equivalent to it (a forked pending parent's other wrappers).
+		if cb.height != height || (cb.parentID != parentID && cb.parentCanonicalRep() != parentCanon) {
 			continue
 		}
-		canon := cb.canonicalID
-		if canon == ids.Empty {
-			canon = id
-		}
+		canon := cb.canonicalRep()
 		count++
-		if winner == ids.Empty || canon.Compare(winnerCanon) < 0 {
+		// Deterministic representative: lowest canonical, then lowest OUTER id as the
+		// tie-break. EQUAL-canonical aliases MUST resolve to the SAME winner on every
+		// node — Go map iteration is randomized, so without the outer-id tie-break the
+		// winner among equal canonicals is nondeterministic and prevotes never align.
+		if winner == ids.Empty || canon.Compare(winnerCanon) < 0 ||
+			(canon == winnerCanon && id.Compare(winner) < 0) {
 			winner, winnerCanon = id, canon
 		}
 	}
@@ -2405,22 +2443,21 @@ func (t *Transitive) parentIsProvenLoserLocked(parentID ids.ID) bool {
 		return false
 	}
 	p := pb.ConsensusBlock
-	pc := p.canonicalID
-	if pc == ids.Empty {
-		pc = parentID
-	}
+	pc := p.canonicalRep()
+	gpCanon := p.parentCanonicalRep()
 	for sibID, sib := range t.pendingBlocks {
 		cb := sib.ConsensusBlock
 		if cb == nil || sib.rePollAbandoned || sibID == parentID {
 			continue
 		}
-		if cb.height != p.height || cb.parentID != p.parentID {
+		// Same-slot sibling test by CANONICAL grandparent (alias-collapsing), so a sibling
+		// built on a different wrapper of the same grandparent still counts.
+		if cb.height != p.height || (cb.parentID != p.parentID && cb.parentCanonicalRep() != gpCanon) {
 			continue
 		}
-		sc := cb.canonicalID
-		if sc == ids.Empty {
-			sc = sibID
-		}
+		sc := cb.canonicalRep()
+		// An equal-canonical block is an ALIAS of the parent (sc == pc ⇒ not < 0), never a
+		// competitor — only a strictly-lower canonical proves the parent lost.
 		if sc.Compare(pc) < 0 {
 			return true // a strictly-lower-canonical sibling of the parent exists ⇒ parent lost
 		}
