@@ -1,14 +1,7 @@
 package chain
 
-// Proposal identity — the decomplected one-way model.
-//
-//   Outer block ID is a transport alias. ProposalKey is consensus identity.
-//   There is exactly one own proposal per ProposalKey.
-//
-// The three former overlapping checks (pre-build parent scan, post-build
-// exact-ID dedup, post-build parent+height scan) collapse to ONE index
-// (pendingOwnProposals[ProposalKey]) written by registerOrReuseOwnProposalLocked
-// and unwritten by dropPendingBlockLocked. These gates pin that model.
+// One own proposal per ProposalKey: outer IDs are transport aliases, the
+// (parent,height) slot is consensus identity. These pin that invariant.
 
 import (
 	"testing"
