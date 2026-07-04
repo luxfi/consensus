@@ -969,7 +969,17 @@ func (rt *Runtime) runViewChangePass(ctx context.Context) {
 	if consensusFloor > floor {
 		floor = consensusFloor
 	}
-	parents := map[uint64]ids.ID{}
+	// Enumerate DISTINCT (height, parent-canonical) convergence groups — NOT last-writer-
+	// wins by height. A forked parent (same inner block, different outer wrappers) must not
+	// split its children across passes: keying by the parent CANONICAL keeps every node
+	// enumerating the SAME groups, and a lowest-outer-id representative makes the parent
+	// argument deterministic. The old parents[height]=cb.parentID kept a RANDOM wrapper per
+	// height (Go map order) so different nodes computed different winners → no POL → storm.
+	type heightParent struct {
+		height      uint64
+		parentCanon ids.ID
+	}
+	groups := map[heightParent]ids.ID{} // -> deterministic representative (lowest) outer parentID
 	for _, pb := range t.pendingBlocks {
 		cb := pb.ConsensusBlock
 		// A rePollAbandoned sibling is deliberately NOT skipped here. Abandonment only stops
@@ -981,11 +991,14 @@ func (rt *Runtime) runViewChangePass(ctx context.Context) {
 		if cb == nil || pb.Decided || cb.height <= floor {
 			continue
 		}
-		parents[cb.height] = cb.parentID
+		k := heightParent{height: cb.height, parentCanon: cb.parentCanonicalRep()}
+		if rep, ok := groups[k]; !ok || cb.parentID.Compare(rep) < 0 {
+			groups[k] = cb.parentID
+		}
 	}
 	var slots []vcSlot
-	for h, parent := range parents {
-		winnerID, _, ok := t.convergedWinnerAtHeightLocked(h, parent, true) // view-change: count abandoned siblings so the winner is globally identical
+	for k, parentRep := range groups {
+		winnerID, _, ok := t.convergedWinnerAtHeightLocked(k.height, parentRep, true) // view-change: count abandoned siblings so the winner is globally identical
 		if !ok {
 			continue
 		}
@@ -994,7 +1007,7 @@ func (rt *Runtime) runViewChangePass(ctx context.Context) {
 			continue
 		}
 		canon := slotCanonical(t.blockPositionLocked(pw, winnerID))
-		slots = append(slots, vcSlot{height: h, winner: winnerID, canon: canon})
+		slots = append(slots, vcSlot{height: k.height, winner: winnerID, canon: canon})
 	}
 	t.mu.Unlock()
 
