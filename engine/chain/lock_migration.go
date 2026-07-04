@@ -1,42 +1,17 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// lock_migration.go — STALE OUTER-WRAPPER LOCK MIGRATION: the one-shot, safety-gated repair of
-// pre-fix durable view-change locks after the canonical=inner fix (Part A/B, v1.34.14).
+// Stale outer-wrapper lock migration: a one-shot, operator-gated repair of durable
+// view-change locks written before the canonical=inner fix. Pre-fix locks are keyed by
+// OUTER proposervm wrapper ids; viewForLocked recovers them verbatim, so a fleet can hold
+// a sub-α split across wrappers of ONE inner block and the Tendermint lock rule silences
+// every winner prevote (the 1082880 freeze — see commit 3728722ef and the tests).
 //
-// THE INCIDENT (mainnet C-Chain, frozen at 1082879, 2026-07-04). Before the canonical fix a
-// node's durable view-change lock (committedSlot[height] = the value it precommitted) was stored
-// by the block's canonical AT STORE TIME — and pre-fix that canonical fell back to the OUTER
-// proposervm wrapper id (canonicalCommitter was unimplemented, so canonicalIDOf returned the
-// envelope). Many outer wrappers of ONE inner block therefore produced MANY distinct lock values.
-// At height 1082880 the fleet ended split across two of them: luxd-0/3/4 locked on outer-A
-// (8ad2d23c…), luxd-1/2 on outer-B (80a457cc…) — TWO wrappers of the SAME inner block I.
-//
-// After the roll to v1.34.14 (canonical=inner) the round-scoped view machine runs in canonical
-// space: it computes winnerCanon = I and steps on it. BUT viewForLocked (round_view.go) seeds the
-// recovered lock's value VERBATIM from committedSlot — the stale OUTER id — and NEVER
-// re-canonicalizes it. Under the Tendermint lock rule (prevoteTarget) a locked node prevotes its
-// lock value UNLESS a POL forms for a different value at a round strictly above the lock round.
-// So every node prevotes its stale outer alias (8ad2 or 80a457), the prevotes split 3/2 across
-// two values, neither reaches α=4, no POL(I) ever forms, no precommit, no cert — FROZEN. The vote
-// transport is HEALTHY (a 3/2 durable split-lock could not have formed without working
-// emit/gossip/receive/count at round 8450); the freeze is pure stale-lock silence.
-//
-// THE REPAIR (owner rule, CANONICALIZE-FIRST). A persisted lock ABOVE the decided floor whose
-// value is an OUTER alias is REWRITTEN to the block's inner canonical id. Because outer-A and
-// outer-B both canonicalize to the SAME inner I, all five nodes become locked on I → they prevote
-// I → POL(I) forms → precommit → α-of-K cert → 1082880 finalizes. A lock that CANNOT be resolved
-// to an inner (its block bytes are gone) is instead PRUNED (the node boots UNLOCKED at that height
-// and re-converges on the winner) — the safe fallback. Nothing AT OR BELOW the decided floor is
-// ever touched (finalized history is immutable), and a height that already holds an α-of-K cert is
-// never disturbed. If two wrappers at one height canonicalize to DIFFERENT inner blocks, that is a
-// REAL fork: the migration STOPS and requires manual recovery rather than merge two distinct
-// values.
-//
-// This is a STATE-COMPATIBILITY MIGRATION of pre-fix durable metadata — NOT a consensus-algorithm
-// change and NOT transport wiring. The planner (planLockMigration) is PURE so the 8-condition
-// safety gate is exhaustively unit-testable; the durable rewrite reuses the ONE atomic
-// write+swap the phantom-floor reconcile also uses (reconcile.go writeReconciledStateLocked).
+// Repair rule: above the decided floor, canonicalize each lock to its inner id; prune if
+// unresolvable. STOP — no write — if a height holds an α-of-K cert or its wrappers resolve
+// to ≥2 distinct inners (a real fork is never merged). Nothing at or below the floor is
+// touched and the floor is never lowered. The planner is pure (exhaustively testable); the
+// durable rewrite reuses the one atomic write+swap (reconcile.go writeReconciledStateLocked).
 
 package chain
 
@@ -48,14 +23,11 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// LockCanonicalResolver resolves a persisted lock target — for a pre-fix binding, the OUTER
-// proposervm wrapper id — to the block's INNER canonical id (canonicalRep). ok=false means the
-// id is unknown/unresolvable at migration time (its block bytes are gone), which routes the lock
-// to the safety-gated PRUNE fallback. A resolver that is a FIXPOINT on canonical ids
-// (CanonicalOf(inner, h) = inner) makes the migration idempotent. `height` is the locked height
-// the id is bound to: a resolver MUST refuse (ok=false) an id whose block lives at a DIFFERENT
-// height, so a cross-height id collision can never rewrite a slot binding to another height's
-// canonical (defence-in-depth — committedSlot[H] only ever holds a height-H id by construction).
+// LockCanonicalResolver resolves a persisted lock target (an outer wrapper id) to its inner
+// canonical. ok=false routes the lock to the prune fallback. Two contract points: a resolver
+// must be a fixpoint on canonical ids (CanonicalOf(inner, h) = inner — this is what makes the
+// migration idempotent) and must refuse an id whose block lives at a different height (a
+// cross-height collision can never rewrite a slot binding to another height's canonical).
 type LockCanonicalResolver interface {
 	CanonicalOf(id ids.ID, height uint64) (canonical ids.ID, ok bool)
 }
@@ -112,11 +84,8 @@ type LockMigrationReport struct {
 	SkipReason       string          // why the apply was skipped (audit trail)
 }
 
-// distinctInnerOf resolves every candidate outer id AT `height` to its inner canonical and
-// reports the SINGLE inner they agree on. resolved is the count of DISTINCT non-empty inner
-// canonicals: 0 = none resolvable, 1 = a single agreed inner (returned in inner), ≥2 =
-// divergence (a real fork). This is the audited primitive behind the
-// canonicalize-vs-prune-vs-STOP decision.
+// distinctInnerOf resolves every candidate id at `height` and counts the distinct inner
+// canonicals: 0 = none resolvable, 1 = agreed inner (returned), ≥2 = a real fork.
 func distinctInnerOf(height uint64, candidates []ids.ID, resolver LockCanonicalResolver) (inner ids.ID, resolved int) {
 	if resolver == nil {
 		return ids.Empty, 0
@@ -136,20 +105,10 @@ func distinctInnerOf(height uint64, candidates []ids.ID, resolver LockCanonicalR
 	return inner, len(seen)
 }
 
-// planLockMigration computes the disposition of every persisted lock ABOVE `floor`, per the
-// owner's canonicalize-first rule and the 8-condition safety gate. It is PURE — no engine, clock,
-// or store — so the safety gate is exhaustively unit-testable.
-//
-//   - It NEVER considers a height ≤ floor (finalized history is immutable; conditions 1/5/6).
-//   - certAt(h) true ⇒ an α-of-K cert exists at h ⇒ the lock is left as STOP and no write happens
-//     (condition 2/4: never disturb a finalized block).
-//   - candidatesAt(h) supplies additional outer wrappers KNOWN at height h (tracked siblings), so
-//     the inner can be recovered even from a sibling wrapper and cross-wrapper DIVERGENCE is
-//     detected. nil ⇒ only the persisted lock value is a candidate.
-//   - Two or more DISTINCT inner canonicals at one height ⇒ STOP (condition-parallel to test 5: a
-//     real fork must not be merged).
-//   - Exactly one inner I: canonicalize the lock to I (or keep, if the lock already equals I —
-//     idempotence, condition 6/test 6). No inner resolvable ⇒ prune (the safe fallback).
+// planLockMigration computes the disposition of every persisted lock above `floor`. Pure —
+// no engine, clock, or store — so the safety gate is exhaustively unit-testable.
+// candidatesAt(h) supplies sibling wrappers known at h, so the inner can be recovered from a
+// sibling and cross-wrapper divergence is detected; nil ⇒ only the lock value is a candidate.
 func planLockMigration(
 	committed map[SlotKey]ids.ID,
 	lockRounds map[uint64]uint32,
@@ -164,15 +123,12 @@ func planLockMigration(
 		if k.Height <= floor {
 			continue // finalized history — never inspected, never touched
 		}
-		// A v3 lock carries a round (soft, unlock-rule re-convergence); a legacy/hard lock has
-		// none (HasRound=false) and is carried as a recovered hard lock on apply. Either way the
-		// lock VALUE is what the canonicalize/prune decision below rewrites.
+		// v3 soft lock carries a round; a legacy/hard lock (HasRound=false) is re-applied as
+		// a recovered hard lock. Either way only the lock VALUE is rewritten.
 		round, hasRound := lockRounds[k.Height]
 		e := LockPlanEntry{Height: k.Height, LockOuter: lockVal, LockRound: round, HasRound: hasRound}
 
-		// GATE (conditions 2 & 4): a height that already holds an α-of-K cert is FINALIZED —
-		// never canonicalize or prune it. Refuse the whole migration (STOP) rather than risk
-		// disturbing a real finalization.
+		// A cert = finalized. Refuse the whole migration rather than disturb it.
 		if certAt != nil && certAt(k.Height) {
 			e.CertAt = true
 			e.Kind = lockStop
@@ -191,24 +147,18 @@ func planLockMigration(
 		e.LockCanon = inner
 		switch {
 		case resolved >= 2:
-			// DIVERGENCE (condition-parallel to test 5): the wrappers at this height canonicalize
-			// to DIFFERENT inner blocks — a genuine fork. Do NOT merge; STOP.
 			e.Kind = lockStop
 			e.Reason = "wrappers canonicalize to DIFFERENT inner blocks — real fork, manual recovery required"
 			rep.Stop = true
 			rep.StopReason = fmt.Sprintf("height %d has ≥2 distinct inner canonicals — manual recovery required", k.Height)
 		case resolved == 0:
-			// UNRESOLVABLE: the lock's block bytes are gone. Prune (boot unlocked) — the safe
-			// fallback; the node re-converges on the deterministic winner once gossip re-populates.
 			e.Kind = lockPrune
 			e.Reason = "lock target unresolvable (block bytes gone) — prune above the floor (boot unlocked)"
 			rep.Changed = true
 		case inner == lockVal:
-			// Already canonical (idempotence): the lock value equals the inner. Leave untouched.
 			e.Kind = lockKeep
 			e.Reason = "lock already canonical (inner) — no change"
 		default:
-			// CANONICALIZE (the owner-preferred repair): rewrite the stale outer alias → inner I.
 			e.Kind = lockCanonicalize
 			e.Reason = "stale outer wrapper alias — canonicalize to inner block id"
 			rep.Changed = true
@@ -297,7 +247,7 @@ func (t *Transitive) migrateStaleLocksAboveFloorLocked(resolver LockCanonicalRes
 	if err := t.writeReconciledStateLocked(newCommitted, newLocks, newRecovered, floor); err != nil {
 		return rep, err
 	}
-	// Invalidate the CACHED round-view of every migrated height (R4): a view seeded before the
+	// Invalidate the CACHED round-view of every migrated height: a view seeded before the
 	// migration still locks the PRE-migration id, and viewForLocked returns the cached machine
 	// verbatim — a runtime invocation would otherwise keep prevoting the stale value and re-freeze.
 	// Dropping the view is safe: the next viewForLocked re-seeds it from the just-rewritten
@@ -357,7 +307,7 @@ func (r vmCanonicalResolver) CanonicalOf(id ids.ID, height uint64) (ids.ID, bool
 // engineCanonicalContext captures the per-height sibling wrappers + a cert-existence predicate
 // the planner needs — as snapshots, so the subsequent slotMu-held plan never takes another lock
 // (no inversion). The three locks are taken SEQUENTIALLY, never nested: a brief slotMu hold
-// (candidate heights), the consensus ledger's own internal RLock (durable finality — R2), then
+// (candidate heights), the consensus ledger's own internal RLock (durable finality), then
 // t.mu.RLock (tracked siblings). Returns (candidatesAt, certAt).
 func (rt *Runtime) engineCanonicalContext() (func(uint64) []ids.ID, func(uint64) bool) {
 	t := rt.Transitive
@@ -373,7 +323,7 @@ func (rt *Runtime) engineCanonicalContext() (func(uint64) []ids.ID, func(uint64)
 	}
 	t.slotMu.Unlock()
 
-	// 2) DURABLE finality snapshot (R2): the consensus finality ledger — not the in-session views
+	// 2) Durable finality snapshot: the consensus finality ledger — not the in-session views
 	// map, which is EMPTY at the boot invocation point and made the old gate vacuous exactly when
 	// the migration runs. FinalizedBlockAtHeight takes only the ledger's own RLock (no t.mu, no
 	// slotMu), so with no engine lock held here there is no inversion.
@@ -413,10 +363,8 @@ func (rt *Runtime) engineCanonicalContext() (func(uint64) []ids.ID, func(uint64)
 	return candidatesAt, certAt
 }
 
-// InspectLocks returns the stale-lock migration PLAN for this node WITHOUT mutating anything — the
-// read-only inspection the operator runs on every pod to verify the 8-condition safety predicate
-// before any write. The report's Entries are the trace-table rows (per-height outer→inner
-// canonicalization, lock round, cert presence, and the planned disposition).
+// InspectLocks returns the migration plan without mutating anything — the read-only
+// inspection the operator runs on every pod before any apply.
 func (rt *Runtime) InspectLocks(ctx context.Context) LockMigrationReport {
 	if rt.Transitive == nil {
 		return LockMigrationReport{}
@@ -428,19 +376,11 @@ func (rt *Runtime) InspectLocks(ctx context.Context) LockMigrationReport {
 	return rt.Transitive.inspectLocksLocked(resolver, certAt, candidatesAt)
 }
 
-// MigrateStaleLocks plans and, if warranted and SAFE, APPLIES the one-shot stale-lock repair
-// (canonicalize pre-fix outer aliases → inner, prune the unresolvable) for every persisted lock
-// ABOVE the decided floor. It is a boot-time, operator-gated, idempotent recovery: finalized +
-// vote-guard state ≤ floor is preserved verbatim, the floor is never lowered, and a STOP (a height
-// with a cert, or divergent inner canonicals) applies nothing and defers to manual recovery.
-//
-// SELF-DISARMING (R1): `expectedFloor` is the decided floor the OPERATOR observed when arming the
-// repair (the incident floor — 1082879 for the mainnet one-shot). If the live decided floor has
-// moved past it — i.e. the chain recovered and finalized new heights — the apply is REFUSED as a
-// no-op (Skipped=true, nothing written). A lingering apply env on a later boot therefore can
-// never degrade into an every-boot prune of a GENUINE in-flight crash lock, which would regress
-// the HIGH-1 crash-restart double-sign protection. Returns the plan applied (or the STOP/Skipped
-// report).
+// MigrateStaleLocks plans and, if safe, applies the one-shot stale-lock repair. Self-disarming:
+// `expectedFloor` is the decided floor the operator observed when arming; if the live floor has
+// moved (the chain recovered), the apply is refused as a no-op (Skipped=true) — a lingering apply
+// env on a later boot must never degrade into an every-boot prune of a genuine crash lock, which
+// would reopen the crash-restart double-sign window.
 func (rt *Runtime) MigrateStaleLocks(ctx context.Context, expectedFloor uint64) (LockMigrationReport, error) {
 	if rt.Transitive == nil {
 		return LockMigrationReport{}, fmt.Errorf("migrate stale locks: nil engine")
