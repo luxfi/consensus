@@ -258,6 +258,8 @@ github.com/luxfi/threshold v1.10.2 h1:FFj6H+wd3DI/Y5J1Jb3bClCAtFi/ueItWtBoNBIdIo
 github.com/luxfi/threshold v1.10.2/go.mod h1:GETt6Px9vrQ19J9Mnpf5LgMXAdvJu8ijyByOp+QtD48=
 github.com/luxfi/threshold v1.12.0 h1:JJ369xC/YyDvrqXj+xFoK98nP2rUM099qFs03hBvq/M=
 github.com/luxfi/threshold v1.12.0/go.mod h1:iuRQGDAy8ZKjQhZjkSKg7NtbP75/8Up9zj52y7IuyZo=
+github.com/luxfi/threshold v1.12.1 h1:pA6ZB8Qv6BStprSemfoCY3fD7P5PEod36Nj6FmJR1jQ=
+github.com/luxfi/threshold v1.12.1/go.mod h1:iuRQGDAy8ZKjQhZjkSKg7NtbP75/8Up9zj52y7IuyZo=
 github.com/luxfi/utils v1.2.0 h1:gtEiI7/NM6PQ/OasEpH0PvB+e5hIS/tpum9r64pYjMc=
 github.com/luxfi/utils v1.2.0/go.mod h1:T2OCKT1xG9jtKR/gyJQoSkticzrE9WFQ8eohJHGu9Fg=
 github.com/luxfi/validators v1.2.0 h1:VygpiBqBAdGrfkb7xzE2yrVmnXaqE+hm8FLWdGXO7G8=
