@@ -658,6 +658,15 @@ type Transitive struct {
 	//     maxCatchupRequested.
 	catchupRequested map[ids.ID]time.Time
 
+	// certCatchupRequested rate-limits the STUCK-ROUND cert-catch-up (the one-lagging-
+	// validator freeze fix). Keyed by HEIGHT, not block ID, because that case fetches the
+	// finality CERT for a block we ALREADY hold (tracked, but unfinalizable because the
+	// fleet finalized this height and will not re-vote it): the block-ID gate
+	// (claimCatchupLocked) would wrongly SUPPRESS it as "already tracked". Same cooldown +
+	// hard cap as catchupRequested; reaped at/below the finalized floor (a height, once
+	// decided, is never fetched again). See claimCertCatchupLocked / Runtime.requestCertCatchup.
+	certCatchupRequested map[uint64]time.Time
+
 	// bufferedVotes parks signed accept/reject votes that arrived for a block this
 	// node does not yet TRACK (the gossip race: a peer's vote can outrun the block
 	// bytes). The old handleVote DROPPED such a vote — and because votes are only
@@ -773,24 +782,25 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 	}
 
 	t := &Transitive{
-		consensus:        NewChainConsensus(cfg.Params.K, cfg.Params.AlphaPreference, int(cfg.Params.Beta)),
-		params:           cfg.Params,
-		vm:               cfg.VM,
-		proposer:         cfg.Proposer,
-		bootstrapPhase:   true, // a fresh engine is initial-syncing until it reaches the frontier
-		pendingBlocks:    make(map[ids.ID]*PendingBlock),
-		finalizedByCert:  make(map[ids.ID]struct{}),
-		certBytesByBlock: make(map[ids.ID][]byte),
-		committedSlot:    make(map[SlotKey]ids.ID),
-		views:            make(map[uint64]*roundView),
-		prevoteSigs:      make(map[pvSigKey]map[ids.NodeID][]byte),
-		recoveredLocks:   make(map[uint64]struct{}),
-		lockRounds:       make(map[uint64]uint32),
-		catchupRequested: make(map[ids.ID]time.Time),
-		bufferedVotes:    make(map[ids.ID][]Vote),
-		voteRequests:     make(chan VoteRequest, cfg.VoteRequestBuffer),
-		votes:            make(chan Vote, cfg.VoteBuffer),
-		pipelineSignal:   make(chan struct{}, 1),
+		consensus:            NewChainConsensus(cfg.Params.K, cfg.Params.AlphaPreference, int(cfg.Params.Beta)),
+		params:               cfg.Params,
+		vm:                   cfg.VM,
+		proposer:             cfg.Proposer,
+		bootstrapPhase:       true, // a fresh engine is initial-syncing until it reaches the frontier
+		pendingBlocks:        make(map[ids.ID]*PendingBlock),
+		finalizedByCert:      make(map[ids.ID]struct{}),
+		certBytesByBlock:     make(map[ids.ID][]byte),
+		committedSlot:        make(map[SlotKey]ids.ID),
+		views:                make(map[uint64]*roundView),
+		prevoteSigs:          make(map[pvSigKey]map[ids.NodeID][]byte),
+		recoveredLocks:       make(map[uint64]struct{}),
+		lockRounds:           make(map[uint64]uint32),
+		catchupRequested:     make(map[ids.ID]time.Time),
+		certCatchupRequested: make(map[uint64]time.Time),
+		bufferedVotes:        make(map[ids.ID][]Vote),
+		voteRequests:         make(chan VoteRequest, cfg.VoteRequestBuffer),
+		votes:                make(chan Vote, cfg.VoteBuffer),
+		pipelineSignal:       make(chan struct{}, 1),
 	}
 
 	for _, opt := range opts {
@@ -1301,6 +1311,17 @@ const (
 	// answer by refusing new claims, never by unbounded growth.
 	catchupRequestTTL = 30 * time.Second
 
+	// stuckRoundThreshold is the view-change round count past which a height that has
+	// spun with NO POL and is NOT finalized is treated as the "fleet passed me"
+	// liveness-stall signature — the one-lagging-validator freeze. A healthy split
+	// re-converges in a handful of rounds (round-skip + POL), so ≥8 fruitless rounds
+	// means the OTHER validators finalized this height and will not re-vote it: no POL
+	// can ever form here. At that point the node stops waiting for a quorum that will
+	// never come and pulls the accepted block + its α-of-K cert directly
+	// (Runtime.requestCertCatchup → AcceptCatchupBlock). Same value as the historical
+	// STUCK log threshold, now shared by the log and the self-heal trigger.
+	stuckRoundThreshold = uint32(8)
+
 	// maxBufferedVotesPerBlock caps how many votes we park for ONE missing block.
 	// One vote per validator per block is the natural ceiling, so this must be ≥ the
 	// largest supported validator set or the buffered fast-path silently drops
@@ -1626,6 +1647,46 @@ func (t *Transitive) claimCatchupLocked(missingID ids.ID) bool {
 		}
 	}
 	t.catchupRequested[missingID] = now
+	return true
+}
+
+// claimCertCatchupLocked is the HEIGHT-keyed idempotency + rate-limit gate for the
+// stuck-round cert-catch-up (Runtime.requestCertCatchup). It is the height-domain
+// twin of claimCatchupLocked: that gate keys on a MISSING block ID and suppresses a
+// fetch once the block is tracked; this gate deliberately does NOT consult tracking,
+// because the stuck-round case fetches the CERT for a block we already hold. Caller
+// holds t.mu. Returns true iff the caller should issue exactly one cert-fetch for
+// `height` now; false when the catchup seam is unwired, the height is already
+// finalized (reaped), throttled within catchupCooldown, or the map is saturated with
+// active entries (fail-closed, same hard cap as catchupRequested).
+func (t *Transitive) claimCertCatchupLocked(height uint64) bool {
+	if t.catchup == nil {
+		return false
+	}
+	// Already decided ⇒ never fetch again; reclaim any throttle entry (layer 1).
+	if fh, set := t.consensus.GetFinalizedHeight(); set && height <= fh {
+		delete(t.certCatchupRequested, height)
+		return false
+	}
+	now := time.Now()
+	if last, ok := t.certCatchupRequested[height]; ok && now.Sub(last) < catchupCooldown {
+		return false // throttled — one cert-fetch per stuck height per cooldown
+	}
+	// HARD bound (layer 2): only when at the cap and inserting a NEW key. Reap entries
+	// at/below the finalized floor (a decided height is never fetched again), then, if
+	// still full, fail closed. The map can never exceed maxCatchupRequested.
+	if _, existing := t.certCatchupRequested[height]; !existing && len(t.certCatchupRequested) >= maxCatchupRequested {
+		fh, _ := t.consensus.GetFinalizedHeight()
+		for h := range t.certCatchupRequested {
+			if h <= fh {
+				delete(t.certCatchupRequested, h)
+			}
+		}
+		if len(t.certCatchupRequested) >= maxCatchupRequested {
+			return false
+		}
+	}
+	t.certCatchupRequested[height] = now
 	return true
 }
 
@@ -3273,6 +3334,27 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			continue
 		}
 
+		// PROPOSAL-IDENTITY STABILITY: the VM (via proposervm off a stale parent, or a
+		// mempool mutation) may re-wrap this height into a DIFFERENT envelope ID on every
+		// build tick. The exact-ID dedup above misses that — so each rebuild would add a
+		// fresh SIBLING at the same (parent,height), splitting votes across candidates so
+		// none ever reaches α (the mainnet 1082880 freeze). Consensus owns proposal
+		// identity: once we have our OWN UNDECIDED candidate at this parent+height, keep
+		// it. Drop the re-wrapped sibling and re-solicit the EXISTING candidate's votes
+		// instead. Never manufactures a vote or changes WHICH block finalizes (still the
+		// α-of-K cert) — a pure liveness stabilizer. A NEW parent/height falls through to
+		// build normally; a decided height is finalized and pruned so it won't match.
+		if existing := t.ownUndecidedCandidateLocked(vmBlock.ParentID(), vmBlock.Height()); existing != nil {
+			reSolicit := t.proposer != nil && t.consensus.K() > 1
+			reqBlockID, reqBlockData := existing.ConsensusBlock.id, existing.ConsensusBlock.data
+			t.mu.Unlock()
+			if reSolicit {
+				t.proposer.RequestVotes(ctx, VoteRequest{BlockID: reqBlockID, BlockData: reqBlockData})
+			}
+			t.mu.Lock()
+			continue
+		}
+
 		consensusBlock := &Block{
 			id:           vmBlock.ID(),
 			parentID:     vmBlock.ParentID(),
@@ -3398,6 +3480,36 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			t.finalizeOwnProposal(ctx, blockID)
 		}
 		t.mu.Lock()
+	}
+	return nil
+}
+
+// PROPOSAL-IDENTITY STABILITY.
+// ProposerVM may return a fresh envelope/block ID when rebuilding at the SAME parent
+// and height (off a stale parent, or on any mempool mutation). Consensus must not let
+// mempool/build churn create unbounded own siblings that split votes. The invariant:
+// for a fixed OWN proposal at (parentID, height), keep ONE undecided candidate stable
+// until it DECIDES, the PARENT changes, the HEIGHT changes, the VIEW/SLOT changes, the
+// candidate is INVALIDATED, or explicit ABANDONMENT occurs — nothing else (and never a
+// mempool change alone) may replace it. Finality still requires the normal α/weighted
+// cert; this only prevents identity churn from defeating vote accumulation.
+//
+// ownUndecidedCandidateLocked returns this node's OWN, still-UNDECIDED proposal at
+// (parentID, height), or nil if none. buildBlocksLocked calls it so a re-wrapped
+// rebuild is collapsed onto the FIRST candidate we already proposed there (re-solicit
+// ITS votes) instead of adding a sibling — votes accumulate on ONE block ID to α
+// instead of scattering (the 1082880 no-cert freeze). It never returns a decided block
+// (those are finalized+pruned) or a gossiped (non-own) one, so it can only stabilize
+// OUR liveness, never change WHICH block finalizes. Callers hold t.mu.
+func (t *Transitive) ownUndecidedCandidateLocked(parentID ids.ID, height uint64) *PendingBlock {
+	for _, pb := range t.pendingBlocks {
+		if pb == nil || pb.ConsensusBlock == nil {
+			continue
+		}
+		if pb.IsOwnProposal && !pb.Decided &&
+			pb.ConsensusBlock.height == height && pb.ConsensusBlock.parentID == parentID {
+			return pb
+		}
 	}
 	return nil
 }
