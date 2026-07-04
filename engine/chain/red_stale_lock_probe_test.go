@@ -1,29 +1,28 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// red_stale_lock_probe_test.go — RED adversarial probes against the SURVIVING stale-lock
-// migration (lock_migration.go: planLockMigration / migrateStaleLocksAboveFloorLocked, wired
-// by the node as MigrateStaleLocks behind LUX_CONSENSUS_MIGRATE_STALE_LOCKS). Blue's earlier
-// duplicate stale_lock.go was removed during the session; these probes target what actually
-// runs. They do NOT modify any non-test file. Reuses helpers from lock_migration_test.go
-// (runMigrate, mapResolver, committedAt) and reconcile_test.go (seedPhantomEngine).
+// red_stale_lock_probe_test.go — RED adversarial probes against the stale-lock migration
+// (lock_migration.go: planLockMigration / migrateStaleLocksAboveFloorLocked, wired by the node
+// as MigrateStaleLocks behind LUX_CONSENSUS_MIGRATE_STALE_LOCKS=apply:<floor>). Originally these
+// probes PROVED red's findings R1/R2/R4; after the fixes landed they were inverted to PIN the
+// fixed behavior. Reuses helpers from lock_migration_test.go (runMigrate, mapResolver,
+// committedAt) and reconcile_test.go (seedPhantomEngine).
 //
-//   R1 — PRUNE resets the height to UNLOCKED@round0, discarding the v3 round-scoped lock the
-//        ViewChange safety proof (Tendermint 2α−n>f) depends on; CANONICALIZE (VM-resolver
-//        path) keeps it. Drives two rollout requirements: InspectLocks must show canonicalize
-//        (VM store resolves) before apply, and apply MUST be a ONE-SHOT (env unset after).
-//   R4 — the migration rewrites committedSlot/lockRounds but does NOT invalidate a cached
-//        t.views entry. Correct ONLY under the boot-before-Start ordering (views empty). A
-//        runtime invocation of the public MigrateStaleLocks leaves a stale view locked on the
-//        old id. Blue's removed stale_lock.go deleted the view on migrate; this path lost that.
-//   R2 — the wired certAt guard consults only in-session t.views, which is EMPTY at boot, so it
-//        is a no-op exactly when the migration runs (redundant with the floor invariant S1, but
-//        the comment overstates it).
+//   R1 — prune discards the round-scoped lock (safety-relevant in NORMAL crash-restart, fine for
+//        the incident where the wrapper bytes are gone) → apply is operator-targeted
+//        (apply:<floor>) and SELF-DISARMS when the live floor moves (TestRedStaleLock_SelfDisarm).
+//   R4 — the migration now DELETES the cached t.views entry for every migrated height, so a
+//        runtime invocation re-seeds from the rewritten binding (TestRedStaleLock_MigrationLeavesStaleView).
+//   R2 — certAt now consults DURABLE finality (the consensus ledger), engaging exactly at the
+//        boot invocation point where views is empty (TestRedStaleLock_BootCertGuardVacuous).
+//   R3 — vmCanonicalResolver height-binds resolution (TestRedStaleLock_ResolverHeightGuard).
 
 package chain
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/luxfi/ids"
 )
@@ -92,9 +91,10 @@ func TestRedStaleLock_PruneUnlocksVsCanonicalizeKeepsLock(t *testing.T) {
 	})
 }
 
-// TestRedStaleLock_MigrationLeavesStaleView shows the surviving migration does not invalidate a
-// cached view — correct only under boot-before-Start (views empty). A runtime invocation of the
-// public MigrateStaleLocks would leave the round machine locked on the pre-migration id.
+// TestRedStaleLock_MigrationLeavesStaleView pins the R4 FIX: the migration must invalidate a
+// cached view for every migrated height, so a RUNTIME invocation of the public MigrateStaleLocks
+// (views non-empty) re-seeds the round machine from the REWRITTEN binding instead of leaving it
+// locked on the pre-migration id (the re-freeze red originally proved here).
 func TestRedStaleLock_MigrationLeavesStaleView(t *testing.T) {
 	const floor = uint64(1082879)
 	const H = floor + 1
@@ -104,8 +104,12 @@ func TestRedStaleLock_MigrationLeavesStaleView(t *testing.T) {
 
 	// A view already exists at H (models a RUNTIME invocation — NOT the boot-before-Start path).
 	e.slotMu.Lock()
-	_ = e.viewForLocked(H, 4, 5)
+	pre := e.viewForLocked(H, 4, 5)
+	preBlock := pre.lockBlock
 	e.slotMu.Unlock()
+	if preBlock != outerA {
+		t.Fatalf("precondition: cached view must lock the stale outer %s, got %s", outerA, preBlock)
+	}
 
 	rep := runMigrate(t, e, mapResolver{outerA: innerI, innerI: innerI}, nil, nil)
 	if rep.Entries[0].Kind != lockCanonicalize {
@@ -114,21 +118,26 @@ func TestRedStaleLock_MigrationLeavesStaleView(t *testing.T) {
 	if got, _ := committedAt(e, H); got != innerI {
 		t.Fatalf("binding must be rewritten to inner I, got %s", got)
 	}
-	// The CACHED view still targets the STALE outer id — the migration did not invalidate it.
+	// R4 FIX: the migration dropped the cached view; the next viewForLocked re-seeds from the
+	// REWRITTEN binding — locked on inner I with the round preserved.
 	e.slotMu.Lock()
+	_, cached := e.views[H]
 	v := e.viewForLocked(H, 4, 5)
-	staleBlock := v.lockBlock
+	locked, round, block := v.haveLocked, v.lockRound, v.lockBlock
 	e.slotMu.Unlock()
-	if staleBlock != outerA {
-		t.Fatalf("expected the cached view to RETAIN the stale outer %s (bug), got %s", outerA, staleBlock)
+	if cached {
+		t.Fatalf("R4: the migration must DELETE the cached view at %d (it still holds the pre-migration lock)", H)
 	}
-	t.Logf("CONFIRMED R4: after canonicalize, committedSlot=%s (inner) but the CACHED roundView still locks "+
-		"the stale outer %s. Correct only when views are empty (boot-before-Start). The public MigrateStaleLocks "+
-		"does not enforce that ordering, and unlike the removed stale_lock.go it does not delete t.views on migrate.", innerI, outerA)
+	if !locked || round != 8450 || block != innerI {
+		t.Fatalf("re-seeded view must lock inner I@8450, got locked=%v round=%d block=%s", locked, round, block)
+	}
+	t.Logf("FIXED R4: canonicalize dropped the cached view; re-seed locks inner %s@8450 — a runtime "+
+		"MigrateStaleLocks can no longer re-freeze on a stale cached view.", innerI)
 }
 
-// TestRedStaleLock_BootCertGuardVacuous pins that the wired certAt closure (t.views based) is
-// false at boot because views is empty — so the S4/cert gate cannot engage when the migration runs.
+// TestRedStaleLock_BootCertGuardVacuous pins the R2 FIX: certAt consults DURABLE finality (the
+// consensus finality ledger), not just the in-session views map that is empty at the boot
+// invocation point — so the S4/cert gate now engages exactly when the migration runs.
 func TestRedStaleLock_BootCertGuardVacuous(t *testing.T) {
 	const floor = uint64(1082879)
 	const H = floor + 1
@@ -137,12 +146,90 @@ func TestRedStaleLock_BootCertGuardVacuous(t *testing.T) {
 		map[SlotKey]ids.ID{{Height: H}: outerA}, map[uint64]uint32{H: 8450})
 
 	rt := &Runtime{Transitive: e}
+
+	// (a) No durable finality, empty views → false (H > floor is genuinely unfinalized).
 	_, certAt := rt.engineCanonicalContext()
 	if certAt(H) {
-		t.Fatal("precondition: with an empty views map the wired certAt must be false")
+		t.Fatal("with no durable finality and empty views, certAt must be false")
 	}
-	t.Logf("CONFIRMED R2: the wired certAt(%d)=false at boot (views empty). The stale-lock cert gate consults "+
-		"only in-session t.views, never durable finality — a no-op exactly when MigrateStaleLocks runs. Harmless "+
-		"only because H>decidedFloor already implies unfinalized (S1); the fix is to snapshot finalized heights "+
-		"under the t.mu.RLock engineCanonicalContext already holds.", H)
+
+	// (b) R2 FIX: a CERTIFIED ledger entry at H — the durable α-of-K finalization record — must
+	// flip certAt(H) true even with the views map empty (the boot invocation point), forcing the
+	// planner to STOP rather than disturb a finalized height.
+	e.consensus = NewChainConsensus(5, 4, 1)
+	e.consensus.ledger = seedLedger(outerA, outerA, H)
+	_, certAt = rt.engineCanonicalContext()
+	if !certAt(H) {
+		t.Fatalf("R2: certAt(%d) must consult the DURABLE finality ledger (views empty at boot)", H)
+	}
+	rep := runMigrate(t, e, mapResolver{}, certAt, nil)
+	if !rep.Stop {
+		t.Fatal("R2: a durable cert at the locked height must STOP the migration (no write)")
+	}
+	t.Logf("FIXED R2: certAt(%d)=true from the durable finality ledger with empty views; migration STOPs. "+
+		"The cert gate is a real boot-time protection, not vacuous.", H)
+}
+
+// TestRedStaleLock_SelfDisarm pins the R1 FIX: apply carries the operator's observed floor target;
+// a live floor that has MOVED past it (the incident is over) refuses the apply as a no-op — a
+// lingering apply env can never degrade into an every-boot prune of genuine crash locks.
+func TestRedStaleLock_SelfDisarm(t *testing.T) {
+	const floor = uint64(1082879)
+	const H = floor + 1
+	outerGone := ids.GenerateTestID()
+	e, _, path := seedPhantomEngine(t, floor,
+		map[SlotKey]ids.ID{{Height: H}: outerGone}, map[uint64]uint32{H: 8450})
+
+	rt := &Runtime{Transitive: e}
+	// Operator armed apply:1082878 (a STALE target — the live floor is 1082879).
+	rep, err := rt.MigrateStaleLocks(context.Background(), floor-1)
+	if err != nil {
+		t.Fatalf("MigrateStaleLocks: %v", err)
+	}
+	if !rep.Skipped || rep.Changed {
+		t.Fatalf("R1: floor mismatch must self-disarm (Skipped, no write), got skipped=%v changed=%v", rep.Skipped, rep.Changed)
+	}
+	// Nothing written: the durable binding + lock survive untouched.
+	store, err := OpenVoteGuard(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if got := store.Snapshot()[SlotKey{Height: H}]; got != outerGone {
+		t.Fatalf("self-disarm must write NOTHING: durable lock@%d = %s, want untouched %s", H, got, outerGone)
+	}
+	if ft := store.FinalizedThrough(); ft != floor {
+		t.Fatalf("self-disarm must not move the floor: got %d, want %d", ft, floor)
+	}
+	t.Logf("FIXED R1: apply target %d ≠ live floor %d → Skipped, zero writes, floor intact. A stale "+
+		"LUX_CONSENSUS_MIGRATE_STALE_LOCKS=apply:<h> env is inert on later boots.", floor-1, floor)
+}
+
+// TestRedStaleLock_ResolverHeightGuard pins the R3 FIX: the production vmCanonicalResolver refuses
+// to resolve an id whose block lives at a DIFFERENT height than the queried lock height — a
+// cross-height id can never rewrite a slot binding to another height's canonical.
+func TestRedStaleLock_ResolverHeightGuard(t *testing.T) {
+	const floor = uint64(1082879)
+	const H = floor + 1
+	outerA, innerI := ids.GenerateTestID(), ids.GenerateTestID()
+	e, _, _ := seedPhantomEngine(t, floor,
+		map[SlotKey]ids.ID{{Height: H}: outerA}, map[uint64]uint32{H: 8450})
+
+	rt := &Runtime{Transitive: e}
+	resolver := vmCanonicalResolver{ctx: context.Background(), rt: rt}
+
+	// Track outerA's block at the WRONG height (H+5): the resolver must refuse it for H.
+	e.mu.Lock()
+	e.pendingBlocks[outerA] = &PendingBlock{
+		ConsensusBlock: &Block{id: outerA, height: H + 5, canonicalID: innerI},
+		ProposedAt:     time.Now(),
+	}
+	e.mu.Unlock()
+	if canon, ok := resolver.CanonicalOf(outerA, H); ok {
+		t.Fatalf("R3: resolver must refuse a block at height %d when asked for height %d (got %s)", H+5, H, canon)
+	}
+	// Same block queried at ITS OWN height resolves fine.
+	if canon, ok := resolver.CanonicalOf(outerA, H+5); !ok || canon != innerI {
+		t.Fatalf("resolver must resolve at the block's own height, got %s ok=%v", canon, ok)
+	}
+	t.Logf("FIXED R3: vmCanonicalResolver height-binds resolution — cross-height ids are unresolvable.")
 }
