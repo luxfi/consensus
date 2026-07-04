@@ -1040,9 +1040,20 @@ func (rt *Runtime) stepViewChange(ctx context.Context, height uint64, winnerID, 
 			log.Uint64("height", height), log.Uint32("round", v.round),
 			log.Bool("hasPOL", hasPOL), log.Bool("locked", v.haveLocked), log.Bool("finalized", v.finalized))
 		if v.round >= 8 && !hasPOL && !v.finalized {
+			// LOCK-SILENCE DISAMBIGUATION (the trace-table columns, on the line that already fires
+			// on a stuck fleet): when a node is locked on a value that is NOT the deterministic
+			// winner canonical (lockIsStaleAlias=true), it is prevoting its lock — not the winner —
+			// so no POL for the winner can form. This is the durable stale-outer-wrapper split-lock
+			// signature (the pre-fix canonical=outer lock that survived the canonical=inner roll);
+			// the fix is the stale-lock migration (lock_migration.go), not a timer change.
 			rt.config.Logger.Warn("vc height STUCK: many rounds, no POL (liveness-stall signature)",
 				log.Uint64("height", height), log.Uint32("round", v.round),
-				log.Stringer("winner", winnerCanon), log.Int("alpha", alpha), log.Int("n", n))
+				log.Stringer("winner", winnerCanon),
+				log.Bool("locked", v.haveLocked), log.Stringer("lockBlock", v.lockBlock),
+				log.Uint32("lockRound", v.lockRound),
+				log.Stringer("prevoteTarget", v.prevoteTarget(winnerCanon)),
+				log.Bool("lockIsStaleAlias", v.haveLocked && v.lockBlock != winnerCanon),
+				log.Int("alpha", alpha), log.Int("n", n))
 		}
 	}
 	var prevoteCanon, precommitCanon ids.ID
@@ -1191,6 +1202,13 @@ func (rt *Runtime) HandleIncomingPrevote(voteBytes []byte) bool {
 	v.observePrevote(nodeID, round, canon)
 	t.storePrevoteSigLocked(nodeID, height, round, canon, sig)
 	t.slotMu.Unlock()
+	// TRACE (Debug, free on the hot path under a Noop/above-Debug logger): the "prevotes received"
+	// column — a verified peer prevote was counted into the height's round tally.
+	if !rt.config.Logger.IsZero() {
+		rt.config.Logger.Debug("vc prevote received",
+			log.Stringer("from", nodeID), log.Uint64("height", height),
+			log.Uint32("round", round), log.Stringer("canon", canon))
+	}
 	return true
 }
 

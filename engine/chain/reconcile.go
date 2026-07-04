@@ -160,9 +160,9 @@ func (t *Transitive) reconcilePhantomFloor(target, localVMHeight uint64) (uint64
 	}
 	abandonedTo := t.decidedFloor
 
-	// Build the pruned binding / lock-round sets: keep the committed window (height <=
-	// safeFloor), drop the phantom range (height > safeFloor). Copies, so the live maps are
-	// swapped in ONLY after the durable write commits.
+	// Build the pruned binding / lock-round / recovered-lock sets: keep the committed window
+	// (height <= safeFloor), drop the phantom range (height > safeFloor). Copies, so the live
+	// maps are swapped in ONLY after the durable write commits (in writeReconciledStateLocked).
 	prunedBindings := make(map[SlotKey]ids.ID, len(t.committedSlot))
 	for k, v := range t.committedSlot {
 		if k.Height <= safeFloor {
@@ -175,26 +175,19 @@ func (t *Transitive) reconcilePhantomFloor(target, localVMHeight uint64) (uint64
 			prunedLocks[h] = r
 		}
 	}
-
-	// FAIL-CLOSED: durably rewrite the LOWERED floor + pruned bindings FIRST via the one store
-	// writer permitted to decrease the floor. On failure, mutate NOTHING in memory — the node
-	// stays in the (safe, un-recovered) phantom state and the operator retries.
-	if t.voteGuard != nil {
-		if err := t.voteGuard.Reconcile(prunedBindings, prunedLocks, safeFloor); err != nil {
-			return t.decidedFloor, fmt.Errorf(
-				"reconcile: durable floor write failed (fail-closed, nothing changed): %w", err)
-		}
-	}
-
-	// Durable write committed — swap the in-memory state to match.
-	t.committedSlot = prunedBindings
-	t.lockRounds = prunedLocks
+	prunedRecovered := make(map[uint64]struct{}, len(t.recoveredLocks))
 	for h := range t.recoveredLocks {
-		if h > safeFloor {
-			delete(t.recoveredLocks, h)
+		if h <= safeFloor {
+			prunedRecovered[h] = struct{}{}
 		}
 	}
-	t.decidedFloor = safeFloor
+
+	// FAIL-CLOSED: durably rewrite the LOWERED floor + pruned bindings FIRST, then swap memory.
+	// On failure, mutate NOTHING in memory — the node stays in the (safe, un-recovered) phantom
+	// state and the operator retries.
+	if err := t.writeReconciledStateLocked(prunedBindings, prunedLocks, prunedRecovered, safeFloor); err != nil {
+		return t.decidedFloor, err
+	}
 
 	t.log.Warn("PHANTOM-RECONCILE: lowered durable decided-floor — abandoned internal-only "+
 		"finalizations that no VM applied and no observer saw (heights re-finalizable fresh "+
@@ -205,4 +198,27 @@ func (t *Transitive) reconcilePhantomFloor(target, localVMHeight uint64) (uint64
 		"localVM", localVMHeight,
 		"abandonedRange", fmt.Sprintf("(%d,%d]", safeFloor, abandonedTo))
 	return safeFloor, nil
+}
+
+// writeReconciledStateLocked is the SINGLE fail-closed durable-rewrite + in-memory-swap the
+// vote-guard recoveries share (DRY): the phantom-floor reconcile (above) and the stale-lock
+// migration (lock_migration.go). It durably rewrites the vote-guard to EXACTLY the given
+// bindings + lock rounds + floor via the one atomic writer (VoteGuardStore.Reconcile), and only
+// after that write commits does it swap the in-memory committedSlot / lockRounds / recoveredLocks
+// and set decidedFloor. A store-write failure returns an error and mutates NOTHING in memory, so
+// the node stays exactly as it was (fail-closed). Caller holds slotMu; the maps become the live
+// maps (the caller passes fresh copies it no longer mutates). newFloor is written verbatim (no
+// monotonic clamp — it is the caller's responsibility to never RAISE the floor through this path;
+// both callers pass a floor <= the current decidedFloor).
+func (t *Transitive) writeReconciledStateLocked(committed map[SlotKey]ids.ID, lockRounds map[uint64]uint32, recovered map[uint64]struct{}, newFloor uint64) error {
+	if t.voteGuard != nil {
+		if err := t.voteGuard.Reconcile(committed, lockRounds, newFloor); err != nil {
+			return fmt.Errorf("reconcile: durable vote-guard write failed (fail-closed, nothing changed): %w", err)
+		}
+	}
+	t.committedSlot = committed
+	t.lockRounds = lockRounds
+	t.recoveredLocks = recovered
+	t.decidedFloor = newFloor
+	return nil
 }
