@@ -860,18 +860,39 @@ func (rt *Runtime) emitConvergedVote(_ context.Context, height uint64, parentID 
 	if t.voteSigner == nil || t.voteVerifier == nil {
 		return // single-validator / no vote crypto: finality via the 1-of-1 path, no gossip
 	}
-	if t.hasSignedHeight(height) {
-		return // already cast our ONE vote at this height — never re-emit/re-broadcast
-	}
+	// TARGET SELECTION. Normal path: the deterministically-converged winner at this fork
+	// slot. CLONE-RECOVERY path (v4 vote-guard fallback): if we have ALREADY bound our
+	// signature at this height, our target is the DURABLE committedSlot[H] canonical, and we
+	// re-sign it IFF our own vote is missing from its cert set. That is the frozen-clone
+	// artifact — after a mass-restart from a mid-vote snapshot, committedSlot[H] is re-seeded
+	// but certVotes is EMPTY (v1/v2/v3 persisted the binding, not the signature), so the old
+	// unconditional "already signed → return" suppressed our vote forever and the height
+	// never reached α-of-K (the wedge). Re-sign the DURABLE binding ONLY (never a fresh
+	// winner — HARD RULE); reserveSlotForSign below admits the idempotent same-canonical
+	// re-sign and REFUSES any conflicting sibling, so this can never double-finalize.
+	bound, alreadySigned := t.committedCanonical(height)
 
 	t.mu.Lock()
-	winnerID, _, ok := t.convergedWinnerAtHeightLocked(height, parentID, false) // legacy: exclude abandoned (unchanged)
-	if !ok {
-		t.mu.Unlock()
-		return
+	var winnerID ids.ID
+	if alreadySigned {
+		winnerID = bound
+	} else {
+		w, _, ok := t.convergedWinnerAtHeightLocked(height, parentID, false) // legacy: exclude abandoned (unchanged)
+		if !ok {
+			t.mu.Unlock()
+			return
+		}
+		winnerID = w
 	}
 	pending := t.pendingBlocks[winnerID]
 	if pending == nil || pending.Decided {
+		t.mu.Unlock()
+		return
+	}
+	// Suppress the normal re-emit: if we already signed AND our vote is present in the cert
+	// set, there is nothing to do. Only a MISSING self-vote at an already-bound height (the
+	// clone artifact) falls through to re-contribute it.
+	if _, selfVoted := pending.certVotes[t.nodeID]; alreadySigned && selfVoted {
 		t.mu.Unlock()
 		return
 	}
