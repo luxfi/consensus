@@ -815,7 +815,20 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	// and converge. Build hint only (Preference is not a finality decision); best effort.
 	if rt.config.VM != nil {
 		if tip := rt.Transitive.PreferredBuildTip(); tip != ids.Empty {
-			_ = rt.config.VM.SetPreference(ctx, tip)
+			// SINGLE-STORE INVARIANT GUARD (defect #2 — ava parity). PreferredBuildTip is a
+			// consensus-DAG tip (the deepest VERIFIED block). Steer the VM's build preference
+			// to it ONLY if the VM actually HOLDS it. A validator that fell behind has a DAG
+			// tip ABOVE its own frontier; steering the proposervm to an unheld id poisons its
+			// build preference so BuildBlock spams "failed to fetch preferred block" forever
+			// (the luxd-1 wedge — see node/vms/proposervm/vm.go SetPreference, defect #1).
+			// Ava never steers to an unheld block: it only calls SetPreference with a block
+			// Consensus already Verified-into-VM. Match that invariant here — check the VM
+			// holds the tip; otherwise leave it building on its current held preference (which
+			// is at worst lastAccepted) and let the catch-up path (#3/#5) pull the gap. A later
+			// receipt re-runs this steer once the tip is locally held.
+			if _, err := rt.config.VM.GetBlock(ctx, tip); err == nil {
+				_ = rt.config.VM.SetPreference(ctx, tip)
+			}
 		}
 	}
 

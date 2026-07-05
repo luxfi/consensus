@@ -536,6 +536,15 @@ func newSimNet(t *testing.T, n int, params config.Parameters) *simNet {
 			VoteSigner:       vs.signerFor(i),
 			StakeSource:      vs,
 			ValidatorSetRoot: nil,
+			// Catchup wires the engine's runtime auto-recovery seam (requestCatchup →
+			// RequestAncestors). Without it (nil) a healed/behind node can never re-fetch the
+			// gap — the harness could only prove permanent-down liveness, never REJOIN. The
+			// bus-backed transport models the FIXED node layer (peer-select #3 always reaches a
+			// serving peer; have-block-but-unfinalized #5 triggers the fetch; #4 contiguity
+			// applied oldest-first) by serving the requester the finalized gap WITH its real
+			// certs, so re-convergence is EMERGENT (the node's own engine drives the fetch).
+			// Inert for the existing permanent-down tests (a down node never calls requestCatchup).
+			Catchup: &busCatchup{net: net, selfIdx: i},
 		}
 		rt := NewRuntime(cfg)
 		if err := rt.Start(context.Background(), true); err != nil {
