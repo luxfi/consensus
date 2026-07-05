@@ -2217,6 +2217,19 @@ func (t *Transitive) hasSignedHeight(height uint64) bool {
 	return ok
 }
 
+// committedCanonical returns the DURABLE canonical this node bound at height (the
+// vote-guard binding), if any. The clone-recovery re-sign fallback (emitConvergedVote)
+// uses it to target the durable binding ONLY — never a freshly-computed winner — so a
+// mass-restarted node re-contributes its vote for exactly the block it already committed
+// to, and reserveSlotForSign's idempotent-true(bound==canonical) admits it while its
+// conflicting-sibling refusal keeps it equivocation-safe. Self-locking (slotMu).
+func (t *Transitive) committedCanonical(height uint64) (ids.ID, bool) {
+	t.slotMu.Lock()
+	c, ok := t.committedSlot[SlotKey{Height: height}]
+	t.slotMu.Unlock()
+	return c, ok
+}
+
 // pruneCommittedSlotsBelow drops equivocation-guard entries STRICTLY BELOW a finalized
 // height — retaining the just-finalized tip's slot, exactly as avalanchego keeps the last
 // accepted block in ts.blocks. Heights strictly below the tip are guaranteed unsignable by
@@ -2524,7 +2537,17 @@ func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 			continue // decided height — permanently unsignable, never offer it
 		}
 		if _, ok := signed[cb.height]; ok {
-			continue // already cast our one vote at this height
+			// CLONE-RECOVERY re-offer (v4 vote-guard). Normally an already-bound height is
+			// skipped (one vote per height). But after a mass-restart from a mid-vote snapshot,
+			// committedSlot[H] is re-seeded while certVotes is EMPTY — our self-vote is MISSING,
+			// so the height can never reach α-of-K unless we re-contribute it. Re-offer the slot
+			// ONLY when our self-vote is absent here; emitConvergedVote then re-signs the DURABLE
+			// committedSlot[H] canonical (never a fresh winner) and reserveSlotForSign refuses any
+			// conflicting sibling, so this is equivocation-safe.
+			if _, selfVoted := pb.certVotes[t.nodeID]; selfVoted {
+				continue // our vote is already in the cert set — normal one-per-height suppression
+			}
+			// fall through: re-offer this bound-but-unvoted slot for the re-sign fallback
 		}
 		s := votableSlot{height: cb.height, parentID: cb.parentID}
 		if t1, ok := latest[s]; !ok || pb.ProposedAt.After(t1) {
