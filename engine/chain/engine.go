@@ -2230,6 +2230,55 @@ func (t *Transitive) committedCanonical(height uint64) (ids.ID, bool) {
 	return c, ok
 }
 
+// pendingByCanonicalLocked resolves an INNER canonical execution id to the tracked,
+// undecided OUTER pending block that carries it — the inner→outer lookup the durable
+// vote-guard clone-recovery needs (FIX #3). pendingBlocks is keyed by the OUTER
+// proposervm envelope id, but committedSlot / slotCanonical store the INNER canonical id;
+// a proposervm-wrapped block has inner != outer, so a direct pendingBlocks[canon] MISSES
+// (it hit only on bare blocks where inner==outer — the v4 fallback's silent no-op on real
+// wrappers). Returns the lowest-outer-id wrapper of that canonical (deterministic across
+// equal-canonical aliases) and its outer id, or (nil, Empty) when no live wrapper is
+// tracked. Caller holds t.mu.
+func (t *Transitive) pendingByCanonicalLocked(canon ids.ID) (*PendingBlock, ids.ID) {
+	if canon == ids.Empty {
+		return nil, ids.Empty
+	}
+	var best *PendingBlock
+	var bestID ids.ID
+	for id, pb := range t.pendingBlocks {
+		if pb.ConsensusBlock == nil || pb.Decided {
+			continue
+		}
+		if pb.ConsensusBlock.canonicalRep() != canon {
+			continue
+		}
+		if best == nil || id.Compare(bestID) < 0 {
+			best, bestID = pb, id
+		}
+	}
+	return best, bestID
+}
+
+// selfVotedForCanonicalLocked reports whether this node's signed accept for the given
+// canonical execution identity is already collected in ANY tracked wrapper of it — the
+// canonical-aggregated view (FIX #3) of "have I voted at this height". A wrapped block's
+// vote may live in a DIFFERENT outer wrapper than the one being inspected (votes bind the
+// canonical id; the re-sign resolves inner→outer to one wrapper), so a per-wrapper
+// certVotes check would busy-replay a height already voted under a sibling envelope.
+// Caller holds t.mu.
+func (t *Transitive) selfVotedForCanonicalLocked(canon ids.ID) bool {
+	for _, pb := range t.pendingBlocks {
+		cb := pb.ConsensusBlock
+		if cb == nil || cb.canonicalRep() != canon {
+			continue
+		}
+		if _, ok := pb.certVotes[t.nodeID]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // pruneCommittedSlotsBelow drops equivocation-guard entries STRICTLY BELOW a finalized
 // height — retaining the just-finalized tip's slot, exactly as avalanchego keeps the last
 // accepted block in ts.blocks. Heights strictly below the tip are guaranteed unsignable by
@@ -2544,7 +2593,12 @@ func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 			// ONLY when our self-vote is absent here; emitConvergedVote then re-signs the DURABLE
 			// committedSlot[H] canonical (never a fresh winner) and reserveSlotForSign refuses any
 			// conflicting sibling, so this is equivocation-safe.
-			if _, selfVoted := pb.certVotes[t.nodeID]; selfVoted {
+			// CANONICAL-aggregated self-vote check (FIX #3): our vote for this height may be
+			// recorded in a DIFFERENT wrapper of the same inner block than `pb` (votes bind the
+			// canonical id; the re-sign resolves inner→outer to one wrapper), so inspect ANY
+			// wrapper of cb's canonical — a per-`pb` check would busy-replay a height already
+			// voted under a sibling envelope.
+			if t.selfVotedForCanonicalLocked(cb.canonicalRep()) {
 				continue // our vote is already in the cert set — normal one-per-height suppression
 			}
 			// fall through: re-offer this bound-but-unvoted slot for the re-sign fallback
@@ -2784,10 +2838,43 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	// the SAME P-chain height the position's set-root commits to (MEDIUM-1).
 	epochHeight := t.epochHeightLocked(pending)
 
+	// FIX #3 (cert termination — per-CANONICAL vote aggregation). A vote is signed over the
+	// CANONICAL execution identity, NOT the outer proposervm envelope
+	// (canonicalVoteMessageFor): every wrapper of one inner block produces byte-identical
+	// vote messages. But pendingBlocks is OUTER-keyed, so α validators that executed the
+	// SAME inner block under DIFFERENT wrappers deposit their signed votes into DIFFERENT
+	// pending blocks — and collecting only THIS wrapper's certVotes splits the quorum, so no
+	// cert assembles and the height stalls forever (the block-288 wrapper-split; the SIGNING
+	// aliases correctly but the AGGREGATION did not). Collect the signed votes from ALL
+	// tracked sibling wrappers that share this winner's canonical identity and verify each
+	// against the one canonical `message`. De-dup by NodeID HERE (a node that voted on two
+	// wrappers signed the SAME bytes; AssembleQuorumCert REJECTS a duplicate NodeID), and
+	// prefer this wrapper's own vote (collected first). This only ever ADDS votes, so the
+	// signature verify + the ⅔-by-stake VerifyWeighted below remain the sole finality
+	// authority — a liveness completion, never a safety relaxation.
 	verified := make([]SignedVote, 0, len(pending.certVotes))
-	for _, sv := range pending.certVotes {
-		if t.voteVerifier.VerifyVote(sv.NodeID, message, sv.Signature, epochHeight) {
-			verified = append(verified, sv)
+	seen := make(map[ids.NodeID]struct{}, len(pending.certVotes))
+	collectVerified := func(votes map[ids.NodeID]SignedVote) {
+		for nodeID, sv := range votes {
+			if _, dup := seen[nodeID]; dup {
+				continue
+			}
+			if t.voteVerifier.VerifyVote(sv.NodeID, message, sv.Signature, epochHeight) {
+				seen[nodeID] = struct{}{}
+				verified = append(verified, sv)
+			}
+		}
+	}
+	collectVerified(pending.certVotes)
+	if pending.ConsensusBlock != nil {
+		canon := pending.ConsensusBlock.canonicalRep()
+		for _, sib := range t.pendingBlocks {
+			if sib == pending || sib.ConsensusBlock == nil {
+				continue
+			}
+			if sib.ConsensusBlock.canonicalRep() == canon {
+				collectVerified(sib.certVotes)
+			}
 		}
 	}
 	if uint32(len(verified)) < uint32(alpha) {
@@ -2849,6 +2936,14 @@ func (t *Transitive) TryAccept(ctx context.Context, blockID ids.ID) error {
 	// vs multi-validator finality path, so a chain that launched single-validator does not keep
 	// finalizing unilaterally after it decentralizes (RED's 1→N fork).
 	t.reclampCommitteeLocked()
+	// K()==1 is the single-validator finality path. A multi-validator chain can no longer
+	// REACH K()==1 through the live-committee sizer: bftCommittee floors a presetK>1
+	// committee at the minimal BFT size (K≥4/α≥3) even when the validator count transiently
+	// reads 1 during a restart, and reclampCommitteeLocked only ever grows K. So K()==1 now
+	// implies a genuinely single-validator chain (presetK≤1: --dev, SingleValidatorParams,
+	// or a launch-single L1 whose live set really is one) — the ONLY case where self-finality
+	// is sound (no peer to fork against). The transient-K=1 self-finalization that forked
+	// luxd-0/luxd-1 at 1085013 is closed at the ROOT (the sizer), not here.
 	singleValidator := t.consensus.K() == 1
 
 	if singleValidator {
