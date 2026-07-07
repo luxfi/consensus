@@ -178,11 +178,42 @@ type Runtime struct {
 // while staying reachable (α ≤ k). This is the one mechanism that keeps a network
 // from booting with an unsatisfiable quorum (α > live validators), which wedges
 // finality permanently: every block verifies but the α-of-K cert never assembles.
-func bftCommittee(k, count int) (newK, alpha int, clamped bool) {
-	if count <= 0 || k <= count {
-		return k, 0, false
+func bftCommittee(presetK, count int) (newK, alpha int, clamped bool) {
+	if count <= 0 || presetK <= count {
+		// No sampler (tests / --dev), or the preset committee already fits the live
+		// set: keep the hand-tuned (K, α) verbatim (clamped=false).
+		return presetK, 0, false
 	}
-	return count, bftAlpha(count), true
+	// 0 < count < presetK: fewer validators are currently resolved than the preset
+	// declares. Clamp K DOWN to the live set so an oversized preset stays finalizable
+	// (K=21→5), BUT never below the minimal Byzantine-fault-tolerant committee.
+	//
+	// SELF-FINALITY FLOOR (the 1085013 fork fix — the ROOT). validators.Manager.Count
+	// reads len(m.validators[net]), which UNDER-reports during a restart window before the
+	// P-chain has finished replaying the staker set — it transiently returns 1. The old
+	// clamp turned that transient count=1 into K=1/α=1, and a K==1 engine synthesizes a
+	// 1-of-1 finality token that BYPASSES the ⅔-by-stake gate: the lone live node
+	// self-finalized divergent blocks and forked luxd-0/luxd-1 at 1085013. Flooring K at
+	// the minimal BFT committee (K=4, α=3, f=1) means the α-of-K COUNT gate ALWAYS demands
+	// a real BFT quorum (α≥3) that a single node can never reach — so a chain whose live
+	// set is transiently (or genuinely) below the floor HALTS fail-closed (the cert never
+	// assembles) instead of self-finalizing, and reclampCommitteeLocked grows K back up
+	// toward presetK as the real validators resolve (K=4→5). The ⅔-by-stake VerifyWeighted
+	// gate remains the finality authority on top; this count floor is the INDEPENDENT
+	// defense the stake gate cannot give when an epoch set transiently resolves to a
+	// lone-node subset (100% of a 1-member set trivially clears ⅔). A genuine
+	// single-validator chain sets presetK≤1 and never enters this branch (K stays 1 → it
+	// finalizes correctly on its own accept, with no peer to fork against).
+	const minBFTCommittee = 4 // K=4/α=3: 2α−K = 2 ≥ f+1 = 2 with f = ⌊(K-1)/3⌋ = 1
+	floorK := minBFTCommittee
+	if presetK < floorK {
+		floorK = presetK // a sub-BFT preset (dev K=3) keeps its own size as the floor
+	}
+	newK = count
+	if newK < floorK {
+		newK = floorK
+	}
+	return newK, bftAlpha(newK), true
 }
 
 // bftAlpha is the BFT accept quorum (the integer α COUNT) for a committee of `count` members: the
@@ -874,17 +905,33 @@ func (rt *Runtime) emitConvergedVote(_ context.Context, height uint64, parentID 
 
 	t.mu.Lock()
 	var winnerID ids.ID
+	var pending *PendingBlock
 	if alreadySigned {
-		winnerID = bound
+		// CLONE-RECOVERY re-sign: `bound` is the DURABLE committedSlot[H] canonical — the
+		// INNER execution id (reserveSlotForSign stored slotCanonical(pos)). pendingBlocks is
+		// OUTER-keyed, so the old `pendingBlocks[bound]` MISSED for a proposervm-wrapped block
+		// (inner != outer) → pending==nil → silent no-op: the v4 fallback only ever worked on
+		// bare sim blocks (inner==outer), and on mainnet the missing self-vote was never
+		// re-contributed (the wedge). Resolve the tracked OUTER wrapper carrying that canonical
+		// and re-sign THAT — still the durable binding, so reserveSlotForSign's
+		// conflicting-sibling refusal below keeps it equivocation-safe.
+		pending, winnerID = t.pendingByCanonicalLocked(bound)
 	} else {
-		w, _, ok := t.convergedWinnerAtHeightLocked(height, parentID, false) // legacy: exclude abandoned (unchanged)
+		// includeAbandoned=TRUE (FIX #3 companion): abandonment only stops rePoll's
+		// RE-SOLICITATION (spam control) and is a PER-NODE clock decision, so excluding
+		// abandoned siblings makes different nodes select a different lowest-canonical winner →
+		// converged prevotes never align → the distributed liveness stall. Counting every live
+		// (undecided) sibling keeps the winner globally identical (matching the view-change
+		// path, which already passed true), so α converged votes land on ONE block and a single
+		// cert forms. Never manufactures a vote or bypasses the α-of-K cert — safety intact.
+		w, _, ok := t.convergedWinnerAtHeightLocked(height, parentID, true)
 		if !ok {
 			t.mu.Unlock()
 			return
 		}
 		winnerID = w
+		pending = t.pendingBlocks[winnerID]
 	}
-	pending := t.pendingBlocks[winnerID]
 	if pending == nil || pending.Decided {
 		t.mu.Unlock()
 		return
