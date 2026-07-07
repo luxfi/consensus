@@ -40,16 +40,29 @@ type guardedNet struct {
 	params     config.Parameters
 	nodes      []*simNode
 	guardPaths []string
+	// samplers, when set, wires a per-node ValidatorSampler into NewRuntime so the
+	// engine exercises the bftCommittee floor + reclampCommitteeLocked live-count paths
+	// (FIX #1). nil (the default) leaves cfg.Validators unwired — the fixed-preset
+	// behavior every pre-existing guardedNet test relies on.
+	samplers []ValidatorSampler
 }
 
 func newGuardedNet(t *testing.T, n int, params config.Parameters) *guardedNet {
+	return newGuardedNetSampled(t, n, params, nil)
+}
+
+// newGuardedNetSampled is newGuardedNet with an optional per-node ValidatorSampler
+// slice (len n, or nil to leave every node unwired). The samplers MUST exist before
+// the runtimes are built because bftCommittee reads Count() at construction.
+func newGuardedNetSampled(t *testing.T, n int, params config.Parameters, samplers []ValidatorSampler) *guardedNet {
 	t.Helper()
 	g := &guardedNet{
-		t:       t,
-		vs:      newTestValidatorSet(n),
-		bus:     newSimBus(),
-		chainID: ids.GenerateTestID(),
-		params:  params,
+		t:        t,
+		vs:       newTestValidatorSet(n),
+		bus:      newSimBus(),
+		chainID:  ids.GenerateTestID(),
+		params:   params,
+		samplers: samplers,
 	}
 	dir := t.TempDir()
 	for i := 0; i < n; i++ {
@@ -93,6 +106,9 @@ func (g *guardedNet) buildRuntime(i int, vm *simVM) *Runtime {
 		VoteSigner:   g.vs.signerFor(i),
 		StakeSource:  g.vs,
 		VoteGuard:    store,
+	}
+	if i < len(g.samplers) && g.samplers[i] != nil {
+		cfg.Validators = g.samplers[i] // exercise the floor + reclamp live-count paths
 	}
 	rt := NewRuntime(cfg)
 	if err := rt.Start(context.Background(), true); err != nil {
