@@ -38,4 +38,14 @@ var (
 	// ErrNoNonceCert signals Round2/Finalize were called without a bound
 	// Round1 (no NonceCert).
 	ErrNoNonceCert = errors.New("quasar/pulsar: no bound NonceCert (call Round1 first)")
+
+	// ErrPartyIDOutOfRange signals a partial names a PartyID that cannot
+	// belong to the configured ValidatorSetSize. Finalize rejects such a
+	// partial BEFORE any PartyID-sized bitmap allocation: pulsarlib's
+	// CanonicalSignerSet / singletonBitmap size a []byte at (PartyID/8+1),
+	// so an unbounded attacker-controlled uint32 PartyID would drive an
+	// unbounded (~512MiB from one MaxUint32) allocation — a memory-
+	// exhaustion DoS. Bounding PartyID here closes it without touching the
+	// pulsarlib CanonicalSignerSet signature.
+	ErrPartyIDOutOfRange = errors.New("quasar/pulsar: partyID out of validator set range")
 )

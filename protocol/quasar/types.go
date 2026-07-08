@@ -136,9 +136,25 @@ func (c *QuasarCert) IsPolaris() bool {
 }
 
 // Verify checks structural presence of the Quasar layers: BLS fast-path
-// + Corona (Ring-LWE) + MLDSARollup. Use VerifyWithRealKeys for
-// cryptographic verification. Returns false if any required slot is
-// empty — fast structural gate.
+// + Corona (Ring-LWE) + MLDSARollup. It verifies NO signature — a cert
+// whose legs are arbitrary non-empty garbage passes. Returns false if any
+// required slot is empty — a fast structural gate, nothing more.
+//
+// Verify MUST NEVER be the finalization / acceptance authority for a cert
+// received from an untrusted source (network, peer gossip, RPC). The
+// production authority is QuasarCert.VerifyUnderPolicy
+// (cert_policy_verify.go), which derives the mandatory leg set from the
+// chain's config.CertPolicy and cryptographically verifies every required
+// leg — a forged cert cannot satisfy it. That is the path pkg/wire's
+// quantum finality actually calls (policies.go -> VerifyUnderPolicy).
+//
+// The one sound use of this structural check in-tree is engine.go's
+// processBlock self-consistency gate (CR-10): it runs only on a cert THIS
+// process just produced via certifier.generateCert, catching an incomplete-
+// cert completeness bug — never a trust decision on adversarial bytes.
+// TestQuasarCertVerify_StructuralOnly_IsNotFinalizationAuthority (in
+// verify_authority_test.go) locks this invariant: a forged-but-shaped cert
+// passes Verify but is rejected by VerifyUnderPolicy.
 func (c *QuasarCert) Verify(validators []string) bool {
 	if c == nil {
 		return false
