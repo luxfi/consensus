@@ -169,6 +169,24 @@ func (s *PulsarRoundSigner) Finalize(
 	r1 pulsarlib.SignRound1,
 	partials []pulsarlib.Partial,
 ) (pulsarlib.Aggregate, pulsarlib.ConsensusCert, error) {
+	// 0. Bound every PartyID against the validator set BEFORE any
+	//    PartyID-sized allocation. pulsarlib.CanonicalSignerSet and
+	//    singletonBitmap size a []byte at (PartyID/8+1); an unbounded
+	//    attacker-controlled uint32 PartyID would drive an unbounded
+	//    allocation (~512MiB from a single MaxUint32) — a memory-
+	//    exhaustion DoS. We check the WHOLE partials slice (not just the
+	//    chosen subset) so a hostile PartyID cannot hide behind the
+	//    threshold cut, and we do it here (rather than in pulsarlib) to
+	//    keep CanonicalSignerSet's published signature non-breaking.
+	if s.ValidatorSetSize <= 0 {
+		return pulsarlib.Aggregate{}, pulsarlib.ConsensusCert{}, ErrPartyIDOutOfRange
+	}
+	for _, p := range partials {
+		if p.PartyID >= uint32(s.ValidatorSetSize) {
+			return pulsarlib.Aggregate{}, pulsarlib.ConsensusCert{}, ErrPartyIDOutOfRange
+		}
+	}
+
 	// 1. Canonical, anti-grind signer subset: deterministic first-threshold by
 	//    PartyID, so an aggregator cannot grind z / the hint / the signature
 	//    bytes by choosing among valid signer sets.
@@ -182,10 +200,14 @@ func (s *PulsarRoundSigner) Finalize(
 	//    use the exported MergeAggregates (z-sums only; no hint material).
 	children := make([]pulsarlib.Aggregate, len(chosen))
 	for i, p := range chosen {
+		singleton, err := singletonBitmap(p.PartyID, s.ValidatorSetSize)
+		if err != nil {
+			return pulsarlib.Aggregate{}, pulsarlib.ConsensusCert{}, err
+		}
 		children[i] = pulsarlib.Aggregate{
 			SessionID:    r1.SessionID,
 			NonceID:      r1.NonceID,
-			SignerBitmap: singletonBitmap(p.PartyID),
+			SignerBitmap: singleton,
 			ZSum:         p.ZShare,
 		}
 	}
@@ -222,10 +244,20 @@ func (s *PulsarRoundSigner) Finalize(
 	return agg, cert, nil
 }
 
-// singletonBitmap returns a one-bit bitmap with only PartyID set, sized to hold
-// that bit. MergeAggregates unions these into the full signer bitmap.
-func singletonBitmap(partyID uint32) []byte {
+// singletonBitmap returns a one-bit bitmap with only partyID set, sized to
+// hold that bit. MergeAggregates unions these into the full signer bitmap.
+//
+// validatorSetSize bounds partyID (must be in [0, validatorSetSize)) and is
+// checked BEFORE the PartyID-sized allocation. By the time Finalize calls
+// this it has already rejected any out-of-range PartyID in the whole
+// partials slice, so this is defense-in-depth against a future caller
+// reaching singletonBitmap directly — the allocation is never sized by an
+// unbounded attacker-controlled value.
+func singletonBitmap(partyID uint32, validatorSetSize int) ([]byte, error) {
+	if validatorSetSize <= 0 || partyID >= uint32(validatorSetSize) {
+		return nil, ErrPartyIDOutOfRange
+	}
 	bm := make([]byte, partyID/8+1)
 	bm[partyID/8] |= 1 << (partyID % 8)
-	return bm
+	return bm, nil
 }
