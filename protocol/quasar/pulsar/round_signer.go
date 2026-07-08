@@ -178,11 +178,18 @@ func (s *PulsarRoundSigner) Finalize(
 	//    chosen subset) so a hostile PartyID cannot hide behind the
 	//    threshold cut, and we do it here (rather than in pulsarlib) to
 	//    keep CanonicalSignerSet's published signature non-breaking.
+	// Party IDs are 1-based (the threshold convention: a Shamir share at x=0
+	// would be the secret itself, so validators are indexed 1..ValidatorSetSize).
+	// The valid domain is therefore [1, ValidatorSetSize] and the bound is a
+	// strict upper bound: reject PartyID > ValidatorSetSize. (An earlier `>=`
+	// wrongly rejected the Nth validator, PartyID == ValidatorSetSize.) This is
+	// purely a DoS ceiling on the bitmap allocation, not exact validation —
+	// upstream registration already binds each PartyID to a registered voter.
 	if s.ValidatorSetSize <= 0 {
 		return pulsarlib.Aggregate{}, pulsarlib.ConsensusCert{}, ErrPartyIDOutOfRange
 	}
 	for _, p := range partials {
-		if p.PartyID >= uint32(s.ValidatorSetSize) {
+		if p.PartyID > uint32(s.ValidatorSetSize) {
 			return pulsarlib.Aggregate{}, pulsarlib.ConsensusCert{}, ErrPartyIDOutOfRange
 		}
 	}
@@ -247,14 +254,14 @@ func (s *PulsarRoundSigner) Finalize(
 // singletonBitmap returns a one-bit bitmap with only partyID set, sized to
 // hold that bit. MergeAggregates unions these into the full signer bitmap.
 //
-// validatorSetSize bounds partyID (must be in [0, validatorSetSize)) and is
-// checked BEFORE the PartyID-sized allocation. By the time Finalize calls
-// this it has already rejected any out-of-range PartyID in the whole
+// validatorSetSize bounds partyID (1-based: must be in [1, validatorSetSize])
+// and is checked BEFORE the PartyID-sized allocation. By the time Finalize
+// calls this it has already rejected any out-of-range PartyID in the whole
 // partials slice, so this is defense-in-depth against a future caller
 // reaching singletonBitmap directly — the allocation is never sized by an
 // unbounded attacker-controlled value.
 func singletonBitmap(partyID uint32, validatorSetSize int) ([]byte, error) {
-	if validatorSetSize <= 0 || partyID >= uint32(validatorSetSize) {
+	if validatorSetSize <= 0 || partyID > uint32(validatorSetSize) {
 		return nil, ErrPartyIDOutOfRange
 	}
 	bm := make([]byte, partyID/8+1)
