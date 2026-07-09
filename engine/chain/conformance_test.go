@@ -1,11 +1,11 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// conformance_test.go — a faithful port of avalanchego's Snowman consensus
-// conformance suite (snow/consensus/snowman/consensus_test.go, the ~30
+// conformance_test.go — a faithful port of the upstream linear-chain consensus
+// conformance suite (the upstream consensus_test.go, the ~30
 // factory-driven `runConsensusTests` funcs) onto OUR ChainConsensus API. It
 // proves the just-landed sibling-tolerant finality conforms to the proven
-// Snowman accept/reject/reorg semantics that avalanchego's topological.go
+// upstream accept/reject/reorg semantics that avalanchego's topological.go
 // implements (acceptPreferredChild + rejectTransitively).
 //
 // WHY a re-port instead of running ava's suite directly: ava's `Consensus`
@@ -32,7 +32,7 @@
 // a pure Snowball-trie internal (bit-prefix decisions) with no observable beyond
 // "a block can't be accepted before its ancestor", it is mapped to the closest
 // faithful ChainConsensus scenario with a comment; the safety assertion is never
-// weakened. The naming follows the Lux convention (no Snowman in identifiers; it
+// weakened. The naming follows the Lux convention (no upstream brand in identifiers; it
 // is named here only as the upstream MODEL being conformed to, consistent with
 // reorg_test.go).
 //
@@ -976,7 +976,7 @@ func TestConformance_RecordPollRegressionIndegree(t *testing.T) {
 // TestConformance_RandomizedConsistency ports RandomizedConsistencyTest — the
 // fuzz/consistency safety proof. ADAPTED to be DETERMINISTIC (explicit seed, no
 // time/unseeded randomness): a randomized sequence of sibling forks + cert
-// selections, asserting the core Snowman SAFETY invariants never break under any
+// selections, asserting the core SAFETY invariants never break under any
 // interleaving:
 //
 //	(1) at most ONE block is finalized per height (no fork);
