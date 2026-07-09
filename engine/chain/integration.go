@@ -229,7 +229,7 @@ func bftAlpha(count int) int {
 }
 
 // effectiveCommittee returns the live BFT committee (n, α) for FINALITY at epochHeight, sized from
-// the populated ⅔-by-stake StakeSource — the real validator set — NOT the Snowman SAMPLE size
+// the populated ⅔-by-stake StakeSource — the real validator set — NOT the sample size
 // (t.consensus.K()/Alpha()). A large preset (MainnetParams K=21/α=15, sized for a ≥21-validator
 // network) inflates the sample far above a small live set; α distinct votes are then unreachable
 // (e.g. α=15 from 5 validators), so BOTH the α-of-K cert assembly (assembleCertLocked) and the
@@ -876,7 +876,7 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	// quorum. Drain after unlock — drainBufferedVotes takes the engine lock.
 	rt.Transitive.drainBufferedVotes(blockID)
 
-	// CONVERGENCE (avalanchego snowman voter.go: SetPreference(Consensus.Preference())
+	// CONVERGENCE (the upstream voter.go: SetPreference(Consensus.Preference())
 	// after every poll): steer the inner VM to build on the engine's preferred BUILD
 	// tip — the deepest verified block — now that this gossiped block is tracked. Without
 	// it the VM keeps building on the last FINALIZED block, so when a proposer is down
@@ -1065,23 +1065,16 @@ func (rt *Runtime) RunSettlePass(ctx context.Context) {
 // can only be precommitted at a higher round with a fresher POL); liveness = fluid prevotes.
 func (rt *Runtime) runViewChangePass(ctx context.Context) {
 	t := rt.Transitive
-	alpha := t.consensus.Alpha()
-	n := t.consensus.K()
-	if alpha <= 0 || n <= 0 {
-		return
-	}
-	// SAFETY-BOUND ENFORCEMENT (fail-closed): the round-scoped guard is sound only when
-	// 2α−n > f (f=⌊(n-1)/3⌋). At α=3,n=5 (2α−n=1=f) ONE equivocator double-finalizes (RED
-	// proved it). If the current committee fails the bound, REFUSE to run view-change — the
-	// chain halts (fail-secure) rather than risk a fork. Re-checked every pass, so a
-	// validator-set change that breaks the bound halts finality until it is restored.
-	if f := (n - 1) / 3; 2*alpha-n <= f {
-		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Error("view-change REFUSED: unsafe committee (2α−n ≤ f) — halting finality (fail-secure)",
-				log.Int("alpha", alpha), log.Int("n", n), log.Int("f", f))
-		}
-		return
-	}
+	// SAFETY-BOUND ENFORCEMENT (fail-closed) is applied PER-HEIGHT on the EFFECTIVE committee the
+	// view-change actually executes (viewCommittee → effectiveCommittee), NOT the oversized sample
+	// preset (consensus.K()/Alpha()). The guard is sound only when 2α−n > f (f=⌊(n-1)/3⌋): at
+	// α=3,n=5 (2α−n=1=f) ONE equivocator double-finalizes (RED-proved). The sample and the effective
+	// committee can differ (21/15 vs 5/4), and a POL counts DISTINCT validators against the EFFECTIVE
+	// committee — so the bound MUST be checked on the same (nEff,αEff) the round machine runs, not on
+	// the sample (RED review): a sample-only check would either force an unnecessary halt when the
+	// effective committee is safe, or guard a committee that never votes. bftAlpha(n) satisfies the
+	// bound for every n≥1, so a well-formed effective committee always passes; the gate now lives in
+	// the per-slot loop below (search "unsafe effective committee").
 	// Enumerate undecided heights + a representative parent, and the deterministic winner.
 	consensusFloor := uint64(0)
 	if t.consensus != nil {
@@ -1143,10 +1136,24 @@ func (rt *Runtime) runViewChangePass(ctx context.Context) {
 
 	for _, s := range slots {
 		// Size the view-change committee per-height from the LIVE validator set (viewCommittee):
-		// the top-of-pass (alpha, n) are the Snowman SAMPLE, used only for the fail-closed 2α−n>f
-		// gate above, but a POL counts DISTINCT validators, so the round machine must use n = live
-		// set, α = bftAlpha(n) — else α > live validators makes a POL unreachable and finality freezes.
+		// a POL counts DISTINCT validators, so the round machine must use n = live set,
+		// α = bftAlpha(n) — else α > live validators makes a POL unreachable and finality freezes.
 		nEff, alphaEff := rt.viewCommittee(s.height)
+		// FAIL-CLOSED per-height safety on the EFFECTIVE committee (the object that actually votes):
+		// run this height's round-scoped view-change ONLY if 2α−n>f holds for (nEff,αEff). A
+		// degenerate/unresolved committee (nEff/αEff ≤ 0) or one that fails the bound is SKIPPED —
+		// the height stays undecided (fail-secure halt) rather than risking a fork. This guards the
+		// SAME committee stepViewChange's prevote/POL/precommit count DISTINCT validators against.
+		if nEff <= 0 || alphaEff <= 0 {
+			continue
+		}
+		if f := (nEff - 1) / 3; 2*alphaEff-nEff <= f {
+			if !rt.config.Logger.IsZero() {
+				rt.config.Logger.Error("view-change REFUSED for height: unsafe effective committee (2α−n ≤ f) — skipping (fail-secure)",
+					log.Uint64("height", s.height), log.Int("alphaEff", alphaEff), log.Int("nEff", nEff), log.Int("f", f))
+			}
+			continue
+		}
 		rt.stepViewChange(ctx, s.height, s.winner, s.canon, alphaEff, nEff, floor)
 	}
 }
@@ -1327,7 +1334,7 @@ func (rt *Runtime) HandleIncomingPrevote(voteBytes []byte) bool {
 	if !verifier.VerifyVote(nodeID, msg, sig, rt.epochForHeight(height)) {
 		return false
 	}
-	// BFT committee sized to the LIVE validator set (not the Snowman sample) — see viewCommittee.
+	// BFT committee sized to the LIVE validator set (not the sample) — see viewCommittee.
 	// MUST match the sizing stepViewChange uses so the create-once roundView is consistent whichever
 	// path (this peer-prevote ingest or the local pass) first materialises the height's view.
 	n, alpha := rt.viewCommittee(height)
