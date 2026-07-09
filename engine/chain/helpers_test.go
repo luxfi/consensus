@@ -163,7 +163,7 @@ type testValidatorSet struct {
 	// simValidatorCount, when simValidatorCountSet, OVERRIDES what ValidatorCount reports (the live
 	// committee size the round-scoped view-change sizes its POL/precommit quorum to). Lets a test
 	// model the mainnet condition where the current-map Manager read 0 validators at construction:
-	// with a forced 0 the view-change cannot shrink the Snowman preset (K=21/α=15) and FREEZES (the
+	// with a forced 0 the view-change cannot shrink the sample preset (K=21/α=15) and FREEZES (the
 	// pre-fix stall); unset, ValidatorCount reports the real len(ids).
 	simValidatorCount    int
 	simValidatorCountSet bool

@@ -22,8 +22,8 @@ import (
 //
 // THE FIX: Preference() returns the deterministic BUILD tip — the deepest verified
 // block extending the finalized chain, lowest-ID sibling per level — so every node
-// builds H+1 on the SAME block and the vote converges (matching avalanchego's
-// snowman preference, which steers the VM to the preferred non-finalized tip).
+// builds H+1 on the SAME block and the vote converges (matching the upstream
+// linear-chain consensus's preference, which steers the VM to the preferred non-finalized tip).
 func TestPreference_ConvergesSiblings_NoDownLeaderHalt(t *testing.T) {
 	ctx := context.Background()
 	c := NewChainConsensus(5, 4, 2)

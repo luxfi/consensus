@@ -3,9 +3,9 @@
 
 // multinode_mainnet_committee_test.go — the 2026-07-09 mainnet C-Chain finality-freeze
 // regression: view-change must size its BFT committee from the LIVE validator set, not the
-// oversized Snowman SAMPLE preset.
+// oversized K-sample preset.
 //
-// EXACT mainnet condition reproduced: MainnetParams presets the Snowman sample at K=21/α=15
+// EXACT mainnet condition reproduced: MainnetParams presets the sample at K=21/α=15
 // (sized for a ≥21-validator network), but only 5 validators are live. The harness leaves
 // cfg.Validators nil, so the construction-time bftCommittee clamp is skipped and consensus.K()
 // stays 21 / Alpha() stays 15 — identical to the mainnet node whose current-map validator Manager
@@ -16,7 +16,7 @@
 //
 // The fix (integration.go viewCommittee): size the view-change committee from the SAME populated
 // ⅔-by-stake StakeSource the cert reads — n = ValidatorCount (5), α = bftAlpha(5) = 4 — so a POL
-// forms at 4 prevotes → precommit → one ⅔-by-stake cert → finalize. Snowman K=21 is left untouched
+// forms at 4 prevotes → precommit → one ⅔-by-stake cert → finalize. The sample K=21 is left untouched
 // (the chain still boots past the mainnet K≥11 floor); only the round machine's committee shrinks.
 package chain
 
@@ -28,12 +28,12 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// mainnetStormParams5VC is the storm-tuned 5-node harness base with the REAL MainnetParams Snowman
+// mainnetStormParams5VC is the storm-tuned 5-node harness base with the REAL MainnetParams sample
 // committee (K=21/α=15) and the round-scoped view-change ON — the exact live-mainnet config on a
 // 5-validator set.
 func mainnetStormParams5VC() config.Parameters {
 	p := stormParams5()
-	p.K = 21               // MainnetParams Snowman SAMPLE size (sized for ≥21 validators)
+	p.K = 21               // MainnetParams sample size (sized for ≥21 validators)
 	p.AlphaPreference = 15 // MainnetParams α — 15 DISTINCT prevotes, unreachable from 5 nodes
 	p.AlphaConfidence = 15
 	p.ViewChange = true
@@ -56,7 +56,7 @@ func TestViewChange_MainnetParams_5Validators_CommitteeFromStakeSource(t *testin
 	}
 
 	// CONTROL — the mainnet freeze reproduced. ValidatorCount unresolved (0), as on the node whose
-	// current-map Manager read 0 at construction: viewCommittee cannot shrink the Snowman preset, so
+	// current-map Manager read 0 at construction: viewCommittee cannot shrink the sample preset, so
 	// the round machine runs at α=15. Five validators can cast at most five distinct prevotes, so no
 	// POL(winner) can ever form → NOTHING finalizes. Safety holds (no fork) — this is a pure liveness
 	// freeze, exactly the live incident.

@@ -15,10 +15,10 @@
 // cert and replacing the ledger (applyCertLocked) — the import reconcile (SyncState) is
 // the one other whole-value replacement.
 //
-// This mirrors avalanchego snow/consensus/snowman/topological.go, with finality's
+// This mirrors the upstream linear-chain consensus's topological layer, with finality's
 // trigger swapped from β-consecutive-polls to a quorum CERT: the preference tree +
 // poll stays mutable and sibling-tolerant (topological.go here), while the
-// committed-prefix advance — β-driven in Snowman — is this pure, cert-driven fold.
+// committed-prefix advance — β-driven upstream — is this pure, cert-driven fold.
 package chain
 
 import (
@@ -29,7 +29,7 @@ import (
 )
 
 // The finality safety invariants — the vocabulary of the fold. Two are genuine
-// α-of-K-cert properties pure Snowman does not need (its certs are β-witnessed, not
+// α-of-K-cert properties the pure upstream engine does not need (its certs are β-witnessed, not
 // external/attacker-chosen-Round): a SECOND valid cert for a DIFFERENT block at an
 // already-decided height is equivocation evidence, never a silent second VM.Accept;
 // and a cert for a block that does NOT descend from the finalized frontier conflicts
@@ -40,7 +40,7 @@ var (
 	// ErrHeightAlreadyFinalized: a DIFFERENT block is already finalized at the target
 	// height — two valid α-certs at one height across different rounds. The first
 	// finalizes; the second is refused and IS equivocation evidence. A genuine α-of-K
-	// safety property pure Snowman does not need.
+	// safety property the pure upstream engine does not need.
 	ErrHeightAlreadyFinalized = errors.New("chain: a different block is already finalized at this height (equivocation: two finalized blocks at one height)")
 
 	// ErrNonMonotonicFinalizedHeight: a finalize at or below the frontier with a

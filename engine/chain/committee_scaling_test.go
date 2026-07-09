@@ -35,7 +35,7 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// genuineParams builds the config of a REAL n-validator chain: the Snowman/sample K and
+// genuineParams builds the config of a REAL n-validator chain: the sample K and
 // both α gates sized to the live set (K=n, α=bftAlpha(n)). View-change is on for n>1 (the
 // round machine that converges a symmetric sibling split); a single validator needs none.
 func genuineParams(n int) config.Parameters {

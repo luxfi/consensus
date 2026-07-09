@@ -1543,7 +1543,7 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 		// it to an α-of-K cert — so it must keep re-soliciting until the block decides
 		// (then it leaves pendingBlocks and the re-poll quiesces). This is exactly
 		// avalanchego's contract: re-poll a PROCESSING block until it is decided, and
-		// only quiesce at NumProcessing()==0 (snow/engine/snowman voter.go +
+		// only quiesce at NumProcessing()==0 (the upstream voter.go +
 		// Engine.Gossip's 100ms repoll). Abandoning an own proposal after a fixed
 		// attempt cap was the Lux-only divergence that froze mainnet C-Chain: the
 		// substitute's canonical block stopped being re-solicited and the chain halted
@@ -2834,7 +2834,7 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	// the SAME P-chain height the position's set-root commits to (MEDIUM-1).
 	epochHeight := t.epochHeightLocked(pending)
 	// Cert COUNT threshold sized to the LIVE validator set (effectiveCommittee), NOT the oversized
-	// Snowman sample: MainnetParams α=15 is unreachable from a 5-validator set, so the ⅔-by-stake
+	// sample: MainnetParams α=15 is unreachable from a 5-validator set, so the ⅔-by-stake
 	// cert would never assemble (the 2026-07-09 freeze). bftAlpha over the SAME height-indexed set the
 	// ⅔-by-stake VerifyWeighted gate below reads keeps the count-quorum and the stake-quorum identical.
 	_, alpha := t.effectiveCommittee(epochHeight)
