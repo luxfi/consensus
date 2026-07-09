@@ -396,11 +396,16 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	hasLogger := cfg.Logger != nil && !cfg.Logger.IsZero()
 	if validatorCount >= 0 {
 		if hasLogger {
+			// presetK/presetAlpha are the SAMPLE preset (e.g. MainnetParams 21/15), NOT the
+			// finality committee. The α-of-K cert + view-change size to the LIVE set at runtime
+			// (effectiveCommittee/bftCommittee); the engine logs the effective (K,α) on each
+			// committee re-clamp. Do not read presetK as the quorum.
 			cfg.Logger.Info("consensus engine initialized with validator set",
 				log.Stringer("networkID", cfg.NetworkID),
 				log.Int("validatorCount", validatorCount),
-				log.Int("k", params.K),
-				log.Int("alpha", params.AlphaPreference))
+				log.Int("presetK", params.K),
+				log.Int("presetAlpha", params.AlphaPreference),
+				log.String("note", "finality committee sized to the live validator set at runtime; see committee-clamp log for effective K/alpha"))
 		}
 	} else {
 		if hasLogger {
