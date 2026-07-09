@@ -358,7 +358,7 @@ type StakeSource interface {
 	TotalStake(height uint64) uint64
 	// ValidatorCount returns the number of DISTINCT active validators at the given
 	// height — the round-scoped view-change's BFT committee size n (its POL/precommit
-	// count distinct validators, so n must be the LIVE set, not the Snowman sample K).
+	// count distinct validators, so n must be the LIVE set, not the sample K).
 	// Read from the SAME height-indexed set as Weight/TotalStake so the count-quorum and
 	// the stake-quorum are the identical set. 0 for an unresolved/empty set (view-change
 	// then keeps the configured committee, guarded by the 2α−n>f bound).
