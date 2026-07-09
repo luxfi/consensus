@@ -233,3 +233,84 @@ func TestRedStaleLock_ResolverHeightGuard(t *testing.T) {
 	}
 	t.Logf("FIXED R3: vmCanonicalResolver height-binds resolution — cross-height ids are unresolvable.")
 }
+
+// TestRedLiveRebase_SafetyGate is the RED adversarial probe against the LIVE per-step stale-alias
+// rebase (integration.go maybeRebaseStaleLock). Liveness must NOT be bought with a safety
+// regression: the rebase may re-canonicalize a lock ONLY when the resolver PROVES the stale id and
+// the round winner are the same inner block. A lock that resolves to a DIFFERENT inner (a genuine
+// fork) or is unresolvable MUST be left untouched — the node stays fail-closed frozen, never merged
+// onto the winner. Runs at the engine boundary (Runtime + injected resolver), the exact object the
+// live path drives, with the round-view lock seeded by viewForLocked from the recovered v3 binding.
+func TestRedLiveRebase_SafetyGate(t *testing.T) {
+	const floor = uint64(1082879)
+	const H = floor + 1
+	const lockRound = uint32(8450)
+
+	lockOf := func(e *Transitive) ids.ID {
+		e.slotMu.Lock()
+		defer e.slotMu.Unlock()
+		return e.viewForLocked(H, 4, 5).lockBlock
+	}
+
+	t.Run("same_inner_REBASED_live_no_migration", func(t *testing.T) {
+		outerA, innerI := ids.GenerateTestID(), ids.GenerateTestID()
+		e, _, _ := seedPhantomEngine(t, floor,
+			map[SlotKey]ids.ID{{Height: H}: outerA}, map[uint64]uint32{H: lockRound})
+		rt := &Runtime{Transitive: e}
+		rt.lockResolver = mapResolver{outerA: innerI, innerI: innerI}
+
+		// winnerCanon == innerI: the stale outer PROVABLY resolves to the winner → rebase, live,
+		// with NO operator migration having run.
+		rt.maybeRebaseStaleLock(context.Background(), H, innerI, 4, 5)
+
+		e.slotMu.Lock()
+		v := e.viewForLocked(H, 4, 5)
+		hl, lb, lr := v.haveLocked, v.lockBlock, v.lockRound
+		pt := v.prevoteTarget(innerI)
+		e.slotMu.Unlock()
+		if !hl || lb != innerI || lr != lockRound {
+			t.Fatalf("live rebase must KEEP the lock on inner I@%d, got locked=%v block=%s round=%d", lockRound, hl, lb, lr)
+		}
+		if pt != innerI {
+			t.Fatalf("post-rebase prevoteTarget = %s, want winner %s (POL for I can now form)", pt, innerI)
+		}
+		t.Logf("LIVENESS: stale outer %s rebased to inner winner %s@%d with no migration — winner prevote unblocked.", outerA, innerI, lockRound)
+	})
+
+	t.Run("divergent_inner_REFUSED_no_fork", func(t *testing.T) {
+		outerA, innerI, innerJ := ids.GenerateTestID(), ids.GenerateTestID(), ids.GenerateTestID()
+		e, _, _ := seedPhantomEngine(t, floor,
+			map[SlotKey]ids.ID{{Height: H}: outerA}, map[uint64]uint32{H: lockRound})
+		rt := &Runtime{Transitive: e}
+		// The stale lock resolves to innerJ — a DIFFERENT inner than the winner innerI (a real fork).
+		rt.lockResolver = mapResolver{outerA: innerJ, innerJ: innerJ, innerI: innerI}
+
+		rt.maybeRebaseStaleLock(context.Background(), H, innerI, 4, 5)
+
+		if got := lockOf(e); got != outerA {
+			t.Fatalf("SAFETY: a lock resolving to a DIFFERENT inner MUST be left untouched (%s), got %s", outerA, got)
+		}
+		e.slotMu.Lock()
+		v := e.viewForLocked(H, 4, 5)
+		pt := v.prevoteTarget(innerI)
+		e.slotMu.Unlock()
+		if pt != outerA {
+			t.Fatalf("SAFETY: on divergence the node must keep prevoting its own value %s (stay frozen, no fork), got %s", outerA, pt)
+		}
+		t.Logf("SAFETY: divergent inner (%s ≠ winner %s) REFUSED — lock untouched, node fail-closed frozen (no merge, no fork).", innerJ, innerI)
+	})
+
+	t.Run("unresolvable_lock_left_untouched_live", func(t *testing.T) {
+		outerGone, innerI := ids.GenerateTestID(), ids.GenerateTestID()
+		e, _, _ := seedPhantomEngine(t, floor,
+			map[SlotKey]ids.ID{{Height: H}: outerGone}, map[uint64]uint32{H: lockRound})
+		rt := &Runtime{Transitive: e}
+		rt.lockResolver = mapResolver{innerI: innerI} // outerGone resolves to nothing
+
+		rt.maybeRebaseStaleLock(context.Background(), H, innerI, 4, 5)
+		if got := lockOf(e); got != outerGone {
+			t.Fatalf("an unresolvable lock must be left untouched by the LIVE rebase (it never prunes), got %s", got)
+		}
+		t.Logf("SAFETY: unresolvable lock left intact by the live rebase — pruning stays the operator boot path.")
+	})
+}

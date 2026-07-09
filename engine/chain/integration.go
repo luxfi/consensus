@@ -167,6 +167,12 @@ type Runtime struct {
 	// 2. Block-producing nodes don't update the tracker when they build blocks
 	// Height-based acceptance is safe because blocks are already verified.
 	fastFollowHeight uint64
+
+	// lockResolver resolves a view-change lock's (possibly stale OUTER) id to its inner
+	// canonical for the LIVE stale-alias lock rebase (maybeRebaseStaleLock). nil ⇒ the
+	// production vmCanonicalResolver (tracked-block canonicalRep, then the durable VM store).
+	// Tests inject a deterministic map resolver (the sim has no VM store).
+	lockResolver LockCanonicalResolver
 }
 
 // bftCommittee scales a preset sample size k down to the live validator count and
@@ -1163,6 +1169,72 @@ func (rt *Runtime) runViewChangePass(ctx context.Context) {
 	}
 }
 
+// maybeRebaseStaleLock is the LIVE (runtime) analogue of the boot-time stale-lock migration
+// (lock_migration.go), applied per view-change step and IN-MEMORY only. A pre-fix durable lock
+// (committedSlot written when canonical=outer) is re-seeded by viewForLocked as an OUTER wrapper
+// id; the pure round machine then compares that stale alias against the inner-canonical winner
+// (prevoteTarget's `proposal == v.lockBlock`), the equality fails, and the node prevotes its
+// stale lock forever — no POL for the winner forms (the 1085761 live freeze).
+//
+// The repair: if this height's view is locked on an id that is NOT the winner canonical, resolve
+// that lock's inner canonical; iff it equals winnerCanon — a PROOF that the lock and the winner
+// are the same inner block at this height — rebase the lock onto winnerCanon so prevoteTarget
+// returns the winner and a POL can form. This is strictly stronger than the migration's "resolves
+// to some inner": we only ever move a lock to the value the whole fleet is already converging on.
+//
+// SAFETY. We never switch to a genuinely different value: if the lock resolves to a DIFFERENT
+// inner than the winner (a real fork) OR is unresolvable, we leave the lock untouched and the node
+// stays safely frozen (fail-closed — no fork). A fresh in-session lock is already a canonical inner
+// id, so it resolves to itself and only rebases when it equals the winner (a no-op) — an honest
+// same-session precommit is never re-pointed. lockRound is preserved, so the unlock bar for a
+// genuinely conflicting value is not lowered. This cannot manufacture a second distinct POL:
+// the rebase target is the deterministic winner canonical (unique per (height,parent-group) via
+// convergedWinnerAtHeightLocked), recordOwnPrecommit still refuses a conflicting precommit at a
+// round, and 2α−n>f (n=5,α=4: 3>1) still bounds a single committing value per height.
+//
+// LOCK ORDER. The resolver (vmCanonicalResolver → t.mu.RLock + VM.GetBlock) is called with NO
+// engine lock held, between two brief slotMu sections, so runViewChangePass's mu→slotMu order is
+// never inverted. Cheap in steady state: the resolver runs only for a locked height whose lock ≠
+// winner, and only until it rebases once (thereafter lockBlock == winnerCanon short-circuits).
+func (rt *Runtime) maybeRebaseStaleLock(ctx context.Context, height uint64, winnerCanon ids.ID, alpha, n int) {
+	if winnerCanon == ids.Empty {
+		return
+	}
+	t := rt.Transitive
+
+	// Phase 1 (slotMu): snapshot the current lock (creating/seeding the view if needed, exactly as
+	// the main step body would). Bail cheaply unless locked on a NON-winner id.
+	t.slotMu.Lock()
+	v := t.viewForLocked(height, alpha, n)
+	if !v.haveLocked || v.lockBlock == ids.Empty || v.lockBlock == winnerCanon {
+		t.slotMu.Unlock()
+		return
+	}
+	staleLock := v.lockBlock
+	t.slotMu.Unlock()
+
+	// Phase 2 (NO engine lock): resolve the stale lock's inner canonical at THIS height.
+	resolver := rt.lockResolver
+	if resolver == nil {
+		resolver = vmCanonicalResolver{ctx: ctx, rt: rt}
+	}
+	canon, ok := resolver.CanonicalOf(staleLock, height)
+	if !ok || canon != winnerCanon {
+		return // unresolvable OR a genuinely different inner (real fork) → never rebase (safety)
+	}
+
+	// Phase 3 (slotMu): rebase iff the lock is STILL the same stale id (no concurrent finalize/
+	// precommit moved it). Proven same inner block ⇒ swap the alias, preserve the round.
+	t.slotMu.Lock()
+	v = t.viewForLocked(height, alpha, n)
+	if v.haveLocked && v.lockBlock == staleLock && v.rebaseLockAlias(winnerCanon) && rt.config.Logger != nil && !rt.config.Logger.IsZero() {
+		rt.config.Logger.Warn("vc stale-alias lock REBASED to inner canonical winner (live) — prevote target now the winner; POL can form",
+			log.Uint64("height", height), log.Uint32("lockRound", v.lockRound),
+			log.Stringer("staleLock", staleLock), log.Stringer("winnerCanon", winnerCanon))
+	}
+	t.slotMu.Unlock()
+}
+
 // stepViewChange advances one height's view machine by one tick and performs the
 // resulting prevote / precommit broadcast.
 func (rt *Runtime) stepViewChange(ctx context.Context, height uint64, winnerID, winnerCanon ids.ID, alpha, n int, floor uint64) {
@@ -1173,6 +1245,11 @@ func (rt *Runtime) stepViewChange(ctx context.Context, height uint64, winnerID, 
 	nodeID := t.nodeID
 	chainID := t.chainID
 	signer := t.voteSigner
+
+	// LIVE STALE-ALIAS LOCK REBASE — restore the round machine's "lockBlock is an inner canonical"
+	// contract BEFORE stepping, so a pre-fix durable OUTER-wrapper lock (re-seeded by viewForLocked)
+	// no longer suppresses the winner prevote. Resolver runs with no engine lock held (see method).
+	rt.maybeRebaseStaleLock(ctx, height, winnerCanon, alpha, n)
 
 	t.slotMu.Lock()
 	v := t.viewForLocked(height, alpha, n)
@@ -1190,9 +1267,12 @@ func (rt *Runtime) stepViewChange(ctx context.Context, height uint64, winnerID, 
 			// LOCK-SILENCE DISAMBIGUATION (the trace-table columns, on the line that already fires
 			// on a stuck fleet): when a node is locked on a value that is NOT the deterministic
 			// winner canonical (lockIsStaleAlias=true), it is prevoting its lock — not the winner —
-			// so no POL for the winner can form. This is the durable stale-outer-wrapper split-lock
-			// signature (the pre-fix canonical=outer lock that survived the canonical=inner roll);
-			// the fix is the stale-lock migration (lock_migration.go), not a timer change.
+			// so no POL for the winner can form. The LIVE rebase (maybeRebaseStaleLock, run at the
+			// top of this step) already re-canonicalizes a stale outer-wrapper lock whose inner
+			// PROVABLY equals the winner; so if lockIsStaleAlias STILL shows here, the lock is either
+			// unresolvable (block bytes gone → boot the operator stale-lock prune) or resolves to a
+			// DIFFERENT inner than the winner — a genuine divergence requiring manual recovery, NOT a
+			// timer change.
 			rt.config.Logger.Warn("vc height STUCK: many rounds, no POL (liveness-stall signature)",
 				log.Uint64("height", height), log.Uint32("round", v.round),
 				log.Stringer("winner", winnerCanon),
