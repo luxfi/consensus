@@ -2828,15 +2828,19 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	if t.voteVerifier == nil {
 		return nil
 	}
-	alpha := t.consensus.Alpha()
-	if alpha <= 0 {
-		return nil
-	}
 	pos := t.blockPositionLocked(pending, blockID)
 	message := CanonicalVoteMessage(pos)
 	// The epoch height pins every per-voter pubkey resolution + the stake tally to
 	// the SAME P-chain height the position's set-root commits to (MEDIUM-1).
 	epochHeight := t.epochHeightLocked(pending)
+	// Cert COUNT threshold sized to the LIVE validator set (effectiveCommittee), NOT the oversized
+	// Snowman sample: MainnetParams α=15 is unreachable from a 5-validator set, so the ⅔-by-stake
+	// cert would never assemble (the 2026-07-09 freeze). bftAlpha over the SAME height-indexed set the
+	// ⅔-by-stake VerifyWeighted gate below reads keeps the count-quorum and the stake-quorum identical.
+	_, alpha := t.effectiveCommittee(epochHeight)
+	if alpha <= 0 {
+		return nil
+	}
 
 	// FIX #3 (cert termination — per-CANONICAL vote aggregation). A vote is signed over the
 	// CANONICAL execution identity, NOT the outer proposervm envelope
