@@ -228,6 +228,46 @@ func bftAlpha(count int) int {
 	return int(config.TwoThirdsStakeFloor(uint64(count))) + 1
 }
 
+// effectiveCommittee returns the live BFT committee (n, α) for FINALITY at epochHeight, sized from
+// the populated ⅔-by-stake StakeSource — the real validator set — NOT the Snowman SAMPLE size
+// (t.consensus.K()/Alpha()). A large preset (MainnetParams K=21/α=15, sized for a ≥21-validator
+// network) inflates the sample far above a small live set; α distinct votes are then unreachable
+// (e.g. α=15 from 5 validators), so BOTH the α-of-K cert assembly (assembleCertLocked) and the
+// round-scoped view-change POL freeze — every block verifies but no quorum cert ever assembles (the
+// 2026-07-09 mainnet C-Chain finality stall). This happens whenever the construction-time bftCommittee
+// clamp was skipped because the current-map validator Manager read 0 at construction (the same empty
+// set that gives the proposervm windower pChainHeight=0), and reclampCommitteeLocked is UP-ONLY so it
+// can never shrink 21→5. Reading the count from the SAME height-indexed set the ⅔-by-stake cert
+// verifies against keeps the count-quorum and the stake-quorum the IDENTICAL set (deterministic
+// across nodes → no fork), and α = bftAlpha(count) is the ⅔ supermajority. It only ever SHRINKS an
+// oversized sample (0 < count < K); an unresolved set (count ≤ 0) or a preset that already fits keeps
+// the configured (K, α). bftAlpha(count) satisfies 2α−n>f for every count ≥ 4, so the shrunk
+// committee is fork-safe by construction (n=5→α=4: 2·4−5 = 3 > f = 1).
+func (t *Transitive) effectiveCommittee(epochHeight uint64) (n, alpha int) {
+	n, alpha = t.consensus.K(), t.consensus.Alpha()
+	if t.stakeSource == nil {
+		return n, alpha
+	}
+	// Reuse the SINGLE committee-sizing formula (bftCommittee): it clamps K DOWN to the live count
+	// AND floors at the minimal BFT committee (K=4/α=3), so a transient/degenerate low count can
+	// NEVER produce a lone-reachable α (the 1085013 self-finality fork the count floor prevents). An
+	// unresolved set (count ≤ 0) or a preset that already fits leaves the configured (K, α) — which
+	// the round-scoped 2α−n>f gate still guards.
+	if k, a, clamped := bftCommittee(n, t.stakeSource.ValidatorCount(epochHeight)); clamped {
+		return k, a
+	}
+	return n, alpha
+}
+
+// viewCommittee is effectiveCommittee resolved at the P-chain epoch for a value-chain `height` — the
+// round-scoped view-change entry point, which carries a value-chain height not yet an epoch. The
+// view-change POL/precommit count DISTINCT validators, so it MUST size to the live set, and it MUST
+// match the cert-assembly committee (both go through effectiveCommittee) so the create-once roundView
+// and the α-of-K cert agree on n/α.
+func (rt *Runtime) viewCommittee(height uint64) (n, alpha int) {
+	return rt.Transitive.effectiveCommittee(rt.epochForHeight(height))
+}
+
 // NewRuntime creates a fully wired consensus runtime ready for production use.
 //
 // This is the single, canonical way to create a chain consensus runtime for node integration.
@@ -1102,7 +1142,12 @@ func (rt *Runtime) runViewChangePass(ctx context.Context) {
 	t.mu.Unlock()
 
 	for _, s := range slots {
-		rt.stepViewChange(ctx, s.height, s.winner, s.canon, alpha, n, floor)
+		// Size the view-change committee per-height from the LIVE validator set (viewCommittee):
+		// the top-of-pass (alpha, n) are the Snowman SAMPLE, used only for the fail-closed 2α−n>f
+		// gate above, but a POL counts DISTINCT validators, so the round machine must use n = live
+		// set, α = bftAlpha(n) — else α > live validators makes a POL unreachable and finality freezes.
+		nEff, alphaEff := rt.viewCommittee(s.height)
+		rt.stepViewChange(ctx, s.height, s.winner, s.canon, alphaEff, nEff, floor)
 	}
 }
 
@@ -1282,8 +1327,10 @@ func (rt *Runtime) HandleIncomingPrevote(voteBytes []byte) bool {
 	if !verifier.VerifyVote(nodeID, msg, sig, rt.epochForHeight(height)) {
 		return false
 	}
-	alpha := t.consensus.Alpha()
-	n := t.consensus.K()
+	// BFT committee sized to the LIVE validator set (not the Snowman sample) — see viewCommittee.
+	// MUST match the sizing stepViewChange uses so the create-once roundView is consistent whichever
+	// path (this peer-prevote ingest or the local pass) first materialises the height's view.
+	n, alpha := rt.viewCommittee(height)
 	if alpha <= 0 || n <= 0 {
 		return false
 	}
