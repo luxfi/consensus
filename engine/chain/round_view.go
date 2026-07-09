@@ -211,17 +211,17 @@ type roundView struct {
 	n      int // committee size (for the safety bound 2α−n>f and the f+1 round-skip threshold)
 	f      int // Byzantine budget ⌊(n-1)/3⌋
 
-	round      uint32
-	elapsed    int64 // settle ticks accumulated in the current round (driver-supplied clock)
+	round   uint32
+	elapsed int64 // settle ticks accumulated in the current round (driver-supplied clock)
 	// roundSenders[r] = distinct validators observed to have sent ANY message (prevote or
 	// precommit) at round r. Drives ROUND-SKIP: on f+1 senders at a round above ours, at
 	// least one is honest and genuinely ahead, so we JUMP to that round (Tendermint's
 	// round-skip) — the rule that re-aligns a node left phase-offset by asymmetric gossip
 	// (the residual ~3% freeze RED found: a drifted node's 3<α prevotes never form a POL).
 	roundSenders map[uint32]map[ids.NodeID]struct{}
-	haveLocked bool
-	lockRound  uint32
-	lockBlock  ids.ID
+	haveLocked   bool
+	lockRound    uint32
+	lockBlock    ids.ID
 
 	// prevoted/precommitted record THIS node's one cast per round (idempotence + the
 	// one-vote-per-(height,round) discipline that makes a POL unique per round).
@@ -512,5 +512,30 @@ func (v *roundView) recordOwnPrecommit(block ids.ID, round uint32) bool {
 		v.lockRound = round
 		v.lockBlock = block
 	}
+	return true
+}
+
+// rebaseLockAlias re-aliases an EXISTING lock onto `canonical`. The CALLER (the engine, which
+// alone holds the outer→inner resolver) has PROVEN that the current lockBlock and `canonical`
+// are the SAME inner block at this height — two proposervm outer-wrapper aliases of one
+// execution, exactly the equivalence canonicalRep/slotCanonical use. It swaps ONLY the id the
+// lock is NAMED by; the locked VALUE (the inner block) and the lock ROUND are unchanged.
+//
+// This is NOT a switch to a conflicting value — it is the SAME value under its canonical name —
+// so the Tendermint lock-safety invariant is untouched: a locked node may still switch to a
+// genuinely CONFLICTING value only with a POL at a round strictly above its lock (prevoteTarget's
+// polAbove branch), and this method never changes lockRound, so that bar is not lowered. It
+// RESTORES the roundView's contract (every id it reasons about is an inner canonical); the sole
+// violator is viewForLocked's seed of a pre-fix durable OUTER id, which this re-canonicalizes.
+//
+// PURE + mechanical: it performs no resolution and touches no tally, round, prevote/precommit
+// record, or POL index — so the machine's other invariants (one prevote/precommit per round, POL
+// uniqueness per round, round monotonicity) are trivially preserved. No-op (returns false) unless
+// currently locked, the target is non-empty, and it actually differs from the current lock.
+func (v *roundView) rebaseLockAlias(canonical ids.ID) bool {
+	if !v.haveLocked || canonical == ids.Empty || v.lockBlock == canonical {
+		return false
+	}
+	v.lockBlock = canonical
 	return true
 }
