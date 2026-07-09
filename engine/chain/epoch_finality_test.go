@@ -131,6 +131,11 @@ func (s *epochValidatorSet) TotalStake(epochHeight uint64) uint64 {
 	return total
 }
 
+func (s *epochValidatorSet) ValidatorCount(epochHeight uint64) int {
+	_, st := s.at(epochHeight)
+	return len(st)
+}
+
 // ValidatorSetRoot is a deterministic commitment to the set@epoch — distinct per
 // epoch, Empty for an unknown/empty epoch. (A simple length+nodeid+stake fold;
 // the node's production source uses SHA-256, but any deterministic function of

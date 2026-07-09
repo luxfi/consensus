@@ -159,6 +159,14 @@ type testValidatorSet struct {
 	// validator never equivocates. So a real cross-node fork needs ≥ intersection
 	// (≥3 of 5 here) ACTUAL Byzantine equivocators — f ≥ n/3, beyond the guarantee.
 	committed map[[2]uint64]ids.ID
+
+	// simValidatorCount, when simValidatorCountSet, OVERRIDES what ValidatorCount reports (the live
+	// committee size the round-scoped view-change sizes its POL/precommit quorum to). Lets a test
+	// model the mainnet condition where the current-map Manager read 0 validators at construction:
+	// with a forced 0 the view-change cannot shrink the Snowman preset (K=21/α=15) and FREEZES (the
+	// pre-fix stall); unset, ValidatorCount reports the real len(ids).
+	simValidatorCount    int
+	simValidatorCountSet bool
 }
 
 func newTestValidatorSet(n int) *testValidatorSet {
@@ -216,6 +224,25 @@ func (s *testValidatorSet) TotalStake(_ uint64) uint64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return uint64(len(s.ids))
+}
+
+// ValidatorCount implements StakeSource: the DISTINCT validator count (the live committee size the
+// view-change sizes n/α to), unless a test forces a value via setSimulatedValidatorCount.
+func (s *testValidatorSet) ValidatorCount(_ uint64) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.simValidatorCountSet {
+		return s.simValidatorCount
+	}
+	return len(s.ids)
+}
+
+// setSimulatedValidatorCount forces ValidatorCount to report c (0 models the current-map Manager
+// unresolved at construction — the mainnet freeze). Call before the fleet builds.
+func (s *testValidatorSet) setSimulatedValidatorCount(c int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.simValidatorCount, s.simValidatorCountSet = c, true
 }
 
 // signerFor returns a VoteSigner bound to validator i's key.

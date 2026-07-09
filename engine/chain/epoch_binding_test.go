@@ -62,6 +62,11 @@ func (e *epochStakeSource) TotalStake(height uint64) uint64 {
 	return t
 }
 
+func (e *epochStakeSource) ValidatorCount(height uint64) int {
+	w, _ := e.snapshotFor(height)
+	return len(w)
+}
+
 // TestEpochBinding_CrossEpochCertRejected pins property (1): a cert is bound to
 // the validator-set-root it was signed under; mutating the cert's position root
 // to a different epoch's root makes every signature fail verification.
