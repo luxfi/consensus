@@ -322,3 +322,56 @@ func TestRoundView_StaleOuterLock_SuppressesWinnerPrevote(t *testing.T) {
 		t.Fatalf("unlocked node prevoteTarget = %s, want winner %s", got, winnerI)
 	}
 }
+
+// TestRoundView_RebaseLockAlias is the pure-layer teeth of the LIVE stale-alias rebase
+// (round_view.go rebaseLockAlias, driven by integration.go maybeRebaseStaleLock). It proves the
+// mechanical alias swap: a stale outer-wrapper lock that the engine has PROVEN is the same inner
+// block as the winner is re-named onto the winner canonical — round preserved, lock never released,
+// prevoteTarget flipping from suppression to the winner — and that the guards never fabricate or
+// move a lock they must not.
+func TestRoundView_RebaseLockAlias(t *testing.T) {
+	winnerI := ids.GenerateTestID()
+	staleOuter := ids.GenerateTestID()
+
+	v := newRoundView(1082880, 4, 5)
+	v.haveLocked = true
+	v.lockRound = 8450
+	v.lockBlock = staleOuter
+	v.round = 8460
+
+	// PRE: the stale outer lock SUPPRESSES the winner prevote (the freeze).
+	if got := v.prevoteTarget(winnerI); got != staleOuter {
+		t.Fatalf("pre-rebase prevoteTarget = %s, want the stale lock %s (winner %s suppressed)", got, staleOuter, winnerI)
+	}
+
+	// The engine proved staleOuter and winnerI are aliases of ONE inner block → rebase.
+	if !v.rebaseLockAlias(winnerI) {
+		t.Fatal("rebaseLockAlias must report it rebased a stale-alias lock")
+	}
+	if v.lockBlock != winnerI {
+		t.Fatalf("lockBlock = %s, want winner %s after rebase", v.lockBlock, winnerI)
+	}
+	if v.lockRound != 8450 {
+		t.Fatalf("lockRound = %d, want 8450 PRESERVED (same value, alias swap only)", v.lockRound)
+	}
+	if !v.haveLocked {
+		t.Fatal("the lock must NOT be released by an alias rebase (still locked, on the inner)")
+	}
+	// POST: the node now prevotes the winner → a POL for I can form.
+	if got := v.prevoteTarget(winnerI); got != winnerI {
+		t.Fatalf("post-rebase prevoteTarget = %s, want winner %s", got, winnerI)
+	}
+
+	// GUARDS (no-ops): re-rebase to the same value, rebase to Empty, and rebase on an UNLOCKED view
+	// (must never fabricate a lock — that would be a phantom precommit the machine never justified).
+	if v.rebaseLockAlias(winnerI) {
+		t.Fatal("second rebase to the same value must be a no-op (idempotent)")
+	}
+	if v.rebaseLockAlias(ids.Empty) {
+		t.Fatal("rebase to Empty must be a no-op")
+	}
+	unlocked := newRoundView(1082880, 4, 5)
+	if unlocked.rebaseLockAlias(winnerI) || unlocked.haveLocked {
+		t.Fatal("rebase on an UNLOCKED view must be a no-op and must never fabricate a lock")
+	}
+}
