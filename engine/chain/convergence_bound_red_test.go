@@ -30,9 +30,16 @@ func TestRedConvergence_SiblingStormBoundedAcrossScale(t *testing.T) {
 		t.Skip("scale storm sim is heavy; skipped in -short")
 	}
 	// Largest feasible in-process (each message fans out O(N) with real ed25519 verify, so
-	// a round is O(N²) crypto ops). 64 nodes is the ceiling that stays well under the CI
-	// timeout under -race; the analytical proof covers 1M.
+	// a round is O(N²) crypto ops). 64 nodes is the non-race ceiling; the analytical proof
+	// (scale_invariance_red_test.go) covers 1M. Under -race the ~3x slowdown makes the O(N²)
+	// gossip at N=64 exceed the flat perScaleBound (a HARNESS artifact, not a protocol
+	// round-count property — the very thing this test measures is round-count, which -race does
+	// not change), so cap the in-process scale at 32 under -race; the N-independence of the
+	// round schedule is still exercised across 4→32, and non-race still covers 64.
 	scales := []int{4, 7, 16, 32, 64}
+	if underRace {
+		scales = []int{4, 7, 16, 32}
+	}
 
 	// A FIXED bound for EVERY N: the view-change settle schedule is counted in ROUNDS
 	// (viewSettleTicks), independent of N, so convergence time must not scale with N. We
