@@ -298,6 +298,32 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	// fetch arbitrary ids. Peer selection is the node layer's job (EmptyNodeID ⇒
 	// sample a peer); claimCatchupLocked rate-limits the request.
 	if !exists {
+		// STORM-ALIAS UNFREEZE (mainnet 1085755). The cert VERIFIED as a valid α-of-K
+		// witness, but its OUTER envelope is not one we track. Under pChainHeight=0
+		// anyone-can-propose, every validator wraps the SAME inner execution block in its
+		// OWN outer proposervm envelope, so the cert's envelope is an ALIAS of a wrapper we
+		// DO hold and verified. The signed vote message binds the CANONICAL execution
+		// identity, not the outer ids (CanonicalVoteMessage), so the α votes verify against
+		// OUR wrapper's position too — and Accepting any wrapper of the certified inner block
+		// applies the IDENTICAL execution. Finalize the LOCAL wrapper so our EVM advances on
+		// a network-final height instead of freezing while it fetches a redundant alias. Only
+		// if we hold no wrapper of this inner block at all do we fall back to catch-up.
+		if localID, ok := t.finalizeLocalAliasFromVerifiedCert(cert); ok {
+			rt.fastFollowMu.Lock()
+			if cert.Position.Height > rt.fastFollowHeight {
+				rt.fastFollowHeight = cert.Position.Height
+			}
+			rt.fastFollowMu.Unlock()
+			if !rt.config.Logger.IsZero() {
+				rt.config.Logger.Info("finalized local wrapper via α-of-K cert for a sibling envelope (storm-alias)",
+					log.Stringer("localEnvelope", localID),
+					log.Stringer("certEnvelope", cert.Position.BlockID),
+					log.Stringer("canonical", cert.Position.CanonicalID),
+					log.Uint64("height", cert.Position.Height),
+					log.Int("voters", cert.VoterCount()))
+			}
+			return true
+		}
 		rt.requestCatchup(cert.Position.BlockID, ids.EmptyNodeID)
 		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("incoming cert: valid but block not locally tracked; fetching the certified block",
@@ -373,6 +399,104 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 			log.Int("voters", cert.VoterCount()))
 	}
 	return true
+}
+
+// finalizeLocalAliasFromVerifiedCert closes the STORM-ALIAS gap: given an
+// ALREADY-VERIFIED α-of-K cert whose OUTER envelope this node does NOT track, it
+// finalizes a LOCAL wrapper of the SAME certified inner execution block, if we hold one.
+//
+// WHY THIS IS SAFE (one certified inner block, any wrapper of it Accepts the identical
+// execution):
+//   - It resolves the local wrapper by the cert's CANONICAL id (pendingByCanonicalLocked),
+//     then requires the wrapper's FULL canonical tuple (id + parent-canonical + exec-state
+//     root + payload root) to equal the cert's — so we can only ever Accept the exact
+//     execution the cert certified, never a colliding-id impostor. A verified local wrapper
+//     always satisfies this (its inner execution was re-executed at Verify); the check makes
+//     the invariant explicit and fails closed on any drift.
+//   - It REBASES the cert onto the local wrapper by copying the cert's Position and swapping
+//     ONLY the transport ids (BlockID/ParentID). Every SIGNED field — canonical id/parent,
+//     exec-state root, payload root, height, round, validator-set root — is unchanged, so the
+//     α votes carry over unmodified (outer ids are never in the signed message).
+//   - It RE-VERIFIES the rebased cert against the local wrapper's epoch (the SAME predicate
+//     verifyCert runs: α distinct in-set signatures, ⅔-by-stake when wired, plus the set-root
+//     epoch cross-check the exists-path applies) BEFORE finalizing, and finalizes ONLY through
+//     the sole finalizer (AcceptWithCert → FinalizeBranch). A forged or epoch-mismatched cert
+//     fails here and we fall back to catch-up. No fork: the per-height gate keys on the
+//     canonical id, and a duplicate envelope of an already-final canonical is idempotent.
+//
+// Returns the finalized LOCAL envelope id + true on success; (Empty,false) means "no local
+// wrapper of this inner block" or "did not re-verify" — the caller then defers to catch-up.
+func (t *Transitive) finalizeLocalAliasFromVerifiedCert(cert *QuorumCert) (ids.ID, bool) {
+	canon := cert.Position.CanonicalID
+	if canon == ids.Empty {
+		canon = cert.Position.BlockID
+	}
+
+	t.mu.RLock()
+	pL, localID := t.pendingByCanonicalLocked(canon)
+	if pL == nil || pL.ConsensusBlock == nil {
+		t.mu.RUnlock()
+		return ids.Empty, false
+	}
+	cb := pL.ConsensusBlock
+	// Full canonical-tuple equality — we finalize ONLY a wrapper committing to the exact
+	// certified inner execution, never a canonical-id collision with a different execution.
+	// Height is bound too: a canonical (inner execution) id is unique per height, so a height
+	// mismatch means the resolver crossed heights — fail closed.
+	if cb.height != cert.Position.Height ||
+		cb.canonicalID != cert.Position.CanonicalID ||
+		cb.parentCanonicalID != cert.Position.ParentCanonicalID ||
+		cb.execStateRoot != cert.Position.ExecutionStateRoot ||
+		cb.payloadRoot != cert.Position.PayloadRoot {
+		t.mu.RUnlock()
+		return ids.Empty, false
+	}
+	localParentID := cb.parentID
+	// The epoch our wrapper was built at — every honest node that wraps this inner block
+	// derives the identical set/root/stake here (the votes were cast under it).
+	epochHeight := t.epochHeightLocked(pL)
+	setRootSrc := t.setRootSource
+	t.mu.RUnlock()
+
+	// Set-root epoch cross-check (parity with the exists-path defense in depth): the cert's
+	// bound validator-set root must equal the root WE compute for this epoch, so a cert
+	// laundered from a different validator-set epoch is refused even if its signatures verify.
+	if setRootSrc != nil {
+		if setRootSrc.ValidatorSetRoot(epochHeight) != cert.Position.ValidatorSetRoot {
+			return ids.Empty, false
+		}
+	}
+
+	// Rebase: copy the verified cert's Position, swap only the transport ids to the local
+	// wrapper. Every signed field is unchanged, so the votes verify unmodified.
+	rebasedPos := cert.Position
+	rebasedPos.BlockID = localID
+	rebasedPos.ParentID = localParentID
+
+	rebased, err := AssembleQuorumCert(rebasedPos, cert.Threshold, cert.Votes)
+	if err != nil {
+		return ids.Empty, false
+	}
+	// SAFETY GATE: the rebased cert must clear the SAME α-of-K predicate. Because the signed
+	// message is byte-identical to the incoming cert's (outer ids excluded), this passes
+	// exactly when the incoming cert did — re-run for defense in depth (a nil verifier or a
+	// stake shortfall fails closed).
+	if verr := t.verifyCert(rebased, epochHeight); verr != nil {
+		return ids.Empty, false
+	}
+	vcert, ok := wrapVerifiedCert(rebased)
+	if !ok {
+		return ids.Empty, false
+	}
+
+	ctx := context.Background()
+	if c := t.ctx; c != nil {
+		ctx = c
+	}
+	if err := t.AcceptWithCert(ctx, localID, vcert); err != nil {
+		return ids.Empty, false
+	}
+	return localID, true
 }
 
 // verifyCert runs the FULL finality predicate — α distinct in-set signatures over
