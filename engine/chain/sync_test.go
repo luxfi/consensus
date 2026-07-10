@@ -82,7 +82,7 @@ func TestSyncState_DifferentBlockIsHintNotEquivocation(t *testing.T) {
 	if h, set := c.GetFinalizedHeight(); !set || h != 100 {
 		t.Fatalf("certified height moved on a hint import: got (%d,%v) want (100,true)", h, set)
 	}
-	if got := c.GetCertifiedTip(); got != h100 {
+	if got := c.GetNovaTip(); got != h100 {
 		t.Fatalf("certified tip changed on a hint import: got %s want %s", got, h100)
 	}
 }

@@ -69,26 +69,24 @@ func TestFiveValidatorsAlphaFourFinalizes(t *testing.T) {
 // committee — exactly what the spec requires (3/5 = 60% < strict ⅔, and the cert
 // AND Parameters.Valid AND the BFT overlap bound all reject it). Proposer + 2
 // peers = 3 distinct < α=4 → never accepts.
-func TestThreeOfFiveRejected(t *testing.T) {
+func TestThreeOfFiveNovaAcceptsExportPauses(t *testing.T) {
 	p := dyn5()
 	vs := newTestValidatorSet(5)
 	rec := &recordingGossiper{}
-	e, chainID := newQuorumEngine(t, p, vs, 0, rec)
+	e, chainID := newQuorumEngineOpts(t, p, vs, 0, rec, WithStakeWeighting(vs))
 
 	blk := newTestBlock(1, ids.Empty, "three-of-five")
 	pos := trackProposal(e, chainID, blk, 0)
 
-	// Two peer accepts → proposer + 2 = 3 distinct < α=4.
+	// Two peer accepts → proposer + 2 = 3 = NovaQuorum(5), the v1.36 bare-majority accept.
 	e.ReceiveVote(vs.signedVote(1, pos))
 	e.ReceiveVote(vs.signedVote(2, pos))
 
-	if waitFor(400*time.Millisecond, func() bool { return e.IsAccepted(blk.id) }) {
-		t.Fatal("SAFETY VIOLATION: block finalized with only 3-of-5 (below α=4 strict-⅔ quorum)")
-	}
-	if blk.AcceptCalled() != 0 {
-		t.Fatalf("VM.Accept must NOT run below quorum, got %d", blk.AcceptCalled())
-	}
-	// And the strict-⅔ floor confirms 3 units of stake do NOT exceed floor(2·5/3)=3.
+	// NOVA: 3-of-5 is the bare majority — it accepts (local execution), the "survive 3/5" liveness.
+	mustFinalize(t, e, blk, 2*time.Second, "3-of-5 bare majority (Nova local accept)")
+	// QUASAR: 3 units of equal stake = 60% ≤ ⅔ — export pauses (certification degraded).
+	mustNotQuasar(t, e, blk, 500*time.Millisecond, "3-of-5 = 60% stake (export gate)")
+	// The strict-⅔ floor confirms 3 units of stake do NOT exceed floor(2·5/3)=3.
 	if 3 > config.TwoThirdsStakeFloor(5) {
 		t.Fatal("3-of-5 must NOT strictly exceed the ⅔ stake floor")
 	}
@@ -125,33 +123,25 @@ func TestOneLaggardStillFinalizes(t *testing.T) {
 // quorum genuinely unreachable: proposer + 2 = 3 distinct < α=4, so the block
 // must NOT finalize. The engine never fabricates finality from a minority — a
 // real ⅓+ outage correctly halts (safety over liveness).
-func TestTwoLaggardsNoFalseFinality(t *testing.T) {
+func TestTwoLaggardsNovaContinuesExportPauses(t *testing.T) {
 	p := dyn5()
 	vs := newTestValidatorSet(5)
 	rec := &recordingGossiper{}
-	e, chainID := newQuorumEngine(t, p, vs, 0, rec)
+	e, chainID := newQuorumEngineOpts(t, p, vs, 0, rec, WithStakeWeighting(vs))
 
 	blk := newTestBlock(1, ids.Empty, "two-laggards")
 	pos := trackProposal(e, chainID, blk, 0)
 
-	// Only validators 1,2 vote; 3 and 4 are laggards. Proposer + 2 = 3 < α=4.
+	// Only validators 1,2 vote; 3 and 4 are laggards. Proposer + 2 = 3 = the Nova bare majority.
 	e.ReceiveVote(vs.signedVote(1, pos))
 	e.ReceiveVote(vs.signedVote(2, pos))
 
-	// Give the re-poll loop several rounds to run — it must NOT manufacture
-	// finality from a sub-quorum (re-poll is liveness retry, never a force).
-	if waitFor(600*time.Millisecond, func() bool { return e.IsAccepted(blk.id) }) {
-		t.Fatal("SAFETY VIOLATION: block finalized with two laggards (3-of-5 < α=4) — re-poll must not force")
-	}
-	if blk.AcceptCalled() != 0 {
-		t.Fatalf("VM.Accept must NOT run under a real ⅓+ outage, got %d", blk.AcceptCalled())
-	}
-	rec.mu.Lock()
-	gotCerts := len(rec.certs)
-	rec.mu.Unlock()
-	if gotCerts != 0 {
-		t.Fatalf("no cert may be assembled below quorum, got %d", gotCerts)
-	}
+	// NOVA: with 2 laggards the 3 live validators still accept — production SURVIVES the outage
+	// (the v1.36 "majority is enough" mandate). This is the exact case the old ⅔-accept froze.
+	mustFinalize(t, e, blk, 2*time.Second, "3 live of 5 (2 laggards) — Nova local accept")
+	// QUASAR: 60% stake ≤ ⅔ — certification pauses until a laggard returns (the degraded mode:
+	// production continues, export waits). No export cert forms from a sub-⅔ set.
+	mustNotQuasar(t, e, blk, 500*time.Millisecond, "2-laggard outage = 60% stake (export gate)")
 }
 
 // TestSelfVoteCounts proves the proposer's OWN signed accept is one of the α

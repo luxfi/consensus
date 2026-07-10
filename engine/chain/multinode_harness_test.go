@@ -482,6 +482,19 @@ func (n *simNode) finalizedTip() (ids.ID, uint64, bool) {
 	return n.rt.FinalizedLedger()
 }
 
+// quasarHeight returns this node's EXPORT (Quasar, ⅔-by-stake) height + whether any export cert
+// has formed. It is always ≤ the node's Nova/accept height.
+func (n *simNode) quasarHeight() (uint64, bool) { return n.rt.QuasarHeight() }
+
+// quasarTip returns the canonical of this node's highest EXPORT-final (Quasar) block (ids.Empty
+// until the first ⅔-stake cert). novaTip returns its highest LOCALLY ACCEPTED (Nova) canonical.
+func (n *simNode) quasarTip() ids.ID { return n.rt.QuasarTip() }
+func (n *simNode) novaTip() ids.ID   { return n.rt.NovaTip() }
+
+// finalityStatus returns this node's two-tier finality snapshot (nova/quasar heights, responsive
+// stake, degraded flag) for the degraded-mode visibility assertions.
+func (n *simNode) finalityStatus() FinalityStatus { return n.rt.FinalityStatus() }
+
 // -----------------------------------------------------------------------------
 // simNet — a set of N validators sharing one bus and one test validator set.
 // -----------------------------------------------------------------------------
@@ -610,6 +623,43 @@ func (net *simNet) headsAtHeight(h uint64) map[ids.ID]int {
 		}
 	}
 	return heads
+}
+
+// quasarEverywhere reports whether EVERY up node has EXPORTED (reached Quasar) at least to blk's
+// height with blk's canonical as its export tip, and whether any up node exported a DIFFERENT
+// canonical as its export tip (an export fork — THE INVARIANT breach). For a single-block test
+// the export tip at blk.height IS blk's canonical, so comparing quasarTip is exact.
+func (net *simNet) quasarEverywhere(blk *simBlock) (all bool, fork bool) {
+	all = true
+	for _, n := range net.nodes {
+		if !n.reachable() {
+			continue
+		}
+		qh, ok := n.quasarHeight()
+		if !ok || qh < blk.height {
+			all = false
+			continue
+		}
+		if tip := n.quasarTip(); tip != blk.ID() && tip != ids.Empty {
+			fork = true
+		}
+	}
+	return all, fork
+}
+
+// anyQuasarAtHeight reports the distinct EXPORT (Quasar) tips any up node has reached at >= h —
+// used to assert that NO two conflicting export tips ever coexist (THE INVARIANT).
+func (net *simNet) quasarTips() map[ids.ID]int {
+	tips := map[ids.ID]int{}
+	for _, n := range net.nodes {
+		if !n.reachable() {
+			continue
+		}
+		if qh, ok := n.quasarHeight(); ok && qh > 0 {
+			tips[n.quasarTip()]++
+		}
+	}
+	return tips
 }
 
 // upCount returns how many nodes are currently up.

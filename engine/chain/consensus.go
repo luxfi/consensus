@@ -69,20 +69,46 @@ type ChainConsensus struct {
 	// Consensus tracking
 	bootstrapped bool
 
-	// ledger is the committed finality VALUE — the append-only prefix of finalized
-	// history (ledger.go), the one source of truth for which block is final at each
-	// height. It is only ever REPLACED WHOLE, never poked field-by-field, so there is
+	// ledger is the committed NOVA finality VALUE — the append-only prefix of accepted
+	// history (ledger.go), the one source of truth for which block is LOCALLY ACCEPTED at
+	// each height. It is only ever REPLACED WHOLE, never poked field-by-field, so there is
 	// no markFinalized to call. Exactly two paths replace it: the cert fold
-	// (applyCertLocked, the production path) and SyncState (the out-of-band import
-	// reconcile). A single non-branching finalized chain is the OUTPUT of the cert's
-	// reorg — pruning the losing sibling subtree — never an admission refusal.
+	// (applyCertLocked, the production path — now driven by the NOVA majority cert) and
+	// SyncState (the out-of-band import reconcile). A single non-branching accepted chain is
+	// the OUTPUT of the cert's reorg — pruning the losing sibling subtree — never an
+	// admission refusal. This is the ACCEPT (local-execution) frontier; export finality is
+	// the separate, trailing quasar frontier below.
 	ledger FinalityLedger
+
+	// quasar is the EXPORT (Quasar) frontier — the highest block that has reached a
+	// ⅔-by-stake certificate. It TRAILS the Nova ledger: a ⅔-stake accept quorum is a
+	// superset of a bare majority, so every Quasar block is already a Nova block, and this
+	// frontier is always a prefix of the certified Nova chain. It advances ONLY via
+	// PromoteQuasar, which requires the promoted block to MATCH the Nova ledger's accepted
+	// canonical at that height — so the "no two conflicting Quasar certs" INVARIANT is
+	// inherited from the Nova ledger's single-canonical-per-height gate. GetQuasarTip reads
+	// it; it is the ONLY tip bridges / DEX settlement / cross-chain messages may consume.
+	quasar quasarFrontier
 
 	// preference is the preliminary BUILD tip used BEFORE the first finalize — the
 	// DECOMPLECTED preference concern (avalanchego keeps `preference` separate from the
 	// committed `lastAcceptedID`). Once the ledger is set the finalized tip wins and
 	// this is unused; ForcePreference seeds it, Preference() reads it only pre-finalize.
 	preference ids.ID
+}
+
+// quasarFrontier is the EXPORT (Quasar) frontier value: the highest block that has
+// reached a ⅔-by-stake certificate. It is a pure {height, canonical, envelope} tip, NOT a
+// full ledger — it needs no ancestry fold of its own because every Quasar block is a Nova
+// block and the Nova ledger (which PromoteQuasar validates against) already proved the
+// single non-branching accepted chain. The "no two conflicting Quasar certs" invariant is
+// therefore inherited: PromoteQuasar only ever moves this frontier to a canonical the Nova
+// ledger already accepted at that height.
+type quasarFrontier struct {
+	height    uint64 // highest export-final height
+	canonical ids.ID // inner execution commitment of the Quasar tip (ids.Empty until the first cert)
+	envelope  ids.ID // outer transport id of the Quasar tip (serving / diagnostics)
+	set       bool   // false until the first ⅔-stake cert promotes
 }
 
 // NewChainConsensus creates a real consensus engine
@@ -292,13 +318,88 @@ func (c *ChainConsensus) GetFinalizedTip() ids.ID {
 	return ids.Empty
 }
 
-// GetCertifiedTip returns the canonical execution commitment of the certified head
-// (ids.Empty before the first cert) — the true finality identity, used for
-// equivocation evidence and conformance assertions.
-func (c *ChainConsensus) GetCertifiedTip() ids.ID {
+// GetQuasarTip returns the canonical execution commitment of the highest EXPORT-FINAL
+// (Quasar, ⅔-by-stake) block — the ONLY tip a bridge / DEX settlement / cross-chain
+// message / validator-set transition may treat as deterministically final. It is
+// ids.Empty until the first ⅔-stake certificate forms, and it NEVER returns the Nova
+// (accept) tip: a Nova block is locally executed but a lone equivocator can fork a bare
+// majority, so it is reorgable and non-exportable until it reaches Quasar. This is the
+// rename of the former GetCertifiedTip, re-pointed from the Nova fold result to the
+// trailing Quasar frontier — THE export-gating invariant of the two-tier ladder.
+func (c *ChainConsensus) GetQuasarTip() ids.ID {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.quasar.canonical
+}
+
+// GetNovaTip returns the canonical execution commitment of the highest LOCALLY ACCEPTED
+// (Nova) block — the accepted/execution head that drove VM.Accept. It is the correct tip
+// for local build/preference and for equivocation evidence, but it authorizes LOCAL
+// execution ONLY: it is reorgable-in-theory until it reaches Quasar and MUST NOT be
+// exported (use GetQuasarTip for any bridge / settlement / cross-chain decision). This
+// carries the old GetCertifiedTip semantics (the Nova ledger's canonical fold result),
+// renamed to name the tier explicitly so no caller can mistake accept for export.
+func (c *ChainConsensus) GetNovaTip() ids.ID {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.ledger.CanonicalTip()
+}
+
+// QuasarHeight returns the highest EXPORT-FINAL (Quasar) height and whether any ⅔-stake
+// cert has formed. GetFinalizedHeight() (the Nova/accept height) is always ≥ this; a
+// positive gap means the chain is PRODUCING Nova but not yet CERTIFYING Quasar — the
+// degraded mode (production continues, certification pauses) the two-tier split enables.
+func (c *ChainConsensus) QuasarHeight() (uint64, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.quasar.height, c.quasar.set
+}
+
+// PromoteQuasar advances the EXPORT (Quasar) frontier to a block that has reached a
+// ⅔-by-stake certificate (the trailing attestation sidecar assembled it, strictly AFTER
+// the Nova accept). `cert` names the export cert's subject (height + canonical + outer
+// envelope). It advances ONLY forward and ONLY to a block the Nova ledger ALREADY accepted
+// at that height with the SAME canonical, so a Quasar cert can never certify a block Nova
+// did not accept:
+//
+//   - advanced=true  → the frontier moved to a new (strictly higher) height.
+//   - err != nil (ErrHeightAlreadyFinalized) → the export cert's canonical CONFLICTS with the
+//     canonical Nova already accepted at that height. That is a provable ⅔-stake
+//     equivocation — it needs >⅓ stake to double-sign, beyond the f<⅓ assumption — so the
+//     caller HALTS fail-closed and surfaces it as slashable evidence. NEVER advances on error.
+//   - advanced=false, err=nil → idempotent/no-op: the height is at/below the current Quasar
+//     frontier (a duplicate/late cert), or the Nova ledger has not yet (or no longer, past the
+//     equivocation window) recorded this height — in which case it is an ancestor of the Nova
+//     tip and already implicitly final, or the promotion will retry once Nova catches up.
+//
+// This is the SOLE writer of the Quasar frontier; the "no two conflicting Quasar certs"
+// invariant reduces to the Nova ledger's single-canonical-per-height gate that this checks
+// against (c.ledger.At), which itself fail-closes on a conflicting Nova accept.
+func (c *ChainConsensus) PromoteQuasar(cert Cert) (advanced bool, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	canonical := cert.Canonical
+	if canonical == ids.Empty {
+		canonical = cert.Block
+	}
+	novaCanonical, have := c.ledger.At(cert.Height)
+	if !have {
+		// Nova has not (yet / no longer within the equivocation window) recorded this height.
+		// Do NOT advance: either Nova will catch up and the promotion retries, or the height
+		// aged out and is an ancestor of the Nova tip (already implicitly final). Not an error.
+		return false, nil
+	}
+	if novaCanonical != canonical {
+		// A ⅔-stake export cert for a canonical the Nova ledger did NOT accept at this height —
+		// the two-tier INVARIANT breach. Fail closed; the caller halts and slashes.
+		return false, fmt.Errorf("%w: quasar export cert canonical %s conflicts with nova-accepted canonical %s at height %d",
+			ErrHeightAlreadyFinalized, canonical, novaCanonical, cert.Height)
+	}
+	if c.quasar.set && cert.Height <= c.quasar.height {
+		return false, nil // idempotent / monotonic: only ever advance forward
+	}
+	c.quasar = quasarFrontier{height: cert.Height, canonical: canonical, envelope: cert.Block, set: true}
+	return true, nil
 }
 
 // GetFinalizedHeight returns the current finalized height and whether any block

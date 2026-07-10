@@ -225,9 +225,10 @@ func TestProposerLiveness_LateHonestVote_FinalizesViaPersistentRePoll(t *testing
 // -----------------------------------------------------------------------------
 
 // TestProposerSafety_SubQuorumNeverFinalizes_EvenWithPersistentRePoll proves the
-// liveness retry does not weaken safety: 3 of 5 (< α=4) is re-solicited forever and
-// STILL never finalizes. A genuine minority cannot finalize no matter how long it
-// re-polls.
+// liveness retry does not weaken safety: a SUB-NOVA-MAJORITY count (2 of 5, below the v1.36
+// accept threshold NovaQuorum(5)=3) is re-solicited forever and STILL never accepts. A genuine
+// sub-majority cannot Nova-accept no matter how long it re-polls (re-poll re-SOLICITS, it never
+// manufactures a vote or lowers the majority threshold).
 func TestProposerSafety_SubQuorumNeverFinalizes_EvenWithPersistentRePoll(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	params := params5Prod()
@@ -237,15 +238,14 @@ func TestProposerSafety_SubQuorumNeverFinalizes_EvenWithPersistentRePoll(t *test
 	e.SetProposer(newReSolicitProbe())
 
 	blk := newTestBlock(3, ids.Empty, "minority")
-	pos := trackProposal(e, chainID, blk, 0) // self = 1
-	e.ReceiveVote(vs.signedVote(1, pos))     // 2
-	e.ReceiveVote(vs.signedVote(2, pos))     // 3 of 5 < α=4
+	pos := trackProposal(e, chainID, blk, 0) // self = 1 vote
+	e.ReceiveVote(vs.signedVote(1, pos))     // 2 of 5 < Nova majority (NovaQuorum(5)=3)
 
 	driveRePoll(e, 60) // re-solicit far past the old abandon cap
 
 	if waitFor(500*time.Millisecond, func() bool { return e.IsAccepted(blk.id) }) {
-		t.Fatal("SAFETY VIOLATION: a sub-quorum (3 of 5, below α=4) finalized — persistent re-poll " +
-			"must re-SOLICIT only; it must never lower the α-of-K threshold.")
+		t.Fatal("SAFETY VIOLATION: a sub-majority (2 of 5, below NovaQuorum=3) accepted — persistent " +
+			"re-poll must re-SOLICIT only; it must never lower the Nova majority threshold.")
 	}
 	rec.mu.Lock()
 	certs := len(rec.certs)
@@ -258,7 +258,8 @@ func TestProposerSafety_SubQuorumNeverFinalizes_EvenWithPersistentRePoll(t *test
 // TestProposerSafety_ForgedAndOutOfSetVotes_NeverCount proves re-solicitation
 // cannot be exploited: an out-of-set signer and a real validator's signature lifted
 // to the WRONG position are both dropped, so even re-solicited forever the block
-// stays at its 3 genuine votes (< α) and never finalizes.
+// stays at its 2 genuine votes (< the Nova majority NovaQuorum(5)=3) and never accepts —
+// forged votes never push a sub-majority over the accept threshold.
 func TestProposerSafety_ForgedAndOutOfSetVotes_NeverCount(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	params := params5Prod()
@@ -268,9 +269,8 @@ func TestProposerSafety_ForgedAndOutOfSetVotes_NeverCount(t *testing.T) {
 	e.SetProposer(newReSolicitProbe())
 
 	blk := newTestBlock(9, ids.Empty, "forged-attack")
-	pos := trackProposal(e, chainID, blk, 0) // self = 1
-	e.ReceiveVote(vs.signedVote(1, pos))     // 2
-	e.ReceiveVote(vs.signedVote(2, pos))     // 3 (genuine)
+	pos := trackProposal(e, chainID, blk, 0) // self = 1 genuine vote
+	e.ReceiveVote(vs.signedVote(1, pos))     // 2 genuine (< Nova majority NovaQuorum(5)=3)
 
 	// (a) out-of-set signer: keys unknown to vs.
 	outsider := newTestValidatorSet(1)

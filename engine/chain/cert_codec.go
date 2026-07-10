@@ -27,6 +27,7 @@ var ErrQCWireCorrupt = errors.New("chain: quorum cert wire corrupt")
 //
 //	version:2
 //	type:1
+//	tier:1                  (Nova | Quasar — the accept/export rung this cert attests)
 //	chain_id:32
 //	height:8
 //	round:4
@@ -54,10 +55,10 @@ var ErrQCWireCorrupt = errors.New("chain: quorum cert wire corrupt")
 const qcVoteFixed = ids.NodeIDLen + 1 + 4
 
 // qcHeaderSize is the fixed header byte length preceding the vote records.
-// (version + type + chain_id + height + round + block_id + parent_id +
+// (version + type + tier + chain_id + height + round + block_id + parent_id +
 // canonical_block_id + parent_canonical_id + execution_state_root + payload_root +
 // validator_set_root + threshold + vote_count.)
-const qcHeaderSize = 2 + 1 + 32 + 8 + 4 + 32 + 32 + 32 + 32 + 32 + 32 + 32 + 4 + 4
+const qcHeaderSize = 2 + 1 + 1 + 32 + 8 + 4 + 32 + 32 + 32 + 32 + 32 + 32 + 32 + 4 + 4
 
 // MarshalBinary encodes the cert deterministically. Equal certs encode to equal
 // bytes (votes are kept in the strictly-increasing order Assemble produced).
@@ -70,6 +71,7 @@ func (c *QuorumCert) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint16(u16[:], c.Version)
 	buf = append(buf, u16[:]...)
 	buf = append(buf, byte(c.Type))
+	buf = append(buf, byte(c.Tier))
 	buf = append(buf, c.Position.ChainID[:]...)
 	var u64 [8]byte
 	binary.BigEndian.PutUint64(u64[:], c.Position.Height)
@@ -120,6 +122,11 @@ func UnmarshalQuorumCert(data []byte) (*QuorumCert, error) {
 		return nil, ErrQCWireCorrupt
 	}
 	c.Type = QCType(t8)
+	tier8, err := r.u8()
+	if err != nil {
+		return nil, ErrQCWireCorrupt
+	}
+	c.Tier = Finality(tier8)
 	if err = r.readIDInto(&c.Position.ChainID); err != nil {
 		return nil, ErrQCWireCorrupt
 	}
