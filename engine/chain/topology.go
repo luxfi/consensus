@@ -102,8 +102,29 @@ func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
 	}
 	t.mu.RUnlock()
 
-	if !exists || verifier == nil {
+	if verifier == nil {
 		return false
+	}
+	if !exists {
+		// The block is not pending. It may be a FINALIZED (Nova-accepted) block whose trailing
+		// ⅔-stake vote is still arriving — the ⅔-th stake vote necessarily follows the
+		// bare-majority accept — so route a verified accept for it to the late-attestation path
+		// (handleVote → attestFinalizedVote → the Quasar attestor) to complete the EXPORT cert.
+		// Verify against the REMEMBERED accepted position (the exact bytes the accept votes signed).
+		// An unknown / aged-out block drops (unchanged behaviour).
+		ap, remembered := t.lookupAcceptedPos(blockID)
+		if !remembered || !verifier.VerifyVote(nodeID, CanonicalVoteMessage(ap.pos), sig, ap.epoch) {
+			return false
+		}
+		t.ReceiveVote(Vote{
+			BlockID:   blockID,
+			NodeID:    nodeID,
+			Accept:    true,
+			Signature: sig,
+			ParentID:  ap.pos.ParentID,
+			Round:     ap.pos.Round,
+		})
+		return true
 	}
 
 	// Verify the signature against OUR position for this block, resolving the
@@ -164,16 +185,25 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	if verifier == nil {
 		return false
 	}
-	// The cert's threshold MUST meet our own α floor — a cert that asserts a
-	// LOWER threshold than this chain requires is rejected even if its internal
-	// signatures verify (sub-quorum finality forgery defence, mirrors quasar's
-	// MinThreshold floor).
-	if alpha := t.consensus.Alpha(); alpha > 0 && cert.Threshold < uint32(alpha) {
+	// The cert's threshold MUST meet our own floor FOR ITS TIER — a cert that asserts a
+	// LOWER threshold than this chain requires for that tier is rejected even if its
+	// internal signatures verify (a cheap sub-quorum forgery filter; the AUTHORITATIVE gate
+	// is verifyCert → VerifyWeighted below, which re-derives the tier threshold from the
+	// validator set at the cert's epoch). A gossiped NOVA cert legitimately carries a
+	// bare-majority threshold BELOW the ⅔ Quasar floor, so the floor is tier-selected:
+	// NovaQuorum(K) for Nova, the ⅔ count Alpha() for Quasar. K/Alpha track the live
+	// committee (construction clamp + reclampCommitteeLocked), so both floors follow the
+	// live set. An unknown tier is left to verifyCert (Verify rejects it fail-closed).
+	floor := t.consensus.Alpha() // Quasar ⅔ count floor
+	if cert.Tier == Nova {
+		floor = NovaQuorum(t.consensus.K()) // Nova bare-majority floor
+	}
+	if floor > 0 && cert.Threshold < uint32(floor) {
 		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Warn("incoming cert: threshold below chain alpha floor",
+			rt.config.Logger.Warn("incoming cert: threshold below chain floor for its tier",
 				log.Stringer("blockID", cert.Position.BlockID),
 				log.Uint32("certThreshold", cert.Threshold),
-				log.Int("alphaFloor", alpha))
+				log.Int("tierFloor", floor))
 		}
 		return false
 	}
@@ -488,7 +518,7 @@ func (t *Transitive) finalizeLocalAliasFromVerifiedCert(cert *QuorumCert) (ids.I
 	rebasedPos.BlockID = localID
 	rebasedPos.ParentID = localParentID
 
-	rebased, err := AssembleQuorumCert(rebasedPos, cert.Threshold, cert.Votes)
+	rebased, err := AssembleQuorumCert(rebasedPos, cert.Tier, cert.Threshold, cert.Votes)
 	if err != nil {
 		return ids.Empty, false
 	}

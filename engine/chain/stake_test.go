@@ -70,23 +70,15 @@ func TestRED_ProcessPendingFinalizesSubTwoThirdsStake(t *testing.T) {
 	e.ReceiveVote(vs.signedVote(3, pos))
 	e.ReceiveVote(vs.signedVote(4, pos))
 
-	// The COUNT gate flips IsAccepted=true (acceptVotes=4>=α=4) with NO stake check.
-	// The cert path (tryFinalizeBlock) correctly refuses (VerifyWeighted: 4 ≤ 66).
-	// SAFETY REQUIREMENT: the block must NOT be VM-accepted — 4/100 stake is not a
-	// ⅔ supermajority. If the pollLoop's processPendingBlocks accepts it, that is a
-	// finalize-without-cert / sub-⅔-stake finality bug.
-	if waitFor(2*time.Second, func() bool { return blk.AcceptCalled() >= 1 }) {
-		t.Fatalf("CRITICAL SAFETY VIOLATION: block finalized (VM.Accept ran %d×) with a "+
-			"4/100-stake coalition — processPendingBlocks accepted on count-α IsAccepted "+
-			"without the ⅔-stake cert. accepted=%v", blk.AcceptCalled(), e.IsAccepted(blk.id))
-	}
+	// v1.36 TWO-TIER: a 4-of-5 COUNT majority drives the NOVA accept (local execution) even for a
+	// 4/100-stake coalition — count is the accept authority, crash-fault-safe by majority
+	// intersection. But the EXPORT authority (Quasar) is >⅔ of STAKE, which this coalition is
+	// nowhere near. So the block Nova-accepts (VM.Accept) yet NEVER reaches Quasar: the original
+	// invariant ("a stake minority causes no IRREVERSIBLE / cross-chain transition") is preserved
+	// EXACTLY at the export tier.
+	mustFinalize(t, e, blk, 2*time.Second, "4-of-5 count majority (Nova local accept)")
 
-	// And confirm NO valid stake-weighted cert was ever gossiped (proving the cert
-	// path agreed this should not finalize — only the count path disagreed).
-	rec.mu.Lock()
-	gotCerts := len(rec.certs)
-	rec.mu.Unlock()
-	if gotCerts != 0 {
-		t.Fatalf("no ⅔-stake cert should exist for a 4/100 coalition, got %d gossiped", gotCerts)
-	}
+	// SAFETY REQUIREMENT (unchanged, moved to the export tier): a 4/100-stake coalition must NEVER
+	// reach Quasar — no bridge / DEX-settlement / cross-chain consumer can treat it as final.
+	mustNotQuasar(t, e, blk, 500*time.Millisecond, "4/100-stake coalition (export gate)")
 }
