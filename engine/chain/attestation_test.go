@@ -35,7 +35,7 @@ func attestAll(t *testing.T, q *QuasarAttestor, vs *testValidatorSet, pos VotePo
 		if err != nil {
 			t.Fatalf("node %d Attest: %v", i, err)
 		}
-		c, emitted, err := q.Ingest(pos, att)
+		c, emitted, err := q.Ingest(pos, pos.Height, att)
 		if err != nil {
 			t.Fatalf("node %d Ingest: %v", i, err)
 		}
@@ -52,7 +52,7 @@ func attestAll(t *testing.T, q *QuasarAttestor, vs *testValidatorSet, pos VotePo
 
 func TestQuasarAttestor_FormsPostAccept_MatchesAcceptedBlock(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	q := NewQuasarAttestor(vs, vs, nil)
+	q := NewQuasarAttestor(vs, vs)
 	chainID := ids.GenerateTestID()
 	inner := ids.GenerateTestID()
 	pos := attestPos(chainID, 100, inner)
@@ -77,7 +77,7 @@ func TestQuasarAttestor_FormsPostAccept_MatchesAcceptedBlock(t *testing.T) {
 		t.Fatal("CertAt(100) must return the emitted cert")
 	}
 	// The emitted cert is a valid ⅔-stake finality cert at the epoch.
-	if err := cert.VerifyWeighted(vs, vs, q.epochOf(100)); err != nil {
+	if err := cert.VerifyWeighted(vs, vs, 100); err != nil {
 		t.Fatalf("emitted cert must VerifyWeighted: %v", err)
 	}
 }
@@ -88,14 +88,14 @@ func TestQuasarAttestor_FormsPostAccept_MatchesAcceptedBlock(t *testing.T) {
 
 func TestQuasarAttestor_BelowThreshold_NoCert_NeverBlocks(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	q := NewQuasarAttestor(vs, vs, nil)
+	q := NewQuasarAttestor(vs, vs)
 	pos := attestPos(ids.GenerateTestID(), 7, ids.GenerateTestID())
 
 	// Only 3 of 5 attest — below α=4 and below ⅔ stake. Ingest returns cleanly every time
 	// (no error, no cert): there is NOTHING to block, because acceptance is not this layer's job.
 	for i := 0; i < 3; i++ {
 		att, _ := q.Attest(pos, vs.signerFor(i), vs.nodeID(i))
-		c, emitted, err := q.Ingest(pos, att)
+		c, emitted, err := q.Ingest(pos, pos.Height, att)
 		if err != nil || emitted || c != nil {
 			t.Fatalf("below-threshold ingest %d must be a clean no-cert no-op, got cert=%v emitted=%v err=%v", i, c != nil, emitted, err)
 		}
@@ -115,7 +115,7 @@ func TestQuasarAttestor_BelowThreshold_NoCert_NeverBlocks(t *testing.T) {
 
 func TestQuasarAttestor_ExternalVerifierVerifiesCert(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	q := NewQuasarAttestor(vs, vs, nil)
+	q := NewQuasarAttestor(vs, vs)
 	pos := attestPos(ids.GenerateTestID(), 42, ids.GenerateTestID())
 	cert, _ := attestAll(t, q, vs, pos, 0, 5)
 	if cert == nil {
@@ -126,7 +126,7 @@ func TestQuasarAttestor_ExternalVerifierVerifiesCert(t *testing.T) {
 	// only knows the validator set + stake — no engine, no sampler — accepts the cert.
 	extVerifier := newTestValidatorSet(5)
 	_ = extVerifier // (same key derivation; models an external party holding the same set)
-	if err := cert.VerifyWeighted(vs, vs, q.epochOf(42)); err != nil {
+	if err := cert.VerifyWeighted(vs, vs, 42); err != nil {
 		t.Fatalf("external ⅔-stake verify must pass: %v", err)
 	}
 	// Tamper one voter's signature → verification MUST fail (no forged cert passes).
@@ -134,7 +134,7 @@ func TestQuasarAttestor_ExternalVerifierVerifiesCert(t *testing.T) {
 	bad.Votes = append([]SignedVote(nil), cert.Votes...)
 	bad.Votes[0].Signature = append([]byte(nil), bad.Votes[0].Signature...)
 	bad.Votes[0].Signature[0] ^= 0xFF
-	if err := bad.VerifyWeighted(vs, vs, q.epochOf(42)); err == nil {
+	if err := bad.VerifyWeighted(vs, vs, 42); err == nil {
 		t.Fatal("a cert with a tampered signature MUST fail external verification")
 	}
 }
@@ -145,16 +145,16 @@ func TestQuasarAttestor_ExternalVerifierVerifiesCert(t *testing.T) {
 
 func TestQuasarAttestor_ForgeryRejected(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	q := NewQuasarAttestor(vs, vs, nil)
+	q := NewQuasarAttestor(vs, vs)
 	pos := attestPos(ids.GenerateTestID(), 9, ids.GenerateTestID())
 
 	// A forged signature (not by the claimed node) is dropped fail-closed.
 	forged := SignedVote{NodeID: vs.nodeID(0), Accept: true, Signature: []byte("not a real signature")}
-	if c, emitted, err := q.Ingest(pos, forged); err == nil || emitted || c != nil {
+	if c, emitted, err := q.Ingest(pos, pos.Height, forged); err == nil || emitted || c != nil {
 		t.Fatalf("a forged-signature attestation must be dropped with an error, got err=%v emitted=%v", err, emitted)
 	}
 	// A non-accept attestation is refused (finality certs carry accepts only).
-	if _, _, err := q.Ingest(pos, SignedVote{NodeID: vs.nodeID(1), Accept: false}); err == nil {
+	if _, _, err := q.Ingest(pos, pos.Height, SignedVote{NodeID: vs.nodeID(1), Accept: false}); err == nil {
 		t.Fatal("a non-accept attestation must be refused")
 	}
 	// A colluding MINORITY (2 of 5) cannot forge a cert: below ⅔ stake, none emits.
@@ -173,7 +173,7 @@ func TestQuasarAttestor_ForgeryRejected(t *testing.T) {
 
 func TestQuasarAttestor_EquivocationEvidence_NeverTwoCerts(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	q := NewQuasarAttestor(vs, vs, nil)
+	q := NewQuasarAttestor(vs, vs)
 	chainID := ids.GenerateTestID()
 	innerA := ids.GenerateTestID()
 	innerB := ids.GenerateTestID() // a DIFFERENT inner block at the SAME height
@@ -196,7 +196,7 @@ func TestQuasarAttestor_EquivocationEvidence_NeverTwoCerts(t *testing.T) {
 
 	// Now the healthy case: ⅔ honest attest the SAME block ⇒ exactly ONE cert forms, for that
 	// block, and never for the other. (A fresh attestor to isolate the count.)
-	q2 := NewQuasarAttestor(vs, vs, nil)
+	q2 := NewQuasarAttestor(vs, vs)
 	certOne, _ := attestAll(t, q2, vs, posA, 0, 4) // 4 of 5 attest A ⇒ cert
 	if certOne == nil || certOne.Position.CanonicalID != innerA {
 		t.Fatal("a ⅔-honest set must form exactly one cert, for the accepted block A")
@@ -221,7 +221,7 @@ func TestQuasarQuorum_ScaleMatrix(t *testing.T) {
 	}
 	// Live-set derivation: an attestor sized to n=3 emits at 3 (not a static 4 or 15).
 	vs := newTestValidatorSet(3)
-	q := NewQuasarAttestor(vs, vs, nil)
+	q := NewQuasarAttestor(vs, vs)
 	pos := attestPos(ids.GenerateTestID(), 1, ids.GenerateTestID())
 	cert, emitAt := attestAll(t, q, vs, pos, 0, 3)
 	if cert == nil || emitAt != 2 {
