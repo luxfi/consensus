@@ -124,6 +124,7 @@ var (
 	ErrQCSigInvalid              = errors.New("chain: cert vote signature failed verification")
 	ErrQCVerifierNil             = errors.New("chain: vote verifier is nil; cannot verify a cert's signatures — fail closed")
 	ErrQCStakeBelowSupermajority = errors.New("chain: cert voters' stake below 2/3 of total stake (count quorum reached but not stake-weighted supermajority)")
+	ErrQCUnknownTier             = errors.New("chain: quorum cert finality tier is not Nova or Quasar (a cert attests exactly one of the two accept/export tiers)")
 )
 
 // SignedVote is one validator's signed ACCEPT decision over a consensus
@@ -389,16 +390,29 @@ type ValidatorSetRootFunc func(height uint64) ids.ID
 // ValidatorSetRoot implements ValidatorSetRootSource.
 func (f ValidatorSetRootFunc) ValidatorSetRoot(height uint64) ids.ID { return f(height) }
 
-// VerifyWeighted verifies the cert under `verifier` (the full count predicate of
-// Verify) AND additionally requires that the summed stake of the cert's voters
-// is at least two-thirds of the total stake at the cert's position height. It is
-// the stake-aware finality predicate for value/PoS chains.
+// VerifyWeighted is the TIER-SELECTED finality predicate. It first runs Verify (the
+// tier-agnostic structural + signature predicate) and then enforces the threshold for
+// the cert's OWN tier:
 //
-// A nil stake source means "no stake model wired" — the caller MUST instead use
-// Verify and is responsible for the equal-stake admission invariant (documented
-// on the engine). VerifyWeighted with a nil source returns ErrQCVerifierNil's
-// sibling fail-closed error to make a wiring mistake loud rather than silently
-// count-only.
+//   - Nova  → a strict COUNT majority (NovaQuorum) of the DISTINCT validator set at the
+//     epoch, and DELIBERATELY no stake supermajority. This is the LOCAL-EXECUTION gate:
+//     it must ignite at a bare majority (3 of 5) even when the absent minority holds the
+//     stake majority — the "survive 3/5" liveness mandate — so a stake gate here would
+//     defeat its whole purpose. Crash-fault-safe by majority intersection; NOT
+//     Byzantine-safe (that is Quasar's job).
+//   - Quasar → a strict >⅔ of TOTAL STAKE by distinct signers (config.TwoThirdsStakeFloor).
+//     This is the EXPORT gate — the Byzantine-safe finality bridges / DEX settlement /
+//     cross-chain messages / validator-set transitions consume.
+//
+// The tier is read from the cert, but the THRESHOLD is RE-DERIVED from the authoritative
+// validator set (never the cert's self-declared Threshold), so a cert cannot forge its
+// tier upward: a Nova set of votes relabeled Quasar fails the ⅔-by-stake check, and a
+// Quasar cert relabeled Nova merely under-claims. An unknown tier fails closed.
+//
+// A nil stake source means "no stake model wired" — the caller MUST instead use Verify
+// and is responsible for the equal-stake admission invariant (documented on the engine).
+// VerifyWeighted with a nil source fails closed to make a wiring mistake loud rather than
+// silently count-only.
 func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, epochHeight uint64) error {
 	if err := c.Verify(verifier, epochHeight); err != nil {
 		return err
@@ -406,6 +420,41 @@ func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, ep
 	if stake == nil {
 		return fmt.Errorf("%w: stake source nil", ErrQCStakeBelowSupermajority)
 	}
+	switch c.Tier {
+	case Nova:
+		return c.verifyNovaMajority(stake, epochHeight)
+	case Quasar:
+		return c.verifyQuasarSupermajority(stake, epochHeight)
+	default:
+		return fmt.Errorf("%w: tier=%s", ErrQCUnknownTier, c.Tier)
+	}
+}
+
+// verifyNovaMajority enforces the Nova LOCAL-EXECUTION threshold: the cert's distinct
+// voter count is a strict majority (NovaQuorum) of the DISTINCT validator set live at the
+// epoch. NO stake supermajority — Nova is the crash-fault local gate that must survive a
+// bare majority (3/5) regardless of how stake is distributed. The count is recomputed from
+// the authoritative live set so a cert can never self-declare a below-majority Nova
+// threshold; an UNRESOLVED set (n<1) fails closed — a majority of an unknown set cannot be
+// asserted, and NovaQuorum(0)=1 would otherwise let a lone node self-accept during the
+// transient-empty validator view that forked 1085013.
+func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) error {
+	n := stake.ValidatorCount(epochHeight)
+	if n < 1 {
+		return fmt.Errorf("%w: nova tier over an unresolved validator set (n=%d) at epoch %d",
+			ErrQCBelowThreshold, n, epochHeight)
+	}
+	need := NovaQuorum(n)
+	if c.VoterCount() < need {
+		return fmt.Errorf("%w: nova cert has %d distinct voters, need majority %d of %d at epoch %d",
+			ErrQCBelowThreshold, c.VoterCount(), need, n, epochHeight)
+	}
+	return nil
+}
+
+// verifyQuasarSupermajority enforces the Quasar EXPORT threshold: the summed stake of the
+// cert's distinct voters STRICTLY exceeds two-thirds of the total stake at the epoch.
+func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight uint64) error {
 	// The ⅔-by-stake tally is read at the block's P-CHAIN EPOCH height — the SAME
 	// height the cert's set-root and the per-voter pubkeys are read at (MEDIUM-1)
 	// — NOT c.Position.Height (the value-chain height, which platformvm would
@@ -434,6 +483,16 @@ func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, ep
 	return nil
 }
 
+// AuthorizesExport reports whether THIS cert is export-grade finality (Quasar or
+// brighter) — the safety boundary a bridge / DEX-settlement / cross-chain consumer MUST
+// gate on. A Nova cert (local execution) returns false even though it is a valid,
+// signature-verified majority cert. This is the cert-level projection of
+// Finality.AuthorizesExport, so a raw cert in hand can be gated without re-deriving its
+// tier from context. A nil cert is not export-grade.
+func (c *QuorumCert) AuthorizesExport() bool {
+	return c != nil && c.Tier.AuthorizesExport()
+}
+
 // QuorumCert is the engine-level finality witness: α distinct validators each
 // signed ACCEPT over Position. It is portable (gossipable), verifiable by any
 // node holding the VoteVerifier, and deterministic to assemble.
@@ -446,6 +505,19 @@ type QuorumCert struct {
 	Version uint16
 	// Type names the cert's role (QCFinality). Bound into every vote message.
 	Type QCType
+	// Tier is the finality rung this cert attests — Nova (a bare-majority
+	// LOCAL-EXECUTION cert) or Quasar (a strict ⅔-by-stake EXPORT cert). It selects
+	// which threshold VerifyWeighted enforces, so ONE cert type carries both accept
+	// (Nova) and export (Quasar) finality with no ambiguity about what a given cert
+	// proves. It is DELIBERATELY not bound into the per-vote signed message: a vote is
+	// tier-agnostic ("I accept this block"), and the SAME accept vote counts toward
+	// both a Nova majority and a Quasar supermajority. The tier therefore cannot be
+	// forged UPWARD — VerifyWeighted re-derives the real threshold from the
+	// authoritative validator set, so relabeling a Nova cert as Quasar is rejected
+	// (it will not clear ⅔-by-stake) and relabeling a Quasar cert as Nova only
+	// under-claims (harmless). Only Nova and Quasar are valid here; Horizon is the PQ
+	// seal layer, not a QuorumCert.
+	Tier Finality
 	// Position is the consensus position every vote binds to.
 	Position VotePosition
 	// Threshold (alpha) is the minimum number of distinct ACCEPT voters required
@@ -470,7 +542,15 @@ type QuorumCert struct {
 // Returns ErrQCBelowThreshold if fewer than `threshold` distinct accept votes
 // are supplied: assembly only succeeds once the quorum is actually present, so
 // a cert can never claim a quorum it does not hold.
-func AssembleQuorumCert(pos VotePosition, threshold uint32, votes []SignedVote) (*QuorumCert, error) {
+//
+// tier names what the cert attests — Nova (local-execution majority) or Quasar
+// (export ⅔-by-stake). It must be exactly one of those two; any other rung
+// (Photon/Wave/Horizon) is rejected, because a QuorumCert is only ever an accept
+// (Nova) or an export (Quasar) witness — Horizon is the separate PQ seal layer.
+func AssembleQuorumCert(pos VotePosition, tier Finality, threshold uint32, votes []SignedVote) (*QuorumCert, error) {
+	if tier != Nova && tier != Quasar {
+		return nil, fmt.Errorf("%w: %s", ErrQCUnknownTier, tier)
+	}
 	if threshold == 0 {
 		return nil, ErrQCThresholdZero
 	}
@@ -505,6 +585,7 @@ func AssembleQuorumCert(pos VotePosition, threshold uint32, votes []SignedVote) 
 	return &QuorumCert{
 		Version:   QuorumCertVersion,
 		Type:      QCFinality,
+		Tier:      tier,
 		Position:  pos,
 		Threshold: threshold,
 		Votes:     sorted,
@@ -543,6 +624,13 @@ func (c *QuorumCert) Verify(verifier VoteVerifier, epochHeight uint64) error {
 	}
 	if c.Type != QCFinality {
 		return fmt.Errorf("%w: got %d want %d", ErrQCType, c.Type, QCFinality)
+	}
+	// A cert attests exactly one accept/export tier. Reject an out-of-range tier
+	// (a wire-decoded cert with a bogus/zero tier byte) before any signature work —
+	// so the tier-agnostic count-only Verify path (equal-stake chains) also fails
+	// closed on a garbage tier, not just the tier-selected VerifyWeighted.
+	if c.Tier != Nova && c.Tier != Quasar {
+		return fmt.Errorf("%w: tier=%s", ErrQCUnknownTier, c.Tier)
 	}
 	if c.Threshold == 0 {
 		return ErrQCThresholdZero
@@ -605,7 +693,7 @@ func (c *QuorumCert) Equal(o *QuorumCert) bool {
 	if c == nil || o == nil {
 		return c == o
 	}
-	if c.Version != o.Version || c.Type != o.Type || c.Position != o.Position ||
+	if c.Version != o.Version || c.Type != o.Type || c.Tier != o.Tier || c.Position != o.Position ||
 		c.Threshold != o.Threshold || len(c.Votes) != len(o.Votes) {
 		return false
 	}
