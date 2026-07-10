@@ -36,7 +36,6 @@ func mainnetStormParams5VC() config.Parameters {
 	p.K = 21               // MainnetParams sample size (sized for ≥21 validators)
 	p.AlphaPreference = 15 // MainnetParams α — 15 DISTINCT prevotes, unreachable from 5 nodes
 	p.AlphaConfidence = 15
-	p.ViewChange = true
 	return p
 }
 
