@@ -66,7 +66,7 @@ func canonicalCert(t *testing.T, vs *testValidatorSet, chainID, outerID, parentO
 	for i := 0; i < n; i++ {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, uint32(n), votes)
+	cert, err := AssembleQuorumCert(pos, Quasar, uint32(n), votes)
 	if err != nil {
 		t.Fatalf("assemble canonical cert: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestMatrix_Row1and5_SeedHintNeverFinalizes(t *testing.T) {
 	if h, set := c.GetFinalizedHeight(); set || h != 0 {
 		t.Fatalf("Row5: vm.LastAccepted created finality (%d,%v) — must be (0,false)", h, set)
 	}
-	if got := c.GetCertifiedTip(); got != ids.Empty {
+	if got := c.GetNovaTip(); got != ids.Empty {
 		t.Fatalf("Row5: certified tip non-empty from a seed: %s", got)
 	}
 	if _, ok := c.FinalizedBlockAtHeight(100); ok {
@@ -154,7 +154,7 @@ func TestMatrix_Row2_OneCertCanonicalFinalize(t *testing.T) {
 	if h, set := c.GetFinalizedHeight(); !set || h != 100 {
 		t.Fatalf("Row2: certified height (%d,%v) want (100,true)", h, set)
 	}
-	if got := c.GetCertifiedTip(); got != innerC {
+	if got := c.GetNovaTip(); got != innerC {
 		t.Fatalf("Row2: certified canonical tip %s want innerC %s", got, innerC)
 	}
 	if fin, ok := c.FinalizedBlockAtHeight(100); !ok || fin != innerC {
@@ -447,7 +447,7 @@ func TestE2E_ForgedConflictingCertSlashesNobody(t *testing.T) {
 			Signature: bytes.Repeat([]byte{byte(i + 1)}, 64),
 		})
 	}
-	forged, err := AssembleQuorumCert(forgedPos, 4, junk)
+	forged, err := AssembleQuorumCert(forgedPos, Quasar, 4, junk)
 	if err != nil {
 		t.Fatalf("assemble forged cert: %v", err)
 	}
@@ -507,7 +507,7 @@ func TestE2E_DeferredValidCertTriggersFetch(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		bad = append(bad, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: bytes.Repeat([]byte{0xEE}, 64)})
 	}
-	badCert, _ := AssembleQuorumCert(badPos, 4, bad)
+	badCert, _ := AssembleQuorumCert(badPos, Quasar, 4, bad)
 	badBytes, _ := badCert.MarshalBinary()
 	if rt.HandleIncomingCert(badBytes) {
 		t.Fatal("a forged cert must not finalize")

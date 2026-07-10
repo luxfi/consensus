@@ -81,13 +81,7 @@ type VoteGuardStore interface {
 	// non-authoritative (0,false) hint until the first post-restart cert — incident-1082814
 	// PART-A). fsync'd in the SAME write as the bindings, so the floor and the slot removal
 	// are atomic on disk.
-	// lockRounds carries the round-scoped view-change LOCK ROUND per height (v3 format): the
-	// round at which this node precommitted+locked the height's binding. Persisting it lets a
-	// restarted view-change node evaluate the unlock rule (prevote a conflicting value only with
-	// a POL above the lock round) and LOCALLY re-converge, instead of the conservative
-	// hard-lock a legacy (v1/v2, round-less) recovery forces. nil/empty ⇒ no lock rounds
-	// (legacy or non-view-change).
-	Persist(bindings map[SlotKey]ids.ID, lockRounds map[uint64]uint32, finalizedThrough uint64) error
+	Persist(bindings map[SlotKey]ids.ID, finalizedThrough uint64) error
 	// Reconcile durably rewrites the binding set AND sets the decided-through floor to
 	// newFloor EXACTLY — the ONE operation permitted to move finalizedThrough DOWN. Every
 	// other writer (Persist) only ever RAISES it (monotonic), so this is the single
@@ -107,14 +101,10 @@ type VoteGuardStore interface {
 	// newFloor is written verbatim (NO monotonic clamp). Same atomic write-temp + fsync +
 	// rename + fsync-dir as Persist, so a crash mid-reconcile leaves EITHER the old (higher)
 	// or the new (lower) complete file, never a torn one. Called under the engine slotMu.
-	Reconcile(bindings map[SlotKey]ids.ID, lockRounds map[uint64]uint32, newFloor uint64) error
+	Reconcile(bindings map[SlotKey]ids.ID, newFloor uint64) error
 	// Snapshot returns the bindings recovered from stable storage at open time.
 	// The engine seeds committedSlot from it so the guard spans a restart.
 	Snapshot() map[SlotKey]ids.ID
-	// LockRoundsSnapshot returns the per-height lock rounds recovered at open (v3), or an empty
-	// map for a legacy v1/v2 snapshot. The engine seeds the round-scoped view machines' locks
-	// from it so a restarted node re-converges at a recovered height under the unlock rule.
-	LockRoundsSnapshot() map[uint64]uint32
 	// FinalizedThrough returns the decided-through floor recovered at open time (0 if none
 	// / a legacy v1 snapshot). The engine seeds decidedFloor from it so the sign gate
 	// refuses signing at any height <= a height this node had already finalized before the
@@ -136,26 +126,8 @@ func WithVoteGuard(store VoteGuardStore) Option {
 		if store == nil {
 			return
 		}
-		lr := store.LockRoundsSnapshot() // v3: per-height lock rounds (empty for legacy v1/v2)
-		if t.recoveredLocks == nil {
-			t.recoveredLocks = make(map[uint64]struct{})
-		}
-		if t.lockRounds == nil {
-			t.lockRounds = make(map[uint64]uint32)
-		}
 		for k, v := range store.Snapshot() {
 			t.committedSlot[k] = v
-			if round, ok := lr[k.Height]; ok {
-				// v3: the lock ROUND is on disk, so the round-scoped unlock rule CAN be
-				// evaluated — seed t.lockRounds so viewForLocked seeds the roundView lock and the
-				// node LOCALLY re-converges at the recovered height (no hard-lock needed).
-				t.lockRounds[k.Height] = round
-			} else {
-				// legacy v1/v2 (no lock round): fail-safe HARD lock — keep the strict
-				// conflicting-canonical refusal at this height even under ViewChange, so a
-				// rolling restart can never double-precommit. Released on finalize.
-				t.recoveredLocks[k.Height] = struct{}{}
-			}
 		}
 		// Seed the durable decided-through floor so the sign gate refuses any height this
 		// node had already finalized before the crash — even the below-tip heights whose
@@ -179,17 +151,14 @@ func WithVoteGuard(store VoteGuardStore) Option {
 
 const (
 	voteGuardMagic     = "LUXVGUARD" // 9 bytes
-	voteGuardVersion   = byte(3)     // v3 stores the view-change LOCK ROUND in the record's reserved field
-	voteGuardVersionV2 = byte(2)     // v2 adds finalizedThrough(u64) to the header (durable sign-gate floor)
+	voteGuardVersion   = byte(2)     // v2: adds finalizedThrough(u64) to the header (durable sign-gate floor)
 	voteGuardVersionV1 = byte(1)     // legacy: no finalizedThrough field (decoded with floor=0)
 
-	// Header layouts. v1: magic | ver | count(u32). v2/v3 append finalizedThrough(u64) — the
+	// Header layouts. v1: magic | ver | count(u32). v2 appends finalizedThrough(u64) — the
 	// durable decided-through floor, fsync'd atomically with the bindings.
 	voteGuardHdrLenV1 = len(voteGuardMagic) + 1 + 4     // magic | ver | count
-	voteGuardHdrLen   = len(voteGuardMagic) + 1 + 4 + 8 // v2/v3: magic | ver | count | finalizedThrough(u64)
-	voteGuardRecLen   = 8 + 32 + 32                     // height(u64) | reserved(32) | canonical(32)
-	// v3 stores lockRound(u32) in the first 4 bytes of the 32-byte reserved field (the old
-	// epoch slot), keeping the record byte-length identical to v1/v2.
+	voteGuardHdrLen   = len(voteGuardMagic) + 1 + 4 + 8 // v2: magic | ver | count | finalizedThrough(u64)
+	voteGuardRecLen   = 8 + 32 + 32                     // height(u64) | reserved(32, all-zero) | canonical(32)
 )
 
 var voteGuardCRC = crc32.MakeTable(crc32.Castagnoli)
@@ -203,8 +172,7 @@ type fileVoteGuard struct {
 	path             string // the snapshot file
 	dir              string // parent dir, fsync'd after each rename so the rename itself is durable
 	snap             map[SlotKey]ids.ID
-	snapLockRounds   map[uint64]uint32 // per-height lock round recovered at open (v3; empty for v1/v2)
-	finalizedThrough uint64            // decided-through floor recovered at open (0 if none / legacy v1)
+	finalizedThrough uint64 // decided-through floor recovered at open (0 if none / legacy v1)
 }
 
 // OpenVoteGuard opens (or initializes) the durable vote-once guard at path. A
@@ -213,10 +181,9 @@ type fileVoteGuard struct {
 // cannot trust — the caller (the node) refuses to build the chain, fail-closed.
 func OpenVoteGuard(path string) (VoteGuardStore, error) {
 	g := &fileVoteGuard{
-		path:           path,
-		dir:            filepath.Dir(path),
-		snap:           map[SlotKey]ids.ID{},
-		snapLockRounds: map[uint64]uint32{},
+		path: path,
+		dir:  filepath.Dir(path),
+		snap: map[SlotKey]ids.ID{},
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -225,27 +192,26 @@ func OpenVoteGuard(path string) (VoteGuardStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read vote guard %s: %w", path, err)
 	}
-	snap, lockRounds, finalizedThrough, err := decodeVoteGuard(data)
+	snap, finalizedThrough, err := decodeVoteGuard(data)
 	if err != nil {
 		return nil, fmt.Errorf("%w at %s: %v (refusing to start with unverifiable equivocation memory)",
 			errVoteGuardCorrupt, path, err)
 	}
 	g.snap = snap
-	g.snapLockRounds = lockRounds
 	g.finalizedThrough = finalizedThrough
 	return g, nil
 }
 
 // Persist writes the complete binding set atomically and durably. It is called
 // under the engine's slotMu, so the fixed-name temp file is never contended.
-func (g *fileVoteGuard) Persist(bindings map[SlotKey]ids.ID, lockRounds map[uint64]uint32, finalizedThrough uint64) error {
+func (g *fileVoteGuard) Persist(bindings map[SlotKey]ids.ID, finalizedThrough uint64) error {
 	// The floor is monotonic on disk: never write a value below what we already recovered,
 	// so a caller that passes a stale-lower floor (e.g. a best-effort prune re-persist that
 	// races a higher finalize) cannot regress the durable refusal.
 	if finalizedThrough < g.finalizedThrough {
 		finalizedThrough = g.finalizedThrough
 	}
-	if err := g.writeSnapshot(encodeVoteGuard(bindings, lockRounds, finalizedThrough)); err != nil {
+	if err := g.writeSnapshot(encodeVoteGuard(bindings, finalizedThrough)); err != nil {
 		return err
 	}
 	g.finalizedThrough = finalizedThrough // durable write committed — advance the in-memory floor
@@ -256,8 +222,8 @@ func (g *fileVoteGuard) Persist(bindings map[SlotKey]ids.ID, lockRounds map[uint
 // permitted to DECREASE finalizedThrough (bounded phantom-floor recovery; see the
 // VoteGuardStore.Reconcile contract). It reuses the exact atomic write Persist uses, so a
 // crash leaves either the old higher-floor file or the new lower-floor file, never a torn one.
-func (g *fileVoteGuard) Reconcile(bindings map[SlotKey]ids.ID, lockRounds map[uint64]uint32, newFloor uint64) error {
-	if err := g.writeSnapshot(encodeVoteGuard(bindings, lockRounds, newFloor)); err != nil {
+func (g *fileVoteGuard) Reconcile(bindings map[SlotKey]ids.ID, newFloor uint64) error {
+	if err := g.writeSnapshot(encodeVoteGuard(bindings, newFloor)); err != nil {
 		return err
 	}
 	g.finalizedThrough = newFloor // committed — the in-memory floor now matches disk (may be LOWER)
@@ -300,9 +266,6 @@ func (g *fileVoteGuard) writeSnapshot(buf []byte) error {
 // engine's committedSlot). After open, the engine's map is the source of truth.
 func (g *fileVoteGuard) Snapshot() map[SlotKey]ids.ID { return g.snap }
 
-// LockRoundsSnapshot returns the per-height lock rounds recovered at open (v3; empty for v1/v2).
-func (g *fileVoteGuard) LockRoundsSnapshot() map[uint64]uint32 { return g.snapLockRounds }
-
 // FinalizedThrough returns the durable decided-through floor recovered at open (0 if
 // none / legacy v1). Seeds the engine's decidedFloor so the sign gate spans a restart.
 func (g *fileVoteGuard) FinalizedThrough() uint64 { return g.finalizedThrough }
@@ -318,10 +281,10 @@ func (g *fileVoteGuard) Close() error { return nil }
 // HEADER (the durable decided-height sign-gate floor). decodeVoteGuard reads legacy v1
 // snapshots (no floor → 0) too, so an existing validator's on-disk snapshot decodes across
 // the upgrade without a brick.
-func encodeVoteGuard(bindings map[SlotKey]ids.ID, lockRounds map[uint64]uint32, finalizedThrough uint64) []byte {
+func encodeVoteGuard(bindings map[SlotKey]ids.ID, finalizedThrough uint64) []byte {
 	buf := make([]byte, 0, voteGuardHdrLen+voteGuardRecLen*len(bindings)+4)
 	buf = append(buf, voteGuardMagic...)
-	buf = append(buf, voteGuardVersion) // v3
+	buf = append(buf, voteGuardVersion) // v2
 	var u32 [4]byte
 	binary.BigEndian.PutUint32(u32[:], uint32(len(bindings)))
 	buf = append(buf, u32[:]...)
@@ -332,16 +295,7 @@ func encodeVoteGuard(bindings map[SlotKey]ids.ID, lockRounds map[uint64]uint32, 
 	for k, canonical := range bindings {
 		binary.BigEndian.PutUint64(u64[:], k.Height)
 		buf = append(buf, u64[:]...)
-		// v3: lockRound is stored as (round+1) in the first 4 bytes of the reserved field, so 0
-		// means "no view-change lock round for this binding" (a direct/legacy binding) and is
-		// DISTINGUISHABLE from a real round-0 lock. Only heights with an actual view-change
-		// precommit get the sentinel — those re-converge on restart; the rest stay hard-locked.
-		var reserved [32]byte
-		if lockRounds != nil {
-			if r, ok := lockRounds[k.Height]; ok {
-				binary.BigEndian.PutUint32(reserved[:4], r+1)
-			}
-		}
+		var reserved [32]byte // all-zero (the removed-epoch slot)
 		buf = append(buf, reserved[:]...)
 		buf = append(buf, canonical[:]...)
 	}
@@ -356,12 +310,12 @@ func encodeVoteGuard(bindings map[SlotKey]ids.ID, lockRounds map[uint64]uint32, 
 // 0), so a snapshot written by a pre-v1.35.4 signer decodes across the upgrade without a
 // brick. Any framing/CRC mismatch is an error (the snapshot is untrustworthy) — never a
 // silent partial read.
-func decodeVoteGuard(data []byte) (map[SlotKey]ids.ID, map[uint64]uint32, uint64, error) {
+func decodeVoteGuard(data []byte) (map[SlotKey]ids.ID, uint64, error) {
 	if len(data) < voteGuardHdrLenV1+4 {
-		return nil, nil, 0, fmt.Errorf("too short (%d bytes)", len(data))
+		return nil, 0, fmt.Errorf("too short (%d bytes)", len(data))
 	}
 	if string(data[:len(voteGuardMagic)]) != voteGuardMagic {
-		return nil, nil, 0, errors.New("bad magic")
+		return nil, 0, errors.New("bad magic")
 	}
 	off := len(voteGuardMagic)
 	ver := data[off]
@@ -370,63 +324,47 @@ func decodeVoteGuard(data []byte) (map[SlotKey]ids.ID, map[uint64]uint32, uint64
 	switch ver {
 	case voteGuardVersionV1:
 		hdrLen = voteGuardHdrLenV1
-	case voteGuardVersionV2, voteGuardVersion: // v2 + v3 both carry the floor header
+	case voteGuardVersion: // v2 carries the floor header
 		hdrLen = voteGuardHdrLen
 	default:
-		return nil, nil, 0, fmt.Errorf("unsupported version %d", ver)
+		return nil, 0, fmt.Errorf("unsupported version %d", ver)
 	}
 	if len(data) < hdrLen+4 {
-		return nil, nil, 0, fmt.Errorf("too short for version %d header (%d bytes)", ver, len(data))
+		return nil, 0, fmt.Errorf("too short for version %d header (%d bytes)", ver, len(data))
 	}
 	count := binary.BigEndian.Uint32(data[off : off+4])
 	off += 4
 	var finalizedThrough uint64
-	if ver == voteGuardVersionV2 || ver == voteGuardVersion { // v2/v3 carry the durable decided-through floor
+	if ver == voteGuardVersion { // v2 carries the durable decided-through floor
 		finalizedThrough = binary.BigEndian.Uint64(data[off : off+8])
 		off += 8
 	}
 	want := hdrLen + voteGuardRecLen*int(count) + 4
 	if len(data) != want {
-		return nil, nil, 0, fmt.Errorf("length %d != expected %d for count %d (version %d)", len(data), want, count, ver)
+		return nil, 0, fmt.Errorf("length %d != expected %d for count %d (version %d)", len(data), want, count, ver)
 	}
 	// Verify the CRC over everything preceding the trailing 4 bytes.
 	body := data[:len(data)-4]
 	gotCRC := binary.BigEndian.Uint32(data[len(data)-4:])
 	if crc32.Checksum(body, voteGuardCRC) != gotCRC {
-		return nil, nil, 0, errors.New("crc mismatch")
+		return nil, 0, errors.New("crc mismatch")
 	}
 	out := make(map[SlotKey]ids.ID, count)
-	lockRounds := make(map[uint64]uint32, count)
 	for i := uint32(0); i < count; i++ {
 		height := binary.BigEndian.Uint64(data[off : off+8])
 		off += 8
-		// The 32-byte reserved field: v3 stores lockRound(u32) in its first 4 bytes; v1/v2
-		// wrote it all-zero (the formerly-epoch slot). A legacy (height,epoch)-keyed snapshot
-		// may hold MULTIPLE records at one height; they FOLD into the single height slot, and
-		// on a fold collision keep the LOWEST canonical (deterministic, fail-safe).
-		var lockRound uint32
-		hasLock := false
-		if ver == voteGuardVersion {
-			if raw := binary.BigEndian.Uint32(data[off : off+4]); raw > 0 { // (round+1) sentinel; 0 = none
-				lockRound = raw - 1
-				hasLock = true
-			}
-		}
-		off += 32
+		off += 32 // 32-byte reserved field (written all-zero) — read and ignored
 		var canonical ids.ID
 		copy(canonical[:], data[off:off+32])
 		off += 32
+		// A legacy (height,epoch)-keyed snapshot may hold MULTIPLE records at one height; they
+		// FOLD into the single height slot, keeping the LOWEST canonical (deterministic, fail-safe).
 		key := SlotKey{Height: height}
 		if prev, ok := out[key]; !ok || canonical.Compare(prev) < 0 {
 			out[key] = canonical
-			if hasLock {
-				lockRounds[height] = lockRound
-			} else {
-				delete(lockRounds, height) // a lower-canonical winner without a lock supersedes
-			}
 		}
 	}
-	return out, lockRounds, finalizedThrough, nil
+	return out, finalizedThrough, nil
 }
 
 // fsyncDir fsyncs a directory so a rename inside it is durable across a crash.

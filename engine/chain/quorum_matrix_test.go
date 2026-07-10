@@ -49,7 +49,7 @@ func certFor(t *testing.T, vs *testValidatorSet, pos VotePosition, voters ...int
 	for _, i := range voters {
 		sv = append(sv, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, uint32(len(voters)), sv)
+	cert, err := AssembleQuorumCert(pos, Quasar, uint32(len(voters)), sv)
 	if err != nil {
 		t.Fatalf("assemble cert %v: %v", voters, err)
 	}
@@ -100,7 +100,7 @@ func decidesViaRuntimeCert(t *testing.T, n int, weights []uint64, alpha int, vot
 	for _, i := range voters {
 		sv = append(sv, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, uint32(len(voters)), sv)
+	cert, err := AssembleQuorumCert(pos, Quasar, uint32(len(voters)), sv)
 	if err != nil {
 		t.Fatalf("assemble cert (voters=%v): %v", voters, err)
 	}
@@ -229,7 +229,7 @@ func TestBlue_QuorumMatrix_DuplicateAndEquivocation(t *testing.T) {
 		pos := VotePosition{ChainID: chainID, Height: 1, Round: 0, BlockID: blk.id, ParentID: ids.Empty}
 
 		// node 0 signing "twice" — the same NodeID repeated. Dedup ⇒ 1 distinct voter, ⅓ stake.
-		dup, err := AssembleQuorumCert(pos, 2, []SignedVote{
+		dup, err := AssembleQuorumCert(pos, Quasar, 2, []SignedVote{
 			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 		})
@@ -240,7 +240,7 @@ func TestBlue_QuorumMatrix_DuplicateAndEquivocation(t *testing.T) {
 			}
 		}
 		// the genuine 2-of-3 (nodes 0,1 = ⅔... need >⅔: nodes 0,1,2) finalizes.
-		real3, err := AssembleQuorumCert(pos, 3, []SignedVote{
+		real3, err := AssembleQuorumCert(pos, Quasar, 3, []SignedVote{
 			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 			{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 			{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},

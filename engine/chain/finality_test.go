@@ -239,25 +239,29 @@ func TestDEX_BFTQuorumFinalizesFill(t *testing.T) {
 	e.ReceiveVote(vs.signedVote(3, pos))
 	e.ReceiveVote(vs.signedVote(4, pos))
 
+	// NOVA: the fill Nova-accepts (local execution) on the majority.
 	if !waitFor(2*time.Second, func() bool { return fill.AcceptCalled() == 1 }) {
-		t.Fatalf("LIVENESS: DEX value fill did not finalize under the stake-weighted quorum (Accept ran %d times)", fill.AcceptCalled())
+		t.Fatalf("LIVENESS: DEX value fill did not Nova-accept (Accept ran %d times)", fill.AcceptCalled())
 	}
-	// The finality witness must be a real, verifiable cert that ALSO clears the stake-
-	// weighted supermajority (the value-DEX finality rule).
-	rec.mu.Lock()
-	defer rec.mu.Unlock()
-	if len(rec.certs) == 0 {
-		t.Fatal("DEX value fill finality must produce a verifiable quorum cert")
+	// QUASAR: a DEX-SETTLEABLE fill requires the EXPORT (⅔-by-stake) cert — the ONLY tier the
+	// 0x9999 settlement receipt may consume. It forms from the trailing votes (the ⅔-th stake
+	// vote follows the bare-majority accept).
+	mustQuasar(t, e, fill, 2*time.Second, "DEX fill must reach the ⅔-stake export tier")
+
+	// The export witness must be a real, verifiable Quasar cert that clears the ⅔-stake
+	// supermajority (the value-DEX settlement rule) — NOT the bare-majority Nova accept cert.
+	cert, ok := e.QuasarCertAt(fill.height)
+	if !ok {
+		t.Fatal("DEX value fill export must produce a Quasar (⅔-stake) certificate")
 	}
-	cert, err := UnmarshalQuorumCert(rec.certs[len(rec.certs)-1])
-	if err != nil {
-		t.Fatalf("decode fill cert: %v", err)
+	if cert.Tier != Quasar {
+		t.Fatalf("DEX settlement cert must be the EXPORT (Quasar) tier, got %s", cert.Tier)
 	}
 	if err := cert.VerifyWeighted(vs, vs, cert.Position.Height); err != nil {
-		t.Fatalf("fill cert must verify under the stake-weighted supermajority: %v", err)
+		t.Fatalf("export fill cert must verify under the stake-weighted supermajority: %v", err)
 	}
 	if cert.VoterCount() < 4 {
-		t.Fatalf("fill cert must carry >= the ⅔-stake supermajority (4 of 5) distinct voters, got %d", cert.VoterCount())
+		t.Fatalf("export fill cert must carry >= the ⅔-stake supermajority (4 of 5) distinct voters, got %d", cert.VoterCount())
 	}
 }
 
@@ -310,7 +314,7 @@ func TestDEX_ByzantineProposerFakeFillRejected(t *testing.T) {
 
 	// (c) a hand-forged sub-quorum cert presented to a follower is rejected by
 	// Verify (threshold floor + only 1 real signer).
-	subCert, err := AssembleQuorumCert(pos, 1, []SignedVote{
+	subCert, err := AssembleQuorumCert(pos, Quasar, 1, []SignedVote{
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 	})
 	if err != nil {
@@ -378,7 +382,7 @@ func TestLiveness_DroppedProposerChitsStillFinalizeViaPeerCert(t *testing.T) {
 	chainID := ids.GenerateTestID()
 	blk := newTestBlock(9, ids.Empty, "cert-relayed")
 	pos := VotePosition{ChainID: chainID, Height: blk.height, Round: 0, BlockID: blk.id, ParentID: blk.parentID}
-	cert, err := AssembleQuorumCert(pos, 3, []SignedVote{
+	cert, err := AssembleQuorumCert(pos, Quasar, 3, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},

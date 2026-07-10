@@ -15,10 +15,10 @@
 // cert and replacing the ledger (applyCertLocked) — the import reconcile (SyncState) is
 // the one other whole-value replacement.
 //
-// This mirrors avalanchego snow/consensus/snowman/topological.go, with finality's
+// This mirrors the upstream linear-chain consensus's topological layer, with finality's
 // trigger swapped from β-consecutive-polls to a quorum CERT: the preference tree +
 // poll stays mutable and sibling-tolerant (topological.go here), while the
-// committed-prefix advance — β-driven in Snowman — is this pure, cert-driven fold.
+// committed-prefix advance — β-driven upstream — is this pure, cert-driven fold.
 package chain
 
 import (
@@ -29,7 +29,7 @@ import (
 )
 
 // The finality safety invariants — the vocabulary of the fold. Two are genuine
-// α-of-K-cert properties pure Snowman does not need (its certs are β-witnessed, not
+// α-of-K-cert properties the pure upstream engine does not need (its certs are β-witnessed, not
 // external/attacker-chosen-Round): a SECOND valid cert for a DIFFERENT block at an
 // already-decided height is equivocation evidence, never a silent second VM.Accept;
 // and a cert for a block that does NOT descend from the finalized frontier conflicts
@@ -40,7 +40,7 @@ var (
 	// ErrHeightAlreadyFinalized: a DIFFERENT block is already finalized at the target
 	// height — two valid α-certs at one height across different rounds. The first
 	// finalizes; the second is refused and IS equivocation evidence. A genuine α-of-K
-	// safety property pure Snowman does not need.
+	// safety property the pure upstream engine does not need.
 	ErrHeightAlreadyFinalized = errors.New("chain: a different block is already finalized at this height (equivocation: two finalized blocks at one height)")
 
 	// ErrNonMonotonicFinalizedHeight: a finalize at or below the frontier with a
@@ -62,6 +62,26 @@ var (
 	// then re-apply. It must NEVER finalize on this error.
 	ErrAncestorNotTracked = errors.New("chain: cannot finalize — an ancestor between the finalized tip and the cert-selected block is not tracked (behind; fetch and retry)")
 )
+
+// AncestorNotTracked is the TYPED form of ErrAncestorNotTracked. It carries the SPECIFIC
+// untracked ancestor the finalize path needs fetched, so a catch-up handler can target the
+// fetch at exactly that block — the plain sentinel named the id only inside a formatted string,
+// which is why the receive-side cert handler could log the defer but never issue the fetch (the
+// mainnet behind-node self-heal gap). errors.Is(err, ErrAncestorNotTracked) still holds via
+// Unwrap, so every existing classifier is unchanged; self-heal handlers use errors.As to recover
+// Missing and issue exactly one RequestAncestors for it.
+type AncestorNotTracked struct {
+	Missing ids.ID // the untracked ancestor whose absence blocks finalize — the fetch target
+	Target  ids.ID // the certified block whose path to the finalized tip is blocked
+}
+
+func (e *AncestorNotTracked) Error() string {
+	return fmt.Sprintf("%s: ancestor %s of %s missing", ErrAncestorNotTracked.Error(), e.Missing, e.Target)
+}
+
+// Unwrap makes errors.Is(err, ErrAncestorNotTracked) hold, so the sentinel-based classifiers
+// (topology.go, tryAccept, tests) are byte-for-byte unaffected by the typed carrier.
+func (e *AncestorNotTracked) Unwrap() error { return ErrAncestorNotTracked }
 
 // finalizedEntry is the CERTIFIED record at one finalized height: the canonical
 // execution commitment (the authoritative finality identity) and the outer
@@ -382,7 +402,7 @@ func pathFromTip(led FinalityLedger, cert Cert, dag Ancestry) ([]step, error) {
 		if !ok {
 			// The path to the frontier is not fully tracked — the node is behind.
 			// Fail-closed DEFER: never finalize on a path we cannot prove.
-			return nil, fmt.Errorf("%w: ancestor %s of %s missing", ErrAncestorNotTracked, cur, cert.Block)
+			return nil, &AncestorNotTracked{Missing: cur, Target: cert.Block}
 		}
 		// Heights must strictly decrease toward the tip; a parent at/above its child's
 		// height is malformed linkage.
