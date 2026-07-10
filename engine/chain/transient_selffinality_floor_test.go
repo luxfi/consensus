@@ -135,35 +135,33 @@ func TestFix1_NewRuntime_TransientCountBootsFlooredNotSelfFinalizing(t *testing.
 	}
 }
 
-// TestFix1_FlooredCommittee_HaltsWithoutRealQuorum is the downstream proof: a floored
-// K=4/α=3 committee backed by a 5-validator stake source NEVER advances finality
-// (never VM.Accept, never advance the decided floor) until a real 4-of-5 ⅔-stake
-// supermajority signs — a lone self-vote, and even a 3-of-5 count-quorum, HALT.
-func TestFix1_FlooredCommittee_HaltsWithoutRealQuorum(t *testing.T) {
+// TestFix1_FlooredCommittee_NovaAcceptsAtMajorityQuasarAtTwoThirds is the downstream proof under
+// the v1.36 two tiers: a floored K=4/α=3 committee backed by a 5-validator stake source
+//   - HALTS a LONE self-vote (below the Nova majority NovaQuorum=3 — the 1085013 self-finality
+//     guard the floor exists for is preserved: a single node can never accept),
+//   - NOVA-ACCEPTS a 3-of-5 bare majority (local execution — the "survive 3/5" liveness), but
+//   - reaches the EXPORT (Quasar) tier ONLY at a real 4-of-5 ⅔-stake supermajority.
+func TestFix1_FlooredCommittee_NovaAcceptsAtMajorityQuasarAtTwoThirds(t *testing.T) {
 	vs := newTestValidatorSet(5) // equal unit stake ⇒ ⅔-of-5 needs 4 voters
 	rec := &recordingGossiper{}
 	params := config.LocalBFTParams() // K=4/α=3 — the committee the transient floor produces
 	e, chainID := newQuorumEngineOpts(t, params, vs, 0, rec, WithStakeWeighting(vs))
 
-	floorBefore := e.consensus.GetDecidedFloor()
-
 	blk := newTestBlock(1, ids.Empty, "floored-halt")
 	pos := trackProposal(e, chainID, blk, 0) // inserts own proposal + records THIS node's (node 0) signed accept
 
-	// 1 self-vote — 1/5 = 20% stake. Must HALT (self-finality is exactly this).
-	mustNotFinalize(t, e, blk, 1200*time.Millisecond, "lone self-vote (20% stake)")
+	// 1 self-vote — below the Nova majority (NovaQuorum(4)=3). Must HALT: lone self-finality is
+	// exactly the 1085013 fork the floor prevents, and it stays prevented at the Nova tier.
+	mustNotFinalize(t, e, blk, 1200*time.Millisecond, "lone self-vote (below Nova majority)")
 
-	// 3 votes {0,1,2} — reaches the α=3 COUNT quorum but only 3/5 = 60% stake. Must HALT:
-	// a count quorum is a liveness signal, not finality; the ⅔-stake cert is the authority.
+	// 3 votes {0,1,2} — the bare majority NovaQuorum=3. NOVA ACCEPTS (local execution). But 3/5 =
+	// 60% stake ≤ ⅔, so NO Quasar export yet (the degraded mode).
 	e.ReceiveVote(vs.signedVote(1, pos))
 	e.ReceiveVote(vs.signedVote(2, pos))
-	mustNotFinalize(t, e, blk, 1200*time.Millisecond, "3-of-5 count quorum but 60% stake")
+	mustFinalize(t, e, blk, 2*time.Second, "3-of-5 bare majority (Nova local accept)")
+	mustNotQuasar(t, e, blk, 500*time.Millisecond, "3-of-5 = 60% stake (export gate)")
 
-	if got := e.consensus.GetDecidedFloor(); got != floorBefore {
-		t.Fatalf("decided floor advanced (%d→%d) WITHOUT a real 4-of-5 cert", floorBefore, got)
-	}
-
-	// 4th vote {0,1,2,3} — 4/5 = 80% > ⅔. Now a real cert assembles and the block finalizes.
+	// 4th vote {0,1,2,3} — 4/5 = 80% > ⅔. The EXPORT (Quasar) cert now forms.
 	e.ReceiveVote(vs.signedVote(3, pos))
-	mustFinalize(t, e, blk, 3*time.Second, "4-of-5 ⅔-stake supermajority")
+	mustQuasar(t, e, blk, 3*time.Second, "4-of-5 ⅔-stake supermajority (Quasar export)")
 }

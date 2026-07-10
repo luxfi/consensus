@@ -58,22 +58,25 @@ func TestRedByzantine_SilentValidators_TwoThirdsBoundary_N7(t *testing.T) {
 		}
 	})
 
-	// ≤ ⅔ ONLINE (4 of 7 < α=5): quorum is unreachable. The chain MUST HALT (fail-closed),
-	// never finalize, never fork. This is the self-finality floor at the fleet level: a
-	// below-quorum online set produces NO cert, exactly as it must.
-	t.Run("four_online_halts_safe", func(t *testing.T) {
+	// < MAJORITY ONLINE (3 of 7 < NovaQuorum(7)=4): the Nova accept quorum is unreachable. The
+	// chain MUST HALT (fail-closed), never accept, never fork. This is the self-finality floor at
+	// the fleet level — and under v1.36 the floor is the MAJORITY (NovaQuorum), not the ⅔ quorum:
+	// a 4-of-7 majority DOES accept (Nova, "survive with a majority"), but a 3-of-7 below-majority
+	// set produces NO cert (the 1085013 fault family stays closed at the Nova tier).
+	t.Run("below_majority_halts_safe", func(t *testing.T) {
 		net := newSimNet(t, 7, prodParams7())
+		net.down(3)
 		net.down(4)
 		net.down(5)
-		net.down(6) // 4 up: {0,1,2,3} < α=5
-		blk := newHonestBlock(ids.Empty, simGenesisRoot(), 1, "n7-four-online")
+		net.down(6) // 3 up: {0,1,2} < NovaQuorum(7)=4
+		blk := newHonestBlock(ids.Empty, simGenesisRoot(), 1, "n7-three-online")
 		net.build(0, blk)
 
-		// Give it real time to (incorrectly) finalize if the floor were broken.
-		finalized := waitFor(3*time.Second, func() bool { return len(net.headsAtHeight(1)) > 0 })
-		if finalized {
-			t.Fatalf("SAFETY/FLOOR: 4-of-7 online (below α=5) MUST HALT, but a head finalized: %v — "+
-				"a below-quorum online set self-finalized (the 1085013 fault family)", net.headsAtHeight(1))
+		// Give it real time to (incorrectly) accept if the floor were broken.
+		accepted := waitFor(3*time.Second, func() bool { return len(net.headsAtHeight(1)) > 0 })
+		if accepted {
+			t.Fatalf("SAFETY/FLOOR: 3-of-7 online (below NovaQuorum=4) MUST HALT, but a head accepted: %v — "+
+				"a below-majority online set self-accepted (the 1085013 fault family)", net.headsAtHeight(1))
 		}
 	})
 }

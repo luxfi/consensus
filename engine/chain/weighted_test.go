@@ -59,7 +59,7 @@ func TestWeighted_LowStakeCoalitionRejected(t *testing.T) {
 
 	// Cert by the low-stake coalition {1,2,3}: count=3 (≥α) but stake=3/100.
 	pos := VotePosition{ChainID: chainID, Height: 1, Round: 0, BlockID: blk.id, ParentID: ids.Empty}
-	lowCert, err := AssembleQuorumCert(pos, 3, []SignedVote{
+	lowCert, err := AssembleQuorumCert(pos, Quasar, 3, []SignedVote{
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 		{NodeID: vs.nodeID(3), Accept: true, Signature: vs.sign(3, pos)},
@@ -77,7 +77,7 @@ func TestWeighted_LowStakeCoalitionRejected(t *testing.T) {
 	}
 
 	// Cert including the 97-stake node {0,1,2}: count=3 AND stake=99/100 → finalizes.
-	hiCert, err := AssembleQuorumCert(pos, 3, []SignedVote{
+	hiCert, err := AssembleQuorumCert(pos, Quasar, 3, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
@@ -104,7 +104,7 @@ func TestWeighted_VerifyWeightedThreshold(t *testing.T) {
 		for _, i := range idx {
 			votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 		}
-		c, err := AssembleQuorumCert(pos, uint32(len(idx)), votes)
+		c, err := AssembleQuorumCert(pos, Quasar, uint32(len(idx)), votes)
 		if err != nil {
 			t.Fatalf("assemble: %v", err)
 		}

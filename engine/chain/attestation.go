@@ -188,7 +188,7 @@ func (q *QuasarAttestor) Ingest(pos VotePosition, att SignedVote) (*QuorumCert, 
 	for _, v := range b.votes {
 		votes = append(votes, v)
 	}
-	cert, err := AssembleQuorumCert(b.pos, uint32(threshold), votes)
+	cert, err := AssembleQuorumCert(b.pos, Quasar, uint32(threshold), votes)
 	if err != nil {
 		return nil, false, nil // not yet assemblable (below threshold after dedup); keep collecting
 	}
