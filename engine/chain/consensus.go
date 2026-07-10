@@ -375,6 +375,24 @@ func (c *ChainConsensus) QuasarHeight() (uint64, bool) {
 // This is the SOLE writer of the Quasar frontier; the "no two conflicting Quasar certs"
 // invariant reduces to the Nova ledger's single-canonical-per-height gate that this checks
 // against (c.ledger.At), which itself fail-closes on a conflicting Nova accept.
+// SyncQuasarFrontier conservatively (re)seeds the EXPORT (Quasar) frontier from a DURABLE source
+// — the VM's persisted export-final block on boot (symmetric with how SyncState seeds the Nova
+// ledger's build anchor from vm.LastAccepted). The in-memory quasarFrontier is otherwise reset on
+// restart, so GetQuasarTip/QuasarHeight would regress to (Empty, 0) until a fresh cert re-forms;
+// this holds the frontier at the last durably-exported height so a consumer never observes a
+// backward jump. It ONLY ever moves the frontier FORWARD (advance-only, never regress): a seed at
+// or below the current height is ignored. The durable source (the VM's persisted Quasar height)
+// only ever advances, so this can never over-claim. canonical may be ids.Empty (height-only seed);
+// PromoteQuasar refines it with the real canonical as certs re-form at runtime.
+func (c *ChainConsensus) SyncQuasarFrontier(canonical ids.ID, height uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.quasar.set && height <= c.quasar.height {
+		return // advance-only: never regress the export frontier
+	}
+	c.quasar = quasarFrontier{height: height, canonical: canonical, envelope: canonical, set: true}
+}
+
 func (c *ChainConsensus) PromoteQuasar(cert Cert) (advanced bool, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

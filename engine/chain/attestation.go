@@ -85,7 +85,6 @@ type QuasarAttestor struct {
 
 	verifier VoteVerifier // verifies a peer attestation's signature at the block's epoch
 	stake    StakeSource  // ⅔-by-stake threshold + live committee size at the epoch
-	epochOf  func(height uint64) uint64 // value-chain height -> the P-chain epoch its set is pinned to
 
 	buckets  map[attestKey]*attestBucket // in-flight, pruned when a cert emits at the height
 	certs    map[uint64]*QuorumCert      // emitted artifacts, by height (the external cert chain)
@@ -93,17 +92,14 @@ type QuasarAttestor struct {
 }
 
 // NewQuasarAttestor builds the sidecar. verifier + stake are the SAME finality-crypto
-// dependencies the engine already wires; epochOf maps a value-chain height to the P-chain epoch
-// height its weighted set is pinned to (identity for a fixed-set chain). A nil stake source is
-// rejected at emit time (fail-closed — a cert must be ⅔-stake checkable).
-func NewQuasarAttestor(verifier VoteVerifier, stake StakeSource, epochOf func(uint64) uint64) *QuasarAttestor {
-	if epochOf == nil {
-		epochOf = func(h uint64) uint64 { return h }
-	}
+// dependencies the engine already wires. The block's P-chain EPOCH is a VALUE the caller binds
+// to each Ingest (bound to the position it verifies), NOT a shared height→epoch place — so two
+// concurrent ingests of same-height forked blocks under different epochs can never cross epochs.
+// A nil stake source is rejected at emit time (fail-closed — a cert must be ⅔-stake checkable).
+func NewQuasarAttestor(verifier VoteVerifier, stake StakeSource) *QuasarAttestor {
 	return &QuasarAttestor{
 		verifier: verifier,
 		stake:    stake,
-		epochOf:  epochOf,
 		buckets:  map[attestKey]*attestBucket{},
 		certs:    map[uint64]*QuorumCert{},
 		subjects: map[uint64]map[ids.ID]struct{}{},
@@ -126,14 +122,16 @@ func (q *QuasarAttestor) Attest(pos VotePosition, signer VoteSigner, self ids.No
 	return SignedVote{NodeID: self, Accept: true, Signature: sig}, nil
 }
 
-// Ingest verifies and records one attestation (own or peer) for the accepted block at pos.
-// Returns the emitted certificate the FIRST time this subject reaches the ⅔-stake threshold
-// (nil, false otherwise). It NEVER accepts a block and NEVER blocks — its only outputs are a
-// verified-attestation record and, once enough stake has attested, a cert.
+// Ingest verifies and records one attestation (own or peer) for the accepted block at pos, at
+// the block's P-chain `epoch` (a VALUE bound to this position — the SAME epoch the accept votes
+// were verified under; NOT a shared height-keyed place). Returns the emitted certificate the
+// FIRST time this subject reaches the ⅔-stake threshold (nil, false otherwise). It NEVER accepts
+// a block and NEVER blocks — its only outputs are a verified-attestation record and, once enough
+// stake has attested, a cert.
 //
 // Fail-closed: an attestation whose signature does not verify at the block's epoch, or a
 // non-accept vote, or one whose message disagrees with an established bucket, is dropped.
-func (q *QuasarAttestor) Ingest(pos VotePosition, att SignedVote) (*QuorumCert, bool, error) {
+func (q *QuasarAttestor) Ingest(pos VotePosition, epoch uint64, att SignedVote) (*QuorumCert, bool, error) {
 	if !att.Accept {
 		return nil, false, fmt.Errorf("quasar ingest: non-accept attestation from %s", att.NodeID)
 	}
@@ -141,7 +139,6 @@ func (q *QuasarAttestor) Ingest(pos VotePosition, att SignedVote) (*QuorumCert, 
 	if canonical == ids.Empty {
 		canonical = pos.BlockID // bare-block degrade (inner == outer)
 	}
-	epoch := q.epochOf(pos.Height)
 	msg := CanonicalVoteMessage(pos)
 
 	if q.verifier == nil || !q.verifier.VerifyVote(att.NodeID, msg, att.Signature, epoch) {
