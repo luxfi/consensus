@@ -5,7 +5,7 @@
 // or behind node fetches the chain from a peer's accepted frontier and re-executes
 // it to the network tip, WITHOUT voting and WITHOUT requiring a stored α-of-K cert.
 //
-// This is a port of avalanche's proven snowman bootstrapper, adapted to the Lux
+// This is a port of a proven linear-chain bootstrapper, adapted to the Lux
 // engine's split architecture (the consensus engine owns the ACCEPT primitive —
 // chain.Runtime.AcceptBootstrapBlock — and the node owns the TRANSPORT). The loop is
 // the same:

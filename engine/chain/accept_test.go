@@ -63,14 +63,39 @@ func mustNotFinalize(t *testing.T, e *Transitive, blk *verifyOnceBlock, d time.D
 }
 
 // mustFinalize fails unless blk is VM-accepted exactly once and reported accepted
-// within d. It is the LIVENESS assertion: a real quorum DOES finalize.
+// within d. It is the NOVA (local-accept) LIVENESS assertion: a bare-majority quorum DOES
+// drive VM.Accept. Under v1.36 acceptance is the Nova tier (majority), NOT the ⅔-stake
+// Quasar tier — a block can Nova-accept here while never reaching export (see mustNotQuasar).
 func mustFinalize(t *testing.T, e *Transitive, blk *verifyOnceBlock, d time.Duration, why string) {
 	t.Helper()
 	if !waitFor(d, func() bool { return e.IsAccepted(blk.id) }) {
-		t.Fatalf("%s: LIVENESS FAILURE — a real quorum did not finalize (AcceptCalled=%d)", why, blk.AcceptCalled())
+		t.Fatalf("%s: NOVA LIVENESS FAILURE — a majority quorum did not accept (AcceptCalled=%d)", why, blk.AcceptCalled())
 	}
 	if got := blk.AcceptCalled(); got != 1 {
 		t.Fatalf("%s: block must VM.Accept exactly once, got %d", why, got)
+	}
+}
+
+// mustQuasar fails unless blk reaches the EXPORT (Quasar, ⅔-by-stake) tier within d — the
+// v1.36 export LIVENESS assertion: a real >⅔-stake supermajority DOES certify for export.
+func mustQuasar(t *testing.T, e *Transitive, blk *verifyOnceBlock, d time.Duration, why string) {
+	t.Helper()
+	if !waitFor(d, func() bool { qh, ok := e.QuasarHeight(); return ok && qh >= blk.height }) {
+		qh, ok := e.QuasarHeight()
+		t.Fatalf("%s: EXPORT LIVENESS FAILURE — block did not reach Quasar (⅔-stake); QuasarHeight=(%d,%v), want ≥%d",
+			why, qh, ok, blk.height)
+	}
+}
+
+// mustNotQuasar fails if blk reaches the EXPORT (Quasar) tier within d. It is the v1.36
+// export-SAFETY assertion: a sub-⅔-stake coalition may drive Nova (local accept) but can
+// NEVER reach export finality (bridges / DEX settlement / cross-chain). A block that never
+// Nova-accepts trivially never reaches Quasar; a Nova-accepted-but-sub-⅔ block must stall at
+// Nova with the Quasar frontier NOT advanced to it.
+func mustNotQuasar(t *testing.T, e *Transitive, blk *verifyOnceBlock, d time.Duration, why string) {
+	t.Helper()
+	if waitFor(d, func() bool { qh, ok := e.QuasarHeight(); return ok && qh >= blk.height }) {
+		t.Fatalf("%s: EXPORT SAFETY VIOLATION — a sub-⅔-stake coalition reached Quasar (⅔-stake export)", why)
 	}
 }
 
@@ -102,66 +127,48 @@ func TestNoAcceptWithoutVerifiedQC(t *testing.T) {
 	}
 }
 
-// TestProcessPendingBlocksCannotFinalizeByCount: the count road, exercised
-// through the live pollLoop's finalizer, cannot finalize. Equal VOTE weight gives
-// α=4 by count; the four low-stake voters reach that count but hold a stake
-// minority, so processPendingBlocks (which now routes accepts through TryAccept)
-// must NOT finalize. This is the structural fix for the pre-existing RED repro,
-// asserted on the public finalizer name.
-func TestProcessPendingBlocksCannotFinalizeByCount(t *testing.T) {
+// TestCountMajorityNovaAcceptsButNotQuasarExport is the two-tier successor to the old
+// "ProcessPendingBlocksCannotFinalizeByCount". Under v1.36 a bare-majority COUNT of votes IS
+// the Nova accept authority (it drives VM.Accept, local execution) — so a 4-of-5 count
+// majority DOES accept. But the EXPORT tier (Quasar) still requires >⅔ of STAKE, so a
+// coalition holding 4/100 stake NEVER reaches Quasar. Count drives local accept; stake gates
+// export. (The absent 96%-stake holder blocks certification, not production — the degraded
+// mode.)
+func TestCountMajorityNovaAcceptsButNotQuasarExport(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	// EQUAL vote weight → α=4 by count; SKEWED stake → four voters hold 4/100.
+	// EQUAL vote weight → Nova majority is 3-of-5 by count; SKEWED stake → four voters hold 4/100.
 	skew := newStakeMap(vs, 96, 1, 1, 1, 1)
 	rec := &recordingGossiper{}
 
-	blk := newTestBlock(1, ids.Empty, "count-only")
+	blk := newTestBlock(1, ids.Empty, "count-majority")
 	e, _ := driveSignedAccepts(t, vs, skew, rec, blk, []int{1, 2, 3, 4})
 
-	// The COUNT gate flips consensus.IsAccepted (acceptVotes=4>=α=4), and the
-	// pollLoop runs processPendingBlocks on it — but TryAccept refuses without the
-	// ⅔-stake cert, so the block must NOT VM.Accept.
-	mustNotFinalize(t, e, blk, 1500*time.Millisecond,
-		"processPendingBlocks/count-α with 4/100 stake")
-
-	// Drive processPendingBlocks DIRECTLY too (not only via the loop) to prove the
-	// finalizer itself refuses, independent of timing.
-	e.processPendingBlocks()
-	if blk.AcceptCalled() != 0 {
-		t.Fatalf("processPendingBlocks finalized on count alone (VM.Accept ran %d×)", blk.AcceptCalled())
-	}
-
-	rec.mu.Lock()
-	gotCerts := len(rec.certs)
-	rec.mu.Unlock()
-	if gotCerts != 0 {
-		t.Fatalf("no ⅔-stake cert should exist for a 4/100 coalition, got %d gossiped", gotCerts)
-	}
+	// NOVA: a 4-of-5 count majority drives VM.Accept (local execution) — the v1.36 accept tier.
+	mustFinalize(t, e, blk, 2*time.Second, "4-of-5 count majority (Nova local accept)")
+	// QUASAR: 4/100 stake is far below ⅔ — the block must NEVER reach export finality.
+	mustNotQuasar(t, e, blk, 500*time.Millisecond, "4/100-stake coalition (export gate)")
 }
 
-// TestSkewedStakeHeadcountMajorityRejected is the KEY regression named in the
-// brief: A=60%, B=C=D=E=10%. Votes from B+C+D+E → count=4/5 but stake=40% → NO
-// accept, NO finalize, NO state transition.
-func TestSkewedStakeHeadcountMajorityRejected(t *testing.T) {
+// TestSkewedStakeHeadcountMajorityNovaAcceptsNotQuasar is the two-tier successor to the old
+// "SkewedStakeHeadcountMajorityRejected". A=60%, B=C=D=E=10%. B+C+D+E vote → count=4/5 (a Nova
+// majority, so VM.Accept runs — local execution) but stake=40% (< ⅔, so NO Quasar export). The
+// original brief's invariant ("a stake minority causes no IRREVERSIBLE / cross-chain state
+// transition") is preserved EXACTLY at the export tier; local execution follows the count
+// majority per the v1.36 mandate.
+func TestSkewedStakeHeadcountMajorityNovaAcceptsNotQuasar(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	// A=60, B..E=10 each (total 100). The four small holders sum to 40% < ⅔.
 	skew := newStakeMap(vs, 60, 10, 10, 10, 10)
 	rec := &recordingGossiper{}
 
 	blk := newTestBlock(1, ids.Empty, "skew-40pct")
-	// B,C,D,E vote (indices 1..4): headcount 4/5 (≥α) but only 40% of stake. A abstains.
+	// B,C,D,E vote (indices 1..4): headcount 4/5 (a Nova majority) but only 40% of stake. A abstains.
 	e, _ := driveSignedAccepts(t, vs, skew, rec, blk, []int{1, 2, 3, 4})
 
-	mustNotFinalize(t, e, blk, 1500*time.Millisecond,
-		"4/5-headcount / 40%-stake coalition")
-
-	// And no valid stake-weighted cert was gossiped — the cert path agreed it must
-	// not finalize; only the count path (now defanged) ever said otherwise.
-	rec.mu.Lock()
-	gotCerts := len(rec.certs)
-	rec.mu.Unlock()
-	if gotCerts != 0 {
-		t.Fatalf("a 40%%-stake coalition must produce NO cert, got %d gossiped", gotCerts)
-	}
+	// NOVA: the count majority drives local accept.
+	mustFinalize(t, e, blk, 2*time.Second, "4/5-headcount majority (Nova local accept)")
+	// QUASAR: 40% stake < ⅔ — no export cert, no cross-chain/irreversible transition.
+	mustNotQuasar(t, e, blk, 500*time.Millisecond, "40%-stake coalition (export gate)")
 }
 
 // TestEqualStakeFourOfFiveAcceptedWithQC: equal stake, four of five validators
@@ -188,11 +195,13 @@ func TestEqualStakeFourOfFiveAcceptedWithQC(t *testing.T) {
 	}
 }
 
-// TestThreeOfFiveRejectedEvenIfCountThresholdMet: only three of five sign. On the
-// dyn5 sizer α=4, so 3 < α never even reaches the count trigger — and crucially
-// holds only 60% of equal stake (< ⅔). The block must NOT finalize. (Three-of-N
-// is below the BFT overlap floor — exactly what the quorum must refuse.)
-func TestThreeOfFiveRejectedEvenIfCountThresholdMet(t *testing.T) {
+// TestThreeOfFiveNovaAcceptsNotQuasar is the two-tier successor to the old
+// "ThreeOfFiveRejectedEvenIfCountThresholdMet". Three of five sign — EXACTLY the Nova majority
+// NovaQuorum(5)=3, so the block DOES Nova-accept (the "survive 3/5" mandate). But three equal
+// stakes are 60% < ⅔, so it does NOT reach Quasar export. This is the canonical degraded case:
+// production continues (Nova) while certification pauses (no Quasar) until a 4th validator
+// votes.
+func TestThreeOfFiveNovaAcceptsNotQuasar(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	equal := newStakeMap(vs, 20, 20, 20, 20, 20) // three → 60% < ⅔
 	rec := &recordingGossiper{}
@@ -200,46 +209,44 @@ func TestThreeOfFiveRejectedEvenIfCountThresholdMet(t *testing.T) {
 	blk := newTestBlock(1, ids.Empty, "three-of-five")
 	e, _ := driveSignedAccepts(t, vs, equal, rec, blk, []int{0, 1, 2})
 
-	mustNotFinalize(t, e, blk, 1500*time.Millisecond, "3/5 (below quorum + 60% stake)")
-
-	e.processPendingBlocks() // direct drive, prove the finalizer refuses
-	if blk.AcceptCalled() != 0 {
-		t.Fatalf("3/5 finalized (VM.Accept ran %d×)", blk.AcceptCalled())
-	}
+	// NOVA: 3-of-5 is the bare majority — it accepts (local execution).
+	mustFinalize(t, e, blk, 2*time.Second, "3/5 bare majority (Nova local accept)")
+	// QUASAR: 60% stake ≤ ⅔ — no export cert (certification pauses in the degraded 3/5 mode).
+	mustNotQuasar(t, e, blk, 500*time.Millisecond, "3/5 = 60% stake (export gate)")
 }
 
-// TestVoteArrivalTriggersTryAcceptButRequiresQC: a vote arriving is a LIVENESS
-// trigger. It funnels into TryAccept, but with only a sub-⅔ coalition voting,
-// TryAccept returns ErrNoVerifiedQC and finalizes nothing. Then the missing
-// heavy-stake vote arrives, the verified cert becomes assemblable, and the SAME
-// trigger path finalizes. Proves: trigger ≠ authority; the QC is the authority.
-func TestVoteArrivalTriggersTryAcceptButRequiresQC(t *testing.T) {
+// TestVoteArrivalDrivesNovaThenLateHeavyVoteCompletesQuasar: a vote arriving is a LIVENESS
+// trigger into TryAccept. Under v1.36 a bare-majority count drives the NOVA accept (local
+// execution) immediately; the EXPORT tier (Quasar) additionally needs >⅔ of STAKE. Because the
+// ⅔-th stake vote NECESSARILY TRAILS the bare-majority accept, it is completed by a LATE
+// attestation: B,C,D,E (4/5 count, 40% stake) Nova-accept; then the heavy holder A (60%) votes
+// AFTER the accept, and the trailing-vote path completes the export cert — the block reaches
+// Quasar with NO reorg (accept was already Nova; export is a monotone promotion).
+func TestVoteArrivalDrivesNovaThenLateHeavyVoteCompletesQuasar(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	skew := newStakeMap(vs, 60, 10, 10, 10, 10) // A=60%
 	rec := &recordingGossiper{}
 
 	blk := newTestBlock(1, ids.Empty, "vote-trigger")
-	// First only B,C,D,E vote: 4/5 count, 40% stake. Triggers TryAccept, no QC.
+	// First only B,C,D,E vote: 4/5 count (Nova majority), 40% stake (< ⅔).
 	e, chainID := driveSignedAccepts(t, vs, skew, rec, blk, []int{1, 2, 3, 4})
-	mustNotFinalize(t, e, blk, 1*time.Second, "4/5-count/40%-stake before heavy vote")
+	// NOVA: the count majority drives VM.Accept (local execution) immediately.
+	mustFinalize(t, e, blk, 2*time.Second, "4/5-count majority (Nova local accept)")
+	// QUASAR: 40% stake < ⅔ — no export cert yet.
+	mustNotQuasar(t, e, blk, 500*time.Millisecond, "40%-stake before heavy vote (export gate)")
 
-	// Direct: TryAccept invoked by the trigger path must report ErrNoVerifiedQC.
-	if err := e.TryAccept(context.Background(), blk.id); err != ErrNoVerifiedQC {
-		t.Fatalf("TryAccept with 40%% stake must return ErrNoVerifiedQC, got %v", err)
-	}
-
-	// Now the heavy-stake validator A (index 0) votes → 100% stake, verified QC
-	// assemblable. The vote-arrival trigger now finalizes through AcceptWithCert.
+	// The heavy-stake holder A (index 0) votes AFTER the accept. 40%+60% = 100% > ⅔ ⇒ the
+	// trailing attestation completes the export cert and the block reaches Quasar (no reorg).
 	pos := VotePosition{ChainID: chainID, Height: blk.height, Round: 0, BlockID: blk.id, ParentID: blk.parentID}
 	e.ReceiveVote(vs.signedVote(0, pos))
-	mustFinalize(t, e, blk, 2*time.Second, "after heavy-stake vote completes the ⅔ quorum")
+	mustQuasar(t, e, blk, 2*time.Second, "late heavy-stake vote completes the ⅔ export supermajority")
 }
 
-// TestRepollTriggersTryAcceptButRequiresQC: a re-poll firing is a LIVENESS
-// trigger (the pollLoop re-examines pending blocks). Driving the re-poll path
-// (processPendingBlocks, which the pollLoop calls each tick) repeatedly over a
-// sub-⅔ coalition must never finalize — re-polling is a retry, not an authority.
-func TestRepollTriggersTryAcceptButRequiresQC(t *testing.T) {
+// TestRepollTriggersNovaAcceptButNotQuasarExport: a re-poll firing is a LIVENESS trigger (the
+// pollLoop re-examines pending blocks). Under v1.36 a 4-of-5 count majority DRIVES the Nova accept
+// (local execution) even for a 40%-stake coalition — but re-poll is a RETRY, not an authority: no
+// amount of re-polling can manufacture the ⅔-STAKE supermajority the EXPORT (Quasar) tier needs.
+func TestRepollTriggersNovaAcceptButNotQuasarExport(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	skew := newStakeMap(vs, 60, 10, 10, 10, 10)
 	rec := &recordingGossiper{}
@@ -247,16 +254,15 @@ func TestRepollTriggersTryAcceptButRequiresQC(t *testing.T) {
 	blk := newTestBlock(1, ids.Empty, "repoll-trigger")
 	e, _ := driveSignedAccepts(t, vs, skew, rec, blk, []int{1, 2, 3, 4})
 
-	// Fire the re-poll finalizer repeatedly — each is a trigger, none an authority.
+	// NOVA: the 4-of-5 count majority accepts (local execution).
+	mustFinalize(t, e, blk, 2*time.Second, "4-of-5 count majority (Nova local accept)")
+
+	// Fire the re-poll finalizer repeatedly — a retry, never an authority. It must NEVER push the
+	// 40%-stake block to EXPORT (Quasar); ⅔ of stake cannot be re-polled into existence.
 	for i := 0; i < 25; i++ {
 		e.processPendingBlocks()
-		if blk.AcceptCalled() != 0 {
-			t.Fatalf("re-poll #%d finalized a 40%%-stake block (VM.Accept ran %d×)", i, blk.AcceptCalled())
-		}
 	}
-	if e.IsAccepted(blk.id) {
-		t.Fatal("repeated re-polls produced finality without a verified cert")
-	}
+	mustNotQuasar(t, e, blk, 500*time.Millisecond, "40%-stake coalition under repeated re-poll (export gate)")
 }
 
 // TestVerifiedQuorumCertUnforgeableOutsideBuilder: a VerifiedQuorumCert can be
@@ -282,7 +288,7 @@ func TestVerifiedQuorumCertUnforgeableOutsideBuilder(t *testing.T) {
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 	}
-	if vc, err := BuildVerifiedQuorumCert(vs, equal, 4, 1, pos, sub); err == nil || !vc.IsZero() {
+	if vc, err := BuildVerifiedQuorumCert(vs, equal, Quasar, 4, 1, pos, sub); err == nil || !vc.IsZero() {
 		t.Fatalf("builder must refuse a sub-α vote set (got err=%v zero=%v)", err, vc.IsZero())
 	}
 
@@ -293,7 +299,7 @@ func TestVerifiedQuorumCertUnforgeableOutsideBuilder(t *testing.T) {
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 		{NodeID: vs.nodeID(3), Accept: true, Signature: vs.sign(3, pos)},
 	}
-	if vc, err := BuildVerifiedQuorumCert(vs, equal, 4, 1, pos, forged); err == nil || !vc.IsZero() {
+	if vc, err := BuildVerifiedQuorumCert(vs, equal, Quasar, 4, 1, pos, forged); err == nil || !vc.IsZero() {
 		t.Fatalf("builder must refuse a forged-signature vote set (got err=%v zero=%v)", err, vc.IsZero())
 	}
 
@@ -305,7 +311,7 @@ func TestVerifiedQuorumCertUnforgeableOutsideBuilder(t *testing.T) {
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 		{NodeID: vs.nodeID(3), Accept: true, Signature: vs.sign(3, pos)},
 	}
-	vc, err := BuildVerifiedQuorumCert(vs, equal, 4, 1, pos, good)
+	vc, err := BuildVerifiedQuorumCert(vs, equal, Quasar, 4, 1, pos, good)
 	if err != nil || vc.IsZero() {
 		t.Fatalf("builder must mint a token for a real ⅔ quorum (err=%v zero=%v)", err, vc.IsZero())
 	}

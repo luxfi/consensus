@@ -128,7 +128,7 @@ func catchupCertFor(t *testing.T, vs *testValidatorSet, chainID ids.ID, blk *ver
 	for _, i := range voters {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	qc, err := AssembleQuorumCert(pos, threshold, votes)
+	qc, err := AssembleQuorumCert(pos, Quasar, threshold, votes)
 	if err != nil {
 		t.Fatalf("assemble cert: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestCatchup_RejectsForgedAndSubQuorumCerts(t *testing.T) {
 					{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 					{NodeID: vs.nodeID(3), Accept: true, Signature: vs.sign(3, pos)},
 				}
-				qc, err := AssembleQuorumCert(pos, 3, votes)
+				qc, err := AssembleQuorumCert(pos, Quasar, 3, votes)
 				if err != nil {
 					t.Fatalf("assemble forged: %v", err)
 				}

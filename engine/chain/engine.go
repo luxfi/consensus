@@ -310,6 +310,17 @@ func WithStakeWeighting(stake StakeSource) Option {
 	}
 }
 
+// WithQuasarObserver registers a callback fired when the EXPORT (Quasar, ⅔-by-stake) frontier
+// advances — the ONE seam an export surface uses to track the exportable tip. The node wires it
+// to push the export-final height into the VM (EVM `finalized`/`safe`, warp export gating), so
+// those surfaces read the Quasar tip and NEVER the reorgable Nova/accept tip. Fires strictly
+// after the block's Nova accept, monotonically. nil is a no-op (no export surface).
+func WithQuasarObserver(fn func(canonical ids.ID, height uint64)) Option {
+	return func(t *Transitive) {
+		t.quasarObserver = fn
+	}
+}
+
 // WithStrictPQ marks the engine as running under a STRICT post-quantum security
 // profile (the node derives this from the chain's consensus profile —
 // config.Profile.IsStrict()). When set, Mode() additionally requires a PQ
@@ -555,34 +566,6 @@ type Transitive struct {
 	// warns a signer that has none). See vote_guard.go.
 	slotMu        sync.Mutex
 	committedSlot map[SlotKey]ids.ID
-	// views holds the round-scoped view-change machine per unfinalized height (guarded by
-	// slotMu), used ONLY when params.ViewChange is set. It makes the α-of-K precommit LIVE
-	// and re-convergent under competing siblings: fluid prevotes across rounds + precommit
-	// only on a POL + lock. Lazily created per height; pruned on finalize. See round_view.go.
-	views map[uint64]*roundView
-	// prevoteSigs stores the SIGNED prevotes observed (own + peers), keyed
-	// {height,round,canonical} → nodeID → signature, so a node can RELAY the validValue POL's
-	// constituent prevotes to a peer that missed them (the POL-propagation the isolated proof
-	// showed is required for a 2|N split where one side holds a POL to converge). Guarded by
-	// slotMu; pruned with views on finalize.
-	prevoteSigs map[pvSigKey]map[ids.NodeID][]byte
-	// recoveredLocks are heights whose committedSlot binding was RECOVERED from the durable
-	// vote-guard at boot (a value this node precommitted before a crash). Under ViewChange the
-	// in-session round+lock rule governs re-precommit, but the ROUND of a recovered lock is not
-	// on disk — so for a recovered height we CANNOT evaluate the unlock rule safely. Fail-safe:
-	// treat a recovered binding as a HARD lock (reserveSlotForSign keeps the STRICT refusal of a
-	// conflicting canonical there, even under ViewChange), so a rolling-restart node never
-	// precommits a second, conflicting value at a pre-crash height (the double-precommit RED
-	// flagged). Liveness is unharmed: if the network finalized a different value, the node
-	// finalizes it via the α-of-K cert gossip (HandleIncomingCert), not a local re-precommit.
-	// A height leaves this set once it finalizes (pruned). Guarded by slotMu.
-	recoveredLocks map[uint64]struct{}
-	// lockRounds is the round-scoped view-change LOCK ROUND per height (the round this node
-	// precommitted+locked the height's binding). Persisted in the v3 vote-guard so a restarted
-	// node seeds its roundView lock and re-converges under the unlock rule (instead of the
-	// conservative recoveredLocks hard-lock). Updated on precommit; pruned on finalize. Guarded
-	// by slotMu.
-	lockRounds map[uint64]uint32
 	// decidedFloor is the DURABLE, MONOTONIC decided-through height: the highest height
 	// this node has ever finalized. The sign gate refuses signing at any height <= it, so a
 	// decided height is permanently unsignable EVEN AFTER its committedSlot entry is pruned
@@ -633,6 +616,39 @@ type Transitive struct {
 	// the gate reads the SAME field that delivers the witness — nil means "PQ witness not
 	// plumbed", exactly the semantics ToQuasarCert already relies on.
 	cryptoWitness CryptoWitnessSource
+
+	// quasarAttestor (optional) is the trailing EXPORT-cert assembler — the ONE
+	// producer of the ⅔-by-stake Quasar certificate, run strictly AFTER a Nova accept.
+	// Nova (the majority accept cert, assembleCertLocked) is the SOLE decider of VM.Accept
+	// and chain liveness; this sidecar is an ARTIFACT builder that NEVER gates acceptance
+	// (an absent/late/insufficient Quasar cert leaves a block Nova-only — the degraded
+	// mode). promoteQuasarLocked feeds it the just-accepted block's own verified accept
+	// votes (which are byte-identical attestations of the same canonical position), and
+	// when a ⅔-stake supermajority has attested it emits the export cert and advances the
+	// consensus Quasar frontier. Wired ONLY when both voteVerifier and stakeSource are
+	// present (a stake-weighted chain that can export); nil on an equal-stake/dev/K==1 chain
+	// (Nova-only, no cross-chain export). See attestation.go.
+	quasarAttestor *QuasarAttestor
+	// quasarObserver (optional) is notified when the EXPORT (Quasar, ⅔-by-stake) frontier
+	// advances — the ONE seam an export surface (a bridge, the EVM `finalized`/`safe` tag, the
+	// warp export gate) subscribes to so it reads the Quasar tip, NEVER the reorgable Nova/accept
+	// tip. Called by ingestAttestation strictly AFTER the block's Nova accept, monotonically, WITHOUT
+	// t.mu. nil on a chain with no export surface. Set via WithQuasarObserver.
+	quasarObserver func(canonical ids.ID, height uint64)
+	// acceptedPosMu guards acceptedPos. acceptedPos remembers the signed VotePosition + P-chain
+	// epoch of a Nova-accepted block, keyed by its outer id, so a LATE accept vote — the ⅔-th
+	// stake vote necessarily trails the bare-majority accept and arrives when the pending block is
+	// already dropped — can still be attested (verified against the exact signed bytes, at the
+	// exact epoch, both carried as VALUES on the record) and complete the export cert. Bounded to
+	// the attestor window (pruneQuasarBelow).
+	acceptedPosMu sync.Mutex
+	acceptedPos   map[ids.ID]acceptedPos
+	// responsiveStakeNum/Den record the stake that voted on the most recently accepted block
+	// (numerator) out of the epoch's total (denominator) — the degraded-mode RPC signal
+	// (responsiveStakePct + certificateAvailable). Guarded by t.mu. Zero denominator ⇒
+	// "unknown" (no stake-weighted accept observed yet).
+	responsiveStakeNum uint64
+	responsiveStakeDen uint64
 
 	// catchup (optional) is the engine's seam for runtime auto-recovery when it
 	// falls behind — see Catchup. When a gossiped child or a verified cert
@@ -796,10 +812,6 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		finalizedByCert:      make(map[ids.ID]struct{}),
 		certBytesByBlock:     make(map[ids.ID][]byte),
 		committedSlot:        make(map[SlotKey]ids.ID),
-		views:                make(map[uint64]*roundView),
-		prevoteSigs:          make(map[pvSigKey]map[ids.NodeID][]byte),
-		recoveredLocks:       make(map[uint64]struct{}),
-		lockRounds:           make(map[uint64]uint32),
 		catchupRequested:     make(map[ids.ID]time.Time),
 		certCatchupRequested: make(map[uint64]time.Time),
 		bufferedVotes:        make(map[ids.ID][]Vote),
@@ -846,6 +858,17 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 	// (K==1) needs no verifier: its own accept is the quorum.
 	if t.params.K > 1 && t.voteVerifier == nil {
 		return ErrQuorumVerifierRequired
+	}
+
+	// Wire the trailing EXPORT-cert assembler (the ONE Quasar producer) when the chain can
+	// export: a stake-weighted chain with a vote verifier. It runs strictly AFTER Nova accept
+	// and NEVER gates it. An equal-stake/dev/K==1 chain has no cross-chain export surface, so
+	// it stays Nova-only (nil attestor) — GetQuasarTip is simply ids.Empty there. The epoch
+	// map bridges the attestor's height→epoch resolution to the block's recorded P-chain
+	// epoch (identity for a fixed set). Constructed once, here, so the Quasar frontier has a
+	// single producer.
+	if t.voteVerifier != nil && t.stakeSource != nil && t.quasarAttestor == nil {
+		t.quasarAttestor = NewQuasarAttestor(t.voteVerifier, t.stakeSource)
 	}
 
 	// A signing validator SHOULD have a durable equivocation guard so a crash between
@@ -1543,7 +1566,7 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 		// it to an α-of-K cert — so it must keep re-soliciting until the block decides
 		// (then it leaves pendingBlocks and the re-poll quiesces). This is exactly
 		// avalanchego's contract: re-poll a PROCESSING block until it is decided, and
-		// only quiesce at NumProcessing()==0 (snow/engine/snowman voter.go +
+		// only quiesce at NumProcessing()==0 (the upstream voter.go +
 		// Engine.Gossip's 100ms repoll). Abandoning an own proposal after a fixed
 		// attempt cap was the Lux-only divergence that froze mainnet C-Chain: the
 		// substitute's canonical block stopped being re-solicited and the chain halted
@@ -1856,13 +1879,17 @@ func (t *Transitive) handleVote(vote Vote) {
 	ctx := t.ctx
 
 	if !exists {
-		// A vote for an ALREADY-FINALIZED block needs nothing: the block is decided
-		// (removed from pendingBlocks, recorded in finalizedByCert). Do NOT buffer or
-		// fetch it — that would re-park a late/duplicate vote AFTER acceptWithCertCore
-		// cleared the buffer, leaking a slot for a block that will never re-track to
-		// drain it. Drop it (the finality cert already exists).
+		// A vote for an ALREADY-FINALIZED (Nova-accepted) block needs nothing for ACCEPTANCE:
+		// the block is decided (removed from pendingBlocks, recorded in finalizedByCert). Do NOT
+		// buffer or fetch it — that would re-park a late/duplicate vote AFTER acceptWithCertCore
+		// cleared the buffer. But it CAN still complete the EXPORT (Quasar) cert: the ⅔-th stake
+		// vote necessarily TRAILS the bare-majority Nova accept, so a trailing accept vote is
+		// routed to the attestor (verified against the exact accepted position — attestFinalizedVote
+		// re-checks the signature, so this never bypasses the gate).
 		if _, finalized := t.finalizedByCert[vote.BlockID]; finalized {
+			verifier := t.voteVerifier
 			t.mu.Unlock()
+			t.attestFinalizedVote(vote, verifier)
 			return
 		}
 		// VOTE FOR A BLOCK WE DO NOT YET TRACK — the gossip race that wedged the
@@ -2076,14 +2103,6 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 	if t.voteSigner == nil {
 		return
 	}
-	// VIEW-CHANGE: a proposer must NOT precommit its own block at build time — it must
-	// PREVOTE it and precommit only on a POL (round_view.go). Recording an immediate own
-	// precommit here would be an unjustified precommit (no POL) that the lock rule forbids.
-	// The view-change driver (runViewChangePass) casts this node's prevote+precommit for the
-	// converged winner instead. Skip the build-time self-precommit under view-change.
-	if t.params.ViewChange {
-		return
-	}
 	pos := t.blockPositionLocked(pending, blockID)
 	// NON-EQUIVOCATION (fork guard): refuse to sign a conflicting sibling at a HEIGHT
 	// this node has already committed to — and DURABLY record the binding before
@@ -2172,23 +2191,11 @@ func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
 		if bound == canonical {
 			return true // same block ⇒ idempotent (already durable)
 		}
-		// VIEW-CHANGE: a conflicting canonical at an UN-finalized height is permitted here —
-		// the round-scoped lock rule (round_view.go recordOwnPrecommit) already governs WHICH
-		// value this node may precommit and at what round, so the height-only refusal would
-		// wrongly freeze the re-convergence. The DURABLE decided-floor gate above still makes a
-		// FINALIZED height unsignable (the v1.35.5 PART-A / HIGH-1 finalized-floor safety is
-		// untouched). For the legacy single-phase path, keep the strict height-only refusal.
-		if !t.params.ViewChange {
-			return false // legacy: sibling at an already-signed height ⇒ refuse
-		}
-		// ROLLING-RESTART SAFETY: a binding RECOVERED from disk has no persisted lock round, so
-		// the unlock rule cannot be evaluated — treat it as a HARD lock and REFUSE a conflicting
-		// value (the node finalizes the network's choice via cert gossip, never via a second
-		// local precommit). In-session bindings fall through to the round+lock re-precommit.
-		if _, recovered := t.recoveredLocks[key.Height]; recovered {
-			return false
-		}
-		// fall through: re-bind to the newly-precommitted canonical (persist below).
+		// NON-EQUIVOCATION: a conflicting canonical at an already-signed height ⇒ REFUSE.
+		// One signature per consensus height makes two conflicting finality attestations at
+		// one height impossible (Nova's single-accept property; this durable committedSlot is
+		// its cross-restart WITNESS — a value/log, never a decision lock).
+		return false
 	}
 	// First binding at this slot. PERSIST it durably BEFORE permitting the signature —
 	// a crash after signing but before finalizing must not forget it. Mutate the map,
@@ -2196,7 +2203,7 @@ func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
 	// consistent with what is durable and we FAIL CLOSED (return false ⇒ no signature).
 	t.committedSlot[key] = canonical
 	if t.voteGuard != nil {
-		if err := t.voteGuard.Persist(t.committedSlot, t.lockRounds, t.decidedFloor); err != nil {
+		if err := t.voteGuard.Persist(t.committedSlot, t.decidedFloor); err != nil {
 			delete(t.committedSlot, key)
 			t.log.Error("vote-once: durable equivocation-guard write FAILED — refusing to sign (fail-closed)",
 				"height", height, "error", err)
@@ -2320,21 +2327,8 @@ func (t *Transitive) pruneCommittedSlotsBelow(height uint64) {
 			changed = true
 		}
 	}
-	// A recovered hard lock is released once its height is decided (≤ finalized): it is either
-	// the value that finalized, or the node has since finalized the network's value via cert
-	// gossip — either way the height is settled and the strict-refusal belt is no longer needed.
-	for h := range t.recoveredLocks {
-		if h <= height {
-			delete(t.recoveredLocks, h)
-		}
-	}
-	for h := range t.lockRounds {
-		if h < height {
-			delete(t.lockRounds, h) // strictly-below, mirroring committedSlot (retain the tip's lock round)
-		}
-	}
 	if (changed || floorAdvanced) && t.voteGuard != nil {
-		if err := t.voteGuard.Persist(t.committedSlot, t.lockRounds, t.decidedFloor); err != nil {
+		if err := t.voteGuard.Persist(t.committedSlot, t.decidedFloor); err != nil {
 			t.log.Warn("vote-once: durable equivocation-guard shrink failed (non-fatal; floor re-persisted on next bind)",
 				"belowHeight", height, "error", err)
 		}
@@ -2828,15 +2822,26 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	if t.voteVerifier == nil {
 		return nil
 	}
-	alpha := t.consensus.Alpha()
-	if alpha <= 0 {
-		return nil
-	}
 	pos := t.blockPositionLocked(pending, blockID)
 	message := CanonicalVoteMessage(pos)
 	// The epoch height pins every per-voter pubkey resolution + the stake tally to
 	// the SAME P-chain height the position's set-root commits to (MEDIUM-1).
 	epochHeight := t.epochHeightLocked(pending)
+	// NOVA ACCEPT THRESHOLD — a bare-majority NovaQuorum(n) of the LIVE committee, NOT the ⅔
+	// Quasar floor. This is the SOLE gate on VM.Accept (local execution): it must ignite at 3
+	// of 5 so production continues when up to ⌊(n−1)/2⌋ crash faults keep the ⅔-stake quorum
+	// unreachable (the "survive 3/5" mandate; the ⅔ bftAlpha=4-of-5 froze the fleet the instant
+	// a 2nd node dropped). `n` is the live committee sized by effectiveCommittee — clamped to the
+	// resolved set AND floored at the minimal BFT committee, so a transient/degenerate low count
+	// can never drop the majority below a lone-reachable value (the 1085013 self-finality guard
+	// carries over: NovaQuorum(floored-n) ≥ 3, unreachable by a lone node). The ⅔-by-stake QUASAR
+	// EXPORT cert is a SEPARATE, trailing artifact (the attestation sidecar promoteQuasarLocked),
+	// NEVER gated here — accept (Nova) and export (Quasar) are decomplected tiers.
+	n, _ := t.effectiveCommittee(epochHeight)
+	novaThreshold := NovaQuorum(n)
+	if novaThreshold <= 0 {
+		return nil
+	}
 
 	// FIX #3 (cert termination — per-CANONICAL vote aggregation). A vote is signed over the
 	// CANONICAL execution identity, NOT the outer proposervm envelope
@@ -2877,19 +2882,22 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 			}
 		}
 	}
-	if uint32(len(verified)) < uint32(alpha) {
+	if uint32(len(verified)) < uint32(novaThreshold) {
 		return nil
 	}
-	cert, err := AssembleQuorumCert(pos, uint32(alpha), verified)
+	cert, err := AssembleQuorumCert(pos, Nova, uint32(novaThreshold), verified)
 	if err != nil {
 		return nil
 	}
-	// Defence in depth: the cert we just built must verify under our own
-	// verifier before we treat it as a finality witness (catches any assembly
-	// invariant drift). Assemble already enforced distinctness + threshold.
-	// On a stake-weighted chain it must ALSO clear the ⅔-of-stake supermajority
-	// (HIGH-3) — the count quorum alone is not finality when stake is unequal, so
-	// we keep WAITING (return nil) until enough STAKE has voted, never forcing.
+	// Defence in depth: the Nova cert we just built must verify under our own verifier
+	// before we treat it as a finality witness (catches any assembly invariant drift).
+	// Assemble already enforced distinctness + threshold. On a stake-weighted chain
+	// VerifyWeighted selects the NOVA tier — signatures + a strict COUNT majority of the
+	// live set, DELIBERATELY NOT ⅔-by-stake — so acceptance ignites at a bare majority even
+	// when the absent minority holds the stake majority (that is the whole point of Nova;
+	// the ⅔-stake gate lives ONLY on the trailing Quasar cert). On a chain with no stake
+	// source (equal-stake/dev) the tier-agnostic count-only Verify enforces the same
+	// NovaQuorum count via the cert's own threshold.
 	if t.stakeSource != nil {
 		if err := cert.VerifyWeighted(t.voteVerifier, t.stakeSource, epochHeight); err != nil {
 			return nil
@@ -3153,6 +3161,7 @@ func (t *Transitive) buildSingleValidatorCertLocked(pending *PendingBlock, block
 	return VerifiedQuorumCert{qc: &QuorumCert{
 		Version:   QuorumCertVersion,
 		Type:      QCFinality,
+		Tier:      Nova, // a K==1 accept authorizes LOCAL execution; Quasar (export) is a separate trailing artifact
 		Position:  pos,
 		Threshold: 1,
 	}}
@@ -3195,6 +3204,13 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	t.mu.RLock()
 	pending, exists := t.pendingBlocks[blockID]
 	decided := exists && pending.Decided
+	// Capture the block's P-chain EPOCH now, while the pending block still exists — the Nova
+	// accept below drops it, and the trailing Quasar promotion needs the same epoch the Nova
+	// cert was verified under to resolve the ⅔-stake tally (MEDIUM-1 parity).
+	var quasarEpoch uint64
+	if exists && pending != nil {
+		quasarEpoch = t.epochHeightLocked(pending)
+	}
 	t.mu.RUnlock()
 	if !exists || decided {
 		return nil
@@ -3239,12 +3255,14 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// something.
 	if highestAccepted > 0 {
 		t.pruneCommittedSlotsBelow(highestAccepted)
-		if t.params.ViewChange {
-			t.pruneViewsBelow(highestAccepted)
-		}
 	}
 	// MED-6: bound the slashing detector's per-height maps to a sliding window (memory).
 	t.pruneSlashingBelowWindow()
+	// Bound the trailing Quasar machinery (attestor buckets/certs + epoch map) to the SAME
+	// window below the accepted height — the export cert chain is persisted by its consumer.
+	if highestAccepted > slashingRetentionHeights {
+		t.pruneQuasarBelow(highestAccepted - slashingRetentionHeights)
+	}
 
 	if acceptErr != nil {
 		// FAIL-CLOSED: the VM refused to apply a consensus-finalized block. The floor did NOT
@@ -3254,6 +3272,15 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 		// (apply the finalized block regardless of emptiness) — then the retry finalizes it.
 		return acceptErr
 	}
+
+	// TRAILING EXPORT PROMOTION (Nova-sole-decider, step 2): the block is now Nova-accepted
+	// (in the ledger). Feed its OWN verified accept votes to the Quasar attestor; if a
+	// ⅔-by-stake supermajority has attested, it emits the export cert and advances the Quasar
+	// frontier. This runs strictly AFTER accept and NEVER gates it — a block that only reached
+	// a bare majority stays Nova-only (degraded), and a later fully-voted block advances the
+	// export frontier past the gap. Best-effort; an equivocation breach halts export
+	// fail-closed inside promoteQuasar (never a silent export of a forked block).
+	t.promoteQuasar(cert.Cert(), quasarEpoch)
 
 	// FULL SUCCESS: REORG production onto the certified branch: SetPreference to the new tip
 	// keeps the VM building on the block consensus just finalized.
@@ -3275,6 +3302,280 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 		t.signalPipeline()
 	}
 	return nil
+}
+
+// promoteQuasar is the trailing EXPORT-cert step — the ONE place a ⅔-by-stake Quasar
+// certificate is produced, run strictly AFTER a Nova accept and NEVER gating it. novaCert is
+// the just-accepted block's Nova cert; its Votes are valid attestations of the same canonical
+// position (byte-identical CanonicalVoteMessage), so they feed the attestor directly. When a
+// ⅔ stake supermajority has attested, the attestor emits the export cert and this advances the
+// consensus Quasar frontier (the ONLY tip GetQuasarTip / export consumers read). Called
+// WITHOUT t.mu.
+//
+//   - Below ⅔ stake (e.g. 3 of 5): no export cert emits — the block stays Nova-only (the
+//     degraded mode: producing but not certifying). A later fully-voted block advances the
+//     export frontier past the gap (a Quasar tip finalizes all its ancestors), so no
+//     per-block retroactive promotion is needed for liveness.
+//   - Equivocation breach (a ⅔ export cert names a canonical the Nova ledger did NOT accept at
+//     this height): needs >⅓ stake double-signing, beyond f<⅓ — export HALTS fail-closed and
+//     the breach is logged as slashable. NEVER a silent export of a forked block.
+func (t *Transitive) promoteQuasar(novaCert *QuorumCert, epochHeight uint64) {
+	if novaCert == nil {
+		return
+	}
+	t.mu.RLock()
+	attestor := t.quasarAttestor
+	stake := t.stakeSource
+	t.mu.RUnlock()
+	if stake == nil {
+		return // no stake model wired ⇒ no export surface, no responsive-stake signal
+	}
+	pos := novaCert.Position
+	// Record responsive stake from the ACCEPTED block's votes ALWAYS — the degraded-mode RPC
+	// signal must update even when ⅔ was NOT reached (3/5 ⇒ 60% ⇒ degraded=true).
+	t.recordResponsiveStake(stake, novaCert.Votes, epochHeight)
+	if attestor == nil {
+		return
+	}
+	// Remember the accepted block's signed position so LATE votes can complete the export cert
+	// AFTER the pending block is dropped. The Nova cert freezes at the BARE MAJORITY (the accept
+	// threshold), so the ⅔-th stake vote by definition TRAILS the accept — it arrives when the
+	// block is already finalized and would otherwise be dropped. rememberAcceptedPos + the
+	// finalized-block attestation tap (handleVote) route those trailing votes to the attestor so
+	// export can still form. Feed the majority votes now (seeds the bucket + emits if ⅔ already
+	// present, e.g. a burst-delivered vote set).
+	t.rememberAcceptedPos(pos, epochHeight)
+	for i := range novaCert.Votes {
+		t.ingestAttestation(pos, epochHeight, novaCert.Votes[i])
+	}
+}
+
+// ingestAttestation feeds ONE verified accept vote — an attestation of the accepted block's
+// canonical position — into the Quasar attestor and, if it completes a ⅔-by-stake export cert,
+// advances the Quasar frontier. It is idempotent and safe for pre-accept, at-accept, and
+// post-accept (late) votes: the attestor dedups by NodeID and PromoteQuasar only ever moves the
+// frontier forward to a Nova-accepted canonical. An equivocation breach (a ⅔ cert naming a
+// canonical the Nova ledger did not accept) HALTS export fail-closed. Called WITHOUT t.mu.
+func (t *Transitive) ingestAttestation(pos VotePosition, epochHeight uint64, sv SignedVote) {
+	t.mu.RLock()
+	attestor := t.quasarAttestor
+	t.mu.RUnlock()
+	if attestor == nil {
+		return
+	}
+	// The epoch is passed as a VALUE bound to this position — the SAME epoch the Nova cert was
+	// verified under — so the attestor never crosses epochs on a same-height fork (values, not places).
+	cert, emitted, _ := attestor.Ingest(pos, epochHeight, sv)
+	if !emitted {
+		return
+	}
+	advanced, err := t.consensus.PromoteQuasar(Cert{Block: pos.BlockID, Parent: pos.ParentID, Height: pos.Height, Canonical: pos.CanonicalID})
+	if err != nil {
+		if t.log != nil {
+			t.log.Error("QUASAR EQUIVOCATION — a ⅔-stake export cert conflicts with the Nova-accepted "+
+				"block at this height; export HALTED fail-closed (slashable — needs >⅓ stake double-signing)",
+				"height", pos.Height, "canonical", pos.CanonicalID, "error", err)
+		}
+		return
+	}
+	if advanced {
+		// The export cert reflects the ACTUAL responsive stake for this block (≥⅔, since the trailing
+		// votes completed it) — refresh the degraded-mode signal so CertificateAvailable/Degraded
+		// clear once export forms, not stay pinned to the bare-majority Nova cert that froze earlier.
+		t.mu.RLock()
+		stake := t.stakeSource
+		observer := t.quasarObserver
+		t.mu.RUnlock()
+		t.recordResponsiveStake(stake, cert.Votes, epochHeight)
+		canonical := pos.CanonicalID
+		if canonical == ids.Empty {
+			canonical = pos.BlockID
+		}
+		// PUSH the export frontier advance to the VM/consumers (bridges / EVM `finalized`/`safe` /
+		// warp export gating), symmetric with how block.Accept pushes the Nova tip. The observer is
+		// the ONE seam an export surface subscribes to; it fires strictly AFTER the block's Nova
+		// accept, monotonically. Best-effort, WITHOUT t.mu.
+		if observer != nil {
+			observer(canonical, pos.Height)
+		}
+		if t.log != nil {
+			t.log.Debug("quasar: export frontier advanced (⅔-by-stake certificate formed)",
+				"height", pos.Height, "canonical", canonical)
+		}
+	}
+}
+
+// acceptedPos is the remembered signed position + epoch of a Nova-accepted block (see the
+// acceptedPos field), enabling attestation of trailing votes after the pending block is dropped.
+type acceptedPos struct {
+	pos   VotePosition
+	epoch uint64
+}
+
+// rememberAcceptedPos records the accepted block's signed position + epoch keyed by its outer
+// id, so a LATE accept vote (the ⅔-th stake vote trails the bare-majority Nova accept) can be
+// fed to the attestor after the pending block is dropped. Bounded: pruned to the attestor
+// window.
+func (t *Transitive) rememberAcceptedPos(pos VotePosition, epoch uint64) {
+	t.acceptedPosMu.Lock()
+	defer t.acceptedPosMu.Unlock()
+	if t.acceptedPos == nil {
+		t.acceptedPos = make(map[ids.ID]acceptedPos)
+	}
+	t.acceptedPos[pos.BlockID] = acceptedPos{pos: pos, epoch: epoch}
+}
+
+// lookupAcceptedPos returns the remembered signed position + epoch for an accepted (now
+// finalized) outer block id, so a trailing vote can be attested against the exact bytes the
+// accept votes signed. ok=false when the block is unknown or aged out of the window.
+func (t *Transitive) lookupAcceptedPos(blockID ids.ID) (acceptedPos, bool) {
+	t.acceptedPosMu.Lock()
+	defer t.acceptedPosMu.Unlock()
+	ap, ok := t.acceptedPos[blockID]
+	return ap, ok
+}
+
+// attestFinalizedVote routes a LATE accept vote for an already Nova-accepted (finalized) block
+// to the Quasar attestor, so the ⅔-th stake vote — which necessarily trails the bare-majority
+// accept — can still complete the EXPORT cert. It verifies the signature against the EXACT
+// accepted position (the same bytes the accept votes signed) BEFORE feeding, so a late
+// forged/wrong-position vote is dropped, never attested. No-op when the block aged out of the
+// remembered window or no attestor/verifier is wired. Called WITHOUT t.mu.
+func (t *Transitive) attestFinalizedVote(vote Vote, verifier VoteVerifier) {
+	if !vote.Accept || verifier == nil || len(vote.Signature) == 0 {
+		return
+	}
+	ap, ok := t.lookupAcceptedPos(vote.BlockID)
+	if !ok {
+		return
+	}
+	msg := CanonicalVoteMessage(ap.pos)
+	if !verifier.VerifyVote(vote.NodeID, msg, vote.Signature, ap.epoch) {
+		return // forged / wrong-position trailing vote — dropped, never attested
+	}
+	t.ingestAttestation(ap.pos, ap.epoch, SignedVote{NodeID: vote.NodeID, Accept: true, Signature: vote.Signature})
+}
+
+// recordResponsiveStake stores the stake that voted on the latest accepted block (numerator)
+// out of the epoch total (denominator) — the degraded-mode RPC signal read by FinalityStatus.
+func (t *Transitive) recordResponsiveStake(stake StakeSource, votes []SignedVote, epochHeight uint64) {
+	if stake == nil {
+		return
+	}
+	total := stake.TotalStake(epochHeight)
+	if total == 0 {
+		return
+	}
+	var voted uint64
+	for i := range votes {
+		voted += stake.Weight(votes[i].NodeID, epochHeight)
+	}
+	t.mu.Lock()
+	t.responsiveStakeNum = voted
+	t.responsiveStakeDen = total
+	t.mu.Unlock()
+}
+
+// attestorEpochOf maps a value-chain height to the P-chain epoch its weighted set is pinned to
+// — the attestor's per-voter pubkey + ⅔-stake resolution epoch. Returns the recorded epoch, or
+// pruneQuasarBelow bounds the trailing export machinery (attestor buckets/certs + the
+// remembered accepted positions) to a window below the finalized height — the external cert
+// chain is persisted by its consumer; the engine keeps only a live window. No-op when no
+// attestor is wired.
+func (t *Transitive) pruneQuasarBelow(height uint64) {
+	t.mu.RLock()
+	attestor := t.quasarAttestor
+	t.mu.RUnlock()
+	if attestor != nil {
+		attestor.PruneBelow(height)
+	}
+	t.acceptedPosMu.Lock()
+	for id, ap := range t.acceptedPos {
+		if ap.pos.Height < height {
+			delete(t.acceptedPos, id)
+		}
+	}
+	t.acceptedPosMu.Unlock()
+}
+
+// FinalityStatus is the two-tier finality snapshot for RPC / degraded-mode visibility. Each
+// tier is a DISTINCT field: a Nova (accept) height is NEVER reported as certified/quasar. A
+// consumer that needs export finality reads QuasarHeight (or GetQuasarTip), never NovaHeight.
+type FinalityStatus struct {
+	NovaHeight    uint64 // highest LOCALLY ACCEPTED (bare-majority) height — drives VM state; NOT exportable
+	QuasarHeight  uint64 // highest EXPORT-FINAL (⅔-by-stake) height — the ONLY certified/exportable height
+	HorizonHeight uint64 // highest PQ-sealed height (0 until the Horizon seal path is wired)
+	// ResponsiveStakePct is the stake that voted on the latest accepted block / total at its
+	// epoch (0..1); -1 when unknown (startup / no stake model).
+	ResponsiveStakePct float64
+	// CertificateAvailable reports whether a ⅔-stake (Quasar) cert is currently reachable —
+	// the responding stake STRICTLY exceeds the ⅔ floor.
+	CertificateAvailable bool
+	// Degraded reports that the chain is PRODUCING Nova but NOT certifying Quasar (responding
+	// stake ≤ ⅔) — production continues, certification pauses. The two-tier liveness mode.
+	Degraded bool
+}
+
+// FinalityStatus returns the current two-tier finality snapshot. novaHeight ≥ quasarHeight
+// always; the gap plus the responsive-stake signal expose the degraded mode. A Nova height is
+// never conflated with a certified/quasar height.
+func (t *Transitive) FinalityStatus() FinalityStatus {
+	var s FinalityStatus
+	if nh, ok := t.consensus.GetFinalizedHeight(); ok {
+		s.NovaHeight = nh
+	}
+	if qh, ok := t.consensus.QuasarHeight(); ok {
+		s.QuasarHeight = qh
+	}
+	// HorizonHeight stays 0: the ladder MARKS Horizon (Finality.Horizon /
+	// AuthorizesIrreversibleSettlement) but the PQ seal path is left as-is — no frontier
+	// advances to Horizon yet.
+	t.mu.RLock()
+	num, den := t.responsiveStakeNum, t.responsiveStakeDen
+	t.mu.RUnlock()
+	if den == 0 {
+		s.ResponsiveStakePct = -1 // unknown: startup or no stake model — do not false-alarm degraded
+		return s
+	}
+	s.ResponsiveStakePct = float64(num) / float64(den)
+	s.CertificateAvailable = num > config.TwoThirdsStakeFloor(den)
+	s.Degraded = !s.CertificateAvailable
+	return s
+}
+
+// QuasarTip returns the canonical execution commitment of the highest EXPORT-FINAL (Quasar)
+// block — the export-gating tip for bridges / DEX settlement / cross-chain. ids.Empty until
+// the first ⅔-stake cert. NEVER the Nova (accept) tip.
+func (t *Transitive) QuasarTip() ids.ID { return t.consensus.GetQuasarTip() }
+
+// NovaTip returns the canonical execution commitment of the highest LOCALLY ACCEPTED (Nova)
+// block — the accepted/execution head. Local-execution authority ONLY; not exportable.
+func (t *Transitive) NovaTip() ids.ID { return t.consensus.GetNovaTip() }
+
+// QuasarHeight returns the highest export-final (Quasar) height and whether any ⅔-stake cert
+// has formed. Complements GetFinalizedHeight (the Nova/accept height).
+func (t *Transitive) QuasarHeight() (uint64, bool) { return t.consensus.QuasarHeight() }
+
+// SyncQuasarFrontier conservatively (re)seeds the EXPORT (Quasar) frontier from a durable source
+// — the node calls it on boot with the VM's persisted export-final block so GetQuasarTip /
+// QuasarHeight do not regress on restart. Advance-only (never moves the frontier backward).
+func (t *Transitive) SyncQuasarFrontier(canonical ids.ID, height uint64) {
+	t.consensus.SyncQuasarFrontier(canonical, height)
+}
+
+// QuasarCertAt returns the EXPORT (Quasar, ⅔-by-stake) certificate for a height, if one has
+// formed — the portable witness a bridge / DEX settlement (0x9999) / cross-chain consumer
+// verifies. nil,false when no export cert exists at that height (Nova-only / degraded) or no
+// attestor is wired. This is the ONLY cert an export consumer may act on; the Nova accept cert
+// (gossiped for follower fast-finalize) is NOT export-grade.
+func (t *Transitive) QuasarCertAt(height uint64) (*QuorumCert, bool) {
+	t.mu.RLock()
+	attestor := t.quasarAttestor
+	t.mu.RUnlock()
+	if attestor == nil {
+		return nil, false
+	}
+	return attestor.CertAt(height)
 }
 
 // applyBranchFinalization applies a consensus FinalizeBranch plan to the VM and

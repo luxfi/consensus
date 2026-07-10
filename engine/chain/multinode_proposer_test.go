@@ -254,20 +254,23 @@ func TestMultiNode_NoDoubleFinalize_LateSiblingRejected(t *testing.T) {
 // fails-before: lower α below the live-up count (e.g. α=3) → the 3 up nodes
 // finalize → RED (proving the assertion actually depends on the threshold).
 // -----------------------------------------------------------------------------
-func TestMultiNode_SubQuorumNeverFinalizes(t *testing.T) {
+func TestMultiNode_BelowMajorityNeverAccepts(t *testing.T) {
 	net := newSimNet(t, 5, prodParams5())
+	net.down(2)
 	net.down(3)
-	net.down(4) // only 3 of 5 remain — below α=4
+	net.down(4) // only 2 of 5 remain — below the Nova majority NovaQuorum(5)=3
 
 	blk := newHonestBlock(ids.Empty, simGenesisRoot(), 1, "subquorum-h1")
 	net.build(1, blk)
 
-	// Re-solicit far past any backoff; a sub-quorum must STILL never finalize.
+	// Re-solicit far past any backoff; a BELOW-MAJORITY online set must STILL never accept. Under
+	// v1.36 the accept floor is the MAJORITY (a 3-of-5 majority DOES accept — "survive 3/5"), so
+	// the fail-closed floor moves to 2-of-5: below the majority, no Nova cert, no acceptance.
 	if waitFor(2*time.Second, func() bool { _, ok := net.nodes[1].rt.FinalizedBlockAtHeight(1); return ok }) {
-		t.Fatal("SAFETY VIOLATION: a sub-quorum (3 of 5, below α=4) finalized — the liveness retry lowered the threshold.")
+		t.Fatal("SAFETY VIOLATION: a below-majority set (2 of 5, below NovaQuorum=3) accepted — the retry lowered the threshold.")
 	}
 	if heads := net.headsAtHeight(1); len(heads) != 0 {
-		t.Fatalf("no block may finalize below α; heads=%v", heads)
+		t.Fatalf("no block may accept below the Nova majority; heads=%v", heads)
 	}
 }
 

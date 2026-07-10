@@ -69,6 +69,13 @@ type NetworkConfig struct {
 	// set weights.
 	StakeSource StakeSource
 
+	// QuasarObserver (optional) is notified when the EXPORT (Quasar, ⅔-by-stake) frontier
+	// advances. The node wires it to push the export-final height into the VM so the EVM
+	// `finalized`/`safe` block tags and the warp export gate read the Quasar tip — NEVER the
+	// reorgable Nova/accept tip (the semantic-collapse the two-tier split exists to prevent).
+	// Fires strictly after the block's Nova accept, monotonically. nil = no export surface.
+	QuasarObserver func(canonical ids.ID, height uint64)
+
 	// ValidatorSetRoot (optional) binds every vote/cert to the active weighted
 	// validator set at the block's height (the MEDIUM fix), so the ⅔-by-stake
 	// predicate is ENFORCED at the cert-position epoch: a cert gathered under one
@@ -140,12 +147,6 @@ type QuorumGossiper interface {
 	// WeightedQuorumCert / engine QuorumCert) to ALL validators so they can
 	// finalize blockID on a verifiable α-of-K proof. Returns validators reached.
 	GossipCert(chainID ids.ID, networkID ids.ID, blockID ids.ID, certBytes []byte) int
-	// BroadcastPrevote sends this node's signed ROUND-SCOPED prevote (the non-binding
-	// view-change preference signal) for `canonical` at (height, round) to ALL validators.
-	// voteBytes is encodeSignedPrevote(...). Only used when params.ViewChange is set; a
-	// Gossiper that does not implement it disables the view-change (legacy path). Returns
-	// the number of validators reached.
-	BroadcastPrevote(chainID ids.ID, networkID ids.ID, height uint64, round uint32, canonical ids.ID, voteBytes []byte) int
 }
 
 // Runtime wraps Transitive with network integration and VM notification handling.
@@ -226,6 +227,37 @@ func bftAlpha(count int) int {
 		return 0
 	}
 	return int(config.TwoThirdsStakeFloor(uint64(count))) + 1
+}
+
+// effectiveCommittee returns the live BFT committee (n, α) for FINALITY at epochHeight, sized from
+// the populated ⅔-by-stake StakeSource — the real validator set — NOT the sample size
+// (t.consensus.K()/Alpha()). A large preset (MainnetParams K=21/α=15, sized for a ≥21-validator
+// network) inflates the sample far above a small live set; α distinct votes are then unreachable
+// (e.g. α=15 from 5 validators), so BOTH the α-of-K cert assembly (assembleCertLocked) and the
+// round-scoped view-change POL freeze — every block verifies but no quorum cert ever assembles (the
+// 2026-07-09 mainnet C-Chain finality stall). This happens whenever the construction-time bftCommittee
+// clamp was skipped because the current-map validator Manager read 0 at construction (the same empty
+// set that gives the proposervm windower pChainHeight=0), and reclampCommitteeLocked is UP-ONLY so it
+// can never shrink 21→5. Reading the count from the SAME height-indexed set the ⅔-by-stake cert
+// verifies against keeps the count-quorum and the stake-quorum the IDENTICAL set (deterministic
+// across nodes → no fork), and α = bftAlpha(count) is the ⅔ supermajority. It only ever SHRINKS an
+// oversized sample (0 < count < K); an unresolved set (count ≤ 0) or a preset that already fits keeps
+// the configured (K, α). bftAlpha(count) satisfies 2α−n>f for every count ≥ 4, so the shrunk
+// committee is fork-safe by construction (n=5→α=4: 2·4−5 = 3 > f = 1).
+func (t *Transitive) effectiveCommittee(epochHeight uint64) (n, alpha int) {
+	n, alpha = t.consensus.K(), t.consensus.Alpha()
+	if t.stakeSource == nil {
+		return n, alpha
+	}
+	// Reuse the SINGLE committee-sizing formula (bftCommittee): it clamps K DOWN to the live count
+	// AND floors at the minimal BFT committee (K=4/α=3), so a transient/degenerate low count can
+	// NEVER produce a lone-reachable α (the 1085013 self-finality fork the count floor prevents). An
+	// unresolved set (count ≤ 0) or a preset that already fits leaves the configured (K, α) — which
+	// the round-scoped 2α−n>f gate still guards.
+	if k, a, clamped := bftCommittee(n, t.stakeSource.ValidatorCount(epochHeight)); clamped {
+		return k, a
+	}
+	return n, alpha
 }
 
 // NewRuntime creates a fully wired consensus runtime ready for production use.
@@ -319,6 +351,13 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		}
 	}
 
+	// Export-frontier observer: the node wires this to push the EXPORT (Quasar, ⅔-by-stake)
+	// height into the VM so the EVM `finalized`/`safe` tags and warp export gate read the Quasar
+	// tip, never the reorgable Nova/accept tip. nil on a chain with no export surface.
+	if cfg.QuasarObserver != nil {
+		WithQuasarObserver(cfg.QuasarObserver)(engine)
+	}
+
 	// Durable non-equivocation guard (HIGH-1): persist each (height,epoch)→canonical
 	// binding before this node signs, and reload it on startup, so a crash between
 	// signing and finalizing cannot forget it and permit a fork. The node opens the
@@ -356,11 +395,16 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	hasLogger := cfg.Logger != nil && !cfg.Logger.IsZero()
 	if validatorCount >= 0 {
 		if hasLogger {
+			// presetK/presetAlpha are the SAMPLE preset (e.g. MainnetParams 21/15), NOT the
+			// finality committee. The α-of-K cert + view-change size to the LIVE set at runtime
+			// (effectiveCommittee/bftCommittee); the engine logs the effective (K,α) on each
+			// committee re-clamp. Do not read presetK as the quorum.
 			cfg.Logger.Info("consensus engine initialized with validator set",
 				log.Stringer("networkID", cfg.NetworkID),
 				log.Int("validatorCount", validatorCount),
-				log.Int("k", params.K),
-				log.Int("alpha", params.AlphaPreference))
+				log.Int("presetK", params.K),
+				log.Int("presetAlpha", params.AlphaPreference),
+				log.String("note", "finality committee sized to the live validator set at runtime; see committee-clamp log for effective K/alpha"))
 		}
 	} else {
 		if hasLogger {
@@ -836,7 +880,7 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	// quorum. Drain after unlock — drainBufferedVotes takes the engine lock.
 	rt.Transitive.drainBufferedVotes(blockID)
 
-	// CONVERGENCE (avalanchego snowman voter.go: SetPreference(Consensus.Preference())
+	// CONVERGENCE (the upstream voter.go: SetPreference(Consensus.Preference())
 	// after every poll): steer the inner VM to build on the engine's preferred BUILD
 	// tip — the deepest verified block — now that this gossiped block is tracked. Without
 	// it the VM keeps building on the last FINALIZED block, so when a proposer is down
@@ -988,19 +1032,9 @@ func (rt *Runtime) emitConvergedVote(_ context.Context, height uint64, parentID 
 // vote at build/receipt; one settle window later this pass makes every honest node sign
 // the SAME lowest-canonical winner, so a single α-of-K cert assembles and the height
 // finalizes. The convergence loop drives it on a fast tick.
-//
-// When params.ViewChange is set, this dispatches to the ROUND-SCOPED view-change driver
-// (runViewChangePass) instead — the two-phase prevote/POL/precommit/lock that RE-CONVERGES
-// a split (restoring liveness under a down proposer + zero-margin quorum) while preserving
-// no-double-finalization via the lock rule. The legacy single-phase path below is the
-// safe-but-halt-prone default kept for non-view-change chains.
 func (rt *Runtime) RunSettlePass(ctx context.Context) {
 	t := rt.Transitive
 	if t.voteSigner == nil || t.voteVerifier == nil {
-		return
-	}
-	if t.params.ViewChange {
-		rt.runViewChangePass(ctx)
 		return
 	}
 	t.mu.Lock()
@@ -1009,297 +1043,6 @@ func (rt *Runtime) RunSettlePass(ctx context.Context) {
 	for _, s := range slots {
 		rt.emitConvergedVote(ctx, s.height, s.parentID)
 	}
-}
-
-// runViewChangePass drives the round-scoped view-change (round_view.go) for every
-// undecided height above the decided floor. For each height it computes the deterministic
-// lowest-canonical winner, steps the height's roundView machine, and:
-//   - broadcasts this node's signed PREVOTE for the round's target (fluid across rounds →
-//     a split re-converges), and
-//   - on a POL (α prevotes for one value at the current round), casts the irrevocable
-//     PRECOMMIT (the existing α-of-K accept vote for that block) and LOCKS on it.
-//
-// The precommit reuses the existing per-block cert machinery (recordCertVote/assembleCert)
-// unchanged — all round logic lives in the prevote/POL/lock layer, so a cert is still
-// "α precommits for one block at a height". Safety = the lock rule (a conflicting value
-// can only be precommitted at a higher round with a fresher POL); liveness = fluid prevotes.
-func (rt *Runtime) runViewChangePass(ctx context.Context) {
-	t := rt.Transitive
-	alpha := t.consensus.Alpha()
-	n := t.consensus.K()
-	if alpha <= 0 || n <= 0 {
-		return
-	}
-	// SAFETY-BOUND ENFORCEMENT (fail-closed): the round-scoped guard is sound only when
-	// 2α−n > f (f=⌊(n-1)/3⌋). At α=3,n=5 (2α−n=1=f) ONE equivocator double-finalizes (RED
-	// proved it). If the current committee fails the bound, REFUSE to run view-change — the
-	// chain halts (fail-secure) rather than risk a fork. Re-checked every pass, so a
-	// validator-set change that breaks the bound halts finality until it is restored.
-	if f := (n - 1) / 3; 2*alpha-n <= f {
-		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Error("view-change REFUSED: unsafe committee (2α−n ≤ f) — halting finality (fail-secure)",
-				log.Int("alpha", alpha), log.Int("n", n), log.Int("f", f))
-		}
-		return
-	}
-	// Enumerate undecided heights + a representative parent, and the deterministic winner.
-	consensusFloor := uint64(0)
-	if t.consensus != nil {
-		consensusFloor = t.consensus.GetDecidedFloor()
-	}
-	type vcSlot struct {
-		height uint64
-		winner ids.ID // winner block id
-		canon  ids.ID // winner canonical (what the roundView votes on)
-	}
-	t.mu.Lock()
-	t.slotMu.Lock()
-	floor := t.decidedFloor
-	t.slotMu.Unlock()
-	if consensusFloor > floor {
-		floor = consensusFloor
-	}
-	// Enumerate DISTINCT (height, parent-canonical) convergence groups — NOT last-writer-
-	// wins by height. A forked parent (same inner block, different outer wrappers) must not
-	// split its children across passes: keying by the parent CANONICAL keeps every node
-	// enumerating the SAME groups, and a lowest-outer-id representative makes the parent
-	// argument deterministic. The old parents[height]=cb.parentID kept a RANDOM wrapper per
-	// height (Go map order) so different nodes computed different winners → no POL → storm.
-	type heightParent struct {
-		height      uint64
-		parentCanon ids.ID
-	}
-	groups := map[heightParent]ids.ID{} // -> deterministic representative (lowest) outer parentID
-	for _, pb := range t.pendingBlocks {
-		cb := pb.ConsensusBlock
-		// A rePollAbandoned sibling is deliberately NOT skipped here. Abandonment only stops
-		// rePoll's RequestVotes re-solicitation (spam control); it must never remove a height
-		// from the view-change pass, or the round machinery stops being stepped and the height
-		// goes SILENT — the "nothing re-drives convergence after rePoll gives up after 8" stall
-		// the goroutine dump captured. The round-scoped prevote/POL/precommit converges a height
-		// independent of rePoll; it stays live here until the height decides.
-		if cb == nil || pb.Decided || cb.height <= floor {
-			continue
-		}
-		k := heightParent{height: cb.height, parentCanon: cb.parentCanonicalRep()}
-		if rep, ok := groups[k]; !ok || cb.parentID.Compare(rep) < 0 {
-			groups[k] = cb.parentID
-		}
-	}
-	var slots []vcSlot
-	for k, parentRep := range groups {
-		winnerID, _, ok := t.convergedWinnerAtHeightLocked(k.height, parentRep, true) // view-change: count abandoned siblings so the winner is globally identical
-		if !ok {
-			continue
-		}
-		pw := t.pendingBlocks[winnerID]
-		if pw == nil {
-			continue
-		}
-		canon := slotCanonical(t.blockPositionLocked(pw, winnerID))
-		slots = append(slots, vcSlot{height: k.height, winner: winnerID, canon: canon})
-	}
-	t.mu.Unlock()
-
-	for _, s := range slots {
-		rt.stepViewChange(ctx, s.height, s.winner, s.canon, alpha, n, floor)
-	}
-}
-
-// stepViewChange advances one height's view machine by one tick and performs the
-// resulting prevote / precommit broadcast.
-func (rt *Runtime) stepViewChange(ctx context.Context, height uint64, winnerID, winnerCanon ids.ID, alpha, n int, floor uint64) {
-	t := rt.Transitive
-	if height <= floor {
-		return
-	}
-	nodeID := t.nodeID
-	chainID := t.chainID
-	signer := t.voteSigner
-
-	t.slotMu.Lock()
-	v := t.viewForLocked(height, alpha, n)
-	act := v.step(winnerCanon, 1, viewSettleTicks)
-	// LIVENESS OBSERVABILITY (view-change): emit a line only on a round transition so a live
-	// idle-inclusive re-storm shows convergence (POL forms → precommit → finalize) vs the stall
-	// signature (rounds climbing with no POL) without parsing every tick. Skipped when logging
-	// is off (tests use a Noop logger), so it is free on the hot path there.
-	if act.NewRound && !rt.config.Logger.IsZero() {
-		_, _, _, hasPOL := v.polCert()
-		rt.config.Logger.Debug("vc round advanced",
-			log.Uint64("height", height), log.Uint32("round", v.round),
-			log.Bool("hasPOL", hasPOL), log.Bool("locked", v.haveLocked), log.Bool("finalized", v.finalized))
-		if v.round >= 8 && !hasPOL && !v.finalized {
-			// LOCK-SILENCE DISAMBIGUATION (the trace-table columns, on the line that already fires
-			// on a stuck fleet): when a node is locked on a value that is NOT the deterministic
-			// winner canonical (lockIsStaleAlias=true), it is prevoting its lock — not the winner —
-			// so no POL for the winner can form. This is the durable stale-outer-wrapper split-lock
-			// signature (the pre-fix canonical=outer lock that survived the canonical=inner roll);
-			// the fix is the stale-lock migration (lock_migration.go), not a timer change.
-			rt.config.Logger.Warn("vc height STUCK: many rounds, no POL (liveness-stall signature)",
-				log.Uint64("height", height), log.Uint32("round", v.round),
-				log.Stringer("winner", winnerCanon),
-				log.Bool("locked", v.haveLocked), log.Stringer("lockBlock", v.lockBlock),
-				log.Uint32("lockRound", v.lockRound),
-				log.Stringer("prevoteTarget", v.prevoteTarget(winnerCanon)),
-				log.Bool("lockIsStaleAlias", v.haveLocked && v.lockBlock != winnerCanon),
-				log.Int("alpha", alpha), log.Int("n", n))
-		}
-	}
-	var prevoteCanon, precommitCanon ids.ID
-	curRound := act.CurRound
-	if act.Prevote != ids.Empty {
-		v.recordOwnPrevote(act.Prevote)
-		v.observePrevote(nodeID, act.CurRound, act.Prevote)
-		prevoteCanon = act.Prevote
-	}
-	if act.Precommit != ids.Empty && v.recordOwnPrecommit(act.Precommit, act.PrecommitRound) {
-		v.observePrecommit(nodeID, act.PrecommitRound, act.Precommit)
-		precommitCanon = act.Precommit
-		t.lockRounds[height] = act.PrecommitRound // persist the lock round (v3 guard) for restart re-convergence
-	}
-	// POL relay: gather the validValue POL's constituent signed prevotes so a peer that
-	// missed them can form the same POL and converge validValue (the propagation the
-	// isolated proof showed is required). Collected under slotMu; broadcast below.
-	polBlk, polRound, polVoters, hasPOL := v.polCert()
-	var polRelay [][]byte
-	if hasPOL {
-		if m := t.prevoteSigs[pvSigKey{height: height, round: polRound, canon: polBlk}]; m != nil {
-			for _, voter := range polVoters {
-				if s, ok := m[voter]; ok {
-					polRelay = append(polRelay, encodeSignedPrevote(voter, height, polRound, polBlk, s))
-				}
-			}
-		}
-	}
-	t.slotMu.Unlock()
-
-	qg, hasQG := rt.config.Gossiper.(QuorumGossiper)
-	if prevoteCanon != ids.Empty && signer != nil {
-		msg := CanonicalPrevoteMessage(chainID, height, curRound, prevoteCanon)
-		if sig, err := signer.SignVote(msg); err == nil {
-			t.slotMu.Lock()
-			t.storePrevoteSigLocked(nodeID, height, curRound, prevoteCanon, sig)
-			t.slotMu.Unlock()
-			wire := encodeSignedPrevote(nodeID, height, curRound, prevoteCanon, sig)
-			if hasQG {
-				qg.BroadcastPrevote(chainID, rt.config.NetworkID, height, curRound, prevoteCanon, wire)
-			}
-		}
-	}
-	if hasQG {
-		for _, wire := range polRelay {
-			qg.BroadcastPrevote(chainID, rt.config.NetworkID, height, polRound, polBlk, wire)
-		}
-	}
-
-	// PRECOMMIT: the POL justifies casting the irrevocable α-of-K accept vote for the
-	// block whose canonical is precommitCanon. Route through the SAME sign+record+broadcast
-	// path a legacy converged vote takes; reserveSlotForSign's decided-floor gate still
-	// applies (finalized heights unsignable), and the roundView lock already gated the value.
-	if precommitCanon != ids.Empty {
-		rt.castPrecommitForCanonical(ctx, height, precommitCanon)
-	}
-}
-
-// castPrecommitForCanonical signs+records+broadcasts this node's α-of-K accept vote for
-// the tracked block at `height` whose canonical == canon (the view-change precommit). It
-// mirrors emitConvergedVote's sign path but the value choice + lock were already made by
-// the roundView; here we only bind the cert. reserveSlotForSign still enforces the durable
-// decided-floor (a finalized height is unsignable).
-func (rt *Runtime) castPrecommitForCanonical(_ context.Context, height uint64, canon ids.ID) {
-	t := rt.Transitive
-	t.mu.Lock()
-	var winnerID ids.ID
-	var pending *PendingBlock
-	for id, pb := range t.pendingBlocks {
-		cb := pb.ConsensusBlock
-		if cb == nil || pb.Decided || cb.height != height {
-			continue
-		}
-		if slotCanonical(t.blockPositionLocked(pb, id)) == canon {
-			winnerID, pending = id, pb
-			break
-		}
-	}
-	if pending == nil {
-		t.mu.Unlock()
-		return
-	}
-	pos := t.blockPositionLocked(pending, winnerID)
-	signer := t.voteSigner
-	nodeID := t.nodeID
-	chainID := t.chainID
-	t.mu.Unlock()
-
-	if !t.reserveSlotForSign(pos.Height, slotCanonical(pos)) {
-		return // decided height (finalized) — unsignable
-	}
-	sig, err := signer.SignVote(CanonicalVoteMessage(pos))
-	if err != nil {
-		return
-	}
-	rt.Transitive.ReceiveVote(Vote{
-		BlockID:   winnerID,
-		NodeID:    nodeID,
-		Accept:    true,
-		SignedAt:  time.Now(),
-		Signature: sig,
-		ParentID:  pos.ParentID,
-		Round:     pos.Round,
-	})
-	if qg, ok := rt.config.Gossiper.(QuorumGossiper); ok {
-		if voteBytes, encErr := encodeSignedVote(nodeID, sig); encErr == nil {
-			qg.BroadcastVote(chainID, rt.config.NetworkID, winnerID, voteBytes)
-		}
-	}
-}
-
-// HandleIncomingPrevote ingests a signed round-scoped prevote from a peer: it verifies the
-// signature against the reconstructed CanonicalPrevoteMessage and, if valid, records it in
-// the height's roundView tally (feeding POL detection). Prevotes are non-binding preference
-// signals — they never finalize anything; they only drive convergence + the lock/unlock rule.
-func (rt *Runtime) HandleIncomingPrevote(voteBytes []byte) bool {
-	nodeID, height, round, canon, sig, err := decodeSignedPrevote(voteBytes)
-	if err != nil {
-		return false
-	}
-	t := rt.Transitive
-	verifier := t.voteVerifier
-	if verifier == nil {
-		return false
-	}
-	// Verify at the height's epoch — resolve the prevoter's pubkey at the winner block's
-	// P-chain epoch if tracked, else 0 (fixed-set chains). A prevote for a decided height is
-	// dropped (nothing to converge).
-	t.slotMu.Lock()
-	floor := t.decidedFloor
-	t.slotMu.Unlock()
-	if height <= floor {
-		return false
-	}
-	msg := CanonicalPrevoteMessage(t.chainID, height, round, canon)
-	if !verifier.VerifyVote(nodeID, msg, sig, rt.epochForHeight(height)) {
-		return false
-	}
-	alpha := t.consensus.Alpha()
-	n := t.consensus.K()
-	if alpha <= 0 || n <= 0 {
-		return false
-	}
-	t.slotMu.Lock()
-	v := t.viewForLocked(height, alpha, n)
-	v.observePrevote(nodeID, round, canon)
-	t.storePrevoteSigLocked(nodeID, height, round, canon, sig)
-	t.slotMu.Unlock()
-	// TRACE (Debug, free on the hot path under a Noop/above-Debug logger): the "prevotes received"
-	// column — a verified peer prevote was counted into the height's round tally.
-	if !rt.config.Logger.IsZero() {
-		rt.config.Logger.Debug("vc prevote received",
-			log.Stringer("from", nodeID), log.Uint64("height", height),
-			log.Uint32("round", round), log.Stringer("canon", canon))
-	}
-	return true
 }
 
 // epochForHeight resolves the P-chain epoch height for a tracked block at `height` (for

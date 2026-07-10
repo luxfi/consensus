@@ -178,7 +178,7 @@ func TestQuasarBridge_RealCertVerifies(t *testing.T) {
 	pos := VotePosition{ChainID: chainID, Height: 100, Round: 0, BlockID: blockID, ParentID: ids.Empty}
 
 	// Engine cert with 3 distinct signed (engine-auth) accept votes.
-	engineCert, err := AssembleQuorumCert(pos, 3, []SignedVote{
+	engineCert, err := AssembleQuorumCert(pos, Quasar, 3, []SignedVote{
 		{NodeID: nodeIDs[0], Accept: true, Signature: vs.sign(0, pos)},
 		{NodeID: nodeIDs[1], Accept: true, Signature: vs.sign(1, pos)},
 		{NodeID: nodeIDs[2], Accept: true, Signature: vs.sign(2, pos)},
@@ -226,7 +226,7 @@ func TestQuasarBridge_RealCertVerifies(t *testing.T) {
 func TestQuasarBridge_FailsClosedWithoutMaterial(t *testing.T) {
 	vs := newTestValidatorSet(1)
 	pos := VotePosition{ChainID: ids.GenerateTestID(), Height: 1, BlockID: ids.GenerateTestID()}
-	cert, err := AssembleQuorumCert(pos, 1, []SignedVote{
+	cert, err := AssembleQuorumCert(pos, Quasar, 1, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 	})
 	if err != nil {

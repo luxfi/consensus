@@ -163,11 +163,31 @@ func TestRedIndep_ByzantineForkThreshold(t *testing.T) {
 			})
 		}
 	}
-	certOK := func(e *Transitive, blockID ids.ID) bool {
+	// quasarCertOK reports whether an EXPORTABLE (Quasar, ⅔) certificate can be assembled for the
+	// block from its collected votes. Under the v1.36 two tiers, the EXPORT cert — not the Nova
+	// accept cert — is the Byzantine-safe artifact whose fork threshold is 2α−n. (The Nova accept
+	// cert, assembleVerifiedCertLocked, is a bare majority and forks more easily by design; it
+	// authorizes LOCAL execution only and is never exported, so a second Nova cert is expected
+	// under equivocation and is NOT a safety violation.)
+	quasarCertOK := func(e *Transitive, blockID ids.ID) bool {
 		e.mu.Lock()
 		defer e.mu.Unlock()
-		_, ok := e.assembleVerifiedCertLocked(e.pendingBlocks[blockID], blockID)
-		return ok
+		pb := e.pendingBlocks[blockID]
+		pos := e.blockPositionLocked(pb, blockID)
+		votes := make([]SignedVote, 0, len(pb.certVotes))
+		for _, v := range pb.certVotes {
+			if e.voteVerifier.VerifyVote(v.NodeID, CanonicalVoteMessage(pos), v.Signature, 0) {
+				votes = append(votes, v)
+			}
+		}
+		if len(votes) < alpha {
+			return false
+		}
+		cert, err := AssembleQuorumCert(pos, Quasar, uint32(alpha), votes)
+		if err != nil {
+			return false
+		}
+		return cert.Verify(e.voteVerifier, 0) == nil
 	}
 
 	for k := 1; k <= 3; k++ {
@@ -188,20 +208,26 @@ func TestRedIndep_ByzantineForkThreshold(t *testing.T) {
 			addRaw(e, B.id, vs, equiv...)
 			addRaw(e, B.id, vs, 4)
 
-			if !certOK(e, A.id) {
-				t.Fatalf("A must hold a valid alpha-of-K cert (4 signers)")
+			if !quasarCertOK(e, A.id) {
+				t.Fatalf("A must hold a valid ⅔ (Quasar) EXPORT cert (4 signers)")
 			}
-			gotFork := certOK(e, B.id)
+			// THE INVARIANT (export tier): a SECOND conflicting EXPORTABLE (Quasar) cert requires
+			// k ≥ 2α−n = 3 equivocators — i.e. >⅓ of stake double-signing, BEYOND the f<⅓ budget.
+			// Below that, NO two Quasar certs can coexist, so bridges / DEX settlement / cross-chain
+			// consumers never see two conflicting finalized blocks at one height.
+			gotFork := quasarCertOK(e, B.id)
 			wantFork := k >= (2*alpha - n) // 2*4-5 = 3
 			if gotFork != wantFork {
-				t.Fatalf("k=%d equivocators: B second-cert=%v, want %v (fork threshold is 2*alpha-n=%d)",
+				t.Fatalf("k=%d equivocators: B second QUASAR (export) cert=%v, want %v (Byzantine fork threshold 2α−n=%d)",
 					k, gotFork, wantFork, 2*alpha-n)
 			}
 			if gotFork {
-				t.Logf("k=%d >= 3: SECOND conflicting cert exists — fork reachable, but only with f=%d >= n/3 "+
-					"(BFT budget is f<=1). This is BEYOND the guarantee, as expected.", k, k)
+				t.Logf("k=%d >= 3: a SECOND conflicting EXPORT cert exists — fork reachable, but only with "+
+					"f=%d >= n/3 (BFT budget is f<=1). BEYOND the guarantee, as expected.", k, k)
 			} else {
-				t.Logf("k=%d < 3: no second cert — safety holds (f=%d, within/at margin of the f<n/3 budget).", k, k)
+				t.Logf("k=%d < 3: no second EXPORT cert — the export INVARIANT holds (f=%d, within the f<n/3 budget). "+
+					"A second NOVA (accept) cert may exist at this k — that is expected (Nova is crash-fault, not "+
+					"Byzantine-safe) and non-exportable.", k, k)
 			}
 		})
 	}

@@ -62,6 +62,11 @@ func (e *epochStakeSource) TotalStake(height uint64) uint64 {
 	return t
 }
 
+func (e *epochStakeSource) ValidatorCount(height uint64) int {
+	w, _ := e.snapshotFor(height)
+	return len(w)
+}
+
 // TestEpochBinding_CrossEpochCertRejected pins property (1): a cert is bound to
 // the validator-set-root it was signed under; mutating the cert's position root
 // to a different epoch's root makes every signature fail verification.
@@ -78,7 +83,7 @@ func TestEpochBinding_CrossEpochCertRejected(t *testing.T) {
 		ChainID: chainID, Height: 10, Round: 0, BlockID: blockID, ParentID: ids.Empty,
 		ValidatorSetRoot: rootEpochA,
 	}
-	certA, err := AssembleQuorumCert(posA, 3, []SignedVote{
+	certA, err := AssembleQuorumCert(posA, Quasar, 3, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, posA)},
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, posA)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, posA)},
@@ -136,7 +141,7 @@ func TestEpochBinding_StakeReadAtCertHeight(t *testing.T) {
 
 	// A cert finalized at height 10 (epoch [0,99]) by {0,1,2}: 99/100 stake → valid.
 	pos10 := VotePosition{ChainID: chainID, Height: 10, Round: 0, BlockID: blockID, ParentID: ids.Empty, ValidatorSetRoot: root}
-	cert10, err := AssembleQuorumCert(pos10, 3, []SignedVote{
+	cert10, err := AssembleQuorumCert(pos10, Quasar, 3, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos10)},
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos10)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos10)},
@@ -161,7 +166,7 @@ func TestEpochBinding_StakeReadAtCertHeight(t *testing.T) {
 	// 100, so the no-flip above is meaningful (not a vacuous test). A cert built
 	// at height 100 by {0,1,2} holds only 3/100 → MUST be rejected.
 	pos100 := VotePosition{ChainID: chainID, Height: 100, Round: 0, BlockID: ids.GenerateTestID(), ParentID: blockID, ValidatorSetRoot: ids.GenerateTestID()}
-	cert100, err := AssembleQuorumCert(pos100, 3, []SignedVote{
+	cert100, err := AssembleQuorumCert(pos100, Quasar, 3, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos100)},
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos100)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos100)},
@@ -181,7 +186,7 @@ func TestEpochBinding_RoundTripPreservesRoot(t *testing.T) {
 	vs := newTestValidatorSet(3)
 	root := ids.GenerateTestID()
 	pos := VotePosition{ChainID: ids.GenerateTestID(), Height: 7, Round: 2, BlockID: ids.GenerateTestID(), ParentID: ids.GenerateTestID(), ValidatorSetRoot: root}
-	cert, err := AssembleQuorumCert(pos, 3, []SignedVote{
+	cert, err := AssembleQuorumCert(pos, Quasar, 3, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},

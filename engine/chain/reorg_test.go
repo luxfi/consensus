@@ -3,7 +3,7 @@
 
 // reorg_test.go — the SIBLING-TOLERANT finality regression.
 //
-// THE BUG (fresh-net deadlock). The engine forked avalanchego's Snowman model by
+// THE BUG (fresh-net deadlock). The engine forked the upstream linear-chain consensus model by
 // adding a hard per-height gate (the old markFinalizedLocked invariant (c): a
 // finalized block's parent MUST equal the current finalized tip) AND never reorged.
 // When a cert finalized one child (A) of a parent while production/preference had

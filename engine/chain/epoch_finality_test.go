@@ -131,6 +131,11 @@ func (s *epochValidatorSet) TotalStake(epochHeight uint64) uint64 {
 	return total
 }
 
+func (s *epochValidatorSet) ValidatorCount(epochHeight uint64) int {
+	_, st := s.at(epochHeight)
+	return len(st)
+}
+
 // ValidatorSetRoot is a deterministic commitment to the set@epoch — distinct per
 // epoch, Empty for an unknown/empty epoch. (A simple length+nodeid+stake fold;
 // the node's production source uses SHA-256, but any deterministic function of
@@ -312,23 +317,21 @@ func TestPChainEpochFinality_RealWiring(t *testing.T) {
 		t.Fatal("block VM.Accepted but consensus does not report it accepted")
 	}
 
-	// A verified, stake-weighted cert must have been assembled + gossiped, and it
-	// must verify under VerifyWeighted at the EPOCH height (not the value height).
-	rec.mu.Lock()
-	nCerts := len(rec.certs)
-	var lastCert []byte
-	if nCerts > 0 {
-		lastCert = rec.certs[nCerts-1]
+	// The EXPORT (Quasar, ⅔-by-stake) cert — the witness a bridge / settlement consumes — must
+	// form. The ⅔-th stake vote (node 4) necessarily TRAILS the bare-majority Nova accept, so it
+	// completes the export cert via the trailing-attestation path. (The gossiped Nova accept cert
+	// is the bare majority; it is NOT the export witness and need not carry node 4.)
+	if !waitFor(2*time.Second, func() bool { qh, ok := e.QuasarHeight(); return ok && qh >= blk.height }) {
+		t.Fatal("a ⅔-stake EXPORT (Quasar) cert must form — the epoch-resolved ⅔ quorum did not export")
 	}
-	rec.mu.Unlock()
-	if nCerts == 0 {
-		t.Fatal("a verified quorum cert must be assembled and gossiped at finality")
+	cert, ok := e.QuasarCertAt(blk.height)
+	if !ok {
+		t.Fatal("QuasarCertAt must return the export cert at the accepted height")
 	}
-	cert, err := UnmarshalQuorumCert(lastCert)
-	if err != nil {
-		t.Fatalf("decode gossiped cert: %v", err)
+	if cert.Tier != Quasar {
+		t.Fatalf("export cert must be the Quasar tier, got %s", cert.Tier)
 	}
-	// (C) explicit: node 4's vote IS in the cert, proving the departed-from-current
+	// (C) explicit: node 4's vote IS in the export cert, proving the departed-from-current
 	// validator's legit vote was verified at the epoch (RESIDUAL-B).
 	var has4 bool
 	for i := range cert.Votes {
@@ -342,12 +345,12 @@ func TestPChainEpochFinality_RealWiring(t *testing.T) {
 		}
 	}
 	if !has4 {
-		t.Fatal("RESIDUAL-B: the epoch-only voter (departed from the current map) must be in the cert " +
+		t.Fatal("RESIDUAL-B: the epoch-only voter (departed from the current map) must be in the EXPORT cert " +
 			"— its vote was wrongly dropped (verifier read the current map, not set@epoch)")
 	}
-	// The cert verifies under the stake-weighted predicate at the EPOCH height.
+	// The export cert verifies under the stake-weighted predicate at the EPOCH height.
 	if err := cert.VerifyWeighted(src, src, epochHeight); err != nil {
-		t.Fatalf("gossiped cert must verify stake-weighted at the epoch height: %v", err)
+		t.Fatalf("export cert must verify stake-weighted at the epoch height: %v", err)
 	}
 	// And it must FAIL at the value height (where the set is empty / total stake 0)
 	// — proving the height genuinely matters and the epoch read is load-bearing.

@@ -38,7 +38,7 @@ func mkValidCert(t *testing.T, vs *testValidatorSet, pos VotePosition, n int) *Q
 	for i := 0; i < n; i++ {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, uint32(n), votes)
+	cert, err := AssembleQuorumCert(pos, Quasar, uint32(n), votes)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestInversion_WrongSetSignerRejected(t *testing.T) {
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 		{NodeID: outsider, Accept: true, Signature: bytes.Repeat([]byte{0x01}, 64)},
 	}
-	cert, err := AssembleQuorumCert(pos, 4, votes)
+	cert, err := AssembleQuorumCert(pos, Quasar, 4, votes)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestInversion_DuplicateVoterRejected(t *testing.T) {
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 	}
-	if _, err := AssembleQuorumCert(pos, 4, dup); err == nil {
+	if _, err := AssembleQuorumCert(pos, Quasar, 4, dup); err == nil {
 		t.Fatal("assembling a cert with a duplicate voter must fail")
 	}
 
