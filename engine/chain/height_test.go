@@ -42,7 +42,7 @@ func buildCertAtRound(t *testing.T, vs *testValidatorSet, chainID, blockID, pare
 	for i := 0; i < n; i++ {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, uint32(n), votes)
+	cert, err := AssembleQuorumCert(pos, Quasar, uint32(n), votes)
 	if err != nil {
 		t.Fatalf("assemble cert (round %d): %v", round, err)
 	}

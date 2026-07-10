@@ -3,7 +3,7 @@
 
 // topological.go — the PREFERENCE LAYER, the mutable, sibling-tolerant block tree.
 //
-// This mirrors avalanchego snow/consensus/snowman/topological.go: the live block
+// This mirrors the upstream linear-chain consensus's topological layer: the live block
 // tree (blocks/tips), the build preference, and the vote/poll surface that drives
 // each block's snowball instance. It is the half of avalanchego's Topological that
 // stays MUTABLE — siblings coexist, votes accumulate, preference moves. The OTHER
@@ -14,7 +14,7 @@
 //
 // Method mapping (ours -> avalanchego Topological):
 //
-//	Block / *Block               -> snowman_block.go's snowmanBlock (the tree node)
+//	Block / *Block               -> the upstream tree-node block
 //	AddBlock                     -> Add (admit a child of a known block)
 //	ProcessVote / Poll           -> RecordPoll (accumulate votes into the per-block
 //	                                snowball driver; LIVENESS only — finality is the cert)
@@ -37,8 +37,8 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// Block represents a block in the chain — the preference tree's node (avalanchego
-// snowmanBlock). Tracks the value-chain linkage (id/parent/height), the pinned
+// Block represents a block in the chain — the preference tree's node (the upstream tree
+// node). Tracks the value-chain linkage (id/parent/height), the pinned
 // P-chain epoch, the per-block Photon->Wave->Focus driver, and the decided flags.
 type Block struct {
 	id        ids.ID
@@ -280,7 +280,7 @@ func (c *ChainConsensus) Preference() ids.ID {
 // it is a BUILD hint only — finality stays governed exclusively by the α-of-K cert
 // folded into c.ledger (applyCertLocked), so advancing the build target past the
 // finalized tip touches no finality decision and cannot affect safety, only
-// liveness — exactly as avalanchego's snowman steers the VM to its preferred
+// liveness — exactly as the upstream linear-chain consensus steers the VM to its preferred
 // non-finalized tip.
 func (c *ChainConsensus) PreferredBuildTip() ids.ID {
 	c.mu.RLock()

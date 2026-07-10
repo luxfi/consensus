@@ -21,9 +21,9 @@ import (
 // committed window (<=421) is retained for cert-carrying catch-up, never abandoned.
 
 // seedPhantomEngine builds an engine whose durable vote-guard already holds a phantom floor
-// and a set of (height->canonical, lockRound) bindings, so the engine boots with
-// decidedFloor == floor and the bindings seeded (exactly WithVoteGuard's production path).
-func seedPhantomEngine(t *testing.T, floor uint64, bindings map[SlotKey]ids.ID, lockRounds map[uint64]uint32) (*Transitive, VoteGuardStore, string) {
+// and a set of height->canonical bindings, so the engine boots with decidedFloor == floor
+// and the bindings seeded (exactly WithVoteGuard's production path).
+func seedPhantomEngine(t *testing.T, floor uint64, bindings map[SlotKey]ids.ID) (*Transitive, VoteGuardStore, string) {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "vote-guard")
@@ -31,7 +31,7 @@ func seedPhantomEngine(t *testing.T, floor uint64, bindings map[SlotKey]ids.ID, 
 	if err != nil {
 		t.Fatalf("OpenVoteGuard: %v", err)
 	}
-	if err := store.Persist(bindings, lockRounds, floor); err != nil {
+	if err := store.Persist(bindings, floor); err != nil {
 		t.Fatalf("seed Persist: %v", err)
 	}
 	// Reopen so the engine seeds from the fsync'd file (the real boot path).
@@ -40,7 +40,6 @@ func seedPhantomEngine(t *testing.T, floor uint64, bindings map[SlotKey]ids.ID, 
 		t.Fatalf("reopen: %v", err)
 	}
 	p := params5Prod()
-	p.ViewChange = true
 	e, _ := newQuorumEngineOpts(t, p, newTestValidatorSet(5), 0, &recordingGossiper{}, WithVoteGuard(store2))
 	e.slotMu.Lock()
 	got := e.decidedFloor
@@ -58,9 +57,7 @@ func TestReconcile_LowersFloor_DropsPhantom_KeepsCommitted(t *testing.T) {
 	b417, b421, b425 := ids.GenerateTestID(), ids.GenerateTestID(), ids.GenerateTestID()
 	b429 := ids.GenerateTestID()
 	e, _, _ := seedPhantomEngine(t, 429,
-		map[SlotKey]ids.ID{{Height: 417}: b417, {Height: 421}: b421, {Height: 425}: b425, {Height: 429}: b429},
-		map[uint64]uint32{417: 2, 421: 3, 425: 5}, // 429 has NO lock round → seeds a recoveredLock
-	)
+		map[SlotKey]ids.ID{{Height: 417}: b417, {Height: 421}: b421, {Height: 425}: b425, {Height: 429}: b429})
 
 	got, err := e.reconcilePhantomFloor(421 /*target*/, 421 /*localVM*/)
 	if err != nil {
@@ -82,21 +79,12 @@ func TestReconcile_LowersFloor_DropsPhantom_KeepsCommitted(t *testing.T) {
 	if _, ok := e.committedSlot[SlotKey{Height: 421}]; !ok {
 		t.Fatal("binding 421 (==safeFloor) must be RETAINED")
 	}
-	// Phantom range (>421) dropped — bindings, lock rounds, and recovered hard-locks.
+	// Phantom range (>421) dropped.
 	if _, ok := e.committedSlot[SlotKey{Height: 425}]; ok {
 		t.Fatal("phantom binding 425 (>safeFloor) must be DROPPED")
 	}
 	if _, ok := e.committedSlot[SlotKey{Height: 429}]; ok {
 		t.Fatal("phantom binding 429 (>safeFloor) must be DROPPED")
-	}
-	if _, ok := e.lockRounds[425]; ok {
-		t.Fatal("phantom lockRound 425 must be DROPPED")
-	}
-	if _, ok := e.recoveredLocks[429]; ok {
-		t.Fatal("phantom recoveredLock 429 must be DROPPED")
-	}
-	if e.lockRounds[421] != 3 {
-		t.Fatalf("committed lockRound 421 must be RETAINED, got %d", e.lockRounds[421])
 	}
 }
 
@@ -105,7 +93,7 @@ func TestReconcile_LowersFloor_DropsPhantom_KeepsCommitted(t *testing.T) {
 // (A Persist call would have monotonic-clamped it back up to 429.)
 func TestReconcile_DurableBypassesMonotonicGuard(t *testing.T) {
 	e, _, path := seedPhantomEngine(t, 429,
-		map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()}, nil)
+		map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()})
 
 	if _, err := e.reconcilePhantomFloor(421, 421); err != nil {
 		t.Fatalf("reconcile: %v", err)
@@ -121,13 +109,13 @@ func TestReconcile_DurableBypassesMonotonicGuard(t *testing.T) {
 	}
 	// And the reopened floor is now a LOWER monotonic base: a subsequent Persist below it clamps
 	// to 421 (never resurrects 429), while above it advances normally.
-	if err := reopened.Persist(map[SlotKey]ids.ID{}, nil, 400); err != nil {
+	if err := reopened.Persist(map[SlotKey]ids.ID{}, 400); err != nil {
 		t.Fatalf("Persist(400): %v", err)
 	}
 	if f := reopened.FinalizedThrough(); f != 421 {
 		t.Fatalf("post-reconcile Persist(400) floor=%d, want 421 (monotonic clamp base is now 421, not 429)", f)
 	}
-	if err := reopened.Persist(map[SlotKey]ids.ID{}, nil, 430); err != nil {
+	if err := reopened.Persist(map[SlotKey]ids.ID{}, 430); err != nil {
 		t.Fatalf("Persist(430): %v", err)
 	}
 	if f := reopened.FinalizedThrough(); f != 430 {
@@ -141,7 +129,7 @@ func TestReconcile_DurableBypassesMonotonicGuard(t *testing.T) {
 func TestReconcile_IntrinsicGuard_NeverAbandonsOwnCommittedBlocks(t *testing.T) {
 	b418, b429 := ids.GenerateTestID(), ids.GenerateTestID()
 	e, _, _ := seedPhantomEngine(t, 429,
-		map[SlotKey]ids.ID{{Height: 418}: b418, {Height: 429}: b429}, nil)
+		map[SlotKey]ids.ID{{Height: 418}: b418, {Height: 429}: b429})
 
 	// Operator error: target below this node's own applied head.
 	got, err := e.reconcilePhantomFloor(415 /*WRONG target*/, 421 /*localVM — node applied through 421*/)
@@ -166,7 +154,7 @@ func TestReconcile_IntrinsicGuard_NeverAbandonsOwnCommittedBlocks(t *testing.T) 
 // decided (to be caught up), and only the phantom 422..429 is abandoned.
 func TestReconcile_BehindNode_TargetGovernsAboveLocalVM(t *testing.T) {
 	e, _, _ := seedPhantomEngine(t, 429,
-		map[SlotKey]ids.ID{{Height: 420}: ids.GenerateTestID(), {Height: 429}: ids.GenerateTestID()}, nil)
+		map[SlotKey]ids.ID{{Height: 420}: ids.GenerateTestID(), {Height: 429}: ids.GenerateTestID()})
 
 	got, err := e.reconcilePhantomFloor(421 /*fleet-max target*/, 415 /*behind node's VM*/)
 	if err != nil {
@@ -187,7 +175,7 @@ func TestReconcile_BehindNode_TargetGovernsAboveLocalVM(t *testing.T) {
 // (view-change can re-finalize it), while 421 and 416 remain decided (unsignable).
 func TestReconcile_PhantomBecomesSignable_CommittedStaysDecided(t *testing.T) {
 	e, _, _ := seedPhantomEngine(t, 429,
-		map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()}, nil)
+		map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()})
 
 	// Before reconcile: 422 is decided (<=429) → unsignable.
 	if e.reserveSlotForSign(422, ids.GenerateTestID()) {
@@ -213,12 +201,12 @@ func TestReconcile_PhantomBecomesSignable_CommittedStaysDecided(t *testing.T) {
 // nothing (idempotent + fail-safe-against-accidental-invocation).
 func TestReconcile_NoOps(t *testing.T) {
 	// (a) zero target — never derive an abandonment bound implicitly.
-	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()}, nil)
+	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()})
 	if got, err := e.reconcilePhantomFloor(0, 421); err != nil || got != 429 {
 		t.Fatalf("zero-target must be a no-op: got=%d err=%v (want 429,nil)", got, err)
 	}
 	// (b) floor already at/below safe height.
-	e2, _, _ := seedPhantomEngine(t, 421, map[SlotKey]ids.ID{{Height: 421}: ids.GenerateTestID()}, nil)
+	e2, _, _ := seedPhantomEngine(t, 421, map[SlotKey]ids.ID{{Height: 421}: ids.GenerateTestID()})
 	if got, err := e2.reconcilePhantomFloor(421, 421); err != nil || got != 421 {
 		t.Fatalf("no-phantom must be a no-op: got=%d err=%v (want 421,nil)", got, err)
 	}
@@ -227,7 +215,7 @@ func TestReconcile_NoOps(t *testing.T) {
 // TestReconcile_Idempotent: reconciling twice with the same target is stable — the second
 // call is a no-op (decidedFloor already == safeFloor).
 func TestReconcile_Idempotent(t *testing.T) {
-	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()}, nil)
+	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()})
 	if _, err := e.reconcilePhantomFloor(421, 421); err != nil {
 		t.Fatalf("first reconcile: %v", err)
 	}
@@ -242,7 +230,6 @@ func TestReconcile_Idempotent(t *testing.T) {
 // bindings intact, and the operator retries.
 func TestReconcile_FailClosed_StoreWriteFails(t *testing.T) {
 	p := params5Prod()
-	p.ViewChange = true
 	e, _ := newQuorumEngineOpts(t, p, newTestValidatorSet(5), 0, &recordingGossiper{}, WithVoteGuard(failingGuard{}))
 	// Seed the phantom state directly (failingGuard.FinalizedThrough()=0, so set it here).
 	phantom := ids.GenerateTestID()
@@ -271,7 +258,7 @@ func TestReconcile_FailClosed_StoreWriteFails(t *testing.T) {
 // TestReconcile_Runtime_UsesVMHeightAsIntrinsicGuard exercises the Runtime entry point end to
 // end (it derives localVM from the VM), confirming the same bound holds through the public API.
 func TestReconcile_Runtime_UsesVMHeightAsIntrinsicGuard(t *testing.T) {
-	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()}, nil)
+	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()})
 	rt := &Runtime{Transitive: e, config: NetworkConfig{VM: nil}} // nil VM → localVM=0, target governs
 	got, err := rt.ReconcilePhantomFloor(context.Background(), 421)
 	if err != nil {
@@ -288,7 +275,7 @@ func TestReconcile_Runtime_UsesVMHeightAsIntrinsicGuard(t *testing.T) {
 // did, the guard would degrade to max(target,0)=target and a node whose VM is actually ahead
 // would abandon its own committed range.
 func TestReconcile_Runtime_FailsClosed_WhenVMHeadUnreadable(t *testing.T) {
-	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()}, nil)
+	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()})
 	// lastAcceptedID is set (VM claims a head) but it is NOT in the mock's blocks map, so
 	// GetBlock returns an error — a present-but-unreadable head.
 	rt := &Runtime{Transitive: e, config: NetworkConfig{VM: &mockVM{lastAcceptedID: ids.GenerateTestID()}}}
@@ -314,7 +301,7 @@ func TestReconcile_Runtime_FailsClosed_WhenVMHeadUnreadable(t *testing.T) {
 // VM legitimately has localVM=0 (nothing committed to abandon), so the reconcile PROCEEDS and
 // the target governs — it must NOT fail closed here.
 func TestReconcile_Runtime_EmptyVM_ProceedsTargetGoverns(t *testing.T) {
-	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()}, nil)
+	e, _, _ := seedPhantomEngine(t, 429, map[SlotKey]ids.ID{{Height: 429}: ids.GenerateTestID()})
 	rt := &Runtime{Transitive: e, config: NetworkConfig{VM: &mockVM{lastAcceptedID: ids.Empty}}}
 	got, err := rt.ReconcilePhantomFloor(context.Background(), 415)
 	if err != nil {

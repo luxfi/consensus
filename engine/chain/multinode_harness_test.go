@@ -110,12 +110,12 @@ func (b *simBlock) Bytes() []byte {
 	return buf
 }
 
-func (b *simBlock) ID() ids.ID { return hashID("block", b.Bytes()) }
-func (b *simBlock) Parent() ids.ID { return b.parentID }
-func (b *simBlock) ParentID() ids.ID { return b.parentID }
-func (b *simBlock) Height() uint64 { return b.height }
+func (b *simBlock) ID() ids.ID           { return hashID("block", b.Bytes()) }
+func (b *simBlock) Parent() ids.ID       { return b.parentID }
+func (b *simBlock) ParentID() ids.ID     { return b.parentID }
+func (b *simBlock) Height() uint64       { return b.height }
 func (b *simBlock) Timestamp() time.Time { return time.Unix(b.ts, 0) }
-func (b *simBlock) Status() uint8 { return 0 }
+func (b *simBlock) Status() uint8        { return 0 }
 
 // Verify RE-EXECUTES: the block is valid iff its claimed stateRoot equals the root
 // obtained by applying its payload to its parent's state root. A forked/divergent
@@ -165,8 +165,8 @@ func newForkedBlock(parentID ids.ID, parentStateRoot ids.ID, height uint64, payl
 
 type simVM struct {
 	mu         sync.Mutex
-	toBuild    *simBlock          // the next block this node will build (nil = down/no build)
-	stateByID  map[ids.ID]ids.ID  // blockID -> post-state root (accepted or seen)
+	toBuild    *simBlock         // the next block this node will build (nil = down/no build)
+	stateByID  map[ids.ID]ids.ID // blockID -> post-state root (accepted or seen)
 	blockByID  map[ids.ID]*simBlock
 	preferred  ids.ID
 	lastAcc    ids.ID
@@ -278,7 +278,6 @@ const (
 	msgBlock busMsgKind = iota
 	msgVote
 	msgCert
-	msgPrevote
 )
 
 type busMsg struct {
@@ -410,13 +409,6 @@ func (g *busGossiper) GossipCert(_ ids.ID, _ ids.ID, blockID ids.ID, certBytes [
 	return g.bus.deliver(g.self, busMsg{kind: msgCert, from: g.self, blockID: blockID, payload: append([]byte(nil), certBytes...)})
 }
 
-func (g *busGossiper) BroadcastPrevote(_ ids.ID, _ ids.ID, _ uint64, _ uint32, canonical ids.ID, voteBytes []byte) int {
-	if g.dropOut() {
-		return 0
-	}
-	return g.bus.deliver(g.self, busMsg{kind: msgPrevote, from: g.self, blockID: canonical, payload: append([]byte(nil), voteBytes...)})
-}
-
 // Unused legacy transport methods (single-recipient pull/vote) — no-ops in the
 // broadcast topology under test.
 func (g *busGossiper) SendPullQuery(ids.ID, ids.ID, ids.ID, []ids.NodeID) int { return 0 }
@@ -433,9 +425,9 @@ type simNode struct {
 	rt     *Runtime
 	vm     *simVM
 
-	inbox  chan busMsg
-	stop   chan struct{}
-	wg     sync.WaitGroup
+	inbox chan busMsg
+	stop  chan struct{}
+	wg    sync.WaitGroup
 
 	upMu sync.RWMutex
 	up   bool // false ⇒ DOWN: drops all inbound (models a crashed/partitioned node)
@@ -480,8 +472,6 @@ func (n *simNode) run() {
 				n.rt.HandleIncomingVote(m.blockID, m.payload)
 			case msgCert:
 				n.rt.HandleIncomingCert(m.payload)
-			case msgPrevote:
-				n.rt.HandleIncomingPrevote(m.payload)
 			}
 		}
 	}
@@ -491,6 +481,19 @@ func (n *simNode) run() {
 func (n *simNode) finalizedTip() (ids.ID, uint64, bool) {
 	return n.rt.FinalizedLedger()
 }
+
+// quasarHeight returns this node's EXPORT (Quasar, ⅔-by-stake) height + whether any export cert
+// has formed. It is always ≤ the node's Nova/accept height.
+func (n *simNode) quasarHeight() (uint64, bool) { return n.rt.QuasarHeight() }
+
+// quasarTip returns the canonical of this node's highest EXPORT-final (Quasar) block (ids.Empty
+// until the first ⅔-stake cert). novaTip returns its highest LOCALLY ACCEPTED (Nova) canonical.
+func (n *simNode) quasarTip() ids.ID { return n.rt.QuasarTip() }
+func (n *simNode) novaTip() ids.ID   { return n.rt.NovaTip() }
+
+// finalityStatus returns this node's two-tier finality snapshot (nova/quasar heights, responsive
+// stake, degraded flag) for the degraded-mode visibility assertions.
+func (n *simNode) finalityStatus() FinalityStatus { return n.rt.FinalityStatus() }
 
 // -----------------------------------------------------------------------------
 // simNet — a set of N validators sharing one bus and one test validator set.
@@ -620,6 +623,43 @@ func (net *simNet) headsAtHeight(h uint64) map[ids.ID]int {
 		}
 	}
 	return heads
+}
+
+// quasarEverywhere reports whether EVERY up node has EXPORTED (reached Quasar) at least to blk's
+// height with blk's canonical as its export tip, and whether any up node exported a DIFFERENT
+// canonical as its export tip (an export fork — THE INVARIANT breach). For a single-block test
+// the export tip at blk.height IS blk's canonical, so comparing quasarTip is exact.
+func (net *simNet) quasarEverywhere(blk *simBlock) (all bool, fork bool) {
+	all = true
+	for _, n := range net.nodes {
+		if !n.reachable() {
+			continue
+		}
+		qh, ok := n.quasarHeight()
+		if !ok || qh < blk.height {
+			all = false
+			continue
+		}
+		if tip := n.quasarTip(); tip != blk.ID() && tip != ids.Empty {
+			fork = true
+		}
+	}
+	return all, fork
+}
+
+// anyQuasarAtHeight reports the distinct EXPORT (Quasar) tips any up node has reached at >= h —
+// used to assert that NO two conflicting export tips ever coexist (THE INVARIANT).
+func (net *simNet) quasarTips() map[ids.ID]int {
+	tips := map[ids.ID]int{}
+	for _, n := range net.nodes {
+		if !n.reachable() {
+			continue
+		}
+		if qh, ok := n.quasarHeight(); ok && qh > 0 {
+			tips[n.quasarTip()]++
+		}
+	}
+	return tips
 }
 
 // upCount returns how many nodes are currently up.

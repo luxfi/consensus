@@ -24,7 +24,7 @@ func TestQuorumCertCodec_RoundTrip(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, 3, votes)
+	cert, err := AssembleQuorumCert(pos, Quasar, 3, votes)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestQuorumCertCodec_RejectsCorrupt(t *testing.T) {
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 	}
-	cert, _ := AssembleQuorumCert(pos, 3, votes)
+	cert, _ := AssembleQuorumCert(pos, Quasar, 3, votes)
 	enc, _ := cert.MarshalBinary()
 
 	// Trailing byte → reject.
@@ -98,7 +98,7 @@ func TestQuorumCert_DuplicateVoterRejected(t *testing.T) {
 	pos := VotePosition{ChainID: ids.GenerateTestID(), Height: 1, BlockID: ids.GenerateTestID()}
 
 	// Assembly rejects a duplicate NodeID.
-	_, err := AssembleQuorumCert(pos, 2, []SignedVote{
+	_, err := AssembleQuorumCert(pos, Quasar, 2, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 	})
@@ -124,7 +124,7 @@ func TestQuorumCert_DuplicateVoterRejected(t *testing.T) {
 func TestQuorumCert_NilVerifierFailsClosed(t *testing.T) {
 	vs := newTestValidatorSet(1)
 	pos := VotePosition{ChainID: ids.GenerateTestID(), Height: 1, BlockID: ids.GenerateTestID()}
-	cert, _ := AssembleQuorumCert(pos, 1, []SignedVote{
+	cert, _ := AssembleQuorumCert(pos, Quasar, 1, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 	})
 	if err := cert.Verify(nil, 0); err == nil {
