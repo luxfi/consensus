@@ -30,14 +30,15 @@ import (
 // mapAncestry is a tiny read-only Ancestry over an explicit parent/height/canonical map, so the
 // pure fold can be driven with an arbitrary (partial) tree.
 type mapAncestry map[ids.ID]struct {
-	parent    ids.ID
-	height    uint64
-	canonical ids.ID
+	parent          ids.ID
+	height          uint64
+	canonical       ids.ID
+	parentCanonical ids.ID
 }
 
-func (m mapAncestry) Parent(id ids.ID) (ids.ID, uint64, ids.ID, bool) {
+func (m mapAncestry) Parent(id ids.ID) (ids.ID, uint64, ids.ID, ids.ID, bool) {
 	e, ok := m[id]
-	return e.parent, e.height, e.canonical, ok
+	return e.parent, e.height, e.canonical, e.parentCanonical, ok
 }
 
 func (m mapAncestry) Children(id ids.ID) []ids.ID {
@@ -48,6 +49,15 @@ func (m mapAncestry) Children(id ids.ID) []ids.ID {
 		}
 	}
 	return out
+}
+
+func (m mapAncestry) WrapperByCanonical(canonical ids.ID, height uint64) (ids.ID, bool) {
+	for id, e := range m {
+		if e.height == height && e.canonical == canonical {
+			return id, true
+		}
+	}
+	return ids.Empty, false
 }
 
 // TestFinalize_MissingAncestor_TypedError pins the fold half of the fix: an untracked ancestor on
