@@ -394,16 +394,37 @@ func (c *ChainConsensus) ancestry() Ancestry { return blocksAncestry{blocks: c.b
 // interface so the Finalize fold stays engine-free and unit-testable.
 type blocksAncestry struct{ blocks map[ids.ID]*Block }
 
-func (a blocksAncestry) Parent(id ids.ID) (ids.ID, uint64, ids.ID, bool) {
+func (a blocksAncestry) Parent(id ids.ID) (ids.ID, uint64, ids.ID, ids.ID, bool) {
 	b, ok := a.blocks[id]
 	if !ok {
-		return ids.Empty, 0, ids.Empty, false
+		return ids.Empty, 0, ids.Empty, ids.Empty, false
 	}
-	canonical := b.canonicalID
-	if canonical == ids.Empty {
-		canonical = b.id // bare block: canonical == outer
+	// canonicalRep/parentCanonicalRep fall back to the outer id for a bare (non-wrapped)
+	// block, so a chain with no inner/outer split is unchanged.
+	return b.parentID, b.height, b.canonicalRep(), b.parentCanonicalRep(), true
+}
+
+// WrapperByCanonical resolves an inner execution commitment at a height to a
+// locally-tracked OUTER wrapper of it — any alias — so the finality walk can collapse a
+// sibling wrapper in place of the exact envelope a cert named (the intermediate ancestor
+// the node holds under a DIFFERENT proposervm wrapper). It prefers an already-accepted
+// wrapper when several tracked aliases exist, so the walk lands on the block the VM
+// committed. A miss (ok=false) means the node holds NO wrapper of that inner block,
+// preserving the fail-closed behind-node defer (ErrAncestorNotTracked). This is a rare
+// defer-path O(n) scan over the live block set, matching pendingByCanonicalLocked.
+func (a blocksAncestry) WrapperByCanonical(canonical ids.ID, height uint64) (ids.ID, bool) {
+	var hit ids.ID
+	found := false
+	for id, b := range a.blocks {
+		if b.height != height || b.canonicalRep() != canonical {
+			continue
+		}
+		if b.accepted {
+			return id, true // the wrapper the VM actually committed — prefer it
+		}
+		hit, found = id, true
 	}
-	return b.parentID, b.height, canonical, true
+	return hit, found
 }
 
 func (a blocksAncestry) Children(id ids.ID) []ids.ID {

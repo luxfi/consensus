@@ -193,12 +193,21 @@ func (l FinalityLedger) BuildAnchor() (ids.ID, bool) {
 // Finalize NEVER mutates the DAG — it reads ancestry to prove the certified path and
 // to collect the losing-sibling subtrees to prune.
 type Ancestry interface {
-	// Parent returns id's OUTER parent, id's OWN height, and id's CANONICAL execution
-	// commitment; ok is false if id is untracked. The canonical id is what the
-	// per-height equivocation index records for an intermediate catch-up-path block.
-	Parent(id ids.ID) (parent ids.ID, height uint64, canonical ids.ID, ok bool)
+	// Parent returns id's OUTER parent, id's OWN height, id's CANONICAL execution
+	// commitment, and the CANONICAL commitment of id's PARENT; ok is false if id is
+	// untracked. The canonical id is what the per-height equivocation index records for
+	// an intermediate catch-up-path block. parentCanonical is carried so the ancestry
+	// walk can collapse the NEXT sibling wrapper by inner identity (see WrapperByCanonical).
+	Parent(id ids.ID) (parent ids.ID, height uint64, canonical, parentCanonical ids.ID, ok bool)
 	// Children returns the ids of every tracked block whose parent is id.
 	Children(id ids.ID) []ids.ID
+	// WrapperByCanonical resolves an inner execution commitment at a height to ANY
+	// locally-tracked OUTER wrapper of it (any alias). The ancestry walk uses it to stand
+	// a local wrapper in for the exact outer envelope a cert named — collapsing sibling
+	// wrappers (aliases, not forks) the way every other finality path does. It NEVER
+	// invents an execution the node does not hold: a miss (ok=false) preserves the
+	// fail-closed behind-node defer (ErrAncestorNotTracked, fetch and retry).
+	WrapperByCanonical(canonical ids.ID, height uint64) (id ids.ID, ok bool)
 }
 
 // Cert is the minimal finality subject — the block a quorum certificate selects,
@@ -210,11 +219,20 @@ type Ancestry interface {
 // AUTHORITATIVE finality identity the fold keys equivocation/idempotency on. For a
 // non-wrapped block Canonical == Block. Parent is ids.Empty only for the genesis /
 // first finalize.
+//
+// ParentCanonical is the inner commitment of Parent (from the signed
+// VotePosition.ParentCanonicalID). It lets the ancestry walk collapse a
+// canonical-equivalent SIBLING WRAPPER in place of the exact outer envelope Parent
+// names — the fix for the intermediate-ancestor livelock (a cert whose ancestry
+// threads a wrapper the node holds under a DIFFERENT envelope must still finalize).
+// Empty on a bare (non-wrapped) chain or the genesis finalize; the walk then stays
+// outer-id only, byte-for-byte as before.
 type Cert struct {
-	Block     ids.ID
-	Parent    ids.ID
-	Height    uint64
-	Canonical ids.ID
+	Block           ids.ID
+	Parent          ids.ID
+	ParentCanonical ids.ID
+	Height          uint64
+	Canonical       ids.ID
 }
 
 // Plan is what Finalize decides and the engine applies to the VM and DAG. It mirrors
@@ -397,12 +415,40 @@ func pathFromTip(led FinalityLedger, cert Cert, dag Ancestry) ([]step, error) {
 	steps := []step{{id: cert.Block, height: cert.Height, parentID: cert.Parent, canonical: topCanonical}}
 	cur := cert.Parent
 	childHeight := cert.Height
+	// parentCanonHint is the INNER commitment the NEXT ancestor must equal, carried down
+	// the walk so a canonical-equivalent SIBLING WRAPPER can stand in for the exact outer
+	// envelope the cert named (the intermediate-ancestor livelock fix; mainnet-644 sibling
+	// class). Seeded from the cert's ParentCanonicalID, else from the certified block's own
+	// recorded parent-canonical. Empty (a bare, non-wrapped chain) ⇒ the walk stays
+	// outer-id only, byte-for-byte as before.
+	parentCanonHint := cert.ParentCanonical
+	if parentCanonHint == ids.Empty {
+		if _, _, _, pc, ok := dag.Parent(cert.Block); ok {
+			parentCanonHint = pc
+		}
+	}
 	for cur != led.tip {
-		parent, curHeight, curCanonical, ok := dag.Parent(cur)
+		parent, curHeight, curCanonical, curParentCanon, ok := dag.Parent(cur)
 		if !ok {
-			// The path to the frontier is not fully tracked — the node is behind.
-			// Fail-closed DEFER: never finalize on a path we cannot prove.
-			return nil, &AncestorNotTracked{Missing: cur, Target: cert.Block}
+			// The exact outer envelope is untracked. Before the fail-closed behind-node
+			// DEFER, try to stand a LOCAL wrapper of the SAME inner block (a
+			// canonical-equivalent alias) in its place — collapsing sibling wrappers the
+			// way convergedWinnerAtHeightLocked and finalizeLocalAliasFromVerifiedCert
+			// already do everywhere else. A genuinely-unheld inner block (no wrapper at
+			// all) still falls through to the DEFER, so safety is unchanged.
+			if parentCanonHint != ids.Empty {
+				if localID, found := dag.WrapperByCanonical(parentCanonHint, childHeight-1); found {
+					// Rebase the child's parent link onto the LOCAL wrapper so BOTH the
+					// accept path and the reject-subtree walk (losingSubtrees) key on the
+					// wrapper the VM actually holds, never the unheld outer alias.
+					steps[len(steps)-1].parentID = localID
+					cur = localID
+					parent, curHeight, curCanonical, curParentCanon, ok = dag.Parent(cur)
+				}
+			}
+			if !ok {
+				return nil, &AncestorNotTracked{Missing: cur, Target: cert.Block}
+			}
 		}
 		// Heights must strictly decrease toward the tip; a parent at/above its child's
 		// height is malformed linkage.
@@ -423,6 +469,7 @@ func pathFromTip(led FinalityLedger, cert Cert, dag Ancestry) ([]step, error) {
 		steps = append(steps, step{id: cur, height: curHeight, parentID: parent, canonical: stepCanonical})
 		cur = parent
 		childHeight = curHeight
+		parentCanonHint = curParentCanon
 	}
 
 	// Reverse to ascending height and assert contiguity with the frontier: the lowest
