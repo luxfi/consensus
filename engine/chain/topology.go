@@ -367,6 +367,21 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 				rt.reportCertEquivocation(cert, fin)
 			}
 		}
+		// SELF-HEAL (the mainnet behind-node fix). ErrAncestorNotTracked means we DO track the
+		// certified block but are MISSING an intermediate ancestor between it and our finalized
+		// tip — we are behind. Trigger the throttled ancestor fetch for the SPECIFIC missing block
+		// so the node-layer serves the finalized gap oldest-first and this VERIFIED cert
+		// re-applies. Pre-fix, a fetch was issued ONLY when the cert's OWN block was untracked
+		// (the !exists arm above); a missing INTERMEDIATE ancestor logged REFUSED and returned
+		// with no fetch, so a slipped node never self-healed (effective n−1, zero-margin → any
+		// flap drops below α and finality stalls — the live 1086xxx wedge). The fetch is gated on
+		// the cert having VERIFIED above, so a forged cert can never make us fetch arbitrary ids;
+		// claimCatchupLocked rate-limits it. Peer selection is the node layer's job (EmptyNodeID ⇒
+		// sample a serving peer).
+		var missingAncestor *AncestorNotTracked
+		if errors.As(err, &missingAncestor) {
+			rt.requestCatchup(missingAncestor.Missing, ids.EmptyNodeID)
+		}
 		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Warn("incoming cert: REFUSED by finality guard (no VM.Accept)",
 				log.Stringer("blockID", cert.Position.BlockID),

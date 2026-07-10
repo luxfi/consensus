@@ -63,6 +63,26 @@ var (
 	ErrAncestorNotTracked = errors.New("chain: cannot finalize — an ancestor between the finalized tip and the cert-selected block is not tracked (behind; fetch and retry)")
 )
 
+// AncestorNotTracked is the TYPED form of ErrAncestorNotTracked. It carries the SPECIFIC
+// untracked ancestor the finalize path needs fetched, so a catch-up handler can target the
+// fetch at exactly that block — the plain sentinel named the id only inside a formatted string,
+// which is why the receive-side cert handler could log the defer but never issue the fetch (the
+// mainnet behind-node self-heal gap). errors.Is(err, ErrAncestorNotTracked) still holds via
+// Unwrap, so every existing classifier is unchanged; self-heal handlers use errors.As to recover
+// Missing and issue exactly one RequestAncestors for it.
+type AncestorNotTracked struct {
+	Missing ids.ID // the untracked ancestor whose absence blocks finalize — the fetch target
+	Target  ids.ID // the certified block whose path to the finalized tip is blocked
+}
+
+func (e *AncestorNotTracked) Error() string {
+	return fmt.Sprintf("%s: ancestor %s of %s missing", ErrAncestorNotTracked.Error(), e.Missing, e.Target)
+}
+
+// Unwrap makes errors.Is(err, ErrAncestorNotTracked) hold, so the sentinel-based classifiers
+// (topology.go, tryAccept, tests) are byte-for-byte unaffected by the typed carrier.
+func (e *AncestorNotTracked) Unwrap() error { return ErrAncestorNotTracked }
+
 // finalizedEntry is the CERTIFIED record at one finalized height: the canonical
 // execution commitment (the authoritative finality identity) and the outer
 // envelope id (transport, retained for serving/diagnostics). Equivocation and
@@ -382,7 +402,7 @@ func pathFromTip(led FinalityLedger, cert Cert, dag Ancestry) ([]step, error) {
 		if !ok {
 			// The path to the frontier is not fully tracked — the node is behind.
 			// Fail-closed DEFER: never finalize on a path we cannot prove.
-			return nil, fmt.Errorf("%w: ancestor %s of %s missing", ErrAncestorNotTracked, cur, cert.Block)
+			return nil, &AncestorNotTracked{Missing: cur, Target: cert.Block}
 		}
 		// Heights must strictly decrease toward the tip; a parent at/above its child's
 		// height is malformed linkage.
