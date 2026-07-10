@@ -555,34 +555,6 @@ type Transitive struct {
 	// warns a signer that has none). See vote_guard.go.
 	slotMu        sync.Mutex
 	committedSlot map[SlotKey]ids.ID
-	// views holds the round-scoped view-change machine per unfinalized height (guarded by
-	// slotMu), used ONLY when params.ViewChange is set. It makes the α-of-K precommit LIVE
-	// and re-convergent under competing siblings: fluid prevotes across rounds + precommit
-	// only on a POL + lock. Lazily created per height; pruned on finalize. See round_view.go.
-	views map[uint64]*roundView
-	// prevoteSigs stores the SIGNED prevotes observed (own + peers), keyed
-	// {height,round,canonical} → nodeID → signature, so a node can RELAY the validValue POL's
-	// constituent prevotes to a peer that missed them (the POL-propagation the isolated proof
-	// showed is required for a 2|N split where one side holds a POL to converge). Guarded by
-	// slotMu; pruned with views on finalize.
-	prevoteSigs map[pvSigKey]map[ids.NodeID][]byte
-	// recoveredLocks are heights whose committedSlot binding was RECOVERED from the durable
-	// vote-guard at boot (a value this node precommitted before a crash). Under ViewChange the
-	// in-session round+lock rule governs re-precommit, but the ROUND of a recovered lock is not
-	// on disk — so for a recovered height we CANNOT evaluate the unlock rule safely. Fail-safe:
-	// treat a recovered binding as a HARD lock (reserveSlotForSign keeps the STRICT refusal of a
-	// conflicting canonical there, even under ViewChange), so a rolling-restart node never
-	// precommits a second, conflicting value at a pre-crash height (the double-precommit RED
-	// flagged). Liveness is unharmed: if the network finalized a different value, the node
-	// finalizes it via the α-of-K cert gossip (HandleIncomingCert), not a local re-precommit.
-	// A height leaves this set once it finalizes (pruned). Guarded by slotMu.
-	recoveredLocks map[uint64]struct{}
-	// lockRounds is the round-scoped view-change LOCK ROUND per height (the round this node
-	// precommitted+locked the height's binding). Persisted in the v3 vote-guard so a restarted
-	// node seeds its roundView lock and re-converges under the unlock rule (instead of the
-	// conservative recoveredLocks hard-lock). Updated on precommit; pruned on finalize. Guarded
-	// by slotMu.
-	lockRounds map[uint64]uint32
 	// decidedFloor is the DURABLE, MONOTONIC decided-through height: the highest height
 	// this node has ever finalized. The sign gate refuses signing at any height <= it, so a
 	// decided height is permanently unsignable EVEN AFTER its committedSlot entry is pruned
@@ -796,10 +768,6 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		finalizedByCert:      make(map[ids.ID]struct{}),
 		certBytesByBlock:     make(map[ids.ID][]byte),
 		committedSlot:        make(map[SlotKey]ids.ID),
-		views:                make(map[uint64]*roundView),
-		prevoteSigs:          make(map[pvSigKey]map[ids.NodeID][]byte),
-		recoveredLocks:       make(map[uint64]struct{}),
-		lockRounds:           make(map[uint64]uint32),
 		catchupRequested:     make(map[ids.ID]time.Time),
 		certCatchupRequested: make(map[uint64]time.Time),
 		bufferedVotes:        make(map[ids.ID][]Vote),
@@ -2076,14 +2044,6 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 	if t.voteSigner == nil {
 		return
 	}
-	// VIEW-CHANGE: a proposer must NOT precommit its own block at build time — it must
-	// PREVOTE it and precommit only on a POL (round_view.go). Recording an immediate own
-	// precommit here would be an unjustified precommit (no POL) that the lock rule forbids.
-	// The view-change driver (runViewChangePass) casts this node's prevote+precommit for the
-	// converged winner instead. Skip the build-time self-precommit under view-change.
-	if t.params.ViewChange {
-		return
-	}
 	pos := t.blockPositionLocked(pending, blockID)
 	// NON-EQUIVOCATION (fork guard): refuse to sign a conflicting sibling at a HEIGHT
 	// this node has already committed to — and DURABLY record the binding before
@@ -2172,23 +2132,11 @@ func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
 		if bound == canonical {
 			return true // same block ⇒ idempotent (already durable)
 		}
-		// VIEW-CHANGE: a conflicting canonical at an UN-finalized height is permitted here —
-		// the round-scoped lock rule (round_view.go recordOwnPrecommit) already governs WHICH
-		// value this node may precommit and at what round, so the height-only refusal would
-		// wrongly freeze the re-convergence. The DURABLE decided-floor gate above still makes a
-		// FINALIZED height unsignable (the v1.35.5 PART-A / HIGH-1 finalized-floor safety is
-		// untouched). For the legacy single-phase path, keep the strict height-only refusal.
-		if !t.params.ViewChange {
-			return false // legacy: sibling at an already-signed height ⇒ refuse
-		}
-		// ROLLING-RESTART SAFETY: a binding RECOVERED from disk has no persisted lock round, so
-		// the unlock rule cannot be evaluated — treat it as a HARD lock and REFUSE a conflicting
-		// value (the node finalizes the network's choice via cert gossip, never via a second
-		// local precommit). In-session bindings fall through to the round+lock re-precommit.
-		if _, recovered := t.recoveredLocks[key.Height]; recovered {
-			return false
-		}
-		// fall through: re-bind to the newly-precommitted canonical (persist below).
+		// NON-EQUIVOCATION: a conflicting canonical at an already-signed height ⇒ REFUSE.
+		// One signature per consensus height makes two conflicting finality attestations at
+		// one height impossible (Nova's single-accept property; this durable committedSlot is
+		// its cross-restart WITNESS — a value/log, never a decision lock).
+		return false
 	}
 	// First binding at this slot. PERSIST it durably BEFORE permitting the signature —
 	// a crash after signing but before finalizing must not forget it. Mutate the map,
@@ -2196,7 +2144,7 @@ func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
 	// consistent with what is durable and we FAIL CLOSED (return false ⇒ no signature).
 	t.committedSlot[key] = canonical
 	if t.voteGuard != nil {
-		if err := t.voteGuard.Persist(t.committedSlot, t.lockRounds, t.decidedFloor); err != nil {
+		if err := t.voteGuard.Persist(t.committedSlot, t.decidedFloor); err != nil {
 			delete(t.committedSlot, key)
 			t.log.Error("vote-once: durable equivocation-guard write FAILED — refusing to sign (fail-closed)",
 				"height", height, "error", err)
@@ -2320,21 +2268,8 @@ func (t *Transitive) pruneCommittedSlotsBelow(height uint64) {
 			changed = true
 		}
 	}
-	// A recovered hard lock is released once its height is decided (≤ finalized): it is either
-	// the value that finalized, or the node has since finalized the network's value via cert
-	// gossip — either way the height is settled and the strict-refusal belt is no longer needed.
-	for h := range t.recoveredLocks {
-		if h <= height {
-			delete(t.recoveredLocks, h)
-		}
-	}
-	for h := range t.lockRounds {
-		if h < height {
-			delete(t.lockRounds, h) // strictly-below, mirroring committedSlot (retain the tip's lock round)
-		}
-	}
 	if (changed || floorAdvanced) && t.voteGuard != nil {
-		if err := t.voteGuard.Persist(t.committedSlot, t.lockRounds, t.decidedFloor); err != nil {
+		if err := t.voteGuard.Persist(t.committedSlot, t.decidedFloor); err != nil {
 			t.log.Warn("vote-once: durable equivocation-guard shrink failed (non-fatal; floor re-persisted on next bind)",
 				"belowHeight", height, "error", err)
 		}
@@ -3243,9 +3178,6 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// something.
 	if highestAccepted > 0 {
 		t.pruneCommittedSlotsBelow(highestAccepted)
-		if t.params.ViewChange {
-			t.pruneViewsBelow(highestAccepted)
-		}
 	}
 	// MED-6: bound the slashing detector's per-height maps to a sliding window (memory).
 	t.pruneSlashingBelowWindow()

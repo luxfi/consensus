@@ -110,12 +110,12 @@ func (b *simBlock) Bytes() []byte {
 	return buf
 }
 
-func (b *simBlock) ID() ids.ID { return hashID("block", b.Bytes()) }
-func (b *simBlock) Parent() ids.ID { return b.parentID }
-func (b *simBlock) ParentID() ids.ID { return b.parentID }
-func (b *simBlock) Height() uint64 { return b.height }
+func (b *simBlock) ID() ids.ID           { return hashID("block", b.Bytes()) }
+func (b *simBlock) Parent() ids.ID       { return b.parentID }
+func (b *simBlock) ParentID() ids.ID     { return b.parentID }
+func (b *simBlock) Height() uint64       { return b.height }
 func (b *simBlock) Timestamp() time.Time { return time.Unix(b.ts, 0) }
-func (b *simBlock) Status() uint8 { return 0 }
+func (b *simBlock) Status() uint8        { return 0 }
 
 // Verify RE-EXECUTES: the block is valid iff its claimed stateRoot equals the root
 // obtained by applying its payload to its parent's state root. A forked/divergent
@@ -165,8 +165,8 @@ func newForkedBlock(parentID ids.ID, parentStateRoot ids.ID, height uint64, payl
 
 type simVM struct {
 	mu         sync.Mutex
-	toBuild    *simBlock          // the next block this node will build (nil = down/no build)
-	stateByID  map[ids.ID]ids.ID  // blockID -> post-state root (accepted or seen)
+	toBuild    *simBlock         // the next block this node will build (nil = down/no build)
+	stateByID  map[ids.ID]ids.ID // blockID -> post-state root (accepted or seen)
 	blockByID  map[ids.ID]*simBlock
 	preferred  ids.ID
 	lastAcc    ids.ID
@@ -278,7 +278,6 @@ const (
 	msgBlock busMsgKind = iota
 	msgVote
 	msgCert
-	msgPrevote
 )
 
 type busMsg struct {
@@ -410,13 +409,6 @@ func (g *busGossiper) GossipCert(_ ids.ID, _ ids.ID, blockID ids.ID, certBytes [
 	return g.bus.deliver(g.self, busMsg{kind: msgCert, from: g.self, blockID: blockID, payload: append([]byte(nil), certBytes...)})
 }
 
-func (g *busGossiper) BroadcastPrevote(_ ids.ID, _ ids.ID, _ uint64, _ uint32, canonical ids.ID, voteBytes []byte) int {
-	if g.dropOut() {
-		return 0
-	}
-	return g.bus.deliver(g.self, busMsg{kind: msgPrevote, from: g.self, blockID: canonical, payload: append([]byte(nil), voteBytes...)})
-}
-
 // Unused legacy transport methods (single-recipient pull/vote) — no-ops in the
 // broadcast topology under test.
 func (g *busGossiper) SendPullQuery(ids.ID, ids.ID, ids.ID, []ids.NodeID) int { return 0 }
@@ -433,9 +425,9 @@ type simNode struct {
 	rt     *Runtime
 	vm     *simVM
 
-	inbox  chan busMsg
-	stop   chan struct{}
-	wg     sync.WaitGroup
+	inbox chan busMsg
+	stop  chan struct{}
+	wg    sync.WaitGroup
 
 	upMu sync.RWMutex
 	up   bool // false ⇒ DOWN: drops all inbound (models a crashed/partitioned node)
@@ -480,8 +472,6 @@ func (n *simNode) run() {
 				n.rt.HandleIncomingVote(m.blockID, m.payload)
 			case msgCert:
 				n.rt.HandleIncomingCert(m.payload)
-			case msgPrevote:
-				n.rt.HandleIncomingPrevote(m.payload)
 			}
 		}
 	}
