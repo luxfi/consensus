@@ -26,7 +26,6 @@ import (
 
 func TestB1_CertFinalizesWithoutViewChange_OneProposerPerHeight(t *testing.T) {
 	p := prodParams5()
-	p.ViewChange = false // EXPLICIT: the view-change/lock layer is OFF — the cert alone decides.
 
 	net := newSimNet(t, 5, p)
 
