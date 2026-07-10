@@ -58,7 +58,6 @@ func genuineParams(n int) config.Parameters {
 	if p.BetaRogue < n {
 		p.BetaRogue = n
 	}
-	p.ViewChange = n > 1
 	if err := p.Valid(); err != nil {
 		panic(fmt.Sprintf("genuineParams(%d) invalid: %v", n, err))
 	}
