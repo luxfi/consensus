@@ -95,24 +95,20 @@ func TestRED_INT_LowStakeCoalition_LiveVotePath_DoesNotFinalize(t *testing.T) {
 			"not reach the engine, so this test would be vacuous (count=%d)", blk.AcceptCalled())
 	}
 
-	// SAFETY: despite count ≥ α, the ⅔-STAKE gate in assembleCertLocked must refuse.
-	if waitFor(800*time.Millisecond, func() bool { return rt.IsAccepted(blk.id) }) {
-		t.Fatalf("SAFETY VIOLATION: a 4%%-stake coalition finalized a block via the LIVE vote path "+
-			"(VM.Accept=%d) — assembleCertLocked's VerifyWeighted gate was bypassed from the "+
-			"count/Gossip ingestion road", blk.AcceptCalled())
-	}
-	if got := blk.AcceptCalled(); got != 0 {
-		t.Fatalf("VM.Accept must not run for a sub-⅔-stake coalition, got %d", got)
-	}
-
-	// LIVENESS CONTROL (anti-vacuity): once the 96-stake node ALSO votes, stake is
-	// 100/100 > ⅔ and the SAME block finalizes — so the refusal above was the stake
-	// gate, not a stuck engine.
-	rt.ReceiveVote(vs.signedVote(4, pos))
+	// v1.36 TWO-TIER: the 4-of-5 COUNT majority IS the NOVA accept authority — it drives VM.Accept
+	// (local execution), crash-fault-safe by majority intersection. The ⅔-STAKE gate did not
+	// disappear; it moved to the EXPORT tier (Quasar).
 	if !waitFor(2*time.Second, func() bool { return rt.IsAccepted(blk.id) }) {
-		t.Fatalf("liveness: block did not finalize once the 96-stake node voted (stake>⅔) — "+
-			"VerifyWeighted is over-strict (Accept=%d)", blk.AcceptCalled())
+		t.Fatalf("NOVA LIVENESS: the 4-of-5 count majority did not accept via the live vote path (Accept=%d)", blk.AcceptCalled())
 	}
+	// EXPORT SAFETY: despite the count majority, a 4/100-stake coalition must NEVER reach Quasar
+	// (⅔-by-stake) — the export gate holds across the live channel path.
+	mustNotQuasar(t, rt.Transitive, blk, 500*time.Millisecond, "4%-stake coalition (export gate, live path)")
+
+	// LIVENESS CONTROL (anti-vacuity): once the 96-stake node ALSO votes, stake is 100/100 > ⅔ and
+	// the block reaches QUASAR — so the refusal above was the stake gate, not a stuck engine.
+	rt.ReceiveVote(vs.signedVote(4, pos))
+	mustQuasar(t, rt.Transitive, blk, 2*time.Second, "96-stake node completes the ⅔ export supermajority")
 }
 
 // RED-INT-2 — STAKE GATE HOLDS THROUGH THE GOSSIP HandleIncomingVote ENTRY.
@@ -159,14 +155,16 @@ func TestRED_INT_LowStakeCoalition_GossipVoteEntry_DoesNotFinalize(t *testing.T)
 	if !waitFor(2*time.Second, func() bool { return rt.HasEnoughResponsesForRetry(blk.id) }) {
 		t.Fatalf("precondition: COUNT predicate never tripped via the Gossip vote entry (vacuous)")
 	}
-	if waitFor(800*time.Millisecond, func() bool { return rt.IsAccepted(blk.id) }) {
-		t.Fatalf("SAFETY VIOLATION: a 4%%-stake coalition finalized via the Gossip HandleIncomingVote "+
-			"entry (VM.Accept=%d) — the newly-routed Gossip path is a count-only finality road",
-			blk.AcceptCalled())
+	// v1.36 TWO-TIER: the 4-of-5 COUNT majority Nova-accepts (local execution) via the Gossip
+	// entry; the ⅔-STAKE gate moved to the EXPORT tier (Quasar).
+	if !waitFor(2*time.Second, func() bool { return rt.IsAccepted(blk.id) }) {
+		t.Fatalf("NOVA LIVENESS: the 4-of-5 count majority did not accept via the Gossip vote entry (Accept=%d)", blk.AcceptCalled())
 	}
+	// EXPORT SAFETY: a 4/100-stake coalition must NEVER reach Quasar via the Gossip path either.
+	mustNotQuasar(t, rt.Transitive, blk, 500*time.Millisecond, "4%-stake coalition (export gate, gossip path)")
 
-	// Anti-vacuity: the 96-stake node's vote (via the SAME Gossip entry) tips stake
-	// over ⅔ and finalizes.
+	// Anti-vacuity: the 96-stake node's vote (via the SAME Gossip entry) tips stake over ⅔ and the
+	// block reaches QUASAR (export).
 	vb4, err := encodeSignedVote(vs.nodeID(4), vs.sign(4, pos))
 	if err != nil {
 		t.Fatalf("encode node4 vote: %v", err)
@@ -174,10 +172,7 @@ func TestRED_INT_LowStakeCoalition_GossipVoteEntry_DoesNotFinalize(t *testing.T)
 	if !rt.HandleIncomingVote(blk.id, vb4) {
 		t.Fatalf("the 96-stake node's genuine vote must verify via the Gossip entry")
 	}
-	if !waitFor(2*time.Second, func() bool { return rt.IsAccepted(blk.id) }) {
-		t.Fatalf("liveness: block did not finalize once >⅔ stake voted via the Gossip entry (Accept=%d)",
-			blk.AcceptCalled())
-	}
+	mustQuasar(t, rt.Transitive, blk, 2*time.Second, "96-stake node completes the ⅔ export via the Gossip entry")
 }
 
 // RED-INT-3 — DOUBLE-COUNT UNDER STAKE isolates the replay/double-count attack

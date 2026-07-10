@@ -68,9 +68,12 @@ func (v VerifiedQuorumCert) Cert() *QuorumCert { return v.qc }
 //
 //	verifier    — the chain's VoteVerifier (BLS / ML-DSA / secp256k1). nil ⇒ fail closed.
 //	stake       — the chain's StakeSource. Non-nil ⇒ stake-weighted (VerifyWeighted,
-//	              strict >⅔). nil ⇒ count-only Verify (equal-stake chains only; the
+//	              tier-selected). nil ⇒ count-only Verify (equal-stake chains only; the
 //	              chain MUST enforce the equal-stake admission invariant).
-//	alpha       — the α-of-K count floor.
+//	tier        — Nova (local-execution majority) or Quasar (export ⅔-by-stake); selects
+//	              which threshold VerifyWeighted enforces.
+//	alpha       — the count floor the votes must reach to assemble (NovaQuorum for Nova,
+//	              the ⅔ count for Quasar).
 //	epochHeight — the P-chain epoch the per-voter pubkeys, set-root and stake tally
 //	              are all read at (MEDIUM-1).
 //	pos         — the consensus position the votes (and the cert) bind to.
@@ -83,6 +86,7 @@ func (v VerifiedQuorumCert) Cert() *QuorumCert { return v.qc }
 func BuildVerifiedQuorumCert(
 	verifier VoteVerifier,
 	stake StakeSource,
+	tier Finality,
 	alpha uint32,
 	epochHeight uint64,
 	pos VotePosition,
@@ -91,7 +95,7 @@ func BuildVerifiedQuorumCert(
 	if verifier == nil {
 		return VerifiedQuorumCert{}, ErrNoVerifiedQC
 	}
-	cert, err := AssembleQuorumCert(pos, alpha, votes)
+	cert, err := AssembleQuorumCert(pos, tier, alpha, votes)
 	if err != nil {
 		// Quorum not assembled yet (sub-threshold / not-yet-arrived). Liveness:
 		// keep waiting. Wrap the precise cause for diagnosis, present
