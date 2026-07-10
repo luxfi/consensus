@@ -3237,7 +3237,7 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	if pos.BlockID != blockID {
 		return fmt.Errorf("cert position block %s != finalize target %s (inconsistent cert trio)", pos.BlockID, blockID)
 	}
-	plan, err := t.consensus.ApplyCert(Cert{Block: pos.BlockID, Parent: pos.ParentID, Height: pos.Height, Canonical: pos.CanonicalID})
+	plan, err := t.consensus.ApplyCert(Cert{Block: pos.BlockID, Parent: pos.ParentID, ParentCanonical: pos.ParentCanonicalID, Height: pos.Height, Canonical: pos.CanonicalID})
 	if err != nil {
 		return err
 	}

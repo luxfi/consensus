@@ -28,13 +28,24 @@ type dagNode struct {
 	height uint64
 }
 
-func (d mapDAG) Parent(id ids.ID) (ids.ID, uint64, ids.ID, bool) {
+func (d mapDAG) Parent(id ids.ID) (ids.ID, uint64, ids.ID, ids.ID, bool) {
 	n, ok := d[id]
 	if !ok {
-		return ids.Empty, 0, ids.Empty, false
+		return ids.Empty, 0, ids.Empty, ids.Empty, false
 	}
-	// This pure-fold harness has no inner/outer split: canonical == the block's own id.
-	return n.parent, n.height, id, true
+	// This pure-fold harness has no inner/outer split: canonical == the block's own id,
+	// so a block's parent-canonical is simply its parent id.
+	return n.parent, n.height, id, n.parent, true
+}
+
+// WrapperByCanonical: canonical == id in this bare harness, so the only wrapper of an
+// inner id IS that id — resolvable only when actually tracked (a genuinely-missing block
+// still misses, preserving the behind-node defer).
+func (d mapDAG) WrapperByCanonical(canonical ids.ID, height uint64) (ids.ID, bool) {
+	if n, ok := d[canonical]; ok && n.height == height {
+		return canonical, true
+	}
+	return ids.Empty, false
 }
 
 func (d mapDAG) Children(id ids.ID) []ids.ID {
