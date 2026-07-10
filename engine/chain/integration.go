@@ -69,6 +69,13 @@ type NetworkConfig struct {
 	// set weights.
 	StakeSource StakeSource
 
+	// QuasarObserver (optional) is notified when the EXPORT (Quasar, ⅔-by-stake) frontier
+	// advances. The node wires it to push the export-final height into the VM so the EVM
+	// `finalized`/`safe` block tags and the warp export gate read the Quasar tip — NEVER the
+	// reorgable Nova/accept tip (the semantic-collapse the two-tier split exists to prevent).
+	// Fires strictly after the block's Nova accept, monotonically. nil = no export surface.
+	QuasarObserver func(canonical ids.ID, height uint64)
+
 	// ValidatorSetRoot (optional) binds every vote/cert to the active weighted
 	// validator set at the block's height (the MEDIUM fix), so the ⅔-by-stake
 	// predicate is ENFORCED at the cert-position epoch: a cert gathered under one
@@ -342,6 +349,13 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 		if cfg.ValidatorSetRoot != nil {
 			WithValidatorSetRoot(cfg.ValidatorSetRoot)(engine)
 		}
+	}
+
+	// Export-frontier observer: the node wires this to push the EXPORT (Quasar, ⅔-by-stake)
+	// height into the VM so the EVM `finalized`/`safe` tags and warp export gate read the Quasar
+	// tip, never the reorgable Nova/accept tip. nil on a chain with no export surface.
+	if cfg.QuasarObserver != nil {
+		WithQuasarObserver(cfg.QuasarObserver)(engine)
 	}
 
 	// Durable non-equivocation guard (HIGH-1): persist each (height,epoch)→canonical

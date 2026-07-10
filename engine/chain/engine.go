@@ -310,6 +310,17 @@ func WithStakeWeighting(stake StakeSource) Option {
 	}
 }
 
+// WithQuasarObserver registers a callback fired when the EXPORT (Quasar, ⅔-by-stake) frontier
+// advances — the ONE seam an export surface uses to track the exportable tip. The node wires it
+// to push the export-final height into the VM (EVM `finalized`/`safe`, warp export gating), so
+// those surfaces read the Quasar tip and NEVER the reorgable Nova/accept tip. Fires strictly
+// after the block's Nova accept, monotonically. nil is a no-op (no export surface).
+func WithQuasarObserver(fn func(canonical ids.ID, height uint64)) Option {
+	return func(t *Transitive) {
+		t.quasarObserver = fn
+	}
+}
+
 // WithStrictPQ marks the engine as running under a STRICT post-quantum security
 // profile (the node derives this from the chain's consensus profile —
 // config.Profile.IsStrict()). When set, Mode() additionally requires a PQ
@@ -618,20 +629,20 @@ type Transitive struct {
 	// present (a stake-weighted chain that can export); nil on an equal-stake/dev/K==1 chain
 	// (Nova-only, no cross-chain export). See attestation.go.
 	quasarAttestor *QuasarAttestor
-	// attestorEpochMu guards attestorEpoch. attestorEpoch maps a value-chain height to the
-	// P-chain epoch height its weighted set is pinned to, so the attestor resolves per-voter
-	// pubkeys + the ⅔-stake tally at the SAME epoch the Nova cert was verified under (MEDIUM-1
-	// parity). Populated by promoteQuasarLocked from the block's recorded pChainHeight before
-	// feeding; identity (epoch==height) for a fixed-set chain where the set does not vary.
-	// Pruned below the finalized height alongside the attestor's own window.
-	attestorEpochMu sync.Mutex
-	attestorEpoch   map[uint64]uint64
-	// acceptedPos remembers the signed VotePosition + epoch of a Nova-accepted block, keyed by
-	// its outer id, so a LATE accept vote — the ⅔-th stake vote necessarily trails the
-	// bare-majority accept and arrives when the pending block is already dropped — can still be
-	// attested (verified against the exact signed bytes) and complete the export cert. Bounded to
-	// the attestor window (pruneQuasarBelow). Guarded by attestorEpochMu.
-	acceptedPos map[ids.ID]acceptedPos
+	// quasarObserver (optional) is notified when the EXPORT (Quasar, ⅔-by-stake) frontier
+	// advances — the ONE seam an export surface (a bridge, the EVM `finalized`/`safe` tag, the
+	// warp export gate) subscribes to so it reads the Quasar tip, NEVER the reorgable Nova/accept
+	// tip. Called by ingestAttestation strictly AFTER the block's Nova accept, monotonically, WITHOUT
+	// t.mu. nil on a chain with no export surface. Set via WithQuasarObserver.
+	quasarObserver func(canonical ids.ID, height uint64)
+	// acceptedPosMu guards acceptedPos. acceptedPos remembers the signed VotePosition + P-chain
+	// epoch of a Nova-accepted block, keyed by its outer id, so a LATE accept vote — the ⅔-th
+	// stake vote necessarily trails the bare-majority accept and arrives when the pending block is
+	// already dropped — can still be attested (verified against the exact signed bytes, at the
+	// exact epoch, both carried as VALUES on the record) and complete the export cert. Bounded to
+	// the attestor window (pruneQuasarBelow).
+	acceptedPosMu sync.Mutex
+	acceptedPos   map[ids.ID]acceptedPos
 	// responsiveStakeNum/Den record the stake that voted on the most recently accepted block
 	// (numerator) out of the epoch's total (denominator) — the degraded-mode RPC signal
 	// (responsiveStakePct + certificateAvailable). Guarded by t.mu. Zero denominator ⇒
@@ -857,10 +868,7 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 	// epoch (identity for a fixed set). Constructed once, here, so the Quasar frontier has a
 	// single producer.
 	if t.voteVerifier != nil && t.stakeSource != nil && t.quasarAttestor == nil {
-		if t.attestorEpoch == nil {
-			t.attestorEpoch = make(map[uint64]uint64)
-		}
-		t.quasarAttestor = NewQuasarAttestor(t.voteVerifier, t.stakeSource, t.attestorEpochOf)
+		t.quasarAttestor = NewQuasarAttestor(t.voteVerifier, t.stakeSource)
 	}
 
 	// A signing validator SHOULD have a durable equivocation guard so a crash between
@@ -3355,9 +3363,9 @@ func (t *Transitive) ingestAttestation(pos VotePosition, epochHeight uint64, sv 
 	if attestor == nil {
 		return
 	}
-	// Resolve the attestor's height→epoch so it verifies at the SAME epoch the Nova cert did.
-	t.setAttestorEpoch(pos.Height, epochHeight)
-	cert, emitted, _ := attestor.Ingest(pos, sv)
+	// The epoch is passed as a VALUE bound to this position — the SAME epoch the Nova cert was
+	// verified under — so the attestor never crosses epochs on a same-height fork (values, not places).
+	cert, emitted, _ := attestor.Ingest(pos, epochHeight, sv)
 	if !emitted {
 		return
 	}
@@ -3376,11 +3384,23 @@ func (t *Transitive) ingestAttestation(pos VotePosition, epochHeight uint64, sv 
 		// clear once export forms, not stay pinned to the bare-majority Nova cert that froze earlier.
 		t.mu.RLock()
 		stake := t.stakeSource
+		observer := t.quasarObserver
 		t.mu.RUnlock()
 		t.recordResponsiveStake(stake, cert.Votes, epochHeight)
+		canonical := pos.CanonicalID
+		if canonical == ids.Empty {
+			canonical = pos.BlockID
+		}
+		// PUSH the export frontier advance to the VM/consumers (bridges / EVM `finalized`/`safe` /
+		// warp export gating), symmetric with how block.Accept pushes the Nova tip. The observer is
+		// the ONE seam an export surface subscribes to; it fires strictly AFTER the block's Nova
+		// accept, monotonically. Best-effort, WITHOUT t.mu.
+		if observer != nil {
+			observer(canonical, pos.Height)
+		}
 		if t.log != nil {
 			t.log.Debug("quasar: export frontier advanced (⅔-by-stake certificate formed)",
-				"height", pos.Height, "canonical", pos.CanonicalID)
+				"height", pos.Height, "canonical", canonical)
 		}
 	}
 }
@@ -3395,10 +3415,10 @@ type acceptedPos struct {
 // rememberAcceptedPos records the accepted block's signed position + epoch keyed by its outer
 // id, so a LATE accept vote (the ⅔-th stake vote trails the bare-majority Nova accept) can be
 // fed to the attestor after the pending block is dropped. Bounded: pruned to the attestor
-// window. Guarded by attestorEpochMu (co-located with the epoch map it complements).
+// window.
 func (t *Transitive) rememberAcceptedPos(pos VotePosition, epoch uint64) {
-	t.attestorEpochMu.Lock()
-	defer t.attestorEpochMu.Unlock()
+	t.acceptedPosMu.Lock()
+	defer t.acceptedPosMu.Unlock()
 	if t.acceptedPos == nil {
 		t.acceptedPos = make(map[ids.ID]acceptedPos)
 	}
@@ -3409,8 +3429,8 @@ func (t *Transitive) rememberAcceptedPos(pos VotePosition, epoch uint64) {
 // finalized) outer block id, so a trailing vote can be attested against the exact bytes the
 // accept votes signed. ok=false when the block is unknown or aged out of the window.
 func (t *Transitive) lookupAcceptedPos(blockID ids.ID) (acceptedPos, bool) {
-	t.attestorEpochMu.Lock()
-	defer t.attestorEpochMu.Unlock()
+	t.acceptedPosMu.Lock()
+	defer t.acceptedPosMu.Unlock()
 	ap, ok := t.acceptedPos[blockID]
 	return ap, ok
 }
@@ -3458,29 +3478,10 @@ func (t *Transitive) recordResponsiveStake(stake StakeSource, votes []SignedVote
 
 // attestorEpochOf maps a value-chain height to the P-chain epoch its weighted set is pinned to
 // — the attestor's per-voter pubkey + ⅔-stake resolution epoch. Returns the recorded epoch, or
-// the height itself (identity) for a fixed-set chain where the set does not vary by epoch.
-func (t *Transitive) attestorEpochOf(height uint64) uint64 {
-	t.attestorEpochMu.Lock()
-	defer t.attestorEpochMu.Unlock()
-	if e, ok := t.attestorEpoch[height]; ok {
-		return e
-	}
-	return height
-}
-
-// setAttestorEpoch records a height→epoch binding for the attestor's epochOf resolution.
-func (t *Transitive) setAttestorEpoch(height, epoch uint64) {
-	t.attestorEpochMu.Lock()
-	defer t.attestorEpochMu.Unlock()
-	if t.attestorEpoch == nil {
-		t.attestorEpoch = make(map[uint64]uint64)
-	}
-	t.attestorEpoch[height] = epoch
-}
-
-// pruneQuasarBelow bounds the trailing export machinery (attestor buckets/certs + epoch map)
-// to a window below the finalized height — the external cert chain is persisted by its
-// consumer; the engine keeps only a live window. No-op when no attestor is wired.
+// pruneQuasarBelow bounds the trailing export machinery (attestor buckets/certs + the
+// remembered accepted positions) to a window below the finalized height — the external cert
+// chain is persisted by its consumer; the engine keeps only a live window. No-op when no
+// attestor is wired.
 func (t *Transitive) pruneQuasarBelow(height uint64) {
 	t.mu.RLock()
 	attestor := t.quasarAttestor
@@ -3488,18 +3489,13 @@ func (t *Transitive) pruneQuasarBelow(height uint64) {
 	if attestor != nil {
 		attestor.PruneBelow(height)
 	}
-	t.attestorEpochMu.Lock()
-	for h := range t.attestorEpoch {
-		if h < height {
-			delete(t.attestorEpoch, h)
-		}
-	}
+	t.acceptedPosMu.Lock()
 	for id, ap := range t.acceptedPos {
 		if ap.pos.Height < height {
 			delete(t.acceptedPos, id)
 		}
 	}
-	t.attestorEpochMu.Unlock()
+	t.acceptedPosMu.Unlock()
 }
 
 // FinalityStatus is the two-tier finality snapshot for RPC / degraded-mode visibility. Each
@@ -3559,6 +3555,13 @@ func (t *Transitive) NovaTip() ids.ID { return t.consensus.GetNovaTip() }
 // QuasarHeight returns the highest export-final (Quasar) height and whether any ⅔-stake cert
 // has formed. Complements GetFinalizedHeight (the Nova/accept height).
 func (t *Transitive) QuasarHeight() (uint64, bool) { return t.consensus.QuasarHeight() }
+
+// SyncQuasarFrontier conservatively (re)seeds the EXPORT (Quasar) frontier from a durable source
+// — the node calls it on boot with the VM's persisted export-final block so GetQuasarTip /
+// QuasarHeight do not regress on restart. Advance-only (never moves the frontier backward).
+func (t *Transitive) SyncQuasarFrontier(canonical ids.ID, height uint64) {
+	t.consensus.SyncQuasarFrontier(canonical, height)
+}
 
 // QuasarCertAt returns the EXPORT (Quasar, ⅔-by-stake) certificate for a height, if one has
 // formed — the portable witness a bridge / DEX settlement (0x9999) / cross-chain consumer
