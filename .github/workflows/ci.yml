@@ -14,7 +14,7 @@ permissions:
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
 
   benchmark:
     name: Benchmark
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     permissions:
       pull-requests: write
     steps:
@@ -117,7 +117,7 @@ jobs:
 
   test-c:
     name: Test C
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -135,7 +135,7 @@ jobs:
 
   test-rust:
     name: Test Rust
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -155,7 +155,7 @@ jobs:
 
   test-python:
     name: Test Python
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     continue-on-error: true  # Python tests optional (may need additional deps)
     steps:
       - name: Checkout code
@@ -185,7 +185,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -204,7 +204,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     strategy:
       matrix:
         os: [linux, darwin, windows]
@@ -240,7 +240,7 @@ jobs:
     # Only require core implementations (Go, C, Rust) + lint + build
     # C++ and Python are optional (continue-on-error: true)
     needs: [test, test-c, test-rust, lint, build]
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
