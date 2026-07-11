@@ -11,7 +11,7 @@ jobs:
   # Python SDK with Cython bindings to C library
   python-sdk:
     name: Python SDK
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     continue-on-error: true  # Optional - comprehensive tests may need Cython FFI build
     strategy:
       matrix:
@@ -55,7 +55,7 @@ jobs:
   # Go SDK
   go-sdk:
     name: Go SDK
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     continue-on-error: true  # GPU pipeline tests can be flaky
 
     steps:
@@ -81,7 +81,7 @@ jobs:
   # C SDK - Core library
   c-sdk:
     name: C SDK
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
 
     steps:
       - uses: actions/checkout@v4
@@ -114,7 +114,7 @@ jobs:
   # Rust SDK - FFI wrapper
   rust-sdk:
     name: Rust SDK (FFI)
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     continue-on-error: true  # Optional - FFI benchmarks need C library bindings
 
     steps:
@@ -147,7 +147,7 @@ jobs:
   # Final summary
   summary:
     name: SDK Summary
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     needs: [python-sdk, go-sdk, c-sdk, rust-sdk]
     if: always()
 
