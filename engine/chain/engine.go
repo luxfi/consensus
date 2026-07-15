@@ -1077,6 +1077,22 @@ func (t *Transitive) SetVM(vm BlockBuilder) {
 	t.vm = vm
 }
 
+// SetLogger sets the engine logger after construction. The integration layer
+// builds the engine via NewWithParams (which carries no logger), so without
+// this setter the engine keeps its log.Noop() default and EVERY internal
+// decision — build-loop drops, verify failures, AddBlock rejections, vote-path
+// faults — is silently discarded. A rebuild storm ran 4M iterations with zero
+// engine log lines because of exactly that. Nil / zero loggers are ignored so
+// callers can pass their config logger unconditionally.
+func (t *Transitive) SetLogger(l log.Logger) {
+	if l == nil || l.IsZero() {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.log = l
+}
+
 // -----------------------------------------------------------------------------
 // Consensus operations
 // -----------------------------------------------------------------------------
