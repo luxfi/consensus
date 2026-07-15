@@ -3783,6 +3783,15 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		// so peer votes accumulate on one ID to α instead of scattering. A new
 		// parent/height is a new key and builds normally. Re-solicit is K>1 only.
 		if existing := t.pendingOwnProposals[t.proposalKeyOf(consensusBlock)]; existing != nil && !existing.Decided {
+			// The VM re-wrapped an undecided slot. This is expected ONCE in a while; a sustained
+			// stream means the slot is never being decided and the VM is spinning (rebuild storm).
+			t.log.Info("rebuilt an undecided slot — re-soliciting votes",
+				"newBlkID", vmBlock.ID(),
+				"existingBlkID", existing.ConsensusBlock.id,
+				"keyParentID", consensusBlock.parentID,
+				"keyHeight", consensusBlock.height,
+				"existingHeight", existing.ConsensusBlock.height,
+				"K", t.consensus.K())
 			reSolicit := t.proposer != nil && t.consensus.K() > 1
 			reqBlockID, reqBlockData := existing.ConsensusBlock.id, existing.ConsensusBlock.data
 			t.mu.Unlock()
