@@ -3798,6 +3798,19 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		// is never added to consensus, so IsAccepted cannot return true for it.
 		t.mu.Unlock()
 		if err := vmBlock.Verify(ctx); err != nil {
+			// A block we built ourselves that fails its OWN verification is a real fault
+			// (VM state, proposer/epoch rule, timestamp window...). Dropping it silently left
+			// the node in an INVISIBLE HOT LOOP: the VM keeps re-notifying while its txs sit in
+			// the mempool, so the engine rebuilds → drops → rebuilds forever — no block ever
+			// enters consensus and NOT ONE log line says why (observed: 4.07M consecutive
+			// "built block" lines, chain stuck at height 1, zero errors logged). The drop itself
+			// is correct (an unverifiable block must never reach consensus); the SILENCE is the
+			// bug. Log the fault so it is diagnosable at the point of failure.
+			t.log.Error("built block failed verification — dropping",
+				"blkID", vmBlock.ID(),
+				"height", vmBlock.Height(),
+				"parentID", vmBlock.ParentID(),
+				"error", err)
 			t.mu.Lock()
 			continue
 		}
