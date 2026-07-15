@@ -3824,6 +3824,19 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		t.mu.Lock()
 
 		if addErr != nil {
+			// Same silent-drop class as the Verify failure above. consensus.AddBlock's only
+			// rejection is "block already exists" — which a self-built block hits whenever the
+			// VM re-mints an IDENTICAL envelope (the proposervm block timestamp is truncated to
+			// a whole second, so every rebuild inside that second yields the SAME blkID). The
+			// bare continue then skipped Propose/RequestVotes entirely: the block was never sent
+			// to peers, never voted on, never decided — while the VM kept re-notifying because
+			// its txs were still pending. Result: a silent rebuild storm with the chain pinned at
+			// its height and no log line naming the cause. Log it at the point of the drop.
+			t.log.Error("built block rejected by consensus — dropping",
+				"blkID", vmBlock.ID(),
+				"height", vmBlock.Height(),
+				"parentID", vmBlock.ParentID(),
+				"error", addErr)
 			continue
 		}
 
