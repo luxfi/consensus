@@ -106,7 +106,7 @@ require (
 	github.com/luxfi/container v0.0.4 // indirect
 	github.com/luxfi/corona v0.10.3 // indirect
 	github.com/luxfi/crypto/ipa v1.2.4 // indirect
-	github.com/luxfi/geth v1.17.11 // indirect
+	github.com/luxfi/geth v1.20.1 // indirect
 	github.com/luxfi/lens v0.1.4 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.1 // indirect
