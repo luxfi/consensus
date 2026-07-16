@@ -180,7 +180,7 @@ github.com/leanovate/gopter v0.2.11 h1:vRjThO1EKPb/1NsDXuDrzldR28RLkBflWYcU9CvzW
 github.com/leanovate/gopter v0.2.11/go.mod h1:aK3tzZP/C+p1m3SPRE4SYZFGP7jjkuSI4f7Xvpt0S9c=
 github.com/luxfi/accel v1.2.4 h1:5VbIHyEvvfobn2zBiTFODxDw1CeqxCepZOLlvkuf9yQ=
 github.com/luxfi/accel v1.2.4/go.mod h1:ISIwAX+ZfsL/S5nsP2JvfldXN6Nc+QzoWf6Jtaq+xsQ=
-github.com/luxfi/age v1.5.0 h1:G69HbSV4R3vKEH9B0CulnRaMdSdf4RalMgP8xKmxHeI=
+github.com/luxfi/age v1.5.0 h1:zC/Fw/ptZwAXr9nqrxmrcf8752EIl1Lq9RECp9OmCO0=
 github.com/luxfi/age v1.5.0/go.mod h1:iAYAxgvrXxcy746+Ovh/eWWDuF9teJLNcCSSOX9RYW0=
 github.com/luxfi/atomic v1.0.0 h1:xUV60MuzRvXngaQ1sM0yVC2v4TRoLlUGkkH7M9PS4yw=
 github.com/luxfi/atomic v1.0.0/go.mod h1:0G2mTlQ6TXWHICUHrUUPu1/qAiIyR4gSZ2tva9ci/bI=
@@ -206,8 +206,8 @@ github.com/luxfi/database v1.19.3 h1:flss7/VSGf29l1yZvPwazbtp87X5qfnZGPCU5ObqttQ
 github.com/luxfi/database v1.19.3/go.mod h1:S/LvmfzNYWVNslcEcZwDrntqUO2ksaL8ql1nRmLUA/Q=
 github.com/luxfi/dkg v0.3.5 h1:s2L2mMQaz+n9m0b0ghvoV5VZNxiwb2z4WrGugvK0udY=
 github.com/luxfi/dkg v0.3.5/go.mod h1:M+WH7GFRN+YUD851Rlnumdp0Md98kplNN8pVx65U8I8=
-github.com/luxfi/geth v1.17.11 h1:opyVqYiH3t4qglAdMymudxKIO09O1LWB9tKGc57o9sA=
-github.com/luxfi/geth v1.17.11/go.mod h1:3vQfQJd9JC+AVBjxNXa9PYQOqpbE2dKu8E3jqhPZ3LU=
+github.com/luxfi/geth v1.20.1 h1:QUGQr4AKvADjwMi7t8a0OfoyxShgEcI9pwie1jFYfm0=
+github.com/luxfi/geth v1.20.1/go.mod h1:GV5bIMEgWviRN+jPXERyVpI16H3iHqPcdIokDoZdrvU=
 github.com/luxfi/ids v1.3.0 h1:11xnwRDm6zQzbqcRnkFujOYkvhK4Fs/+g+sKRlRUNsU=
 github.com/luxfi/ids v1.3.0/go.mod h1:6vpdcdZW0qxeade+3xby8aLTutbcJ7O0r8+fNQrksGI=
 github.com/luxfi/lattice/v7 v7.1.4 h1:hQR02M6cHTAV5+joOPi9gb9Gm+z/hKJnhJF4IlciIJs=
