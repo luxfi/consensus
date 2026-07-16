@@ -3766,6 +3766,17 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			break
 		}
 
+		// CONSUME the demand for THIS attempt BEFORE calling out (avalanchego's model:
+		// snow/engine/snowman decrements pendingBuildBlocks before BuildBlock and treats a
+		// failed build as consumed). The old code held the demand on error and returned, so
+		// the very next Notify re-entered and re-called BuildBlock — and under single-proposer
+		// scheduling a NON-leader's BuildBlock ALWAYS fails ("not our proposer slot") until its
+		// window opens, so the held demand became an unbounded hot spin (a non-leader burned CPU
+		// rebuilding a slot it can never win, 4 of 5 nodes, forever). Consuming it makes a failed
+		// build cost exactly one attempt; the node re-attempts on a FRESH trigger — its slot
+		// opening (proposervm WaitForEvent) or the elected leader's block advancing our tip.
+		t.pendingBuildBlocks--
+
 		// UNLOCK-BEFORE-CALL-OUT: BuildBlock is an external VM call — release t.mu around it, then
 		// re-acquire to process (buildBlocksLocked is entered and returns with t.mu held). The loop
 		// re-checks pendingBuildBlocks after re-lock, so a concurrent change is handled.
@@ -3773,14 +3784,19 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		vmBlock, err := t.vm.BuildBlock(ctx)
 		t.mu.Lock()
 		if err != nil {
-			t.log.Error("BuildBlock failed, will retry next tick",
-				"error", err,
-				"pendingBuildBlocks", t.pendingBuildBlocks)
-			// Do NOT decrement pendingBuildBlocks — the request is still
-			// outstanding and will be retried on the next Notify or pipeline tick.
+			// Not a fault: most commonly "not this node's proposer slot" under
+			// single-proposer scheduling — the normal state for every non-leader at
+			// each height. This attempt is already consumed; CLEAR any remaining
+			// queued demand too, because it would fail identically on this same tick
+			// (same preference, same slot). Then wait for a FRESH trigger — the
+			// node's slot opening (proposervm WaitForEvent) or the leader's block
+			// advancing our tip — rather than re-calling BuildBlock every notify (the
+			// old hot spin). Debug (not Error) so a healthy fleet stays quiet.
+			t.pendingBuildBlocks = 0
+			t.log.Debug("BuildBlock produced no block (likely not our proposer slot) — waiting for a fresh trigger",
+				"error", err)
 			return nil
 		}
-		t.pendingBuildBlocks--
 
 		t.blocksBuilt++
 
