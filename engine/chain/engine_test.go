@@ -1498,9 +1498,15 @@ func (m *failingBuildVM) SetPreference(_ context.Context, id ids.ID) error {
 	return nil
 }
 
-// TestBuildBlockError_DoesNotDecrementPending verifies Q-01: BuildBlock error
-// must not decrement pendingBuildBlocks so the build is retried.
-func TestBuildBlockError_DoesNotDecrementPending(t *testing.T) {
+// TestBuildBlockError_ConsumesDemand verifies that a BuildBlock error CONSUMES
+// the build demand (does NOT hold it), so a failing build costs exactly one
+// attempt instead of spinning. Under single-proposer scheduling a non-leader's
+// BuildBlock always fails ("not our slot") until its window opens; the previous
+// hold-the-demand behavior turned that into an unbounded hot loop (4 of 5 nodes
+// rebuilding a slot they can never win). Liveness is preserved by FRESH triggers
+// — the node's slot opening or the leader's block advancing the tip — verified in
+// TestBuildBlockError_RetriesOnNextNotify.
+func TestBuildBlockError_ConsumesDemand(t *testing.T) {
 	vm := &failingBuildVM{failCount: 1}
 	eng := newTestEngine(WithVM(vm))
 
@@ -1514,14 +1520,15 @@ func TestBuildBlockError_DoesNotDecrementPending(t *testing.T) {
 		t.Fatalf("Notify: %v", err)
 	}
 
-	// BuildBlock was called once (and failed)
+	// BuildBlock was called exactly once (and failed)
 	if vm.callCount != 1 {
 		t.Fatalf("expected 1 BuildBlock call, got %d", vm.callCount)
 	}
 
-	// pendingBuildBlocks must still be 1 — NOT decremented on error
-	if got := eng.PendingBuildBlocks(); got != 1 {
-		t.Fatalf("expected pendingBuildBlocks=1 after error, got %d", got)
+	// pendingBuildBlocks must be 0 — the failed attempt CONSUMED its demand,
+	// so the engine does not re-call BuildBlock every tick (no spin).
+	if got := eng.PendingBuildBlocks(); got != 0 {
+		t.Fatalf("expected pendingBuildBlocks=0 (consumed on error), got %d", got)
 	}
 }
 
@@ -1536,36 +1543,36 @@ func TestBuildBlockError_RetriesOnNextNotify(t *testing.T) {
 	}
 	defer eng.Stop(context.Background())
 
-	// First Notify: BuildBlock fails, counter stays at 1
+	// First Notify: BuildBlock fails and the demand is consumed (no spin).
 	eng.Notify(context.Background(), Message{Type: PendingTxs})
 	if vm.callCount != 1 {
 		t.Fatalf("expected 1 call after first Notify, got %d", vm.callCount)
 	}
-	if eng.PendingBuildBlocks() != 1 {
-		t.Fatalf("expected pendingBuildBlocks=1 after error, got %d", eng.PendingBuildBlocks())
+	if eng.PendingBuildBlocks() != 0 {
+		t.Fatalf("expected pendingBuildBlocks=0 (consumed on error), got %d", eng.PendingBuildBlocks())
 	}
 
-	// Second Notify: adds another pending + retries. failCount=1 means second
-	// call succeeds. The loop processes both pending (the retained one + new one).
+	// A FRESH Notify re-attempts — this is the liveness path (the node's slot
+	// opened / the leader's block advanced the tip). failCount=1 so this one
+	// succeeds and builds the block.
 	eng.Notify(context.Background(), Message{Type: PendingTxs})
-
-	// Second call succeeded, third call is the second pending item.
-	// Call 2 succeeded (first pending consumed), call 3 succeeded (second pending consumed).
-	if vm.callCount < 2 {
-		t.Fatalf("expected at least 2 BuildBlock calls after retry, got %d", vm.callCount)
+	if vm.callCount != 2 {
+		t.Fatalf("expected 2 BuildBlock calls after retry, got %d", vm.callCount)
 	}
 
-	// All pending should be consumed now
+	// Demand consumed, block built.
 	if got := eng.PendingBuildBlocks(); got != 0 {
 		t.Fatalf("expected pendingBuildBlocks=0 after successful retry, got %d", got)
 	}
 }
 
 // TestBuildBlockError_RepeatedFailures_NoPermanentHalt verifies that repeated
-// BuildBlock failures don't permanently halt block production. Each Notify
-// retains the counter, so future Notifys always attempt to build.
+// BuildBlock failures neither spin nor accumulate, and never permanently halt
+// production. Each failed attempt CONSUMES its demand (no hot loop, no growing
+// counter); a fresh Notify after recovery builds a block. Liveness comes from
+// fresh triggers, not from hoarding stale demand.
 func TestBuildBlockError_RepeatedFailures_NoPermanentHalt(t *testing.T) {
-	vm := &failingBuildVM{failCount: 100} // fails 100 times
+	vm := &failingBuildVM{failCount: 100} // fails the first 100 attempts
 	eng := newTestEngine(WithVM(vm))
 
 	if err := eng.Start(context.Background(), true); err != nil {
@@ -1573,28 +1580,29 @@ func TestBuildBlockError_RepeatedFailures_NoPermanentHalt(t *testing.T) {
 	}
 	defer eng.Stop(context.Background())
 
-	// Send 5 notifications — all will fail but counter grows
+	// Send 5 notifications — each fails and is CONSUMED (one attempt apiece).
 	for i := 0; i < 5; i++ {
 		eng.Notify(context.Background(), Message{Type: PendingTxs})
 	}
 
-	// pendingBuildBlocks should be 5 — none consumed because all failed
-	if got := eng.PendingBuildBlocks(); got != 5 {
-		t.Fatalf("expected pendingBuildBlocks=5 after 5 failures, got %d", got)
+	// No accumulation, no spin: exactly 5 attempts, 0 demand left.
+	if vm.callCount != 5 {
+		t.Fatalf("expected exactly 5 BuildBlock attempts (one per Notify), got %d", vm.callCount)
+	}
+	if got := eng.PendingBuildBlocks(); got != 0 {
+		t.Fatalf("expected pendingBuildBlocks=0 (each failure consumed), got %d", got)
 	}
 
-	// Now make BuildBlock succeed (lower failCount below callCount)
+	// Recovery: make BuildBlock succeed. A fresh Notify builds one block.
 	vm.failCount = vm.callCount // next call will succeed
 
-	// Next Notify adds one more pending (total 6) and retries — all 6 should build
 	eng.Notify(context.Background(), Message{Type: PendingTxs})
 
 	if got := eng.PendingBuildBlocks(); got != 0 {
 		t.Fatalf("expected pendingBuildBlocks=0 after recovery, got %d", got)
 	}
-
-	if len(vm.blocks) < 6 {
-		t.Fatalf("expected at least 6 blocks built after recovery, got %d", len(vm.blocks))
+	if len(vm.blocks) < 1 {
+		t.Fatalf("expected a block built after recovery, got %d", len(vm.blocks))
 	}
 }
 

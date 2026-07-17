@@ -1103,6 +1103,22 @@ func (t *Transitive) SetVM(vm BlockBuilder) {
 	t.vm = vm
 }
 
+// SetLogger sets the engine logger after construction. The integration layer
+// builds the engine via NewWithParams (which carries no logger), so without
+// this setter the engine keeps its log.Noop() default and EVERY internal
+// decision — build-loop drops, verify failures, AddBlock rejections, vote-path
+// faults — is silently discarded. A rebuild storm ran 4M iterations with zero
+// engine log lines because of exactly that. Nil / zero loggers are ignored so
+// callers can pass their config logger unconditionally.
+func (t *Transitive) SetLogger(l log.Logger) {
+	if l == nil || l.IsZero() {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.log = l
+}
+
 // -----------------------------------------------------------------------------
 // Consensus operations
 // -----------------------------------------------------------------------------
@@ -3884,6 +3900,17 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			break
 		}
 
+		// CONSUME the demand for THIS attempt BEFORE calling out (avalanchego's model:
+		// snow/engine/snowman decrements pendingBuildBlocks before BuildBlock and treats a
+		// failed build as consumed). The old code held the demand on error and returned, so
+		// the very next Notify re-entered and re-called BuildBlock — and under single-proposer
+		// scheduling a NON-leader's BuildBlock ALWAYS fails ("not our proposer slot") until its
+		// window opens, so the held demand became an unbounded hot spin (a non-leader burned CPU
+		// rebuilding a slot it can never win, 4 of 5 nodes, forever). Consuming it makes a failed
+		// build cost exactly one attempt; the node re-attempts on a FRESH trigger — its slot
+		// opening (proposervm WaitForEvent) or the elected leader's block advancing our tip.
+		t.pendingBuildBlocks--
+
 		// UNLOCK-BEFORE-CALL-OUT: BuildBlock is an external VM call — release t.mu around it, then
 		// re-acquire to process (buildBlocksLocked is entered and returns with t.mu held). The loop
 		// re-checks pendingBuildBlocks after re-lock, so a concurrent change is handled.
@@ -3891,14 +3918,19 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		vmBlock, err := t.vm.BuildBlock(ctx)
 		t.mu.Lock()
 		if err != nil {
-			t.log.Error("BuildBlock failed, will retry next tick",
-				"error", err,
-				"pendingBuildBlocks", t.pendingBuildBlocks)
-			// Do NOT decrement pendingBuildBlocks — the request is still
-			// outstanding and will be retried on the next Notify or pipeline tick.
+			// Not a fault: most commonly "not this node's proposer slot" under
+			// single-proposer scheduling — the normal state for every non-leader at
+			// each height. This attempt is already consumed; CLEAR any remaining
+			// queued demand too, because it would fail identically on this same tick
+			// (same preference, same slot). Then wait for a FRESH trigger — the
+			// node's slot opening (proposervm WaitForEvent) or the leader's block
+			// advancing our tip — rather than re-calling BuildBlock every notify (the
+			// old hot spin). Debug (not Error) so a healthy fleet stays quiet.
+			t.pendingBuildBlocks = 0
+			t.log.Debug("BuildBlock produced no block (likely not our proposer slot) — waiting for a fresh trigger",
+				"error", err)
 			return nil
 		}
-		t.pendingBuildBlocks--
 
 		t.blocksBuilt++
 
@@ -3917,6 +3949,15 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		// so peer votes accumulate on one ID to α instead of scattering. A new
 		// parent/height is a new key and builds normally. Re-solicit is K>1 only.
 		if existing := t.pendingOwnProposals[t.proposalKeyOf(consensusBlock)]; existing != nil && !existing.Decided {
+			// The VM re-wrapped an undecided slot. This is expected ONCE in a while; a sustained
+			// stream means the slot is never being decided and the VM is spinning (rebuild storm).
+			t.log.Info("rebuilt an undecided slot — re-soliciting votes",
+				"newBlkID", vmBlock.ID(),
+				"existingBlkID", existing.ConsensusBlock.id,
+				"keyParentID", consensusBlock.parentID,
+				"keyHeight", consensusBlock.height,
+				"existingHeight", existing.ConsensusBlock.height,
+				"K", t.consensus.K())
 			reSolicit := t.proposer != nil && t.consensus.K() > 1
 			reqBlockID, reqBlockData := existing.ConsensusBlock.id, existing.ConsensusBlock.data
 			t.mu.Unlock()
@@ -3932,6 +3973,19 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		// is never added to consensus, so IsAccepted cannot return true for it.
 		t.mu.Unlock()
 		if err := vmBlock.Verify(ctx); err != nil {
+			// A block we built ourselves that fails its OWN verification is a real fault
+			// (VM state, proposer/epoch rule, timestamp window...). Dropping it silently left
+			// the node in an INVISIBLE HOT LOOP: the VM keeps re-notifying while its txs sit in
+			// the mempool, so the engine rebuilds → drops → rebuilds forever — no block ever
+			// enters consensus and NOT ONE log line says why (observed: 4.07M consecutive
+			// "built block" lines, chain stuck at height 1, zero errors logged). The drop itself
+			// is correct (an unverifiable block must never reach consensus); the SILENCE is the
+			// bug. Log the fault so it is diagnosable at the point of failure.
+			t.log.Error("built block failed verification — dropping",
+				"blkID", vmBlock.ID(),
+				"height", vmBlock.Height(),
+				"parentID", vmBlock.ParentID(),
+				"error", err)
 			t.mu.Lock()
 			continue
 		}
@@ -3945,6 +3999,19 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		t.mu.Lock()
 
 		if addErr != nil {
+			// Same silent-drop class as the Verify failure above. consensus.AddBlock's only
+			// rejection is "block already exists" — which a self-built block hits whenever the
+			// VM re-mints an IDENTICAL envelope (the proposervm block timestamp is truncated to
+			// a whole second, so every rebuild inside that second yields the SAME blkID). The
+			// bare continue then skipped Propose/RequestVotes entirely: the block was never sent
+			// to peers, never voted on, never decided — while the VM kept re-notifying because
+			// its txs were still pending. Result: a silent rebuild storm with the chain pinned at
+			// its height and no log line naming the cause. Log it at the point of the drop.
+			t.log.Error("built block rejected by consensus — dropping",
+				"blkID", vmBlock.ID(),
+				"height", vmBlock.Height(),
+				"parentID", vmBlock.ParentID(),
+				"error", addErr)
 			continue
 		}
 
