@@ -621,8 +621,10 @@ func TestTransitiveNotifyPendingTxsWithVMError(t *testing.T) {
 	err := engine.Notify(ctx, msg)
 	require.NoError(err) // Errors are swallowed, not fatal
 
-	// Pending builds must NOT be cleared on error — retained for retry (Q-01 fix)
-	require.Equal(1, engine.PendingBuildBlocks())
+	// The failed build CONSUMES its demand (no spin): a non-leader's BuildBlock
+	// fails every slot until its window opens, so holding the demand was an
+	// unbounded hot loop. Liveness comes from fresh triggers, not held demand.
+	require.Equal(0, engine.PendingBuildBlocks())
 }
 
 // TestTransitiveNotifyStateSyncDone tests Notify with StateSyncDone message
