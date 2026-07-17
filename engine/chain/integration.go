@@ -421,6 +421,12 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	// RequestVotes while buildBlocksLocked held t.mu, self-deadlocking on the non-reentrant
 	// t.mu.RLock (the live n=1 freeze), and delivered a redundant vote that could sit uncounted in
 	// handleVote's not-yet-tracked buffer. Both hazards are gone with the path removed.
+	// Wire the runtime logger into the engine. NewWithParams leaves the engine on
+	// its log.Noop() default, which silently discards every internal decision the
+	// engine makes (verify drops, AddBlock rejections, build-loop stalls). The
+	// gossiperProposer below already receives cfg.Logger; the engine must too.
+	engine.SetLogger(cfg.Logger)
+
 	engine.SetProposer(&gossiperProposer{
 		gossiper:   cfg.Gossiper,
 		chainID:    cfg.ChainID,
