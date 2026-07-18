@@ -20,7 +20,7 @@ require (
 	github.com/luxfi/p2p v1.18.9
 	github.com/luxfi/pulsar v1.1.1
 	github.com/luxfi/runtime v1.1.0
-	github.com/luxfi/threshold v1.9.4
+	github.com/luxfi/threshold v1.9.5
 	github.com/luxfi/validators v1.0.0
 	github.com/luxfi/version v1.0.1
 	github.com/luxfi/warp v1.18.5
