@@ -376,8 +376,24 @@ Run: `GOWORK=off go test -v -run TestLuxVsLegacy_EndToEnd -bench=. ./bench/`
 ### Test Status
 - All tests pass except `TestQuantumBundle_ChainIntegrity` which is flaky
   (Pulsar threshold signing nondeterminism -- passes on retry)
+- `TestNovaQuasarMatrix_FourOfFive_ExportsQuasar` is also FLAKY (pre-existing,
+  observed at HEAD `35ab4b25` with the change stashed: 3 fails / 1 pass across
+  isolated and full-suite runs, `CGO_ENABLED=0`; the fail is the 25s export
+  liveness waitFor expiring with `tips=map[]`). Not introduced by any test-only
+  change — needs a look from whoever owns the steer-site work.
 - Build: `GOWORK=off go build ./...`
 - Tests: `GOWORK=off go test -count=1 -short -timeout 300s ./...`
+
+### Restart preserves state — a REAL assertion now (engine/chain)
+`TestRestartPreservesState` used to check only IsBootstrapped/HealthCheck flags
+across Stop/Start — an engine that dropped every accepted block on Stop still
+passed. It now drives a real signed 4-of-5 quorum accept (Nova) through the
+Quasar export cert BEFORE the stop, asserts the consensus-critical triple
+(accepted set via `finalizedByCert`, `Preference()`, `QuasarHeight()`) survives
+the restart unchanged, and then finalizes + certifies a SECOND height on the
+restarted engine. Negative control executed: a Stop that clears
+`finalizedByCert` fails the test at "restart must not lose an accepted block"
+— the old body passed under that same mutilation.
 
 ### SDK Status (Honest Assessment)
 - **Go**: Production-ready (protocol/, engine/, core/)
