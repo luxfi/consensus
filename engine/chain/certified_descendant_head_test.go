@@ -206,3 +206,106 @@ func (m *steerRecordingVM) SetPreference(_ context.Context, id ids.ID) error {
 	m.steers = append(m.steers, id)
 	return nil
 }
+
+// TestAcceptWithCert_UnheldAnchorFallsBackToAccepted is the SINGLE-STORE INVARIANT at the
+// finalize steer — the property ava gets for free by steering at Consensus.Preference()
+// (ava snow/engine/snowman/voter.go, engine.go), a block it only ever obtained by
+// verifying INTO the VM.
+//
+// PreferredBuildTip is a consensus-DAG value, so a node that fell behind can name a tip
+// its own VM does not hold. Steering there is silently lossy, not loud: the proposervm
+// keeps its prior preference and returns nil (node/vms/proposervm/vm.go SetPreference),
+// so the engine's own just-accepted blockID never gets steered either and the VM keeps
+// building on a head OLDER than the block consensus just finalized.
+//
+// Pre-fix the engine steered at the unheld anchor unconditionally. It must fall back to
+// blockID, which VM.Accept has just applied and the VM therefore provably holds.
+func TestAcceptWithCert_UnheldAnchorFallsBackToAccepted(t *testing.T) {
+	e := newTestEngine()
+	ctx := context.Background()
+
+	lower := ids.GenerateTestID() // finalized here at height 1 — the VM HOLDS this
+	upper := ids.GenerateTestID() // the DAG anchor at height 2 — this node does NOT hold it
+
+	cb := &Block{id: lower, parentID: ids.Empty, height: 1}
+	if err := e.consensus.AddBlock(ctx, cb); err != nil {
+		t.Fatalf("AddBlock: %v", err)
+	}
+
+	// The fallen-behind node: `upper` is absent from the VM's store entirely.
+	vm := &steerRecordingVM{orphanVMBase: &orphanVMBase{
+		head: lower,
+		blocks: map[ids.ID]*mockBlock{
+			lower: mb(lower, 1),
+		},
+	}}
+	e.SetVM(vm)
+
+	accepting := &advanceOnAcceptBlock{
+		mockBlock: mb(lower, 1),
+		onAccept: func() {
+			e.consensus.mu.Lock()
+			e.consensus.ledger = twoHeightLedger(lower, 1, upper)
+			e.consensus.mu.Unlock()
+		},
+	}
+	e.mu.Lock()
+	e.pendingBlocks[lower] = &PendingBlock{ConsensusBlock: cb, VMBlock: accepting}
+	e.mu.Unlock()
+
+	cert := VerifiedQuorumCert{qc: &QuorumCert{
+		Version:   QuorumCertVersion,
+		Type:      QCFinality,
+		Tier:      Nova,
+		Position:  VotePosition{Height: 1, Round: 0, BlockID: lower, ParentID: ids.Empty, CanonicalID: lower},
+		Threshold: 1,
+	}}
+
+	if err := e.acceptWithCertCore(ctx, lower, cert, false); err != nil {
+		t.Fatalf("acceptWithCertCore: %v", err)
+	}
+
+	if len(vm.steers) != 1 {
+		t.Fatalf("expected exactly one SetPreference, got %d (%v)", len(vm.steers), vm.steers)
+	}
+	if vm.steers[0] == upper {
+		t.Fatalf("STEERED AT AN UNHELD BLOCK: SetPreference(%s) names a block this VM does not "+
+			"hold; the proposervm answers with a warn + nil, so the just-accepted %s is never "+
+			"steered either and the VM keeps building on its old head", upper, lower)
+	}
+	if vm.steers[0] != lower {
+		t.Fatalf("expected the fallback steer at the held, just-accepted %s, got %s", lower, vm.steers[0])
+	}
+}
+
+// TestHeldBuildTip_ResolvesOncePerSite pins the helper's three answers directly, so every
+// steer site inherits one semantics: unheld -> fallback, held -> tip, no VM -> fallback.
+func TestHeldBuildTip_ResolvesOncePerSite(t *testing.T) {
+	e := newTestEngine()
+	ctx := context.Background()
+
+	held := ids.GenerateTestID()
+	fallback := ids.GenerateTestID()
+
+	cb := &Block{id: held, parentID: ids.Empty, height: 1}
+	if err := e.consensus.AddBlock(ctx, cb); err != nil {
+		t.Fatalf("AddBlock: %v", err)
+	}
+	if tip := e.PreferredBuildTip(); tip != held {
+		t.Fatalf("precondition: PreferredBuildTip = %s, want %s", tip, held)
+	}
+
+	if got := e.HeldBuildTip(ctx, nil, fallback); got != fallback {
+		t.Fatalf("nil VM: got %s, want fallback %s", got, fallback)
+	}
+
+	holds := &orphanVMBase{head: held, blocks: map[ids.ID]*mockBlock{held: mb(held, 1)}}
+	if got := e.HeldBuildTip(ctx, holds, fallback); got != held {
+		t.Fatalf("VM holds the tip: got %s, want %s", got, held)
+	}
+
+	empty := &orphanVMBase{head: fallback, blocks: map[ids.ID]*mockBlock{}}
+	if got := e.HeldBuildTip(ctx, empty, fallback); got != fallback {
+		t.Fatalf("VM does not hold the tip: got %s, want fallback %s", got, fallback)
+	}
+}
