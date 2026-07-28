@@ -3330,37 +3330,50 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	vm := t.vm
 	t.mu.RUnlock()
 	if vm != nil {
-		if err := vm.SetPreference(ctx, blockID); err != nil {
-			// The VM refused to move its preferred/accepted head onto the block consensus
-			// just finalized (blockID). The refusal we must handle is the EVM's "cannot orphan
-			// finalized block" guard: the VM's OWN accepted head sits on a DIFFERENT branch at
-			// or above blockID's height (a provisional Nova tip that ran ahead of, or diverged
-			// from, consensus finality — the build-ahead / second-accept-authority desync).
+		// Steer at the LIVE build anchor, never the stale local blockID. t.mu is released
+		// across every VM call-out above, so by the time we get here another finalize may
+		// already have advanced BOTH the ledger and the VM past blockID; SetPreference(blockID)
+		// is then a BACKWARDS steer that the EVM correctly refuses ("cannot orphan finalized
+		// block at height H to common block at height H-1"). PreferredBuildTip descends from
+		// ledger.BuildAnchor — the HIGHER of {certified tip, recovery hint}, which the accept
+		// ordering (ApplyCert BEFORE VM.Accept) keeps at or above the VM's own accepted head —
+		// so it can never point below what the VM has accepted. This is the SAME value the
+		// build path already steers with (buildBlocksLocked): one build target, computed one
+		// way, read in both places.
+		target := blockID
+		if tip := t.PreferredBuildTip(); tip != ids.Empty {
+			target = tip
+		}
+		if err := vm.SetPreference(ctx, target); err != nil {
+			// The VM refused to move its preferred/accepted head onto `target`. The refusal we
+			// must handle is the EVM's "cannot orphan finalized block" guard: the VM's OWN
+			// accepted head sits on a DIFFERENT branch at or above target's height (a
+			// provisional Nova tip that ran ahead of, or diverged from, consensus finality —
+			// the build-ahead / second-accept-authority desync).
 			//
 			// This is NOT, by itself, a consensus safety violation: the finality LEDGER already
-			// recorded blockID correctly (ApplyCert, above) and blockID is the SOLE certified
+			// recorded blockID correctly (ApplyCert, above) and it is the SOLE certified
 			// canonical at its height (byHeight is one-canonical-per-height). Crashing the node
 			// (log.Crit → os.Exit) neither undoes that finality nor repairs the VM; it only
-			// removes a healthy validator. Instead reconcile the VM to the certified block —
-			// but ONLY after proving, against our own ledger, that the tip we drop is
-			// UNCERTIFIED. reconcileVMToCertified returns false ONLY when the orphaned head is
-			// itself a consensus-finalized block that blockID would displace (a genuine
-			// two-blocks-at-one-height double-finalization, impossible on the honest path) — the
-			// one case that MUST stay fail-closed.
-			if !t.reconcileVMToCertified(ctx, vm, blockID, err) {
+			// removes a healthy validator. Instead reconcile the VM to `target` — but ONLY
+			// after proving, against our own ledger, that the tip we drop is UNCERTIFIED.
+			// reconcileVMToCertified returns false ONLY when the orphaned head is itself a
+			// consensus-certified block that `target` — a block our ledger does NOT certify at
+			// its height — would displace; the one case that MUST stay fail-closed.
+			if !t.reconcileVMToCertified(ctx, vm, target, err) {
 				// The tip we would orphan is ITSELF a consensus-certified block that
-				// `blockID` displaces — the one state that MUST halt fail-closed. This is
+				// `target` displaces — the one state that MUST halt fail-closed. This is
 				// the SOLE safety halt on this path, so it must terminate independently of
 				// logger wiring: log.Crit is fatal only under a real (non-noop) logger, and
 				// the engine defaults to log.Noop(), under which Crit is a silent no-op that
 				// would fall through to ForcePreference. Log the detail, then os.Exit(1)
 				// unconditionally so the halt never depends on WithLogger being set.
 				t.log.Crit("SetPreference would orphan a CONSENSUS-CERTIFIED block — refusing (fail-closed)",
-					"certified", blockID,
+					"certified", target,
 					"error", err)
 				os.Exit(1)
 			}
-			t.consensus.ForcePreference(blockID)
+			t.consensus.ForcePreference(target)
 		}
 	}
 
@@ -3388,9 +3401,15 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 //     or, if the VM cannot reconcile live, surface the divergence and defer to recovery.
 //     Either way the node keeps its correct consensus finality and does not crash.
 //
-//   - head IS the ledger's finalized canonical at its height (and `certified` — a different
-//     canonical — would orphan it) ⇒ two finalized blocks at one height ⇒ return false so
-//     the caller halts fail-closed.
+//   - head IS the ledger's finalized canonical at its height AND `certified` is NOT the
+//     ledger's certified canonical at ITS OWN height ⇒ steering there drops a certified
+//     block for one we do not certify ⇒ return false so the caller halts fail-closed.
+//     When BOTH are certified at their own heights they lie on the ONE certified chain
+//     (one canonical per height, contiguous ancestry — Finalize enforces both), so the head
+//     merely DESCENDS from `certified`: nothing is orphaned and the refusal was only a
+//     backwards steer. Asking solely "is the head finalized at its height?" — as this did
+//     before — is trivially true for every healthy node whose head is certified, and killed
+//     five live validators on a benign head = certified+1.
 //
 // SAFETY: a tip is dropped ONLY when its canonical is provably NOT in byHeight, so no
 // certified block is ever orphaned. The VM's own ⅔-Quasar floor gate (PreferenceReconciler
@@ -3424,10 +3443,25 @@ func (t *Transitive) reconcileVMToCertified(ctx context.Context, vm BlockBuilder
 	// Classify against the finality ledger (the sole authority).
 	finCanonical, finalized := t.consensus.FinalizedBlockAtHeight(headHeight)
 	if finalized && finCanonical == headCanonical {
-		// The head IS the certified block at its height, and `certified` (a different block —
-		// else SetPreference would not have refused) would orphan it. Two certified blocks at
-		// one height: a real double-finalization. Fail-closed.
-		t.log.Error("VM accepted head is CONSENSUS-CERTIFIED and conflicts with the newly finalized block — refusing to orphan it",
+		// The head IS the ledger's certified canonical at its height. That ALONE is NOT a
+		// double-finalization — it is the NORMAL state whenever the head is a certified
+		// DESCENDANT of the block we are steering to (a finalize that completed while this
+		// one sat between its VM call-outs leaves head = certified+1). The ledger holds
+		// exactly ONE canonical per height along ONE contiguous chain — Finalize refuses
+		// both equivocation (ErrHeightAlreadyFinalized) and non-descendant branches
+		// (ErrConflictsWithFinalizedBranch) — so when `certified` is ITSELF the ledger's
+		// certified canonical at ITS OWN height, the two lie on that one chain, the VM
+		// already CONTAINS `certified`, and the refusal was merely a BACKWARDS steer.
+		// Nothing is orphaned: no action, no halt.
+		if t.certifiedAtItsHeight(ctx, vm, certified) {
+			t.log.Debug("SetPreference refused a backwards steer — the VM head is a CERTIFIED DESCENDANT of the finalized block (nothing to orphan)",
+				"certified", certified, "head", headID, "headHeight", headHeight)
+			return true
+		}
+		// The head is certified AND `certified` is not on the certified chain: steering
+		// there would drop a consensus-certified block in favour of one our own ledger does
+		// NOT certify at its height. THE safety violation — halt fail-closed.
+		t.log.Error("VM accepted head is CONSENSUS-CERTIFIED and the finalized block is NOT on the certified chain — refusing to orphan it",
 			"certified", certified, "orphanedHead", headID,
 			"orphanedHeight", headHeight, "orphanedCanonical", headCanonical)
 		return false
@@ -3452,6 +3486,21 @@ func (t *Transitive) reconcileVMToCertified(ctx context.Context, vm BlockBuilder
 	t.log.Error("SetPreference refused by an uncertified provisional VM tip and the VM has no live reconcile — consensus finality is correct; deferring VM head reconcile to recovery (non-fatal)",
 		"certified", certified, "divergedHead", headID, "divergedHeight", headHeight, "setPreferenceError", setPrefErr)
 	return true
+}
+
+// certifiedAtItsHeight reports whether id is the finality ledger's certified canonical at
+// id's OWN height — i.e. whether id lies on the ONE certified chain. The height is read off
+// the VM rather than plumbed down from the cert so the answer is correct for ANY steer
+// target (the just-finalized block, or the live build anchor). Unreadable ⇒ false: the sole
+// caller uses this to authorise NOT dropping a certified head, so the unprovable case must
+// fail closed.
+func (t *Transitive) certifiedAtItsHeight(ctx context.Context, vm BlockBuilder, id ids.ID) bool {
+	blk, err := vm.GetBlock(ctx, id)
+	if err != nil {
+		return false
+	}
+	fin, ok := t.consensus.FinalizedBlockAtHeight(blk.Height())
+	return ok && fin == canonicalIDOf(blk)
 }
 
 // promoteQuasar is the trailing EXPORT-cert step — the ONE place a ⅔-by-stake Quasar
