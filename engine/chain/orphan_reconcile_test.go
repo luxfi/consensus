@@ -145,9 +145,12 @@ func TestReconcile_CertifiedHead_HaltsFailClosed(t *testing.T) {
 	e.consensus.ledger = seedLedger(head, head, 7) // byHeight[7] = head (head IS certified)
 	certifiedOther := ids.GenerateTestID()         // a DIFFERENT block claimed final at 7
 
+	// BOTH blocks are readable, so the halt is decided by the LEDGER (byHeight[7] is head's
+	// canonical, not certifiedOther's) and not by an unreadable id — this is the genuine
+	// two-blocks-at-one-height shape, not an artefact of the mock.
 	vm := &reconcilingOrphanVM{orphanVMBase: &orphanVMBase{
 		head:   head,
-		blocks: map[ids.ID]*mockBlock{head: mb(head, 7)},
+		blocks: map[ids.ID]*mockBlock{head: mb(head, 7), certifiedOther: mb(certifiedOther, 7)},
 	}}
 
 	handled := e.reconcileVMToCertified(context.Background(), vm, certifiedOther, errOrphan)
