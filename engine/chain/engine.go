@@ -1219,6 +1219,36 @@ func (t *Transitive) PreferredBuildTip() ids.ID {
 	return t.consensus.PreferredBuildTip()
 }
 
+// HeldBuildTip is PreferredBuildTip filtered by the SINGLE-STORE INVARIANT: only ever
+// name a block the VM actually HOLDS, else [fallback].
+//
+// PreferredBuildTip is a consensus-DAG value — the deepest VERIFIED, not-yet-accepted
+// block. A validator that fell behind has a DAG tip ABOVE its own frontier, so the tip
+// can name an id this VM cannot serve builds on. Ava never has this problem: it steers
+// at Consensus.Preference(), which by construction was Verified INTO the VM
+// (ava snow/engine/snowman/voter.go SetPreference, engine.go SetPreference).
+//
+// Steering anyway is silently lossy, not loud: our proposervm keeps its prior preference
+// and returns nil on an unheld id (node/vms/proposervm/vm.go SetPreference), so an
+// unguarded steer drops BOTH the tip AND the caller's own target — the VM keeps building
+// on its old head after a finalize, with no error to react to. Resolving the tip here
+// gives every steer site one answer computed one way.
+//
+// Callers MUST NOT hold t.mu: this calls into the VM.
+func (t *Transitive) HeldBuildTip(ctx context.Context, vm BlockBuilder, fallback ids.ID) ids.ID {
+	if vm == nil {
+		return fallback
+	}
+	tip := t.PreferredBuildTip()
+	if tip == ids.Empty || tip == fallback {
+		return fallback
+	}
+	if _, err := vm.GetBlock(ctx, tip); err != nil {
+		return fallback
+	}
+	return tip
+}
+
 // GetBlock handles a block request.
 func (t *Transitive) GetBlock(ctx context.Context, nodeID ids.NodeID, requestID uint32, blockID ids.ID) error {
 	return nil
@@ -3340,10 +3370,15 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 		// so it can never point below what the VM has accepted. This is the SAME value the
 		// build path already steers with (buildBlocksLocked): one build target, computed one
 		// way, read in both places.
-		target := blockID
-		if tip := t.PreferredBuildTip(); tip != ids.Empty {
-			target = tip
-		}
+		//
+		// HeldBuildTip applies the single-store invariant: if this node fell behind and the
+		// DAG tip is not in its own store, fall back to blockID — which VM.Accept just applied,
+		// so the VM provably holds it. Falling back is strictly better than steering at an
+		// unheld id, which our proposervm answers with a warn + nil, leaving the VM building
+		// on a head OLDER than the block we just finalized. If blockID is itself the backwards
+		// steer described above, SetPreference errors and the reconcile path below adjudicates
+		// it against our own ledger — the same path, unchanged.
+		target := t.HeldBuildTip(ctx, vm, blockID)
 		if err := vm.SetPreference(ctx, target); err != nil {
 			// The VM refused to move its preferred/accepted head onto `target`. The refusal we
 			// must handle is the EVM's "cannot orphan finalized block" guard: the VM's OWN
@@ -4147,10 +4182,12 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			// (the mainnet 511-rebuild spin). A build hint only; finality is still the α-of-K cert.
 			// This node does NOT self-vote its own block here (the convergence loop casts the single
 			// vote for the settled winner); finalize only if a verified cert is already assemblable.
-			if vm != nil {
-				if tip := t.PreferredBuildTip(); tip != ids.Empty {
-					_ = vm.SetPreference(ctx, tip)
-				}
+			// Same single-store invariant as the finalize steer: never name a tip this VM
+			// does not hold. There is no better fallback here (blockID is the block we just
+			// built, which IS the tip on the healthy path), so an unheld tip means skip —
+			// the VM keeps its prior held preference and a later steer advances it.
+			if tip := t.HeldBuildTip(ctx, vm, ids.Empty); tip != ids.Empty {
+				_ = vm.SetPreference(ctx, tip)
 			}
 			t.finalizeOwnProposal(ctx, blockID)
 		}
