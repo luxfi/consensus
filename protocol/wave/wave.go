@@ -2,6 +2,8 @@ package wave
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -62,6 +64,23 @@ type Wave[T comparable] struct {
 // New creates a new Wave instance.
 // When cfg.EnableFPC is true, cfg.FPCSeed must be non-empty.
 func New[T comparable](cfg Config, cut prism.Cut[T], tx Transport[T]) (Wave[T], error) {
+	// A zero value in any of these decides with no evidence. Beta = 0 makes the
+	// Count >= Beta test in Tick true before a single vote is counted; K = 0 or
+	// Alpha = 0 puts the vote threshold at 0, which yesVotes = 0 already meets.
+	// Config arrives from callers and files, so it is checked here rather than
+	// assumed.
+	if cfg.K < 1 {
+		return Wave[T]{}, fmt.Errorf("wave: K must be at least 1, got %d", cfg.K)
+	}
+	if cfg.Beta < 1 {
+		return Wave[T]{}, fmt.Errorf("wave: Beta must be at least 1, got %d", cfg.Beta)
+	}
+	// Alpha is the fixed-threshold ratio and is unused under FPC, where the
+	// selector derives the threshold from ThetaMin/ThetaMax instead.
+	if !cfg.EnableFPC && (cfg.Alpha <= 0 || cfg.Alpha > 1) {
+		return Wave[T]{}, fmt.Errorf("wave: Alpha must be in (0, 1], got %v", cfg.Alpha)
+	}
+
 	// Initialize FPC selector if enabled
 	var fpcSel *fpc.Selector
 	if cfg.EnableFPC {
@@ -152,7 +171,12 @@ countVotes:
 	if w.fpcSelector != nil {
 		threshold = w.fpcSelector.SelectThreshold(w.phase, w.cfg.K)
 	} else {
-		threshold = int(float64(w.cfg.K) * w.cfg.Alpha)
+		// Ceil, matching config.AlphaForK and fpc.Selector.SelectThreshold.
+		// Truncating put every profile one vote under its declared
+		// AlphaPreference: K=20 Alpha=0.69 gave 13 where 14 is declared, K=21
+		// gave 14 for 15, K=11 gave 7 for 8 — a 65.0% threshold on a chain
+		// configured for 69%.
+		threshold = int(math.Ceil(float64(w.cfg.K) * w.cfg.Alpha))
 	}
 
 	currentPref := w.prefs[item]

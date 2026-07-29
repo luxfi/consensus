@@ -28,13 +28,45 @@ func TestNewLuxConsensus(t *testing.T) {
 	require.NotNil(lc.consecutiveSuccesses)
 }
 
-// TestNewLuxConsensusNegativeBeta tests with negative beta
-func TestNewLuxConsensusNegativeBeta(t *testing.T) {
+// A negative beta must be clamped to 1, not 0.
+//
+// wave.Tick decides once Count >= Beta, so Beta = 0 finalises before a single
+// vote is counted. The old clamp to 0 kept the uint32 conversion safe and made
+// NewLuxConsensus(20, 15, -5) a consensus driver that accepts on no evidence.
+func TestNewLuxConsensusNegativeBetaStillDemandsEvidence(t *testing.T) {
 	require := require.New(t)
 
-	lc := NewLuxConsensus(20, 15, -5)
+	for _, beta := range []int{-5, -1, 0} {
+		lc := NewLuxConsensus(20, 15, beta)
+		require.NotNil(lc)
+		require.GreaterOrEqual(lc.beta, uint32(1),
+			"beta %d must clamp to at least 1 so a decision needs a confirmation", beta)
+	}
+}
+
+// k = 0 divides by zero computing the alpha ratio and puts the vote threshold
+// at zero.
+func TestNewLuxConsensusZeroKStillDemandsEvidence(t *testing.T) {
+	require := require.New(t)
+
+	for _, k := range []int{0, -1} {
+		lc := NewLuxConsensus(k, 15, 5)
+		require.NotNil(lc)
+		require.GreaterOrEqual(lc.k, 1, "k %d must clamp to a positive sample size", k)
+		require.Greater(lc.alpha, 0.0, "alpha ratio must be positive, not NaN or Inf")
+		require.LessOrEqual(lc.alpha, 1.0, "alpha ratio must be reachable")
+	}
+}
+
+// alpha > k gives a ratio above 1, which no vote count can reach, so nothing
+// ever decides.
+func TestNewLuxConsensusUnreachableAlphaIsClamped(t *testing.T) {
+	require := require.New(t)
+
+	lc := NewLuxConsensus(20, 40, 5)
 	require.NotNil(lc)
-	require.Equal(uint32(0), lc.beta)
+	require.LessOrEqual(lc.alpha, 1.0)
+	require.Greater(lc.alpha, 0.0)
 }
 
 // TestLuxConsensusRecordVote tests the RecordVote method

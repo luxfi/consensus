@@ -49,14 +49,29 @@ type Driver struct {
 // for production, or prism.NewUniformCut for testing).
 // The transport parameter handles network vote requests.
 func NewLuxConsensus(k int, alpha int, beta int, opts ...Option) *Driver {
-	alphaRatio := float64(alpha) / float64(k)
-
-	// Ensure beta is non-negative for uint32 conversion
-	if beta < 0 {
-		beta = 0
+	// These three bound how much evidence a decision needs, so each is clamped
+	// into the range where it still demands some.
+	//
+	// k = 0 makes alphaRatio a division by zero, and a zero sample size puts the
+	// vote threshold at zero.
+	//
+	// beta < 1 is the sharp one: it was clamped to 0 to make the uint32
+	// conversion safe, which fixes the representation and breaks the meaning —
+	// wave.Tick decides once Count >= Beta, so Beta = 0 finalises before a single
+	// vote is counted. NewLuxConsensus(20, 15, -5) built exactly that.
+	if k < 1 {
+		k = config.DefaultParams().K
 	}
-	// #nosec G115 -- beta is guaranteed >= 0 after check above
+	if beta < 1 {
+		beta = 1
+	}
+	// #nosec G115 -- beta is guaranteed >= 1 above
 	betaU32 := uint32(beta)
+
+	alphaRatio := float64(alpha) / float64(k)
+	if alphaRatio <= 0 || alphaRatio > 1 {
+		alphaRatio = config.ConsensusSuperMajority
+	}
 
 	o := options{}
 	for _, opt := range opts {
