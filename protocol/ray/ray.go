@@ -49,13 +49,18 @@ type Driver[T ID] struct {
 }
 
 func NewDriver[T ID](cfg Config, cut prism.Cut[T], tx Transport[T], src Source[T], out Sink[T]) *Driver[T] {
-	if cfg.PollSize == 0 {
+	// Normalise the whole invalid range, not just the zero value. wave.New
+	// refuses K < 1, Beta < 1 and Alpha outside (0, 1]; a negative or
+	// out-of-range field passes an `== 0` check, reaches that refusal, and —
+	// since the error is not returned from here — leaves a zero Wave whose nil
+	// state map panics on the first Tick.
+	if cfg.PollSize < 1 {
 		cfg.PollSize = 20
 	}
-	if cfg.Alpha == 0 {
+	if cfg.Alpha <= 0 || cfg.Alpha > 1 {
 		cfg.Alpha = 0.8
 	}
-	if cfg.Beta == 0 {
+	if cfg.Beta < 1 {
 		cfg.Beta = 15
 	}
 	if cfg.RoundTO == 0 {
