@@ -67,11 +67,11 @@ func TestRedIndep_ReserveSlotUnit(t *testing.T) {
 	if !e.reserveSlotForSign(8, Y) {
 		t.Fatal("a different height is an independent slot and must be permitted")
 	}
-	// PRUNE CONTRACT (strictly below): pruneCommittedSlotsBelow(h) drops heights strictly
+	// PRUNE CONTRACT (strictly below): compactVoteGuardThroughQuasar(h) drops heights strictly
 	// BELOW h and RETAINS slot{h}, mirroring avalanchego keeping the last accepted block in
 	// its tree. So a prune AT the bound height keeps its slot and the conflicting canonical
 	// stays refused — the in-memory belt against the prune-then-resign fork.
-	e.pruneCommittedSlotsBelow(7)
+	e.compactVoteGuardThroughQuasar(7)
 	if e.reserveSlotForSign(7, Y) {
 		t.Fatal("prune STRICTLY BELOW must RETAIN slot{7} (the finalized tip's guard) — Y must stay refused")
 	}
@@ -81,7 +81,7 @@ func TestRedIndep_ReserveSlotUnit(t *testing.T) {
 	// (reserveSlotForSign consulting GetFinalizedHeight) refuses height 7 regardless — proven
 	// end-to-end in TestFinalizeThenResign_DecidedHeightIsUnsignable. This white-box unit wires
 	// no ledger finalize, so here we assert only the memory reclaim.
-	e.pruneCommittedSlotsBelow(8)
+	e.compactVoteGuardThroughQuasar(8)
 	e.slotMu.Lock()
 	_, slot7Held := e.committedSlot[SlotKey{Height: 7}]
 	e.slotMu.Unlock()
@@ -283,7 +283,7 @@ func TestRedIndep_ReserveSlotConcurrent(t *testing.T) {
 
 // TestRedIndep_CommittedSlotLeak_LocalFinalizePrunes is Red's MEDIUM-1 demonstration,
 // promoted to a hard gate. Red proved the v1.33.2 "bounded" claim was FALSE for the
-// DOMINANT finalize path: pruneCommittedSlotsBelow ran ONLY from HandleIncomingCert,
+// DOMINANT finalize path: compactVoteGuardThroughQuasar ran ONLY from HandleIncomingCert,
 // which a LOCALLY-finalizing node never reaches (it short-circuits at pending.Decided
 // before the prune). v1.33.3 moves the prune into the sole finalizer acceptWithCertCore,
 // so EVERY finality path prunes. This test drives a LOCAL vote-assembly finalize

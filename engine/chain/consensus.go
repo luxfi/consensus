@@ -430,21 +430,25 @@ func (c *ChainConsensus) GetFinalizedHeight() (uint64, bool) {
 	return c.ledger.Height()
 }
 
-// GetDecidedFloor returns a SIGN-GATE-ONLY lower bound on the height this node has
-// decided through: max(certified frontier height, recovery-hint height). It is the floor
-// the equivocation sign gate (reserveSlotForSign) consults so a decided height stays
-// unsignable ACROSS A RESTART — where the certified frontier is a (0,false) hint until
-// the first post-restart cert (incident-1082814 PART-A), but the hint (seeded from
-// vm.LastAccepted by SyncStateFromVM on boot) is a valid lower bound on the accepted chain.
+// GetNovaAcceptedFloor returns a lower bound on the height this node has LOCALLY ACCEPTED
+// (Nova) through: max(Nova ledger height, recovery-hint height). Nova acceptance is
+// explicitly REORGABLE (see Finality.AuthorizesLocalExecution — "crash-safe but reorgable,
+// so a caller acting here must be prepared to reorg"), so this is a BUILD / CATCH-UP /
+// REPORTING bound only.
 //
-// HARD CONSTRAINT (PART-A): this is a read-only fail-safe bound. It NEVER writes to, and
-// its value NEVER enters, byHeight / the equivocation index / the authoritative
-// ledger.Height() — it reads the hint HEIGHT only, never the hint's (untrustworthy)
-// identity, so it cannot manufacture a byHeight equivocation entry or regress finality. It
-// can only ever cause the node to REFUSE MORE signing (the fail-safe direction). The hint
-// may LAG the true decision (a frozen vm.LastAccepted), so the engine also folds in the
-// vote-guard's fsync'd finalizedThrough, which never lags — the two are complementary.
-func (c *ChainConsensus) GetDecidedFloor() uint64 {
+// FORBIDDEN AS A SIGN GATE. It was previously named GetNovaAcceptedFloor and fed the equivocation
+// sign gate, which welded a validator's PERMANENT sign-refusal floor to a reorgable height:
+// a node that accepted 11364..11367 on a bare Nova majority which was never ⅔-certified could
+// never again sign at or below 11367 — including the honest rebuild every peer agreed on.
+// That is the mainnet-1098192 / testnet-11367 permanent halt, and it is why "refusing more is
+// always fail-safe" is FALSE here: over-refusal on the signing path is not caution, it is a
+// liveness fault that no restart, resync, or peer can clear. Use GetQuasarSigningFloor for
+// anything that permanently closes a height.
+//
+// HARD CONSTRAINT (PART-A): read-only. It NEVER writes to, and its value NEVER enters,
+// byHeight / the equivocation index / the authoritative ledger.Height() — it reads the hint
+// HEIGHT only, never the hint's (untrustworthy) identity.
+func (c *ChainConsensus) GetNovaAcceptedFloor() uint64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	floor := uint64(0)
@@ -455,6 +459,31 @@ func (c *ChainConsensus) GetDecidedFloor() uint64 {
 		floor = c.ledger.hintHeight
 	}
 	return floor
+}
+
+// GetQuasarSigningFloor returns the ONLY height a validator may permanently refuse to sign at
+// or below: the EXPORT (Quasar) frontier — a height carrying a ⅔-by-stake certificate.
+//
+// This is the one durable safety floor because Quasar is the only tier whose quorum
+// intersection exceeds f. For n=5, f=1:
+//
+//	Nova   ⌊n/2⌋+1 = 3  → 2α−n = 1  NOT > f  ⇒ two conflicting Nova histories can exist
+//	Quasar strict ⅔ = 4  → 2α−n = 3      > f  ⇒ intersection guaranteed, irreversible
+//
+// So a Quasar height is agreed by every honest peer: closing it forever cannot strand this
+// node relative to the fleet. A Nova height is not, and closing it can — permanently.
+//
+// 0 until the first ⅔-stake cert forms. A zero floor is SAFE, not permissive: anti-equivocation
+// is carried by the per-height vote BINDINGS (committedSlot / the vote-guard file), which are
+// retained for every height above this floor precisely so the window between the Quasar frontier
+// and the Nova head stays individually guarded rather than bluntly closed.
+func (c *ChainConsensus) GetQuasarSigningFloor() uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if !c.quasar.set {
+		return 0
+	}
+	return c.quasar.height
 }
 
 // FinalizedBlockAtHeight returns the CANONICAL execution commitment finalized at
