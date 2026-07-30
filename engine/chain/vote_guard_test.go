@@ -185,12 +185,12 @@ func TestRed_CrossRestart_DecidedHeightUnsignable(t *testing.T) {
 	if _, err := e1.consensus.FinalizeBranch(A, H, ids.Empty); err != nil {
 		t.Fatalf("FinalizeBranch(H): %v", err)
 	}
-	e1.pruneCommittedSlotsBelow(H) // retains slot{H}, floor→H
+	e1.compactVoteGuardThroughQuasar(H) // retains slot{H}, floor→H
 	if _, err := e1.consensus.FinalizeBranch(A2, H+1, A); err != nil {
 		t.Fatalf("FinalizeBranch(H+1): %v", err)
 	}
-	e1.pruneCommittedSlotsBelow(H + 1) // drops slot{H} from memory + file, floor→H+1
-	_ = e1.Stop(context.Background())  // simulate crash/shutdown
+	e1.compactVoteGuardThroughQuasar(H + 1) // drops slot{H} from memory + file, floor→H+1
+	_ = e1.Stop(context.Background())       // simulate crash/shutdown
 
 	// --- the reopened durable store must have FORGOTTEN slot{H} (pruned) but REMEMBERED the
 	// decided-through floor H+1 (fsync'd atomically with the prune).
@@ -228,39 +228,66 @@ func TestRed_CrossRestart_DecidedHeightUnsignable(t *testing.T) {
 		t.Fatal("a height ABOVE the decided floor must remain signable — the durable floor must not stall progress")
 	}
 
-	// --- and the complementary path: a boot that ALSO seeds the SyncState hint (vm.LastAccepted)
-	// refuses just the same (belt), even if the vote-guard file were absent/fresh.
+	// --- and the complementary path: a boot that re-seeds the EXPORT (Quasar) frontier from the
+	// VM's durable LastQuasarHeight refuses just the same (belt), even if the vote-guard file
+	// were absent/fresh. That re-seed is what the chain manager does before Start.
 	store3, err := OpenVoteGuard(filepath.Join(dir, "vote-guard-fresh"))
 	if err != nil {
 		t.Fatalf("OpenVoteGuard(store3): %v", err)
 	}
 	e3, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store3))
-	if err := e3.consensus.SyncState(A2, H+1); err != nil { // the boot hint from vm.LastAccepted
-		t.Fatalf("SyncState hint: %v", err)
-	}
+	e3.consensus.SyncQuasarFrontier(A2, H+1) // the boot re-seed from vm.LastQuasarHeight
 	if e3.reserveSlotForSign(H, B) {
-		t.Fatal("with a fresh vote-guard, the vm.LastAccepted boot HINT floor must still refuse a decided height H")
+		t.Fatal("with a fresh vote-guard, the export (Quasar) frontier floor must still refuse a certified height H")
 	}
 	if !e3.reserveSlotForSign(H+2, ids.GenerateTestID()) {
-		t.Fatal("hint floor must not refuse a height above the hint (no false stall)")
+		t.Fatal("export frontier floor must not refuse a height above it (no false stall)")
+	}
+
+	// --- THE INVERSION that makes rolling upgrades possible: a NOVA-only accepted height must
+	// NOT be closed for signing. e4 boots with a fresh guard and imports a Nova head at H+9 via
+	// SyncState (exactly what an RLP recovery / state sync / snapshot clone does) while its
+	// export frontier stays at H+1. Heights (H+1, H+9] were accepted locally but never
+	// ⅔-certified, so they must remain signable — that is where a restarted node re-signs the
+	// honest rebuild its peers agree on. Feeding vm.LastAccepted into the sign floor here is what
+	// welded validators to never-certified heights and halted mainnet at 1098192 / testnet 11367.
+	store4, err := OpenVoteGuard(filepath.Join(dir, "vote-guard-nova"))
+	if err != nil {
+		t.Fatalf("OpenVoteGuard(store4): %v", err)
+	}
+	e4, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store4))
+	e4.consensus.SyncQuasarFrontier(A2, H+1) // certified through H+1 …
+	if err := e4.consensus.SyncState(ids.GenerateTestID(), H+9); err != nil {
+		t.Fatalf("SyncState(nova head): %v", err)
+	}
+	if e4.reserveSlotForSign(H+1, ids.GenerateTestID()) {
+		t.Fatal("the CERTIFIED height H+1 must stay unsignable — the Quasar floor covers it")
+	}
+	for h := H + 2; h <= H+9; h++ {
+		if !e4.reserveSlotForSign(h, ids.GenerateTestID()) {
+			t.Fatalf("PERMANENT-HALT REGRESSION: height %d is Nova-accepted but NOT ⅔-certified "+
+				"(export frontier=%d, nova head=%d) and the sign gate refused it. A reorgable height "+
+				"must never close the durable signing floor — that is the mainnet-1098192 weld.",
+				h, H+1, H+9)
+		}
 	}
 }
 
-// TestRed_V1ToV2Upgrade_BootSeedFromVM is the RED fix-priority #1 regression for the
-// MAINNET in-place v1→v2 vote-guard upgrade window. A live mainnet node upgrading from the
-// old consensus carries a LEGACY v1 guard file (no finalizedThrough → floor 0) whose
-// below-tip decided-height slots were already pruned by the old build, and its certified
-// ledger is a (0,false) hint until the first post-upgrade finalize (PART-A). Without a boot
-// seed the sign gate's floor would be 0 in that window, so a re-gossiped sibling at a
-// decided-below-tip height could be signed — the exact fork, now on mainnet.
+// TestRed_LegacyGuard_BootFloorFromExportFrontier is the RED fix-priority #1 regression for
+// the in-place vote-guard upgrade window. A node upgrading in place carries a LEGACY v1 guard
+// file (no finalizedThrough → floor 0) whose below-tip slots were already pruned by the old
+// build, and its Nova ledger is a (0,false) hint until the first post-upgrade finalize
+// (PART-A). With a floor of 0 in that window, a re-gossiped sibling at a long-certified height
+// could be signed.
 //
-// v1.35.5 seeds decidedFloor DIRECTLY from vm.LastAccepted (a durable, sound lower bound on
-// the decided height) at Start, BEFORE the signing goroutines launch — so the floor is real
-// from the first instant of boot, with no reliance on the transient SyncState hint or a
-// post-upgrade finalize. This test builds exactly that state and proves a decided-below-tip
-// height is refused immediately on boot. It FAILS without the boot seed (B is signed) and
-// PASSES with it.
-func TestRed_V1ToV2Upgrade_BootSeedFromVM(t *testing.T) {
+// The boot floor comes from the EXPORT (Quasar) frontier, which the chain manager re-seeds
+// from the VM's durable LastQuasarHeight before Start. It deliberately does NOT come from
+// vm.LastAccepted: that is the Nova head, it is reorgable (2α−n = 1, NOT > f=1), and welding a
+// permanent fsync'd sign refusal to it is what halted mainnet at 1098192 and testnet at 11367.
+// A certified height is agreed by every honest peer, so closing it forever is sound; a merely
+// accepted one is not. See TestRed_CrossRestart_DecidedHeightUnsignable's e4 case for the
+// complementary proof that the Nova-only window stays SIGNABLE.
+func TestRed_LegacyGuard_BootFloorFromExportFrontier(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "vote-guard")
 
@@ -284,37 +311,45 @@ func TestRed_V1ToV2Upgrade_BootSeedFromVM(t *testing.T) {
 		t.Fatalf("a legacy v1 file must decode with floor 0, got %d", store.FinalizedThrough())
 	}
 
-	// A VM whose LAST-ACCEPTED head is the decided tip at height T. vm.LastAccepted is
-	// durable and available from the first instant of boot — the seed source.
-	const T = uint64(100)
-	const belowTip = uint64(60) // a decided-below-tip height whose slot was pruned pre-upgrade
+	// A VM whose LAST-ACCEPTED head is at T, of which the network ⅔-certified through Q. The
+	// (Q, T] window is Nova-only: accepted locally, never certified.
+	const T = uint64(100)       // nova accepted head
+	const Q = uint64(96)        // durable export (quasar) height — vm.LastQuasarHeight()
+	const belowTip = uint64(60) // a long-certified height whose slot was pruned pre-upgrade
 	vm := newMockImportVM()
 	tipID := ids.GenerateTestID()
 	vm.lastAcceptedID = tipID
 	vm.blocks[tipID] = &mockBlock{id: tipID, height: T}
 
 	vs := newTestValidatorSet(5)
-	// Construct + Start: Start runs the boot seed from vm.LastAccepted BEFORE any signing.
-	// NO SyncState is called — this isolates the DIRECT boot seed (not the transient hint).
 	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store), WithVM(vm))
+	// What the chain manager does on boot: re-seed the export frontier from the VM's DURABLE
+	// LastQuasarHeight. This is the ONLY local artifact that proves the network closed a height.
+	e.consensus.SyncQuasarFrontier(ids.GenerateTestID(), Q)
 
-	// Immediately on boot — legacy floor 0, no hint, no post-upgrade finalize — the decided
-	// frontier must already be T, so a sibling at the decided-below-tip height is REFUSED.
+	// Immediately on boot — legacy floor 0, no post-upgrade finalize — a sibling at a
+	// long-certified height must be REFUSED by the export-frontier floor alone.
 	if fh, ok := e.consensus.GetFinalizedHeight(); ok {
-		t.Fatalf("precondition: certified frontier must be unset on a fresh boot, got (%d,%v)", fh, ok)
+		t.Fatalf("precondition: Nova ledger must be unset on a fresh boot, got (%d,%v)", fh, ok)
 	}
 	B := ids.GenerateTestID()
 	if e.reserveSlotForSign(belowTip, B) {
-		t.Fatalf("V1→V2 UPGRADE-WINDOW FORK: engine signed sibling B at decided-below-tip height %d on boot from "+
-			"a legacy v1 guard (floor 0). decidedFloor must be seeded from vm.LastAccepted (=%d) at Start, before "+
-			"any post-upgrade finalize.", belowTip, T)
+		t.Fatalf("UPGRADE-WINDOW FORK: engine signed sibling B at long-certified height %d on boot from "+
+			"a legacy v1 guard (floor 0). The floor must come from the export frontier (=%d) at Start, "+
+			"before any post-upgrade finalize.", belowTip, Q)
 	}
-	// The tip itself is refused; a height above the VM head stays signable (no false stall).
-	if e.reserveSlotForSign(T, ids.GenerateTestID()) {
-		t.Fatalf("the decided tip height %d must be unsignable on boot (the boot seed covers it)", T)
+	if e.reserveSlotForSign(Q, ids.GenerateTestID()) {
+		t.Fatalf("the certified height %d must be unsignable on boot (the export frontier covers it)", Q)
 	}
-	if !e.reserveSlotForSign(T+1, ids.GenerateTestID()) {
-		t.Fatalf("a height above the VM head (%d) must remain signable — the boot seed must not stall progress", T)
+	// THE INVERSION: heights in the Nova-only window (Q, T] must stay SIGNABLE. The VM accepted
+	// them, but no ⅔ cert proves the network did, so this node may still have to sign the honest
+	// rebuild there after a restart. Refusing them is the permanent halt.
+	for h := Q + 1; h <= T+1; h++ {
+		if !e.reserveSlotForSign(h, ids.GenerateTestID()) {
+			t.Fatalf("PERMANENT-HALT REGRESSION: height %d is inside the Nova-only window (certified=%d, "+
+				"nova head=%d) and the sign gate refused it. vm.LastAccepted must never feed the durable "+
+				"sign floor — that weld is mainnet-1098192 / testnet-11367.", h, Q, T)
+		}
 	}
 }
 
