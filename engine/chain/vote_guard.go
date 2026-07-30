@@ -141,7 +141,7 @@ func WithVoteGuard(store VoteGuardStore) Option {
 // -----------------------------------------------------------------------------
 // fileVoteGuard — the one concrete VoteGuardStore: a single atomically-replaced,
 // crc-checked snapshot file. The live binding set is small and bounded (it is
-// pruned to the unfinalized window on every finalize — see pruneCommittedSlotsBelow),
+// pruned to the unfinalized window on every finalize — see compactVoteGuardThroughQuasar),
 // so writing the whole set per new binding is a few KB at block cadence — the
 // simplest structure that is complete and crash-safe (no WAL/compaction machinery,
 // no torn-append edge cases). Atomicity is the standard write-temp + fsync + rename

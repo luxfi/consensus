@@ -583,7 +583,7 @@ type Transitive struct {
 	// one is idempotent (safe re-solicit). Guarded by its own slotMu so BOTH signing
 	// sites can call it — recordOwnVoteLocked (under t.mu) and the follower path in
 	// followVerifiedBlock (t.mu released). Pruned below the finalized height (a
-	// finalized height can never legitimately re-sign — pruneCommittedSlotsBelow, run
+	// finalized height can never legitimately re-sign — compactVoteGuardThroughQuasar, run
 	// from the sole finalizer acceptWithCertCore).
 	//
 	// voteGuard (optional) is the DURABLE backing (HIGH-1): every new binding is
@@ -598,7 +598,7 @@ type Transitive struct {
 	// (the strictly-below prune persists the removal of below-tip slots). It is seeded on
 	// boot from the vote-guard file's fsync'd floor (WithVoteGuard) — the authoritative
 	// durable source that never lags the consensus decision — and advanced at each finalize
-	// (pruneCommittedSlotsBelow). The gate also folds in consensus.GetDecidedFloor() (the
+	// (compactVoteGuardThroughQuasar). The gate also folds in consensus.GetNovaAcceptedFloor() (the
 	// certified height OR the vm.LastAccepted hint) as a complementary lower bound. This is
 	// the CROSS-RESTART backstop: without it, after a rolling restart mid-storm the certified
 	// ledger.Height() is a (0,false) hint (PART-A) and the below-tip slots are gone, so a
@@ -907,21 +907,43 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 			"signing and finalizing may permit equivocation; wire WithVoteGuard in production")
 	}
 
-	// BOOT SEED (v1.35.5): seed the durable decided-height floor DIRECTLY from the VM's
-	// last-accepted height BEFORE the signing goroutines launch. This makes the sign gate
-	// safe from the first instant of boot — even for a node upgrading in place from a legacy
-	// v1 vote-guard file (finalizedThrough=0) whose certified ledger is a (0,false) hint
-	// until the first post-upgrade finalize (PART-A). Without it, the floor would be 0 in
-	// that window and a re-gossiped sibling at a decided-below-tip height could be signed
-	// (the mainnet v1→v2 in-place upgrade window). vm.LastAccepted is a durable, sound lower
-	// bound on the decided height (every accepted block was finalized). SIGN-GATE ONLY — it
-	// only advances t.decidedFloor, never the finality ledger / byHeight (PART-A intact).
-	// UNLOCK-BEFORE-CALL-OUT: the seed reads the VM (LastAccepted/GetBlock). Release t.mu around it
-	// (the signing goroutines have not launched yet, but the discipline is global — no external
-	// call-out under the engine lock). The seed touches only t.vm (stable pre-Start) + slotMu.
-	t.mu.Unlock()
-	t.seedDecidedFloorFromVM(ctx)
-	t.mu.Lock()
+	// NO BOOT SEED FROM vm.LastAccepted. This used to seed the durable sign-refusal floor from
+	// the VM's last-accepted height on the premise that "every accepted block was finalized".
+	// That premise is FALSE at the Nova tier: a bare-majority accept is reorgable, so
+	// vm.LastAccepted can name heights the network never ⅔-certified. Seeding a permanent,
+	// fsync'd refusal from it meant a validator that ran ahead alone could never again sign the
+	// heights it ran ahead through — not even the honest rebuild its peers agreed on. That is
+	// the mainnet-1098192 / testnet-11367 halt, and a restart cannot clear it.
+	//
+	// The boot floor now comes from the two Quasar-derived sources only, both already in place
+	// before the signing goroutines launch:
+	//   • the vote-guard file's fsync'd finalizedThrough (WithVoteGuard), now Quasar-only, and
+	//   • consensus.GetQuasarSigningFloor(), re-seeded by the chain manager from the VM's durable
+	//     LastQuasarHeight before Start.
+	// Heights above that floor are guarded INDIVIDUALLY by the retained per-height bindings,
+	// which is strictly stronger than a blunt floor: it refuses a conflicting sibling while still
+	// permitting this node's own honest rebuild.
+	//
+	// A node with NEITHER a guard floor NOR bindings NOR an export frontier is genuinely
+	// memoryless — no local artifact can reconstruct which blocks it already signed, and no
+	// floor derived from local state substitutes for that (a Nova-height floor over-refuses into
+	// a permanent halt; a zero floor under-refuses). That is an operator-visible condition, so
+	// say so loudly rather than papering over it with a reorgable height.
+	// UNLOCK-BEFORE-CALL-OUT: reading the export frontier touches the consensus lock. Release
+	// t.mu around it — the signing goroutines have not launched yet, but the discipline is
+	// global: no external call-out under the engine lock.
+	if t.voteSigner != nil && t.voteGuard != nil && t.voteGuard.FinalizedThrough() == 0 &&
+		len(t.voteGuard.Snapshot()) == 0 && t.consensus != nil {
+		t.mu.Unlock()
+		noExportFrontier := t.consensus.GetQuasarSigningFloor() == 0
+		t.mu.Lock()
+		if noExportFrontier {
+			t.log.Warn("vote-once: booting with NO durable signing memory (no certified floor, no vote " +
+				"bindings, no export frontier) — this node cannot prove which heights it already signed. " +
+				"Expected only on a genesis start or after the guard was destroyed; if the latter, ROTATE " +
+				"THE STAKING IDENTITY rather than re-signing with the same key")
+		}
+	}
 
 	t.ctx, t.cancel = context.WithCancel(ctx)
 	t.bootstrapped = true
@@ -1040,19 +1062,16 @@ func (t *Transitive) SyncState(ctx context.Context, lastAcceptedID ids.ID, heigh
 		}
 	}
 
-	// Seed the durable decided-height floor DIRECTLY from the reconciled last-accepted
-	// height (v1.35.5). SyncStateFromVM passes vm.LastAccepted here, so this keeps
-	// t.decidedFloor at the VM head independently of the consensus ledger's hint — which
-	// lives on a different lock and can be cleared by an empty/genesis reset. Monotonic,
-	// sign-gate-only (never touches byHeight / ledger.Height() — PART-A intact).
-	if height > 0 {
-		t.slotMu.Lock()
-		if height > t.decidedFloor {
-			t.decidedFloor = height
-		}
-		t.slotMu.Unlock()
-	}
-
+	// A STATE SYNC / RLP IMPORT IS A RECOVERY HINT, NOT A SIGNING DECISION. This used to seed
+	// t.decidedFloor from the reconciled last-accepted height (v1.35.5), which meant importing
+	// blocks — RLP recovery, state sync, a snapshot clone — permanently closed every imported
+	// height for signing. But an imported height carries NO local certificate: the operator
+	// handed this node block DATA, not proof the network certified it, and a recovery import is
+	// exactly when a fleet is below quorum and those heights may still need to be re-decided.
+	// The floor now moves only from compactVoteGuardThroughQuasar (⅔-stake cert) and the
+	// vote-guard file. The imported height still advances the Nova ledger / build anchor above
+	// via consensus.SyncState — local execution and catch-up, which is all an import authorizes.
+	//
 	// Clear any pending blocks that are now stale (below the synced height)
 	for blockID, pending := range t.pendingBlocks {
 		if pending.ConsensusBlock != nil && pending.ConsensusBlock.height <= height {
@@ -2232,22 +2251,34 @@ func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
 	// fresh devnet (artifacts-A: the conflicting cert's canonical == its envelope, the bare
 	// sibling).
 	//
-	// The floor is the max of two DURABLE, restart-surviving sources — this is what makes the
-	// refusal span a crash (the certified ledger.Height() alone does NOT: on boot it is a
-	// (0,false) non-authoritative hint until the first post-restart cert — incident-1082814
-	// PART-A):
+	// THE FLOOR IS QUASAR-ONLY. Both DURABLE, restart-surviving sources name a ⅔-by-stake
+	// EXPORT-certified height, never a Nova (reorgable) one:
 	//   • t.decidedFloor — seeded on boot from the vote-guard file's fsync'd finalizedThrough
-	//     (WithVoteGuard) and advanced at each finalize. This is authoritative: the vote-guard
-	//     is written by the consensus engine at finalize time, so it NEVER lags the decision
-	//     (unlike vm.LastAccepted, which a fire-and-forget Accept can leave frozen).
-	//   • consensus.GetDecidedFloor() — max(certified height, vm.LastAccepted hint); a
-	//     complementary lower bound, and the sole floor for a signer whose vote-guard is fresh.
+	//     and advanced ONLY by compactVoteGuardThroughQuasar, i.e. only after PromoteQuasar
+	//     reports a ⅔-stake cert. Written by the consensus engine, so it never lags the
+	//     certificate (unlike vm.LastAccepted, which a fire-and-forget Accept can leave frozen).
+	//   • consensus.GetQuasarSigningFloor() — the in-memory export frontier, re-seeded on boot
+	//     from the VM's durable LastQuasarHeight. Complementary, and the sole floor for a signer
+	//     whose vote-guard file is fresh.
+	//
+	// It must NOT fold in the Nova accepted height (GetNovaAcceptedFloor / vm.LastAccepted).
+	// Doing so was the permanent halt: Nova is a bare majority, so 2α−n = 1 is NOT > f=1 and a
+	// Nova height may never become certified. Welding an irreversible sign refusal to it strands
+	// the validator at a height the fleet never agreed on — mainnet 1098192, testnet 11367 — and
+	// nothing can clear it, because the refusal is fsync'd. Over-refusal here is a LIVENESS FAULT,
+	// not caution.
+	//
+	// Heights in the (Quasar, Nova] window are NOT closed by this floor. They are guarded
+	// individually by the committedSlot binding below, which is exactly why the bindings are
+	// retained down to the Quasar floor rather than pruned at Nova accept: one signature per
+	// height, still enforced, but revocable by consensus rather than welded by this node.
+	//
 	// SIGN-GATE ONLY: neither source enters the finality ledger / byHeight / the equivocation
 	// index, so PART-A is preserved (Height() stays (0,false)-until-cert). Read the consensus
 	// floor BEFORE slotMu so this method never holds slotMu while touching the consensus lock.
 	consensusFloor := uint64(0)
 	if t.consensus != nil {
-		consensusFloor = t.consensus.GetDecidedFloor()
+		consensusFloor = t.consensus.GetQuasarSigningFloor()
 	}
 	key := SlotKey{Height: height}
 	t.slotMu.Lock()
@@ -2358,9 +2389,25 @@ func (t *Transitive) selfVotedForCanonicalLocked(canon ids.ID) bool {
 	return false
 }
 
-// pruneCommittedSlotsBelow drops equivocation-guard entries STRICTLY BELOW a finalized
-// height — retaining the just-finalized tip's slot, exactly as avalanchego keeps the last
-// accepted block in ts.blocks. Heights strictly below the tip are guaranteed unsignable by
+// compactVoteGuardThroughQuasar drops equivocation-guard entries STRICTLY BELOW a
+// ⅔-BY-STAKE EXPORT-CERTIFIED (Quasar) height and advances the durable sign-refusal floor to
+// it. It is the SOLE advancer of that floor.
+//
+// It must be called ONLY from the Quasar promotion path (ingestAttestation, after
+// PromoteQuasar reports advanced==true) — NEVER from the Nova accept in acceptWithCertCore.
+// The floor is permanent and fsync'd, so its source must be a height every honest peer agrees
+// on. Quasar's quorum intersection (2α−n = 3 > f=1 at n=5) guarantees that; Nova's bare
+// majority (2α−n = 1) does not. Feeding it Nova heights is what welded validators to
+// never-certified heights and halted mainnet at 1098192 / testnet at 11367.
+//
+// Compacting at the QUASAR height (not the Nova head) deliberately RETAINS every binding in
+// the (Quasar, Nova] window. Those heights are still decided-by-this-node — one signature
+// each, enforced by the retained binding — but they are not closed by the blunt floor, so a
+// restart can still re-sign the honest rebuild at a height whose cert never formed. That
+// window is exactly where a rolling upgrade lives.
+//
+// Retaining the just-certified tip's slot mirrors avalanchego keeping the last accepted block
+// in ts.blocks. Heights strictly below the tip are guaranteed unsignable by
 // the decided-height gate in reserveSlotForSign (height <= finalizedHeight ⇒ refuse), which
 // is durable and monotonic, so their in-memory slot is dead weight and is dropped to keep
 // committedSlot (and its snapshot) bounded to the live window. The tip's slot is KEPT as a
@@ -2376,65 +2423,54 @@ func (t *Transitive) selfVotedForCanonicalLocked(canon ids.ID) bool {
 // deleted and no decided-height gate, the convergence pass would then place this node's
 // SECOND signature on it — two α-of-K certs at one height → the exit(1) equivocation fatal.
 //
-// Called from the sole finalizer acceptWithCertCore, so EVERY finality path — local
-// vote-assembly AND incoming-cert — prunes (MEDIUM-1). The durable shrink is best-effort: a
-// stale-LARGER durable set only ever REFUSES more (fail-safe direction), corrected on the
-// next successful Persist.
-func (t *Transitive) pruneCommittedSlotsBelow(height uint64) {
+// Called from the sole Quasar advancer (ingestAttestation), so EVERY export-certified height
+// — whether its cert completed at accept time or from a trailing late vote — compacts exactly
+// once.
+//
+// Returns an error if the durable write failed. Unlike the old Nova-driven prune this is NOT
+// best-effort: the in-memory floor is ROLLED BACK on failure so memory can never claim a
+// floor that disk does not carry, and the caller must withhold the export-frontier
+// notification. Same fail-closed discipline as reserveSlotForSign's binding write.
+func (t *Transitive) compactVoteGuardThroughQuasar(height uint64) error {
 	t.slotMu.Lock()
 	defer t.slotMu.Unlock()
-	// Advance the DURABLE decided-through floor: this height is now finalized, so it (and
-	// everything below) is permanently unsignable. Monotonic. Persisting it in the SAME
-	// write as the pruned map keeps the floor and the slot removal atomic on disk — so a
-	// restart recovers "these heights are decided" even though their slots are gone.
+	// Advance the DURABLE certified-through floor: this height carries a ⅔-stake export cert,
+	// so it (and everything below) is irreversibly decided and permanently unsignable.
+	// Monotonic. Persisting it in the SAME write as the pruned map keeps the floor and the slot
+	// removal atomic on disk — so a restart recovers "these heights are certified" even though
+	// their slots are gone.
+	prevFloor := t.decidedFloor
 	floorAdvanced := false
 	if height > t.decidedFloor {
 		t.decidedFloor = height
 		floorAdvanced = true
 	}
+	pruned := make(map[SlotKey]ids.ID, len(t.committedSlot))
 	changed := false
-	for k := range t.committedSlot {
+	for k, v := range t.committedSlot {
 		if k.Height < height {
-			delete(t.committedSlot, k)
 			changed = true
+			continue
 		}
+		pruned[k] = v
 	}
-	if (changed || floorAdvanced) && t.voteGuard != nil {
-		if err := t.voteGuard.Persist(t.committedSlot, t.decidedFloor); err != nil {
-			t.log.Warn("vote-once: durable equivocation-guard shrink failed (non-fatal; floor re-persisted on next bind)",
-				"belowHeight", height, "error", err)
-		}
+	if !changed && !floorAdvanced {
+		return nil
 	}
-}
-
-// seedDecidedFloorFromVMLocked advances the durable decided-height floor from the VM's
-// last-accepted height. It runs at boot (from Start, before the signing goroutines launch)
-// so the sign gate has a real floor from the first instant — the fix for the mainnet v1→v2
-// vote-guard upgrade window, where the file floor is 0 and the certified ledger is a
-// (0,false) hint until the first post-upgrade finalize. vm.LastAccepted is DURABLE and a
-// sound lower bound on the decided height (every accepted block was finalized), so seeding
-// the floor from it can only ever REFUSE MORE signing (fail-safe). SIGN-GATE ONLY: it
-// touches only t.decidedFloor (under slotMu), never the finality ledger / byHeight — PART-A
-// intact. Best-effort: any VM error / empty head leaves the floor as-is (the vote-guard
-// file floor and the SyncState seed remain). Caller holds t.mu.
-func (t *Transitive) seedDecidedFloorFromVM(ctx context.Context) {
-	if t.vm == nil {
-		return
+	if t.voteGuard == nil {
+		t.committedSlot = pruned
+		return nil
 	}
-	id, err := t.vm.LastAccepted(ctx)
-	if err != nil || id == ids.Empty {
-		return
+	// Persist the POST-compaction view. Only swap it in once the fsync'd write commits, so a
+	// failed write leaves memory identical to disk (fail-closed) rather than ahead of it.
+	if err := t.voteGuard.Persist(pruned, t.decidedFloor); err != nil {
+		t.decidedFloor = prevFloor
+		t.log.Error("vote-once: durable certified-floor write FAILED — export frontier NOT advanced (fail-closed)",
+			"quasarHeight", height, "error", err)
+		return err
 	}
-	blk, err := t.vm.GetBlock(ctx, id)
-	if err != nil || blk == nil {
-		return
-	}
-	h := blk.Height()
-	t.slotMu.Lock()
-	if h > t.decidedFloor {
-		t.decidedFloor = h
-	}
-	t.slotMu.Unlock()
+	t.committedSlot = pruned
+	return nil
 }
 
 // slotCanonical is the effective canonical identity a VotePosition binds for the
@@ -2615,7 +2651,7 @@ func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 	// while touching the consensus lock.
 	consensusFloor := uint64(0)
 	if t.consensus != nil {
-		consensusFloor = t.consensus.GetDecidedFloor()
+		consensusFloor = t.consensus.GetQuasarSigningFloor()
 	}
 	t.slotMu.Lock()
 	signed := make(map[uint64]struct{}, len(t.committedSlot))
@@ -3320,14 +3356,21 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// applied; the durable floor advances only to it (never past the VM's state).
 	highestAccepted, acceptErr := t.applyBranchFinalization(ctx, plan, blockID, cert)
 
-	// MEDIUM-1: drop the equivocation guard + view machines STRICTLY at/below what the VM
-	// accepted — NEVER to pos.Height when the VM applied less (the fail-closed invariant: the
-	// decided-floor can never run ahead of the EVM's accepted head, which is exactly the
-	// consensus-finalize→VM-accept divergence this fix kills). Only advance if we accepted
-	// something.
-	if highestAccepted > 0 {
-		t.pruneCommittedSlotsBelow(highestAccepted)
-	}
+	// THE NOVA ACCEPT DOES NOT TOUCH THE VOTE GUARD. This is the tier separation, at the one
+	// place it used to be violated: the line here was
+	//     if highestAccepted > 0 { t.pruneCommittedSlotsBelow(highestAccepted) }   // ← DELETED
+	// which advanced the PERMANENT, fsync'd sign-refusal floor to a height carrying only a bare
+	// Nova majority. Nova acceptance is reorgable by construction (2α−n = 1, NOT > f=1), so that
+	// welded each validator to whatever it happened to accept first: on a split first vote the
+	// fleet grew divergent Nova ledgers and every node fsync'd a refusal at its own height, then
+	// refused to sign the honest rebuild forever. Mainnet 1098192 and testnet 11367 are that
+	// line. No restart, resync, or peer can clear a durable refusal.
+	//
+	// The guard now advances ONLY from compactVoteGuardThroughQuasar, called from the Quasar
+	// promotion below once a ⅔-by-stake cert proves the network — not this process — decided the
+	// height. Nova keeps everything it legitimately owns: the ledger, VM.Accept, preference,
+	// catch-up, and rejoin. It simply no longer closes heights permanently.
+	//
 	// MED-6: bound the slashing detector's per-height maps to a sliding window (memory).
 	t.pruneSlashingBelowWindow()
 	// Bound the trailing Quasar machinery (attestor buckets/certs + epoch map) to the SAME
@@ -3624,6 +3667,21 @@ func (t *Transitive) ingestAttestation(pos VotePosition, epochHeight uint64, sv 
 		canonical := pos.CanonicalID
 		if canonical == ids.Empty {
 			canonical = pos.BlockID
+		}
+		// THE SOLE ADVANCE OF THE DURABLE SIGN-REFUSAL FLOOR. A ⅔-by-stake cert just proved the
+		// NETWORK — not this process — decided this height, so it is now irreversible (2α−n = 3 >
+		// f=1 at n=5) and may be closed forever. This is the only tier for which that is true; the
+		// Nova accept in acceptWithCertCore deliberately does not touch the guard.
+		//
+		// ORDER MATTERS: the guard must be fsync'd BEFORE the export frontier is published. The
+		// observer drives vm.SetLastQuasarFinalized, which is the durable height this node re-seeds
+		// its frontier from on boot. Publishing first would let a crash leave the VM claiming an
+		// export height whose guard compaction never landed — the two durable records would
+		// disagree about what is closed. On a write failure we advance NEITHER and log; the export
+		// frontier retries when the next cert forms (the in-memory PromoteQuasar advance is lost on
+		// reboot, which is the safe direction).
+		if err := t.compactVoteGuardThroughQuasar(pos.Height); err != nil {
+			return
 		}
 		// PUSH the export frontier advance to the VM/consumers (bridges / EVM `finalized`/`safe` /
 		// warp export gating), symmetric with how block.Accept pushes the Nova tip. The observer is

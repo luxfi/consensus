@@ -40,7 +40,7 @@ import (
 
 // TestFinalizeThenResign_DecidedHeightIsUnsignable drives the real functions the finalizer
 // runs — consensus.FinalizeBranch (advances the certified frontier) and
-// pruneCommittedSlotsBelow (the guard prune) — then proves a sibling at the just-decided
+// compactVoteGuardThroughQuasar (the guard prune) — then proves a sibling at the just-decided
 // height can never be signed, BOTH while the tip's slot is retained AND after it is pruned
 // by a higher finalize (isolating the durable decided-height gate from the in-memory belt).
 func TestFinalizeThenResign_DecidedHeightIsUnsignable(t *testing.T) {
@@ -65,7 +65,7 @@ func TestFinalizeThenResign_DecidedHeightIsUnsignable(t *testing.T) {
 	if fh, ok := e.consensus.GetFinalizedHeight(); !ok || fh != H {
 		t.Fatalf("finalized height must be %d after finalizing A@H, got (%d,%v)", H, fh, ok)
 	}
-	e.pruneCommittedSlotsBelow(H)
+	e.compactVoteGuardThroughQuasar(H)
 
 	// BELT: the just-finalized tip's slot is RETAINED (strictly-below prune), still bound to A.
 	e.slotMu.Lock()
@@ -90,7 +90,7 @@ func TestFinalizeThenResign_DecidedHeightIsUnsignable(t *testing.T) {
 	if _, err := e.consensus.FinalizeBranch(A2, H+1, A); err != nil {
 		t.Fatalf("FinalizeBranch(H+1) extend finalize: %v", err)
 	}
-	e.pruneCommittedSlotsBelow(H + 1)
+	e.compactVoteGuardThroughQuasar(H + 1)
 
 	e.slotMu.Lock()
 	_, stillHeld := e.committedSlot[SlotKey{Height: H}]
