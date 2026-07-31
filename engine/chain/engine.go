@@ -2287,8 +2287,22 @@ func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
 	if consensusFloor > floor {
 		floor = consensusFloor
 	}
+	// BOTH REFUSALS BELOW ARE LOGGED. They were silent, and a silent refusal here is the
+	// hardest failure in the system to diagnose: every node-side counter stays healthy, the
+	// block verifies on every peer, chits come back 4-of-4 accept — and the chain simply never
+	// advances, because no node ever emits the SIGNED vote a quorum cert is assembled from.
+	// Two independent live investigations (devnet and testnet, 2026-07-31) each traced the
+	// stall to this function and each had to STOP at "reserveSlotForSign returns false and
+	// logs nothing", unable to separate the floor refusal from the binding refusal. They are
+	// very different faults — one is correct behaviour at a certified height, the other is a
+	// node welded to a dead candidate — and telling them apart must not require a code read.
 	if height <= floor {
-		return false // decided height — permanently unsignable (durable across restart)
+		// Correct at a CERTIFIED height: the network already closed it. Expected and benign
+		// while catching up, which is why this is Debug and the conflict below is Warn.
+		t.log.Debug("vote-once: REFUSING to sign at or below the certified floor",
+			"height", height, "canonical", canonical, "floor", floor,
+			"guardFloor", t.decidedFloor, "quasarFloor", consensusFloor)
+		return false
 	}
 	if bound, ok := t.committedSlot[key]; ok {
 		if bound == canonical {
@@ -2298,6 +2312,15 @@ func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
 		// One signature per consensus height makes two conflicting finality attestations at
 		// one height impossible (Nova's single-accept property; this durable committedSlot is
 		// its cross-restart WITNESS — a value/log, never a decision lock).
+		//
+		// WARN, not Debug: above the certified floor this is the LIVENESS-CRITICAL case. If
+		// the block this node bound is dead — its proposer was replaced, or a restart in a
+		// later slot changed the rebuilt block's ID — then the fleet has moved to a candidate
+		// this node will refuse forever, and the height can never gather α. That is a stalled
+		// chain, not a Byzantine peer, and it must be visible the moment it happens.
+		t.log.Warn("vote-once: REFUSING to sign a CONFLICTING block at an already-bound height "+
+			"— this height cannot reach α from this node until the binding is resolved",
+			"height", height, "bound", bound, "offered", canonical, "floor", floor)
 		return false
 	}
 	// First binding at this slot. PERSIST it durably BEFORE permitting the signature —
