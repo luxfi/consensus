@@ -1,0 +1,88 @@
+name: Release
+
+# Cuts the GitHub release for a v* tag, on the native runners
+# (git.hanzo.ai → git-runner).
+#
+# This replaces the `release` job that lived inside .github/workflows/ci.yml,
+# which named `runs-on: lux-build-amd64`. No runner on this forge carries that
+# label — the pools are `lux-build-linux-<arch>` — and a job naming a label
+# nothing carries does not fail, it waits. No tag has produced a release.
+#
+# It is a separate workflow rather than a tag-gated job inside CI so that the
+# two can have the concurrency they each need: CI cancels superseded runs, a
+# release must not be cancelled by whatever lands behind it. It therefore builds
+# its own binaries rather than downloading CI's artifacts — the same matrix, run
+# for the tag it is releasing.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# A release is not made irrelevant by a newer one — let it finish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test -race -timeout=15m ./...
+
+  build:
+    needs: verify
+    # Cross-compilation, all from the one Linux runner: the matrix sets GOOS and
+    # GOARCH, it does not select a runner.
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, darwin, windows]
+        arch: [amd64, arm64]
+        exclude:
+          - os: windows
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build ${{ matrix.os }}/${{ matrix.arch }}
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: go build -v -o consensus-${{ matrix.os }}-${{ matrix.arch }} ./cmd/consensus
+      - uses: actions/upload-artifact@v4
+        with:
+          name: consensus-${{ matrix.os }}-${{ matrix.arch }}
+          path: consensus-${{ matrix.os }}-${{ matrix.arch }}
+
+  release:
+    needs: build
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
