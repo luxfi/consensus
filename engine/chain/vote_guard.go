@@ -115,6 +115,30 @@ type VoteGuardStore interface {
 	Close() error
 }
 
+// VoteGuardLocator is the OPTIONAL introspection a durable VoteGuardStore may implement so the
+// engine can report WHERE its equivocation memory lives and whether that artifact is on disk
+// RIGHT NOW. Deliberately NOT part of VoteGuardStore: a memory-only stub has no path, and the
+// guard contract must not grow a method only the file store can answer.
+//
+// It exists because the absence of these two values cost a live investigation its conclusion.
+// The guard is not at the data root — it is <chain-data-dir>/network-<N>/<blockchainID>/vote-guard,
+// one PER CHAIN — so an operator looked in the wrong place, found nothing, and inferred the
+// guard was unwired. A process must be able to state where it is writing.
+type VoteGuardLocator interface {
+	// Path returns the durable snapshot's location ("" when unknown).
+	Path() string
+	// Exists reports whether that snapshot is present on disk AT CALL TIME. A fresh signer that
+	// has not yet bound a height reports false — OpenVoteGuard creates no file, the first
+	// committed Persist does — so false means "nothing persisted yet, OR it was destroyed",
+	// never "no guard is wired". SignGateStatus reports it next to GuardConfigured so the two
+	// cannot be confused again.
+	Exists() bool
+}
+
+// The production store answers both — asserted at compile time so the introspection cannot
+// silently regress to the "does not implement VoteGuardLocator" branch.
+var _ VoteGuardLocator = (*fileVoteGuard)(nil)
+
 // WithVoteGuard wires the durable non-equivocation backing (HIGH-1) and seeds the
 // in-memory guard from whatever survived the last run, so a restarted signer
 // refuses to sign a conflicting sibling at any height it had already committed to
@@ -126,14 +150,22 @@ func WithVoteGuard(store VoteGuardStore) Option {
 		if store == nil {
 			return
 		}
-		for k, v := range store.Snapshot() {
+		snap := store.Snapshot()
+		loadedFloor := store.FinalizedThrough()
+		for k, v := range snap {
 			t.committedSlot[k] = v
 		}
+		// Capture the OPEN-TIME recovery as immutable values (SignGateStatus reports them). The
+		// floor especially: every later Persist advances the store's FinalizedThrough(), so after
+		// the first write it can no longer answer "what did this node BOOT with" — the first
+		// question any equivocation post-mortem asks.
+		t.loadedBindingCount = len(snap)
+		t.loadedFinalizedThrough = loadedFloor
 		// Seed the durable decided-through floor so the sign gate refuses any height this
 		// node had already finalized before the crash — even the below-tip heights whose
 		// slots the strictly-below prune persisted away (CROSS-RESTART prune-then-resign).
-		if f := store.FinalizedThrough(); f > t.decidedFloor {
-			t.decidedFloor = f
+		if loadedFloor > t.decidedFloor {
+			t.decidedFloor = loadedFloor
 		}
 	}
 }
@@ -272,6 +304,29 @@ func (g *fileVoteGuard) FinalizedThrough() uint64 { return g.finalizedThrough }
 
 // Close is a no-op: the store holds no file handle open between writes.
 func (g *fileVoteGuard) Close() error { return nil }
+
+// Path reports where this store persists (VoteGuardLocator). Total on a nil receiver so
+// introspection can never panic on a typed-nil store — the exact shape that defeats every
+// `store == nil` guard elsewhere, and which GuardImplementation is there to expose.
+func (g *fileVoteGuard) Path() string {
+	if g == nil {
+		return ""
+	}
+	return g.path
+}
+
+// Exists reports whether the snapshot file is on disk right now (VoteGuardLocator). Live
+// stat, not cached: it must answer "is the equivocation memory THERE", not "was it there at
+// open". Only a definite absence is false — an unstattable path (permissions, a stalled
+// mount) is reported as present so a transient stat error is never read as "the guard was
+// destroyed", the one conclusion that triggers a staking-identity rotation.
+func (g *fileVoteGuard) Exists() bool {
+	if g == nil {
+		return false
+	}
+	_, err := os.Stat(g.path)
+	return !errors.Is(err, os.ErrNotExist)
+}
 
 // encodeVoteGuard serializes the binding set: magic | ver | count | finalizedThrough(u64)
 // | records | crc (v2). Record order is unspecified (the decoder rebuilds a map); every
