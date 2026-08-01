@@ -1680,6 +1680,9 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 		ownProp   bool
 	}
 	var dueBlocks []due
+	// certFetches are blocks abandoned by the re-poll cap whose cert we must pull.
+	// Collected under the lock, issued after it (see below).
+	var certFetches []ids.ID
 	t.mu.Lock()
 	for blockID, pending := range t.pendingBlocks {
 		if pending.Decided || pending.rePollAbandoned {
@@ -1730,6 +1733,19 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 			pending.rePollAbandoned = true
 			t.log.Warn("re-poll: gossiped block abandoned after attempt cap — not re-soliciting further (recoverable via cert/catch-up)",
 				"blockID", blockID, "attempts", pending.rePollAttempts)
+			// ...and REQUEST that recovery, rather than only asserting it. The line above
+			// promised "recoverable via cert/catch-up" and nothing asked: cert-gossip is
+			// send-once at assembly, and the BLOCK gate (claimCatchupLocked) suppresses a
+			// fetch for a block we already track — which this block is. Its height-domain
+			// twin exists for exactly this case and had no callers, so a follower that
+			// merely missed the cert stayed behind forever. With 2 of 5 in that state a
+			// 4-of-5 chain cannot reach α and halts (lux-testnet, height 16821).
+			//
+			// Claim under the lock (the gate is height-keyed and rate-limited); fire the
+			// fetch after the unlock below, since the transport takes its own locks.
+			if pending.ConsensusBlock != nil && t.claimCertCatchupLocked(pending.ConsensusBlock.height) {
+				certFetches = append(certFetches, blockID)
+			}
 		}
 
 		var data []byte
@@ -1739,7 +1755,21 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 		dueBlocks = append(dueBlocks, due{blockID: blockID, blockData: data, ownProp: pending.IsOwnProposal})
 	}
 	proposer := t.proposer
+	catchup := t.catchup
 	t.mu.Unlock()
+
+	// Stuck-round cert catch-up. chainID/networkID are fixed per-handler on every
+	// Catchup implementation (both ignore the arguments), and an EMPTY `from` is the
+	// documented "engine holds no peer preference — the node layer samples" form. The
+	// responder answers with (block, cert) pairs and AcceptCatchupBlock finalizes on
+	// the verified cert with no re-vote, so this closes the loop the abandon path
+	// always described.
+	for _, id := range certFetches {
+		if catchup == nil {
+			break
+		}
+		_ = catchup.RequestAncestors(ids.Empty, ids.Empty, id, ids.EmptyNodeID)
+	}
 
 	for _, d := range dueBlocks {
 		// (1) Re-attempt finalization first: if α signed votes already arrived but
