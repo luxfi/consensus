@@ -64,7 +64,12 @@ jobs:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
         run: go build -v -o consensus-${{ matrix.os }}-${{ matrix.arch }} ./cmd/consensus
-      - uses: actions/upload-artifact@v4
+      # v3, not v4+: this workflow runs on git.hanzo.ai, which presents as
+      # GHES, and the v4 action refuses outright -- "GHESNotSupportedError:
+      # @actions/artifact v2.0.0+ ... not currently supported on GHES". The
+      # job builds its artifact and then discards it at the last step, so a
+      # successful build reads as a failed run.
+      - uses: actions/upload-artifact@v3
         with:
           name: consensus-${{ matrix.os }}-${{ matrix.arch }}
           path: consensus-${{ matrix.os }}-${{ matrix.arch }}
@@ -77,7 +82,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v3
         with:
           path: dist/
       - uses: softprops/action-gh-release@v2
