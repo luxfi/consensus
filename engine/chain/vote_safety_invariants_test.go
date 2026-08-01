@@ -73,8 +73,8 @@ func readVoteTally(e *Transitive, blk *verifyOnceBlock) voteTally {
 
 	e.consensus.mu.RLock()
 	if cb, ok := e.consensus.blocks[blk.id]; ok {
-		v.acceptVotes = cb.acceptVotes
-		v.rejectVotes = cb.rejectVotes
+		v.acceptVotes = cb.acceptVotes()
+		v.rejectVotes = cb.rejectVotes()
 		v.accepted = cb.accepted
 	}
 	e.consensus.mu.RUnlock()

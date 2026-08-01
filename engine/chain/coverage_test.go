@@ -270,7 +270,7 @@ func TestDrainAcceptedWithAcceptedBlock(t *testing.T) {
 
 	// Add block to consensus and accept it
 	engine.consensus.AddBlock(ctx, cBlock)
-	engine.consensus.ProcessVote(ctx, blockID, true)
+	engine.consensus.ProcessVote(ctx, blockID, ids.GenerateTestNodeID(), true)
 	engine.consensus.Poll(ctx, map[ids.ID]int{blockID: 1})
 
 	if !engine.consensus.IsAccepted(blockID) {

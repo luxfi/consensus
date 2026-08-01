@@ -396,7 +396,7 @@ func trackProposal(e *Transitive, chainID ids.ID, blk *verifyOnceBlock, round ui
 		data:      blk.bytes,
 	}
 	_ = e.consensus.AddBlock(context.Background(), cb)
-	_ = e.consensus.ProcessVote(context.Background(), blk.id, true)
+	_ = e.consensus.ProcessVote(context.Background(), blk.id, ids.GenerateTestNodeID(), true)
 	e.mu.Lock()
 	pb := &PendingBlock{
 		ConsensusBlock: cb,
