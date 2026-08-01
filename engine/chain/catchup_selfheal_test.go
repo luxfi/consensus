@@ -68,7 +68,7 @@ func TestFinalize_MissingAncestor_TypedError(t *testing.T) {
 	led := seedLedger(tip, tip, 5) // certified through height 5
 
 	missingParent := ids.GenerateTestID() // the height-7 ancestor we do NOT track
-	certBlock := ids.GenerateTestID()      // certified block at height 8
+	certBlock := ids.GenerateTestID()     // certified block at height 8
 	cert := Cert{Block: certBlock, Parent: missingParent, Height: 8, Canonical: certBlock}
 
 	_, _, err := Finalize(led, cert, mapAncestry{ /* nothing tracked → parent walk misses */ })
@@ -145,5 +145,71 @@ func TestSelfHeal_CertMissingIntermediateAncestor_TriggersFetch(t *testing.T) {
 	}
 	if m, _ := cu.lastMissing(); m != missingParent {
 		t.Fatalf("catch-up must target the MISSING ANCESTOR %s, got %s", missingParent, m)
+	}
+}
+
+// TestSelfHeal_StuckTrackedNonOwnBlock_TriggersCertCatchup is the STUCK-ROUND twin of the
+// missing-ancestor test above, and the direct reproduction of the lux-testnet halt at 16821.
+//
+// The state: a follower TRACKS a gossiped (non-own) block and holds its ancestors, but never
+// finalizes because the α-of-K cert never reached it. rePollAllPending re-solicits it
+// maxRePollAttempts times, sets rePollAbandoned, and logs
+//
+//	"gossiped block abandoned after attempt cap — not re-soliciting further (recoverable via cert/catch-up)"
+//
+// deferring recovery to "cert/catch-up". Neither fires: cert-gossip is send-once at assembly,
+// and the BLOCK catch-up gate (claimCatchupLocked) deliberately SUPPRESSES a fetch for a block
+// that is already tracked. Its height-domain twin claimCertCatchupLocked exists precisely for
+// this case ("fetches the CERT for a block we already hold") and has NO callers, and the
+// Runtime.requestCertCatchup its comments name was never written. stuckRoundThreshold is
+// defined and never read.
+//
+// So the abandon path asserts a recovery that is never requested, and the follower stays
+// behind forever — with 2 of 5 in that state the chain cannot reach alpha and halts.
+//
+// PRE-FIX: 0 fetches. POST-FIX: at least one catch-up request for the stuck block, which the
+// existing transport answers with (block, cert) and AcceptCatchupBlock finalizes without a re-vote.
+func TestSelfHeal_StuckTrackedNonOwnBlock_TriggersCertCatchup(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	chainID := ids.GenerateTestID()
+	cu := &recordingCatchup{}
+	rec := &recordingGossiper{}
+
+	e := NewWithConfig(Config{Params: params5()},
+		WithQuorumCert(chainID, vs.nodeID(0), vs, rec, vs.signerFor(0)),
+		WithCatchup(cu),
+	)
+	if err := e.Start(context.Background(), true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+
+	rt := &Runtime{Transitive: e, config: NetworkConfig{
+		ChainID: chainID, NetworkID: ids.GenerateTestID(), Logger: log.Noop(),
+		Gossiper: &certQuorumGossiper{rec: rec}, Catchup: cu,
+	}}
+
+	// Certified through height 8; the stuck block is 9 — we HOLD it, we cannot finalize it.
+	tip8 := ids.GenerateTestID()
+	e.consensus.mu.Lock()
+	e.consensus.ledger = seedLedger(tip8, tip8, 8)
+	e.consensus.mu.Unlock()
+
+	blk9 := &verifyOnceBlock{
+		id: ids.GenerateTestID(), parentID: tip8, height: 9,
+		timestamp: time.Now(), bytes: []byte("gossiped-9-stuck-no-cert"),
+	}
+	trackVerifiedBlock(rt, blk9, 0) // PendingBlock.IsOwnProposal stays false => gossiped
+
+	// Drive past the abandon cap.
+	driveRePoll(e, maxRePollAttempts+2)
+
+	if got := cu.count(); got == 0 {
+		t.Fatalf("a TRACKED non-own block stuck past maxRePollAttempts=%d must trigger a cert catch-up "+
+			"fetch (claimCertCatchupLocked), got 0 — the abandon path promises "+
+			"\"recoverable via cert/catch-up\" and never requests it", maxRePollAttempts)
+	}
+	if m, _ := cu.lastMissing(); m != blk9.id {
+		t.Fatalf("cert catch-up must target the stuck block %s, got %s", blk9.id, m)
 	}
 }
