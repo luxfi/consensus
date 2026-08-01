@@ -35,13 +35,33 @@ const magnetarDirectSuite = "Lux-Magnetar-SLHDSA192s-Direct-v1"
 
 // twoSLHDSA builds a real 2-signer SLH-DSA-192s scenario (weights 60+60=120,
 // threshold 100). Each signer holds an INDEPENDENT FIPS-205 keypair.
+// twoSLHDSACache holds the one shared two-signer SLH-DSA scenario. Minting a
+// signer is a FIPS-205 keygen at ParamsM192s (the SMALL-signature set, slowest
+// to sign), and twelve tests in this package ask for the same pair — the same
+// two fixed IDs, the same weights, the same threshold. That repetition is a
+// large share of why `go test ./protocol/quasar` was being killed at its 900s
+// cap on CI.
+//
+// Shared safely: every test that alters a cert copies first. RollupRoot is a
+// [32]byte, so `bad := *f.mc` is a real copy; the tamper test re-decodes from
+// f.mc.CertSet into fresh memory. Nothing writes through the scenario's
+// pointers.
+//
+// A plain var needs no lock: nothing in protocol/quasar calls t.Parallel().
+var twoSLHDSACache *scenario
+
 func twoSLHDSA(t *testing.T) scenario {
 	t.Helper()
+	if twoSLHDSACache != nil {
+		return *twoSLHDSACache
+	}
 	signers := []*testSigner{
 		newSLHDSASigner(t, 0x01, 60),
 		newSLHDSASigner(t, 0x02, 60),
 	}
-	return buildScenario(t, signers, 100, nil)
+	sc := buildScenario(t, signers, 100, nil)
+	twoSLHDSACache = &sc
+	return sc
 }
 
 // magnetarFixture wraps an SLH-DSA scenario as a complete Magnetar-leg
