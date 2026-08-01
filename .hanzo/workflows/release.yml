@@ -37,7 +37,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -race -timeout=15m ./...
+      - run: go test -race -timeout=40m ./...
 
   build:
     needs: verify

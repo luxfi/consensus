@@ -32,7 +32,7 @@ concurrency:
 jobs:
   test:
     runs-on: [lux-build-linux-amd64]
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -40,8 +40,21 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go mod download
+      # -timeout=40m, not 15m. protocol/quasar is 11601 tests over SLH-DSA
+      # (FIPS 205 at ParamsM192s) and the race detector multiplies it ~22x:
+      # measured on one host, -count=1, with the fixture caching already in
+      #   no -race  50.5s   ->   -race  1105.1s, ALL PASS, 85.5% coverage
+      # It was never a hang. 900s simply sat below the work, so the package
+      # was killed mid-run and reported FAIL at exactly 900.0xs.
+      #
+      # Cutting the work was tried first and is already shipped (5305e785,
+      # 0ba1f553 cache the two SLH-DSA fixtures: ~117s -> 50.5s un-raced).
+      # Skipping the crypto under -race was tried and rejected: it bought
+      # nothing measurable, because the detector taxes all 11601 tests and
+      # not just the fixtures — and this package has real concurrency
+      # (TestGroupedEpochManager_ParallelKeygen) that -race must keep seeing.
       - name: Test
-        run: go test -v -race -timeout=15m -coverprofile=coverage.txt -covermode=atomic ./...
+        run: go test -v -race -timeout=40m -coverprofile=coverage.txt -covermode=atomic ./...
 
   lint:
     runs-on: [lux-build-linux-amd64]
