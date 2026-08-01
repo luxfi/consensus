@@ -55,10 +55,31 @@ func (f polarisFixture) keys() CertKeys {
 // buildPolarisFixture composes a real five-leg Polaris cert. It is heavy
 // (Pulsar DKG + SLH-DSA hash trees) and is therefore skipped under
 // -short, exactly like the compose gate test.
+// polarisFixtureCache holds the one built fixture. Building it costs three
+// SLH-DSA-192s keygen+sign pairs (magnetar.ParamsM192s — FIPS 205 in its
+// SMALL-signature parameter set, the slowest to sign), and seven tests use it.
+// Rebuilding per test pushed `go test ./protocol/quasar` past its 900s limit:
+// the package was killed mid-run with the goroutine dump sitting in
+// circl slhdsa forsSign, under buildPolarisFixture, under
+// TestVerifyWithRealKeysPolaris_RejectsRemovedLegWhenKeyed.
+//
+// The crypto is identical on every call — a fixed digest and fresh random keys
+// that nothing asserts about — so it is built once and shared.
+//
+// Safe to share: no caller mutates it. The only two that alter a cert copy
+// first — `purePQ := *f.cert` before nil-ing BLS, and a fresh &QuasarCert
+// built with `append([]byte(nil), f.cert.BLS...)`.
+//
+// A plain var needs no lock: nothing in protocol/quasar calls t.Parallel().
+var polarisFixtureCache *polarisFixture
+
 func buildPolarisFixture(t *testing.T) polarisFixture {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping SLH-DSA / DKG-bound Polaris fixture under -short")
+	}
+	if polarisFixtureCache != nil {
+		return *polarisFixtureCache
 	}
 
 	digest := []byte("h3-policy-verify-enforced-and-of-legs-digest")
@@ -177,7 +198,7 @@ func buildPolarisFixture(t *testing.T) polarisFixture {
 		t.Fatalf("pulsarGroupPK.MarshalBinary: %v", err)
 	}
 
-	return polarisFixture{
+	f := polarisFixture{
 		digest:    digest,
 		cert:      cert,
 		blsPK:     blsPK,
@@ -186,6 +207,8 @@ func buildPolarisFixture(t *testing.T) polarisFixture {
 		mldsaPubs: []*mldsa.PublicKey{mldsaSK.PublicKey},
 		magKnown:  magKnown,
 	}
+	polarisFixtureCache = &f
+	return f
 }
 
 // hybridHeavyPolicy requires every leg: BLS + Pulsar + Corona + Magnetar.
