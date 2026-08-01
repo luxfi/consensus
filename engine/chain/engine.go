@@ -145,6 +145,13 @@ type Vote struct {
 	// engine can rebuild CanonicalVoteMessage when assembling a cert even if it
 	// is not separately tracking the block's parent.
 	ParentID ids.ID
+
+	// transportAuthenticated marks a vote whose ORIGIN was supplied as a
+	// PARAMETER by the authenticated transport, rather than read out of the
+	// payload. It is unexported ON PURPOSE: no decoder, no peer, and no caller
+	// outside this package can set it, so it cannot be forged over the wire.
+	// ReceiveAuthenticatedVote is the only constructor that sets it.
+	transportAuthenticated bool
 	// Round is the consensus round the vote was cast in (0 for the first round
 	// at a height). Bound into the signed position.
 	Round uint32
@@ -2107,12 +2114,12 @@ func (t *Transitive) handleVote(vote Vote) {
 	// flip is DELETED: vote.Accept is authoritative once the signature checks
 	// out. Single-validator engines (no verifier) skip authentication — the sole
 	// validator's self-vote is the quorum and carries no signature.
-	if t.voteVerifier != nil {
+	if t.voteVerifier != nil && !vote.transportAuthenticated {
 		pos := t.blockPositionLocked(pending, vote.BlockID)
 		msg := canonicalVoteMessageFor(pos, vote.Accept)
 		// Resolve the voter's pubkey at the block's P-CHAIN epoch height (RESIDUAL-B),
 		// the same height the position's set-root commits to.
-		// WHY THIS STAYS, EVEN THOUGH IT IS WHAT STALLS THE FLEETS.
+		// WHY THIS STAYS FOR PAYLOAD-SUPPLIED ORIGINS.
 		//
 		// avalanchego counts unsigned chits: `grep -rn "Signature" snow/` returns
 		// ZERO, while vms/platformvm/warp signs aggregate BLS for anything that must
