@@ -607,6 +607,21 @@ type Transitive struct {
 	// Guarded by slotMu (lives with committedSlot).
 	decidedFloor uint64
 	voteGuard    VoteGuardStore
+	// loadedBindingCount / loadedFinalizedThrough are the guard's OPEN-TIME recovery — how many
+	// per-height bindings and what certified floor this node BOOTED with. Captured once by
+	// WithVoteGuard and never mutated after, because they are not re-derivable: every Persist
+	// advances the store's FinalizedThrough(), so the live value answers a different question
+	// than the post-mortem one. Reported by SignGateStatus and stated once at Start.
+	loadedBindingCount     int
+	loadedFinalizedThrough uint64
+	// persistAttempts / persistSuccesses / persistFailures count every DURABLE guard write
+	// (Persist and Reconcile) through the one counting seam, recordGuardWriteLocked. A failing
+	// store is FAIL-CLOSED — it silently costs this node every vote — and one of the three
+	// write sites only returns its error rather than logging it, so these counters are that
+	// fault's only aggregate signal. Guarded by slotMu (every writer holds it) ⇒ no atomics.
+	persistAttempts  uint64
+	persistSuccesses uint64
+	persistFailures  uint64
 
 	// stakeSource (optional) makes finality STAKE-WEIGHTED instead of a raw voter
 	// count (HIGH-3). When set (a value/PoS chain with unequal stake), a cert is
@@ -944,6 +959,31 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 				"THE STAKING IDENTITY rather than re-signing with the same key")
 		}
 	}
+
+	// The POSITIVE counterpart to the two warnings above. Both fire ONLY in a bad case, so a
+	// healthy boot leaves NO statement at all about this node's durable signing memory — and
+	// the warning above has `t.voteGuard != nil` among its own preconditions, so its presence
+	// PROVES a guard is wired, which a live investigation read backwards into "the guard is
+	// missing". State the sign gate's boot condition unconditionally, exactly once, naming the
+	// store, the path it writes, whether that file is on disk, and what it recovered — so
+	// neither question ever needs a code read or a filesystem guess again.
+	//
+	// Called WITHOUT releasing t.mu, deliberately: SignGateStatus takes the consensus read lock
+	// and then slotMu, which is exactly the order snapshotVotableSlotsLocked already uses under
+	// t.mu. Releasing the engine lock here would open a window in which t.started is still
+	// false — a purely observational statement must add no timing surface to Start at all.
+	gate := t.SignGateStatus()
+	t.log.Info("vote-once: sign-gate boot state",
+		"signerConfigured", t.voteSigner != nil,
+		"guardConfigured", gate.GuardConfigured,
+		"guardImpl", gate.GuardImplementation,
+		"guardPath", gate.GuardPath,
+		"guardFileExists", gate.GuardFileExists,
+		"loadedBindings", gate.LoadedBindingCount,
+		"loadedFinalizedThrough", gate.LoadedFinalizedThrough,
+		"certifiedFloor", gate.CertifiedFloor,
+		"guardFloor", gate.GuardFloor,
+		"quasarFloor", gate.QuasarFloor)
 
 	t.ctx, t.cancel = context.WithCancel(ctx)
 	t.bootstrapped = true
@@ -2329,7 +2369,7 @@ func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
 	// consistent with what is durable and we FAIL CLOSED (return false ⇒ no signature).
 	t.committedSlot[key] = canonical
 	if t.voteGuard != nil {
-		if err := t.voteGuard.Persist(t.committedSlot, t.decidedFloor); err != nil {
+		if err := t.recordGuardWriteLocked(t.voteGuard.Persist(t.committedSlot, t.decidedFloor)); err != nil {
 			delete(t.committedSlot, key)
 			t.log.Error("vote-once: durable equivocation-guard write FAILED — refusing to sign (fail-closed)",
 				"height", height, "error", err)
@@ -2486,7 +2526,7 @@ func (t *Transitive) compactVoteGuardThroughQuasar(height uint64) error {
 	}
 	// Persist the POST-compaction view. Only swap it in once the fsync'd write commits, so a
 	// failed write leaves memory identical to disk (fail-closed) rather than ahead of it.
-	if err := t.voteGuard.Persist(pruned, t.decidedFloor); err != nil {
+	if err := t.recordGuardWriteLocked(t.voteGuard.Persist(pruned, t.decidedFloor)); err != nil {
 		t.decidedFloor = prevFloor
 		t.log.Error("vote-once: durable certified-floor write FAILED — export frontier NOT advanced (fail-closed)",
 			"quasarHeight", height, "error", err)

@@ -199,7 +199,7 @@ func (t *Transitive) reconcilePhantomFloor(target, localVMHeight uint64) (uint64
 // floor <= the current decidedFloor).
 func (t *Transitive) writeReconciledStateLocked(committed map[SlotKey]ids.ID, newFloor uint64) error {
 	if t.voteGuard != nil {
-		if err := t.voteGuard.Reconcile(committed, newFloor); err != nil {
+		if err := t.recordGuardWriteLocked(t.voteGuard.Reconcile(committed, newFloor)); err != nil {
 			return fmt.Errorf("reconcile: durable vote-guard write failed (fail-closed, nothing changed): %w", err)
 		}
 	}
