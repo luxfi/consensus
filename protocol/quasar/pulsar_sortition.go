@@ -137,18 +137,18 @@ var (
 // VERIFY layer is orthogonal to keygen: it verifies committee key-eras and
 // signatures, it does not run keygen, so it must not couple to keygen's current
 // committee-size ceiling.
-func (p SortitionParams) Validate() error {
-	if p.T < 2 || p.T > p.N {
-		return fmt.Errorf("%w: need 2 ≤ t ≤ n, got t=%d n=%d", ErrSortitionParams, p.T, p.N)
+func (sp SortitionParams) Validate() error {
+	if sp.T < 2 || sp.T > sp.N {
+		return fmt.Errorf("%w: need 2 ≤ t ≤ n, got t=%d n=%d", ErrSortitionParams, sp.T, sp.N)
 	}
-	if p.M < 1 || p.R < 1 || p.R > p.M {
-		return fmt.Errorf("%w: need 1 ≤ r ≤ m, got r=%d m=%d", ErrSortitionParams, p.R, p.M)
+	if sp.M < 1 || sp.R < 1 || sp.R > sp.M {
+		return fmt.Errorf("%w: need 1 ≤ r ≤ m, got r=%d m=%d", ErrSortitionParams, sp.R, sp.M)
 	}
-	if p.SelectionAlgorithm != SelectionStakeWeightedSHAKE256 {
-		return fmt.Errorf("%w: %d", ErrUnknownSelectionAlgo, p.SelectionAlgorithm)
+	if sp.SelectionAlgorithm != SelectionStakeWeightedSHAKE256 {
+		return fmt.Errorf("%w: %d", ErrUnknownSelectionAlgo, sp.SelectionAlgorithm)
 	}
-	if p.FMaxDen == 0 || p.FMaxNum == 0 || p.FMaxNum >= p.FMaxDen {
-		return fmt.Errorf("%w: need 0 < f_max < 1, got %d/%d", ErrSortitionParams, p.FMaxNum, p.FMaxDen)
+	if sp.FMaxDen == 0 || sp.FMaxNum == 0 || sp.FMaxNum >= sp.FMaxDen {
+		return fmt.Errorf("%w: need 0 < f_max < 1, got %d/%d", ErrSortitionParams, sp.FMaxNum, sp.FMaxDen)
 	}
 	return nil
 }
