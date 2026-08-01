@@ -290,7 +290,7 @@ func TestConformance_StatusOrProcessing_PreviouslyRejected(t *testing.T) {
 	g := seedGenesis(t, c)
 
 	bID, _ := trackChild(c, g, 1)
-	if err := c.ProcessVote(context.Background(), bID, false); err != nil {
+	if err := c.ProcessVote(context.Background(), bID, ids.GenerateTestNodeID(), false); err != nil {
 		t.Fatalf("reject vote: %v", err)
 	}
 	if !c.IsRejected(bID) {
@@ -440,10 +440,10 @@ func TestConformance_RecordPollSplitVoteNoChange(t *testing.T) {
 	secondID, _ := trackChild(c, g, 1)
 
 	// One split poll: one accept chit to each sibling. Below α=2 → no decision.
-	if err := c.ProcessVote(context.Background(), firstID, true); err != nil {
+	if err := c.ProcessVote(context.Background(), firstID, ids.GenerateTestNodeID(), true); err != nil {
 		t.Fatalf("vote first: %v", err)
 	}
-	if err := c.ProcessVote(context.Background(), secondID, true); err != nil {
+	if err := c.ProcessVote(context.Background(), secondID, ids.GenerateTestNodeID(), true); err != nil {
 		t.Fatalf("vote second: %v", err)
 	}
 	if c.IsAccepted(firstID) || c.IsAccepted(secondID) {
@@ -458,7 +458,7 @@ func TestConformance_RecordPollSplitVoteNoChange(t *testing.T) {
 
 	// α is the threshold (not premature): one more accept lifts `first` to the
 	// α-count LIVENESS flag — but that is STILL not finality.
-	if err := c.ProcessVote(context.Background(), firstID, true); err != nil {
+	if err := c.ProcessVote(context.Background(), firstID, ids.GenerateTestNodeID(), true); err != nil {
 		t.Fatalf("second vote first: %v", err)
 	}
 	if !c.IsAccepted(firstID) {
@@ -583,7 +583,7 @@ func TestConformance_RecordPollInvalidVote(t *testing.T) {
 	bID, _ := trackChild(c, g, 1)
 	unknown := ids.GenerateTestID()
 
-	if err := c.ProcessVote(context.Background(), unknown, true); err == nil {
+	if err := c.ProcessVote(context.Background(), unknown, ids.GenerateTestNodeID(), true); err == nil {
 		t.Fatal("a vote for an unknown block must error")
 	}
 	// Poll tolerates an unknown id in the response map (skips it).

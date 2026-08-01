@@ -209,18 +209,23 @@ func TestRED_INT_DoubleCount_SelfLowStake(t *testing.T) {
 		rt.ReceiveVote(v1)
 	}
 
-	// The COUNT predicate trips (self's auto-vote + node1's replays push acceptVotes
-	// well past α=3), so the finality road is exercised.
-	if !waitFor(2*time.Second, func() bool { return rt.HasEnoughResponsesForRetry(blk.id) }) {
-		t.Fatalf("precondition: COUNT predicate never tripped (vacuous) — Accept=%d", blk.AcceptCalled())
+	// REPLAY NO LONGER INFLATES COUNT. ProcessVote takes the voter and the tally is
+	// a per-NodeID SET, so 64 replays of node1 count once: distinct accepts are
+	// {node4 self, node1} = 2 < α=3. This assertion is the count-side half of the
+	// defence — before it existed, those replays alone pushed acceptVotes past α and
+	// stake-weighting was the ONLY thing standing between a replay and finality.
+	if rt.HasEnoughResponsesForRetry(blk.id) {
+		t.Fatalf("REPLAY INFLATED THE COUNT: 64 replays of ONE validator tripped the α=3 count "+
+			"predicate. α must mean α DISTINCT validators; a voter that can advance the tally by "+
+			"repeating itself makes the count road forgeable by a single peer.")
 	}
 
-	// SAFETY: distinct stake = {node4:1, node1:1} = 2/100 ≪ floor(2/3·100)=66. The
-	// stake-weighted finalize must refuse despite the inflated count.
+	// SAFETY: distinct stake = {node4:1, node1:1} = 2/100 ≪ floor(2/3·100)=66, and
+	// distinct COUNT is 2 < α=3. Neither road may finalize. Previously only the stake
+	// road stood here, because the count road had already been fooled by the replays.
 	if waitFor(900*time.Millisecond, func() bool { return rt.IsAccepted(blk.id) }) {
-		t.Fatalf("SAFETY VIOLATION: block finalized with distinct stake 2/100 by replaying one "+
-			"1-stake validator (VM.Accept=%d) — NodeID-keyed stake summation failed; the count "+
-			"road manufactured stake-finality", blk.AcceptCalled())
+		t.Fatalf("SAFETY VIOLATION: block finalized from ONE replayed 1-stake validator "+
+			"(VM.Accept=%d) — distinct stake 2/100, distinct count 2", blk.AcceptCalled())
 	}
 
 	// ANTI-VACUITY: node0's genuine 96-stake vote tips {node4,node1,node0}=98/100>⅔.
