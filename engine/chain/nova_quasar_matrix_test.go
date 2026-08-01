@@ -308,8 +308,37 @@ func TestNovaQuasarMatrix_Partition_MajorityProducesNeitherExports(t *testing.T)
 	net.nodes[4].setUp(true)
 	parentID := blk1.ID()
 	parentStateRoot := blk1.stateRoot
-	var last *simBlock
-	for h := uint64(2); h <= 4; h++ {
+	// chain is every block on the single canonical chain, so the export-frontier invariant
+	// can be stated as "the tip is ON this chain" instead of pinning it to one ID.
+	chain := map[ids.ID]bool{blk1.ID(): true}
+	// target is the FIRST post-heal block. Export lags production by a variable number of
+	// blocks, so pinning the requirement to the NEWEST one asserted a timing detail rather
+	// than the claim above it — it left nothing built behind the frontier and failed ~12% of
+	// the time whenever any companion test ran (fleet at h3, newest h4, assert waited out
+	// exportTO). "Export RESUMES" is proven by any post-heal height exporting, with the two
+	// later blocks as slack; that no side exported DURING the partition is asserted above.
+	var target *simBlock
+	// exported: has any reachable node exported a POST-HEAL height yet?
+	exported := func() bool {
+		if target == nil {
+			return false
+		}
+		for _, n := range net.nodes {
+			if !n.reachable() {
+				continue
+			}
+			if qh, ok := n.quasarHeight(); ok && qh >= target.height {
+				return true
+			}
+		}
+		return false
+	}
+	// Keep PRODUCING until export resumes. Export needs a fresh ⅔ poll, and the two healed
+	// nodes may still have been catching up during the last one — leaving 3 of 5 voting, which
+	// is below ⅔. Waiting cannot conjure a new poll, so a passive wait after the final block
+	// could never recover and simply timed out (~12% of runs, tipHeights=map[] — nothing
+	// exported at all). A real chain resumes export as blocks arrive; so does this one.
+	for h := uint64(2); h <= 8 && !exported(); h++ {
 		blk := newHonestBlock(parentID, parentStateRoot, h, "partition-heal-h")
 		net.build(int(h%5), blk)
 		if !waitFor(emergeTO, func() bool {
@@ -320,32 +349,26 @@ func TestNovaQuasarMatrix_Partition_MajorityProducesNeitherExports(t *testing.T)
 		}
 		parentID = blk.ID()
 		parentStateRoot = blk.stateRoot
-		last = blk
+		chain[blk.ID()] = true
+		if target == nil {
+			target = blk
+		}
 	}
 	// A post-heal block reaches Quasar (all 5 up ⇒ 80%+ stake > ⅔): export RESUMES after the
 	// partition healed. (Liveness; the no-conflicting-Quasar INVARIANT is proven deterministically
 	// by TestNovaQuasarMatrix_Equivocation_TwoNovaNeverTwoQuasar.)
-	if !waitFor(exportTO, func() bool {
-		for _, n := range net.nodes {
-			if !n.reachable() {
-				continue
-			}
-			if qh, ok := n.quasarHeight(); ok && qh >= last.height && n.quasarTip() == last.ID() {
-				return true
-			}
-		}
-		return false
-	}) {
-		t.Fatalf("after heal, the fleet must export a post-heal block, tips=%v", net.quasarTips())
+	if !waitFor(exportTO, exported) {
+		t.Fatalf("after heal, the fleet must export a post-heal block (want height >= %d), tipHeights=%v tips=%v",
+			target.height, net.quasarTipHeights(), net.quasarTips())
 	}
 	// No CONFLICTING export tip anywhere — the export frontier is a single chain across the heal.
 	for i, n := range net.nodes {
 		if !n.reachable() {
 			continue
 		}
-		if qh, ok := n.quasarHeight(); ok && qh >= last.height {
-			if tip := n.quasarTip(); tip != last.ID() && tip != ids.Empty {
-				t.Fatalf("INVARIANT after heal: node %d exported a CONFLICTING tip %s (want %s)", i, tip, last.ID())
+		if qh, ok := n.quasarHeight(); ok && qh >= target.height {
+			if tip := n.quasarTip(); tip != ids.Empty && !chain[tip] {
+				t.Fatalf("INVARIANT after heal: node %d exported a CONFLICTING tip %s (not on the canonical chain)", i, tip)
 			}
 		}
 	}

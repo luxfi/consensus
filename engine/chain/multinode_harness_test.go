@@ -649,6 +649,24 @@ func (net *simNet) quasarEverywhere(blk *simBlock) (all bool, fork bool) {
 
 // anyQuasarAtHeight reports the distinct EXPORT (Quasar) tips any up node has reached at >= h —
 // used to assert that NO two conflicting export tips ever coexist (THE INVARIANT).
+// quasarTipHeights reports the exported tips by height, so a liveness failure says how far
+// the export frontier lagged instead of only printing opaque IDs.
+func (net *simNet) quasarTipHeights() map[uint64]int {
+	out := map[uint64]int{}
+	for id, n := range net.quasarTips() {
+		for _, node := range net.nodes {
+			node.vm.mu.Lock()
+			b := node.vm.blockByID[id]
+			node.vm.mu.Unlock()
+			if b != nil {
+				out[b.height] += n
+				break
+			}
+		}
+	}
+	return out
+}
+
 func (net *simNet) quasarTips() map[ids.ID]int {
 	tips := map[ids.ID]int{}
 	for _, n := range net.nodes {
