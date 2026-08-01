@@ -4192,11 +4192,7 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		return nil
 	}
 
-	for {
-		if t.pendingBuildBlocks <= 0 {
-			break
-		}
-
+	for t.pendingBuildBlocks > 0 {
 		// CONSUME the demand for THIS attempt BEFORE calling out (avalanchego's model:
 		// snow/engine/snowman decrements pendingBuildBlocks before BuildBlock and treats a
 		// failed build as consumed). The old code held the demand on error and returned, so
