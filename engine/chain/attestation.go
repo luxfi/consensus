@@ -86,8 +86,8 @@ type QuasarAttestor struct {
 	verifier VoteVerifier // verifies a peer attestation's signature at the block's epoch
 	stake    StakeSource  // ⅔-by-stake threshold + live committee size at the epoch
 
-	buckets  map[attestKey]*attestBucket // in-flight, pruned when a cert emits at the height
-	certs    map[uint64]*QuorumCert      // emitted artifacts, by height (the external cert chain)
+	buckets  map[attestKey]*attestBucket    // in-flight, pruned when a cert emits at the height
+	certs    map[uint64]*QuorumCert         // emitted artifacts, by height (the external cert chain)
 	subjects map[uint64]map[ids.ID]struct{} // distinct canonicals attested per height (equivocation evidence)
 }
 

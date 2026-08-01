@@ -861,9 +861,11 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	_ = rt.Transitive.consensus.AddBlock(ctx, consensusBlock)
 
 	rt.Transitive.mu.Lock()
-	pending, exists := rt.Transitive.pendingBlocks[blockID]
-	if !exists {
-		pending = &PendingBlock{
+	// Only presence matters: an already-tracked block keeps the entry it has,
+	// and a new one gets a fresh PendingBlock. The looked-up value was never
+	// read (ineffassign), so it is not bound.
+	if _, exists := rt.Transitive.pendingBlocks[blockID]; !exists {
+		rt.Transitive.pendingBlocks[blockID] = &PendingBlock{
 			ConsensusBlock: consensusBlock,
 			VMBlock:        blk,
 			ProposedAt:     time.Now(),
@@ -871,7 +873,6 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 			Decided:        false,
 			IsOwnProposal:  false,
 		}
-		rt.Transitive.pendingBlocks[blockID] = pending
 	}
 	signer := rt.Transitive.voteSigner
 	verifier := rt.Transitive.voteVerifier
