@@ -319,7 +319,7 @@ func (net *relayNetwork) trackOwnProposal(i int, blk *verifyOnceBlock) VotePosit
 	e := net.engines[i].Transitive
 	cb := &Block{id: blk.id, parentID: blk.parentID, height: blk.height, timestamp: blk.timestamp.Unix(), data: blk.bytes}
 	_ = e.consensus.AddBlock(context.Background(), cb)
-	_ = e.consensus.ProcessVote(context.Background(), blk.id, true)
+	_ = e.consensus.ProcessVote(context.Background(), blk.id, ids.GenerateTestNodeID(), true)
 	e.mu.Lock()
 	pb := &PendingBlock{ConsensusBlock: cb, VMBlock: blk, ProposedAt: time.Now(), Round: 0, IsOwnProposal: true, VoteCount: 1}
 	e.pendingBlocks[blk.id] = pb

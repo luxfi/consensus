@@ -200,7 +200,7 @@ func TestConsensusAcceptanceThresholds(t *testing.T) {
 
 			// Submit votes.
 			for i := 0; i < tc.votes; i++ {
-				if err := consensus.ProcessVote(ctx, blockID, true); err != nil {
+				if err := consensus.ProcessVote(ctx, blockID, ids.GenerateTestNodeID(), true); err != nil {
 					t.Fatalf("ProcessVote %d failed: %v", i, err)
 				}
 			}
@@ -237,7 +237,7 @@ func TestConsensusRejection(t *testing.T) {
 
 	// 3 reject votes = alpha threshold.
 	for i := 0; i < 3; i++ {
-		consensus.ProcessVote(ctx, blockID, false)
+		consensus.ProcessVote(ctx, blockID, ids.GenerateTestNodeID(), false)
 	}
 	consensus.Poll(ctx, map[ids.ID]int{blockID: 0})
 

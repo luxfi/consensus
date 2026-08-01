@@ -87,10 +87,25 @@ type Block struct {
 	accepted bool
 	rejected bool
 
-	// Vote tracking for rejection support
-	acceptVotes int
-	rejectVotes int
+	// acceptVoters / rejectVoters ARE the tally. α means "α DISTINCT validators
+	// agreed"; a count that any single voter can advance by repeating itself does
+	// not mean that. ProcessVote used to take only (blockID, accept) — the voter
+	// was not a parameter, so this layer could not tell one validator answering
+	// four times from four validators answering once, and at α=4-of-5 one node
+	// finalized a block alone. Polls ARE re-solicited and peers DO answer twice,
+	// so it needed no malice; a peer that wanted it could just resend.
+	//
+	// They are SETS, and acceptVotes()/rejectVotes() derive from them, so the
+	// count cannot drift from the identities it claims to summarize.
+	acceptVoters map[ids.NodeID]struct{}
+	rejectVoters map[ids.NodeID]struct{}
 }
+
+// acceptVotes is the number of DISTINCT validators that accepted — the α predicate.
+func (b *Block) acceptVotes() int { return len(b.acceptVoters) }
+
+// rejectVotes is the number of DISTINCT validators that rejected.
+func (b *Block) rejectVotes() int { return len(b.rejectVoters) }
 
 // AddBlock admits a block into the preference tree (avalanchego Topological.Add). It
 // is tracking-only and PERMISSIVE: any child is admitted, siblings coexist, and the
@@ -126,7 +141,7 @@ func (c *ChainConsensus) AddBlock(ctx context.Context, block *Block) error {
 // (avalanchego RecordPoll, per block). Reaching the α accept count sets the LIVENESS
 // flag block.accepted — the engine's DrainAccepted trigger — but NEVER advances the
 // committed ledger. Finality is the cert fold's job alone.
-func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept bool) error {
+func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, voter ids.NodeID, accept bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -139,12 +154,41 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept
 		return fmt.Errorf("block not initialized for consensus")
 	}
 
-	// Track both accept and reject votes
+	// Track both accept and reject votes — ONE PER VALIDATOR. A repeat from a
+	// voter already counted is not an error and not evidence of anything (polls
+	// are re-solicited), it simply must not move the tally a second time. The
+	// driver is likewise only advanced on a voter's FIRST accept, so confidence
+	// cannot be self-assembled either.
 	if accept {
-		block.acceptVotes++
-		block.driver.RecordVote(blockID)
+		if _, counted := block.acceptVoters[voter]; counted {
+			return nil
+		}
+		if block.acceptVoters == nil {
+			block.acceptVoters = make(map[ids.NodeID]struct{})
+		}
+		block.acceptVoters[voter] = struct{}{}
+
+		// CONFIDENCE ADVANCES PER SUCCESSFUL POLL, NEVER PER VOTE.
+		// β is the number of consecutive polls that EACH reached α — that is what
+		// makes a decision worth βα agreements. Calling RecordVote on every arriving
+		// vote collapses that to β agreements total: with K=5, α=4, β=2 a block
+		// reached the driver's decision after THREE distinct accepts and VM.Accept
+		// ran while the α=4 quorum had never been met. Two of five validators could
+		// decide a block — far below the BFT threshold the parameters promise.
+		//
+		// Gating on the α predicate restores the floor: no confidence accrues, and
+		// so nothing can be decided, until α DISTINCT validators have accepted.
+		if len(block.acceptVoters) >= c.alpha {
+			block.driver.RecordVote(blockID)
+		}
 	} else {
-		block.rejectVotes++
+		if _, counted := block.rejectVoters[voter]; counted {
+			return nil
+		}
+		if block.rejectVoters == nil {
+			block.rejectVoters = make(map[ids.NodeID]struct{})
+		}
+		block.rejectVoters[voter] = struct{}{}
 	}
 
 	// LIVENESS only (decomplected from finality). Reaching the α accept count marks
@@ -153,12 +197,12 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, accept
 	// is committed ONLY by the cert-driven FinalizeBranch (the α-of-K SIGNED witness),
 	// which also performs the sibling reorg. A sibling reaching α-count here is
 	// harmless: the cert decides which branch finalizes, and the loser is pruned.
-	if block.acceptVotes >= c.alpha && !block.accepted {
+	if block.acceptVotes() >= c.alpha && !block.accepted {
 		block.accepted = true
 	}
 
 	// Check if rejection quorum is reached (reject votes >= alpha)
-	if block.rejectVotes >= c.alpha {
+	if block.rejectVotes() >= c.alpha {
 		block.rejected = true
 		// Remove from tips since this block is rejected
 		delete(c.tips, blockID)
@@ -187,7 +231,7 @@ func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) err
 		}
 
 		// Check if rejection quorum already reached (reject votes >= alpha)
-		if block.rejectVotes >= c.alpha {
+		if block.rejectVotes() >= c.alpha {
 			block.rejected = true
 			delete(c.tips, blockID)
 			continue
@@ -195,7 +239,7 @@ func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) err
 
 		// Only consider acceptance if we have enough accept votes
 		// This prevents premature acceptance with insufficient quorum
-		if block.acceptVotes < c.alpha {
+		if block.acceptVotes() < c.alpha {
 			continue
 		}
 
@@ -208,7 +252,7 @@ func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) err
 			// finalize attempt. Finality (and the reorg) is the cert path's job
 			// (FinalizeBranch), never the count path's — so the count never advances
 			// the ledger nor branches it.
-			if !shouldContinue && decided && block.acceptVotes >= c.alpha {
+			if !shouldContinue && decided && block.acceptVotes() >= c.alpha {
 				block.accepted = true
 			}
 		}

@@ -134,7 +134,7 @@ func TestChainConsensusProcessVote(t *testing.T) {
 	require.NoError(consensus.AddBlock(ctx, block))
 
 	// Process accept vote
-	err := consensus.ProcessVote(ctx, blockID, true)
+	err := consensus.ProcessVote(ctx, blockID, ids.GenerateTestNodeID(), true)
 	require.NoError(err)
 }
 
@@ -147,7 +147,7 @@ func TestChainConsensusProcessVoteUnknownBlock(t *testing.T) {
 
 	// Process vote for non-existent block
 	unknownID := ids.GenerateTestID()
-	err := consensus.ProcessVote(ctx, unknownID, true)
+	err := consensus.ProcessVote(ctx, unknownID, ids.GenerateTestNodeID(), true)
 	require.Error(err)
 	require.Contains(err.Error(), "block not found")
 }
@@ -170,7 +170,7 @@ func TestChainConsensusProcessVoteNilConsensus(t *testing.T) {
 	consensus.blocks[blockID] = block
 
 	// Process vote should fail
-	err := consensus.ProcessVote(ctx, blockID, true)
+	err := consensus.ProcessVote(ctx, blockID, ids.GenerateTestNodeID(), true)
 	require.Error(err)
 	require.Contains(err.Error(), "block not initialized for consensus")
 }
@@ -241,7 +241,7 @@ func TestChainConsensusPollFinalization(t *testing.T) {
 	// finalize ATTEMPT (IsAccepted) but does NOT advance finalized history — finality is
 	// committed by FinalizeBranch (the cert path). Decomplected: count ≠ finalize.
 	for i := 0; i < 10; i++ {
-		require.NoError(consensus.ProcessVote(ctx, blockID, true))
+		require.NoError(consensus.ProcessVote(ctx, blockID, ids.GenerateTestNodeID(), true))
 	}
 	responses := map[ids.ID]int{blockID: 10}
 	for i := 0; i < 5; i++ {
@@ -473,7 +473,7 @@ func TestTransitiveProcessVote(t *testing.T) {
 	require.NoError(engine.AddBlock(ctx, block))
 
 	// Process vote
-	err := engine.ProcessVote(ctx, blockID, true)
+	err := engine.ProcessVote(ctx, blockID, ids.GenerateTestNodeID(), true)
 	require.NoError(err)
 }
 
@@ -1260,7 +1260,7 @@ func TestProcessVoteRejectPath(t *testing.T) {
 	require.NoError(consensus.AddBlock(ctx, block))
 
 	// Process reject vote (accept=false)
-	err := consensus.ProcessVote(ctx, blockID, false)
+	err := consensus.ProcessVote(ctx, blockID, ids.GenerateTestNodeID(), false)
 	require.NoError(err)
 	// Should not record a vote when accept=false
 }

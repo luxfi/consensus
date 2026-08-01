@@ -260,8 +260,8 @@ func TestLocalVotePath_IsLivenessOnly(t *testing.T) {
 
 	// Drive BOTH siblings to the α=3 accept count.
 	for i := 0; i < 3; i++ {
-		_ = c.ProcessVote(context.Background(), a.id, true)
-		_ = c.ProcessVote(context.Background(), b.id, true)
+		_ = c.ProcessVote(context.Background(), a.id, ids.GenerateTestNodeID(), true)
+		_ = c.ProcessVote(context.Background(), b.id, ids.GenerateTestNodeID(), true)
 	}
 	// Both reach the α-count LIVENESS flag...
 	if !c.IsAccepted(a.id) || !c.IsAccepted(b.id) {

@@ -155,9 +155,19 @@ type PendingBlock struct {
 	ConsensusBlock *Block
 	VMBlock        block.Block
 	ProposedAt     time.Time
-	VoteCount      int // Accept votes
-	RejectCount    int // Reject votes
+	VoteCount      int // Accept votes — DISTINCT voters, see acceptVoters
+	RejectCount    int // Reject votes — DISTINCT voters, see rejectVoters
 	Decided        bool
+
+	// acceptVoters / rejectVoters make the plain tallies COUNT VALIDATORS, not
+	// arrivals. certVotes has always been a map keyed by NodeID ("de-dup: one
+	// vote per validator") but VoteCount was a bare integer incremented on every
+	// arrival, so a single validator answering a poll four times reached α=4 of 5
+	// on its own. Alpha means "four distinct validators agreed" or it means
+	// nothing, and that has to hold at the tally itself rather than depending on
+	// an upstream caller never repeating.
+	acceptVoters map[ids.NodeID]struct{}
+	rejectVoters map[ids.NodeID]struct{}
 
 	// certVotes collects the distinct SIGNED accept votes observed for this
 	// block, keyed by voter NodeID (de-dup: one vote per validator). When the
@@ -1223,9 +1233,10 @@ func (t *Transitive) SlashingDB() *slashing.DB {
 	return t.slashingDB
 }
 
-// ProcessVote processes a vote.
-func (t *Transitive) ProcessVote(ctx context.Context, blockID ids.ID, accept bool) error {
-	return t.consensus.ProcessVote(ctx, blockID, accept)
+// ProcessVote processes one validator's vote. voter is REQUIRED: α counts
+// distinct validators, so a tally that cannot name its voters cannot enforce it.
+func (t *Transitive) ProcessVote(ctx context.Context, blockID ids.ID, voter ids.NodeID, accept bool) error {
+	return t.consensus.ProcessVote(ctx, blockID, voter, accept)
 }
 
 // Poll conducts a poll.
@@ -2101,6 +2112,33 @@ func (t *Transitive) handleVote(vote Vote) {
 		msg := canonicalVoteMessageFor(pos, vote.Accept)
 		// Resolve the voter's pubkey at the block's P-CHAIN epoch height (RESIDUAL-B),
 		// the same height the position's set-root commits to.
+		// WHY THIS STAYS, EVEN THOUGH IT IS WHAT STALLS THE FLEETS.
+		//
+		// avalanchego counts unsigned chits: `grep -rn "Signature" snow/` returns
+		// ZERO, while vms/platformvm/warp signs aggregate BLS for anything that must
+		// travel. Signatures belong at the export layer, not the liveness loop, and
+		// this gate is a signature check one layer too far in. Removing it was tried
+		// here and REVERTED, because Lux cannot yet make ava's safety argument.
+		//
+		// Ava's engine receives the voter as `Chits(nodeID, requestID, …)` — a
+		// PARAMETER supplied by the router from the authenticated connection. The
+		// type guarantees provenance: a peer cannot claim to be someone else.
+		//
+		// Lux's engine receives `Vote{NodeID: …}` — a FIELD. Nothing at this call
+		// site distinguishes a NodeID read from an authenticated transport from one
+		// a caller copied out of message bytes. Counting unsigned votes here would
+		// therefore trust a value the engine cannot verify the origin of, which is
+		// exactly what vote_safety_invariants_test.go refuses: "counting it makes
+		// finality forgeable by any peer that can send a 32-byte preference."
+		//
+		// So the fix has an ORDER, and it is not this one first:
+		//   1. make voter provenance structural — origin as a parameter, so a
+		//      self-declared source is unrepresentable rather than merely unlikely;
+		//   2. THEN unsigned transport-authenticated votes can count toward the Nova
+		//      tally, as they do in ava;
+		//   3. Quasar certificates keep requiring signatures either way — that is
+		//      the artifact that must convince a stranger.
+		// Doing (2) before (1) trades a liveness bug for a safety bug.
 		if len(vote.Signature) == 0 || !t.voteVerifier.VerifyVote(vote.NodeID, msg, vote.Signature, t.epochHeightLocked(pending)) {
 			// Unsigned or invalid: not a real vote from this validator at this
 			// position/decision. Drop it — count nothing.
@@ -2112,19 +2150,36 @@ func (t *Transitive) handleVote(vote Vote) {
 	accept := vote.Accept
 	var voteCount int
 	if accept {
-		pending.VoteCount++
+		// ONE VOTE PER VALIDATOR. A repeat from a voter already counted is not an
+		// error and not evidence of anything — polls are re-solicited and a peer
+		// may answer twice — it simply must not move the tally a second time.
+		if pending.acceptVoters == nil {
+			pending.acceptVoters = make(map[ids.NodeID]struct{})
+		}
+		if _, counted := pending.acceptVoters[vote.NodeID]; !counted {
+			pending.acceptVoters[vote.NodeID] = struct{}{}
+			pending.VoteCount++
+		}
 		voteCount = pending.VoteCount
 		// Record the signed accept vote toward this block's quorum cert so the
 		// engine can assemble + gossip the α-of-K witness once the threshold is
 		// reached. (Reject votes are not certifiable — a finality cert proves
-		// acceptance — they only drive the rejection path.)
+		// acceptance — they only drive the rejection path.) Unsigned votes are
+		// ignored here by recordCertVoteLocked: they carry the Nova tally above,
+		// never the exportable Quasar witness.
 		t.recordCertVoteLocked(pending, vote)
 	} else {
-		pending.RejectCount++
+		if pending.rejectVoters == nil {
+			pending.rejectVoters = make(map[ids.NodeID]struct{})
+		}
+		if _, counted := pending.rejectVoters[vote.NodeID]; !counted {
+			pending.rejectVoters[vote.NodeID] = struct{}{}
+			pending.RejectCount++
+		}
 	}
 	t.mu.Unlock()
 
-	if err := t.consensus.ProcessVote(ctx, vote.BlockID, accept); err != nil {
+	if err := t.consensus.ProcessVote(ctx, vote.BlockID, vote.NodeID, accept); err != nil {
 		return
 	}
 	_ = t.consensus.Poll(ctx, map[ids.ID]int{vote.BlockID: voteCount})
@@ -2952,7 +3007,7 @@ func (t *Transitive) TrackOwnProposalForTest(ctx context.Context, blk block.Bloc
 	}
 	setCanonicalFromVM(cb, blk) // stamp the inner execution commitment
 	_ = t.consensus.AddBlock(ctx, cb)
-	_ = t.consensus.ProcessVote(ctx, blk.ID(), true)
+	_ = t.consensus.ProcessVote(ctx, blk.ID(), t.nodeID, true) // self-vote
 	t.mu.Lock()
 	pb := &PendingBlock{
 		ConsensusBlock: cb,
@@ -4198,7 +4253,7 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 		// Now add to consensus and self-vote.
 		addErr := t.consensus.AddBlock(ctx, consensusBlock)
 		if addErr == nil {
-			_ = t.consensus.ProcessVote(ctx, vmBlock.ID(), true)
+			_ = t.consensus.ProcessVote(ctx, vmBlock.ID(), t.nodeID, true) // self-vote
 			_ = t.consensus.Poll(ctx, map[ids.ID]int{vmBlock.ID(): 1})
 		}
 		t.mu.Lock()

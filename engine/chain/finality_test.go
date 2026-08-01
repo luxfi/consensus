@@ -464,7 +464,7 @@ func TestCountPath_NeverFinalizes_OnlyCertDoes(t *testing.T) {
 	blk := &Block{id: ids.GenerateTestID(), height: 1}
 	_ = c.AddBlock(context.Background(), blk)
 	for i := 0; i < 3; i++ {
-		_ = c.ProcessVote(context.Background(), blk.id, true)
+		_ = c.ProcessVote(context.Background(), blk.id, ids.GenerateTestNodeID(), true)
 	}
 	if c.IsAccepted(blk.id) != true {
 		t.Fatal("α-count must set the liveness flag")

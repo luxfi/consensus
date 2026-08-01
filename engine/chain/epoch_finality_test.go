@@ -198,7 +198,7 @@ func trackPChainProposal(e *Transitive, chainID ids.ID, blk *pChainBlock, round 
 		pChainHeight: pChainHeightOf(blk), // the boundary capture under test
 	}
 	_ = e.consensus.AddBlock(context.Background(), cb)
-	_ = e.consensus.ProcessVote(context.Background(), blk.id, true)
+	_ = e.consensus.ProcessVote(context.Background(), blk.id, ids.GenerateTestNodeID(), true)
 	e.mu.Lock()
 	pb := &PendingBlock{
 		ConsensusBlock: cb,
