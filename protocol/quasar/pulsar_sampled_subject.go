@@ -15,33 +15,33 @@
 //
 // # What M binds (and why each field)
 //
-//	M = H( "PULSAR_SAMPLED_SUBJECT_V1"
-//	       ‖ chainID ‖ height ‖ round ‖ blockID ‖ stateRoot   // the finalized position
-//	       ‖ beamQCHash                                        // the Beam QC over THIS block
-//	       ‖ signerSetID ‖ pChainHeight                        // the P-Chain-pinned signer set
-//	       ‖ policyID                                          // the finality posture
-//	       ‖ committeePlanHash )                               // the frozen sampling plan
+//		M = H( "PULSAR_SAMPLED_SUBJECT_V1"
+//		       ‖ chainID ‖ height ‖ round ‖ blockID ‖ stateRoot   // the finalized position
+//		       ‖ beamQCHash                                        // the Beam QC over THIS block
+//		       ‖ signerSetID ‖ pChainHeight                        // the P-Chain-pinned signer set
+//		       ‖ policyID                                          // the finality posture
+//		       ‖ committeePlanHash )                               // the frozen sampling plan
 //
-//   - chainID/height/round/blockID/stateRoot pin the exact consensus position,
-//     so a committee signature for one position can never be replayed for
-//     another (cross-position non-transferability).
-//   - beamQCHash binds the Beam quorum certificate that finalized THIS block:
-//     the sampled cert attests "I am post-quantum evidence for the block Beam
-//     already certified via this exact QC." It is a commitment to the Beam QC,
-//     NOT signed by Beam (that would be circular) — Beam signs the position;
-//     the Pulsar sampled cert signs the position-plus-Beam-QC. A sampled cert is
-//     therefore non-transferable across different Beam QCs for the same block.
-//   - signerSetID/pChainHeight pin the validator set the committees were sampled
-//     from, at the P-Chain height it was pinned at.
-//   - policyID is the finality posture (FAST / HYBRID_PQ / PQ_ROOT); a signature
-//     under one posture's M cannot satisfy another posture.
-//   - committeePlanHash is the single commitment to the ENTIRE sampling plan
-//     (n, t, m, r, selectionAlgorithmID, sortitionSeed, committeeKeyEraRoot — see
-//     pulsar_sortition.go). Binding it into M is what makes the committees
-//     UN-RESELECTABLE: a different plan hashes differently, yields a different M,
-//     and the committee signatures over the old M will not verify against it. An
-//     adversary cannot wait to see the block and then re-sample committees it
-//     controls — the plan is frozen into the very thing the committees sign.
+//	  - chainID/height/round/blockID/stateRoot pin the exact consensus position,
+//	    so a committee signature for one position can never be replayed for
+//	    another (cross-position non-transferability).
+//	  - beamQCHash binds the Beam quorum certificate that finalized THIS block:
+//	    the sampled cert attests "I am post-quantum evidence for the block Beam
+//	    already certified via this exact QC." It is a commitment to the Beam QC,
+//	    NOT signed by Beam (that would be circular) — Beam signs the position;
+//	    the Pulsar sampled cert signs the position-plus-Beam-QC. A sampled cert is
+//	    therefore non-transferable across different Beam QCs for the same block.
+//	  - signerSetID/pChainHeight pin the validator set the committees were sampled
+//	    from, at the P-Chain height it was pinned at.
+//	  - policyID is the finality posture (FAST / HYBRID_PQ / PQ_ROOT); a signature
+//	    under one posture's M cannot satisfy another posture.
+//	  - committeePlanHash is the single commitment to the ENTIRE sampling plan
+//	    (n, t, m, r, selectionAlgorithmID, sortitionSeed, committeeKeyEraRoot — see
+//	    pulsar_sortition.go). Binding it into M is what makes the committees
+//	    UN-RESELECTABLE: a different plan hashes differently, yields a different M,
+//	    and the committee signatures over the old M will not verify against it. An
+//	    adversary cannot wait to see the block and then re-sample committees it
+//	    controls — the plan is frozen into the very thing the committees sign.
 //
 // # Distinct subject domain — non-transferability vs the envelope Pulsar leg
 //

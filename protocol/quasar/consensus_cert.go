@@ -573,8 +573,8 @@ var (
 	ErrStarkPublicInputsMismatch = errors.New("quasar: stark-compressed public inputs do not equal the WeightedSigSet predicate statement")
 
 	// I10/I11 — classical leg.
-	ErrClassicalCannotSatisfyPQLeg = errors.New("quasar: classical-aggregate evidence cannot satisfy a post-quantum leg requirement")
-	ErrClassicalOnlyForbidden      = errors.New("quasar: classical evidence present but policy requires a PQ leg that no PQ evidence satisfies (classical-only is forbidden under a PQ policy)")
+	ErrClassicalCannotSatisfyPQLeg  = errors.New("quasar: classical-aggregate evidence cannot satisfy a post-quantum leg requirement")
+	ErrClassicalOnlyForbidden       = errors.New("quasar: classical evidence present but policy requires a PQ leg that no PQ evidence satisfies (classical-only is forbidden under a PQ policy)")
 	ErrClassicalAggregateDisallowed = errors.New("quasar: classical aggregate scheme is not permitted by policy")
 	ErrMissingRequiredPQLeg         = errors.New("quasar: a policy-required PQ leg is unsatisfied")
 	ErrClassicalAggregateInvalid    = errors.New("quasar: classical aggregate signature failed verification")
@@ -654,16 +654,16 @@ func consensusCertMessage(cert *ConsensusCert, requiredLegsRoot [32]byte) []byte
 //
 // The 6-step contract (each enforcing the invariants above):
 //
-//	1. Load the policy from the store (NEVER from the cert).
-//	2. required := policy.RequiredLegs(); reject if cert.RequiredLegsRoot !=
-//	   HashRequiredLegs(required) (I1/I2). Required legs are POLICY-derived.
-//	3. Reject if cert.ValidatorSetRoot != validators.Root() (I3).
-//	4. Build the domain message binding the FULL tuple (I4).
-//	5. For each required leg: locate its evidence (I5), gate the (kind, mode,
-//	   param-set) triple (I6), and dispatch to the matching evidence verifier.
-//	6. Reject unless every required leg was satisfied exactly once (I12), and —
-//	   the envelope, not any helper — reject a classical-only cert under a PQ
-//	   policy (I11).
+//  1. Load the policy from the store (NEVER from the cert).
+//  2. required := policy.RequiredLegs(); reject if cert.RequiredLegsRoot !=
+//     HashRequiredLegs(required) (I1/I2). Required legs are POLICY-derived.
+//  3. Reject if cert.ValidatorSetRoot != validators.Root() (I3).
+//  4. Build the domain message binding the FULL tuple (I4).
+//  5. For each required leg: locate its evidence (I5), gate the (kind, mode,
+//     param-set) triple (I6), and dispatch to the matching evidence verifier.
+//  6. Reject unless every required leg was satisfied exactly once (I12), and —
+//     the envelope, not any helper — reject a classical-only cert under a PQ
+//     policy (I11).
 func VerifyConsensusCert(store ConsensusCertPolicyStore, validators ConsensusValidatorSet, cert *ConsensusCert) error {
 	if cert == nil {
 		return ErrConsensusCertNil

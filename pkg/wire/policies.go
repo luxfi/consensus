@@ -774,9 +774,9 @@ func (p *QuantumPolicy) VerifyWithKeys(
 	mldsaKeys []*mldsa.PublicKey,
 ) error {
 	return p.VerifyCertUnderPolicy(cert, quasar.CertKeys{
-		BLS:   blsAggKey,
+		BLS:    blsAggKey,
 		Corona: rtGroupKey,
-		MLDSA: mldsaKeys,
+		MLDSA:  mldsaKeys,
 	})
 }
 
