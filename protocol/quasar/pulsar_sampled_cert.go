@@ -47,9 +47,9 @@
 //   - which committees are sampled            → pulsar_sortition.go
 //   - the subject the committees sign (M)      → pulsar_sampled_subject.go
 //   - whether a sampled cert verifies          → VerifyPulsarSampled (this file's
-//                                                verify section, pulsar_sampled_verify.go)
+//     verify section, pulsar_sampled_verify.go)
 //   - the per-committee group-signature check  → key_era.go / verifyPulsarLeg
-//                                                (reused, NOT re-implemented)
+//     (reused, NOT re-implemented)
 //   - which finality posture requires it       → pulsar_sampled_policy.go
 package quasar
 

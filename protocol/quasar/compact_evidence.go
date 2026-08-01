@@ -93,10 +93,10 @@ type evidenceLane struct {
 // is the single mapping between the chain-facing vocabulary and the envelope's
 // dispatch axes — there is exactly one way to express each lane.
 var laneByKind = map[EvidenceKind]evidenceLane{
-	EvidenceBeamBLS:              {leg: LegClassical, mode: EvidenceClassicalAggregate},
-	EvidencePulsarThresholdMLDSA: {leg: LegPulsarMLDSA, mode: EvidenceThresholdSig},
-	EvidenceCoronaRingtail:       {leg: LegCoronaLattice, mode: EvidenceThresholdSig},
-	EvidenceP3QMLDSARollup:       {leg: LegPulsarMLDSA, mode: EvidenceP3QRollup},
+	EvidenceBeamBLS:                 {leg: LegClassical, mode: EvidenceClassicalAggregate},
+	EvidencePulsarThresholdMLDSA:    {leg: LegPulsarMLDSA, mode: EvidenceThresholdSig},
+	EvidenceCoronaRingtail:          {leg: LegCoronaLattice, mode: EvidenceThresholdSig},
+	EvidenceP3QMLDSARollup:          {leg: LegPulsarMLDSA, mode: EvidenceP3QRollup},
 	EvidenceMagnetarP3QSLHDSARollup: {leg: LegMagnetarSLHDSA, mode: EvidenceMagnetarRollup},
 }
 
