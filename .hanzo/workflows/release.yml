@@ -88,6 +88,12 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/**/*
-          generate_release_notes: true
+          # generate_release_notes is NOT set: it makes the action call
+          #   POST <api>/repos/<o>/<r>/releases/generate-notes
+          # which is a GitHub-only endpoint. This forge does not route it and
+          # answers Go's bare `404 page not found`, which the action surfaces
+          # verbatim as `::error::404 page not found`. Everything builds, and
+          # then the release step alone fails -- so the run reads as a release
+          # problem when it is one unsupported flag.
           draft: false
           prerelease: false
