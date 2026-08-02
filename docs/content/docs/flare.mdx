@@ -86,7 +86,7 @@ func HasSkip(v dag.View, proposer dag.Meta, p dag.Params) bool {
 | Parameter | Description | Derivation |
 |-----------|-------------|------------|
 | N | Total validators | Network configuration |
-| F | Maximum Byzantine faults | F < N/3 |
+| F | Maximum Byzantine faults | `F < N/3` |
 | Certificate threshold | 2F+1 | Quorum intersection guarantee |
 | Skip threshold | 2F+1 | Same quorum requirement |
 
@@ -110,7 +110,7 @@ All Flare properties are machine-checked in Lean 4. See [`lean/Protocol/Flare.le
 
 | Theorem | Statement |
 |---------|-----------|
-| `cert_skip_exclusive` | Certificate and skip cannot both hold when total <= n |
+| `cert_skip_exclusive` | Certificate and skip cannot both hold when `total <= n` |
 | `cert_honest_support` | A certificate implies >= f+1 honest supporters |
 | `classify_total` | Classification returns exactly one of three outcomes |
 
