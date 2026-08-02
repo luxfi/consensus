@@ -21,6 +21,11 @@ var (
 	// f=floor((K-1)/3)>=3, so two quorums always overlap in >f honest nodes and
 	// a sub-1/3 coalition can neither finalize nor fork. A smaller K shrinks f
 	// toward 0 and makes a cheap stake-fraction (51%-style) attack viable.
+	// ErrKBelowMainnetTarget reports that mainnet params are SAFE but below the
+	// K>=11 (f>=3) decentralisation target. Informational: never a reason to
+	// refuse to start a chain that satisfies the BFT overlap bound.
+	ErrKBelowMainnetTarget = errors.New("consensus: mainnet K is below the K>=11 (f>=3) decentralisation target; params are Byzantine-safe but the validator set should grow")
+
 	ErrKTooLowForMainnet = errors.New("consensus: mainnet (networkID=1) requires K>=11 so the BFT overlap bound 2*AlphaPreference-K >= floor((K-1)/3)+1 holds with f=floor((K-1)/3)>=3; a smaller K drives f->0 and enables a cheap sub-1/3 (51%-style) attack")
 	// ErrKTooLowForTestnet is the testnet analogue: K>=5 keeps f=floor((K-1)/3)>=1
 	// so the same overlap bound (2*AlphaPreference-K >= f+1) is satisfiable with
@@ -477,6 +482,28 @@ func (p Parameters) ValidateForValueNetwork(networkID uint32) error {
 	}
 	if p.ByzantineFaultTolerance() < 1 {
 		return fmt.Errorf("%w: K=%d f=%d networkID=%d", ErrKTooLowForValue, p.K, p.ByzantineFaultTolerance(), networkID)
+	}
+	return nil
+}
+
+// MeetsDecentralizationTarget reports whether params meet the network's
+// decentralisation TARGET. This is a REPORT, not a gate — deliberately separate
+// from the safety predicates above.
+//
+// Mainnet's target is K >= 11, which yields f = floor((K-1)/3) >= 3: the set can
+// lose three validators and still finalise. A smaller set that satisfies the BFT
+// overlap bound (see ErrAlphaBelowBFTQuorum) is safe against the faults it CAN
+// tolerate — it is simply more fragile, and more centralised.
+//
+// It is reported rather than enforced at chain start because refusing to start a
+// safe-but-small fleet does not create validators; it only strands that fleet on
+// whatever code it last booted. Mainnet 96369 (K=5) was held on v1.36.2 that way,
+// missing later consensus fixes — a worse security posture than running small on
+// current code. Chain start uses ValidateForLiveValueNetwork; operators should
+// surface THIS in health and telemetry, and grow the set.
+func (p Parameters) MeetsDecentralizationTarget(networkID uint32) error {
+	if networkID == 1 && p.K < 11 {
+		return fmt.Errorf("%w: K=%d f=%d (target K>=11, f>=3)", ErrKBelowMainnetTarget, p.K, (p.K-1)/3)
 	}
 	return nil
 }
