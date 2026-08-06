@@ -2,8 +2,8 @@
 # See the file LICENSE for licensing terms.
 
 .PHONY: all test build clean lint format check tools help benchmark \
-        generate generate-canoto generate-mocks coverage coverage-html coverage-95 \
-        install-tools install-canoto remove-generated examples examples-go examples-c examples-cpp examples-rust
+        generate generate-mocks coverage coverage-html coverage-95 \
+        install-tools remove-generated examples examples-go examples-c examples-cpp examples-rust
 
 # Default target
 all: build test
@@ -169,15 +169,9 @@ benchmark-max-tps: zmq-bench ## Run benchmark optimized for maximum TPS
 
 # === CODE GENERATION TARGETS ===
 
-# Generate all code (canoto + mocks)
-generate: generate-canoto generate-mocks ## Generate all code (canoto + mocks)
+# Generate all code (mocks)
+generate: generate-mocks ## Generate all code (mocks)
 	@echo "✅ All code generation complete"
-
-# Generate canoto serialization code
-generate-canoto: check-canoto ## Generate canoto protocol buffer code
-	@echo "🔧 Generating canoto code..."
-	@cd engine/bft && canoto block.go storage.go qc.go || echo "⚠️  Canoto generation failed - install with: go install github.com/StephenButtolph/canoto@latest"
-	@echo "✅ Canoto code generated"
 
 # Generate mock files
 generate-mocks: check-mockgen ## Generate mock files
@@ -186,9 +180,8 @@ generate-mocks: check-mockgen ## Generate mock files
 	@echo "✅ Mocks generated"
 
 # Remove all generated files
-remove-generated: ## Remove all generated files (*.canoto.go, *_mock.go)
+remove-generated: ## Remove all generated files (*_mock.go, mock_*.go)
 	@echo "🧹 Removing generated files..."
-	@find . -name "*.canoto.go" -type f -delete
 	@find . -name "*_mock.go" -type f -delete
 	@find . -name "mock_*.go" -type f -delete
 	@echo "✅ Generated files removed"
@@ -267,15 +260,8 @@ install-tools: ## Install development tools
 	@go install golang.org/x/tools/cmd/goimports@latest
 	@go install github.com/golang/mock/mockgen@latest
 	@go install golang.org/x/vuln/cmd/govulncheck@latest
-	@$(MAKE) check-canoto
 	@$(MAKE) check-ginkgo
 	@echo "✅ Development tools installed"
-
-# Install canoto code generator
-install-canoto: ## Install canoto code generator
-	@echo "📦 Installing canoto..."
-	@go install github.com/StephenButtolph/canoto@latest
-	@echo "✅ Canoto installed"
 
 # === EXAMPLE TARGETS ===
 
@@ -383,7 +369,7 @@ help: ## Show this help
 	@echo ""
 	@echo "🔧 Code Generation:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		grep -E '^(generate|install-canoto)' | \
+		grep -E '^generate' | \
 		sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 	@echo ""
 	@echo "🔍 Code Quality:"
@@ -409,10 +395,6 @@ help: ## Show this help
 # Check if Ginkgo is installed
 check-ginkgo:
 	@which ginkgo > /dev/null || (echo "📦 Installing Ginkgo..."; go install github.com/onsi/ginkgo/v2/ginkgo@latest)
-
-# Check if canoto is installed
-check-canoto:
-	@which canoto > /dev/null || (echo "⚠️  canoto not installed. Install with: make install-canoto" && false)
 
 # Check if mockgen is installed
 check-mockgen:
