@@ -3686,14 +3686,29 @@ func (t *Transitive) reconcileVMToCertified(ctx context.Context, vm BlockBuilder
 		// certified canonical at ITS OWN height, the two lie on that one chain, the VM
 		// already CONTAINS `certified`, and the refusal was merely a BACKWARDS steer.
 		// Nothing is orphaned: no action, no halt.
-		if t.certifiedAtItsHeight(ctx, vm, certified) {
+		onCertifiedChain, err := t.certifiedAtItsHeight(ctx, vm, certified)
+		if err != nil {
+			// COULD NOT READ `certified` ⇒ the violation is UNPROVEN, and an unproven
+			// violation is not a violation. Every other unreadable read on this path already
+			// declines to crash for exactly this reason (see the LastAccepted and GetBlock
+			// arms above): the ledger's finality is correct, and leaving the VM head untouched
+			// orphans nothing. Halting here instead conflated "the block is not certified"
+			// with "the block is not readable" — and a read that fails because the engine's
+			// context was cancelled during shutdown is the common case, which turned an
+			// orderly stop into os.Exit(1) on a node whose ledger was never in question.
+			t.log.Error("SetPreference refused and the steer target is unreadable — cannot classify, leaving VM head untouched (consensus finality is correct; deferring reconcile to recovery)",
+				"certified", certified, "head", headID, "headHeight", headHeight,
+				"setPreferenceError", setPrefErr, "getBlockError", err)
+			return true
+		}
+		if onCertifiedChain {
 			t.log.Debug("SetPreference refused a backwards steer — the VM head is a CERTIFIED DESCENDANT of the finalized block (nothing to orphan)",
 				"certified", certified, "head", headID, "headHeight", headHeight)
 			return true
 		}
-		// The head is certified AND `certified` is not on the certified chain: steering
-		// there would drop a consensus-certified block in favour of one our own ledger does
-		// NOT certify at its height. THE safety violation — halt fail-closed.
+		// The head is certified AND we READ `certified` and proved it is not on the certified
+		// chain: steering there would drop a consensus-certified block in favour of one our own
+		// ledger does NOT certify at its height. THE safety violation — halt fail-closed.
 		t.log.Error("VM accepted head is CONSENSUS-CERTIFIED and the finalized block is NOT on the certified chain — refusing to orphan it",
 			"certified", certified, "orphanedHead", headID,
 			"orphanedHeight", headHeight, "orphanedCanonical", headCanonical)
@@ -3724,16 +3739,25 @@ func (t *Transitive) reconcileVMToCertified(ctx context.Context, vm BlockBuilder
 // certifiedAtItsHeight reports whether id is the finality ledger's certified canonical at
 // id's OWN height — i.e. whether id lies on the ONE certified chain. The height is read off
 // the VM rather than plumbed down from the cert so the answer is correct for ANY steer
-// target (the just-finalized block, or the live build anchor). Unreadable ⇒ false: the sole
-// caller uses this to authorise NOT dropping a certified head, so the unprovable case must
-// fail closed.
-func (t *Transitive) certifiedAtItsHeight(ctx context.Context, vm BlockBuilder, id ids.ID) bool {
+// target (the just-finalized block, or the live build anchor).
+//
+// The answer is THREE-valued and the error is the third value, never folded into the bool:
+//
+//	(true,  nil) — read it; it IS the certified canonical at its height.
+//	(false, nil) — read it; the ledger PROVES it is not. The caller may halt on this.
+//	(_,     err) — could NOT read it. Nothing is proven either way.
+//
+// Collapsing the third case into `false` made an unreadable block indistinguishable from a
+// proven safety violation, and only the proven one may ever halt the node. A cancelled
+// context — an ordinary shutdown — reads as unreadable, so the collapse turned a clean stop
+// into a fatal on a node whose finality ledger was perfectly consistent.
+func (t *Transitive) certifiedAtItsHeight(ctx context.Context, vm BlockBuilder, id ids.ID) (bool, error) {
 	blk, err := vm.GetBlock(ctx, id)
 	if err != nil {
-		return false
+		return false, err
 	}
 	fin, ok := t.consensus.FinalizedBlockAtHeight(blk.Height())
-	return ok && fin == canonicalIDOf(blk)
+	return ok && fin == canonicalIDOf(blk), nil
 }
 
 // promoteQuasar is the trailing EXPORT-cert step — the ONE place a ⅔-by-stake Quasar
