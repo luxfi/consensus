@@ -17,15 +17,24 @@
 // an unreadable block was indistinguishable from a proven double-finalization, and an orderly
 // stop became a fatal on a node whose finality ledger was never in question.
 //
-// The fix makes the predicate three-valued — (true,nil) / (false,nil) / (_,err) — so only a
-// block we READ and the ledger PROVES uncertified may halt. The safety property is UNCHANGED:
+// Red review then found the SAME category error one level down, and it is the more likely
+// mechanism here: the predicate also answered `false` when the ledger holds NO cert at the
+// target's height. A double-finalization needs TWO certs at ONE height; with none there,
+// nothing is proven. That state is not exotic — a steer target is normally the build tip,
+// which PreferredBuildTip defines as the deepest verified block EXTENDING the finalized chain
+// (above the frontier, uncertified by construction), and byHeight is bounded by
+// pruneBelowWindow so an aged-out ancestor reads identically. Either would os.Exit(1) a
+// healthy validator.
+//
+// `false` now means PROVEN CONFLICTING and nothing else. The safety property is UNCHANGED:
 // see TestReconcile_CertifiedHead_HaltsFailClosed (orphan_reconcile_test.go), which halts with
-// BOTH blocks readable, and TestCertifiedAtItsHeight_ThreeValued below, which pins all three
-// outcomes so a future refactor cannot quietly re-collapse them.
+// BOTH blocks readable and a real conflicting cert, and TestCertifiedAtItsHeight_ThreeValued
+// below, which pins every outcome so a future refactor cannot quietly re-collapse them.
 package chain
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/luxfi/consensus/engine/chain/block"
@@ -121,9 +130,69 @@ func TestReconcile_CertifiedHead_CancelledContext_NoHalt(t *testing.T) {
 	}
 }
 
-// TestCertifiedAtItsHeight_ThreeValued pins the predicate's contract: the error is a THIRD
-// outcome and is never folded into the bool. A future refactor that collapses it back into
-// `false` fails here rather than in production at 3am.
+// TestReconcile_CertifiedHead_TargetAboveFrontier_NoHalt: the steer target is READABLE and
+// sits ABOVE the finalized frontier, so the ledger holds no cert at its height. That is not a
+// double-finalization — it is what a build tip normally IS (PreferredBuildTip is defined as
+// the deepest verified block EXTENDING the finalized chain). Nothing is orphaned; no halt.
+//
+// Pre-fix the missing byHeight entry read as `false` ⇒ "NOT on the certified chain" ⇒
+// os.Exit(1) on a perfectly healthy validator.
+func TestReconcile_CertifiedHead_TargetAboveFrontier_NoHalt(t *testing.T) {
+	e := newTestEngine()
+
+	head := ids.GenerateTestID()     // certified at 7 — the VM's accepted head
+	buildTip := ids.GenerateTestID() // readable, at 8 — above the frontier, uncertified
+	e.consensus.ledger = seedLedger(head, head, 7)
+
+	vm := &reconcilingOrphanVM{orphanVMBase: &orphanVMBase{
+		head: head,
+		blocks: map[ids.ID]*mockBlock{
+			head:     mb(head, 7),
+			buildTip: mb(buildTip, 8),
+		},
+	}}
+
+	if !e.reconcileVMToCertified(context.Background(), vm, buildTip, errOrphan) {
+		t.Fatal("a steer target ABOVE the finalized frontier carries no conflicting cert — " +
+			"absence of a cert at its height is not evidence of a second finalization, and the " +
+			"engine must NOT halt")
+	}
+	if vm.head != head {
+		t.Fatalf("VM head must be untouched, got %s want %s", vm.head, head)
+	}
+}
+
+// TestReconcile_CertifiedHead_TargetPrunedFromWindow_NoHalt: the steer target is READABLE and
+// BELOW the frontier, but its height has aged out of byHeight (bounded by pruneBelowWindow).
+// The entry is gone, not contradicted. Same category, same answer: no halt.
+func TestReconcile_CertifiedHead_TargetPrunedFromWindow_NoHalt(t *testing.T) {
+	e := newTestEngine()
+
+	head := ids.GenerateTestID()    // certified at 5000
+	ancient := ids.GenerateTestID() // readable at 3 — pruned out of the window
+	e.consensus.ledger = seedLedger(head, head, 5000)
+
+	vm := &reconcilingOrphanVM{orphanVMBase: &orphanVMBase{
+		head: head,
+		blocks: map[ids.ID]*mockBlock{
+			head:    mb(head, 5000),
+			ancient: mb(ancient, 3),
+		},
+	}}
+
+	if _, ok := e.consensus.ledger.At(3); ok {
+		t.Fatal("precondition: height 3 must NOT be in byHeight for this test")
+	}
+	if !e.reconcileVMToCertified(context.Background(), vm, ancient, errOrphan) {
+		t.Fatal("a steer target whose height was PRUNED from the equivocation window carries " +
+			"no conflicting cert — the engine must NOT halt on a missing entry")
+	}
+}
+
+// TestCertifiedAtItsHeight_ThreeValued pins the predicate's contract: `false` means PROVEN
+// CONFLICTING and nothing else. Both "unreadable" and "no cert at this height" must report an
+// error. A future refactor that collapses either back into a bare `false` fails here rather
+// than in production at 3am.
 func TestCertifiedAtItsHeight_ThreeValued(t *testing.T) {
 	onChain := ids.GenerateTestID()
 	offChain := ids.GenerateTestID()
@@ -145,7 +214,7 @@ func TestCertifiedAtItsHeight_ThreeValued(t *testing.T) {
 		t.Fatalf("a block the ledger certifies at its own height ⇒ (true, nil), got (%v, %v)", ok, err)
 	}
 	if ok, err := e.certifiedAtItsHeight(ctx, vm, offChain); err != nil || ok {
-		t.Fatalf("a READ block the ledger does not certify at its height ⇒ (false, nil) — the "+
+		t.Fatalf("a cert EXISTS at that height naming a different canonical ⇒ (false, nil) — the "+
 			"halt-authorising answer — got (%v, %v)", ok, err)
 	}
 	ok, err := e.certifiedAtItsHeight(ctx, vm, missing)
@@ -155,5 +224,18 @@ func TestCertifiedAtItsHeight_ThreeValued(t *testing.T) {
 	}
 	if ok {
 		t.Fatalf("an unreadable block must never report certified=true, got %v", ok)
+	}
+
+	// NO CERT AT THIS HEIGHT is the other "nothing is proven" state, and it must not be
+	// reported as the halt-authorising `false` either.
+	above := ids.GenerateTestID()
+	vm.blocks[above] = mb(above, 9) // readable, above the frontier — byHeight has nothing at 9
+	ok, err = e.certifiedAtItsHeight(ctx, vm, above)
+	if !errors.Is(err, errNoCertAtHeight) {
+		t.Fatalf("a height with NO certified entry must report errNoCertAtHeight, got (%v, %v) — "+
+			"absence of a cert is not evidence of a conflicting one", ok, err)
+	}
+	if ok {
+		t.Fatalf("a height with no certified entry must never report certified=true, got %v", ok)
 	}
 }
