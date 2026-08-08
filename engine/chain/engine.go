@@ -543,6 +543,12 @@ type Transitive struct {
 	blocksRejected uint64
 	votesSent      uint64
 	votesReceived  uint64
+	// votesDroppedAtCertFreeze counts SIGNED accept votes that reached certVotes after the cert
+	// had already frozen and were then discarded with the PendingBlock. Each is a lost
+	// attestation, and a lost ⅔-th vote costs that height its export permanently. Read it to
+	// decide whether the cert-freeze → finalizedByCert window needs draining on a live fleet;
+	// a passing test suite cannot answer that.
+	votesDroppedAtCertFreeze uint64
 
 	// Slashing: equivocation detection (optional, nil disables)
 	slashingDetector *slashing.Detector
@@ -1376,6 +1382,9 @@ func (t *Transitive) Stats() map[string]interface{} {
 	stats["blocks_rejected"] = t.blocksRejected
 	stats["votes_sent"] = t.votesSent
 	stats["votes_received"] = t.votesReceived
+	// Non-zero means signed accept votes are arriving after the cert freezes and dying with the
+	// PendingBlock — the wide cert-freeze → finalizedByCert window firing for real.
+	stats["votes_dropped_at_cert_freeze"] = t.votesDroppedAtCertFreeze
 	stats["pending_blocks"] = len(t.pendingBlocks)
 	stats["bootstrapped"] = t.bootstrapped
 	return stats
@@ -3519,10 +3528,22 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// truth (4 of 5 voting, read back as 0.6). The window widens under CPU contention, which is
 	// where it was found.
 	//
-	// Writing it here closes the window at the source: the record exists before any observer can
-	// see the block as finalized. It is keyed by the outer block id and bounded to the attestor
-	// window, and a subsequent VM.Accept failure cannot make it lie — attestFinalizedVote is
-	// reachable only for a block finalizedByCert actually holds.
+	// Writing it here closes that window at the source: the record exists before any observer can
+	// see the block as finalized. It sits AFTER the ApplyCert error return above, so the record
+	// can never describe a position the ledger rejected. A subsequent VM.Accept failure cannot
+	// make it lie either — attestFinalizedVote is reachable only for a block finalizedByCert
+	// actually holds.
+	//
+	// It is now written UNCONDITIONALLY, where it previously sat behind promoteQuasar's
+	// stake==nil / attestor==nil early returns, so nodes with no attestor wired populate the map
+	// too. The sweep that bounds it to ≤1024 entries is not attestor-gated, so this costs a
+	// bounded map on those nodes and nothing else.
+	//
+	// This does NOT close the wider window: from the cert freezing in assembleCertLocked to
+	// finalizedByCert being set — spanning this call, ApplyCert and the whole of VM.Accept — the
+	// block is STILL PENDING, so handleVote never reaches the finalized-block tap at all. A vote
+	// arriving there lands in pending.certVotes, after the cert has frozen, and dies with the
+	// PendingBlock. See votesDroppedAtCertFreeze, which counts exactly that.
 	t.rememberAcceptedPos(cert.Cert().Position, quasarEpoch)
 
 	// Apply the plan to the VM + engine bookkeeping: VM.Accept the finalized path (fail-closed
@@ -4525,6 +4546,24 @@ func (t *Transitive) dropPendingBlockLocked(id ids.ID) {
 	pb, ok := t.pendingBlocks[id]
 	if !ok {
 		return
+	}
+	// COUNT THE VOTES THAT DIE HERE. certVotes keeps collecting after assembleCertLocked has
+	// frozen the cert, and everything above that freeze is carried by this map alone: it is not
+	// in the emitted cert, and until finalizedByCert is set handleVote does not consult the
+	// finalized-block tap, so nothing else has seen it. Deleting the PendingBlock deletes those
+	// votes with it.
+	//
+	// Each one is a lost attestation. If the lost vote was the ⅔-th, that height never exports —
+	// votes are solicited once and there is no retroactive promotion — and FinalityStatus
+	// reports Degraded with a responsive stake below the truth.
+	//
+	// This counter is the discriminator for a question a green test suite cannot answer: whether
+	// that loss actually happens on a live fleet. Non-zero over a few thousand heights means the
+	// wide window (cert freeze → finalizedByCert, spanning ApplyCert and the whole VM.Accept)
+	// fires in production and the drain is required; zero means the narrow window closed by
+	// remembering the accepted position early was the whole story.
+	if pb.cert != nil && len(pb.certVotes) > len(pb.cert.Votes) {
+		t.votesDroppedAtCertFreeze += uint64(len(pb.certVotes) - len(pb.cert.Votes))
 	}
 	if pb.IsOwnProposal && pb.ConsensusBlock != nil {
 		key := t.proposalKeyOf(pb.ConsensusBlock)
