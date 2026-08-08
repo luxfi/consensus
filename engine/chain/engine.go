@@ -3736,28 +3736,47 @@ func (t *Transitive) reconcileVMToCertified(ctx context.Context, vm BlockBuilder
 	return true
 }
 
+// errNoCertAtHeight reports that the finality ledger holds NO certified entry at a block's
+// height. It is the "nothing is proven" answer, never the "proven uncertified" one: a halt
+// requires a conflicting cert, and there is no cert here at all.
+var errNoCertAtHeight = errors.New("chain: no certified entry at this height — nothing is proven")
+
 // certifiedAtItsHeight reports whether id is the finality ledger's certified canonical at
 // id's OWN height — i.e. whether id lies on the ONE certified chain. The height is read off
 // the VM rather than plumbed down from the cert so the answer is correct for ANY steer
 // target (the just-finalized block, or the live build anchor).
 //
-// The answer is THREE-valued and the error is the third value, never folded into the bool:
+// The answer is THREE-valued and the error is the third value, never folded into the bool.
+// `false` means PROVEN CONFLICTING and is the ONLY answer that may halt the node:
 //
-//	(true,  nil) — read it; it IS the certified canonical at its height.
-//	(false, nil) — read it; the ledger PROVES it is not. The caller may halt on this.
-//	(_,     err) — could NOT read it. Nothing is proven either way.
+//	(true,  nil)              — read it; it IS the certified canonical at its height.
+//	(false, nil)              — read it; a cert EXISTS at that height naming a DIFFERENT
+//	                            canonical. Two certs, one height: the halt.
+//	(false, err)              — nothing is proven. Either the block was unreadable, or the
+//	                            ledger holds no cert at its height at all.
 //
-// Collapsing the third case into `false` made an unreadable block indistinguishable from a
-// proven safety violation, and only the proven one may ever halt the node. A cancelled
-// context — an ordinary shutdown — reads as unreadable, so the collapse turned a clean stop
-// into a fatal on a node whose finality ledger was perfectly consistent.
+// Both error cases were once folded into `false`, which handed the halt-authorising answer
+// to three ordinary states: a cancelled context (an ordinary shutdown), a steer target above
+// the finalized frontier (which is what a build tip normally IS), and an ancestor pruned out
+// of the equivocation window. None of them is a second finalization.
 func (t *Transitive) certifiedAtItsHeight(ctx context.Context, vm BlockBuilder, id ids.ID) (bool, error) {
 	blk, err := vm.GetBlock(ctx, id)
 	if err != nil {
 		return false, err
 	}
 	fin, ok := t.consensus.FinalizedBlockAtHeight(blk.Height())
-	return ok && fin == canonicalIDOf(blk), nil
+	if !ok {
+		// NO CERT AT THIS HEIGHT. A double-finalization needs TWO certs at ONE height;
+		// with none here there is no second finalization and nothing is proven — the same
+		// category error as an unreadable block, one level down. Folding this into `false`
+		// handed the halt-authorising answer to two ordinary states: the steer target is
+		// normally the build tip, which PreferredBuildTip defines as the deepest verified
+		// block EXTENDING the finalized chain (i.e. above the frontier, uncertified by
+		// construction), and byHeight is bounded by pruneBelowWindow, so an ancestor that
+		// aged out reads the same. Absence of a cert is not evidence of a conflicting one.
+		return false, errNoCertAtHeight
+	}
+	return fin == canonicalIDOf(blk), nil
 }
 
 // promoteQuasar is the trailing EXPORT-cert step — the ONE place a ⅔-by-stake Quasar
