@@ -242,31 +242,45 @@ func TestNovaQuasarMatrix_FourOfFive_ExportsQuasar(t *testing.T) {
 	}) {
 		t.Fatalf("NOVA LIVENESS: 4-of-5 must accept+converge %s, heads=%v", blk.ID(), net.headsAtHeight(1))
 	}
-	// QUASAR export FORMS: 4-of-5 (80% stake > ⅔) completes the export cert on the accepted block.
-	// (Export LIVENESS is the point here; the no-two-conflicting-Quasars INVARIANT is proven
-	// deterministically by TestNovaQuasarMatrix_Equivocation_TwoNovaNeverTwoQuasar.)
-	if !waitFor(exportTO, func() bool {
-		for _, n := range net.nodes {
-			if !n.reachable() {
-				continue
-			}
-			if qh, ok := n.quasarHeight(); ok && qh >= blk.height && n.quasarTip() == blk.ID() {
-				return true
-			}
-		}
-		return false
-	}) {
+	// QUASAR export FORMS: 4-of-5 (80% stake > ⅔) reaches the export tier.
+	//
+	// The guarantee is at the FRONTIER, not per-block, and the test must assert the one the
+	// design actually makes. promoteQuasar: a block whose Nova cert did not itself carry ⅔
+	// stake stays Nova-only, and "a later fully-voted block advances the export frontier past
+	// the gap (a Quasar tip finalizes all its ancestors), so no per-block retroactive
+	// promotion is needed for liveness."
+	//
+	// Demanding that THIS block export, while building no successor, asserted the stronger
+	// per-block property. Whenever height 1's cert completed on the bare α=4 without ⅔ of
+	// stake attesting in that round, the export frontier had nothing to ride and the assertion
+	// reported the empty `tips=map[]` of a correctly-behaving fleet — about one run in three
+	// under full-suite CPU load. Driving successive heights is not a weaker assertion: the
+	// frontier advancing past height 1 finalizes height 1 with it, which is exactly what an
+	// export consumer (bridge, DEX settlement) observes.
+	if !waitForExportFrontier(net, blk, exportTO) {
 		t.Fatalf("EXPORT LIVENESS: 4-of-5 (80%% stake > ⅔) must export %s, tips=%v", blk.ID().String(), net.quasarTips())
 	}
-	// No CONFLICTING export tip (a tip other than blk on an up node that has exported).
+	// THE INVARIANT: no two CONFLICTING blocks both reach Quasar at one height. Assert it AT THE
+	// HEIGHT, not at the tip. A Quasar tip finalizes all its ancestors, so once the frontier is
+	// above blk the tip is legitimately a DESCENDANT of blk — comparing the tip to blk would
+	// flag honest frontier progress as a fork. What must never happen is a node exporting a
+	// DIFFERENT canonical at blk's own height.
 	for i, n := range net.nodes {
 		if !n.reachable() {
 			continue
 		}
-		if qh, ok := n.quasarHeight(); ok && qh > 0 {
-			if tip := n.quasarTip(); tip != blk.ID() && tip != ids.Empty {
-				t.Fatalf("INVARIANT: node %d exported a CONFLICTING tip %s (want %s)", i, tip, blk.ID())
-			}
+		qh, ok := n.quasarHeight()
+		if !ok || qh < blk.height {
+			continue // has not exported through blk's height yet — nothing to contradict
+		}
+		got, ok := n.rt.FinalizedBlockAtHeight(blk.height)
+		if !ok {
+			t.Fatalf("INVARIANT: node %d exported through height %d but holds no finalized block at %d",
+				i, qh, blk.height)
+		}
+		if got != blk.ID() {
+			t.Fatalf("INVARIANT: node %d exported a CONFLICTING canonical %s at height %d (want %s)",
+				i, got, blk.height, blk.ID())
 		}
 	}
 }
@@ -327,7 +341,10 @@ func TestNovaQuasarMatrix_Partition_MajorityProducesNeitherExports(t *testing.T)
 			if !n.reachable() {
 				continue
 			}
-			if qh, ok := n.quasarHeight(); ok && qh >= target.height {
+			if target == nil {
+			continue
+		}
+		if qh, ok := n.quasarHeight(); ok && qh >= target.height {
 				return true
 			}
 		}
@@ -338,7 +355,13 @@ func TestNovaQuasarMatrix_Partition_MajorityProducesNeitherExports(t *testing.T)
 	// is below ⅔. Waiting cannot conjure a new poll, so a passive wait after the final block
 	// could never recover and simply timed out (~12% of runs, tipHeights=map[] — nothing
 	// exported at all). A real chain resumes export as blocks arrive; so does this one.
-	for h := uint64(2); h <= 8 && !exported(); h++ {
+	// Drive heights until the export frontier moves, bounded by exportTO rather than by an
+	// arbitrary height cap. The cap plus a trailing non-driving waitFor was the defect: if the
+	// frontier had not moved by height 8, the test then sat for 25s building NOTHING, and export
+	// only ever advances on a NEW fully-voted block (promoteQuasar does no retroactive
+	// promotion). It was waiting for an event that, by construction, nothing could now cause.
+	exportDeadline := time.Now().Add(exportTO)
+	for h := uint64(2); !exported() && time.Now().Before(exportDeadline); h++ {
 		blk := newHonestBlock(parentID, parentStateRoot, h, "partition-heal-h")
 		net.build(int(h%5), blk)
 		if !waitFor(emergeTO, func() bool {
@@ -357,9 +380,13 @@ func TestNovaQuasarMatrix_Partition_MajorityProducesNeitherExports(t *testing.T)
 	// A post-heal block reaches Quasar (all 5 up ⇒ 80%+ stake > ⅔): export RESUMES after the
 	// partition healed. (Liveness; the no-conflicting-Quasar INVARIANT is proven deterministically
 	// by TestNovaQuasarMatrix_Equivocation_TwoNovaNeverTwoQuasar.)
-	if !waitFor(exportTO, exported) {
+	if !exported() {
+		wantH := uint64(2)
+		if target != nil {
+			wantH = target.height
+		}
 		t.Fatalf("after heal, the fleet must export a post-heal block (want height >= %d), tipHeights=%v tips=%v",
-			target.height, net.quasarTipHeights(), net.quasarTips())
+			wantH, net.quasarTipHeights(), net.quasarTips())
 	}
 	// No CONFLICTING export tip anywhere — the export frontier is a single chain across the heal.
 	for i, n := range net.nodes {
@@ -554,4 +581,60 @@ func TestNovaQuasarMatrix_DegradedRPC(t *testing.T) {
 		s := e.FinalityStatus()
 		t.Fatalf("after the 4th vote (80%% > ⅔) the chain must certify (not degraded, quasarHeight advanced): %+v", s)
 	}
+}
+
+// waitForExportFrontier waits for the Quasar EXPORT FRONTIER on any reachable node to reach at
+// least `blk`'s height, driving successive honest heights on top of `blk` while it waits.
+//
+// This is the liveness property the two-tier design actually guarantees. promoteQuasar emits an
+// export cert only for a block whose OWN Nova cert carried >⅔ of stake; a block finalized on the
+// bare α quorum without that supermajority attesting in its round stays Nova-only, permanently
+// and by design — "no per-block retroactive promotion is needed for liveness" precisely because
+// a later fully-voted block carries the frontier past it, and a Quasar tip finalizes all its
+// ancestors. A test that builds ONE block and demands that block export is therefore asserting a
+// property the engine never promised, and it fails on exactly the runs where the first cert
+// completed on the minimum quorum.
+//
+// Driving heights is what a live fleet does, so this asserts export liveness the way an export
+// consumer experiences it: the frontier moves, and everything at or below it is exported.
+func waitForExportFrontier(net *simNet, blk *simBlock, timeout time.Duration) bool {
+	exported := func() bool {
+		for _, n := range net.nodes {
+			if !n.reachable() {
+				continue
+			}
+			if qh, ok := n.quasarHeight(); ok && qh >= blk.height {
+				return true
+			}
+		}
+		return false
+	}
+	if exported() {
+		return true
+	}
+
+	deadline := time.Now().Add(timeout)
+	parentID, parentRoot, height := blk.ID(), blk.stateRoot, blk.height
+	for time.Now().Before(deadline) {
+		// Rotate the builder across the reachable nodes so no single node's liveness is the
+		// thing under test.
+		builder := int(height) % len(net.nodes)
+		for i := 0; i < len(net.nodes) && !net.nodes[builder].reachable(); i++ {
+			builder = (builder + 1) % len(net.nodes)
+		}
+		height++
+		next := newHonestBlock(parentID, parentRoot, height, "export-frontier")
+		net.build(builder, next)
+
+		if waitFor(emergeTO, func() bool {
+			all, fork := net.finalizedEverywhere(next)
+			return all && !fork
+		}) {
+			parentID, parentRoot = next.ID(), next.stateRoot
+		}
+		if exported() {
+			return true
+		}
+	}
+	return exported()
 }
