@@ -3505,6 +3505,26 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 		return err
 	}
 
+	// REMEMBER THE ACCEPTED POSITION BEFORE FINALITY BECOMES VISIBLE. handleVote routes a vote
+	// for a block that is no longer pending but IS in finalizedByCert to attestFinalizedVote,
+	// which resolves the signed position through lookupAcceptedPos. applyBranchFinalization sets
+	// finalizedByCert and drops the pending block; this record used to be written later still,
+	// inside promoteQuasar. Between those two points the tap was OPEN and the position ABSENT,
+	// so a vote arriving there took the finalized path, missed the lookup, and returned in
+	// silence.
+	//
+	// That vote is not recoverable. Accept votes are solicited once and there is no retroactive
+	// promotion, so losing the ⅔-th one leaves the height Nova-only PERMANENTLY — settlement
+	// never exports it, and FinalityStatus reports Degraded with a responsive stake below the
+	// truth (4 of 5 voting, read back as 0.6). The window widens under CPU contention, which is
+	// where it was found.
+	//
+	// Writing it here closes the window at the source: the record exists before any observer can
+	// see the block as finalized. It is keyed by the outer block id and bounded to the attestor
+	// window, and a subsequent VM.Accept failure cannot make it lie — attestFinalizedVote is
+	// reachable only for a block finalizedByCert actually holds.
+	t.rememberAcceptedPos(cert.Cert().Position, quasarEpoch)
+
 	// Apply the plan to the VM + engine bookkeeping: VM.Accept the finalized path (fail-closed
 	// — stops at the first VM.Accept error), VM.Reject the pruned losers, record engine
 	// finality, store the serving cert. highestAccepted is the highest height the VM ACTUALLY
@@ -3687,6 +3707,19 @@ func (t *Transitive) reconcileVMToCertified(ctx context.Context, vm BlockBuilder
 		// already CONTAINS `certified`, and the refusal was merely a BACKWARDS steer.
 		// Nothing is orphaned: no action, no halt.
 		onCertifiedChain, err := t.certifiedAtItsHeight(ctx, vm, certified)
+		if errors.Is(err, errNoCertAtHeight) {
+			// NO CERT AT THE TARGET'S HEIGHT. Nothing is proven — a double-finalization needs a
+			// CONFLICTING cert, and there is none here. This is also the ORDINARY case, not an
+			// incident: the steer target is normally the build tip, which PreferredBuildTip
+			// defines as the deepest verified block EXTENDING the finalized chain, so it sits
+			// above the frontier and is uncertified by construction. A pruned ancestor reads the
+			// same. Debug, not Error — logging every build tip at Error is how a real signal gets
+			// tuned out.
+			t.log.Debug("SetPreference refused and the steer target is not certified at its own height — nothing to orphan (no conflicting cert exists there)",
+				"certified", certified, "head", headID, "headHeight", headHeight,
+				"setPreferenceError", setPrefErr)
+			return true
+		}
 		if err != nil {
 			// COULD NOT READ `certified` ⇒ the violation is UNPROVEN, and an unproven
 			// violation is not a violation. Every other unreadable read on this path already
@@ -3696,7 +3729,11 @@ func (t *Transitive) reconcileVMToCertified(ctx context.Context, vm BlockBuilder
 			// with "the block is not readable" — and a read that fails because the engine's
 			// context was cancelled during shutdown is the common case, which turned an
 			// orderly stop into os.Exit(1) on a node whose ledger was never in question.
-			t.log.Error("SetPreference refused and the steer target is unreadable — cannot classify, leaving VM head untouched (consensus finality is correct; deferring reconcile to recovery)",
+			//
+			// Kept SEPARATE from the no-cert case above so the two are distinguishable in the
+			// logs: they arrive at the same decision by different evidence, and only this one
+			// means a read actually failed.
+			t.log.Error("SetPreference refused and the steer target is UNREADABLE — cannot classify, leaving VM head untouched (consensus finality is correct; deferring reconcile to recovery)",
 				"certified", certified, "head", headID, "headHeight", headHeight,
 				"setPreferenceError", setPrefErr, "getBlockError", err)
 			return true
@@ -3812,14 +3849,14 @@ func (t *Transitive) promoteQuasar(novaCert *QuorumCert, epochHeight uint64) {
 	if attestor == nil {
 		return
 	}
-	// Remember the accepted block's signed position so LATE votes can complete the export cert
-	// AFTER the pending block is dropped. The Nova cert freezes at the BARE MAJORITY (the accept
-	// threshold), so the ⅔-th stake vote by definition TRAILS the accept — it arrives when the
-	// block is already finalized and would otherwise be dropped. rememberAcceptedPos + the
-	// finalized-block attestation tap (handleVote) route those trailing votes to the attestor so
-	// export can still form. Feed the majority votes now (seeds the bucket + emits if ⅔ already
-	// present, e.g. a burst-delivered vote set).
-	t.rememberAcceptedPos(pos, epochHeight)
+	// The accepted position was remembered by the caller BEFORE finality became visible, so the
+	// finalized-block attestation tap (handleVote → attestFinalizedVote) can already resolve a
+	// trailing vote. It must stay there and not here: the Nova cert freezes at the NovaQuorum
+	// majority, so the ⅔-th stake vote by definition TRAILS the accept, and recording the
+	// position at this point left a window in which the tap was open and the lookup empty.
+	//
+	// Feed the majority votes now (seeds the bucket + emits if ⅔ is already present, e.g. a
+	// burst-delivered vote set).
 	for i := range novaCert.Votes {
 		t.ingestAttestation(pos, epochHeight, novaCert.Votes[i])
 	}
