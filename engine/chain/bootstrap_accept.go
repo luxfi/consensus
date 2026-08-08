@@ -112,42 +112,13 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 	// Within an ordered (oldest-first) feed this never wrongly rejects: by the time
 	// N+1 is processed, N has finalized, so N+1.height == finalized+1.
 	if fh, set := rt.Transitive.consensus.GetFinalizedHeight(); set {
-		// THE FLOOR IS WHAT WE ALREADY HOLD, AND TWO AUTHORITIES HOLD BLOCKS: the finality
-		// ledger (proof) and the VM (state). Bootstrap is about STATE, so the VM's accepted
-		// head governs whenever it is higher.
-		//
-		// Reading the ledger alone is what stranded lux-testnet luxd-0. The ledger is
-		// in-memory and boots UNSET on a node that lost its signing journal; the FIRST cert
-		// it then processes SEEDS certified history at that cert's height with no contiguity
-		// requirement (Finalize's first-cert path, correctly — there is no prior tip to
-		// extend). A cert for an ancient height therefore seeds the tip thousands of blocks
-		// BELOW what the VM has already accepted. From that moment this branch fed the VM
-		// its own ancient history, one height at a time, and the VM can NEVER accept any of
-		// it: the accept invariant is parent-hash equality against its accepted head
-		// (evm/core/blockchain.go), so every block cost a full re-execution and was refused.
-		// Forever — until the no-progress watchdog stopped the chain.
-		//
-		// The un-seeded branch below already binds to the VM's real head for exactly this
-		// reason (M2 FIRST-BLOCK ANCHOR: a peer must not steer our start height). That
-		// protection was silently bypassed the instant a cert seeded the ledger. One
-		// predicate, one authority ordering, both branches.
-		//
-		// Skipping a block at or below the VM's head can never lose finality: the VM
-		// already holds it, and Verify+Accept would refuse it regardless. What the ledger
-		// may do with the heights between its tip and the VM's head is a question about
-		// PROOF, not state, and is deliberately left to the cert road — a bootstrap fetch
-		// must not manufacture finality from local VM state (incident-1082814 PART-A).
-		floor := fh
-		if _, vmH, lerr := rt.localLastAccepted(ctx); lerr == nil && vmH > floor {
-			floor = vmH
-		}
-		if blk.Height() <= floor {
+		if blk.Height() <= fh {
 			return nil
 		}
-		if blk.Height() > floor+1 {
+		if blk.Height() > fh+1 {
 			return ErrBootstrapBlockRejected
 		}
-		// height == floor+1: parent == finalizedTip is enforced by FinalizeBranch's walk.
+		// height == fh+1: parent == finalizedTip is enforced by FinalizeBranch's walk.
 	} else {
 		// M2 — FIRST-BLOCK ANCHOR. The finalized-height tracker is UNSET (the un-seeded
 		// / empty-genesis path: SyncState only sets it when the VM has a non-empty last
