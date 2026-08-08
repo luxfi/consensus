@@ -281,9 +281,13 @@ func TestNovaQuasarMatrix_FourOfFive_ExportsQuasar(t *testing.T) {
 		// only writer — SyncQuasarFrontier seeds it from the VM's durable export record with no
 		// Nova-ledger check and will accept an empty canonical. So a height above blk proves
 		// nothing about WHAT was exported; read the tip directly.
-		if tip := n.quasarTip(); tip != ids.Empty && !chain[tip] {
-			t.Fatalf("INVARIANT: node %d exported tip %s, which is NOT on blk's canonical line",
-				i, tip)
+		// No ids.Empty exemption. A node reporting an export height at or above blk with an EMPTY
+		// canonical is the precise shape SyncQuasarFrontier can seed, and excusing it here would
+		// skip the one case this check cites as its reason to exist.
+		if tip := n.quasarTip(); !chain[tip] {
+			t.Fatalf("INVARIANT: node %d reports export height >= %d but its tip %s is NOT on blk's "+
+				"canonical line (ids.Empty means the frontier advanced without naming a canonical)",
+				i, blk.height, tip)
 		}
 		// (b) and nothing conflicting was certified at blk's own height. A Quasar tip finalizes
 		// its ancestors, so this is where "no two conflicting Quasars at one height" is readable.
