@@ -20,7 +20,7 @@ import (
 // counted" once per peer per poll, forever.
 //
 // WHY IT IS SAFE, WHEN COUNTING A PAYLOAD-SUPPLIED Vote{NodeID} WOULD NOT BE.
-// The distinction is where origin comes from, and it is the same one avalanchego
+// The distinction is where origin comes from, and it is the same one the reference implementation
 // relies on: its engine receives the voter as `Chits(nodeID, requestID, …)`, a
 // PARAMETER the router fills in from the authenticated connection, so a peer
 // cannot claim to be someone else. Lux's Vote carries NodeID as a struct FIELD,
