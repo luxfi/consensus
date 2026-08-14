@@ -149,3 +149,47 @@ func TestGarbageCatchupBytesAreRefused(t *testing.T) {
 		t.Fatal("unparseable bytes with a forged cert were accepted")
 	}
 }
+
+// TestHeldBlockIsNotReVerified: when our VM already holds the block, catch-up must
+// use that copy instead of asking the VM to verify it again. Re-verification is an
+// insert of an old canonical block, which a VM correctly refuses — and a node whose
+// finality has fallen behind its own applied head is served nothing BUT blocks it
+// already has, so that refusal used to reject the entire response.
+func TestHeldBlockIsNotReVerified(t *testing.T) {
+	vm := &parseVM{byBytes: map[string]*verifyOnceBlock{}}
+	e := NewWithConfig(Config{Params: params5()}, WithVM(vm))
+	rt := &Runtime{Transitive: e, config: NetworkConfig{
+		ChainID: ids.GenerateTestID(), Logger: log.Noop(), VM: vm,
+	}}
+
+	tip := ids.GenerateTestID()
+	e.consensus.mu.Lock()
+	e.consensus.ledger = seedLedger(tip, tip, 8)
+	e.consensus.mu.Unlock()
+
+	blk := &verifyOnceBlock{
+		id: ids.GenerateTestID(), parentID: tip, height: 30,
+		timestamp: time.Now(), bytes: []byte("already-held"),
+	}
+	vm.byBytes["already-held"] = blk
+
+	// The block was verified when we first accepted it; a second Verify now fails,
+	// exactly as a VM refusing to re-insert its own canonical block does.
+	if err := blk.Verify(context.Background()); err != nil {
+		t.Fatalf("first verify should succeed: %v", err)
+	}
+
+	err := rt.AcceptCatchupBlock(context.Background(), []byte("already-held"), nil)
+	if err == nil {
+		t.Fatal("a block with no cert must not finalize")
+	}
+	if errors.Is(err, errVerifiedAlready) {
+		t.Fatal("catch-up re-verified a block the VM already holds — the whole response would be rejected")
+	}
+	if got := blk.VerifyCalls(); got != 1 {
+		t.Fatalf("Verify called %d times; the held copy must be used instead of re-verifying", got)
+	}
+	if e.IsAccepted(blk.id) {
+		t.Fatal("held block was finalized without a cert")
+	}
+}
