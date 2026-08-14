@@ -5,19 +5,19 @@
 //
 // This mirrors the upstream linear-chain consensus's topological layer: the live block
 // tree (blocks/tips), the build preference, and the vote/poll surface that drives
-// each block's snowball instance. It is the half of avalanchego's Topological that
+// each block's confidence counter. It is the half of the preference tree that
 // stays MUTABLE — siblings coexist, votes accumulate, preference moves. The OTHER
-// half of avalanchego's Topological — the committed-prefix advance (lastAcceptedID /
+// half of the preference tree — the committed-prefix advance (lastAcceptedID /
 // acceptPreferredChild / rejectTransitively, β-driven there) — is decomplected out:
 // in Lux it is CERT-driven and lives as the pure fold in ledger.go, applied by the
 // shell in consensus.go. Same tree shape; finality trigger swapped from β to cert.
 //
-// Method mapping (ours -> avalanchego Topological):
+// Method roles:
 //
 //	Block / *Block               -> the upstream tree-node block
 //	AddBlock                     -> Add (admit a child of a known block)
 //	ProcessVote / Poll           -> RecordPoll (accumulate votes into the per-block
-//	                                snowball driver; LIVENESS only — finality is the cert)
+//	                                confidence driver; LIVENESS only — finality is the cert)
 //	IsAccepted / IsRejected      -> block status (Decided)
 //	GetBlock                     -> blocks[id] lookup (Processing)
 //	Preference / ForcePreference -> Preference / preferredIDs (the build tail)
@@ -25,8 +25,8 @@
 //	ancestry / blocksAncestry    -> GetParent + children, exposed as the read-only
 //	                                Ancestry the pure Finalize fold reads
 //
-// The Photon -> Wave -> Focus per-block driver (engine.Driver) is avalanchego's
-// per-node snowball.Consensus instance — orthogonal to the tree and kept AS-IS.
+// The Photon -> Wave -> Focus per-block driver (engine.Driver) is the
+// per-node confidence instance — orthogonal to the tree and kept AS-IS.
 package chain
 
 import (
@@ -107,7 +107,7 @@ func (b *Block) acceptVotes() int { return len(b.acceptVoters) }
 // rejectVotes is the number of DISTINCT validators that rejected.
 func (b *Block) rejectVotes() int { return len(b.rejectVoters) }
 
-// AddBlock admits a block into the preference tree (avalanchego Topological.Add). It
+// AddBlock admits a block into the preference tree. It
 // is tracking-only and PERMISSIVE: any child is admitted, siblings coexist, and the
 // new block becomes the sole build tip of its parent. Unknown-parent / fetch safety
 // is enforced at FINALIZE (the fold's ErrAncestorNotTracked), not here — tracking is
@@ -138,7 +138,7 @@ func (c *ChainConsensus) AddBlock(ctx context.Context, block *Block) error {
 }
 
 // ProcessVote records one vote into a block's Photon->Wave->Focus driver
-// (avalanchego RecordPoll, per block). Reaching the α accept count sets the LIVENESS
+// (per block). Reaching the α accept count sets the LIVENESS
 // flag block.accepted — the engine's DrainAccepted trigger — but NEVER advances the
 // committed ledger. Finality is the cert fold's job alone.
 func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, voter ids.NodeID, accept bool) error {
@@ -211,7 +211,7 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, voter 
 	return nil
 }
 
-// Poll conducts a consensus poll over a batch of vote responses (avalanchego
+// Poll conducts a consensus poll over a batch of vote responses (
 // RecordPoll). It drives each block's Wave->Focus driver; convergence + the α accept
 // count sets the LIVENESS flag only. Finality (and the reorg) is the cert path.
 func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) error {
@@ -288,7 +288,7 @@ func (c *ChainConsensus) IsRejected(blockID ids.ID) bool {
 }
 
 // Preference returns the FINALITY preference — the cert-selected/finalized tip
-// (avalanchego Topological.Preference). It stays at the finalized tip until a
+//. It stays at the finalized tip until a
 // quorum cert selects a child; a mere build-tip move does NOT advance it. This is
 // the finality-reporting concern and MUST NOT be conflated with the build target
 // (see PreferredBuildTip) — the conformance suite pins this contract.
@@ -435,7 +435,7 @@ func (c *ChainConsensus) ancestry() Ancestry {
 	return blocksAncestry{blocks: c.blocks, recall: c.recall}
 }
 
-// blocksAncestry is the Ancestry over c.blocks (avalanchego GetParent + the per-block
+// blocksAncestry is the Ancestry over c.blocks (parent lookup + the per-block
 // children). Parent/Children are exact reads of the tree linkage, expressed behind the
 // interface so the Finalize fold stays engine-free and unit-testable.
 type blocksAncestry struct {
