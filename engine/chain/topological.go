@@ -431,15 +431,46 @@ func (c *ChainConsensus) ForcePreference(blockID ids.ID) {
 // ancestry exposes the live block tree to the pure fold as a read-only Ancestry. The
 // fold reads parent/height links and sibling children through this view ONLY; it never
 // mutates the DAG. Caller holds c.mu (the view is used only within the locked fold).
-func (c *ChainConsensus) ancestry() Ancestry { return blocksAncestry{blocks: c.blocks} }
+func (c *ChainConsensus) ancestry() Ancestry {
+	return blocksAncestry{blocks: c.blocks, recall: c.recall}
+}
 
 // blocksAncestry is the Ancestry over c.blocks (avalanchego GetParent + the per-block
 // children). Parent/Children are exact reads of the tree linkage, expressed behind the
 // interface so the Finalize fold stays engine-free and unit-testable.
-type blocksAncestry struct{ blocks map[ids.ID]*Block }
+type blocksAncestry struct {
+	blocks map[ids.ID]*Block
+	recall func(ids.ID) (*Block, bool)
+}
+
+// at resolves a block for the walk: from the live tree first, and failing that from
+// the VM's own accepted chain.
+//
+// The live tree holds what THIS PROCESS has seen. The finalized tip it walks up from
+// is durable. Those two disagree after any restart — the node comes back knowing it
+// finalized through height H and remembering nothing above it, while its VM still
+// holds every block it ever accepted. Without the second lookup the walk cannot cross
+// that seam, so a valid cert for a block above H is refused for a missing ancestor
+// the node is in fact holding, and the gap only widens with the next restart.
+//
+// Reading it back from the VM is the STRONGER source, not a weaker one: the VM's
+// chain is what this node actually executed and committed, where the live tree is
+// populated from gossip. Nothing here decides finality — the cert has already cleared
+// the ⅔-by-stake predicate on its own — so this only supplies the parent links that
+// establish the path, and a block the VM does not hold still misses, preserving the
+// fail-closed defer.
+func (a blocksAncestry) at(id ids.ID) (*Block, bool) {
+	if b, ok := a.blocks[id]; ok {
+		return b, true
+	}
+	if a.recall == nil {
+		return nil, false
+	}
+	return a.recall(id)
+}
 
 func (a blocksAncestry) Parent(id ids.ID) (ids.ID, uint64, ids.ID, ids.ID, bool) {
-	b, ok := a.blocks[id]
+	b, ok := a.at(id)
 	if !ok {
 		return ids.Empty, 0, ids.Empty, ids.Empty, false
 	}

@@ -908,6 +908,31 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		t.log = log.Noop()
 	}
 
+	// Let the finality walk read blocks back from the VM. A restart leaves the engine
+	// with a durable finalized tip and an empty tree above it, so without this a cert
+	// for any block accepted before the restart is refused for an ancestor the node is
+	// holding. Wired after the options so both the consensus core and the VM are set.
+	if t.consensus != nil && t.vm != nil {
+		vm := t.vm
+		t.consensus.SetRecall(func(id ids.ID) (*Block, bool) {
+			vmBlock, err := vm.GetBlock(context.Background(), id)
+			if err != nil || vmBlock == nil {
+				return nil, false
+			}
+			b := &Block{
+				id:           id,
+				parentID:     vmBlock.ParentID(),
+				height:       vmBlock.Height(),
+				timestamp:    vmBlock.Timestamp().Unix(),
+				data:         vmBlock.Bytes(),
+				pChainHeight: pChainHeightOf(vmBlock),
+				accepted:     true, // the VM only answers for blocks it has committed
+			}
+			setCanonicalFromVM(b, vmBlock)
+			return b, true
+		})
+	}
+
 	return t
 }
 
