@@ -166,6 +166,25 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 		return errors.Join(ErrCatchupCertRejected, err)
 	}
 
+	// PREFER THE COPY WE HOLD, before any height decision. A block our VM has already
+	// accepted was verified when we accepted it, and re-verifying it asks the VM to
+	// insert an old canonical block a second time — which it refuses ("side chain
+	// insertion is not supported", ErrPrunedAncestor once the gap exceeds the commit
+	// interval). That refusal is our own history coming back to us, not a bad block.
+	//
+	// This decision belongs ABOVE the height switch and not inside one of its arms.
+	// The arms differ in what they DO with the block; none of them differ in whether
+	// the block needs verifying. Putting the preference in the >fh+1 arm alone left
+	// the one height that actually moves the ledger — exactly fh+1 — on the
+	// unconditional path, so a node behind on certs tracked every block in its gap
+	// except the next one. One untracked height is enough: pathFromTip walks a cert's
+	// block down to the tip and defers on the first gap, so every cert above that hole
+	// is refused, however many blocks were tracked.
+	held := false
+	if h, herr := rt.config.VM.GetBlock(ctx, blk.ID()); herr == nil && h != nil {
+		blk, held = h, true
+	}
+
 	// CONTIGUITY (defence-in-depth over the per-height guard, and an orphan-accrual
 	// bound). The catch-up window the responder serves overlaps blocks we already
 	// have AND, on a node lagging by more than that window, starts ABOVE our tip.
@@ -212,28 +231,36 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 			// applied head receives exactly this: every entry is a block it already
 			// has, so re-verification failed on all of them and the walk that would
 			// have advanced finality was never reached. Prefer the copy we hold.
-			held, heldErr := rt.config.VM.GetBlock(ctx, blk.ID())
-			if heldErr == nil && held != nil {
-				blk = held
-			} else if err := blk.Verify(ctx); err != nil {
-				return errors.Join(ErrCatchupCertRejected, err)
+			if !held {
+				if err := blk.Verify(ctx); err != nil {
+					return errors.Join(ErrCatchupCertRejected, err)
+				}
 			}
 			rt.trackVerifiedForCatchup(ctx, blk)
-			// A cert may ride along with a block above our tip. Offer it — if it
-			// verifies, the fold finalizes everything from our tip up to it in one
-			// step. If not, the block stays tracked for a later descendant's cert.
-			if len(certBytes) > 0 {
-				rt.HandleIncomingCert(certBytes)
-			}
+			// The cert riding with a block ABOVE our next height is deliberately NOT
+			// offered here. Contiguity is a safety property, not an optimisation: a
+			// valid cert does not license finalizing a height we have not reached, and
+			// with the ancestry walk able to resolve intermediate blocks, offering it
+			// would let one cert carry finality across a gap the per-height guard
+			// exists to refuse. Track the block and stop; it finalizes when finality
+			// reaches it in order.
 			return ErrCatchupCertRejected
 		}
 	}
 
-	// Locally VERIFY the block. A cert proves the NETWORK agreed; local Verify proves
-	// the block is VALID against our state — BOTH are required to finalize (identical
-	// to the gossip path; a valid cert never substitutes for our own validation).
-	if err := blk.Verify(ctx); err != nil {
-		return errors.Join(ErrCatchupCertRejected, err)
+	// Locally VERIFY the block, unless our VM already holds it — in which case it was
+	// verified when we accepted it, and asking again is the re-insertion the VM
+	// refuses. A cert proves the NETWORK agreed; validation against our own state
+	// proves the block is sound, and BOTH are still required to finalize. Being
+	// already-accepted IS that validation, carried forward.
+	//
+	// This is the height that moves the ledger, so it is the height a stale
+	// re-verification is most expensive at: refusing here returns before the block is
+	// tracked, and pathFromTip then defers every cert above it on the resulting hole.
+	if !held {
+		if err := blk.Verify(ctx); err != nil {
+			return errors.Join(ErrCatchupCertRejected, err)
+		}
 	}
 
 	// Track the verified block (no vote — see trackVerifiedForCatchup) so the
