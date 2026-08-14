@@ -1,32 +1,32 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// topological.go — the PREFERENCE LAYER, the mutable, sibling-tolerant block tree.
+// topological.go — the preference layer, the mutable, sibling-tolerant block tree.
 //
-// This mirrors the upstream linear-chain consensus's topological layer: the live block
-// tree (blocks/tips), the build preference, and the vote/poll surface that drives
-// each block's confidence counter. It is the half of the preference tree that
-// stays MUTABLE — siblings coexist, votes accumulate, preference moves. The OTHER
-// half of the preference tree — the committed-prefix advance (lastAcceptedID /
-// acceptPreferredChild / rejectTransitively, β-driven there) — is decomplected out:
-// in Lux it is CERT-driven and lives as the pure fold in ledger.go, applied by the
-// shell in consensus.go. Same tree shape; finality trigger swapped from β to cert.
+// This is the topological half of a linear-chain engine: the live block tree
+// (blocks/tips), the build preference, and the vote/poll surface that drives each
+// block's confidence counter. It is the half that stays mutable — siblings coexist,
+// votes accumulate, preference moves. The other half — the committed-prefix advance
+// (lastAcceptedID / acceptPreferredChild / rejectTransitively, β-driven in a
+// classical engine) — is decomplected out: here it is cert-driven and lives as the
+// pure fold in ledger.go, applied by the shell in consensus.go. Same tree shape;
+// finality trigger swapped from β to cert.
 //
 // Method roles:
 //
-//	Block / *Block               -> the upstream tree-node block
-//	AddBlock                     -> Add (admit a child of a known block)
-//	ProcessVote / Poll           -> RecordPoll (accumulate votes into the per-block
-//	                                confidence driver; LIVENESS only — finality is the cert)
-//	IsAccepted / IsRejected      -> block status (Decided)
-//	GetBlock                     -> blocks[id] lookup (Processing)
-//	Preference / ForcePreference -> Preference / preferredIDs (the build tail)
-//	EpochHeightOf                -> (Lux-only) the block's pinned P-chain epoch height
-//	ancestry / blocksAncestry    -> GetParent + children, exposed as the read-only
+//	Block / *Block               -> the tree-node block
+//	AddBlock                     -> admit a child of a known block
+//	ProcessVote / Poll           -> accumulate votes into the per-block confidence
+//	                                driver; liveness only — finality is the cert
+//	IsAccepted / IsRejected      -> block status (decided)
+//	GetBlock                     -> blocks[id] lookup (processing)
+//	Preference / ForcePreference -> the build tail
+//	EpochHeightOf                -> the block's pinned P-chain epoch height
+//	ancestry / blocksAncestry    -> parent + children, exposed as the read-only
 //	                                Ancestry the pure Finalize fold reads
 //
-// The Photon -> Wave -> Focus per-block driver (engine.Driver) is the
-// per-node confidence instance — orthogonal to the tree and kept AS-IS.
+// The Photon -> Wave -> Focus per-block driver (engine.Driver) is the per-node
+// confidence instance — orthogonal to the tree and untouched by it.
 package chain
 
 import (
@@ -37,9 +37,9 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// Block represents a block in the chain — the preference tree's node (the upstream tree
-// node). Tracks the value-chain linkage (id/parent/height), the pinned
-// P-chain epoch, the per-block Photon->Wave->Focus driver, and the decided flags.
+// Block represents a block in the chain — the preference tree's node. Tracks the
+// value-chain linkage (id/parent/height), the pinned P-chain epoch, the per-block
+// Photon->Wave->Focus driver, and the decided flags.
 type Block struct {
 	id        ids.ID
 	parentID  ids.ID
@@ -48,38 +48,37 @@ type Block struct {
 	data      []byte
 
 	// canonicalID / parentCanonicalID / execStateRoot / payloadRoot are the inner
-	// EXECUTION commitment (the incident-1082814 canonical identity). For a
-	// proposervm-wrapped block these are the inner block's identity; for a bare block
-	// canonicalID == id (graceful degrade). canonicalID is what finality, the
-	// per-height equivocation index, and the cert position all key on; the outer
-	// id/parentID stay the transport/DAG keys. ids.Empty roots mean "not exposed".
+	// execution commitment — the block's canonical identity. For a proposervm-wrapped
+	// block these are the inner block's identity; for a bare block canonicalID == id
+	// (graceful degrade). canonicalID is what finality, the per-height equivocation
+	// index, and the cert position all key on; the outer id/parentID stay the
+	// transport/DAG keys. ids.Empty roots mean "not exposed".
 	canonicalID       ids.ID
 	parentCanonicalID ids.ID
 	execStateRoot     ids.ID
 	payloadRoot       ids.ID
 
-	// pChainHeight is the P-CHAIN epoch height the block's weighted validator set
-	// is pinned to (MEDIUM-1 / CRITICAL-1): the set-root commitment, the ⅔-by-stake
-	// tally, AND the per-voter pubkey resolution are ALL read from the height-
-	// indexed validators.State at THIS height — never the value-chain `height`.
-	// They differ fundamentally: platformvm.GetValidatorSet interprets its argument
-	// as a P-CHAIN height and returns errUnfinalizedHeight when the current P-chain
-	// height < the argument, and the value-chain height races far ahead of the
-	// P-chain height on a busy chain — feeding `height` there yields an empty set
-	// and stalls finality FOREVER (the mainnet-bricking bug this fixes).
+	// pChainHeight is the P-chain epoch height the block's weighted validator set is
+	// pinned to: the set-root commitment, the ⅔-by-stake tally, and the per-voter
+	// pubkey resolution all read the height-indexed validators.State at this height,
+	// never the value-chain `height`. The two are different quantities.
+	// platformvm.GetValidatorSet interprets its argument as a P-chain height and
+	// returns errUnfinalizedHeight once that argument exceeds the current P-chain
+	// height, and the value-chain height races ahead of the P-chain height on a busy
+	// chain. Passing `height` there therefore resolves an empty validator set, and no
+	// tally over an empty set can ever reach ⅔, so finality stops for good.
 	//
 	// Source: a proposervm signed block carries its PChainHeight
 	// (block.SignedBlock.PChainHeight); pChainHeightOf reads it off the VM block at
-	// the engine boundary. When the block does NOT expose one (the VM is not
+	// the engine boundary. When the block does not expose one (the VM is not
 	// proposervm-wrapped at the engine boundary, which is the case for the current
 	// in-process chain stack), this is 0 → the set is read at P-chain height 0, the
-	// GENESIS validator set. That is non-empty, identical on every node (everyone
-	// agrees on genesis), and ≤ the current P-chain height, so finality is LIVE and
-	// consistent — and EXACT for any chain whose validator set is unchanged since
-	// genesis. The refinement that pins post-genesis STAKING-CHANGE epochs requires
-	// the proposervm to deliver its PChainHeight to the engine's block (the
-	// remaining (b2) wiring); the mechanism here is proven by
-	// TestPChainEpochFinality_RealWiring, which feeds a block that DOES carry it.
+	// genesis validator set. That is non-empty, identical on every node (everyone
+	// agrees on genesis), and ≤ the current P-chain height, so finality stays live and
+	// consistent — and exact for any chain whose validator set is unchanged since
+	// genesis. Pinning post-genesis staking-change epochs instead needs the proposervm
+	// to deliver its PChainHeight to the engine's block; the mechanism here is covered
+	// by TestPChainEpochFinality_RealWiring, which feeds a block that carries one.
 	pChainHeight uint64
 
 	// Consensus state - Photon -> Wave -> Focus finality
@@ -87,31 +86,30 @@ type Block struct {
 	accepted bool
 	rejected bool
 
-	// acceptVoters / rejectVoters ARE the tally. α means "α DISTINCT validators
-	// agreed"; a count that any single voter can advance by repeating itself does
-	// not mean that. ProcessVote used to take only (blockID, accept) — the voter
-	// was not a parameter, so this layer could not tell one validator answering
-	// four times from four validators answering once, and at α=4-of-5 one node
-	// finalized a block alone. Polls ARE re-solicited and peers DO answer twice,
-	// so it needed no malice; a peer that wanted it could just resend.
+	// acceptVoters / rejectVoters are the tally. α means "α distinct validators
+	// agreed"; a plain counter any single voter can advance by repeating itself
+	// does not mean that — without the voter's identity this layer cannot tell one
+	// validator answering four times from four validators answering once, and one
+	// node alone carries a block past α. That takes no malice: polls are
+	// re-solicited and peers do answer twice.
 	//
-	// They are SETS, and acceptVotes()/rejectVotes() derive from them, so the
+	// They are sets, and acceptVotes()/rejectVotes() derive from them, so the
 	// count cannot drift from the identities it claims to summarize.
 	acceptVoters map[ids.NodeID]struct{}
 	rejectVoters map[ids.NodeID]struct{}
 }
 
-// acceptVotes is the number of DISTINCT validators that accepted — the α predicate.
+// acceptVotes is the number of distinct validators that accepted — the α predicate.
 func (b *Block) acceptVotes() int { return len(b.acceptVoters) }
 
-// rejectVotes is the number of DISTINCT validators that rejected.
+// rejectVotes is the number of distinct validators that rejected.
 func (b *Block) rejectVotes() int { return len(b.rejectVoters) }
 
-// AddBlock admits a block into the preference tree. It
-// is tracking-only and PERMISSIVE: any child is admitted, siblings coexist, and the
-// new block becomes the sole build tip of its parent. Unknown-parent / fetch safety
-// is enforced at FINALIZE (the fold's ErrAncestorNotTracked), not here — tracking is
-// decomplected from finality.
+// AddBlock admits a block into the preference tree. It is tracking-only and
+// permissive: any child is admitted, siblings coexist, and the new block becomes the
+// sole build tip of its parent. Unknown-parent and fetch safety are enforced at
+// finalize (the fold's ErrAncestorNotTracked), not here — tracking is decomplected
+// from finality.
 func (c *ChainConsensus) AddBlock(ctx context.Context, block *Block) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -137,10 +135,10 @@ func (c *ChainConsensus) AddBlock(ctx context.Context, block *Block) error {
 	return nil
 }
 
-// ProcessVote records one vote into a block's Photon->Wave->Focus driver
-// (per block). Reaching the α accept count sets the LIVENESS
-// flag block.accepted — the engine's DrainAccepted trigger — but NEVER advances the
-// committed ledger. Finality is the cert fold's job alone.
+// ProcessVote records one vote into a block's Photon->Wave->Focus driver (per
+// block). Reaching the α accept count sets the liveness flag block.accepted — the
+// engine's DrainAccepted trigger — and never advances the committed ledger. Finality
+// is the cert fold's job alone.
 func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, voter ids.NodeID, accept bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -154,10 +152,10 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, voter 
 		return fmt.Errorf("block not initialized for consensus")
 	}
 
-	// Track both accept and reject votes — ONE PER VALIDATOR. A repeat from a
+	// Track both accept and reject votes — one per validator. A repeat from a
 	// voter already counted is not an error and not evidence of anything (polls
 	// are re-solicited), it simply must not move the tally a second time. The
-	// driver is likewise only advanced on a voter's FIRST accept, so confidence
+	// driver is likewise only advanced on a voter's first accept, so confidence
 	// cannot be self-assembled either.
 	if accept {
 		if _, counted := block.acceptVoters[voter]; counted {
@@ -168,16 +166,15 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, voter 
 		}
 		block.acceptVoters[voter] = struct{}{}
 
-		// CONFIDENCE ADVANCES PER SUCCESSFUL POLL, NEVER PER VOTE.
-		// β is the number of consecutive polls that EACH reached α — that is what
-		// makes a decision worth βα agreements. Calling RecordVote on every arriving
-		// vote collapses that to β agreements total: with K=5, α=4, β=2 a block
-		// reached the driver's decision after THREE distinct accepts and VM.Accept
-		// ran while the α=4 quorum had never been met. Two of five validators could
-		// decide a block — far below the BFT threshold the parameters promise.
+		// Confidence advances per successful poll, not per vote. β is the number of
+		// consecutive polls that each reached α — that is what makes a decision worth
+		// βα agreements. Recording a poll on every arriving vote collapses that to β
+		// agreements total: at K=5, α=4, β=2 the driver decides after three distinct
+		// accepts, so VM.Accept runs on a block the α=4 quorum never carried and two
+		// of five validators settle it, far under the threshold the parameters name.
 		//
-		// Gating on the α predicate restores the floor: no confidence accrues, and
-		// so nothing can be decided, until α DISTINCT validators have accepted.
+		// Testing the α predicate first restores the floor: no confidence accrues,
+		// and so nothing can be decided, until α distinct validators have accepted.
 		if len(block.acceptVoters) >= c.alpha {
 			block.driver.RecordVote(blockID)
 		}
@@ -191,10 +188,10 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, voter 
 		block.rejectVoters[voter] = struct{}{}
 	}
 
-	// LIVENESS only (decomplected from finality). Reaching the α accept count marks
-	// the block worth a finalize ATTEMPT — block.accepted is the engine's
-	// DrainAccepted trigger — but it does NOT advance the per-height ledger. Finality
-	// is committed ONLY by the cert-driven FinalizeBranch (the α-of-K SIGNED witness),
+	// Liveness only (decomplected from finality). Reaching the α accept count marks
+	// the block worth a finalize attempt — block.accepted is the engine's
+	// DrainAccepted trigger — but it does not advance the per-height ledger. Finality
+	// is committed only by the cert-driven FinalizeBranch (the α-of-K signed witness),
 	// which also performs the sibling reorg. A sibling reaching α-count here is
 	// harmless: the cert decides which branch finalizes, and the loser is pruned.
 	if block.acceptVotes() >= c.alpha && !block.accepted {
@@ -211,9 +208,9 @@ func (c *ChainConsensus) ProcessVote(ctx context.Context, blockID ids.ID, voter 
 	return nil
 }
 
-// Poll conducts a consensus poll over a batch of vote responses (
-// RecordPoll). It drives each block's Wave->Focus driver; convergence + the α accept
-// count sets the LIVENESS flag only. Finality (and the reorg) is the cert path.
+// Poll conducts a consensus poll over a batch of vote responses. It drives each
+// block's Wave->Focus driver; convergence plus the α accept count sets the liveness
+// flag only. Finality (and the reorg) is the cert path.
 func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -248,10 +245,10 @@ func (c *ChainConsensus) Poll(ctx context.Context, responses map[ids.ID]int) err
 			shouldContinue := block.driver.Poll(blockResponses)
 			decided := block.driver.Decided()
 
-			// Focus convergence + α accept count → LIVENESS: mark the block worth a
-			// finalize attempt. Finality (and the reorg) is the cert path's job
-			// (FinalizeBranch), never the count path's — so the count never advances
-			// the ledger nor branches it.
+			// Focus convergence plus the α accept count is liveness: the block is
+			// worth a finalize attempt. Finality (and the reorg) belongs to the cert
+			// path (FinalizeBranch), not the count path — so the count neither
+			// advances the ledger nor branches it.
 			if !shouldContinue && decided && block.acceptVotes() >= c.alpha {
 				block.accepted = true
 			}
@@ -287,11 +284,10 @@ func (c *ChainConsensus) IsRejected(blockID ids.ID) bool {
 	return block.rejected
 }
 
-// Preference returns the FINALITY preference — the cert-selected/finalized tip
-//. It stays at the finalized tip until a
-// quorum cert selects a child; a mere build-tip move does NOT advance it. This is
-// the finality-reporting concern and MUST NOT be conflated with the build target
-// (see PreferredBuildTip) — the conformance suite pins this contract.
+// Preference returns the finality preference — the cert-selected finalized tip. It
+// stays there until a quorum cert selects a child; a build-tip move does not advance
+// it. This is the finality-reporting concern, distinct from the build target (see
+// PreferredBuildTip) — the conformance suite pins this contract.
 func (c *ChainConsensus) Preference() ids.ID {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -311,21 +307,20 @@ func (c *ChainConsensus) Preference() ids.ID {
 	return ids.Empty
 }
 
-// PreferredBuildTip returns the deterministic BUILD target — the deepest VERIFIED
-// block extending the finalized chain (NOT merely the finalized tip). The node
-// steers the VM to build its next block on THIS, so when a verified-but-unfinalized
-// block exists at height H every validator builds H+1 ON TOP of it and they
-// CONVERGE — instead of each building a competing sibling at height H, which splits
-// the α-of-K vote so no single block ever reaches the cert and the chain HALTS the
-// moment one proposer is down (the down-leader liveness bug). Sibling ties break on
-// lowest block ID so every node with the same block tree picks the SAME chain.
+// PreferredBuildTip returns the deterministic build target — the deepest verified
+// block extending the finalized chain, which is not in general the finalized tip.
+// The node steers the VM to build its next block on this, so when a verified but
+// unfinalized block exists at height H every validator builds H+1 on top of it and
+// they converge. Building on the finalized tip instead gives each proposer a
+// competing sibling at height H, which splits the α-of-K vote, so no single block
+// reaches a cert and the chain stops the moment one proposer is down. Sibling ties
+// break on lowest block ID, so every node holding the same tree picks the same chain.
 //
-// This is the DECOMPLECTED build concern (separate from the finality Preference):
-// it is a BUILD hint only — finality stays governed exclusively by the α-of-K cert
-// folded into c.ledger (applyCertLocked), so advancing the build target past the
-// finalized tip touches no finality decision and cannot affect safety, only
-// liveness — exactly as the upstream linear-chain consensus steers the VM to its preferred
-// non-finalized tip.
+// This is the build concern, decomplected from the finality Preference: a hint only.
+// Finality is governed exclusively by the α-of-K cert folded into c.ledger
+// (applyCertLocked), so advancing the build target past the finalized tip decides
+// nothing and can affect liveness but not safety — the same way a linear-chain
+// engine steers the VM to its preferred non-finalized tip.
 func (c *ChainConsensus) PreferredBuildTip() ids.ID {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -333,7 +328,7 @@ func (c *ChainConsensus) PreferredBuildTip() ids.ID {
 }
 
 // buildTipLocked descends from the finalized tip (or, before the first finalize,
-// the preliminary preference, else the lowest-ID tracked tip) through VERIFIED,
+// the preliminary preference, else the lowest-ID tracked tip) through verified,
 // non-rejected children — choosing the lowest-ID child at each level — and returns
 // the first block with no such child: the deterministic build tip. The descent is
 // bounded by the tracked-block count so a malformed tree can never spin forever.
@@ -387,10 +382,10 @@ func (c *ChainConsensus) GetBlock(blockID ids.ID) (*Block, bool) {
 	return block, exists
 }
 
-// EpochHeightOf returns the P-CHAIN epoch height recorded for a tracked block
+// EpochHeightOf returns the P-chain epoch height recorded for a tracked block
 // (the height its weighted validator set, set-root, and ⅔-stake tally are pinned
 // to — Block.pChainHeight), and whether the block is tracked at all. It is the
-// SINGLE authoritative read of "what epoch did we record for this block", used by
+// single authoritative read of "what epoch did we record for this block", used by
 // the receive-side monotonicity gate to reject a child whose stamped epoch
 // regresses below its parent's recorded epoch (the far-past attack: a Byzantine
 // proposer stamps a stale H where its old coalition held ≥⅔). A miss (false) means
@@ -407,17 +402,17 @@ func (c *ChainConsensus) EpochHeightOf(blockID ids.ID) (uint64, bool) {
 }
 
 // ForcePreference reaffirms the engine's preferred tip after a VM SetPreference
-// failure. It is a recovery mechanism used when SetPreference fails AFTER a block
-// was accepted — without it the VM and consensus engine could disagree on the
-// chain tip, causing a state-divergence death spiral. Every legitimate caller invokes
-// it with the block that was JUST finalized ("SetPreference failed after Accept"), so
-// the block is already the finalized tip and this is a reaffirming no-op.
+// failure. It exists for the case where SetPreference fails after a block was
+// accepted: left alone, the VM and the engine hold different chain tips and each
+// subsequent block widens the divergence. Every legitimate caller passes the block
+// that was just finalized, so the block is already the finalized tip and this is a
+// reaffirming no-op.
 //
-// The committed ledger tip is advanced ONLY by the cert fold (applyCertLocked); the
-// reorg is the sole authority on finalized history. So this method never moves the
-// finalized tip — with the per-height ADMISSION gate gone, there is no invariant for a
-// stray preference to corrupt. It only adopts blockID as the preliminary build
-// preference before the FIRST finalize, and always records it as a build tip.
+// The committed ledger tip advances only through the cert fold (applyCertLocked);
+// the reorg is the sole authority on finalized history. So this method never moves
+// the finalized tip, and nothing here keys on preference, so a stray preference has
+// no invariant to corrupt. It adopts blockID as the preliminary build preference
+// before the first finalize, and always records it as a build tip.
 func (c *ChainConsensus) ForcePreference(blockID ids.ID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -429,7 +424,7 @@ func (c *ChainConsensus) ForcePreference(blockID ids.ID) {
 }
 
 // ancestry exposes the live block tree to the pure fold as a read-only Ancestry. The
-// fold reads parent/height links and sibling children through this view ONLY; it never
+// fold reads parent/height links and sibling children through this view alone; it never
 // mutates the DAG. Caller holds c.mu (the view is used only within the locked fold).
 func (c *ChainConsensus) ancestry() Ancestry {
 	return blocksAncestry{blocks: c.blocks, recall: c.recall}
@@ -446,14 +441,14 @@ type blocksAncestry struct {
 // at resolves a block for the walk: from the live tree first, and failing that from
 // the VM's own accepted chain.
 //
-// The live tree holds what THIS PROCESS has seen. The finalized tip it walks up from
-// is durable. Those two disagree after any restart — the node comes back knowing it
+// The live tree holds what this process has seen; the finalized tip it walks up from
+// is durable. The two disagree after any restart — the node comes back knowing it
 // finalized through height H and remembering nothing above it, while its VM still
 // holds every block it ever accepted. Without the second lookup the walk cannot cross
-// that seam, so a valid cert for a block above H is refused for a missing ancestor
+// that boundary, so a valid cert for a block above H is refused for a missing ancestor
 // the node is in fact holding, and the gap only widens with the next restart.
 //
-// Reading it back from the VM is the STRONGER source, not a weaker one: the VM's
+// Reading it back from the VM is the stronger source, not a weaker one: the VM's
 // chain is what this node actually executed and committed, where the live tree is
 // populated from gossip. Nothing here decides finality — the cert has already cleared
 // the ⅔-by-stake predicate on its own — so this only supplies the parent links that
@@ -480,9 +475,9 @@ func (a blocksAncestry) Parent(id ids.ID) (ids.ID, uint64, ids.ID, ids.ID, bool)
 }
 
 // WrapperByCanonical resolves an inner execution commitment at a height to a
-// locally-tracked OUTER wrapper of it — any alias — so the finality walk can collapse a
+// locally-tracked outer wrapper of it — any alias — so the finality walk can collapse a
 // sibling wrapper in place of the exact envelope a cert named (the intermediate ancestor
-// the node holds under a DIFFERENT proposervm wrapper). It prefers an already-accepted
+// the node holds under a different proposervm wrapper). It prefers an already-accepted
 // wrapper when several tracked aliases exist, so the walk lands on the block the VM
 // committed. A miss (ok=false) means the node holds NO wrapper of that inner block,
 // preserving the fail-closed behind-node defer (ErrAncestorNotTracked). This is a rare

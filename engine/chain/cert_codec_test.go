@@ -4,6 +4,7 @@
 package chain
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/luxfi/ids"
@@ -108,14 +109,14 @@ func TestQuorumCert_DuplicateVoterRejected(t *testing.T) {
 
 	// Hand-craft a cert whose votes are NOT strictly increasing → Verify fails.
 	bad := &QuorumCert{
-		Version: QuorumCertVersion, Type: QCFinality, Position: pos, Threshold: 1,
+		Version: QuorumCertVersion, Type: QCFinality, Tier: Quasar, Position: pos, Threshold: 1,
 		Votes: []SignedVote{
 			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)}, // dup
 		},
 	}
-	if err := bad.Verify(vs, bad.Position.Height); err == nil {
-		t.Fatal("Verify must reject non-strictly-increasing voters")
+	if err := bad.Verify(vs, bad.Position.Height); !errors.Is(err, ErrQCNotStrictlyIncreasing) {
+		t.Fatalf("Verify must reject non-strictly-increasing voters on the strictly-increasing clause, got: %v", err)
 	}
 }
 

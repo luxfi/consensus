@@ -12,6 +12,7 @@ package chain
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/luxfi/ids"
@@ -245,12 +246,13 @@ func TestInversion_DuplicateVoterRejected(t *testing.T) {
 	raw := &QuorumCert{
 		Version:   QuorumCertVersion,
 		Type:      QCFinality,
+		Tier:      Quasar,
 		Position:  pos,
 		Threshold: 2,
 		Votes:     []SignedVote{{NodeID: v.NodeID, Accept: true, Signature: v.Signature}, {NodeID: v.NodeID, Accept: true, Signature: v.Signature}},
 	}
-	if err := raw.Verify(vs, 1); err == nil {
-		t.Fatal("a cert with non-increasing (duplicate) voters must fail verification")
+	if err := raw.Verify(vs, 1); !errors.Is(err, ErrQCNotStrictlyIncreasing) {
+		t.Fatalf("a cert with non-increasing (duplicate) voters must fail the strictly-increasing clause, got: %v", err)
 	}
 }
 

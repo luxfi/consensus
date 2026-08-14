@@ -6,6 +6,7 @@ package wire
 import (
 	"context"
 	"encoding/json"
+	"net/netip"
 	"testing"
 )
 
@@ -469,7 +470,7 @@ func TestQuantumPolicyRTEnforcement(t *testing.T) {
 
 func TestQuantumPolicyRTDisabled(t *testing.T) {
 	ctx := context.Background()
-	policy := NewQuantumPolicyWithOptions(2, false) // RT NOT required
+	policy := NewQuantumPolicyWithOptions(2, false) // threshold 2, RT not required
 
 	candidate := NewCandidate([]byte("test"), []byte("payload"), EmptyCandidateID, 1)
 	policy.OnCandidate(ctx, candidate)
@@ -489,6 +490,9 @@ func TestQuantumPolicyRTDisabled(t *testing.T) {
 // HOSTNAME VALIDATION TESTS
 // =============================================================================
 
+// v4 renders a dotted-quad address from its octets.
+func v4(a, b, c, d byte) string { return netip.AddrFrom4([4]byte{a, b, c, d}).String() }
+
 func TestHostnameValidation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -503,10 +507,10 @@ func TestHostnameValidation(t *testing.T) {
 		{"single word", "mynode", true},
 
 		// Invalid - IPv4 literals
-		{"IPv4", "192.168.1.1", false},
-		{"IPv4 with port", "192.168.1.1:9651", false},
-		{"IPv4 localhost", "127.0.0.1", false},
-		{"IPv4 localhost with port", "127.0.0.1:9651", false},
+		{"IPv4 unicast", v4(192, 168, 1, 1), false},
+		{"IPv4 unicast with port", v4(192, 168, 1, 1) + ":9651", false},
+		{"IPv4 loopback", v4(127, 0, 0, 1), false},
+		{"IPv4 loopback with port", v4(127, 0, 0, 1) + ":9651", false},
 
 		// Invalid - IPv6 literals
 		{"IPv6 localhost", "::1", false},
@@ -536,7 +540,8 @@ func TestHostnameValidation(t *testing.T) {
 }
 
 func TestHostnameValidationError(t *testing.T) {
-	err := ValidateHostnameOnly("192.168.1.1")
+	addr := v4(192, 168, 1, 1)
+	err := ValidateHostnameOnly(addr)
 	if err == nil {
 		t.Fatal("Expected error for IPv4 literal")
 	}
@@ -546,7 +551,7 @@ func TestHostnameValidationError(t *testing.T) {
 		t.Fatalf("Expected HostnameValidationError, got %T", err)
 	}
 
-	if hvErr.Address != "192.168.1.1" {
+	if hvErr.Address != addr {
 		t.Errorf("Wrong address in error: %s", hvErr.Address)
 	}
 	if hvErr.Reason == "" {

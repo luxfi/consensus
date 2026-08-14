@@ -1,17 +1,17 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// catchup_convergence_test.go — proves the cert-carrying catch-up path:
+// catchup_test.go — the cert-carrying catch-up path:
 //
-//   - LIVENESS: a validator stranded at height N converges to the network tip
-//     N+k by accepting fetched (block, cert) pairs through AcceptCatchupBlock,
-//     WITHOUT re-voting (no live quorum exists for an already-finalized height).
-//   - SAFETY: a forged / sub-quorum / below-α-floor cert delivered via catch-up
-//     is REJECTED and finalizes nothing — the cert-gate holds through catch-up
-//     exactly as it does on the live path. A node cannot be force-fed a chain.
-//   - ORDERING: even a VALID cert applied out of parent order is refused by the
-//     per-height guard (finality is contiguous), so the oldest-first invariant
-//     is ENFORCED, not merely assumed.
+//   - Liveness: a validator stranded at height N converges to the network tip N+k by
+//     accepting fetched (block, cert) pairs through AcceptCatchupBlock, without
+//     re-voting — no live quorum exists for an already-finalized height.
+//   - Safety: a forged, sub-quorum or below-α-floor cert delivered via catch-up is
+//     rejected and finalizes nothing. The cert-gate holds through catch-up exactly as
+//     it does on the live path, so a node cannot be force-fed a chain.
+//   - Ordering: even a valid cert applied out of parent order is refused by the
+//     per-height guard, since finality is contiguous. Oldest-first is enforced by the
+//     engine rather than assumed of the transport.
 package chain
 
 import (
@@ -25,11 +25,11 @@ import (
 	"github.com/luxfi/log"
 )
 
-// catchupVM is a FAITHFUL test VM: ParseBlock returns the SAME *verifyOnceBlock
-// that was registered for those bytes, so block identity (ID/height/parent) and
-// AcceptCalled tracking survive a round-trip through bytes — exactly as a real
-// VM's deterministic codec does (unlike verifyOnceVM.ParseBlock, which discards
-// identity). Unknown bytes parse to an error so AcceptCatchupBlock rejects them.
+// catchupVM is a faithful test VM: ParseBlock returns the same *verifyOnceBlock that
+// was registered for those bytes, so block identity (ID/height/parent) and AcceptCalled
+// tracking survive a round-trip through bytes, as a real VM's deterministic codec does
+// and unlike verifyOnceVM.ParseBlock, which discards identity. Unknown bytes parse to
+// an error so AcceptCatchupBlock rejects them.
 type catchupVM struct {
 	mu      sync.Mutex
 	byBytes map[string]*verifyOnceBlock
@@ -88,12 +88,12 @@ func (m *catchupVM) SetPreference(_ context.Context, id ids.ID) error {
 
 var _ BlockBuilder = (*catchupVM)(nil)
 
-// newCatchupRuntime builds a STARTED stake-weighted multi-validator Runtime for
-// validator `self`, wired with the test validator set (verifier + signer + stake),
-// the faithful VM, and a recording gossiper (so a test can assert NO votes/certs
-// are emitted during catch-up). It returns the runtime, its chainID, and the
-// recorder. Stake-weighting is wired because the value (mainnet) chain that wedged
-// is stake-weighted — catch-up must clear the SAME ⅔-of-stake predicate.
+// newCatchupRuntime builds a started stake-weighted multi-validator Runtime for
+// validator `self`, wired with the test validator set (verifier + signer + stake), the
+// faithful VM, and a recording gossiper so a test can assert that no votes or certs are
+// emitted during catch-up. It returns the runtime, its chainID, and the recorder. Stake
+// weighting is wired because catch-up must clear the same ⅔-of-stake predicate that
+// live finality does; a headcount quorum is not enough.
 func newCatchupRuntime(t *testing.T, vs *testValidatorSet, self int, vm BlockBuilder) (*Runtime, ids.ID, *recordingGossiper) {
 	t.Helper()
 	chainID := ids.GenerateTestID()
@@ -117,10 +117,10 @@ func newCatchupRuntime(t *testing.T, vs *testValidatorSet, self int, vm BlockBui
 	return rt, chainID, rec
 }
 
-// catchupCertFor assembles a REAL finality cert for blk at the given chainID,
-// signed by `voters` over blk's canonical position, asserting `threshold`. This is
-// byte-identical to the cert an AHEAD node would have stored (CertForBlock) and
-// gossiped at finalize time. Returns the marshaled cert bytes.
+// catchupCertFor assembles a real finality cert for blk at the given chainID, signed by
+// `voters` over blk's canonical position, asserting `threshold`. It is byte-identical
+// to the cert a node ahead of us would have stored (CertForBlock) and gossiped at
+// finalize time. Returns the marshaled cert bytes.
 func catchupCertFor(t *testing.T, vs *testValidatorSet, chainID ids.ID, blk *verifyOnceBlock, voters []int, threshold uint32) []byte {
 	t.Helper()
 	pos := VotePosition{ChainID: chainID, Height: blk.height, Round: 0, BlockID: blk.id, ParentID: blk.parentID}
@@ -139,17 +139,16 @@ func catchupCertFor(t *testing.T, vs *testValidatorSet, chainID ids.ID, blk *ver
 	return b
 }
 
-// seedBehindAt strands the runtime at finalized height N with tip block `tip`,
-// exactly as a node that fell behind the frontier (the incident: luxd-0 at
-// 1082780). The gap blocks built afterward extend `tip`.
+// seedBehindAt strands the runtime at finalized height N with tip block `tip`, as a
+// node that fell behind the frontier would be. The gap blocks built afterward extend
+// `tip`.
 func seedBehindAt(t *testing.T, rt *Runtime, vm *catchupVM, tip *verifyOnceBlock) {
 	t.Helper()
 	vm.register(tip)
-	// Establish CERTIFIED finality at N (a node that legitimately finalized up to N
-	// in-process). Post-incident-1082814, SyncState is only a non-authoritative HINT —
-	// it no longer seeds certified finality — so the certified baseline is set through
-	// the real finalize fold (first-finalize seeds at tip.height). The distinct
-	// restart-from-hint recovery is covered by the incident regression suite.
+	// Establish certified finality at N: a node that legitimately finalized up to N
+	// in-process. SyncState is only a non-authoritative hint and does not seed certified
+	// finality, so the certified baseline has to come through the real finalize fold,
+	// whose first finalize seeds at tip.height.
 	if _, err := rt.Transitive.consensus.FinalizeBranch(tip.id, tip.height, ids.Empty); err != nil {
 		t.Fatalf("seed behind at height %d: %v", tip.height, err)
 	}
@@ -174,10 +173,10 @@ func buildGap(vm *catchupVM, tip *verifyOnceBlock, k int) []*verifyOnceBlock {
 }
 
 // -----------------------------------------------------------------------------
-// LIVENESS — the stranded node converges to the tip THROUGH the cert path, with
-// ZERO re-voting. This is the fix for the wedge: the network will not re-vote an
-// already-finalized height, so the only way back is accepting the certs it
-// already assembled.
+// Liveness — a stranded node converges to the tip through the cert path, with no
+// re-voting. The network will not re-vote an already-finalized height, so the only
+// way back for a node left behind is applying the certs the network already
+// assembled.
 // -----------------------------------------------------------------------------
 
 func TestCatchup_BehindNodeConvergesViaCertPath(t *testing.T) {
@@ -185,9 +184,9 @@ func TestCatchup_BehindNodeConvergesViaCertPath(t *testing.T) {
 	vm := newCatchupVM()
 	rt, chainID, rec := newCatchupRuntime(t, vs, 0, vm)
 
-	// Strand the node at N=1082780 (the incident height) and build the 17-block gap
-	// up to the network tip N+17=1082797 (the incident delta).
-	const N = uint64(1082780)
+	// Strand the node at N, deep in a long chain, and build a k-block gap up to the
+	// network tip N+k.
+	const N = uint64(1_000_000)
 	const k = 17
 	tip := newTestBlock(N, ids.Empty, "tip@N")
 	seedBehindAt(t, rt, vm, tip)
@@ -208,45 +207,46 @@ func TestCatchup_BehindNodeConvergesViaCertPath(t *testing.T) {
 		}
 	}
 
-	// CONVERGENCE: the behind node advanced N → N+k purely through cert-accept.
+	// Convergence: the behind node advanced N → N+k purely through cert-accept.
 	if fh, _ := rt.Transitive.consensus.GetFinalizedHeight(); fh != N+uint64(k) {
-		t.Fatalf("convergence FAILED: finalized height %d, want %d (N=%d + k=%d)", fh, N+uint64(k), N, k)
+		t.Fatalf("convergence failed: finalized height %d, want %d (N=%d + k=%d)", fh, N+uint64(k), N, k)
 	}
 
-	// THE DISTINGUISHING ASSERTION: convergence happened WITHOUT re-voting. The
+	// The distinguishing assertion: convergence happened without re-voting. The
 	// catch-up path never broadcasts a vote and never re-gossips a cert — it applies
-	// FINISHED certs. (If catch-up had fallen back to the voting Put path, the node
-	// would have broadcast votes for already-decided heights and still wedged.)
+	// finished ones. Falling back to the voting Put path would broadcast votes for
+	// already-decided heights, which no peer will answer, leaving the node stuck.
 	rec.mu.Lock()
 	votes, certs := len(rec.votes), len(rec.certs)
 	rec.mu.Unlock()
 	if votes != 0 {
-		t.Fatalf("catch-up must NOT broadcast votes (re-voting an already-finalized height), got %d", votes)
+		t.Fatalf("catch-up must not broadcast votes (re-voting an already-finalized height), got %d", votes)
 	}
 	if certs != 0 {
-		t.Fatalf("catch-up must NOT re-gossip certs (it applies finished certs), got %d", certs)
+		t.Fatalf("catch-up must not re-gossip certs (it applies finished certs), got %d", certs)
 	}
 }
 
 // -----------------------------------------------------------------------------
-// SAFETY — a bad cert delivered via catch-up is REJECTED and finalizes nothing.
-// The cert-gate (VerifyWeighted / α-floor) holds through the catch-up path with
-// the SAME rigor as live finality. A node cannot be force-fed a bad chain.
+// Safety — a bad cert delivered via catch-up is rejected and finalizes nothing. The
+// cert-gate (VerifyWeighted and the α-floor) holds through the catch-up path with
+// the same rigor as live finality, so a node cannot be force-fed a bad chain.
 // -----------------------------------------------------------------------------
 
 func TestCatchup_RejectsForgedAndSubQuorumCerts(t *testing.T) {
-	const N = uint64(1082780)
+	const N = uint64(1_000_000)
 
-	// Each sub-case strands a FRESH node at N and tries to push block N+1 with a
-	// DEFECTIVE cert. None may finalize. Fresh runtimes keep verifyOnceBlock.Verify
+	// Each sub-case strands a fresh node at N and tries to push block N+1 with a
+	// defective cert. None may finalize. Fresh runtimes keep verifyOnceBlock.Verify
 	// single-shot and isolate the per-height ledger.
 	cases := []struct {
-		name  string
-		cert  func(t *testing.T, vs *testValidatorSet, chainID ids.ID, blk *verifyOnceBlock) []byte
+		name string
+		cert func(t *testing.T, vs *testValidatorSet, chainID ids.ID, blk *verifyOnceBlock) []byte
 	}{
 		{
-			// FORGED signature: 4 voters (count ok, stake ok) but voter 0's slot
-			// carries voter 1's signature → clause-6 (signature) fails → no cert.
+			// Forged signature: 4 voters (count ok, stake ok) but voter 0's slot
+			// carries voter 1's signature, so the signature clause fails and no cert
+			// is formed.
 			name: "forged-signature",
 			cert: func(t *testing.T, vs *testValidatorSet, chainID ids.ID, blk *verifyOnceBlock) []byte {
 				pos := VotePosition{ChainID: chainID, Height: blk.height, Round: 0, BlockID: blk.id, ParentID: blk.parentID}
@@ -265,19 +265,20 @@ func TestCatchup_RejectsForgedAndSubQuorumCerts(t *testing.T) {
 			},
 		},
 		{
-			// SUB-QUORUM by stake: 3 of 5 validators (count=3≥α=3 passes the COUNT
-			// predicate) but 3/5 = 60% ≤ ⅔ → VerifyWeighted's strict supermajority
-			// fails → no finality. This is the HIGH-3 headcount-vs-stake gap, enforced
-			// through catch-up.
+			// Sub-quorum by stake: 3 of 5 validators clears the count predicate
+			// (count=3 ≥ α=3) but 3/5 = 60% ≤ ⅔, so VerifyWeighted's strict
+			// supermajority fails and nothing finalizes. This is the gap between a
+			// headcount quorum and a stake quorum, enforced through catch-up.
 			name: "sub-quorum-stake",
 			cert: func(t *testing.T, vs *testValidatorSet, chainID ids.ID, blk *verifyOnceBlock) []byte {
 				return catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2}, 3)
 			},
 		},
 		{
-			// BELOW α-FLOOR: a cert that asserts a LOWER threshold (1) than the chain's
-			// α (3). HandleIncomingCert rejects it at the MinThreshold floor even though
-			// its 4 signatures verify — sub-quorum finality-forgery defence.
+			// Below the α-floor: a cert asserting a lower threshold (1) than the
+			// chain's α (3). HandleIncomingCert rejects it at the MinThreshold floor
+			// even though its 4 signatures verify, so a cert cannot buy finality by
+			// naming a weaker quorum than the chain runs.
 			name: "below-alpha-floor",
 			cert: func(t *testing.T, vs *testValidatorSet, chainID ids.ID, blk *verifyOnceBlock) []byte {
 				return catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 1)
@@ -299,13 +300,13 @@ func TestCatchup_RejectsForgedAndSubQuorumCerts(t *testing.T) {
 
 			err := rt.AcceptCatchupBlock(context.Background(), blk.bytes, bad)
 			if err == nil {
-				t.Fatalf("SAFETY VIOLATION: a %s cert was accepted via catch-up", tc.name)
+				t.Fatalf("a %s cert was accepted via catch-up", tc.name)
 			}
 			if rt.IsAccepted(blk.id) {
-				t.Fatalf("SAFETY VIOLATION: %s cert finalized block N+1 (IsAccepted)", tc.name)
+				t.Fatalf("%s cert finalized block N+1 (IsAccepted)", tc.name)
 			}
 			if got := blk.AcceptCalled(); got != 0 {
-				t.Fatalf("SAFETY VIOLATION: %s cert ran VM.Accept %d×", tc.name, got)
+				t.Fatalf("%s cert ran VM.Accept %d×", tc.name, got)
 			}
 			if fh, _ := rt.Transitive.consensus.GetFinalizedHeight(); fh != N {
 				t.Fatalf("%s: finalized height moved off N=%d to %d on a bad cert", tc.name, N, fh)
@@ -315,10 +316,10 @@ func TestCatchup_RejectsForgedAndSubQuorumCerts(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
-// ORDERING — even a VALID cert applied OUT OF PARENT ORDER is refused. The
-// per-height guard requires height == finalizedHeight+1 AND parent == finalizedTip,
-// so the oldest-first invariant is ENFORCED by the engine, not merely assumed by
-// the transport. After the gap is filled in order, the same block finalizes.
+// Ordering — even a valid cert applied out of parent order is refused. The
+// per-height guard requires height == finalizedHeight+1 and parent == finalizedTip,
+// so the oldest-first invariant is enforced by the engine rather than assumed of the
+// transport. After the gap is filled in order, the same block finalizes.
 // -----------------------------------------------------------------------------
 
 func TestCatchup_OutOfOrderRefusedThenInOrderConverges(t *testing.T) {
@@ -326,30 +327,30 @@ func TestCatchup_OutOfOrderRefusedThenInOrderConverges(t *testing.T) {
 	vm := newCatchupVM()
 	rt, chainID, _ := newCatchupRuntime(t, vs, 0, vm)
 
-	const N = uint64(1082780)
+	const N = uint64(1_000_000)
 	tip := newTestBlock(N, ids.Empty, "tip@N")
 	seedBehindAt(t, rt, vm, tip)
 	gap := buildGap(vm, tip, 2) // N+1, N+2 (kept pristine for step 2)
 
-	// (1) Try to skip ahead: a DISTINCT block at height N+2 (parent = the real N+1)
-	// with a perfectly VALID 4-of-5 cert, applied while still finalized at N. The
-	// per-height guard refuses it (height N+2 != finalizedHeight+1 == N+1) — a valid
-	// cert does NOT license a non-contiguous finalize.
+	// Try to skip ahead: a distinct block at height N+2 (parent = the real N+1) with a
+	// perfectly valid 4-of-5 cert, applied while still finalized at N. The per-height
+	// guard refuses it (height N+2 != finalizedHeight+1 == N+1) — a valid cert does not
+	// license a non-contiguous finalize.
 	ooo := newTestBlock(N+2, gap[0].id, "ooo@N+2")
 	vm.register(ooo)
 	certOoo := catchupCertFor(t, vs, chainID, ooo, []int{0, 1, 2, 3}, 3)
 	if err := rt.AcceptCatchupBlock(context.Background(), ooo.bytes, certOoo); err == nil {
-		t.Fatal("ORDERING VIOLATION: a height-N+2 block accepted while finalized at N (contiguity guard bypassed)")
+		t.Fatal("a height-N+2 block was accepted while finalized at N, bypassing the contiguity guard")
 	}
 	if rt.IsAccepted(ooo.id) {
-		t.Fatal("ORDERING VIOLATION: out-of-order block finalized")
+		t.Fatal("out-of-order block finalized")
 	}
 	if fh, _ := rt.Transitive.consensus.GetFinalizedHeight(); fh != N {
 		t.Fatalf("out-of-order accept moved finalized height off N=%d to %d", N, fh)
 	}
 
-	// (2) Now apply N+1 then N+2 IN ORDER → both finalize. The earlier refusal was
-	// the contiguity guard, not a stuck path.
+	// Now apply N+1 then N+2 in order and both finalize. The earlier refusal was the
+	// contiguity guard, not a stuck path.
 	for i, blk := range gap {
 		cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 3)
 		if err := rt.AcceptCatchupBlock(context.Background(), blk.bytes, cert); err != nil {
@@ -362,9 +363,9 @@ func TestCatchup_OutOfOrderRefusedThenInOrderConverges(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
-// SERVE — the ahead side. A node that finalized a block retains and SERVES its
-// cert (CertForBlock), and the served bytes are exactly what a behind node needs
-// to finalize the same block. Closes the loop: store-on-finalize ⇄ serve.
+// Serve — the ahead side. A node that finalized a block retains and serves its cert
+// (CertForBlock), and the served bytes are exactly what a node behind it needs to
+// finalize the same block. That closes the loop: store-on-finalize ⇄ serve.
 // -----------------------------------------------------------------------------
 
 func TestCatchup_CertForBlockServesWhatWasFinalized(t *testing.T) {
@@ -387,8 +388,8 @@ func TestCatchup_CertForBlockServesWhatWasFinalized(t *testing.T) {
 		t.Fatalf("finalize N+1: %v", err)
 	}
 
-	// After finalize: the node serves a cert that decodes+verifies to the SAME
-	// finality witness — a peer can finalize on it with zero trust in this node.
+	// After finalize: the node serves a cert that decodes and verifies to the same
+	// finality witness, so a peer can finalize on it with zero trust in this node.
 	served, ok := rt.CertForBlock(blk.id)
 	if !ok {
 		t.Fatal("CertForBlock did not serve the finalized block's cert")
