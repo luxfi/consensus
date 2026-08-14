@@ -709,12 +709,31 @@ func (s *signer) VerifyAggregatedSignatureWithContext(ctx context.Context, messa
 		pubKeySlicePool.Put(pubKeysPtr)
 	}()
 
+	// The signer list is a SET, and the threshold counts what is in it.
+	//
+	// Aggregation adds each named validator's key to the sum, and BLS is linear, so a
+	// repeated id adds the same key again: t copies of one validator yield t*pk, which
+	// the same validator's own signature scaled to t*sigma satisfies —
+	// e(t*sigma, g) = e(H(m), t*pk). One validator forges a t-of-n aggregate. Counting
+	// distinct ids is what makes the threshold mean "t validators agreed".
+	//
+	// SignerCount travels inside the message the sender chose, so it is not evidence of
+	// anything and is never the quantity compared against the threshold.
+	distinct := make(map[string]struct{}, len(aggSig.ValidatorIDs))
 	for _, validatorID := range aggSig.ValidatorIDs {
+		if _, repeated := distinct[validatorID]; repeated {
+			return false
+		}
+		distinct[validatorID] = struct{}{}
+
 		validator, exists := s.validators[validatorID]
 		if !exists || !validator.Active {
 			return false
 		}
 		pubKeys = append(pubKeys, validator.BLSPubKey)
+	}
+	if len(distinct) < s.threshold {
+		return false
 	}
 
 	aggPubKey, err := bls.AggregatePublicKeys(pubKeys)
