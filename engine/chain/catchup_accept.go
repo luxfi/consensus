@@ -42,16 +42,25 @@ import (
 // frontier; it must NEVER treat this as a finalize.
 var ErrCatchupCertRejected = errors.New("chain: catch-up cert rejected — block not finalized (unverifiable block, or forged/sub-quorum/out-of-order cert)")
 
-// maxServedCerts bounds the in-memory store of finality certs this node retains to
-// SERVE a catching-up peer (CertForBlock). It is a sliding window of the most
-// recently finalized heights — large enough that any node lagging by a normal
-// network hiccup (a few blocks to a few thousand) can be served its whole gap, yet
-// hard-bounded so the store can never grow without limit. A node lagging by more
-// than this window is not a "catch-up" case — it bootstraps/state-syncs instead.
-// Eviction is by ascending finalized height (oldest-first), which equals insertion
-// order because finality is monotonic (FinalizeBranch advances finalized history
-// forward by contiguous heights).
-const maxServedCerts = 4096
+// maxServedCerts bounds the store of finality certs this node retains to SERVE a
+// catching-up peer (CertForBlock): a sliding window of the most recently finalized
+// heights, hard-bounded so it can never grow without limit. Eviction is by ascending
+// finalized height (oldest-first), which equals insertion order because finality is
+// monotonic (FinalizeBranch advances finalized history forward by contiguous heights).
+//
+// THE WINDOW IS THE RECOVERY CEILING. A behind node can only be caught up through
+// heights some peer still holds a cert for, so this number is the deepest gap the
+// network can close without a re-sync — and every node evicts on the same rule, so a
+// straggler below the window finds the cert nowhere rather than on a slower peer.
+// At 4096 against a live chain that is a few hours of history: a node down for a
+// working day came back permanently unrecoverable, having been served every block it
+// needed and no cert for any of them.
+//
+// A cert is a few hundred bytes, so depth here is cheap in a way block retention is
+// not — 64Ki heights is tens of megabytes per chain and covers gaps far beyond what
+// a restart, a rollout, or a node replacement produces. The bound still exists; it is
+// simply set by what recovery costs rather than by what felt tidy.
+const maxServedCerts = 64 * 1024
 
 // storeServedCertLocked records the marshaled finality cert for a just-finalized
 // block so this node can serve it to a peer catching up. Called from the SOLE
