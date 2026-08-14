@@ -204,7 +204,18 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 			// have not validated), and finality still happens only in HandleIncomingCert
 			// behind the same α-floor, set-root and VerifyWeighted checks. "No
 			// VerifiedQuorumCert, no finality" holds exactly as before.
-			if err := blk.Verify(ctx); err != nil {
+			// A block our VM already holds was verified when we accepted it, and
+			// re-verifying it asks the VM to insert an old canonical block a second
+			// time — which it correctly refuses ("side chain insertion is not
+			// supported"). That refusal is not a bad block; it is our own history
+			// coming back to us. A node whose finality has fallen behind its own
+			// applied head receives exactly this: every entry is a block it already
+			// has, so re-verification failed on all of them and the walk that would
+			// have advanced finality was never reached. Prefer the copy we hold.
+			held, heldErr := rt.config.VM.GetBlock(ctx, blk.ID())
+			if heldErr == nil && held != nil {
+				blk = held
+			} else if err := blk.Verify(ctx); err != nil {
 				return errors.Join(ErrCatchupCertRejected, err)
 			}
 			rt.trackVerifiedForCatchup(ctx, blk)
