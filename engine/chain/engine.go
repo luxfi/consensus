@@ -189,6 +189,27 @@ type PendingBlock struct {
 	// request and so a follower's accept is gated on holding it.
 	cert *QuorumCert
 
+	// lastCertGossip is when this block's assembled cert was last put on the wire
+	// (zero until the first send). A cert is deterministic evidence about one
+	// height: re-sending it tells a peer nothing the first send did not, so it is
+	// paced on the SAME schedule as the re-poll backstop rather than fired on
+	// every entry.
+	//
+	// TryAccept is re-entered on every arriving vote and every poll tick, and it
+	// gossips BEFORE the finalize — so a block whose finalize keeps failing (the
+	// VM refuses to apply it, or its ancestor is not tracked yet) stays pending
+	// and re-broadcasts the same cert on every entry. Each broadcast lands on every
+	// peer as a HandleIncomingCert → finalize attempt, whose votes come back and
+	// re-enter TryAccept: the loop feeds itself. Measured on lux-mainnet C-Chain,
+	// stuck at outer height 1,159,288: one node emitted 7,392 cert gossips in 60s
+	// across 145 pending blocks (51 per block per minute) while every peer took
+	// ~8,280 inbound certs in the same window, on a chain that had not advanced in
+	// 11 hours.
+	//
+	// Pacing keeps the liveness the broadcast exists for — a follower that missed
+	// the send still gets the proof on a later pass — and takes the amplifier away.
+	lastCertGossip time.Time
+
 	// lastRePoll is when the re-poll loop last re-solicited votes for this block
 	// (zero until the first re-poll). The re-poll loop re-drives a block at most
 	// once per its CURRENT backoff window (rePollBackoff), so a stuck block
@@ -3319,6 +3340,16 @@ func (t *Transitive) TryAccept(ctx context.Context, blockID ids.ID) error {
 	var certBytes []byte
 	if b, err := cert.Cert().MarshalBinary(); err == nil {
 		certBytes = b
+	}
+	// PACE IT. Claim the broadcast under the same lock that holds the pending
+	// block, so concurrent entries for one block cannot each decide they are due.
+	if certBytes != nil {
+		if now := time.Now(); pending.lastCertGossip.IsZero() ||
+			now.Sub(pending.lastCertGossip) >= maxRePollBackoff {
+			pending.lastCertGossip = now
+		} else {
+			certBytes = nil
+		}
 	}
 	chainID := t.chainID
 	gossiper := t.certGossiper

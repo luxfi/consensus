@@ -443,6 +443,15 @@ func pathFromTip(led FinalityLedger, cert Cert, dag Ancestry) ([]step, error) {
 					// wrapper the VM actually holds, never the unheld outer alias.
 					steps[len(steps)-1].parentID = localID
 					cur = localID
+					// The rebase moves cur, so the loop condition must be re-tested
+					// before the below-frontier check below. When the local wrapper IS
+					// the finalized tip, the walk has arrived at the frontier and the
+					// path is complete; falling through would reach `curHeight <=
+					// led.height` with cur == led.tip and refuse a cert that extends
+					// the tip exactly.
+					if cur == led.tip {
+						break
+					}
 					parent, curHeight, curCanonical, curParentCanon, ok = dag.Parent(cur)
 				}
 			}
