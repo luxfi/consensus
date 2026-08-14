@@ -12,11 +12,11 @@
 //	peer verify+vote → BroadcastVote            ─▶ peer.HandleIncomingVote
 //	α-of-K reached → GossipCert                 ─▶ peer.HandleIncomingCert → finalize
 //
-// Nodes run CONCURRENTLY (one delivery goroutine per node), so finalization is
-// EMERGENT: no test hand-feeds a quorum. A test triggers exactly one build and
-// asserts that the honest majority independently converges on a SINGLE finalized
-// block per height — the real property the down/wedged/forked-proposer fix must
-// deliver. Run under -race.
+// Nodes run concurrently (one delivery goroutine per node), so finalization is
+// emergent: no test hand-feeds a quorum. A test triggers exactly one build and
+// asserts that the honest majority independently converges on a single finalized
+// block per height, which is the property that has to hold whether the odd proposer
+// is down, wedged or forked. Run under -race.
 //
 // Faults are injected at the bus (a node can be made DOWN — dropped from delivery
 // — or its outbound can be dropped to model a WEDGED-but-present proposer) and at
@@ -148,9 +148,9 @@ func newHonestBlock(parentID ids.ID, parentStateRoot ids.ID, height uint64, payl
 }
 
 // newForkedBlock builds a divergent-execution block: same parent/height/payload as
-// an honest block would, but a TAMPERED state root, so honest execution Verify
-// rejects it. This models a forked proposer (e.g. mainnet luxd-3) that produces a
-// well-formed wrapper over a divergent inner execution.
+// an honest block would, but a tampered state root, so honest execution Verify
+// rejects it. This models a forked proposer that produces a well-formed wrapper over
+// a divergent inner execution.
 func newForkedBlock(parentID ids.ID, parentStateRoot ids.ID, height uint64, payload string) *simBlock {
 	b := newHonestBlock(parentID, parentStateRoot, height, payload)
 	b.stateRoot = hashID("TAMPERED", b.stateRoot[:]) // != expectedStateRoot → Verify fails
@@ -293,15 +293,15 @@ type simBus struct {
 	// link, when non-nil, gates delivery on a per-(from,to,kind) basis so a test can
 	// model a transient network PARTITION (a link that drops block/vote gossip between
 	// two groups for a window). nil ⇒ every link up (the default full-broadcast bus).
-	// This is what lets a test reproduce the ASYMMETRIC sibling arrival that splits the
-	// α-of-K vote across siblings — the production down-proposer + WAN-latency condition
-	// the broadcast bus (uniform, instant delivery) cannot express.
+	// This is what lets a test reproduce asymmetric sibling arrival, where the α-of-K vote
+	// splits across siblings — a down proposer plus wide-area latency, which a uniform
+	// instant broadcast bus cannot express.
 	link func(from, to ids.NodeID, kind busMsgKind) bool
-	// delay, when non-nil, returns a per-message-per-target delivery latency. It turns
-	// the uniform instant bus into an ASYNC bus with jitter/reorder — the WAN condition
-	// where node A sees B's prevote before C's and every node's round-view advances on a
-	// DIFFERENT message-arrival order. This is the async-gossip regime the live fleet
-	// stalls in and the synchronous bus (0/200) cannot express. nil ⇒ instant (default).
+	// delay, when non-nil, returns a per-message-per-target delivery latency. It turns the
+	// uniform instant bus into an async bus with jitter and reorder: node A sees B's
+	// prevote before C's, and each node's round view advances on its own arrival order.
+	// Consensus that only converges under uniform delivery stalls here, so the regime is
+	// worth expressing. nil ⇒ instant (default).
 	delay func() time.Duration
 }
 
@@ -539,14 +539,15 @@ func newSimNet(t *testing.T, n int, params config.Parameters) *simNet {
 			VoteSigner:       vs.signerFor(i),
 			StakeSource:      vs,
 			ValidatorSetRoot: nil,
-			// Catchup wires the engine's runtime auto-recovery seam (requestCatchup →
-			// RequestAncestors). Without it (nil) a healed/behind node can never re-fetch the
-			// gap — the harness could only prove permanent-down liveness, never REJOIN. The
-			// bus-backed transport models the FIXED node layer (peer-select #3 always reaches a
-			// serving peer; have-block-but-unfinalized #5 triggers the fetch; #4 contiguity
-			// applied oldest-first) by serving the requester the finalized gap WITH its real
-			// certs, so re-convergence is EMERGENT (the node's own engine drives the fetch).
-			// Inert for the existing permanent-down tests (a down node never calls requestCatchup).
+			// Catchup gives the engine its runtime auto-recovery path (requestCatchup →
+			// RequestAncestors). With it nil, a healed but behind node can never re-fetch the
+			// gap, so the harness could prove liveness while a node stays down but never a
+			// rejoin. The bus-backed transport models a working node layer: peer selection
+			// reaches a serving peer, holding a block without a cert for it triggers the fetch,
+			// and the gap is applied oldest-first so it stays contiguous. It serves the requester
+			// the finalized gap with its real certs, so re-convergence is emergent — the node's
+			// own engine drives the fetch. Inert while a node stays down, since a down node never
+			// calls requestCatchup.
 			Catchup: &busCatchup{net: net, selfIdx: i},
 		}
 		rt := NewRuntime(cfg)
@@ -627,7 +628,7 @@ func (net *simNet) headsAtHeight(h uint64) map[ids.ID]int {
 
 // quasarEverywhere reports whether EVERY up node has EXPORTED (reached Quasar) at least to blk's
 // height with blk's canonical as its export tip, and whether any up node exported a DIFFERENT
-// canonical as its export tip (an export fork — THE INVARIANT breach). For a single-block test
+// canonical as its export tip (an export fork, which breaks the invariant). For a single-block test
 // the export tip at blk.height IS blk's canonical, so comparing quasarTip is exact.
 func (net *simNet) quasarEverywhere(blk *simBlock) (all bool, fork bool) {
 	all = true
@@ -648,7 +649,7 @@ func (net *simNet) quasarEverywhere(blk *simBlock) (all bool, fork bool) {
 }
 
 // anyQuasarAtHeight reports the distinct EXPORT (Quasar) tips any up node has reached at >= h —
-// used to assert that NO two conflicting export tips ever coexist (THE INVARIANT).
+// used to assert that no two conflicting export tips ever coexist, the export invariant.
 // quasarTipHeights reports the exported tips by height, so a liveness failure says how far
 // the export frontier lagged instead of only printing opaque IDs.
 func (net *simNet) quasarTipHeights() map[uint64]int {
@@ -692,10 +693,11 @@ func (net *simNet) upCount() int {
 }
 
 // prodParams5 is the production-shaped 5-validator BFT param set: K=5, α=4
-// (⌊2·5/3⌋+1). With one validator down/wedged/forked the remaining 4 are the
-// EXACT quorum (zero margin) — the mainnet condition. RoundTO is parked long so
-// the background re-poll ticker does not interfere with the emergent assertion
-// (finalization is driven by real gossip, not the ticker).
+// (⌊2·5/3⌋+1). With one validator down, wedged or forked, the remaining 4 are exactly
+// the quorum and no more — the zero-margin case, where losing a single further vote
+// stops finalization. RoundTO is parked long so the background re-poll ticker does not
+// interfere with the emergent assertion (finalization is driven by real gossip, not the
+// ticker).
 func prodParams5() config.Parameters {
 	p := params5()
 	p.K = 5

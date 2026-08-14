@@ -13,24 +13,21 @@ import (
 )
 
 // TestSelfHeal_AbandonedBlock_KeepsRequestingCatchup is the sibling of
-// TestSelfHeal_StuckTrackedNonOwnBlock_TriggersCertCatchup, and the difference between
-// them is the whole defect: that one proves the recovery fires, this one proves it fires
-// AGAIN.
+// TestSelfHeal_StuckTrackedNonOwnBlock_TriggersCertCatchup: that one proves the recovery
+// fires, this one proves it fires again.
 //
-// Abandonment used to end two things with one `continue`. Not re-polling a block whose
-// voters cannot vote on it is correct and deliberate. Never asking for it again is not:
-// the cert catch-up fired once, at the instant of abandonment, and rePollAbandoned is set
-// for the life of the process and cleared nowhere, so the block was never looked at again.
-// A single dropped fetch was therefore permanent.
+// Abandoning a block ends two separate things, and only one of them should end. Not
+// re-polling a block its voters can no longer vote on is right — peers vote near their own
+// frontier, so a height they have run past will never gather a quorum however often it is
+// asked. Not asking for the block again is wrong: rePollAbandoned is set once and cleared
+// nowhere, so a node whose single catch-up fetch is dropped never looks at that height
+// again and sits there for the life of the process. Restart changes nothing; the same
+// attempts are replayed and end in the same place.
 //
-// That is what froze lux-mainnet luxd-2 and luxd-3 on the C-Chain at 1,159,050 while
-// luxd-0/1/4 ran on to 1,160,600. Both stalled nodes HELD the blocks — their EVM had them
-// canonical — and consensus simply never accepted them, because by then the peers were
-// 1,500 blocks ahead and no longer vote on a block that old. Cert catch-up was the only
-// door left and it had already shut. Restarting replays the same eight strikes.
-//
-// PRE-FIX: exactly one fetch, ever. POST-FIX: a fetch per cooldown, for as long as the
-// block stays undecided.
+// For a node that far behind the certificate fetch is the only remaining door — its own
+// store may already hold the block, yet consensus cannot accept it without a decision it
+// can no longer vote its way to. So the fetch must be reissued while the block stays
+// undecided: one per cooldown, not one ever.
 func TestSelfHeal_AbandonedBlock_KeepsRequestingCatchup(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	chainID := ids.GenerateTestID()
@@ -89,7 +86,7 @@ func TestSelfHeal_AbandonedBlock_KeepsRequestingCatchup(t *testing.T) {
 	}
 	e.mu.Unlock()
 	if !stillPending {
-		t.Fatal("precondition: an abandoned block must STAY pending — it is recoverable, not dropped")
+		t.Fatal("precondition: an abandoned block must stay pending — it is recoverable, not dropped")
 	}
 
 	// Ask again. An undecided block that nothing has delivered must still be wanted.
@@ -97,9 +94,9 @@ func TestSelfHeal_AbandonedBlock_KeepsRequestingCatchup(t *testing.T) {
 
 	if got := cu.count(); got <= first {
 		t.Fatalf("an abandoned block whose catch-up was dropped must be re-requested once the "+
-			"cooldown lapses: fetches went %d -> %d. One dropped fetch is permanent, which is "+
-			"how two mainnet validators sat at a fixed height for hours while their peers held "+
-			"the blocks the whole time", first, got)
+			"cooldown lapses: fetches went %d -> %d. Asked for exactly once, a single dropped "+
+			"fetch pins the node at this height for good, even while its peers hold the block",
+			first, got)
 	}
 	if m, _ := cu.lastMissing(); m != blk9.id {
 		t.Fatalf("the re-request must target the stuck block %s, got %s", blk9.id, m)

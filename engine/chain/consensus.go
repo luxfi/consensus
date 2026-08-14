@@ -24,18 +24,18 @@ var (
 	// bypasses FinalizeBranch by design (an import is an out-of-band
 	// reconcile, not an α-of-K finalize), so the monotonic invariant the finalize
 	// path enforces must be re-asserted here explicitly: a backward
-	// import must NOT silently regress local finalized height (which would let a
+	// import must not silently regress local finalized height (which would let a
 	// shorter imported chain un-finalize blocks the node already finalized).
 	ErrSyncStateRegression = errors.New("chain: SyncState refused — import height is below the already-finalized height (would regress finalized history)")
 
-	// ErrSyncStateEmptyWithHeight is returned by SyncState when an EMPTY import
-	// head (lastAcceptedID == ids.Empty) is paired with a POSITIVE height (INFO-6).
-	// An empty head is the genesis/teardown reset, which is meaningful only at
-	// height 0; an empty head at height>0 is contradictory. If allowed it would set
-	// finalizedTip=Empty while LEAVING finalizedHeight/finalizedByHeight stale (the
-	// non-empty seed branch is skipped) and PRUNE blocks below the positive height —
-	// the exact finalizedTip-vs-finalizedHeight desync ForcePreference was hardened
-	// against. SyncState refuses it fail-closed before mutating any state.
+	// ErrSyncStateEmptyWithHeight is returned by SyncState when an empty import head
+	// (lastAcceptedID == ids.Empty) is paired with a positive height. An empty head is
+	// the genesis/teardown reset, meaningful only at height 0; above it the pair is
+	// contradictory. Allowing it would set finalizedTip=Empty while leaving
+	// finalizedHeight/finalizedByHeight stale (the non-empty seed branch is skipped)
+	// and prune blocks below the positive height, so the tip and the height would
+	// describe different chains. SyncState refuses it fail-closed before mutating any
+	// state.
 	ErrSyncStateEmptyWithHeight = errors.New("chain: SyncState refused — empty import head paired with a non-zero height (an empty reset is genesis/teardown at height 0; this would desync finalizedTip from finalizedHeight and prune live blocks)")
 
 	// ErrEpochRegression is returned by the receive-side epoch gate when a
@@ -91,7 +91,7 @@ type ChainConsensus struct {
 	// superset of a bare majority, so every Quasar block is already a Nova block, and this
 	// frontier is always a prefix of the certified Nova chain. It advances ONLY via
 	// PromoteQuasar, which requires the promoted block to MATCH the Nova ledger's accepted
-	// canonical at that height — so the "no two conflicting Quasar certs" INVARIANT is
+	// canonical at that height — so the "no two conflicting Quasar certs" invariant is
 	// inherited from the Nova ledger's single-canonical-per-height gate. GetQuasarTip reads
 	// it; it is the ONLY tip bridges / DEX settlement / cross-chain messages may consume.
 	quasar quasarFrontier
@@ -176,7 +176,7 @@ func (c *ChainConsensus) applyCertLocked(cert Cert) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	c.ledger = led    // THE ONLY way finality advances — one value assignment after a pure fold
+	c.ledger = led    // the only way finality advances — one value assignment after a pure fold
 	c.applyPlan(plan) // DAG-side effects only (accepted/rejected/tips); never finality
 	return plan, nil
 }
@@ -184,7 +184,7 @@ func (c *ChainConsensus) applyCertLocked(cert Cert) (Plan, error) {
 // applyPlan applies the fold's plan to the live DAG: mark the Accept path accepted and
 // drop it from the build tips; mark the Reject (losing-sibling) subtrees rejected and
 // remove them from the live DAG/tips — accept-preferred-child plus transitive reject
-// on the DAG side. It NEVER touches c.ledger; finality already advanced in the fold.
+// on the DAG side. It never touches c.ledger; finality already advanced in the fold.
 // Caller holds c.mu.
 func (c *ChainConsensus) applyPlan(plan Plan) {
 	for _, id := range plan.Accept {
@@ -238,59 +238,56 @@ func (c *ChainConsensus) Stats() map[string]interface{} {
 // This is called by the syncer after admin_importChain to reconcile consensus
 // state with the EVM state database.
 //
-// MONOTONIC GUARD (defence-in-depth): SyncState bypasses FinalizeBranch by
-// design — an import is an out-of-band reconcile with the VM's last-accepted
-// head, NOT an α-of-K finalize, so it legitimately seeds finalizedTip/Height
-// directly. But "bypasses the finalize path" must NOT mean "bypasses the
-// monotonic invariant": a backward import (height below the already-finalized
+// Monotonicity is re-asserted here, defence in depth. SyncState bypasses
+// FinalizeBranch by design — an import is an out-of-band reconcile with the VM's
+// last-accepted head, not an α-of-K finalize, so it legitimately seeds
+// finalizedTip/Height directly. Bypassing the finalize path does not mean bypassing
+// the monotonic invariant: a backward import (height below the already-finalized
 // height) is refused with ErrSyncStateRegression and leaves all finalized state
-// untouched. Without this guard a shorter/older imported chain could silently
-// regress finalizedHeight and un-finalize blocks the node already finalized —
-// re-opening the very fork window the per-height guard closes. A re-import at the
-// SAME height with the SAME block is idempotent; a forward import advances. The
-// only allowed move-backward is the genesis/empty reset (lastAcceptedID==Empty),
-// which is valid ONLY at height 0 — an empty head at height>0 is contradictory
-// and refused with ErrSyncStateEmptyWithHeight (INFO-6), since it would desync
-// finalizedTip from finalizedHeight and prune live blocks.
+// untouched. Otherwise a shorter/older imported chain could silently regress
+// finalizedHeight and un-finalize blocks the node already finalized, re-opening the
+// fork window the per-height guard closes. A re-import at the same height with the
+// same block is idempotent; a forward import advances. The only backward move
+// allowed is the genesis/empty reset (lastAcceptedID==Empty), valid only at height 0
+// — an empty head above it is contradictory and refused with
+// ErrSyncStateEmptyWithHeight, since it would leave finalizedTip and
+// finalizedHeight describing different chains and prune live blocks.
 func (c *ChainConsensus) SyncState(lastAcceptedID ids.ID, height uint64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Refuse an empty import head paired with a positive height (INFO-6). An empty
-	// head is the genesis/teardown reset — valid only at height 0. At height>0 it
-	// would assign finalizedTip=Empty while skipping the seed branch (so
-	// finalizedHeight/finalizedByHeight stay stale) AND prune blocks below the
-	// height, desyncing finalizedTip from finalizedHeight (the desync the per-height
-	// guard and ForcePreference exist to prevent). Fail-closed BEFORE any mutation.
-	// Unreachable on the live path (the sole caller, SyncStateFromVM, pairs Empty
-	// with height 0), but guarded so a future caller cannot open the desync.
+	// Refuse an empty import head paired with a positive height. An empty head is the
+	// genesis/teardown reset — valid only at height 0. Above it, it would assign
+	// finalizedTip=Empty while skipping the seed branch (so
+	// finalizedHeight/finalizedByHeight stay stale) and prune blocks below the height,
+	// leaving the tip and the height describing different chains. Fail closed before
+	// any mutation. The sole caller, SyncStateFromVM, pairs Empty with height 0, so
+	// this is unreachable today; it is guarded so a future caller cannot open the gap.
 	if lastAcceptedID == ids.Empty && height > 0 {
 		return fmt.Errorf("%w: refused empty head at height %d", ErrSyncStateEmptyWithHeight, height)
 	}
 
 	// Refuse a backward regression of CERTIFIED finalized history. Only enforced once
 	// a cert has finalized and for a concrete (non-empty) import head; an empty reset
-	// is a deliberate teardown, not a regression. A hint can NEVER un-finalize a
+	// is a deliberate teardown, not a regression. A hint can never un-finalize a
 	// QC-backed block: an import below the certified height is refused outright.
 	if c.ledger.set && lastAcceptedID != ids.Empty && height < c.ledger.height {
 		return fmt.Errorf("%w: import height %d < finalized height %d (block %s)",
 			ErrSyncStateRegression, height, c.ledger.height, lastAcceptedID)
 	}
-	// NOTE (incident-1082814 PART-A): the pre-fix code ALSO ran an equal-height
-	// "different block ⇒ equivocation" check here, because SyncState used to SEED
-	// FINALITY from vm.LastAccepted. It no longer does — the import is a
-	// non-authoritative HINT — so there is nothing to equivocate against and that
-	// check is deliberately gone. Equivocation is decided EXCLUSIVELY by the cert fold
-	// over canonical commitments (Finalize), never from a local seed. This is the
-	// single most important line of the fix: a locally-seeded sibling can no longer
-	// manufacture a finalized entry that a peer's legitimate cert then "conflicts"
-	// with.
+	// There is deliberately no equal-height "different block ⇒ equivocation" check
+	// here. An import is a non-authoritative hint, not a finality seed, so there is
+	// nothing for it to equivocate against: equivocation is decided exclusively by the
+	// cert fold over canonical commitments (Finalize). Were a local seed to enter
+	// finality, a locally-chosen sibling could manufacture a finalized entry that a
+	// peer's legitimate cert then reads as a conflict — refusing the honest chain
+	// forever, since the local entry never moves.
 
-	// Apply the import as a RECOVERY HINT — a build anchor only, never finality
-	// (PART-A). vm.LastAccepted is the local node's boot/import snapshot; after a crash
-	// it can name an UNCERTIFIED local block whose inner block the network actually
-	// finalized under a different envelope. As a HINT, Height() stays (0,false) until a
-	// real cert, byHeight stays empty, and no cert can ever equivocate against it.
+	// Apply the import as a recovery hint — a build anchor only, never finality.
+	// vm.LastAccepted is the local node's boot/import snapshot; after a crash it can
+	// name an uncertified local block whose inner block the network actually finalized
+	// under a different envelope. As a hint, Height() stays (0,false) until a real
+	// cert, byHeight stays empty, and no cert can equivocate against it.
 	if lastAcceptedID != ids.Empty {
 		// Preserve any CERTIFIED history (whole-value copy) and update only the hint
 		// fields — a hint must never wipe a QC-backed frontier. When no certified
@@ -337,11 +334,10 @@ func (c *ChainConsensus) GetFinalizedTip() ids.ID {
 // GetQuasarTip returns the canonical execution commitment of the highest EXPORT-FINAL
 // (Quasar, ⅔-by-stake) block — the ONLY tip a bridge / DEX settlement / cross-chain
 // message / validator-set transition may treat as deterministically final. It is
-// ids.Empty until the first ⅔-stake certificate forms, and it NEVER returns the Nova
+// ids.Empty until the first ⅔-stake certificate forms, and it never returns the Nova
 // (accept) tip: a Nova block is locally executed but a lone equivocator can fork a bare
-// majority, so it is reorgable and non-exportable until it reaches Quasar. This is the
-// rename of the former GetCertifiedTip, re-pointed from the Nova fold result to the
-// trailing Quasar frontier — THE export-gating invariant of the two-tier ladder.
+// majority, so it is reorgable and non-exportable until it reaches Quasar. Gating export
+// on this frontier rather than on the accept frontier is the two-tier ladder's whole point.
 func (c *ChainConsensus) GetQuasarTip() ids.ID {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -350,11 +346,10 @@ func (c *ChainConsensus) GetQuasarTip() ids.ID {
 
 // GetNovaTip returns the canonical execution commitment of the highest LOCALLY ACCEPTED
 // (Nova) block — the accepted/execution head that drove VM.Accept. It is the correct tip
-// for local build/preference and for equivocation evidence, but it authorizes LOCAL
-// execution ONLY: it is reorgable-in-theory until it reaches Quasar and MUST NOT be
-// exported (use GetQuasarTip for any bridge / settlement / cross-chain decision). This
-// carries the old GetCertifiedTip semantics (the Nova ledger's canonical fold result),
-// renamed to name the tier explicitly so no caller can mistake accept for export.
+// for local build/preference and for equivocation evidence, but it authorizes local
+// execution only: it is reorgable in theory until it reaches Quasar and must not be
+// exported (use GetQuasarTip for any bridge / settlement / cross-chain decision). The
+// tier is in the name so no caller can mistake accept for export.
 func (c *ChainConsensus) GetNovaTip() ids.ID {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -379,10 +374,11 @@ func (c *ChainConsensus) QuasarHeight() (uint64, bool) {
 // did not accept:
 //
 //   - advanced=true  → the frontier moved to a new (strictly higher) height.
-//   - err != nil (ErrHeightAlreadyFinalized) → the export cert's canonical CONFLICTS with the
+//   - err != nil (ErrHeightAlreadyFinalized) → the export cert's canonical conflicts with the
 //     canonical Nova already accepted at that height. That is a provable ⅔-stake
 //     equivocation — it needs >⅓ stake to double-sign, beyond the f<⅓ assumption — so the
-//     caller HALTS fail-closed and surfaces it as slashable evidence. NEVER advances on error.
+//     caller halts fail-closed and surfaces it as slashable evidence. The frontier does not
+//     advance on error.
 //   - advanced=false, err=nil → idempotent/no-op: the height is at/below the current Quasar
 //     frontier (a duplicate/late cert), or the Nova ledger has not yet (or no longer, past the
 //     equivocation window) recorded this height — in which case it is an ancestor of the Nova
@@ -419,13 +415,13 @@ func (c *ChainConsensus) PromoteQuasar(cert Cert) (advanced bool, err error) {
 	novaCanonical, have := c.ledger.At(cert.Height)
 	if !have {
 		// Nova has not (yet / no longer within the equivocation window) recorded this height.
-		// Do NOT advance: either Nova will catch up and the promotion retries, or the height
+		// Do not advance: either Nova will catch up and the promotion retries, or the height
 		// aged out and is an ancestor of the Nova tip (already implicitly final). Not an error.
 		return false, nil
 	}
 	if novaCanonical != canonical {
-		// A ⅔-stake export cert for a canonical the Nova ledger did NOT accept at this height —
-		// the two-tier INVARIANT breach. Fail closed; the caller halts and slashes.
+		// A ⅔-stake export cert for a canonical the Nova ledger did not accept at this height
+		// breaks the two-tier invariant. Fail closed; the caller halts and slashes.
 		return false, fmt.Errorf("%w: quasar export cert canonical %s conflicts with nova-accepted canonical %s at height %d",
 			ErrHeightAlreadyFinalized, canonical, novaCanonical, cert.Height)
 	}
@@ -437,9 +433,9 @@ func (c *ChainConsensus) PromoteQuasar(cert Cert) (advanced bool, err error) {
 }
 
 // GetFinalizedHeight returns the current finalized height and whether any block
-// has been finalized yet. The engine uses this to gate an incoming cert on
-// height (reject a cert at or below the last-finalized height — MED-5) BEFORE
-// running the cert through the per-height guard.
+// has been finalized yet. The engine uses this to gate an incoming cert on height
+// — a cert at or below the last-finalized height is rejected — before running the
+// cert through the per-height guard.
 func (c *ChainConsensus) GetFinalizedHeight() (uint64, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -452,18 +448,15 @@ func (c *ChainConsensus) GetFinalizedHeight() (uint64, bool) {
 // so a caller acting here must be prepared to reorg"), so this is a BUILD / CATCH-UP /
 // REPORTING bound only.
 //
-// FORBIDDEN AS A SIGN GATE. It was previously named GetNovaAcceptedFloor and fed the equivocation
-// sign gate, which welded a validator's PERMANENT sign-refusal floor to a reorgable height:
-// a node that accepted 11364..11367 on a bare Nova majority which was never ⅔-certified could
-// never again sign at or below 11367 — including the honest rebuild every peer agreed on.
-// That is the mainnet-1098192 / testnet-11367 permanent halt, and it is why "refusing more is
-// always fail-safe" is FALSE here: over-refusal on the signing path is not caution, it is a
-// liveness fault that no restart, resync, or peer can clear. Use GetQuasarSigningFloor for
-// anything that permanently closes a height.
+// Not a signing floor. Welding a validator's permanent sign-refusal floor to a reorgable
+// height strands that validator: heights accepted on a bare Nova majority that was never
+// ⅔-certified could never be signed at again, including the rebuild every honest peer
+// agreed on. "Refusing more is always fail-safe" is false on the signing path — over-refusal
+// there is not caution but a liveness fault that no restart, resync or peer can clear. Use
+// GetQuasarSigningFloor for anything that permanently closes a height.
 //
-// HARD CONSTRAINT (PART-A): read-only. It NEVER writes to, and its value NEVER enters,
-// byHeight / the equivocation index / the authoritative ledger.Height() — it reads the hint
-// HEIGHT only, never the hint's (untrustworthy) identity.
+// Read-only: its value never enters byHeight, the equivocation index, or the authoritative
+// ledger.Height(). It reads the hint's height only, never the hint's (untrustworthy) identity.
 func (c *ChainConsensus) GetNovaAcceptedFloor() uint64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -522,17 +515,17 @@ func (c *ChainConsensus) K() int {
 	return c.k
 }
 
-// Reclamp updates the committee sample size k and quorum alpha to track a CHANGED live
+// Reclamp updates the committee sample size k and quorum alpha to track a changed live
 // validator set. The committee is otherwise fixed at NewChainConsensus (the construction-time
-// bftCommittee clamp); without a re-clamp a chain that LAUNCHED single-validator would keep k
+// bftCommittee clamp); without a re-clamp a chain that launched single-validator would keep k
 // stuck at 1, and after it added validators via its PoS staking contract the lone validator
 // would still take the K==1 path (synthesize a 1-of-1 cert / accept a single-signer stake cert
-// at alpha=1) and finalize UNILATERALLY — a cross-node fork against validators 2..N who require
-// a real k=N quorum (RED HIGH, the 1→N decentralization path). beta (the confidence threshold)
-// is committee-size-independent and is left unchanged. A degenerate update (k<1, alpha<1, or
-// alpha>k) is ignored so a mis-derived call can never open a sub-quorum. The engine only ever
-// calls this to move the committee UP toward the live count (reclampCommitteeLocked, up-only),
-// so a transient low read can never shrink the quorum here.
+// at alpha=1) and finalize unilaterally — a cross-node fork against validators 2..N who require
+// a real k=N quorum. That is the failure mode on the path from one validator to many. beta (the
+// confidence threshold) is committee-size-independent and is left unchanged. A degenerate update
+// (k<1, alpha<1, or alpha>k) is ignored so a mis-derived call can never open a sub-quorum. The
+// engine only ever calls this to move the committee up toward the live count
+// (reclampCommitteeLocked, up-only), so a transient low read can never shrink the quorum here.
 func (c *ChainConsensus) Reclamp(k, alpha int) {
 	if k < 1 || alpha < 1 || alpha > k {
 		return

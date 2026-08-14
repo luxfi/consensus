@@ -6,7 +6,6 @@ package main
 import (
 	"encoding/binary"
 	"hash/crc32"
-	"os"
 	"testing"
 
 	"github.com/luxfi/ids"
@@ -38,28 +37,33 @@ func encodeV3(bindings map[uint64]binding, floor uint64) []byte {
 	return append(buf, crc[:]...)
 }
 
+// Both record shapes in one frame: a hard lock sitting exactly AT the floor (no round) and a
+// v3 view lock above it. The floor is inclusive, so a binding at the floor must survive the
+// round trip rather than be trimmed with the decided past.
 func TestDecode_RoundTrip(t *testing.T) {
+	const floor = 4_000_000
+	const round = 12
 	a := ids.GenerateTestID()
 	b := ids.GenerateTestID()
 	in := map[uint64]binding{
-		1082879: {height: 1082879, target: a},                                 // hard lock (no round) — AT floor
-		1082880: {height: 1082880, lockRound: 8450, hasLock: true, target: b}, // v3 view lock — above floor
+		floor:     {height: floor, target: a},
+		floor + 1: {height: floor + 1, lockRound: round, hasLock: true, target: b},
 	}
-	s, err := decode("test", encodeV3(in, 1082879))
+	s, err := decode("test", encodeV3(in, floor))
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if s.finalizedThrough != 1082879 {
-		t.Fatalf("floor: got %d want 1082879", s.finalizedThrough)
+	if s.finalizedThrough != floor {
+		t.Fatalf("floor: got %d want %d", s.finalizedThrough, floor)
 	}
 	if len(s.bindings) != 2 {
 		t.Fatalf("bindings: got %d want 2", len(s.bindings))
 	}
-	// sorted by height: [1082879 hard][1082880 round=8450]
-	if s.bindings[0].height != 1082879 || s.bindings[0].hasLock {
+	// bindings come back sorted by height: [floor, hard] then [floor+1, round]
+	if s.bindings[0].height != floor || s.bindings[0].hasLock {
 		t.Fatalf("binding0: %+v", s.bindings[0])
 	}
-	if s.bindings[1].height != 1082880 || !s.bindings[1].hasLock || s.bindings[1].lockRound != 8450 || s.bindings[1].target != b {
+	if s.bindings[1].height != floor+1 || !s.bindings[1].hasLock || s.bindings[1].lockRound != round || s.bindings[1].target != b {
 		t.Fatalf("binding1: %+v", s.bindings[1])
 	}
 }
@@ -84,50 +88,5 @@ func TestAlphaFor(t *testing.T) {
 		if got := alphaFor(c.n); got != c.a {
 			t.Errorf("alphaFor(%d)=%d want %d", c.n, got, c.a)
 		}
-	}
-}
-
-// TestDecode_RealMainnetFiles pins byte-parity against the captured live pods (ground truth): the
-// 1082879 decided floor and the 1082880 split-lock the incident is about. Skips when the evidence
-// dir is absent (CI without the captured files).
-func TestDecode_RealMainnetFiles(t *testing.T) {
-	const dir = "/tmp/lux-1082880-evidence"
-	files := map[string]string{ // pod → expected 1082880 lock target (cb58)
-		dir + "/vote-guard.luxd-0": "2494WYuivjJ4V5scrrBDUopqnK6quAkgyfECkXDeG3Pgs6r5Wu",
-		dir + "/vote-guard.luxd-1": "yezD2DSHgnbyqajqhYR19kvBbmK9x86MZubyNuU75eMHJ7HnA",
-	}
-	tested := 0
-	for path, wantTarget := range files {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue // evidence not present on this host
-		}
-		s, err := decode(path, data)
-		if err != nil {
-			t.Fatalf("decode real file %s: %v", path, err)
-		}
-		if s.finalizedThrough != 1082879 {
-			t.Fatalf("%s: floor got %d want 1082879", path, s.finalizedThrough)
-		}
-		var got ids.ID
-		var found bool
-		for _, b := range s.bindings {
-			if b.height == 1082880 {
-				got, found = b.target, true
-				if b.lockRound != 8450 {
-					t.Fatalf("%s: 1082880 lockRound got %d want 8450", path, b.lockRound)
-				}
-			}
-		}
-		if !found {
-			t.Fatalf("%s: no 1082880 binding", path)
-		}
-		if got.String() != wantTarget {
-			t.Fatalf("%s: 1082880 target got %s want %s", path, got, wantTarget)
-		}
-		tested++
-	}
-	if tested == 0 {
-		t.Skip("no captured mainnet vote-guard files present; skipping real-file parity")
 	}
 }

@@ -1,19 +1,18 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// topology.go — the vote/cert distribution handlers that make α-of-K
-// finality both SAFE and LIVE.
+// The vote/cert distribution handlers that make α-of-K finality both safe and live.
 //
 // The topology in one paragraph: a follower verifies a gossiped block and
-// BROADCASTS its signed accept vote to ALL validators (followVerifiedBlock,
-// integration.go). Every validator feeds incoming signed votes into the engine
+// broadcasts its signed accept vote to every validator (followVerifiedBlock,
+// integration.go). Each validator feeds incoming signed votes into the engine
 // (HandleIncomingVote), which collects them toward a QuorumCert. Whichever node
-// first collects α distinct verified votes assembles the cert, GOSSIPS it
-// (tryFinalizeBlock), and every node finalizes the block on receipt of that
-// verifiable proof (HandleIncomingCert). No node finalizes without a cert
-// (safety); the cert reaches everyone via vote-broadcast + cert-gossip + the
-// poll-timeout re-request, so finality never hinges on one node's inbound Chits
-// (liveness — the proposer-freeze cannot recur).
+// first collects α distinct verified votes assembles the cert and gossips it
+// (tryFinalizeBlock); every node finalizes the block on receipt of that
+// verifiable proof (HandleIncomingCert). No node finalizes without a cert —
+// that is safety. The cert reaches everyone by three independent routes
+// (vote-broadcast, cert-gossip, the poll-timeout re-request), so finality never
+// depends on any single node's inbound chits — that is liveness.
 package chain
 
 import (
@@ -38,7 +37,7 @@ var ErrVoteWireCorrupt = errors.New("chain: signed vote wire corrupt")
 //
 // The signed vote travels with the blockID in the gossip envelope (the network
 // message already names the chain + block), so the canonical message a verifier
-// rebuilds is derived from the RECEIVER's tracked position for that block — a
+// rebuilds is derived from the receiver's tracked position for that block — a
 // vote cannot smuggle a different position because the signature is checked
 // against the receiver's own (chain,height,round,block,parent).
 
@@ -74,7 +73,7 @@ func decodeSignedVote(data []byte) (ids.NodeID, []byte, error) {
 
 // HandleIncomingVote ingests a signed accept vote received from another
 // validator's broadcast. The vote is bound to a blockID (carried by the gossip
-// envelope); the engine rebuilds the canonical message from ITS OWN tracked
+// envelope); the engine rebuilds the canonical message from its own tracked
 // position for that block and verifies the signature before counting the vote.
 // A vote for a block we are not tracking is dropped (we cannot know its
 // position to verify against — the proposer's block gossip carries that, and
@@ -106,12 +105,12 @@ func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
 		return false
 	}
 	if !exists {
-		// The block is not pending. It may be a FINALIZED (Nova-accepted) block whose trailing
+		// The block is not pending. It may be a finalized (Nova-accepted) block whose trailing
 		// ⅔-stake vote is still arriving — the ⅔-th stake vote necessarily follows the
 		// bare-majority accept — so route a verified accept for it to the late-attestation path
-		// (handleVote → attestFinalizedVote → the Quasar attestor) to complete the EXPORT cert.
-		// Verify against the REMEMBERED accepted position (the exact bytes the accept votes signed).
-		// An unknown / aged-out block drops (unchanged behaviour).
+		// (handleVote → attestFinalizedVote → the Quasar attestor) to complete the export cert.
+		// Verify against the remembered accepted position: the exact bytes the accept votes
+		// signed. An unknown or aged-out block drops.
 		ap, remembered := t.lookupAcceptedPos(blockID)
 		if !remembered || !verifier.VerifyVote(nodeID, CanonicalVoteMessage(ap.pos), sig, ap.epoch) {
 			return false
@@ -127,9 +126,9 @@ func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
 		return true
 	}
 
-	// Verify the signature against OUR position for this block, resolving the
-	// voter's pubkey at the block's P-CHAIN epoch height (RESIDUAL-B). A vote that
-	// signed a different position (different height/round/parent/set-root) fails.
+	// Verify the signature against our position for this block, resolving the
+	// voter's pubkey at the block's P-chain epoch height. A vote that signed a
+	// different position (different height/round/parent/set-root) fails.
 	if !verifier.VerifyVote(nodeID, CanonicalVoteMessage(pos), sig, epochHeight) {
 		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("incoming vote: signature invalid",
@@ -153,17 +152,17 @@ func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
 
 // HandleIncomingCert ingests a finality cert gossiped by another validator and,
 // if it verifies as a valid α-of-K witness for a block we have verified,
-// finalizes that block. This is the SAFE replacement for fast-follow: a
-// follower commits a gossiped block ONLY against a verifiable α-of-K proof.
+// finalizes that block. A follower commits a gossiped block only against a
+// verifiable α-of-K proof.
 //
-// Safety gates:
-//   - the cert must decode and Verify under our VoteVerifier (α distinct
+// What a cert must clear:
+//   - it must decode and Verify under our VoteVerifier (α distinct
 //     correctly-signed accepts over the cert's position),
-//   - the cert's position chain must match ours,
-//   - we must have VERIFIED the block locally (it is in pendingBlocks). We do
-//     NOT accept a block whose contents we have not validated, even with a
-//     valid cert — the cert proves agreement, local Verify proves validity;
-//     both are required.
+//   - its position chain must match ours,
+//   - we must have verified the block locally (it is in pendingBlocks). A block
+//     whose contents we have not validated is not accepted even with a valid
+//     cert — the cert proves agreement, local Verify proves validity; finality
+//     needs both.
 //
 // Returns true iff the block was finalized as a result of this cert.
 func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
@@ -185,17 +184,17 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	if verifier == nil {
 		return false
 	}
-	// The cert's threshold MUST meet our own floor FOR ITS TIER — a cert that asserts a
-	// LOWER threshold than this chain requires for that tier is rejected even if its
-	// internal signatures verify (a cheap sub-quorum forgery filter; the AUTHORITATIVE gate
-	// is verifyCert → VerifyWeighted below, which re-derives the tier threshold from the
-	// validator set at the cert's epoch). A gossiped NOVA cert legitimately carries a
-	// bare-majority threshold BELOW the ⅔ Quasar floor, so the floor is tier-selected:
+	// The cert's threshold must meet our own floor for its tier: a cert asserting a lower
+	// threshold than this chain requires for that tier is rejected even if its internal
+	// signatures verify. This is a cheap sub-quorum forgery filter; the authority is
+	// verifyCert → VerifyWeighted below, which re-derives the tier threshold from the
+	// validator set at the cert's epoch. A gossiped Nova cert legitimately carries a
+	// bare-majority threshold below the ⅔ Quasar floor, so the floor is tier-selected:
 	// NovaSignerFloor(K) for Nova, the ⅔ count Alpha() for Quasar. K/Alpha track the live
 	// committee (construction clamp + reclampCommitteeLocked), so both floors follow the
-	// live set. An unknown tier is left to verifyCert (Verify rejects it fail-closed).
+	// live set. An unknown tier is left to verifyCert, which rejects fail-closed.
 	//
-	// The Nova floor is the SIGNER floor, not the count majority: on a stake-weighted chain
+	// The Nova floor is the signer floor, not the count majority: on a stake-weighted chain
 	// the Nova majority is measured in stake, so a legitimate cert's self-declared threshold
 	// is the signer floor and a count-majority pre-filter here would drop it before the
 	// authoritative stake check ever ran. On an equal-stake chain the signer floor is ≤ the
@@ -217,7 +216,7 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		return false
 	}
 
-	// MED-5 HEIGHT GATE — reject the cert on height BEFORE any finalize work:
+	// Height gate — reject on height before any finalize work:
 	//   - a cert at or below the last-finalized height is stale or a fork attempt
 	//     (the height is already decided); and
 	//   - a cert whose height does not match the height of the block we are
@@ -225,28 +224,29 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	// This is the cheap front-line check; FinalizeBranch (inside AcceptWithCert)
 	// is the authoritative backstop that also produces equivocation evidence.
 	if fh, set := t.consensus.GetFinalizedHeight(); set && cert.Position.Height <= fh {
-		// Equivocation is decided on the CANONICAL commitment, NEVER the outer envelope
-		// (the incident-1082814 fix). A DIFFERENT canonical block already finalized at
-		// this height is a POTENTIAL fork; the SAME canonical id under a different
-		// envelope is a harmless DUPLICATE alias (and an identical envelope is a stale
-		// replay). Either way the cert finalizes nothing new.
+		// Equivocation is decided on the canonical commitment, not the outer envelope.
+		// Under anyone-can-propose every validator wraps the same inner execution block
+		// in its own envelope, so envelope identity says nothing about agreement: a
+		// different canonical block already finalized at this height is a potential
+		// fork, while the same canonical id under a different envelope is a harmless
+		// alias (and an identical envelope is a stale replay). Either way the cert
+		// finalizes nothing new.
 		certCanonical := cert.Position.CanonicalID
 		if certCanonical == ids.Empty {
 			certCanonical = cert.Position.BlockID
 		}
 		finCanonical, have := t.consensus.FinalizedBlockAtHeight(cert.Position.Height)
 		if have && finCanonical != certCanonical {
-			// HARD GATE on equivocation STATE (H1): a conflicting cert is fork EVIDENCE
-			// only if it is a VERIFIED QC. Run the FULL predicate (α distinct in-set
-			// signatures over the canonical position, stake-weighted when wired) BEFORE
-			// recording ANY slashing evidence. The pre-fix code recorded a DoubleVote per
-			// NAMED voter here before checking a single signature — so a forged cert (junk
-			// signatures naming honest validators, a random different canonical, height ≤
-			// finalized) could jail honest validators below quorum and re-halt the chain.
-			// Resolve the epoch from the tracked block if we have it; on a fixed-set chain
-			// the verifier ignores epoch (equal-stake admission invariant), and on a
-			// stake-weighted chain an unresolvable epoch fails verification → no evidence
-			// (fail-closed: we never false-slash, we may miss-slash).
+			// A conflicting cert is fork evidence only if it is a verified QC, so run the
+			// full predicate (α distinct in-set signatures over the canonical position,
+			// stake-weighted when a stake source is wired) before recording any slashing
+			// evidence. Naming a validator costs nothing to forge: junk signatures over a
+			// random canonical at a decided height would otherwise jail honest validators
+			// below quorum and halt the chain — the attack is cheaper than the fork it
+			// claims to prove. Resolve the epoch from the tracked block if we have it; on a
+			// fixed-set chain the verifier ignores epoch (equal-stake admission), and on a
+			// stake-weighted chain an unresolvable epoch fails verification and yields no
+			// evidence. Fail-closed here means we may miss a slash, never invent one.
 			var epochHeight uint64
 			if exists && pending.ConsensusBlock != nil {
 				epochHeight = pending.ConsensusBlock.pChainHeight
@@ -258,8 +258,8 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 				}
 				return false
 			}
-			// A VERIFIED α-of-K cert over a DIFFERENT canonical at a decided height — a
-			// genuine, attributable equivocation. Now (and only now) it is evidence.
+			// A verified α-of-K cert over a different canonical at a decided height is a
+			// genuine, attributable equivocation. Now, and only now, it is evidence.
 			rt.reportCertEquivocation(cert, finCanonical)
 		} else if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("incoming cert: height at/below finalized; dropping (duplicate or stale, not a fork)",
@@ -278,20 +278,38 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		return false
 	}
 
-	// Resolve the cert's epoch height (MEDIUM-1) from OUR locally-tracked,
-	// locally-verified block — the proposervm P-chain height we recorded for this
-	// block ID. Every honest node derives the same epoch height from the same
-	// signed block, so the cert verifies against the IDENTICAL set/root/stake on
-	// every node. A cert for a block we have not yet tracked is deferred below
-	// (we cannot know its epoch — and we must not Accept an unverified block
-	// anyway), so for a stake-weighted finalize `exists` is required here.
+	// Resolve the cert's epoch height from our locally-tracked, locally-verified
+	// block — the proposervm P-chain height we recorded for this block ID. Every
+	// honest node derives the same epoch height from the same signed block, so the
+	// cert verifies against an identical set/root/stake everywhere.
+	//
+	// A cert can name an envelope we do not track while we hold a DIFFERENT wrapper
+	// of the same inner execution block (the storm alias handled below). The epoch
+	// is a property of the inner block, not of the outer envelope, so resolve it by
+	// canonical id in that case. Reading it off the envelope alone left the epoch at
+	// 0 — the genesis validator set — and on any chain whose set is not the height-0
+	// set every voter's pubkey and the whole stake tally resolved against the wrong
+	// committee, so the cert failed verification here and the alias cure below was
+	// unreachable exactly on the chains old enough to need it. No wrapper of the
+	// inner block at all leaves the epoch at 0, which is what a node that has never
+	// seen the block can honestly say.
 	var epochHeight uint64
 	if exists && pending.ConsensusBlock != nil {
 		epochHeight = pending.ConsensusBlock.pChainHeight
+	} else {
+		canon := cert.Position.CanonicalID
+		if canon == ids.Empty {
+			canon = cert.Position.BlockID
+		}
+		t.mu.RLock()
+		if local, _ := t.pendingByCanonicalLocked(canon); local != nil {
+			epochHeight = t.epochHeightLocked(local)
+		}
+		t.mu.RUnlock()
 	}
 
-	// Defence in depth (epoch binding): the cert's set-root MUST equal the set-root
-	// WE recompute at our epoch height for this block. The set-root is folded into
+	// Defence in depth (epoch binding): the cert's set-root must equal the set-root
+	// we recompute at our epoch height for this block. The set-root is folded into
 	// every signed vote, so a verifying cert already implies the signers agreed on
 	// it; this cross-check additionally rejects a cert whose epoch (set-root) does
 	// not match the epoch of the block we tracked under this ID — a cert laundered
@@ -312,10 +330,10 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		}
 	}
 
-	// THE finality predicate — the SAME gate the equivocation-evidence path runs
+	// The finality predicate — the same gate the equivocation-evidence path runs
 	// (verifyCert): α distinct in-set signatures over the canonical position,
-	// stake-weighted to a strict ⅔ when a stake source is wired (HIGH-3), count-only
-	// otherwise (equal-stake admission invariant). A forged cert dies here.
+	// stake-weighted to a strict ⅔ when a stake source is wired, count-only
+	// otherwise (equal-stake admission). A forged cert dies here.
 	if verr := t.verifyCert(cert, epochHeight); verr != nil {
 		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Warn("incoming cert: verification failed",
@@ -324,26 +342,26 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		return false
 	}
 
-	// Cert is a valid α-of-K finality proof. Finalize the block IF we have
-	// verified it locally. If we do NOT track the block (an eclipsed follower that
+	// The cert is a valid α-of-K finality proof. Finalize the block if we have
+	// verified it locally. If we do not track the block (an eclipsed follower that
 	// adopted a losing sibling envelope, or a node behind the frontier), we cannot
-	// safely Accept it — but we must NOT silently drop a VERIFIED finality proof
-	// either (M1). Trigger a throttled, best-effort catch-up fetch for the certified
-	// block so finalization resumes once a reachable peer serves it; the fetch is
-	// gated on the cert having VERIFIED above, so a forged cert can never make us
-	// fetch arbitrary ids. Peer selection is the node layer's job (EmptyNodeID ⇒
-	// sample a peer); claimCatchupLocked rate-limits the request.
+	// safely Accept it — and silently dropping a verified finality proof leaves the
+	// node stuck with no way back. Trigger a throttled, best-effort catch-up fetch
+	// for the certified block so finalization resumes once a reachable peer serves
+	// it. The fetch is reachable only after the cert verified above, so a forged
+	// cert can never make us fetch arbitrary ids. Peer selection is the node layer's
+	// job (EmptyNodeID ⇒ sample a peer); claimCatchupLocked rate-limits the request.
 	if !exists {
-		// STORM-ALIAS UNFREEZE (mainnet 1085755). The cert VERIFIED as a valid α-of-K
-		// witness, but its OUTER envelope is not one we track. Under pChainHeight=0
-		// anyone-can-propose, every validator wraps the SAME inner execution block in its
-		// OWN outer proposervm envelope, so the cert's envelope is an ALIAS of a wrapper we
-		// DO hold and verified. The signed vote message binds the CANONICAL execution
-		// identity, not the outer ids (CanonicalVoteMessage), so the α votes verify against
-		// OUR wrapper's position too — and Accepting any wrapper of the certified inner block
-		// applies the IDENTICAL execution. Finalize the LOCAL wrapper so our EVM advances on
-		// a network-final height instead of freezing while it fetches a redundant alias. Only
-		// if we hold no wrapper of this inner block at all do we fall back to catch-up.
+		// The cert verified as a valid α-of-K witness, but its outer envelope is not one
+		// we track. Under pChainHeight=0 anyone-can-propose, every validator wraps the
+		// same inner execution block in its own proposervm envelope, so the cert's
+		// envelope is an alias of a wrapper we do hold and verified. The signed vote
+		// message binds the canonical execution identity, not the outer ids
+		// (CanonicalVoteMessage), so the α votes verify against our wrapper's position
+		// too — and Accepting any wrapper of the certified inner block applies the same
+		// execution. Finalize the local wrapper, so the VM advances on a network-final
+		// height instead of stalling while it fetches an alias it already has. Only when
+		// we hold no wrapper of this inner block at all do we fall back to catch-up.
 		if localID, ok := t.finalizeLocalAliasFromVerifiedCert(cert); ok {
 			rt.fastFollowMu.Lock()
 			if cert.Position.Height > rt.fastFollowHeight {
@@ -373,7 +391,7 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		ctx = c
 	}
 
-	// Record the cert candidate, then finalize through the SOLE finalizer.
+	// Record the cert candidate, then finalize through the one finalizer.
 	t.mu.Lock()
 	if pending.Decided {
 		t.mu.Unlock()
@@ -382,19 +400,19 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	pending.cert = cert
 	t.mu.Unlock()
 
-	// The cert cleared VerifyWeighted/Verify above (the SAME predicate
+	// The cert cleared VerifyWeighted/Verify above (the same predicate
 	// BuildVerifiedQuorumCert runs), so promote it to the finality authority token.
 	vcert, ok := wrapVerifiedCert(cert)
 	if !ok {
 		return false
 	}
 
-	// AcceptWithCert is the SOLE finalizer: it commits the certified branch through
-	// FinalizeBranch (the per-height equivocation gate + the sibling REORG: prune the
-	// losers, accept the path) and applies the VM effects. A safety violation is
-	// returned here and NOTHING is VM-accepted:
-	//   - ErrHeightAlreadyFinalized → a SECOND cert at an already-finalized height:
-	//     surface the conflict as equivocation evidence (the two-certs-one-height fork);
+	// AcceptWithCert is the one finalizer: it commits the certified branch through
+	// FinalizeBranch (the per-height equivocation gate plus the sibling reorg — prune
+	// the losers, accept the path) and applies the VM effects. A safety violation is
+	// returned here and nothing is VM-accepted:
+	//   - ErrHeightAlreadyFinalized → a second cert at an already-finalized height:
+	//     surface the conflict as equivocation evidence (two certs, one height);
 	//   - ErrConflictsWithFinalizedBranch → a cert for a losing/pruned branch: drop;
 	//   - ErrAncestorNotTracked → we are behind: drop (the gap fetch re-applies it).
 	if err := t.AcceptWithCert(ctx, cert.Position.BlockID, vcert); err != nil {
@@ -403,17 +421,15 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 				rt.reportCertEquivocation(cert, fin)
 			}
 		}
-		// SELF-HEAL (the mainnet behind-node fix). ErrAncestorNotTracked means we DO track the
-		// certified block but are MISSING an intermediate ancestor between it and our finalized
-		// tip — we are behind. Trigger the throttled ancestor fetch for the SPECIFIC missing block
-		// so the node-layer serves the finalized gap oldest-first and this VERIFIED cert
-		// re-applies. Pre-fix, a fetch was issued ONLY when the cert's OWN block was untracked
-		// (the !exists arm above); a missing INTERMEDIATE ancestor logged REFUSED and returned
-		// with no fetch, so a slipped node never self-healed (effective n−1, zero-margin → any
-		// flap drops below α and finality stalls — the live 1086xxx wedge). The fetch is gated on
-		// the cert having VERIFIED above, so a forged cert can never make us fetch arbitrary ids;
-		// claimCatchupLocked rate-limits it. Peer selection is the node layer's job (EmptyNodeID ⇒
-		// sample a serving peer).
+		// ErrAncestorNotTracked means we do track the certified block but are missing an
+		// intermediate ancestor between it and our finalized tip — we are behind. A node in
+		// that state cannot heal itself by waiting: every later cert hits the same missing
+		// ancestor, so it never finalizes again and the set runs one validator short until
+		// it restarts. Trigger the throttled ancestor fetch for the specific missing block
+		// so the node layer serves the finalized gap oldest-first and this verified cert
+		// re-applies. The fetch is reachable only after the cert verified above, so a forged
+		// cert can never make us fetch arbitrary ids; claimCatchupLocked rate-limits it.
+		// Peer selection is the node layer's job (EmptyNodeID ⇒ sample a serving peer).
 		var missingAncestor *AncestorNotTracked
 		if errors.As(err, &missingAncestor) {
 			rt.requestCatchup(missingAncestor.Missing, ids.EmptyNodeID)
@@ -440,8 +456,8 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	rt.fastFollowMu.Unlock()
 
 	// The equivocation guard for this (now-decided) height was already dropped inside
-	// the finalizer AcceptWithCert → acceptWithCertCore (the one funnel every finality
-	// path shares — MEDIUM-1), so no separate prune is needed here.
+	// the finalizer AcceptWithCert → acceptWithCertCore, the one funnel every finality
+	// path shares, so no separate prune is needed here.
 
 	if !rt.config.Logger.IsZero() {
 		rt.config.Logger.Info("finalized block via α-of-K quorum cert",
@@ -452,31 +468,33 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	return true
 }
 
-// finalizeLocalAliasFromVerifiedCert closes the STORM-ALIAS gap: given an
-// ALREADY-VERIFIED α-of-K cert whose OUTER envelope this node does NOT track, it
-// finalizes a LOCAL wrapper of the SAME certified inner execution block, if we hold one.
+// finalizeLocalAliasFromVerifiedCert takes an already-verified α-of-K cert whose outer
+// envelope this node does not track and finalizes a local wrapper of the same certified
+// inner execution block, if we hold one.
 //
-// WHY THIS IS SAFE (one certified inner block, any wrapper of it Accepts the identical
-// execution):
-//   - It resolves the local wrapper by the cert's CANONICAL id (pendingByCanonicalLocked),
-//     then requires the wrapper's FULL canonical tuple (id + parent-canonical + exec-state
-//     root + payload root) to equal the cert's — so we can only ever Accept the exact
+// It is safe because one certified inner block has one execution, and any wrapper of it
+// Accepts that same execution:
+//   - It resolves the local wrapper by the cert's canonical id (pendingByCanonicalLocked),
+//     then requires the wrapper's full canonical tuple (id + parent-canonical + exec-state
+//     root + payload root) to equal the cert's, so it can only ever Accept the exact
 //     execution the cert certified, never a colliding-id impostor. A verified local wrapper
 //     always satisfies this (its inner execution was re-executed at Verify); the check makes
 //     the invariant explicit and fails closed on any drift.
-//   - It REBASES the cert onto the local wrapper by copying the cert's Position and swapping
-//     ONLY the transport ids (BlockID/ParentID). Every SIGNED field — canonical id/parent,
+//   - It rebases the cert onto the local wrapper by copying the cert's Position and swapping
+//     only the transport ids (BlockID/ParentID). Every signed field — canonical id/parent,
 //     exec-state root, payload root, height, round, validator-set root — is unchanged, so the
 //     α votes carry over unmodified (outer ids are never in the signed message).
-//   - It RE-VERIFIES the rebased cert against the local wrapper's epoch (the SAME predicate
-//     verifyCert runs: α distinct in-set signatures, ⅔-by-stake when wired, plus the set-root
-//     epoch cross-check the exists-path applies) BEFORE finalizing, and finalizes ONLY through
-//     the sole finalizer (AcceptWithCert → FinalizeBranch). A forged or epoch-mismatched cert
-//     fails here and we fall back to catch-up. No fork: the per-height gate keys on the
-//     canonical id, and a duplicate envelope of an already-final canonical is idempotent.
+//   - It re-verifies the rebased cert against the local wrapper's epoch before finalizing —
+//     the same predicate verifyCert runs (α distinct in-set signatures, ⅔-by-stake when
+//     wired) plus the set-root epoch cross-check the exists-path applies — and finalizes
+//     only through the one finalizer (AcceptWithCert → FinalizeBranch). A forged or
+//     epoch-mismatched cert fails here and we fall back to catch-up. This cannot fork: the
+//     per-height gate keys on the canonical id, so a duplicate envelope of an already-final
+//     canonical is idempotent.
 //
-// Returns the finalized LOCAL envelope id + true on success; (Empty,false) means "no local
-// wrapper of this inner block" or "did not re-verify" — the caller then defers to catch-up.
+// Returns the finalized local envelope id and true on success. (Empty,false) means either
+// no local wrapper of this inner block, or it did not re-verify; the caller then defers to
+// catch-up.
 func (t *Transitive) finalizeLocalAliasFromVerifiedCert(cert *QuorumCert) (ids.ID, bool) {
 	canon := cert.Position.CanonicalID
 	if canon == ids.Empty {
@@ -490,7 +508,7 @@ func (t *Transitive) finalizeLocalAliasFromVerifiedCert(cert *QuorumCert) (ids.I
 		return ids.Empty, false
 	}
 	cb := pL.ConsensusBlock
-	// Full canonical-tuple equality — we finalize ONLY a wrapper committing to the exact
+	// Full canonical-tuple equality — we finalize only a wrapper committing to the exact
 	// certified inner execution, never a canonical-id collision with a different execution.
 	// Height is bound too: a canonical (inner execution) id is unique per height, so a height
 	// mismatch means the resolver crossed heights — fail closed.
@@ -528,10 +546,10 @@ func (t *Transitive) finalizeLocalAliasFromVerifiedCert(cert *QuorumCert) (ids.I
 	if err != nil {
 		return ids.Empty, false
 	}
-	// SAFETY GATE: the rebased cert must clear the SAME α-of-K predicate. Because the signed
-	// message is byte-identical to the incoming cert's (outer ids excluded), this passes
-	// exactly when the incoming cert did — re-run for defense in depth (a nil verifier or a
-	// stake shortfall fails closed).
+	// The rebased cert must clear the same α-of-K predicate. Because the signed message is
+	// byte-identical to the incoming cert's (outer ids excluded), this passes exactly when
+	// the incoming cert did — re-run for defence in depth, since a nil verifier or a stake
+	// shortfall fails closed.
 	if verr := t.verifyCert(rebased, epochHeight); verr != nil {
 		return ids.Empty, false
 	}
@@ -550,14 +568,13 @@ func (t *Transitive) finalizeLocalAliasFromVerifiedCert(cert *QuorumCert) (ids.I
 	return localID, true
 }
 
-// verifyCert runs the FULL finality predicate — α distinct in-set signatures over
-// the cert's CANONICAL position, stake-weighted to a strict ⅔ when a stake source is
-// wired (HIGH-3), count-only otherwise. It is the SINGLE gate a cert must pass before
-// it is treated as finality (the finalize path) OR as equivocation evidence (the
-// height-gate fork path, H1): a forged cert with junk signatures fails here and can
-// neither finalize a block nor slash a validator. epochHeight is the P-chain height
-// the per-voter pubkeys / stake are resolved at (MEDIUM-1). A nil verifier fails
-// closed.
+// verifyCert runs the full finality predicate — α distinct in-set signatures over the
+// cert's canonical position, stake-weighted to a strict ⅔ when a stake source is wired,
+// count-only otherwise. It is the single gate a cert passes before it counts either as
+// finality (the finalize path) or as equivocation evidence (the height-gate fork path):
+// a forged cert with junk signatures fails here and can neither finalize a block nor
+// slash a validator. epochHeight is the P-chain height the per-voter pubkeys and stake
+// are resolved at. A nil verifier fails closed.
 func (t *Transitive) verifyCert(cert *QuorumCert, epochHeight uint64) error {
 	t.mu.RLock()
 	verifier := t.voteVerifier
@@ -572,15 +589,15 @@ func (t *Transitive) verifyCert(cert *QuorumCert, epochHeight uint64) error {
 	return cert.Verify(verifier, epochHeight)
 }
 
-// reportCertEquivocation records that a SECOND, conflicting finality cert was
-// presented for a height already finalized to a DIFFERENT CANONICAL commitment — a
-// provable safety-equivocation (a genuine fork: two valid certs select different
-// execution blocks at one height). `finalizedCanonical` is the canonical id already
-// final at this height; the conflicting cert's canonical id differs. This is keyed
-// on canonical identity, so a duplicate ENVELOPE wrapping the same canonical block
-// NEVER reaches here (that is the bug this whole change removes). Each voter is
-// recorded as a DoubleVote. Logged at CRIT — a Byzantine-fault signal. Best effort:
-// never blocks the safety reject.
+// reportCertEquivocation records that a second, conflicting finality cert was
+// presented for a height already finalized to a different canonical commitment — a
+// provable safety equivocation: two valid certs selecting different execution blocks
+// at one height. `finalizedCanonical` is the canonical id already final at this
+// height; the conflicting cert's canonical id differs. Evidence is keyed on canonical
+// identity, so a duplicate envelope wrapping the same canonical block cannot reach
+// here — an alias is agreement, not a fork, and slashing on it would punish honest
+// validators. Each voter is recorded as a DoubleVote. Best effort: it never blocks
+// the safety reject.
 func (rt *Runtime) reportCertEquivocation(cert *QuorumCert, finalizedCanonical ids.ID) {
 	conflicting := cert.Position.CanonicalID
 	if conflicting == ids.Empty {

@@ -40,11 +40,15 @@
 //       attestation ONLY after it ACCEPTS it; a never-accepted height returns "cannot query
 //       unfinalized data". So by P1, no block at h was ever externalized — the finalization
 //       at h was purely INTERNAL to the consensus layer.
-//   P3. The cert material for h (the α-of-K precommit signatures and the assembled cert)
-//       lived ONLY in memory (finalizedByCert, the served-cert window, the roundView
-//       precommit sets) — all cleared on the restart this reconcile runs within. The durable
-//       vote-guard persists NO signatures. So after the restart NO node holds or can
-//       reconstruct a presentable cert for h.
+//   P3. No node holds a presentable cert for h. The in-memory homes (finalizedByCert, the
+//       served-cert window, the roundView precommit sets) clear on the restart this reconcile
+//       runs within, and the durable vote-guard persists bindings and a floor, never
+//       signatures. The durable cert store is bounded by the SAME condition as P1:
+//       applyBranchFinalization returns at its first VM.Accept error and reaches
+//       storeServedCertLocked / persistServedCert only on a clean accept, so a cert is
+//       recorded — in memory or on disk — only for a tip the VM applied. Contrapositive: a
+//       stored cert at height h means some node applied h, hence h <= fleet-max <= safeFloor,
+//       hence h is not in the abandoned range at all.
 //   P4. From P2 (never externalized) + P3 (cert unrecoverable): no party holds two certs for
 //       h. Re-finalizing a fresh block at h yields exactly ONE presentable cert there. No
 //       double-cert is observable. ∎

@@ -3,39 +3,37 @@
 
 // cert.go — the engine-level finality witness for chain consensus.
 //
-// THE FINALITY RULE (one rule, one place):
+// The finality rule, stated once:
 //
-//	A value block FINALIZES only after α distinct validators have each produced
-//	a correctly-signed ACCEPT vote over the SAME consensus position
-//	(chain, height, round, block_id, parent_id). The proof of that fact is a
-//	QuorumCert. No node — not even the proposer — may finalize a value block
-//	without holding (or having verified) a QuorumCert for it.
+//	A value block finalizes only after α distinct validators have each produced
+//	a correctly-signed ACCEPT vote over the same consensus position
+//	(chain, height, round, canonical block, canonical parent). The proof of that
+//	fact is a QuorumCert. No node — not even the proposer — may finalize a value
+//	block without holding, or having verified, a QuorumCert for it.
 //
-// This closes the proposer-self-finality hole: previously the proposer force-
-// accepted its own block on its LONE self-vote (consensus.ForceAccept), and a
-// peer's REJECT was counted as ACCEPT for the proposer's own block
-// (effectiveAccept = ... || IsOwnProposal). Both are deleted. The α-of-K
-// Snowball counting in consensus.go is now the sole finality authority, and a
-// QuorumCert is its portable, verifiable witness.
+// A proposer's own vote is one vote and buys its own proposal no credit, and a
+// peer's REJECT is never read as an ACCEPT. The α-of-K counting in consensus.go
+// is the sole finality authority; a QuorumCert is its portable, verifiable
+// witness.
 //
-// DECOMPLECTION — the rule vs. the witness's cryptography are SEPARATE:
+// The rule and the witness's cryptography are separate concerns:
 //
-//   - The RULE ("α distinct validators accepted this exact value") lives here
+//   - The rule ("α distinct validators accepted this exact value") lives here
 //     and is identical on every chain (P/X/C/D) and in every deployment.
-//   - The per-vote signature CRYPTOGRAPHY is pluggable via VoteVerifier. The
+//   - The per-vote signature cryptography is pluggable via VoteVerifier. The
 //     engine never invents a signature scheme; the node injects one (BLS,
 //     ML-DSA, secp256k1) backed by a proven library. A QuorumCert over signed
-//     votes is the full-node-verifiable witness at THIS abstraction level.
-//   - protocol/quasar.WeightedQuorumCert is the SAME relation expressed with
+//     votes is the full-node-verifiable witness at this abstraction level.
+//   - protocol/quasar.WeightedQuorumCert is the same relation expressed with
 //     the heavyweight PQ apparatus (per-signer FIPS 204/205 records + weighted
 //     validator-set Merkle root + epoch). When a chain has its validator ML-DSA
 //     key material and weighted-set root plumbed through the node layer, a
-//     QuorumCert UPGRADES to carry a quasar.WeightedQuorumCert as its crypto
-//     witness with NO change to the finality rule (see CryptoWitness / the
-//     quasar bridge in quasar.go). One rule; the witness format is
-//     orthogonal and forward-compatible.
+//     QuorumCert upgrades to carry a quasar.WeightedQuorumCert as its crypto
+//     witness with no change to the finality rule (see CryptoWitness and the
+//     quasar bridge in quasar.go). One rule; the witness format is orthogonal
+//     and forward-compatible.
 //
-// This is a quorum CERTIFICATE, not threshold signing: nothing is aggregated,
+// This is a quorum certificate, not threshold signing: nothing is aggregated,
 // no secret share is combined. Building a cert needs no secrets — any node that
 // has collected α distinct signed ACCEPT votes assembles the identical cert
 // (leaderless, permissionless). Verification is the direct predicate below.
@@ -53,45 +51,29 @@ import (
 )
 
 // QuorumCertVersion is the wire/struct version of the engine-level quorum
-// certificate. Bound into the canonical vote message and the cert digest so a
-// version bump is non-malleable.
+// certificate. It is bound into the canonical vote message and into the cert
+// digest, so a version bump is non-malleable: a signature produced under one
+// version cannot be presented under another.
 //
-// Wire v2 added VotePosition.ValidatorSetRoot (the MEDIUM epoch-binding fix).
+// Version 3 makes the inner execution commitment the primary consensus object.
+// The signed message binds {canonical_block_id, parent_canonical_id,
+// execution_state_root, payload_root} and omits the outer proposervm envelope id
+// from the signature entirely. That outer id is a non-authoritative transport
+// cache key: carried on the wire for block lookup, absent from the signed message
+// and from every finality and equivocation decision. Two outer envelopes wrapping
+// the same inner block therefore produce identical signed messages — their votes
+// interoperate and their certs are duplicate aliases, never a fork.
 //
-// Wire v3 is the design's "QCv2" — the CANONICAL-COMMITMENT cert (incident
-// 1082814 durable fix). It makes the inner execution commitment the PRIMARY
-// consensus object: the signed message binds {canonical_block_id,
-// parent_canonical_id, execution_state_root, payload_root} and DROPS the outer
-// proposervm envelope id from the signature entirely. The outer id is demoted to
-// a non-authoritative transport cache key (carried in the wire for block lookup,
-// excluded from the signed message and from every finality/equivocation
-// decision). Two outer envelopes that wrap the SAME inner block therefore produce
-// IDENTICAL signed messages — their votes interoperate and their certs are
-// duplicates (harmless aliases), never a fork.
+// Versions do not interoperate, by construction. Because the version is folded
+// into the signed message, a cert signed under one version fails a verifier of
+// another on both the version clause and the signature clause, loudly rather than
+// by silent mis-parse. There is no partial interop and no read-only legacy window.
 //
-// This is a deliberate forward-only break: a v2 signature (outer-id finality) and
-// a v3 signature (canonical finality) are over different messages and carry
-// different versions, so a mixed-version cert fails clause-1 (version) and
-// clause-6 (signature) loudly rather than silently mis-parsing. There is no partial
-// QCv1→QCv2 interop and no read-only legacy window.
-//
-// ROLL DISCIPLINE (M2 — fail-safe, but NOT fail-live across the version skew).
-// Because the version is bound into the signed message, a v2 cert and a v3 cert can
-// NEVER be confused and NEVER fork — cross-version verification fails closed. But
-// fail-CLOSED means finality STALLS while fewer than α validators run v3: v3 nodes
-// reject v2 certs (wrong version) and vice-versa, so no α-quorum of one version
-// forms during a mixed window, and any v2 node still alive keeps the old outer-id
-// equivocation-halt behavior. Therefore:
-//
-//  1. Cut ≥ α validators per net to v3 ATOMICALLY (≥4 of 5) — the same coordinated
-//     all-validator roll the incident recovery already performs. A trickle upgrade
-//     that straddles α on each version halts finality on BOTH.
-//  2. The v2 baseline image MUST already carry the converge-on-A seed-recovery (the
-//     live recovery on v1.31.x), so the brief mixed window is not itself halt-prone
-//     before the v3 cut completes.
-//
-// We control all 5 validators per net and roll them together, so the skew window is
-// a single coordinated restart, not a staged migration.
+// That is fail-safe but not fail-live across a version boundary: while fewer than
+// α validators run a given version, no α-quorum of that version can form, so
+// finality stalls on both sides of the skew. A version change is therefore a single
+// coordinated cut of at least α of the validator set, not a staged migration — a
+// trickle that straddles α on each side halts finality on both.
 const QuorumCertVersion uint16 = 3
 
 // QCType names a certificate's semantic role so a signature gathered for one
@@ -108,7 +90,7 @@ const (
 )
 
 // Typed verification errors. Each maps 1:1 to one predicate clause so a caller
-// or test can name the exact failure. Every one is a CLEAN rejection (the cert
+// or test can name the exact failure. Every one is a clean rejection (the cert
 // or vote is invalid); none is a panic and none does unbounded work — an
 // adversarial cert yields an error, never a node crash.
 var (
@@ -141,7 +123,7 @@ type SignedVote struct {
 	// NodeID is the signing validator's identifier. Votes in a cert are sorted
 	// strictly-increasing by this field (distinctness / anti-double-count).
 	NodeID ids.NodeID
-	// Accept is the validator's decision. For a finality cert this MUST be true.
+	// Accept is the validator's decision. For a finality cert it is always true.
 	Accept bool
 	// Signature is the validator's signature over CanonicalVoteMessage of the
 	// cert's position. Verified by a VoteVerifier; the engine is scheme-agnostic.
@@ -150,21 +132,21 @@ type SignedVote struct {
 
 // VotePosition is the consensus position a vote (and a cert) binds to.
 //
-// THE CANONICAL/TRANSPORT SPLIT (the incident-1082814 durable fix). The position
-// carries TWO identities for the block:
+// The canonical/transport split. The position carries two identities for the
+// block:
 //
-//   - the CANONICAL execution identity — {CanonicalID, ParentCanonicalID,
-//     ExecutionStateRoot, PayloadRoot}. This is the PRIMARY consensus object: the
-//     inner execution block commitment that finality, equivocation, ancestry, and
-//     idempotency are ALL defined over. It is folded into the canonical signed
+//   - the canonical execution identity — {CanonicalID, ParentCanonicalID,
+//     ExecutionStateRoot, PayloadRoot}. This is the primary consensus object: the
+//     inner execution block commitment that finality, equivocation, ancestry and
+//     idempotency are all defined over. It is folded into the canonical signed
 //     message, so a signature is bound to the exact execution result.
-//   - the TRANSPORT/envelope identity — {BlockID, ParentID}, the outer proposervm
-//     wrapper ids. These are a CACHE KEY for block lookup/gossip only. They are
-//     DELIBERATELY EXCLUDED from the signed message (CanonicalVoteMessage) and from
-//     every finality decision, so two different outer envelopes wrapping the SAME
-//     inner block sign the SAME message and are duplicates, never a fork.
+//   - the transport identity — {BlockID, ParentID}, the outer proposervm wrapper
+//     ids. These are a cache key for block lookup and gossip only. They are left
+//     out of the signed message (CanonicalVoteMessage) and out of every finality
+//     decision, so two different outer envelopes wrapping the same inner block
+//     sign the same message and are duplicates, never a fork.
 //
-// Every CANONICAL axis (plus chain/height/round/set-root) is folded into the
+// Every canonical axis (plus chain/height/round/set-root) is folded into the
 // signed message; a signature for one canonical position can never be replayed at
 // another. The transport ids are not signed — they are non-authoritative.
 type VotePosition struct {
@@ -172,18 +154,18 @@ type VotePosition struct {
 	Height  uint64
 	Round   uint32
 
-	// BlockID / ParentID are the OUTER proposervm envelope ids — the TRANSPORT
-	// cache keys (block lookup, gossip, DAG tracking). NON-AUTHORITATIVE: excluded
-	// from the signed message and from finality/equivocation. For a block that is
-	// not proposervm-wrapped at the engine boundary, BlockID == CanonicalID (the
-	// scheme degrades to outer==canonical and behaves exactly as before this split).
+	// BlockID / ParentID are the outer proposervm envelope ids — the transport
+	// cache keys (block lookup, gossip, DAG tracking). Non-authoritative: excluded
+	// from the signed message and from finality and equivocation. For a block that
+	// is not proposervm-wrapped at the engine boundary, BlockID == CanonicalID and
+	// the scheme degrades to outer == canonical.
 	BlockID  ids.ID
 	ParentID ids.ID
 
-	// CanonicalID is the inner EXECUTION block commitment — THE primary consensus
-	// object. Finality certifies THIS; the per-height equivocation index keys on
-	// THIS; two certs at one height conflict iff THIS differs. It is bound into the
-	// signed message. For a non-wrapped block it equals BlockID.
+	// CanonicalID is the inner execution block commitment — the primary consensus
+	// object. Finality certifies it; the per-height equivocation index keys on it;
+	// two certs at one height conflict iff it differs. It is bound into the signed
+	// message. For a non-wrapped block it equals BlockID.
 	CanonicalID ids.ID
 	// ParentCanonicalID is the inner execution commitment of the parent — binds the
 	// certified block into the canonical ancestry. Bound into the signed message.
@@ -196,17 +178,17 @@ type VotePosition struct {
 	// PayloadRoot is the transaction/payload root (tx_root) the block commits to.
 	// Bound into the signed message. ids.Empty when the VM does not expose one.
 	PayloadRoot ids.ID
-	// ValidatorSetRoot binds the cert to the EXACT weighted validator set the
-	// vote was cast under (the MEDIUM fix). It is a commitment to the active
-	// set+weights at this position's height/epoch — mirroring quasar's
-	// ConsensusCert.ValidatorSetRoot, which already binds the same axis
-	// (consensus_cert_legs.go). Because it is folded into the canonical signed
-	// message, a cert assembled from votes cast under set-root R cannot be
-	// re-presented as certifying under a different set-root R': every signature
-	// was over R, so reconstructing the message with R' fails clause-6 verify.
+	// ValidatorSetRoot binds the cert to the exact weighted validator set the
+	// vote was cast under. It is a commitment to the active set and weights at
+	// this position's height/epoch — the same axis quasar's
+	// ConsensusCert.ValidatorSetRoot binds (consensus_cert_legs.go). Because it is
+	// folded into the canonical signed message, a cert assembled from votes cast
+	// under set-root R cannot be re-presented as certifying under a different
+	// set-root R': every signature was over R, so reconstructing the message with
+	// R' fails clause-6 verify.
 	//
 	// This turns the stake-weighted finality predicate ("⅔-by-stake at the
-	// cert-position epoch") from an assumption into an ENFORCED invariant: a
+	// cert-position epoch") from an assumption into an enforced invariant: a
 	// cross-epoch stake change cannot retroactively flip an already-correct cert
 	// (the cert's identity is pinned to R, not to "current" stake), and a cert
 	// gathered under one epoch's set cannot be laundered into another epoch.
@@ -234,15 +216,14 @@ func CanonicalVoteMessage(pos VotePosition) []byte {
 // against (pos,true) and reject votes against (pos,false); the cert only ever
 // uses (pos,true).
 //
-// THE MESSAGE BINDS THE CANONICAL EXECUTION IDENTITY, NOT THE OUTER ENVELOPE
-// (the incident-1082814 fix). The outer proposervm ids (pos.BlockID/ParentID)
-// are NOT in this message — they are transport cache keys. The signed identity is
-// the inner execution commitment {canonical_id, parent_canonical_id,
-// execution_state_root, payload_root}. Consequence: two validators that executed
-// the SAME inner block sign byte-identical messages even if they received
-// different outer envelopes, so their votes interoperate and a cert assembled
-// from them verifies on every node. A locally-derived wrapper id can NEVER reach
-// a signature.
+// The message binds the canonical execution identity, not the outer envelope.
+// The outer proposervm ids (pos.BlockID/ParentID) are absent from this message —
+// they are transport cache keys. The signed identity is the inner execution
+// commitment {canonical_id, parent_canonical_id, execution_state_root,
+// payload_root}. Consequence: two validators that executed the same inner block
+// sign byte-identical messages even if they received different outer envelopes,
+// so their votes interoperate and a cert assembled from them verifies on every
+// node. A locally-derived wrapper id can never reach a signature.
 //
 // Layout (big-endian, fixed-width, length-free because every field is fixed):
 //
@@ -256,11 +237,11 @@ func CanonicalVoteMessage(pos VotePosition) []byte {
 //	validator_set_root:32      (epoch/weighted-set commitment; Empty = unbound)
 //	accept:1   (0x01 accept | 0x00 reject)
 //
-// validator_set_root is bound BEFORE the accept byte so a vote is committed to
-// the exact weighted validator set it was cast under (the MEDIUM fix): a cert
-// gathered under set-root R cannot be re-verified as certifying under a
-// different set R'. The domain tag is bumped v1→v2 so a canonical-commitment
-// signature can never be confused with a legacy outer-id signature.
+// validator_set_root is bound before the accept byte so a vote is committed to
+// the exact weighted validator set it was cast under: a cert gathered under
+// set-root R cannot be re-verified as certifying under a different set R'. The
+// domain tag carries its own version so a canonical-commitment signature can
+// never be confused with an outer-id signature.
 func canonicalVoteMessageFor(pos VotePosition, accept bool) []byte {
 	const tag = "LUX/chain/vote/v2\x00"
 	buf := make([]byte, 0, len(tag)+2+1+32+8+4+32+32+32+32+32+1)
@@ -276,14 +257,14 @@ func canonicalVoteMessageFor(pos VotePosition, accept bool) []byte {
 	var u32 [4]byte
 	binary.BigEndian.PutUint32(u32[:], pos.Round)
 	buf = append(buf, u32[:]...)
-	// CANONICAL execution identity — the signed primary object. Outer ids omitted.
-	// FALLBACK (the non-wrapped degrade, in ONE place): a position whose canonical
-	// fields are unset (a bare/in-process VM block with no inner/outer split, or a
-	// fixed-set chain) binds its OUTER id under the canonical slot — byte-identical to
-	// the pre-canonical message for that block. A proposervm-wrapped block carries a
-	// distinct CanonicalID and binds THAT. Resolving the fallback here (not at the
-	// position-build sites) guarantees every producer of a position — engine or test —
-	// signs/verifies the SAME bytes for the same block.
+	// Canonical execution identity — the signed primary object. Outer ids omitted.
+	// The non-wrapped degrade lives here and only here: a position whose canonical
+	// fields are unset (a bare in-process VM block with no inner/outer split, or a
+	// fixed-set chain) binds its outer id under the canonical slot. A
+	// proposervm-wrapped block carries a distinct CanonicalID and binds that.
+	// Resolving the degrade here rather than at the position-build sites is what
+	// guarantees every producer of a position — engine or test — signs and verifies
+	// the same bytes for the same block.
 	canonicalID := pos.CanonicalID
 	if canonicalID == ids.Empty {
 		canonicalID = pos.BlockID
@@ -311,21 +292,21 @@ func canonicalVoteMessageFor(pos VotePosition, accept bool) []byte {
 // quasar, or secp256k1). The engine defines the QUORUM RULE; the verifier
 // supplies the SIGNATURE CHECK. Decomplected.
 //
-// VerifyVote MUST be deterministic and side-effect free, return true iff sig is
-// a valid signature by nodeID over message, and NEVER panic on adversarial
-// input (return false). Implementations that consult a validator set MUST treat
-// an unknown nodeID as "false", not an error — a cert with an out-of-set voter
-// is simply invalid.
+// VerifyVote is deterministic and side-effect free, returns true iff sig is a
+// valid signature by nodeID over message, and does not panic on adversarial input
+// (it returns false). An implementation that consults a validator set treats an
+// unknown nodeID as "false", not an error — a cert with an out-of-set voter is
+// simply invalid.
 //
-// epochHeight is the P-CHAIN height the block's weighted validator set is pinned
-// to (MEDIUM-1 / RESIDUAL-B). An implementation that resolves the voter's public
-// key from a validator set MUST resolve it from the set IN FORCE AT epochHeight —
-// the SAME height the set-root and the ⅔-by-stake tally are read at — NOT from
-// the current validator map. Resolving from the current map drops the legitimate
-// vote of a validator that has since left the current set but was a member at
-// epochHeight (an async-skew window during a staking change), stalling finality
-// for that block. The four reads — membership, pubkey, set-root, stake — all key
-// off epochHeight so a cert is internally consistent at exactly one epoch.
+// epochHeight is the P-chain height the block's weighted validator set is pinned
+// to. An implementation that resolves the voter's public key from a validator set
+// resolves it from the set in force at epochHeight — the same height the set-root
+// and the ⅔-by-stake tally are read at — never from the current validator map.
+// Resolving from the current map drops the legitimate vote of a validator that has
+// since left the current set but was a member at epochHeight (the async-skew window
+// during a staking change), stalling finality for that block. The four reads —
+// membership, pubkey, set-root, stake — all key off epochHeight, so a cert is
+// internally consistent at exactly one epoch.
 type VoteVerifier interface {
 	VerifyVote(nodeID ids.NodeID, message []byte, sig []byte, epochHeight uint64) bool
 }
@@ -339,42 +320,42 @@ func (f VoteVerifierFunc) VerifyVote(nodeID ids.NodeID, message []byte, sig []by
 }
 
 // StakeSource supplies validator voting weights so finality can be checked as a
-// STAKE-WEIGHTED supermajority rather than a raw voter COUNT. This is the HIGH-3
-// fix: on a PoS chain with unequal stake, "α distinct voters" is NOT the same as
-// "≥⅔ of stake" — a coalition of many low-stake validators could reach the count
-// while controlling a minority of stake. When a value/PoS chain wires a
-// StakeSource, a cert finalizes only if BOTH hold: (count ≥ α) AND (Σ voter
-// stake ≥ ⅔ Σ total stake).
+// stake-weighted supermajority rather than a raw voter count. On a PoS chain with
+// unequal stake the two are not the same predicate: a coalition of many low-stake
+// validators can reach "α distinct voters" while controlling a minority of stake.
+// When a value/PoS chain supplies a StakeSource, a cert finalizes only if both
+// hold: (count ≥ α) and (Σ voter stake ≥ ⅔ Σ total stake).
 //
-// Determinism + fail-closed: Weight MUST be deterministic for a given
-// (nodeID, epoch) and return 0 for an unknown/out-of-set voter (an out-of-set
-// voter contributes no stake — it cannot inflate the numerator). TotalStake is
-// the epoch's total active stake; if it is 0 the source is unusable and the
-// caller treats the cert as unverifiable (fail closed). The engine binds the
-// source to the cert's position height so weights are read at the right epoch.
+// Determinism and fail-closed: Weight is deterministic for a given (nodeID, epoch)
+// and returns 0 for an unknown or out-of-set voter, so such a voter contributes no
+// stake and cannot inflate the numerator. TotalStake is the epoch's total active
+// stake; if it is 0 the source is unusable and the caller treats the cert as
+// unverifiable. The engine binds the source to the cert's position height so
+// weights are read at the right epoch.
 type StakeSource interface {
 	// Weight returns the voting weight (stake) of nodeID at the given height, or
 	// 0 if nodeID is not an active validator at that height.
 	Weight(nodeID ids.NodeID, height uint64) uint64
 	// TotalStake returns the total active validator stake at the given height.
 	TotalStake(height uint64) uint64
-	// ValidatorCount returns the number of DISTINCT active validators at the given
-	// height — the round-scoped view-change's BFT committee size n (its POL/precommit
-	// count distinct validators, so n must be the LIVE set, not the sample K).
-	// Read from the SAME height-indexed set as Weight/TotalStake so the count-quorum and
-	// the stake-quorum are the identical set. 0 for an unresolved/empty set (view-change
-	// then keeps the configured committee, guarded by the 2α−n>f bound).
+	// ValidatorCount returns the number of distinct active validators at the given
+	// height — the round-scoped view-change's BFT committee size n. Its POL and
+	// precommit both count distinct validators, so n is the live set, not the sample
+	// K. It is read from the same height-indexed set as Weight and TotalStake, so the
+	// count-quorum and the stake-quorum are over one identical set. 0 for an
+	// unresolved or empty set; the view-change then keeps the configured committee,
+	// guarded by the 2α−n>f bound.
 	ValidatorCount(height uint64) int
 }
 
 // ValidatorSetRootSource computes the commitment to the active weighted
 // validator set at a given height — the value bound into a VotePosition's
 // ValidatorSetRoot. The node supplies it from the chain's validator set; the
-// engine stamps it into every position it signs/assembles so a cert is
-// cryptographically pinned to the exact set+weights it was certified under
-// (the MEDIUM fix). It MUST be deterministic for a given height across all
-// honest nodes (every node computing the root for height H must agree, or their
-// signatures over the same block would not be mutually verifiable).
+// engine stamps it into every position it signs or assembles, so a cert is
+// cryptographically pinned to the exact set and weights it was certified under.
+// It is deterministic for a given height across all honest nodes: every node
+// computing the root for height H has to agree, or their signatures over the same
+// block would not be mutually verifiable.
 //
 // Returning ids.Empty is the explicit "no epoch bound" answer — a chain that
 // does not commit to a set-root signs and verifies with Empty consistently
@@ -391,28 +372,29 @@ type ValidatorSetRootFunc func(height uint64) ids.ID
 // ValidatorSetRoot implements ValidatorSetRootSource.
 func (f ValidatorSetRootFunc) ValidatorSetRoot(height uint64) ids.ID { return f(height) }
 
-// VerifyWeighted is the TIER-SELECTED finality predicate. It first runs Verify (the
-// tier-agnostic structural + signature predicate) and then enforces the threshold for
-// the cert's OWN tier:
+// VerifyWeighted is the tier-selected finality predicate. It first runs Verify (the
+// tier-agnostic structural and signature predicate) and then enforces the threshold for
+// the cert's own tier:
 //
-//   - Nova  → a strict MAJORITY of TOTAL STAKE by distinct signers (config.HalfStakeFloor)
-//     plus a NovaSignerFloor count, and DELIBERATELY not a supermajority. This is the
-//     LOCAL-EXECUTION gate: it must ignite at a bare majority (3 of 5) — the "survive 3/5"
-//     liveness mandate — so the ⅔ gate here would defeat its whole purpose.
-//     Crash-fault-safe by majority intersection; NOT Byzantine-safe (that is Quasar's job).
-//   - Quasar → a strict >⅔ of TOTAL STAKE by distinct signers (config.TwoThirdsStakeFloor).
-//     This is the EXPORT gate — the Byzantine-safe finality bridges / DEX settlement /
-//     cross-chain messages / validator-set transitions consume.
+//   - Nova → a strict majority of total stake by distinct signers (config.HalfStakeFloor)
+//     plus a NovaSignerFloor count, and deliberately not a supermajority. This is the
+//     local-execution rung: it has to ignite at a bare majority, so a ⅔ threshold here
+//     would defeat its purpose. Crash-fault-safe by majority intersection, and not
+//     Byzantine-safe — that is Quasar's job.
+//   - Quasar → a strict >⅔ of total stake by distinct signers (config.TwoThirdsStakeFloor).
+//     This is the export rung, the Byzantine-safe finality bridges, DEX settlement,
+//     cross-chain messages and validator-set transitions consume.
 //
-// The tier is read from the cert, but the THRESHOLD is RE-DERIVED from the authoritative
-// validator set (never the cert's self-declared Threshold), so a cert cannot forge its
-// tier upward: a Nova set of votes relabeled Quasar fails the ⅔-by-stake check, and a
-// Quasar cert relabeled Nova merely under-claims. An unknown tier fails closed.
+// The tier is read from the cert, but the threshold is re-derived from the authoritative
+// validator set rather than taken from the cert's self-declared Threshold, so a cert
+// cannot forge its tier upward: a Nova set of votes relabeled Quasar fails the ⅔-by-stake
+// check, and a Quasar cert relabeled Nova merely under-claims. An unknown tier fails
+// closed.
 //
-// A nil stake source means "no stake model wired" — the caller MUST instead use Verify
-// and is responsible for the equal-stake admission invariant (documented on the engine).
-// VerifyWeighted with a nil source fails closed to make a wiring mistake loud rather than
-// silently count-only.
+// A nil stake source means no stake model is supplied — the caller uses Verify instead
+// and is responsible for the equal-stake admission invariant documented on the engine.
+// VerifyWeighted with a nil source fails closed, so a mis-connected caller is loud rather
+// than silently count-only.
 func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, epochHeight uint64) error {
 	if err := c.Verify(verifier, epochHeight); err != nil {
 		return err
@@ -430,28 +412,28 @@ func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, ep
 	}
 }
 
-// verifyNovaMajority enforces the Nova LOCAL-EXECUTION threshold: the cert's distinct
-// voters hold a strict MAJORITY OF STAKE at the epoch (config.HalfStakeFloor), and there
-// are at least NovaSignerFloor(n) of them. Both are recomputed from the authoritative live
-// set, so a cert can never self-declare a below-majority Nova threshold; an UNRESOLVED set
-// (n<1, or zero total stake) fails closed — a majority of an unknown set cannot be
-// asserted, and NovaQuorum(0)=1 would otherwise let a lone node self-accept during the
-// transient-empty validator view that forked 1085013.
+// verifyNovaMajority enforces the Nova local-execution threshold: the cert's distinct
+// voters hold a strict majority of stake at the epoch (config.HalfStakeFloor), and there
+// are at least NovaSignerFloor(n) of them. Both are recomputed from the authoritative
+// live set, so a cert can never self-declare a below-majority Nova threshold. An
+// unresolved set (n<1, or zero total stake) fails closed: a majority of an unknown set
+// cannot be asserted, and NovaQuorum(0)=1 would otherwise let a lone node self-accept
+// while its view of the validator set is transiently empty.
 //
-// STAKE, NOT HEAD-COUNT. Nova is still a bare majority and still deliberately below the
-// Quasar ⅔ export gate — it is only read in the unit the chain actually weighs votes in.
-// On an equal-stake set the two readings are identical (⌊n/2⌋+1 signers either way), so a
-// uniform fleet sees no change at all. They diverge when weights do, and a head-count is
-// wrong in both directions there. It lets a registration at the minimum stake RAISE the
-// gate: one more entry takes ⌊n/2⌋+1 from 3 to 4, so a set of five validators plus a
+// Stake, not head-count. Nova is still a bare majority and still deliberately below the
+// Quasar ⅔ export threshold — it is only read in the unit the chain actually weighs votes
+// in. On an equal-stake set the two readings are identical (⌊n/2⌋+1 signers either way),
+// so a uniform fleet sees no difference. They diverge when weights do, and a head-count is
+// wrong in both directions there. It lets a registration at the minimum stake raise the
+// bar: one more entry takes ⌊n/2⌋+1 from 3 to 4, so a set of five validators plus a
 // minimum-stake sixth needs four of the five to agree and tolerates one loss instead of
-// two. And it lets that same minimum stake CAST a vote toward the majority that decides
+// two. And it lets that same minimum stake cast a vote toward the majority that decides
 // what the chain is. Registration is open at minValidatorStake, so both are purchasable.
 // A majority of stake is neither.
 //
-// The signer floor is the guard the stake predicate cannot give: a single validator holding
-// a stake majority would otherwise self-ignite (the 1085013 class). Stake majority AND the
-// floor — two independent predicates, neither sufficient alone.
+// The signer floor is the guard the stake predicate cannot give: a single validator
+// holding a stake majority would otherwise self-ignite. Stake majority and the floor are
+// two independent predicates, neither sufficient alone.
 func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) error {
 	n := stake.ValidatorCount(epochHeight)
 	if n < 1 {
@@ -482,12 +464,12 @@ func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) e
 // verifyQuasarSupermajority enforces the Quasar EXPORT threshold: the summed stake of the
 // cert's distinct voters STRICTLY exceeds two-thirds of the total stake at the epoch.
 func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight uint64) error {
-	// The ⅔-by-stake tally is read at the block's P-CHAIN EPOCH height — the SAME
-	// height the cert's set-root and the per-voter pubkeys are read at (MEDIUM-1)
-	// — NOT c.Position.Height (the value-chain height, which platformvm would
-	// reject as unfinalized and which races ahead of the P-chain epoch). Reading
-	// the tally at the same epoch the signatures were cast under guarantees a
-	// validator whose vote is in the cert also contributes its epoch weight.
+	// The ⅔-by-stake tally is read at the block's P-chain epoch height — the same
+	// height the cert's set-root and the per-voter pubkeys are read at — rather than
+	// at c.Position.Height, the value-chain height, which platformvm would reject as
+	// unfinalized and which races ahead of the P-chain epoch. Reading the tally at
+	// the same epoch the signatures were cast under is what guarantees a validator
+	// whose vote is in the cert also contributes its epoch weight.
 	total := stake.TotalStake(epochHeight)
 	if total == 0 {
 		// No known stake at this epoch — cannot assert a supermajority. Fail closed.
@@ -497,11 +479,11 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 	for i := range c.Votes {
 		voted += stake.Weight(c.Votes[i].NodeID, epochHeight)
 	}
-	// STRICT supermajority by stake: accept iff voted > floor(2·total/3)
-	// (Tendermint +⅔). The floor is the SINGLE definition in config.TwoThirdsStakeFloor
-	// — the SAME function the live-set parameter sizer derives α from
-	// (config.WeightedSupermajorityThreshold), so the count threshold the node
-	// sizes to can never drift from the stake predicate enforced here.
+	// Strict supermajority by stake: accept iff voted > floor(2·total/3). The floor
+	// has one definition, config.TwoThirdsStakeFloor — the same function the live-set
+	// parameter sizer derives α from (config.WeightedSupermajorityThreshold), so the
+	// count threshold the node sizes to can never drift from the stake predicate
+	// enforced here.
 	twoThirdsFloor := config.TwoThirdsStakeFloor(total)
 	if voted <= twoThirdsFloor {
 		return fmt.Errorf("%w: voted=%d total=%d (need > floor(2/3·total)=%d) at height %d",
@@ -510,9 +492,9 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 	return nil
 }
 
-// AuthorizesExport reports whether THIS cert is export-grade finality (Quasar or
-// brighter) — the safety boundary a bridge / DEX-settlement / cross-chain consumer MUST
-// gate on. A Nova cert (local execution) returns false even though it is a valid,
+// AuthorizesExport reports whether this cert is export-grade finality (Quasar or
+// brighter) — the safety boundary a bridge, DEX settlement or cross-chain consumer
+// admits on. A Nova cert (local execution) returns false even though it is a valid,
 // signature-verified majority cert. This is the cert-level projection of
 // Finality.AuthorizesExport, so a raw cert in hand can be gated without re-deriving its
 // tier from context. A nil cert is not export-grade.
@@ -524,7 +506,7 @@ func (c *QuorumCert) AuthorizesExport() bool {
 // signed ACCEPT over Position. It is portable (gossipable), verifiable by any
 // node holding the VoteVerifier, and deterministic to assemble.
 //
-// It is NOT a signature — there is no aggregate field, because nothing is
+// It is not a signature — there is no aggregate field, because nothing is
 // aggregated. The cert carries the per-voter signed records; verification is
 // the predicate in Verify.
 type QuorumCert struct {
@@ -533,17 +515,16 @@ type QuorumCert struct {
 	// Type names the cert's role (QCFinality). Bound into every vote message.
 	Type QCType
 	// Tier is the finality rung this cert attests — Nova (a bare-majority
-	// LOCAL-EXECUTION cert) or Quasar (a strict ⅔-by-stake EXPORT cert). It selects
-	// which threshold VerifyWeighted enforces, so ONE cert type carries both accept
+	// local-execution cert) or Quasar (a strict ⅔-by-stake export cert). It selects
+	// which threshold VerifyWeighted enforces, so one cert type carries both accept
 	// (Nova) and export (Quasar) finality with no ambiguity about what a given cert
-	// proves. It is DELIBERATELY not bound into the per-vote signed message: a vote is
-	// tier-agnostic ("I accept this block"), and the SAME accept vote counts toward
-	// both a Nova majority and a Quasar supermajority. The tier therefore cannot be
-	// forged UPWARD — VerifyWeighted re-derives the real threshold from the
-	// authoritative validator set, so relabeling a Nova cert as Quasar is rejected
-	// (it will not clear ⅔-by-stake) and relabeling a Quasar cert as Nova only
-	// under-claims (harmless). Only Nova and Quasar are valid here; Horizon is the PQ
-	// seal layer, not a QuorumCert.
+	// proves. It is deliberately not bound into the per-vote signed message: a vote is
+	// tier-agnostic ("I accept this block"), and one accept vote counts toward both a
+	// Nova majority and a Quasar supermajority. The tier therefore cannot be forged
+	// upward — VerifyWeighted re-derives the real threshold from the authoritative
+	// validator set, so relabeling a Nova cert as Quasar is rejected (it will not clear
+	// ⅔-by-stake) and relabeling a Quasar cert as Nova only under-claims. Only Nova and
+	// Quasar are valid here; Horizon is the PQ seal layer, not a QuorumCert.
 	Tier Finality
 	// Position is the consensus position every vote binds to.
 	Position VotePosition
@@ -556,13 +537,13 @@ type QuorumCert struct {
 }
 
 // AssembleQuorumCert builds a finality cert from collected signed ACCEPT votes.
-// Permissionless and deterministic: NO secrets, NO randomness. Given the same
+// Permissionless and deterministic: no secrets, no randomness. Given the same
 // votes and position the same cert comes out.
 //
 // It sorts votes strictly-increasing by NodeID (dropping duplicate NodeIDs —
 // last-writer-wins is not used; a duplicate NodeID is an error so a cert can
 // never double-count), and rejects a structurally impossible cert (no votes,
-// zero threshold, a non-accept vote). It does NOT verify signatures —
+// zero threshold, a non-accept vote). It does not verify signatures —
 // assembly is orthogonal to verification (a relaying node assembles; verifiers
 // verify). A subsequent Verify is the gate.
 //
@@ -620,8 +601,8 @@ func AssembleQuorumCert(pos VotePosition, tier Finality, threshold uint32, votes
 }
 
 // Verify checks the cert against verifier. Returns nil iff every predicate
-// clause holds; otherwise a typed error naming the FIRST failure. NEVER panics
-// and NEVER does unbounded work — an adversarial cert (duplicate voter, bad
+// clause holds; otherwise a typed error naming the first failure. It does not
+// panic and does no unbounded work — an adversarial cert (duplicate voter, bad
 // signature, sub-threshold, wrong position) yields a clean error.
 //
 // Predicate (the engine-level projection of quasar's weighted-quorum predicate):
@@ -631,7 +612,7 @@ func AssembleQuorumCert(pos VotePosition, tier Finality, threshold uint32, votes
 //	(2) threshold (alpha) > 0
 //	(3) at least one vote
 //	for each vote, in order:
-//	  (4) node ids are STRICTLY INCREASING            (distinct, anti-double-count)
+//	  (4) node ids are strictly increasing            (distinct, anti-double-count)
 //	  (5) vote is ACCEPT
 //	  (6) signature verifies under verifier over CanonicalVoteMessage(Position)
 //	then

@@ -1,30 +1,23 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// frontier_rebase_test.go — the ancestry walk must re-test the frontier AFTER a
-// canonical rebase.
+// frontier_rebase_test.go — the ancestry walk re-tests the frontier after a canonical
+// rebase.
 //
 // pathFromTip walks parent links from the certified block down to the finalized tip,
-// looping while cur != led.tip. When the exact outer envelope a cert names is untracked,
-// the walk stands a LOCAL canonical-equivalent wrapper in its place and assigns cur =
-// localID. That assignment moves cur mid-body, so the loop condition no longer holds for
-// the value being tested by the checks below it. When the local wrapper IS the finalized
-// tip, execution reached `curHeight <= led.height` with cur == led.tip and returned
-// ErrConflictsWithFinalizedBranch — refusing a cert that extends the frontier by exactly
-// one block, and naming the tip itself as the "losing/pruned sibling branch" it descends
-// from.
+// looping while cur != led.tip. A cert may name an outer envelope this node never
+// tracked; when it does, the walk substitutes a local canonical-equivalent wrapper and
+// assigns cur = localID. That assignment moves cur mid-body, past the loop condition, so
+// every check below it tests a value the condition was never applied to. If the
+// substituted wrapper is itself the finalized tip, the walk falls into
+// `curHeight <= led.height` holding cur == led.tip and reports
+// ErrConflictsWithFinalizedBranch: a cert that extends the frontier by exactly one block
+// is refused, with the tip named as the losing sibling branch it supposedly descends from.
 //
-// Observed on lux-testnet luxd-0, which refused every incoming cert at a static tip:
-//
-//	incoming cert: REFUSED by finality guard (no VM.Accept)
-//	error="chain: cert-selected block does not extend the finalized frontier (it descends
-//	from a losing/pruned sibling branch): tH96v3tgug2SqQS1uPK6BRo2nUNV6r32SP5RZitUtsQwSHb7Q
-//	ancestry reaches oYkSNtSbAaYHfQECmHS1P5VZcrcobANbVLLzcKj2xMheztvPU (height 36060)
-//	not finalized tip oYkSNtSbAaYHfQECmHS1P5VZcrcobANbVLLzcKj2xMheztvPU"
-//
-// The reached ancestor and the finalized tip are the same id. The refusal is self-
-// contradictory, and it is self-sustaining: the tip never moves, so the next cert takes
-// the same path, so the validator is stranded permanently.
+// The refusal is self-contradictory — the ancestor reached and the finalized tip are one
+// id — and self-sustaining: refusing the cert leaves the tip where it was, so the next
+// cert walks the same path to the same refusal. A frontier rebase must therefore re-test
+// the loop condition against the substituted value before any check consumes it.
 
 package chain
 
@@ -36,8 +29,8 @@ import (
 )
 
 // TestPathFromTip_RebaseOntoTip_Finalizes pins the walk: when the canonical rebase lands
-// on the finalized tip itself, the path is complete and the cert finalizes. The pre-fix
-// walk returned ErrConflictsWithFinalizedBranch here.
+// on the finalized tip itself, the path is complete and the cert finalizes. A walk that
+// does not re-test the frontier after the rebase refuses it as a conflicting branch.
 func TestPathFromTip_RebaseOntoTip_Finalizes(t *testing.T) {
 	const tipHeight = 36060
 

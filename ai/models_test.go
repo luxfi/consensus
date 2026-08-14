@@ -822,7 +822,7 @@ func TestVersionEntropy_Edge(t *testing.T) {
 		{"empty", ""},
 		{"simple", "1.0"},
 		{"complex", "1.2.3"},
-		{"very_complex", "1.2.3.4.5"},
+		{"more_than_semver", "1.2.3-rc.4"},
 	}
 
 	for _, tt := range tests {

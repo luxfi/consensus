@@ -1,38 +1,32 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// certified_descendant_head_test.go — the head = certified+1 false-positive halt.
+// certified_descendant_head_test.go — a certified VM head that already contains the steer
+// target is benign, not a double-finalization.
 //
-// THE INCIDENT (devnet v1.36.33, all five validators). Each node hit, exactly once:
+// A node whose accepted head is certified at height h+1 while the engine steers it at the
+// certified block at height h is on one chain, holding both blocks. Nothing would be
+// orphaned. Two separate properties have to hold for the engine to see that, one on each
+// side of the steer:
 //
-//	error VM accepted head is CONSENSUS-CERTIFIED and conflicts with the newly finalized
-//	      block — refusing to orphan it  orphanedHeight=1364
-//	fatal SetPreference would orphan a CONSENSUS-CERTIFIED block — refusing (fail-closed)
-//	      error="cannot orphan finalized block at height: 1364 to common block at height: 1363"
+//   - The producer. acceptWithCertCore releases t.mu across every VM call-out, so a second
+//     finalize can complete inside that window and advance both the ledger and the VM to
+//     blockID+1. Steering afterwards at the stale local blockID is a backwards steer, which
+//     the VM's accepted-irreversibility guard (evm/core/blockchain.go: commonBlock <
+//     lastAccepted) correctly refuses. The steer belongs at the live build anchor, which is
+//     never below the VM's accepted head — and, when this node does not hold that anchor, at
+//     the block VM.Accept has just applied.
 //
-// at three distinct height pairs (1258/1259, 1363/1364, 1364/1365), ALWAYS with
-// certified = head − 1, and with every surviving node holding byte-identical blocks at
-// every one of those heights: no fork anywhere. os.Exit(1) on a benign state.
+//   - The classifier. "The head is the ledger's certified canonical at its own height" is
+//     trivially true for every healthy node whose head is certified, so on its own it says
+//     nothing about a second finalization. A certified head may only be orphaned once the
+//     steer target is established as not itself the ledger's certified canonical at its own
+//     height — that is, once the two blocks are known to be certified on different chains.
 //
-// TWO defects, one crash:
-//
-//  1. PRODUCER. acceptWithCertCore releases t.mu across every VM call-out, then steers the
-//     VM with its STALE local blockID. A finalize that completed in that window has already
-//     advanced the ledger AND the EVM to blockID+1, so the steer is BACKWARDS and the EVM's
-//     accepted-irreversibility guard (evm/core/blockchain.go: commonBlock < lastAccepted)
-//     correctly refuses it. Fix: steer at the LIVE build anchor (PreferredBuildTip), which
-//     is never below the VM's accepted head.
-//
-//  2. CLASSIFIER. reconcileVMToCertified asked only "is the head the ledger's certified
-//     canonical at ITS OWN height?" — trivially TRUE for every healthy node whose head is
-//     certified — and reported a double-finalization. It never established that `certified`
-//     was at that same height. Fix: a certified head is only orphaned when `certified` is
-//     NOT itself the ledger's certified canonical at its own height.
-//
-// The safety property is UNCHANGED and still fail-closed: a certified head is dropped only
+// The safety property is unchanged and still fail-closed: a certified head is dropped only
 // for a block our own ledger certifies on the same one chain. See
-// TestReconcile_CertifiedHead_HaltsFailClosed (orphan_reconcile_test.go), which now proves
-// the halt with BOTH blocks readable — the ledger, not an unreadable id, decides.
+// TestReconcile_CertifiedHead_HaltsFailClosed (orphan_reconcile_test.go), which proves the
+// halt with both blocks readable — the ledger, not an unreadable id, decides.
 package chain
 
 import (
@@ -42,7 +36,7 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// twoHeightLedger builds a certified ledger holding a CONTIGUOUS two-height chain:
+// twoHeightLedger builds a certified ledger holding a contiguous two-height chain:
 // byHeight[h] = lower and byHeight[h+1] = upper, tip = upper. This is exactly the state a
 // node is in after a second finalize completes while an earlier one is still between its
 // VM call-outs.
@@ -53,13 +47,10 @@ func twoHeightLedger(lower ids.ID, h uint64, upper ids.ID) FinalityLedger {
 	return led
 }
 
-// TestReconcile_CertifiedDescendantHead_NoHalt is the incident, reduced. The VM's accepted
-// head is the CERTIFIED block at 1364; the steer target is the CERTIFIED block at 1363 —
-// its own parent on the one certified chain. SetPreference refuses (backwards steer), but
-// nothing would be orphaned: the VM already CONTAINS 1363. The engine must not halt, and
-// must not touch the VM head.
-//
-// Pre-fix this returned false ⇒ os.Exit(1) ⇒ five dead validators.
+// TestReconcile_CertifiedDescendantHead_NoHalt: the VM's accepted head is the certified
+// block at h+1 and the steer target is the certified block at h — its own parent on the one
+// certified chain. SetPreference refuses the backwards steer, but nothing would be orphaned:
+// the VM already contains h. The engine must neither halt nor touch the VM head.
 func TestReconcile_CertifiedDescendantHead_NoHalt(t *testing.T) {
 	e := newTestEngine()
 
@@ -76,12 +67,12 @@ func TestReconcile_CertifiedDescendantHead_NoHalt(t *testing.T) {
 	}}
 
 	if !e.reconcileVMToCertified(context.Background(), vm, certified, errOrphan) {
-		t.Fatal("a VM head that is the CERTIFIED DESCENDANT of the finalized block is benign " +
-			"(head = certified+1 on the one certified chain, nothing to orphan) — the engine must " +
-			"NOT halt fail-closed")
+		t.Fatal("a VM head that is the certified descendant of the finalized block is benign " +
+			"(head = certified+1 on the one certified chain, nothing to orphan) — the engine may " +
+			"not halt fail-closed here")
 	}
 	if vm.reconcileCalls != 0 {
-		t.Fatalf("the certified head must be LEFT ALONE (it already contains the certified block), "+
+		t.Fatalf("the certified head must be left alone; it already contains the certified block, "+
 			"got %d ReconcilePreference calls", vm.reconcileCalls)
 	}
 	if vm.head != head {
@@ -89,7 +80,7 @@ func TestReconcile_CertifiedDescendantHead_NoHalt(t *testing.T) {
 	}
 }
 
-// TestReconcile_CertifiedAncestorHead_NoHalt is the mirror: the head is certified BELOW the
+// TestReconcile_CertifiedAncestorHead_NoHalt is the mirror: the head is certified below the
 // steer target, both on the one certified chain. Steering forward orphans nothing.
 func TestReconcile_CertifiedAncestorHead_NoHalt(t *testing.T) {
 	e := newTestEngine()
@@ -107,20 +98,18 @@ func TestReconcile_CertifiedAncestorHead_NoHalt(t *testing.T) {
 	}}
 
 	if !e.reconcileVMToCertified(context.Background(), vm, certified, errOrphan) {
-		t.Fatal("a certified head BELOW the steer target (both on the one certified chain) is benign — must not halt")
+		t.Fatal("a certified head below the steer target (both on the one certified chain) is benign — must not halt")
 	}
 	if vm.reconcileCalls != 0 {
 		t.Fatalf("nothing to reconcile, got %d calls", vm.reconcileCalls)
 	}
 }
 
-// TestAcceptWithCert_StaleSteerIsNotIssued is the PRODUCER fix, end to end through the sole
-// finalizer. The VM block's Accept advances the ledger to H+1 — a deterministic injection of
-// the exact race window acceptWithCertCore documents (t.mu released across the VM call-outs).
-// The engine must then steer at the LIVE anchor (H+1), never at its stale local H.
-//
-// Pre-fix the engine issued SetPreference(H) — backwards, into the EVM's orphan refusal and
-// (with the pre-fix classifier) into os.Exit(1).
+// TestAcceptWithCert_StaleSteerIsNotIssued pins the producer property end to end through the
+// sole finalizer. The VM block's Accept advances the ledger to H+1 — a deterministic
+// injection of the race window acceptWithCertCore documents, where t.mu is released across
+// the VM call-outs. The engine must then steer at the live anchor H+1, never at its stale
+// local H, which is backwards and lands in the VM's orphan refusal.
 func TestAcceptWithCert_StaleSteerIsNotIssued(t *testing.T) {
 	e := newTestEngine()
 	ctx := context.Background()
@@ -172,9 +161,9 @@ func TestAcceptWithCert_StaleSteerIsNotIssued(t *testing.T) {
 		t.Fatalf("expected exactly one SetPreference, got %d (%v)", len(vm.steers), vm.steers)
 	}
 	if vm.steers[0] == lower {
-		t.Fatalf("STALE BACKWARDS STEER: SetPreference(%s) at height 1 while the ledger and the VM "+
-			"are already at height 2 (%s) — this is the refusal the EVM turns into "+
-			"\"cannot orphan finalized block\"", lower, upper)
+		t.Fatalf("stale backwards steer: SetPreference(%s) at height 1 while the ledger and the VM "+
+			"are already at height 2 (%s) — the VM refuses this as orphaning a finalized block",
+			lower, upper)
 	}
 	if vm.steers[0] != upper {
 		t.Fatalf("expected the steer at the live build anchor %s, got %s", upper, vm.steers[0])
@@ -207,25 +196,23 @@ func (m *steerRecordingVM) SetPreference(_ context.Context, id ids.ID) error {
 	return nil
 }
 
-// TestAcceptWithCert_UnheldAnchorFallsBackToAccepted is the SINGLE-STORE INVARIANT at the
-// finalize steer — the property ava gets for free by steering at Consensus.Preference()
-// (ava snow/engine/snowman/voter.go, engine.go), a block it only ever obtained by
-// verifying INTO the VM.
+// TestAcceptWithCert_UnheldAnchorFallsBackToAccepted pins the single-store invariant at the
+// finalize steer: the engine may only name a block its own VM provably holds. An engine that
+// steers at a preference it obtained solely by verifying into the VM gets this for free; one
+// that steers at a value derived from the consensus DAG does not.
 //
-// PreferredBuildTip is a consensus-DAG value, so a node that fell behind can name a tip
-// its own VM does not hold. Steering there is silently lossy, not loud: the proposervm
-// keeps its prior preference and returns nil (node/vms/proposervm/vm.go SetPreference),
-// so the engine's own just-accepted blockID never gets steered either and the VM keeps
-// building on a head OLDER than the block consensus just finalized.
-//
-// Pre-fix the engine steered at the unheld anchor unconditionally. It must fall back to
-// blockID, which VM.Accept has just applied and the VM therefore provably holds.
+// PreferredBuildTip is such a DAG value, so a node that fell behind can name a tip its own VM
+// does not hold. Steering there is silently lossy rather than loud: the proposervm keeps its
+// prior preference and returns nil (node/vms/proposervm/vm.go SetPreference), so the engine's
+// own just-accepted blockID never gets steered either and the VM keeps building on a head
+// older than the block consensus just finalized. The fallback is blockID, which VM.Accept has
+// just applied and the VM therefore provably holds.
 func TestAcceptWithCert_UnheldAnchorFallsBackToAccepted(t *testing.T) {
 	e := newTestEngine()
 	ctx := context.Background()
 
-	lower := ids.GenerateTestID() // finalized here at height 1 — the VM HOLDS this
-	upper := ids.GenerateTestID() // the DAG anchor at height 2 — this node does NOT hold it
+	lower := ids.GenerateTestID() // finalized here at height 1 — the VM holds this
+	upper := ids.GenerateTestID() // the DAG anchor at height 2 — this node does not hold it
 
 	cb := &Block{id: lower, parentID: ids.Empty, height: 1}
 	if err := e.consensus.AddBlock(ctx, cb); err != nil {
@@ -269,8 +256,8 @@ func TestAcceptWithCert_UnheldAnchorFallsBackToAccepted(t *testing.T) {
 		t.Fatalf("expected exactly one SetPreference, got %d (%v)", len(vm.steers), vm.steers)
 	}
 	if vm.steers[0] == upper {
-		t.Fatalf("STEERED AT AN UNHELD BLOCK: SetPreference(%s) names a block this VM does not "+
-			"hold; the proposervm answers with a warn + nil, so the just-accepted %s is never "+
+		t.Fatalf("steered at an unheld block: SetPreference(%s) names a block this VM does not "+
+			"hold; the proposervm answers with a warn and nil, so the just-accepted %s is never "+
 			"steered either and the VM keeps building on its old head", upper, lower)
 	}
 	if vm.steers[0] != lower {

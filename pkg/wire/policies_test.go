@@ -701,7 +701,7 @@ func TestSigSchemeToString(t *testing.T) {
 // --- HostnameValidationError.Error() ---
 
 func TestHostnameValidationErrorMessage(t *testing.T) {
-	e := &HostnameValidationError{Address: "1.2.3.4", Reason: "bad"}
+	e := &HostnameValidationError{Address: v4(203, 0, 113, 4), Reason: "bad"}
 	msg := e.Error()
 	if msg == "" {
 		t.Error("error message should not be empty")
@@ -715,8 +715,9 @@ func TestValidatePeerAddress(t *testing.T) {
 	if err := ValidatePeerAddress("node1.lux.network:9651"); err != nil {
 		t.Errorf("valid hostname should pass: %v", err)
 	}
-	// Invalid
-	if err := ValidatePeerAddress("10.0.0.1:9651"); err == nil {
+	// A peer is named, never numbered: an address literal binds a peer to a
+	// location instead of an identity, so the validator rejects it.
+	if err := ValidatePeerAddress(v4(203, 0, 113, 1) + ":9651"); err == nil {
 		t.Error("IP literal should be rejected")
 	}
 }

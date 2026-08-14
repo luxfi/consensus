@@ -1,24 +1,27 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// orphan_reconcile_test.go — the build-ahead / diverged-VM-head reconcile.
+// orphan_reconcile_test.go — reconciling a VM head that built ahead of, or diverged from,
+// the consensus finality ledger.
 //
-// THE INCIDENT (live 5-node strict-PQ net under load). A node's inner EVM accepted head
-// ran AHEAD of, or diverged from, the consensus finality ledger: when the engine steered
-// the VM (SetPreference) onto the block it had just finalized, the EVM refused with "cannot
-// orphan finalized block at height N to common block at height N-1" (core/blockchain.go:
-// reorg guard). The engine responded with log.Crit → os.Exit(1): a healthy validator was
-// killed even though its CONSENSUS finality was correct.
+// The two components hold different heads, and only one of them is the authority. A node's
+// inner EVM accepts blocks locally, so its accepted head can run ahead of the finality
+// ledger, or sit on a sibling the ledger did not certify. When the engine then steers the VM
+// onto the block consensus just finalized, the EVM's reorg guard refuses the SetPreference
+// with "cannot orphan finalized block at height N to common block at height N-1". That
+// refusal says the VM would lose a block it locally accepted; it says nothing about whether
+// consensus finality is correct, and treating it as fatal kills a node whose finality is
+// correct.
 //
-// THE FIX under test: reconcileVMToCertified replaces the unconditional fatal. It classifies
-// the VM's diverged head against the finality LEDGER (the sole authority) and:
-//   - drops an UNCERTIFIED provisional tip (above the finalized frontier, or a losing
-//     sibling of a finalized block) by reconciling the VM to the certified block — no crash;
-//   - HALTS fail-closed ONLY when the tip the VM would orphan is itself the consensus-
-//     certified block at its height (a two-blocks-at-one-height double-finalization).
+// reconcileVMToCertified therefore classifies the VM's diverged head against the finality
+// ledger, which is the sole authority on what is final, and:
+//   - drops an uncertified provisional tip — one above the finalized frontier, or a losing
+//     sibling of a finalized block — by reconciling the VM to the certified block;
+//   - halts fail-closed when the tip the VM would orphan is itself the consensus-certified
+//     block at its height, since that is two blocks certified at one height.
 //
-// SAFETY INVARIANT proven here: a tip is dropped ONLY when its canonical is provably NOT in
-// byHeight, so NO certified block is ever orphaned to gain liveness.
+// The safety invariant proven here: a tip is dropped only when its canonical is provably
+// absent from byHeight, so no certified block is ever orphaned to buy liveness.
 package chain
 
 import (
@@ -34,8 +37,8 @@ import (
 var errOrphan = errors.New("cannot orphan finalized block at height: 7 to common block at height: 6")
 
 // orphanVMBase is a BlockBuilder whose SetPreference always refuses with the orphan error
-// and whose LastAccepted returns a caller-controlled diverged head. It does NOT implement
-// PreferenceReconciler (the no-live-reconcile case).
+// and whose LastAccepted returns a caller-controlled diverged head. It does not implement
+// PreferenceReconciler — the case where no live reconcile is available.
 type orphanVMBase struct {
 	head   ids.ID
 	blocks map[ids.ID]*mockBlock
@@ -80,10 +83,10 @@ func mb(id ids.ID, height uint64) *mockBlock { return &mockBlock{id: id, height:
 
 // --- direct classification tests: the BFT-safety core --------------------------------
 
-// TestReconcile_UncertifiedSibling_Reconciles: the VM's head is a LOSING SIBLING of the
-// finalized block at the same height (its canonical is NOT the ledger's certified canonical
-// there). It is uncertified ⇒ safe to drop ⇒ the VM is reconciled to the certified block and
-// the node does NOT halt.
+// TestReconcile_UncertifiedSibling_Reconciles: the VM's head is a losing sibling of the
+// finalized block at the same height — its canonical is not the ledger's certified canonical
+// there. Uncertified, so safe to drop: the VM is reconciled to the certified block and the
+// node does not halt.
 func TestReconcile_UncertifiedSibling_Reconciles(t *testing.T) {
 	e := newTestEngine()
 
@@ -91,7 +94,7 @@ func TestReconcile_UncertifiedSibling_Reconciles(t *testing.T) {
 	certifiedCanon := certifiedOuter
 	e.consensus.ledger = seedLedger(certifiedOuter, certifiedCanon, 7) // byHeight[7] = certifiedCanon
 
-	sibling := ids.GenerateTestID() // a DIFFERENT height-7 block the VM accepted locally
+	sibling := ids.GenerateTestID() // a different height-7 block the VM accepted locally
 	vm := &reconcilingOrphanVM{orphanVMBase: &orphanVMBase{
 		head:   sibling,
 		blocks: map[ids.ID]*mockBlock{sibling: mb(sibling, 7)},
@@ -105,13 +108,13 @@ func TestReconcile_UncertifiedSibling_Reconciles(t *testing.T) {
 		t.Fatalf("expected exactly one ReconcilePreference call, got %d", vm.reconcileCalls)
 	}
 	if vm.reconciledTo != certifiedOuter {
-		t.Fatalf("VM must be reconciled TO the certified block %s, got %s", certifiedOuter, vm.reconciledTo)
+		t.Fatalf("VM must be reconciled to the certified block %s, got %s", certifiedOuter, vm.reconciledTo)
 	}
 }
 
-// TestReconcile_BuildAheadAboveFrontier_Reconciles: the VM's head is ABOVE the finalized
-// frontier — the node built + accepted ahead of the quorum (the exact task scenario). Above
-// the frontier there is no byHeight entry ⇒ uncertified ⇒ safe ⇒ reconcile, no halt.
+// TestReconcile_BuildAheadAboveFrontier_Reconciles: the VM's head is above the finalized
+// frontier, because the node built and accepted ahead of the quorum. Above the frontier there
+// is no byHeight entry, so the head is uncertified and safe to drop: reconcile, no halt.
 func TestReconcile_BuildAheadAboveFrontier_Reconciles(t *testing.T) {
 	e := newTestEngine()
 
@@ -133,21 +136,20 @@ func TestReconcile_BuildAheadAboveFrontier_Reconciles(t *testing.T) {
 	}
 }
 
-// TestReconcile_CertifiedHead_HaltsFailClosed is the SAFETY assertion. The VM's head IS the
-// consensus-certified block at its height, and the newly finalized block is a DIFFERENT
-// canonical there — a genuine two-blocks-at-one-height double-finalization. The engine MUST
-// refuse to reconcile (return false ⇒ caller halts fail-closed) and MUST NOT orphan the
-// certified block.
+// TestReconcile_CertifiedHead_HaltsFailClosed is the safety assertion. The VM's head is itself
+// the consensus-certified block at its height, and the newly finalized block is a different
+// canonical there — two blocks certified at one height. The engine has to refuse to reconcile
+// (return false, so the caller halts fail-closed) rather than orphan the certified block.
 func TestReconcile_CertifiedHead_HaltsFailClosed(t *testing.T) {
 	e := newTestEngine()
 
 	head := ids.GenerateTestID()                   // the VM's accepted head at height 7
 	e.consensus.ledger = seedLedger(head, head, 7) // byHeight[7] = head (head IS certified)
-	certifiedOther := ids.GenerateTestID()         // a DIFFERENT block claimed final at 7
+	certifiedOther := ids.GenerateTestID()         // a different block claimed final at 7
 
-	// BOTH blocks are readable, so the halt is decided by the LEDGER (byHeight[7] is head's
-	// canonical, not certifiedOther's) and not by an unreadable id — this is the genuine
-	// two-blocks-at-one-height shape, not an artefact of the mock.
+	// Both blocks are readable, so the halt is decided by the ledger — byHeight[7] holds head's
+	// canonical, not certifiedOther's — and not by an unreadable id. That keeps this the genuine
+	// two-blocks-at-one-height shape rather than an artefact of the mock.
 	vm := &reconcilingOrphanVM{orphanVMBase: &orphanVMBase{
 		head:   head,
 		blocks: map[ids.ID]*mockBlock{head: mb(head, 7), certifiedOther: mb(certifiedOther, 7)},
@@ -155,15 +157,16 @@ func TestReconcile_CertifiedHead_HaltsFailClosed(t *testing.T) {
 
 	handled := e.reconcileVMToCertified(context.Background(), vm, certifiedOther, errOrphan)
 	if handled {
-		t.Fatal("SAFETY VIOLATION: engine reconciled away a CONSENSUS-CERTIFIED block (must return false / halt)")
+		t.Fatal("safety: the engine reconciled away a consensus-certified block (it must return false and halt)")
 	}
 	if vm.reconcileCalls != 0 {
-		t.Fatalf("SAFETY VIOLATION: ReconcilePreference was called for a certified head (%d times) — a certified block must NEVER be orphaned", vm.reconcileCalls)
+		t.Fatalf("safety: ReconcilePreference was called for a certified head (%d times) — a certified block is never orphaned", vm.reconcileCalls)
 	}
 }
 
 // TestReconcile_HeadEqualsCertified_NoOp: a transient SetPreference refusal where the VM's
-// head already equals the certified block. No divergence ⇒ handled, no reconcile.
+// head already equals the certified block. Nothing has diverged, so it is handled with no
+// reconcile.
 func TestReconcile_HeadEqualsCertified_NoOp(t *testing.T) {
 	e := newTestEngine()
 	certified := ids.GenerateTestID()
@@ -180,21 +183,21 @@ func TestReconcile_HeadEqualsCertified_NoOp(t *testing.T) {
 	}
 }
 
-// TestReconcile_NoLiveReconcile_DefersNonFatal: a VM WITHOUT the optional PreferenceReconciler
-// and an uncertified diverged head. The engine must NOT crash: it keeps its correct consensus
-// finality and defers the VM head reconcile to offline recovery (handled=true, no reconcile).
+// TestReconcile_NoLiveReconcile_DefersNonFatal: a VM without the optional PreferenceReconciler
+// and an uncertified diverged head. The engine keeps its correct consensus finality and defers
+// the VM head reconcile to offline recovery (handled=true, no reconcile) rather than crashing.
 func TestReconcile_NoLiveReconcile_DefersNonFatal(t *testing.T) {
 	e := newTestEngine()
 	certified := ids.GenerateTestID()
 	e.consensus.ledger = seedLedger(certified, certified, 7)
 
 	sibling := ids.GenerateTestID()
-	vm := &orphanVMBase{ // does NOT implement PreferenceReconciler
+	vm := &orphanVMBase{ // deliberately does not implement PreferenceReconciler
 		head:   sibling,
 		blocks: map[ids.ID]*mockBlock{sibling: mb(sibling, 7)},
 	}
 	if _, ok := interface{}(vm).(PreferenceReconciler); ok {
-		t.Fatal("test precondition: orphanVMBase must NOT implement PreferenceReconciler")
+		t.Fatal("test precondition: orphanVMBase must not implement PreferenceReconciler")
 	}
 	if !e.reconcileVMToCertified(context.Background(), vm, certified, errOrphan) {
 		t.Fatal("a VM without live reconcile must be handled non-fatally (no halt), got false")
@@ -202,7 +205,8 @@ func TestReconcile_NoLiveReconcile_DefersNonFatal(t *testing.T) {
 }
 
 // TestReconcile_UnreadableHead_DefersNonFatal: LastAccepted returns a head the VM cannot
-// GetBlock. Cannot classify ⇒ do NOT crash, do NOT touch the VM (nothing orphaned), defer.
+// GetBlock. An unclassifiable head is left alone — nothing is orphaned, nothing crashes, the
+// reconcile defers.
 func TestReconcile_UnreadableHead_DefersNonFatal(t *testing.T) {
 	e := newTestEngine()
 	certified := ids.GenerateTestID()
@@ -216,17 +220,18 @@ func TestReconcile_UnreadableHead_DefersNonFatal(t *testing.T) {
 		t.Fatal("unreadable head must be handled non-fatally (no halt)")
 	}
 	if vm.reconcileCalls != 0 {
-		t.Fatalf("must NOT reconcile an unclassifiable head, got %d calls", vm.reconcileCalls)
+		t.Fatalf("an unclassifiable head must not be reconciled, got %d calls", vm.reconcileCalls)
 	}
 }
 
 // --- end-to-end through the sole finalizer -------------------------------------------
 
-// TestAcceptWithCert_OrphanRefusal_ReconcilesInsteadOfHalting drives the FULL finalize path
-// (acceptWithCertCore → ApplyCert → applyBranchFinalization(VM.Accept) → SetPreference) with
-// a VM that refuses SetPreference with the orphan error and whose accepted head diverged from
-// the just-finalized block. Pre-fix this path hit log.Crit → os.Exit(1); the test asserts the
-// engine now finalizes cleanly (returns nil) AND reconciled the VM — the node did not halt.
+// TestAcceptWithCert_OrphanRefusal_ReconcilesInsteadOfHalting drives the whole finalize path
+// (acceptWithCertCore → ApplyCert → applyBranchFinalization(VM.Accept) → SetPreference) with a
+// VM that refuses SetPreference with the orphan error and whose accepted head diverged from the
+// just-finalized block. The classification above is only worth anything if it is reached from
+// the real finalizer, so this asserts the path finalizes cleanly (returns nil) and reconciles
+// the VM, rather than treating the refusal as fatal.
 func TestAcceptWithCert_OrphanRefusal_ReconcilesInsteadOfHalting(t *testing.T) {
 	e := newTestEngine()
 	ctx := context.Background()
@@ -238,9 +243,9 @@ func TestAcceptWithCert_OrphanRefusal_ReconcilesInsteadOfHalting(t *testing.T) {
 		t.Fatalf("AddBlock: %v", err)
 	}
 
-	// A DIVERGED VM head: a different height-1 block the VM accepted ahead/locally. SetPreference
-	// to finalID would orphan it, so the VM refuses; the head is uncertified (byHeight[1] will be
-	// finalID's canonical), so the engine must reconcile — not crash.
+	// A diverged VM head: a different height-1 block the VM accepted locally. SetPreference to
+	// finalID would orphan it, so the VM refuses; the head is uncertified, since byHeight[1] will
+	// be finalID's canonical, so the engine reconciles rather than crashing.
 	sibling := ids.GenerateTestID()
 	vm := &reconcilingOrphanVM{orphanVMBase: &orphanVMBase{
 		head:   sibling,
@@ -262,12 +267,13 @@ func TestAcceptWithCert_OrphanRefusal_ReconcilesInsteadOfHalting(t *testing.T) {
 		Threshold: 1,
 	}}
 
-	// SOLE finalizer. Pre-fix: os.Exit(1) inside here. Post-fix: clean finalize + reconcile.
+	// The sole finalizer: a clean finalize plus a reconcile, with the orphan refusal handled
+	// inside rather than escalated.
 	if err := e.acceptWithCertCore(ctx, finalID, cert, false); err != nil {
 		t.Fatalf("acceptWithCertCore returned error (expected clean finalize+reconcile): %v", err)
 	}
 
-	// The engine reconciled the VM to the finalized block instead of halting.
+	// The engine reconciled the VM to the finalized block instead of halting the node.
 	if vm.reconcileCalls != 1 {
 		t.Fatalf("expected the engine to reconcile the VM exactly once, got %d", vm.reconcileCalls)
 	}

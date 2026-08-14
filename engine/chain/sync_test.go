@@ -11,14 +11,14 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// TestSyncState_RefusesBackwardRegression is the regression test for the
-// SyncState monotonic-height guard. SyncState bypasses markFinalizedLocked by
-// design (an import is an out-of-band reconcile, not an α-of-K finalize), so the
-// monotonic invariant must be re-asserted there explicitly: a backward import
-// (height below the already-finalized height) MUST be refused and MUST leave the
-// finalized head untouched. Without the guard a shorter/older imported chain
-// would silently regress finalizedHeight and un-finalize already-finalized
-// blocks — re-opening the fork window the per-height guard closes.
+// TestSyncState_RefusesBackwardRegression pins the SyncState monotonic-height
+// rule. SyncState bypasses markFinalizedLocked by design (an import is an
+// out-of-band reconcile, not an α-of-K finalize), so the monotonic invariant must
+// be re-asserted there explicitly: a backward import (height below the
+// already-finalized height) is refused and leaves the finalized head untouched.
+// Otherwise a shorter or older imported chain silently regresses finalizedHeight
+// and un-finalizes finalized blocks, re-opening the fork window the per-height
+// guard closes.
 func TestSyncState_RefusesBackwardRegression(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
@@ -29,12 +29,12 @@ func TestSyncState_RefusesBackwardRegression(t *testing.T) {
 		t.Fatalf("seed finalize at height 100: %v", err)
 	}
 
-	// A backward import at height 99 must be REFUSED with ErrSyncStateRegression…
+	// A backward import at height 99 must be refused with ErrSyncStateRegression…
 	older := ids.GenerateTestID()
 	if err := c.SyncState(older, 99); !errors.Is(err, ErrSyncStateRegression) {
 		t.Fatalf("backward SyncState(h=99) should return ErrSyncStateRegression, got: %v", err)
 	}
-	// …and must NOT have regressed any finalized state (fail-closed no-op).
+	// …and must not have regressed any finalized state (fail-closed no-op).
 	if got := c.GetFinalizedTip(); got != h100 {
 		t.Fatalf("finalized tip regressed: got %s want %s (height-100 head must be untouched)", got, h100)
 	}
@@ -49,14 +49,14 @@ func TestSyncState_RefusesBackwardRegression(t *testing.T) {
 	}
 }
 
-// TestSyncState_DifferentBlockIsHintNotEquivocation is the incident-1082814 PART-A
-// regression at the SyncState level. The PRE-FIX code SEEDED FINALITY from
-// vm.LastAccepted, so a re-import at the already-finalized height with a DIFFERENT
-// block was treated as equivocation (the fatal path). That was the BUG: a local
-// import is not a finality source. Under the fix, SyncState is a NON-AUTHORITATIVE
-// recovery HINT — a different block at a certified height does NOT equivocate, does
-// NOT touch the certified frontier, and returns cleanly. Equivocation is decided
-// EXCLUSIVELY by conflicting CERTS over canonical commitments, never by a seed.
+// TestSyncState_DifferentBlockIsHintNotEquivocation pins what an import may and may
+// not conclude. Seeding finality from vm.LastAccepted makes a re-import at an
+// already-finalized height with a different block look like equivocation, which is
+// fatal — but a local import is not a finality source, so it cannot witness a
+// conflict. SyncState is a non-authoritative recovery hint: a different block at a
+// certified height does not equivocate, does not touch the certified frontier, and
+// returns cleanly. Equivocation is decided exclusively by conflicting certs over
+// canonical commitments.
 func TestSyncState_DifferentBlockIsHintNotEquivocation(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
@@ -70,14 +70,14 @@ func TestSyncState_DifferentBlockIsHintNotEquivocation(t *testing.T) {
 		t.Fatalf("SyncState(same block @100) should succeed, got: %v", err)
 	}
 
-	// DIFFERENT block at the same certified height → a HINT, NOT equivocation. The
-	// pre-fix code returned ErrHeightAlreadyFinalized here (the bug). The fix accepts
-	// it as a non-authoritative hint and leaves certified finality untouched.
+	// A different block at the same certified height is a hint, not equivocation:
+	// accepted as non-authoritative, certified finality untouched, no
+	// ErrHeightAlreadyFinalized.
 	other := ids.GenerateTestID()
 	if err := c.SyncState(other, 100); err != nil {
 		t.Fatalf("SyncState(different block @100) must be a clean hint, got: %v", err)
 	}
-	// The CERTIFIED frontier is untouched: height stays 100, the canonical tip is
+	// The certified frontier is untouched: height stays 100, the canonical tip is
 	// still h100's canonical (== h100 here, a non-wrapped block).
 	if h, set := c.GetFinalizedHeight(); !set || h != 100 {
 		t.Fatalf("certified height moved on a hint import: got (%d,%v) want (100,true)", h, set)
@@ -87,12 +87,12 @@ func TestSyncState_DifferentBlockIsHintNotEquivocation(t *testing.T) {
 	}
 }
 
-// TestSyncState_EmptyResetYieldsCleanGenesis is the LOW-2 regression: an empty import
-// head (ids.Empty, height 0) on a ledger ALREADY finalized above genesis resets finality
-// to a CLEAN genesis VALUE — tip Empty, height 0, unset — never the prior half-reset that
-// nulled the tip while leaving height/byHeight stale (a tip-vs-height desync that wedged
-// every future cert in pathFromTip). The proof the desync is gone: a fresh cert finalizes
-// cleanly afterward instead of wedging.
+// TestSyncState_EmptyResetYieldsCleanGenesis pins the reset as a whole value: an empty
+// import head (ids.Empty, height 0) on a ledger already finalized above genesis resets
+// finality to a clean genesis — tip Empty, height 0, unset. A half reset that nulls the
+// tip while leaving height and byHeight stale desyncs tip from height, and pathFromTip
+// then seeks a tip that is not there, wedging every future cert. So the test finalizes a
+// fresh cert after the reset: a usable ledger is the observable proof of a whole reset.
 func TestSyncState_EmptyResetYieldsCleanGenesis(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
@@ -116,21 +116,20 @@ func TestSyncState_EmptyResetYieldsCleanGenesis(t *testing.T) {
 	// post-reset ledger is usable rather than permanently stuck seeking an Empty tip.
 	next := ids.GenerateTestID()
 	if _, err := c.FinalizeBranch(next, 7, ids.Empty); err != nil {
-		t.Fatalf("post-reset finalize wedged (the LOW-2 desync): %v", err)
+		t.Fatalf("post-reset finalize wedged on a tip-vs-height desync: %v", err)
 	}
 	if got := c.GetFinalizedTip(); got != next {
 		t.Fatalf("post-reset finalize did not advance: got %s want %s", got, next)
 	}
 }
 
-// TestSyncState_ForwardImportAdvancesBuildAnchorNotFinality verifies the corrected
-// (incident-1082814 PART-A) semantics of a forward import: it advances the BUILD
-// ANCHOR (where the VM builds — GetFinalizedTip) so the node builds on the imported
-// head, but it does NOT advance CERTIFIED finality. vm.LastAccepted / import is a
-// recovery HINT, never a finality source: the certified height stays at the last
-// QC-backed height and byHeight gains NO entry at the imported height (only a cert
-// can write there). Finality at the imported height is established later via the
-// bootstrap/cert path, not by the import claiming it.
+// TestSyncState_ForwardImportAdvancesBuildAnchorNotFinality splits the two things a
+// forward import moves. It advances the build anchor (where the VM builds —
+// GetFinalizedTip) so the node builds on the imported head, and it does not advance
+// certified finality: vm.LastAccepted is a recovery hint, so the certified height
+// stays at the last QC-backed height and byHeight gains no entry at the imported
+// height, which only a cert may write. Finality at that height arrives later through
+// the bootstrap/cert path.
 func TestSyncState_ForwardImportAdvancesBuildAnchorNotFinality(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
@@ -144,24 +143,24 @@ func TestSyncState_ForwardImportAdvancesBuildAnchorNotFinality(t *testing.T) {
 	if err := c.SyncState(h5000, 5000); err != nil {
 		t.Fatalf("forward SyncState(h=5000) should succeed, got: %v", err)
 	}
-	// BUILD ANCHOR advances to the imported head (the forward hint outranks the lower
-	// certified tip) so the VM builds where the node has state.
+	// The build anchor advances to the imported head (the forward hint outranks the
+	// lower certified tip) so the VM builds where the node has state.
 	if got := c.GetFinalizedTip(); got != h5000 {
 		t.Fatalf("forward import did not advance the build anchor: got %s want %s", got, h5000)
 	}
-	// CERTIFIED finality does NOT advance — an import is a hint, never a finality
+	// Certified finality does not advance — an import is a hint, never a finality
 	// source. The certified height stays 100 (the last QC-backed finalize).
 	if h, set := c.GetFinalizedHeight(); !set || h != 100 {
-		t.Fatalf("forward import wrongly advanced CERTIFIED height: got (%d,%v) want (100,true)", h, set)
+		t.Fatalf("forward import wrongly advanced the certified height: got (%d,%v) want (100,true)", h, set)
 	}
 	// No certified ledger entry was written at the imported height (only a cert can).
 	if _, ok := c.FinalizedBlockAtHeight(5000); ok {
-		t.Fatalf("forward import wrote a CERTIFIED ledger entry at 5000 — a hint must not finalize")
+		t.Fatalf("forward import wrote a certified ledger entry at 5000 — a hint must not finalize")
 	}
 }
 
 // TestSyncState_EmptyResetAllowed verifies that an explicit genesis/empty reset
-// (lastAcceptedID == ids.Empty) is NOT treated as a regression — it is a
+// (lastAcceptedID == ids.Empty) is not treated as a regression — it is a
 // deliberate teardown, distinct from a backward import of a concrete head.
 func TestSyncState_EmptyResetAllowed(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
@@ -179,14 +178,13 @@ func TestSyncState_EmptyResetAllowed(t *testing.T) {
 	}
 }
 
-// TestSyncState_EmptyHeadWithPositiveHeightRefused is the INFO-6 regression. An
-// EMPTY import head paired with a POSITIVE height is contradictory (an empty head
-// is the genesis/teardown reset, valid only at height 0). If allowed it would set
-// finalizedTip=Empty while the seed branch is skipped (finalizedHeight stays
-// stale) AND prune blocks below the positive height — the exact
-// finalizedTip-vs-finalizedHeight desync ForcePreference was hardened against.
-// SyncState must REFUSE it fail-closed, leaving finalized state AND the block pool
-// untouched (no pruning).
+// TestSyncState_EmptyHeadWithPositiveHeightRefused pins the one import shape that
+// contradicts itself. An empty head is the genesis/teardown reset and is meaningful
+// only at height 0; paired with a positive height it would set finalizedTip=Empty
+// while skipping the seed branch, so finalizedHeight stays stale, and it would prune
+// every block below that height — the same finalizedTip-vs-finalizedHeight desync
+// ForcePreference is hardened against. SyncState refuses it fail-closed, leaving
+// finalized state and the block pool untouched.
 func TestSyncState_EmptyHeadWithPositiveHeightRefused(t *testing.T) {
 	c := NewChainConsensus(4, 3, 2)
 
@@ -196,7 +194,7 @@ func TestSyncState_EmptyHeadWithPositiveHeightRefused(t *testing.T) {
 		t.Fatalf("seed finalize at height 100: %v", err)
 	}
 	// Seed a low-height block in the pool so we can prove the refused import does
-	// NOT prune it (the desync path would delete every block below the height).
+	// not prune it (the desync path deletes every block below the height).
 	low := &Block{id: ids.GenerateTestID(), height: 50}
 	if err := c.AddBlock(context.Background(), low); err != nil {
 		t.Fatalf("seed low block @50: %v", err)
@@ -217,7 +215,7 @@ func TestSyncState_EmptyHeadWithPositiveHeightRefused(t *testing.T) {
 	if existing, ok := c.FinalizedBlockAtHeight(100); !ok || existing != h100 {
 		t.Fatalf("refused import corrupted the per-height ledger at 100: ok=%v existing=%s", ok, existing)
 	}
-	// The low-height block MUST still be present — the refused import pruned nothing.
+	// The low-height block must still be present — the refused import pruned nothing.
 	if _, ok := c.GetBlock(low.id); !ok {
 		t.Fatal("refused empty-at-height import pruned a live block below the height (the desync the guard prevents)")
 	}

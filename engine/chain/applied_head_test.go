@@ -3,14 +3,14 @@
 
 // applied_head_test.go — catch-up has to aim at the VM, not at the ledger.
 //
-// The consensus ledger and the VM persist separately. A node that stops uncleanly can
-// come back with certified finality ABOVE the block its VM last committed, and then
-// finality cannot advance at all: the fail-closed guard correctly refuses to move past
-// applied state, while catch-up — steering by the ledger — asks peers for the height
-// above the gap and never fetches the blocks the VM is missing.
+// The consensus ledger and the VM persist separately, so a node that stops uncleanly
+// can come back with certified finality above the block its VM last committed. Finality
+// then cannot advance at all: the fail-closed guard refuses to move past applied state,
+// while catch-up steering by the ledger asks peers for the height above the gap and so
+// never fetches the blocks the VM is missing. Every arriving cert is refused for naming
+// a parent the VM does not hold, and the two heads never reconverge.
 //
-// Measured on mainnet luxd-3: ledger 1160628, EVM 1159050, every incoming cert refused
-// "expected accepted block to have parent ...:1159050 but got ...:1161398".
+// Catch-up must therefore steer by the lower of the two heads: what the VM has applied.
 
 package chain
 
@@ -39,12 +39,12 @@ func (v *appliedVM) GetBlock(_ context.Context, id ids.ID) (block.Block, error) 
 	return nil, errors.New("not held")
 }
 
-// TestAppliedHeadReportsTheVMWhenTheLedgerIsAhead is the mainnet state exactly: a
-// ledger certified well above the block the VM actually holds.
+// TestAppliedHeadReportsTheVMWhenTheLedgerIsAhead: a ledger certified well above the
+// block the VM actually holds.
 func TestAppliedHeadReportsTheVMWhenTheLedgerIsAhead(t *testing.T) {
 	const (
-		ledgerHeight  = 1_160_628 // what consensus had certified
-		appliedHeight = 1_159_050 // what the EVM had committed
+		ledgerHeight  = 1_000_000 // certified by consensus
+		appliedHeight = 998_500   // committed by the VM
 	)
 
 	blk := &verifyOnceBlock{
@@ -75,7 +75,7 @@ func TestAppliedHeadReportsTheVMWhenTheLedgerIsAhead(t *testing.T) {
 		t.Fatalf("AppliedHead: %v", err)
 	}
 	if applied == ledgerHeight {
-		t.Fatal("AppliedHead returned the LEDGER's height — catch-up would ask for blocks above the gap and never fetch what the VM is missing")
+		t.Fatal("AppliedHead returned the ledger's height — catch-up would ask for blocks above the gap and never fetch what the VM is missing")
 	}
 	if applied != appliedHeight {
 		t.Fatalf("applied=%d, want the VM's %d", applied, appliedHeight)

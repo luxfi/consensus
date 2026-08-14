@@ -20,6 +20,7 @@
 package chain
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/luxfi/ids"
@@ -103,12 +104,16 @@ func TestEpochBinding_CrossEpochCertRejected(t *testing.T) {
 	certLaundered := &QuorumCert{
 		Version:   certA.Version,
 		Type:      certA.Type,
+		Tier:      certA.Tier,
 		Position:  VotePosition{ChainID: chainID, Height: 10, Round: 0, BlockID: blockID, ParentID: ids.Empty, ValidatorSetRoot: rootEpochB},
 		Threshold: certA.Threshold,
 		Votes:     certA.Votes, // same signatures, different claimed epoch
 	}
-	if err := certLaundered.Verify(vs, certLaundered.Position.Height); err == nil {
-		t.Fatal("MEDIUM: a cert re-presented under a DIFFERENT validator-set-root must FAIL verification (cross-epoch laundering)")
+	// Name the clause. Verify's clauses are ordered, so a bare err != nil is
+	// satisfied by any earlier structural refusal and stops exercising the
+	// binding — carrying the real tier is what makes the signature clause run.
+	if err := certLaundered.Verify(vs, certLaundered.Position.Height); !errors.Is(err, ErrQCSigInvalid) {
+		t.Fatalf("MEDIUM: a cert re-presented under a DIFFERENT validator-set-root must fail the SIGNATURE clause (cross-epoch laundering), got: %v", err)
 	}
 
 	// And the canonical messages for the two epochs differ (the binding is real,
