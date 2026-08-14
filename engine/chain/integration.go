@@ -213,8 +213,7 @@ func bftCommittee(presetK, count int) (newK, alpha int, clamped bool) {
 	// lone-node subset (100% of a 1-member set trivially clears ⅔). A genuine
 	// single-validator chain sets presetK≤1 and never enters this branch (K stays 1 → it
 	// finalizes correctly on its own accept, with no peer to fork against).
-	const minBFTCommittee = 4 // K=4/α=3: 2α−K = 2 ≥ f+1 = 2 with f = ⌊(K-1)/3⌋ = 1
-	floorK := minBFTCommittee
+	floorK := minBFTCommittee // K=4/α=3: 2α−K = 2 ≥ f+1 = 2 with f = ⌊(K-1)/3⌋ = 1 (quorum.go)
 	if presetK < floorK {
 		floorK = presetK // a sub-BFT preset (dev K=3) keeps its own size as the floor
 	}

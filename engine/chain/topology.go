@@ -191,12 +191,18 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	// is verifyCert → VerifyWeighted below, which re-derives the tier threshold from the
 	// validator set at the cert's epoch). A gossiped NOVA cert legitimately carries a
 	// bare-majority threshold BELOW the ⅔ Quasar floor, so the floor is tier-selected:
-	// NovaQuorum(K) for Nova, the ⅔ count Alpha() for Quasar. K/Alpha track the live
+	// NovaSignerFloor(K) for Nova, the ⅔ count Alpha() for Quasar. K/Alpha track the live
 	// committee (construction clamp + reclampCommitteeLocked), so both floors follow the
 	// live set. An unknown tier is left to verifyCert (Verify rejects it fail-closed).
+	//
+	// The Nova floor is the SIGNER floor, not the count majority: on a stake-weighted chain
+	// the Nova majority is measured in stake, so a legitimate cert's self-declared threshold
+	// is the signer floor and a count-majority pre-filter here would drop it before the
+	// authoritative stake check ever ran. On an equal-stake chain the signer floor is ≤ the
+	// count majority every legitimate cert already carries, so the filter is unweakened.
 	floor := t.consensus.Alpha() // Quasar ⅔ count floor
 	if cert.Tier == Nova {
-		floor = NovaQuorum(t.consensus.K()) // Nova bare-majority floor
+		floor = NovaSignerFloor(t.consensus.K()) // Nova signer floor
 	}
 	if floor > 0 && cert.Threshold < uint32(floor) {
 		if !rt.config.Logger.IsZero() {

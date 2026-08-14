@@ -3162,18 +3162,27 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	// The epoch height pins every per-voter pubkey resolution + the stake tally to
 	// the SAME P-chain height the position's set-root commits to (MEDIUM-1).
 	epochHeight := t.epochHeightLocked(pending)
-	// NOVA ACCEPT THRESHOLD — a bare-majority NovaQuorum(n) of the LIVE committee, NOT the ⅔
-	// Quasar floor. This is the SOLE gate on VM.Accept (local execution): it must ignite at 3
-	// of 5 so production continues when up to ⌊(n−1)/2⌋ crash faults keep the ⅔-stake quorum
-	// unreachable (the "survive 3/5" mandate; the ⅔ bftAlpha=4-of-5 froze the fleet the instant
-	// a 2nd node dropped). `n` is the live committee sized by effectiveCommittee — clamped to the
-	// resolved set AND floored at the minimal BFT committee, so a transient/degenerate low count
-	// can never drop the majority below a lone-reachable value (the 1085013 self-finality guard
-	// carries over: NovaQuorum(floored-n) ≥ 3, unreachable by a lone node). The ⅔-by-stake QUASAR
+	// NOVA ACCEPT THRESHOLD — a bare majority, NOT the ⅔ Quasar floor. This is the SOLE gate on
+	// VM.Accept (local execution): it must ignite at 3 of 5 so production continues when up to
+	// ⌊(n−1)/2⌋ crash faults keep the ⅔-stake quorum unreachable (the "survive 3/5" mandate; the
+	// ⅔ bftAlpha=4-of-5 froze the fleet the instant a 2nd node dropped). The ⅔-by-stake QUASAR
 	// EXPORT cert is a SEPARATE, trailing artifact (the attestation sidecar promoteQuasarLocked),
 	// NEVER gated here — accept (Nova) and export (Quasar) are decomplected tiers.
+	//
+	// The majority is read in STAKE when a stake source is wired, and the authority for it is
+	// VerifyWeighted below — so the count here is only NovaSignerFloor, the lone-node guard.
+	// Read as a head-count it is purchasable: registration is open at minValidatorStake, and
+	// each entry raises ⌊n/2⌋+1 whether or not it ever votes, so a set of five validators plus
+	// a minimum-stake sixth tolerates one loss where five alone tolerate two.
+	// With NO stake source (equal-stake / dev) there is no stake predicate to be the authority,
+	// so the count majority NovaQuorum(n) stays the whole gate — the two agree on equal stake.
+	// `n` is the live committee sized by effectiveCommittee — clamped to the resolved set AND
+	// floored at the minimal BFT committee.
 	n, _ := t.effectiveCommittee(epochHeight)
 	novaThreshold := NovaQuorum(n)
+	if t.stakeSource != nil {
+		novaThreshold = NovaSignerFloor(n)
+	}
 	if novaThreshold <= 0 {
 		return nil
 	}

@@ -107,13 +107,11 @@ func TestNovaQuasarMatrix_Threshold_NovaMajority_QuasarTwoThirds(t *testing.T) {
 	}
 }
 
-// TestNovaQuasarMatrix_WeightedStake_NovaCountQuasarStake proves the tiers are orthogonal on the
-// stake axis: with UNEQUAL stake, Nova ignites on a bare COUNT majority regardless of how little
-// stake it holds (the "survive 3/5 even if the absent minority holds the stake majority"
-// mandate), while Quasar forms ONLY once >⅔ of STAKE by distinct signers has attested — the
-// heavy-stake holder's vote is required and, because it trails the bare-majority accept, arrives
-// as a late attestation.
-func TestNovaQuasarMatrix_WeightedStake_NovaCountQuasarStake(t *testing.T) {
+// TestNovaQuasarMatrix_WeightedStake_NovaMajorityQuasarSupermajority proves the tiers are
+// orthogonal on the stake axis and that both read the SAME unit: Nova ignites on a bare MAJORITY
+// of stake, Quasar on a ⅔ SUPERMAJORITY of it. A four-node head-count holding 40% clears neither;
+// the 60% holder's vote clears both, and because it trails, it arrives as a late attestation.
+func TestNovaQuasarMatrix_WeightedStake_NovaMajorityQuasarSupermajority(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	// Node 0 holds 60% of stake and ABSTAINS; nodes 1..4 hold 10% each.
 	skew := newStakeMap(vs, 60, 10, 10, 10, 10)
@@ -134,13 +132,14 @@ func TestNovaQuasarMatrix_WeightedStake_NovaCountQuasarStake(t *testing.T) {
 	for _, i := range []int{1, 2, 3, 4} {
 		e.ReceiveVote(vs.signedVote(i, pos))
 	}
-	// NOVA: the bare count majority accepts (local execution) despite holding a stake minority.
-	mustFinalize(t, e, blk, 2*time.Second, "count majority / 40% stake → Nova accept")
-	// QUASAR: 40% stake < ⅔ — no export until the 60% holder attests.
+	// NOVA: 40% is not a majority of stake — a head-count of four does not accept.
+	mustNotFinalize(t, e, blk, 2*time.Second, "count majority / 40% stake → no Nova accept")
+	// QUASAR: 40% stake < ⅔ — no export either.
 	mustNotQuasar(t, e, blk, 400*time.Millisecond, "40% stake → no export")
 
-	// The 60%-stake holder votes (late). 40%+60% = 100% > ⅔ ⇒ Quasar export completes.
+	// The 60%-stake holder votes (late). 40%+60% = 100% ⇒ Nova ignites and Quasar exports.
 	e.ReceiveVote(vs.signedVote(0, pos))
+	mustFinalize(t, e, blk, 2*time.Second, "heavy-stake vote → Nova stake majority")
 	mustQuasar(t, e, blk, 2*time.Second, "heavy-stake late vote → ⅔ export")
 }
 

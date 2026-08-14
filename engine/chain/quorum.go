@@ -29,6 +29,30 @@ func NovaQuorum(n int) int {
 	return n/2 + 1
 }
 
+// minBFTCommittee is the smallest Byzantine-fault-tolerant committee: K=4/α=3 with
+// f=⌊(K−1)/3⌋=1, so 2α−K = 2 ≥ f+1. bftCommittee floors a shrinking committee here,
+// and NovaSignerFloor reads the same constant so the "a lone node can never ignite"
+// guard has ONE definition.
+const minBFTCommittee = 4
+
+// NovaSignerFloor is the minimum number of DISTINCT signers a Nova cert needs
+// irrespective of how stake is distributed. The Nova gate proper is a strict
+// majority of STAKE (config.HalfStakeFloor, enforced in QuorumCert.VerifyWeighted);
+// this count is the independent guard the stake predicate cannot give — a validator
+// holding a stake majority on its own would otherwise self-ignite, which is the
+// 1085013 self-finality fork class. It is NovaQuorum of the minimal BFT committee
+// (3), capped by the majority of the live set so a genuinely small chain (n≤3, dev)
+// is not made unsatisfiable.
+//
+// On an equal-stake set the stake majority already implies ⌊n/2⌋+1 signers, so this
+// floor never binds there; it binds exactly where the weights are lopsided.
+func NovaSignerFloor(n int) int {
+	if q := NovaQuorum(n); q < NovaQuorum(minBFTCommittee) {
+		return q
+	}
+	return NovaQuorum(minBFTCommittee)
+}
+
 // CrashTolerance is the number of simultaneous crash faults Nova ignition survives:
 // n − NovaQuorum(n) = ⌈n/2⌉−1. Beyond it the sampler cannot reach a majority, so Nova
 // PAUSES fail-closed (no ignition ⇒ no acceptance ⇒ no fork) and resumes the instant a

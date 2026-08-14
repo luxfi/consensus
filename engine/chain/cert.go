@@ -124,6 +124,7 @@ var (
 	ErrQCSigInvalid              = errors.New("chain: cert vote signature failed verification")
 	ErrQCVerifierNil             = errors.New("chain: vote verifier is nil; cannot verify a cert's signatures — fail closed")
 	ErrQCStakeBelowSupermajority = errors.New("chain: cert voters' stake below 2/3 of total stake (count quorum reached but not stake-weighted supermajority)")
+	ErrQCStakeBelowMajority      = errors.New("chain: nova cert voters' stake is not a strict majority of total stake at the epoch")
 	ErrQCUnknownTier             = errors.New("chain: quorum cert finality tier is not Nova or Quasar (a cert attests exactly one of the two accept/export tiers)")
 )
 
@@ -394,12 +395,11 @@ func (f ValidatorSetRootFunc) ValidatorSetRoot(height uint64) ids.ID { return f(
 // tier-agnostic structural + signature predicate) and then enforces the threshold for
 // the cert's OWN tier:
 //
-//   - Nova  → a strict COUNT majority (NovaQuorum) of the DISTINCT validator set at the
-//     epoch, and DELIBERATELY no stake supermajority. This is the LOCAL-EXECUTION gate:
-//     it must ignite at a bare majority (3 of 5) even when the absent minority holds the
-//     stake majority — the "survive 3/5" liveness mandate — so a stake gate here would
-//     defeat its whole purpose. Crash-fault-safe by majority intersection; NOT
-//     Byzantine-safe (that is Quasar's job).
+//   - Nova  → a strict MAJORITY of TOTAL STAKE by distinct signers (config.HalfStakeFloor)
+//     plus a NovaSignerFloor count, and DELIBERATELY not a supermajority. This is the
+//     LOCAL-EXECUTION gate: it must ignite at a bare majority (3 of 5) — the "survive 3/5"
+//     liveness mandate — so the ⅔ gate here would defeat its whole purpose.
+//     Crash-fault-safe by majority intersection; NOT Byzantine-safe (that is Quasar's job).
 //   - Quasar → a strict >⅔ of TOTAL STAKE by distinct signers (config.TwoThirdsStakeFloor).
 //     This is the EXPORT gate — the Byzantine-safe finality bridges / DEX settlement /
 //     cross-chain messages / validator-set transitions consume.
@@ -431,23 +431,50 @@ func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, ep
 }
 
 // verifyNovaMajority enforces the Nova LOCAL-EXECUTION threshold: the cert's distinct
-// voter count is a strict majority (NovaQuorum) of the DISTINCT validator set live at the
-// epoch. NO stake supermajority — Nova is the crash-fault local gate that must survive a
-// bare majority (3/5) regardless of how stake is distributed. The count is recomputed from
-// the authoritative live set so a cert can never self-declare a below-majority Nova
-// threshold; an UNRESOLVED set (n<1) fails closed — a majority of an unknown set cannot be
+// voters hold a strict MAJORITY OF STAKE at the epoch (config.HalfStakeFloor), and there
+// are at least NovaSignerFloor(n) of them. Both are recomputed from the authoritative live
+// set, so a cert can never self-declare a below-majority Nova threshold; an UNRESOLVED set
+// (n<1, or zero total stake) fails closed — a majority of an unknown set cannot be
 // asserted, and NovaQuorum(0)=1 would otherwise let a lone node self-accept during the
 // transient-empty validator view that forked 1085013.
+//
+// STAKE, NOT HEAD-COUNT. Nova is still a bare majority and still deliberately below the
+// Quasar ⅔ export gate — it is only read in the unit the chain actually weighs votes in.
+// On an equal-stake set the two readings are identical (⌊n/2⌋+1 signers either way), so a
+// uniform fleet sees no change at all. They diverge when weights do, and a head-count is
+// wrong in both directions there. It lets a registration at the minimum stake RAISE the
+// gate: one more entry takes ⌊n/2⌋+1 from 3 to 4, so a set of five validators plus a
+// minimum-stake sixth needs four of the five to agree and tolerates one loss instead of
+// two. And it lets that same minimum stake CAST a vote toward the majority that decides
+// what the chain is. Registration is open at minValidatorStake, so both are purchasable.
+// A majority of stake is neither.
+//
+// The signer floor is the guard the stake predicate cannot give: a single validator holding
+// a stake majority would otherwise self-ignite (the 1085013 class). Stake majority AND the
+// floor — two independent predicates, neither sufficient alone.
 func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) error {
 	n := stake.ValidatorCount(epochHeight)
 	if n < 1 {
 		return fmt.Errorf("%w: nova tier over an unresolved validator set (n=%d) at epoch %d",
 			ErrQCBelowThreshold, n, epochHeight)
 	}
-	need := NovaQuorum(n)
-	if c.VoterCount() < need {
-		return fmt.Errorf("%w: nova cert has %d distinct voters, need majority %d of %d at epoch %d",
-			ErrQCBelowThreshold, c.VoterCount(), need, n, epochHeight)
+	if floor := NovaSignerFloor(n); c.VoterCount() < floor {
+		return fmt.Errorf("%w: nova cert has %d distinct voters, need at least %d of %d at epoch %d",
+			ErrQCBelowThreshold, c.VoterCount(), floor, n, epochHeight)
+	}
+	total := stake.TotalStake(epochHeight)
+	if total == 0 {
+		return fmt.Errorf("%w: total stake is zero at epoch height %d (value-height %d)",
+			ErrQCStakeBelowMajority, epochHeight, c.Position.Height)
+	}
+	var voted uint64
+	for i := range c.Votes {
+		voted += stake.Weight(c.Votes[i].NodeID, epochHeight)
+	}
+	halfFloor := config.HalfStakeFloor(total)
+	if voted <= halfFloor {
+		return fmt.Errorf("%w: nova voted=%d total=%d (need > floor(total/2)=%d) at epoch %d",
+			ErrQCStakeBelowMajority, voted, total, halfFloor, epochHeight)
 	}
 	return nil
 }

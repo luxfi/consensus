@@ -42,6 +42,21 @@ func TwoThirdsStakeFloor(total uint64) uint64 {
 	return floor
 }
 
+// HalfStakeFloor returns floor(total/2) — the threshold a MAJORITY must STRICTLY
+// EXCEED. Same shape and same single-definition discipline as TwoThirdsStakeFloor,
+// one rung lower: Nova (local execution) ignites on `voted > HalfStakeFloor(total)`,
+// Quasar (export) on `voted > TwoThirdsStakeFloor(total)`. Two majorities of the
+// same set always intersect, so the crash-fault safety argument Nova rests on is
+// preserved when the predicate is read in stake rather than head-count.
+//
+// For an EQUAL-stake set of n validators this is exactly the head-count majority
+// ⌊n/2⌋+1 (chain.NovaQuorum): k·w > ⌊n·w/2⌋ ⟺ k > n/2. The two rules therefore
+// agree on every equal-stake network and diverge only where weights differ —
+// which is the whole point: a dust registration must not move the gate.
+func HalfStakeFloor(total uint64) uint64 {
+	return total / 2
+}
+
 // WeightedSupermajorityThreshold returns the MINIMUM number of votes whose
 // cumulative stake can STRICTLY EXCEED two-thirds of the total stake — derived
 // from the SAME predicate the cert verifier enforces (`cum > TwoThirdsStakeFloor`).
