@@ -66,6 +66,12 @@ type ChainConsensus struct {
 	blocks map[ids.ID]*Block
 	tips   map[ids.ID]bool // Current chain tips
 
+	// recall reads back a block this process never saw but the VM has accepted, so
+	// the finality walk can cross the seam a restart leaves between the durable
+	// finalized tip and the memory-only tree above it. nil confines the walk to
+	// what this process has seen. Set once at construction; see blocksAncestry.at.
+	recall func(ids.ID) (*Block, bool)
+
 	// Consensus tracking
 	bootstrapped bool
 
@@ -112,6 +118,16 @@ type quasarFrontier struct {
 }
 
 // NewChainConsensus creates a real consensus engine
+// SetRecall gives the finality walk a durable reader for blocks this process never
+// saw. The engine wires it to the VM, whose accepted chain outlives any one process.
+// Without it the walk sees only what this process has gossiped, which is empty above
+// the finalized tip on every restart.
+func (c *ChainConsensus) SetRecall(f func(ids.ID) (*Block, bool)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.recall = f
+}
+
 func NewChainConsensus(k, alpha, beta int) *ChainConsensus {
 	return &ChainConsensus{
 		k:      k,
