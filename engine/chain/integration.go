@@ -1225,3 +1225,22 @@ func SyncStateFromVM(ctx context.Context, vm BlockBuilder, consensus *Transitive
 
 	return lastAcceptedID, height, nil
 }
+
+// AppliedHead reports the height the VM has actually APPLIED, which is the height
+// catch-up has to aim at.
+//
+// FinalizedLedger reports what CONSENSUS has certified, and the two diverge: the
+// consensus ledger and the VM persist separately, so a node that stops uncleanly can
+// come back with certified finality above the block its VM last committed. Finality
+// then cannot advance — the fail-closed guard correctly refuses to move past applied
+// state — while catch-up, steering by the ledger, asks peers for the height ABOVE the
+// gap and never fetches the blocks the VM is missing. Measured on mainnet luxd-3:
+// ledger at 1160628, EVM at 1159050, every incoming cert refused with "expected
+// accepted block to have parent …:1159050 but got …:1161398", and no descent running
+// because certs were being accepted.
+//
+// A block can only be applied on top of the one before it, so whichever of the two is
+// LOWER is what the node actually needs next.
+func (rt *Runtime) AppliedHead(ctx context.Context) (ids.ID, uint64, error) {
+	return rt.localLastAccepted(ctx)
+}
