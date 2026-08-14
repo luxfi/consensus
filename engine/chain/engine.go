@@ -302,6 +302,15 @@ func WithSlashing(detector *slashing.Detector, db *slashing.DB) Option {
 	}
 }
 
+// WithCerts gives the engine a durable home for the finality certs it assembles,
+// so a peer catching up can still be served a height this node decided before its
+// last restart. Without it those certs live only as long as the process.
+func WithCerts(store CertStore) Option {
+	return func(t *Transitive) {
+		t.certs = store
+	}
+}
+
 // WithLogger sets the engine logger.
 func WithLogger(l log.Logger) Option {
 	return func(t *Transitive) {
@@ -527,6 +536,13 @@ type Transitive struct {
 	// ids in finalize (== ascending height) order, used to evict the oldest cert once
 	// the store passes maxServedCerts — a bounded sliding window, never an unbounded
 	// map. A node lagging beyond the window bootstraps instead of catching up.
+	// certs is the DURABLE backing for the same evidence. certBytesByBlock above is
+	// a process-lifetime read cache in front of it; certs is what survives a restart,
+	// and therefore what decides whether a peer that fell behind can ever be served
+	// its next block. nil keeps certs memory-only — correct for a single-validator or
+	// test engine, and a liveness hazard on a real fleet (see cert_store.go).
+	certs CertStore
+
 	certBytesByBlock map[ids.ID][]byte
 	certServedOrder  []ids.ID
 
@@ -4226,12 +4242,17 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 			toReject = append(toReject, pending.VMBlock)
 		}
 	}
+	var servedCert []byte
 	if qc := cert.Cert(); qc != nil {
 		if b, err := qc.MarshalBinary(); err == nil {
 			t.storeServedCertLocked(certifiedTip, b)
+			servedCert = b
 		}
 	}
 	t.mu.Unlock()
+	// Both of these are carried out of the critical section on purpose: Reject calls
+	// into the VM, and persisting the cert fsyncs. Neither belongs under the engine lock.
+	t.persistServedCert(certifiedTip, highestAccepted, servedCert)
 	for _, vmb := range toReject {
 		_ = vmb.Reject(ctx)
 	}
