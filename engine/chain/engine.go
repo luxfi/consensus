@@ -1735,7 +1735,29 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 	var certFetches []ids.ID
 	t.mu.Lock()
 	for blockID, pending := range t.pendingBlocks {
-		if pending.Decided || pending.rePollAbandoned {
+		if pending.Decided {
+			continue
+		}
+		// An abandoned block stops being RE-POLLED — re-soliciting a vote from peers
+		// that cannot vote is the spam this cap exists to prevent. It does not stop
+		// being RECOVERED. Those are two different things and this loop used to end
+		// both with one `continue`: the cert catch-up fired once, at the moment of
+		// abandonment, and the block was never looked at again because the flag is
+		// set for the life of the process and cleared nowhere.
+		//
+		// One dropped fetch was therefore permanent. That is what froze lux-mainnet
+		// luxd-2 and luxd-3 on the C-Chain at 1,159,050 while their peers ran on:
+		// both nodes HELD the blocks — the EVM had them canonical — and consensus
+		// simply never accepted them, because the peers were by then 1,500 blocks
+		// ahead and no longer vote on a block that old. Cert catch-up was the only
+		// door and it had already closed. A restart replays the same eight strikes.
+		//
+		// So keep asking. claimCertCatchupLocked is height-keyed, cooled down and
+		// hard-bounded, which is what keeps this a trickle rather than a storm.
+		if pending.rePollAbandoned {
+			if pending.ConsensusBlock != nil && t.claimCertCatchupLocked(pending.ConsensusBlock.height) {
+				certFetches = append(certFetches, blockID)
+			}
 			continue
 		}
 		// The window for THIS attempt: base for the first, doubling thereafter,
