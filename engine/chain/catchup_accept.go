@@ -183,6 +183,37 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 			return nil
 		}
 		if blk.Height() > fh+1 {
+			// ABOVE our next height — verify and TRACK it rather than discard it.
+			//
+			// A cert finalizes a CHAIN, not a block: every block names its parent, so
+			// one verified ⅔ cert on any descendant establishes finality for its whole
+			// ancestry, and the fold walks that path (applyBranchFinalization accepts
+			// plan.Accept in ascending order). What that walk needs is for the blocks
+			// in between to be TRACKED.
+			//
+			// Discarding them made a node's own recovery depend on certs that no longer
+			// exist. The certs for old heights were assembled by processes that have
+			// since exited, so a node behind by more than the live cert window could be
+			// served exactly the blocks it needed and had to throw every one away, then
+			// ask again forever. Keeping them costs one verify and a bounded number of
+			// pendingBlocks entries (the responder's window caps the batch); it buys a
+			// path home that does not require the past to still be in someone's memory.
+			//
+			// SAFETY IS UNCHANGED. Tracking is not finalizing. Nothing here decides
+			// anything: the block is locally Verified first (we never track contents we
+			// have not validated), and finality still happens only in HandleIncomingCert
+			// behind the same α-floor, set-root and VerifyWeighted checks. "No
+			// VerifiedQuorumCert, no finality" holds exactly as before.
+			if err := blk.Verify(ctx); err != nil {
+				return errors.Join(ErrCatchupCertRejected, err)
+			}
+			rt.trackVerifiedForCatchup(ctx, blk)
+			// A cert may ride along with a block above our tip. Offer it — if it
+			// verifies, the fold finalizes everything from our tip up to it in one
+			// step. If not, the block stays tracked for a later descendant's cert.
+			if len(certBytes) > 0 {
+				rt.HandleIncomingCert(certBytes)
+			}
 			return ErrCatchupCertRejected
 		}
 	}
