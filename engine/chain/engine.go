@@ -4298,17 +4298,32 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 			toReject = append(toReject, pending.VMBlock)
 		}
 	}
+	// The height a cert certifies belongs to the CERT, not to whatever this call
+	// happened to accept. highestAccepted is the top of the blocks accepted right
+	// here, and it is ZERO whenever there was nothing left to accept — which is
+	// the ordinary case for a cert arriving about a block we already hold.
+	//
+	// Persisting under that zero put every cert on disk at height 0. Retention is
+	// ordered BY height ("keeps the most recent maxServedCerts, drops the lowest"),
+	// so a store of all-zeros has no order and answers for no height: the serve
+	// path found nothing, paired each block with an EMPTY cert, and a straggler
+	// could neither accept one nor reject one. That is the certAccepted=0
+	// certRejected=0 that kept lux-mainnet halted with every node holding data and
+	// none able to catch up — and it only bites after a restart, when the
+	// in-memory window that had been covering for it is gone.
 	var servedCert []byte
+	var servedHeight uint64
 	if qc := cert.Cert(); qc != nil {
 		if b, err := qc.MarshalBinary(); err == nil {
 			t.storeServedCertLocked(certifiedTip, b)
 			servedCert = b
+			servedHeight = qc.Position.Height
 		}
 	}
 	t.mu.Unlock()
 	// Both of these are carried out of the critical section on purpose: Reject calls
 	// into the VM, and persisting the cert fsyncs. Neither belongs under the engine lock.
-	t.persistServedCert(certifiedTip, highestAccepted, servedCert)
+	t.persistServedCert(certifiedTip, servedHeight, servedCert)
 	for _, vmb := range toReject {
 		_ = vmb.Reject(ctx)
 	}
