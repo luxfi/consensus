@@ -929,30 +929,7 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		t.log = log.Noop()
 	}
 
-	// Let the finality walk read blocks back from the VM. A restart leaves the engine
-	// with a durable finalized tip and an empty tree above it, so without this a cert
-	// for any block accepted before the restart is refused for an ancestor the node is
-	// holding. Wired after the options so both the consensus core and the VM are set.
-	if t.consensus != nil && t.vm != nil {
-		vm := t.vm
-		t.consensus.SetRecall(func(id ids.ID) (*Block, bool) {
-			vmBlock, err := vm.GetBlock(context.Background(), id)
-			if err != nil || vmBlock == nil {
-				return nil, false
-			}
-			b := &Block{
-				id:           id,
-				parentID:     vmBlock.ParentID(),
-				height:       vmBlock.Height(),
-				timestamp:    vmBlock.Timestamp().Unix(),
-				data:         vmBlock.Bytes(),
-				pChainHeight: pChainHeightOf(vmBlock),
-				accepted:     true, // the VM only answers for blocks it has committed
-			}
-			setCanonicalFromVM(b, vmBlock)
-			return b, true
-		})
-	}
+	wireRecall(t)
 
 	return t
 }
@@ -1243,8 +1220,10 @@ func (t *Transitive) SetEmitter(e BlockProposer) {
 // SetVM sets the block builder.
 func (t *Transitive) SetVM(vm BlockBuilder) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.vm = vm
+	t.mu.Unlock()
+	// Same wiring the construction path does — see wireRecall.
+	wireRecall(t)
 }
 
 // SetLogger sets the engine logger after construction. The integration layer
@@ -1261,6 +1240,40 @@ func (t *Transitive) SetLogger(l log.Logger) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.log = l
+}
+
+// wireRecall lets the finality walk read blocks back from the VM. A restart leaves
+// the engine with a durable finalized tip and an empty tree above it, so without it
+// a cert for any block accepted before the restart is refused for an ancestor the
+// node is holding.
+//
+// It must be called from EVERY path that gives the engine a VM. Wiring it only where
+// the VM arrives as a construction option left it unwired in production, because the
+// node builds through NewWithParams (no VM) and attaches one afterwards with SetVM —
+// so the walk fell back to this process's own tree and the recovery it exists for
+// never ran outside tests.
+func wireRecall(t *Transitive) {
+	if t == nil || t.consensus == nil || t.vm == nil {
+		return
+	}
+	vm := t.vm
+	t.consensus.SetRecall(func(id ids.ID) (*Block, bool) {
+		vmBlock, err := vm.GetBlock(context.Background(), id)
+		if err != nil || vmBlock == nil {
+			return nil, false
+		}
+		b := &Block{
+			id:           id,
+			parentID:     vmBlock.ParentID(),
+			height:       vmBlock.Height(),
+			timestamp:    vmBlock.Timestamp().Unix(),
+			data:         vmBlock.Bytes(),
+			pChainHeight: pChainHeightOf(vmBlock),
+			accepted:     true, // the VM only answers for blocks it has committed
+		}
+		setCanonicalFromVM(b, vmBlock)
+		return b, true
+	})
 }
 
 // -----------------------------------------------------------------------------
