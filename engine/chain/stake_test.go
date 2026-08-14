@@ -70,15 +70,13 @@ func TestRED_ProcessPendingFinalizesSubTwoThirdsStake(t *testing.T) {
 	e.ReceiveVote(vs.signedVote(3, pos))
 	e.ReceiveVote(vs.signedVote(4, pos))
 
-	// v1.36 TWO-TIER: a 4-of-5 COUNT majority drives the NOVA accept (local execution) even for a
-	// 4/100-stake coalition — count is the accept authority, crash-fault-safe by majority
-	// intersection. But the EXPORT authority (Quasar) is >⅔ of STAKE, which this coalition is
-	// nowhere near. So the block Nova-accepts (VM.Accept) yet NEVER reaches Quasar: the original
-	// invariant ("a stake minority causes no IRREVERSIBLE / cross-chain transition") is preserved
-	// EXACTLY at the export tier.
-	mustFinalize(t, e, blk, 2*time.Second, "4-of-5 count majority (Nova local accept)")
+	// The RED claim stands: a 4-of-5 head-count holding 4/100 of the stake finalizes nothing.
+	// Nova is a majority of STAKE (crash-fault-safe by majority intersection, and unbuyable),
+	// Quasar a ⅔ supermajority of it. The pollLoop reaches TryAccept on the count predicate and
+	// assembleCertLocked refuses, so VM.Accept never runs.
+	mustNotFinalize(t, e, blk, 2*time.Second, "4/100-stake coalition (Nova local accept)")
 
-	// SAFETY REQUIREMENT (unchanged, moved to the export tier): a 4/100-stake coalition must NEVER
-	// reach Quasar — no bridge / DEX-settlement / cross-chain consumer can treat it as final.
+	// SAFETY REQUIREMENT: the same coalition must NEVER reach Quasar — no bridge /
+	// DEX-settlement / cross-chain consumer can treat it as final.
 	mustNotQuasar(t, e, blk, 500*time.Millisecond, "4/100-stake coalition (export gate)")
 }
