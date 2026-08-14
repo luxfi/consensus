@@ -97,7 +97,7 @@ type ChainConsensus struct {
 	quasar quasarFrontier
 
 	// preference is the preliminary BUILD tip used BEFORE the first finalize — the
-	// DECOMPLECTED preference concern (avalanchego keeps `preference` separate from the
+	// DECOMPLECTED preference concern (preference is kept separate from the
 	// committed `lastAcceptedID`). Once the ledger is set the finalized tip wins and
 	// this is unused; ForcePreference seeds it, Preference() reads it only pre-finalize.
 	preference ids.ID
@@ -117,7 +117,6 @@ type quasarFrontier struct {
 	set       bool   // false until the first ⅔-stake cert promotes
 }
 
-// NewChainConsensus creates a real consensus engine
 // SetRecall gives the finality walk a durable reader for blocks this process never
 // saw. The engine wires it to the VM, whose accepted chain outlives any one process.
 // Without it the walk sees only what this process has gossiped, which is empty above
@@ -128,6 +127,7 @@ func (c *ChainConsensus) SetRecall(f func(ids.ID) (*Block, bool)) {
 	c.recall = f
 }
 
+// NewChainConsensus creates a chain consensus engine.
 func NewChainConsensus(k, alpha, beta int) *ChainConsensus {
 	return &ChainConsensus{
 		k:      k,
@@ -183,7 +183,7 @@ func (c *ChainConsensus) applyCertLocked(cert Cert) (Plan, error) {
 
 // applyPlan applies the fold's plan to the live DAG: mark the Accept path accepted and
 // drop it from the build tips; mark the Reject (losing-sibling) subtrees rejected and
-// remove them from the live DAG/tips — avalanchego acceptPreferredChild + rejectTransitively
+// remove them from the live DAG/tips — accept-preferred-child plus transitive reject
 // on the DAG side. It NEVER touches c.ledger; finality already advanced in the fold.
 // Caller holds c.mu.
 func (c *ChainConsensus) applyPlan(plan Plan) {

@@ -1384,7 +1384,7 @@ func (t *Transitive) PreferredBuildTip() ids.ID {
 // block. A validator that fell behind has a DAG tip ABOVE its own frontier, so the tip
 // can name an id this VM cannot serve builds on. Ava never has this problem: it steers
 // at Consensus.Preference(), which by construction was Verified INTO the VM
-// (ava snow/engine/snowman/voter.go SetPreference, engine.go SetPreference).
+
 //
 // Steering anyway is silently lossy, not loud: our proposervm keeps its prior preference
 // and returns nil on an unheld id (node/vms/proposervm/vm.go SetPreference), so an
@@ -1543,7 +1543,7 @@ const (
 	// via cert or catch-up): re-soliciting a gossiped block whose voters are behind
 	// its parent is spam that re-poll cannot fix. An UNDECIDED OWN proposal is NEVER
 	// abandoned (see rePollAllPending): the proposer keeps re-soliciting it until it
-	// finalizes, matching avalanchego's "re-poll a processing block until decided".
+	// finalizes, matching "re-poll a processing block until decided".
 	// With doubling from a 250ms base, 8 attempts span
 	// 0.25+0.5+1+2+4+8+16+16 ≈ 48s of backstop before giving up on a gossiped block.
 	maxRePollAttempts = 8
@@ -1823,7 +1823,7 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 		// therefore HAVE the parent and CAN vote), and as the proposer it owns driving
 		// it to an α-of-K cert — so it must keep re-soliciting until the block decides
 		// (then it leaves pendingBlocks and the re-poll quiesces). This is exactly
-		// avalanchego's contract: re-poll a PROCESSING block until it is decided, and
+		// the contract: re-poll a PROCESSING block until it is decided, and
 		// only quiesce at NumProcessing()==0 (the upstream voter.go +
 		// Engine.Gossip's 100ms repoll). Abandoning an own proposal after a fixed
 		// attempt cap was the Lux-only divergence that froze mainnet C-Chain: the
@@ -2257,11 +2257,11 @@ func (t *Transitive) handleVote(vote Vote) {
 		// the same height the position's set-root commits to.
 		// WHY THIS STAYS FOR PAYLOAD-SUPPLIED ORIGINS.
 		//
-		// avalanchego counts unsigned chits: `grep -rn "Signature" snow/` returns
+		// the reference counts unsigned chits: its vote path carries
 		// ZERO, while vms/platformvm/warp signs aggregate BLS for anything that must
 		// travel. Signatures belong at the export layer, not the liveness loop, and
 		// this gate is a signature check one layer too far in. Removing it was tried
-		// here and REVERTED, because Lux cannot yet make ava's safety argument.
+		// here and REVERTED, because Lux cannot yet make that safety argument.
 		//
 		// Ava's engine receives the voter as `Chits(nodeID, requestID, …)` — a
 		// PARAMETER supplied by the router from the authenticated connection. The
@@ -2278,7 +2278,7 @@ func (t *Transitive) handleVote(vote Vote) {
 		//   1. make voter provenance structural — origin as a parameter, so a
 		//      self-declared source is unrepresentable rather than merely unlikely;
 		//   2. THEN unsigned transport-authenticated votes can count toward the Nova
-		//      tally, as they do in ava;
+		//      tally, as they do there;
 		//   3. Quasar certificates keep requiring signatures either way — that is
 		//      the artifact that must convince a stranger.
 		// Doing (2) before (1) trades a liveness bug for a safety bug.
@@ -2473,7 +2473,7 @@ func (t *Transitive) recordOwnVoteLocked(pending *PendingBlock, blockID ids.ID) 
 // (t.mu released) — share the one guard without deadlock; the durable write also
 // runs under slotMu, so the fixed-name temp file is never contended.
 func (t *Transitive) reserveSlotForSign(height uint64, canonical ids.ID) bool {
-	// DECIDED-HEIGHT GATE (avalanchego's lastAcceptedHeight frontier, lifted to the sign
+	// DECIDED-HEIGHT GATE (the last-accepted-height frontier, lifted to the sign
 	// path). A height at or below the decided frontier is DECIDED: exactly one block was
 	// certified there, and — as in topological.go's acceptPreferredChild + rejectTransitively
 	// — its every sibling is permanently unsignable and any vote for it is dropped. We
@@ -2667,7 +2667,7 @@ func (t *Transitive) selfVotedForCanonicalLocked(canon ids.ID) bool {
 // restart can still re-sign the honest rebuild at a height whose cert never formed. That
 // window is exactly where a rolling upgrade lives.
 //
-// Retaining the just-certified tip's slot mirrors avalanchego keeping the last accepted block
+// Retaining the just-certified tip's slot mirrors keeping the last accepted block
 // in ts.blocks. Heights strictly below the tip are guaranteed unsignable by
 // the decided-height gate in reserveSlotForSign (height <= finalizedHeight ⇒ refuse), which
 // is durable and monotonic, so their in-memory slot is dead weight and is dropped to keep
@@ -2923,7 +2923,7 @@ func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 	// floor (the same floor the sign gate enforces: max of the vote-guard-seeded decidedFloor
 	// and the consensus floor). Such a height is decided — reserveSlotForSign would refuse it
 	// anyway, but because a refused sign leaves committedSlot empty, the slot would otherwise
-	// resurface on every tick and the pass would busy-replay it. Mirrors avalanchego dropping
+	// resurface on every tick and the pass would busy-replay it. Mirrors dropping
 	// votes for a Decided() block.
 	decidedFloor := t.decidedFloor
 	if consensusFloor > decidedFloor {
@@ -4243,12 +4243,12 @@ func (t *Transitive) QuasarCertAt(height uint64) (*QuorumCert, bool) {
 }
 
 // applyBranchFinalization applies a consensus FinalizeBranch plan to the VM and
-// engine bookkeeping. It mirrors avalanchego topological.go's accept/reject split:
+// engine bookkeeping. It mirrors the accept/reject split:
 // VM.Accept the finalized path (child.Accept, ascending height) and VM.Reject the
 // pruned losing-sibling subtrees (rejectTransitively). The certified tip carries the
 // cert retained for serving catch-up peers. The engine maps (finalizedByCert,
 // pendingBlocks, bufferedVotes, catchupRequested) are reconciled under t.mu; the VM
-// Accept/Reject calls run OUTSIDE the lock, Accept-before-Reject (the avalanchego
+// Accept/Reject calls run OUTSIDE the lock, Accept-before-Reject (the
 // order: accept the preferred child, then reject the conflicting siblings).
 //
 // finalizedByCert is written ONLY here (via the sole finalizer acceptWithCertCore),
@@ -4430,8 +4430,8 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 	}
 
 	for t.pendingBuildBlocks > 0 {
-		// CONSUME the demand for THIS attempt BEFORE calling out (avalanchego's model:
-		// snow/engine/snowman decrements pendingBuildBlocks before BuildBlock and treats a
+		// CONSUME the demand for THIS attempt BEFORE calling out (the model:
+		// the driver decrements pendingBuildBlocks before BuildBlock and treats a
 		// failed build as consumed). The old code held the demand on error and returned, so
 		// the very next Notify re-entered and re-called BuildBlock — and under single-proposer
 		// scheduling a NON-leader's BuildBlock ALWAYS fails ("not our proposer slot") until its

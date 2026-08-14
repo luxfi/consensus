@@ -34,7 +34,7 @@ import (
 // already-decided height is equivocation evidence, never a silent second VM.Accept;
 // and a cert for a block that does NOT descend from the finalized frontier conflicts
 // with finalized history and is refused. The single-non-branching-chain property is
-// achieved the avalanchego way — not by refusing siblings at admission, but by REORG
+// achieved not by refusing siblings at admission, but by REORG
 // (prune the losing sibling subtree when the cert selects the winner).
 var (
 	// ErrHeightAlreadyFinalized: a DIFFERENT block is already finalized at the target
@@ -236,7 +236,7 @@ type Cert struct {
 }
 
 // Plan is what Finalize decides and the engine applies to the VM and DAG. It mirrors
-// avalanchego topological.go's accept/reject split:
+// The accept/reject split:
 //
 //   - Accept: the path from the OLD finalized tip up to the certified block, in
 //     ASCENDING height order — acceptPreferredChild along a path (usually one block,
@@ -500,7 +500,7 @@ func pathFromTip(led FinalityLedger, cert Cert, dag Ancestry) ([]step, error) {
 
 // losingSubtrees returns every tracked block on a LOSING sibling subtree of keepID:
 // the other children of parentID (siblings of keepID) plus all their descendants.
-// This is avalanchego rejectTransitively's reachable set.
+// This is the transitively-rejected reachable set.
 func losingSubtrees(keepID, parentID ids.ID, dag Ancestry) []ids.ID {
 	var queue []ids.ID
 	for _, id := range dag.Children(parentID) {

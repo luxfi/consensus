@@ -430,7 +430,7 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	// Wire the proposer (adapts Gossiper to BlockProposer interface). There is NO single-node
 	// self-voter shortcut: a K==1 chain has no peers to solicit, so it finalizes SOLELY through the
 	// inline build-path finalizer (buildBlocksLocked → buildSingleValidatorCertLocked →
-	// acceptWithCertCore) — one finalize path, matching avalanchego's "a lone validator's own
+	// acceptWithCertCore) — one finalize path, matching "a lone validator's own
 	// decision finalizes locally." The removed shortcut called engine.ReceiveVote from inside
 	// RequestVotes while buildBlocksLocked held t.mu, self-deadlocking on the non-reentrant
 	// t.mu.RLock (the live n=1 freeze), and delivered a redundant vote that could sit uncounted in
@@ -909,7 +909,7 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	// votes split across the siblings, no cert assembles, and the chain HALTS. Steering
 	// to the verified tip makes validators build H+1 on top of one verified block at H
 	// and converge. Build hint only (Preference is not a finality decision); best effort.
-	// SINGLE-STORE INVARIANT (defect #2 — ava parity): steer only at a tip the VM HOLDS.
+	// SINGLE-STORE INVARIANT (defect #2): steer only at a tip the VM HOLDS.
 	// A validator that fell behind has a DAG tip ABOVE its own frontier; steering the
 	// proposervm at an unheld id leaves it on its prior preference (at worst lastAccepted)
 	// while BuildBlock spams "failed to fetch preferred block" — the luxd-1 wedge (see
