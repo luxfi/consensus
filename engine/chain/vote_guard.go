@@ -268,7 +268,19 @@ func (g *fileVoteGuard) Reconcile(bindings map[SlotKey]ids.ID, newFloor uint64) 
 // crash). The SINGLE atomic-write path shared by Persist and Reconcile (DRY), so the two
 // writers cannot drift on crash-safety.
 func (g *fileVoteGuard) writeSnapshot(buf []byte) error {
-	tmp := g.path + ".tmp"
+	return writeFileAtomic(g.path, g.dir, buf)
+}
+
+// writeFileAtomic durably replaces path with buf: write-temp + fsync (data on
+// stable storage before the rename) + rename (atomic on POSIX — a reader sees
+// either the old or the new complete file) + fsync-dir (the rename itself
+// survives a crash). dir is the directory to fsync, which is path's parent for
+// every caller today.
+//
+// The SINGLE atomic-write path in this package, shared by the vote guard and the
+// cert store, so the durable stores cannot drift on crash-safety.
+func writeFileAtomic(path, dir string, buf []byte) error {
+	tmp := path + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -287,11 +299,11 @@ func (g *fileVoteGuard) writeSnapshot(buf []byte) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, g.path); err != nil {
+	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
-	return fsyncDir(g.dir)
+	return fsyncDir(dir)
 }
 
 // Snapshot returns the bindings recovered at open time (used once to seed the

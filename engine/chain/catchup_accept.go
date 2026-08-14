@@ -31,6 +31,7 @@ import (
 
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/log"
 )
 
 // ErrCatchupCertRejected is returned by AcceptCatchupBlock when the (block, cert)
@@ -59,7 +60,8 @@ const maxServedCerts = 4096
 // captures its cert in this ONE place. Idempotent per block id; bounded to
 // maxServedCerts by oldest-height (== FIFO) eviction.
 //
-// The caller holds t.mu.
+// The caller holds t.mu. The DURABLE copy is written separately, by
+// persistServedCert, off the lock — see there for why.
 func (t *Transitive) storeServedCertLocked(blockID ids.ID, certBytes []byte) {
 	if len(certBytes) == 0 {
 		return
@@ -82,6 +84,31 @@ func (t *Transitive) storeServedCertLocked(blockID ids.ID, certBytes []byte) {
 	}
 }
 
+// persistServedCert writes the cert to the durable store, so a peer catching up
+// can still be handed this height after our process exits.
+//
+// Called OFF the engine lock, deliberately. The write is an atomic replace with
+// an fsync — measured at ~17ms — and finality must never wait on a disk. The
+// in-memory window (storeServedCertLocked) has already answered for this height
+// by the time we get here, so the only thing at stake in the gap between the two
+// is whether a crash loses the ability to SERVE this one height. That costs a
+// straggler one fetch from another peer; it cannot cost safety, because nothing
+// finalizes on a cert this node failed to write.
+func (t *Transitive) persistServedCert(blockID ids.ID, height uint64, certBytes []byte) {
+	t.mu.RLock()
+	certs := t.certs
+	t.mu.RUnlock()
+	if certs == nil || len(certBytes) == 0 {
+		return
+	}
+	if err := certs.Put(blockID, height, certBytes); err != nil && t.log != nil {
+		t.log.Warn("could not persist the finality cert — once this process exits, no peer can be caught up through this height",
+			log.Stringer("blockID", blockID),
+			log.Uint64("height", height),
+			log.Err(err))
+	}
+}
+
 // CertForBlock returns the marshaled α-of-K finality cert this node recorded when
 // it finalized blockID, so the node can hand it to a peer catching up. ok is false
 // when blockID is not finalized here, or its cert has aged out of the served window
@@ -93,12 +120,19 @@ func (t *Transitive) storeServedCertLocked(blockID ids.ID, certBytes []byte) {
 // caller cannot mutate the served buffer.
 func (t *Transitive) CertForBlock(blockID ids.ID) ([]byte, bool) {
 	t.mu.RLock()
-	defer t.mu.RUnlock()
 	b, ok := t.certBytesByBlock[blockID]
-	if !ok {
+	certs := t.certs
+	t.mu.RUnlock()
+	if ok {
+		return append([]byte(nil), b...), true
+	}
+	// Not in this process's window — ask the durable store. This is the branch that
+	// answers a peer whose gap predates our last restart; without it the cert exists
+	// nowhere and the peer stalls at that height forever.
+	if certs == nil {
 		return nil, false
 	}
-	return append([]byte(nil), b...), true
+	return certs.Get(blockID)
 }
 
 // AcceptCatchupBlock finalizes ONE gap block from a (blockBytes, certBytes) pair

@@ -100,6 +100,14 @@ type NetworkConfig struct {
 	// sign a conflicting sibling at a height it already committed to before a restart.
 	// nil runs the guard memory-only (Start warns a signer that has none).
 	VoteGuard VoteGuardStore
+
+	// Certs (optional) is the DURABLE home for the finality certs this node assembles,
+	// opened by the node from the chain's data dir (chain.OpenCerts) alongside the vote
+	// guard. A peer that fell behind can only rejoin by being served the cert for each
+	// gap block — the network will not re-vote a decided height — so this store decides
+	// how far back a restarted fleet can still help a straggler. nil keeps certs
+	// memory-only, which strands any peer whose gap predates our last restart.
+	Certs CertStore
 }
 
 // Gossiper abstracts the network layer for consensus message broadcasting.
@@ -365,6 +373,13 @@ func NewRuntime(cfg NetworkConfig) *Runtime {
 	// memory-only.
 	if cfg.VoteGuard != nil {
 		WithVoteGuard(cfg.VoteGuard)(engine)
+	}
+
+	// Keep the finality certs this node assembles on disk, so a peer that fell behind
+	// can still be served the height it needs after we restart. nil keeps them in
+	// memory only, where they last exactly as long as this process.
+	if cfg.Certs != nil {
+		WithCerts(cfg.Certs)(engine)
 	}
 
 	rt := &Runtime{
