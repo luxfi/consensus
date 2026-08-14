@@ -193,3 +193,69 @@ func TestHeldBlockIsNotReVerified(t *testing.T) {
 		t.Fatal("held block was finalized without a cert")
 	}
 }
+
+// TestHeldBlockAtNextHeightIsNotReVerified: the height that MOVES the ledger is
+// finalized+1, and it took a different code path from every other height. A node
+// behind on certs holds its whole gap, so re-verification refused the one block
+// whose tracking the fold depends on — and pathFromTip then defers every cert above
+// that hole.
+func TestHeldBlockAtNextHeightIsNotReVerified(t *testing.T) {
+	vm := &parseVM{byBytes: map[string]*verifyOnceBlock{}}
+	e := NewWithConfig(Config{Params: params5()}, WithVM(vm))
+	rt := &Runtime{Transitive: e, config: NetworkConfig{
+		ChainID: ids.GenerateTestID(), Logger: log.Noop(), VM: vm,
+	}}
+
+	tip := ids.GenerateTestID()
+	e.consensus.mu.Lock()
+	e.consensus.ledger = seedLedger(tip, tip, 8)
+	e.consensus.mu.Unlock()
+
+	// Height 9 == finalized+1: the contiguous next block.
+	blk := &verifyOnceBlock{
+		id: ids.GenerateTestID(), parentID: tip, height: 9,
+		timestamp: time.Now(), bytes: []byte("held-next"),
+	}
+	vm.byBytes["held-next"] = blk
+	if err := blk.Verify(context.Background()); err != nil { // accepted earlier
+		t.Fatalf("first verify: %v", err)
+	}
+
+	err := rt.AcceptCatchupBlock(context.Background(), []byte("held-next"), nil)
+	if errors.Is(err, errVerifiedAlready) {
+		t.Fatal("finalized+1 was re-verified — the one height the fold needs tracked is the one we refuse")
+	}
+	if got := blk.VerifyCalls(); got != 1 {
+		t.Fatalf("Verify called %d times at finalized+1; the held copy must be used", got)
+	}
+	if e.IsAccepted(blk.id) {
+		t.Fatal("finalized+1 was finalized without a cert")
+	}
+}
+
+// TestRecallIsWiredWhenTheVMArrivesAfterConstruction: the node builds the engine
+// with no VM and attaches one later, so wiring the VM read-back only at construction
+// left it off in production while every test that passed WithVM saw it on.
+func TestRecallIsWiredWhenTheVMArrivesAfterConstruction(t *testing.T) {
+	vm := &parseVM{byBytes: map[string]*verifyOnceBlock{}}
+	blk := &verifyOnceBlock{
+		id: ids.GenerateTestID(), parentID: ids.GenerateTestID(), height: 77,
+		timestamp: time.Now(), bytes: []byte("late-vm"),
+	}
+	vm.byBytes["late-vm"] = blk
+
+	// Exactly the node's order: construct without a VM, attach afterwards.
+	e := NewWithParams(params5())
+	if _, _, _, _, ok := e.consensus.ancestry().Parent(blk.id); ok {
+		t.Fatal("resolved a block before any VM was attached")
+	}
+	e.SetVM(vm)
+
+	_, height, _, _, ok := e.consensus.ancestry().Parent(blk.id)
+	if !ok {
+		t.Fatal("after SetVM the walk still cannot read the VM — recall is unwired on the path the node actually uses")
+	}
+	if height != 77 {
+		t.Fatalf("resolved height %d, want 77", height)
+	}
+}
