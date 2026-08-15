@@ -232,3 +232,97 @@ func TestReplay_RefusesABlockTheLedgerDidNotFinalize(t *testing.T) {
 		t.Fatalf("the finalized block at N+1 must be applied exactly once, got %d", got)
 	}
 }
+
+// TestReplay_ClosesAGapDeeperThanTheLedgerWindow is the ceiling fix (red RED-1). The
+// ledger prunes its own byHeight to a near-tip window, so a gap deeper than that window
+// used to be unnameable and replay refused every block of it. The recovery index names
+// heights far below the tip, so a deep gap closes.
+//
+// It reproduces the post-wedge state directly: the ledger folded to N+k while the VM
+// stayed at N, and the recovery index holds N+1..N+k — exactly what applyBranchFinalization
+// leaves behind when it folds across a pendingBlocks miss (records the height, skips
+// VM.Accept). Then the gap is served for replay; the bottom heights are pruned from
+// byHeight and reachable only through recovery.
+func TestReplay_ClosesAGapDeeperThanTheLedgerWindow(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	base := newCatchupVM()
+	vm := &advancingVM{catchupVM: base}
+	rt, _, _ := newCatchupRuntime(t, vs, 0, vm)
+
+	const N = uint64(1_000_000)
+	const k = 1100 // > the ledger's equivocation window (1024), < recoveryDepth
+
+	tip := newTestBlock(N, ids.Empty, "applied@N")
+	base.register(tip)
+	if err := vm.SetPreference(context.Background(), tip.id); err != nil {
+		t.Fatalf("seed applied head: %v", err)
+	}
+	gap := buildGap(base, tip, k)
+
+	// Fold the ledger across the whole gap AND record each height in recovery — the pair
+	// applyBranchFinalization writes when the VM misses a block. The VM stays at N.
+	for _, blk := range gap {
+		if _, err := rt.Transitive.consensus.FinalizeBranch(blk.id, blk.height, blk.parentID); err != nil {
+			t.Fatalf("fold ledger over %d: %v", blk.height, err)
+		}
+		rt.Transitive.mu.Lock()
+		rt.Transitive.recordRecoveredLocked(blk.height, blk.id)
+		rt.Transitive.mu.Unlock()
+	}
+
+	// Preconditions: ledger at N+k, VM at N, and the bottom of the gap PRUNED from the
+	// ledger's own index (so it can only be named through recovery).
+	if fh, set := rt.Transitive.consensus.GetFinalizedHeight(); !set || fh != N+uint64(k) {
+		t.Fatalf("precondition: ledger at (%d,%v), want %d", fh, set, N+uint64(k))
+	}
+	if _, applied, _ := rt.localLastAccepted(context.Background()); applied != N {
+		t.Fatalf("precondition: applied head %d, want %d", applied, N)
+	}
+	if _, _, known := rt.Transitive.consensus.FinalizedAt(gap[0].height); known {
+		t.Fatalf("precondition: height %d must be PRUNED from byHeight for this test to exercise recovery", gap[0].height)
+	}
+
+	// Serve the whole gap oldest-first for replay (no cert — replay takes none).
+	for _, blk := range gap {
+		_ = rt.AcceptCatchupBlock(context.Background(), blk.bytes, nil)
+	}
+
+	// The load-bearing assertion: the applied head closed the entire deep gap, including
+	// the heights only the recovery index could name.
+	_, applied, err := rt.localLastAccepted(context.Background())
+	if err != nil {
+		t.Fatalf("read applied head: %v", err)
+	}
+	if applied != N+uint64(k) {
+		t.Fatalf("applied head = %d, want %d — a gap of %d (deeper than the ledger window) did not close",
+			applied, N+uint64(k), k)
+	}
+}
+
+// TestSettledHeight_LowersToGenuineZero is red RED-3: a VM genuinely at height 0 under a
+// ledger above it is a wedge, and the floor must drop to 0 so replay can execute height 1.
+// The unreadable-head case (which also reads as 0) must NOT lower the floor.
+func TestSettledHeight_LowersToGenuineZero(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	base := newCatchupVM()
+	vm := &advancingVM{catchupVM: base}
+	rt, _, _ := newCatchupRuntime(t, vs, 0, vm)
+
+	// VM genuinely at genesis (height 0), readable.
+	genesis := newTestBlock(0, ids.Empty, "genesis")
+	base.register(genesis)
+	if err := vm.SetPreference(context.Background(), genesis.id); err != nil {
+		t.Fatalf("seed genesis: %v", err)
+	}
+	// Ledger folded above it.
+	ledgerTip := newTestBlock(6, genesis.id, "ledger@6")
+	base.register(ledgerTip)
+	if _, err := rt.Transitive.consensus.FinalizeBranch(ledgerTip.id, 6, genesis.id); err != nil {
+		t.Fatalf("fold ledger: %v", err)
+	}
+
+	got, set := rt.settledHeight(context.Background())
+	if !set || got != 0 {
+		t.Fatalf("settledHeight = (%d,%v), want (0,true) — a genuine-zero VM under a ledger is a wedge the floor must expose", got, set)
+	}
+}
