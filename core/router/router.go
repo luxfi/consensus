@@ -51,6 +51,21 @@ const (
 	// Gossip method. Its wire value is fixed; append any new op ABOVE NumOps.
 	Gossip
 
+	// State-sync op-space. A node that pruned the ancestor state it needs re-fetches
+	// it from peers instead of stranding (the ErrPrunedAncestor / "side chain
+	// insertion" restart wedge). The four summary ops carry the frontier round — a
+	// behind node discovers a committed state summary and its α-weight; the three App
+	// ops are the EVM's own request/response transport for trie-leaf and code fetches,
+	// which the state-sync client rides to download the state under that summary.
+	// Appended ABOVE the pre-existing ops, so every wire value below is unchanged.
+	GetStateSummaryFrontier
+	StateSummaryFrontier
+	GetAcceptedStateSummary
+	AcceptedStateSummary
+	AppRequest
+	AppResponse
+	AppError
+
 	// NumOps is the count of router ops and the single source of truth for the
 	// op-space size. It is not a wire op — it is one past the last op. Node-side
 	// routing (node message.ToConsensusOp) is asserted to be a bijection onto
