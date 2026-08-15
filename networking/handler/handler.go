@@ -47,4 +47,13 @@ const (
 	GetContext          = router.GetContext
 	Context             = router.Context
 	Gossip              = router.Gossip
+
+	// State-sync ops (frontier round + EVM App transport) — see core/router.
+	GetStateSummaryFrontier = router.GetStateSummaryFrontier
+	StateSummaryFrontier    = router.StateSummaryFrontier
+	GetAcceptedStateSummary = router.GetAcceptedStateSummary
+	AcceptedStateSummary    = router.AcceptedStateSummary
+	AppRequest              = router.AppRequest
+	AppResponse             = router.AppResponse
+	AppError                = router.AppError
 )
