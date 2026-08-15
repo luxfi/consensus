@@ -368,3 +368,119 @@ func TestRecoveryIndex_RecordsTheRealHeightThroughTheFold(t *testing.T) {
 		}
 	}
 }
+
+// TestSeed_UnsetLedgerFoldsFromHintNotTip is the HIGH-3 fix: a fresh (unset) certified
+// ledger must SEED by walking the tracked ancestry down from the VM's applied head — the
+// recovery hint SyncStateFromVM leaves — not by vaulting to the cert's own height. A node
+// restarts with its EVM applied to N and its in-memory ledger empty; it fetches the run
+// N+1..N+k (tracked, uncertified) and then receives ONE cert on the tip. The whole run
+// must finalize AND execute, exactly as it would above an already-certified tip.
+//
+// Mutation control: revert Finalize's unset-hint branch to seedLedger(cert.Height) and the
+// interior heights are neither named (byHeight) nor executed (AcceptCalled) — only the tip.
+func TestSeed_UnsetLedgerFoldsFromHintNotTip(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	base := newCatchupVM()
+	vm := &advancingVM{catchupVM: base}
+	rt, chainID, _ := newCatchupRuntime(t, vs, 0, vm)
+	ctx := context.Background()
+
+	const N = uint64(1_000_000)
+	const k = 12
+
+	// VM applied to N; the certified ledger is UNSET — a fresh in-memory process after a
+	// restart. SyncStateFromVM leaves the applied head as the recovery HINT: the floor the
+	// first fold walks down to.
+	tip := newTestBlock(N, ids.Empty, "applied@N")
+	base.register(tip)
+	if err := vm.SetPreference(ctx, tip.id); err != nil {
+		t.Fatalf("seed applied head: %v", err)
+	}
+	if err := rt.Transitive.consensus.SyncState(tip.id, N); err != nil {
+		t.Fatalf("import applied-head hint: %v", err)
+	}
+	if _, set := rt.Transitive.consensus.GetFinalizedHeight(); set {
+		t.Fatalf("precondition: the certified frontier must be UNSET (hint only)")
+	}
+
+	gap := buildGap(base, tip, k) // N+1 .. N+k, each a child of the last
+
+	// Serve the run oldest-first with NO cert on the interior — TRACKED, finality deferred —
+	// then ONE cert on the tip.
+	for _, blk := range gap[:len(gap)-1] {
+		_ = rt.AcceptCatchupBlock(ctx, blk.bytes, nil)
+	}
+	top := gap[len(gap)-1]
+	certTop := catchupCertFor(t, vs, chainID, top, []int{0, 1, 2, 3}, 3)
+	if err := rt.AcceptCatchupBlock(ctx, top.bytes, certTop); err != nil {
+		t.Fatalf("one tip cert over a tracked run must finalize the whole run, got %v", err)
+	}
+
+	// The ledger seeded by WALKING the tracked ancestry from the applied head: every
+	// interior height is named in byHeight AND executed by the VM.
+	if fh, set := rt.Transitive.consensus.GetFinalizedHeight(); !set || fh != N+uint64(k) {
+		t.Fatalf("ledger at (%d,%v), want %d", fh, set, N+uint64(k))
+	}
+	for _, blk := range gap {
+		if _, _, known := rt.Transitive.consensus.FinalizedAt(blk.height); !known {
+			t.Fatalf("height %d not named in byHeight — the seed vaulted to the tip instead of walking from the applied head", blk.height)
+		}
+		if got := blk.AcceptCalled(); got != 1 {
+			t.Fatalf("height %d Accept called %d times, want 1 — the VM did not execute the interior of the run", blk.height, got)
+		}
+	}
+	if _, applied, _ := rt.localLastAccepted(ctx); applied != N+uint64(k) {
+		t.Fatalf("applied head %d, want %d", applied, N+uint64(k))
+	}
+}
+
+// TestSeed_UnsetLedgerRefusesAnUntrackedGap is the safety half of the same fix: a tip cert
+// whose ancestry down to the applied head is NOT tracked must be REFUSED, never seeded. It
+// is the difference between the fix and the wedge — a blind seed at the cert's height would
+// vault the finalized frontier over blocks the VM never executed and can never later name.
+//
+// Mutation control: revert Finalize's unset-hint branch and the ledger seeds at N+k over an
+// untracked gap; this asserts it stays unset and the VM stays at N.
+func TestSeed_UnsetLedgerRefusesAnUntrackedGap(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	base := newCatchupVM()
+	vm := &advancingVM{catchupVM: base}
+	rt, chainID, _ := newCatchupRuntime(t, vs, 0, vm)
+	ctx := context.Background()
+
+	const N = uint64(1_000_000)
+	const k = 12
+
+	tip := newTestBlock(N, ids.Empty, "applied@N")
+	base.register(tip)
+	if err := vm.SetPreference(ctx, tip.id); err != nil {
+		t.Fatalf("seed applied head: %v", err)
+	}
+	if err := rt.Transitive.consensus.SyncState(tip.id, N); err != nil {
+		t.Fatalf("import applied-head hint: %v", err)
+	}
+
+	// Build the run's linkage but register ONLY the tip in the VM: the node neither
+	// tracks nor HOLDS the interior N+1..N+k-1, so the fold cannot walk down to the
+	// applied head from either the live tree or the VM's own chain.
+	parent := tip
+	var top *verifyOnceBlock
+	for i := 1; i <= k; i++ {
+		top = newTestBlock(N+uint64(i), parent.id, fmt.Sprintf("unheld@%d", N+uint64(i)))
+		parent = top
+	}
+	base.register(top) // only the tip is fetchable/parseable; its ancestry is absent
+	certTop := catchupCertFor(t, vs, chainID, top, []int{0, 1, 2, 3}, 3)
+	if err := rt.AcceptCatchupBlock(ctx, top.bytes, certTop); err == nil {
+		t.Fatalf("a tip cert whose ancestry is neither tracked nor held must be refused, not seeded")
+	}
+
+	// The finalized frontier stayed UNSET and the VM at N: no blind seed vaulted finality
+	// over the untracked gap.
+	if fh, set := rt.Transitive.consensus.GetFinalizedHeight(); set {
+		t.Fatalf("the certified frontier seeded at %d over an UNTRACKED gap — the wedge this fix closes", fh)
+	}
+	if _, applied, _ := rt.localLastAccepted(ctx); applied != N {
+		t.Fatalf("applied head moved to %d over an untracked gap, want %d", applied, N)
+	}
+}

@@ -442,6 +442,16 @@ func (c *ChainConsensus) GetFinalizedHeight() (uint64, bool) {
 	return c.ledger.Height()
 }
 
+// HasHint reports whether the ledger carries a recovery hint — the VM's applied head,
+// imported by SyncState. Finalize walks the tracked ancestry down to the hint when it
+// seeds a fresh (unset) ledger, so the engine ensures the hint is present before the
+// first fold (ensureAppliedHeadHint); this lets it skip that work once one exists.
+func (c *ChainConsensus) HasHint() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.ledger.hasHint
+}
+
 // GetNovaAcceptedFloor returns a lower bound on the height this node has LOCALLY ACCEPTED
 // (Nova) through: max(Nova ledger height, recovery-hint height). Nova acceptance is
 // explicitly REORGABLE (see Finality.AuthorizesLocalExecution — "crash-safe but reorgable,
