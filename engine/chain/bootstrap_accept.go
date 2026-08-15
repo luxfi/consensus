@@ -122,36 +122,43 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 	// Within an ordered (oldest-first) feed this never wrongly rejects: by the time
 	// N+1 is processed, N has been executed, so N+1.height == floor+1.
 	if fh, set := rt.Transitive.consensus.GetFinalizedHeight(); set {
-		floor := fh
-		// A VM naming no accepted block reports nothing about what it applied — absence
-		// is not a reading of zero, so only a VM that names a block lowers the floor.
-		if id, applied, aerr := rt.AppliedHead(ctx); aerr == nil && id != ids.Empty && applied < fh {
-			floor = applied
-		}
+		// ONE floor, shared with the runtime catch-up lane (settledHeight): the lower of
+		// the ledger and the VM's applied head, with the absence/zero-height guards in
+		// exactly one place. Re-deriving it inline is how the two lanes drifted — one got
+		// the applied==0 guard, the other collapsed to genesis on an unreadable head.
+		floor, _ := rt.settledHeight(ctx)
 		if blk.Height() <= floor {
 			return nil
 		}
 		if h := blk.Height(); h <= fh {
+			// The replay band: decided by the ledger, not yet executed by the VM. Bind
+			// BOTH the height AND the parent to the applied head — a height match alone
+			// admits a sibling at the right height, and proposervm commits its outer
+			// envelope before the inner EVM refuses a non-child.
+			headID, headH, herr := rt.AppliedHead(ctx)
+			if herr != nil || h != headH+1 || blk.ParentID() != headID {
+				return ErrBootstrapBlockRejected
+			}
 			if canonical, envelope, known := rt.Transitive.consensus.FinalizedAt(h); known &&
 				canonical != canonicalIDOf(blk) && envelope != blk.ID() {
 				return ErrBootstrapBlockRejected
 			}
-			if h != floor+1 {
-				return ErrBootstrapBlockRejected // out of order within the replay band
-			}
-			// Prefer the copy the VM already holds (gossiped ahead into the store):
-			// re-verifying our own stored block asks the VM to insert it a second time.
-			held := blk
+			// Prefer the copy the VM already holds (gossiped ahead into the store), and
+			// Verify only when it is NOT held: re-verifying our own stored block asks the
+			// VM to insert it a second time, which it refuses.
+			exec, held := blk, false
 			if hb, herr := rt.config.VM.GetBlock(ctx, blk.ID()); herr == nil && hb != nil {
-				held = hb
+				exec, held = hb, true
 			}
-			if err := held.Verify(ctx); err != nil {
+			if !held {
+				if err := exec.Verify(ctx); err != nil {
+					return errors.Join(ErrBootstrapBlockRejected, err)
+				}
+			}
+			if err := exec.Accept(ctx); err != nil {
 				return errors.Join(ErrBootstrapBlockRejected, err)
 			}
-			if err := held.Accept(ctx); err != nil {
-				return errors.Join(ErrBootstrapBlockRejected, err)
-			}
-			_ = rt.config.VM.SetPreference(ctx, held.ID())
+			_ = rt.config.VM.SetPreference(ctx, exec.ID())
 			return nil
 		}
 		if blk.Height() > fh+1 {
