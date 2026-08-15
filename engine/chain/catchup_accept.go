@@ -211,55 +211,43 @@ func (rt *Runtime) settledHeight(ctx context.Context) (uint64, bool) {
 	return applied, true
 }
 
-// replayFinalized executes a block the ledger has already finalized but this node's VM
-// never applied. It moves the applied head; it does not move the ledger, cast a vote, or
-// consume a cert.
+// replayFinalized executes a block the consensus ledger has already finalized but this
+// node's VM never applied. It moves the applied head; it does not move the ledger, cast a
+// vote, or consume a cert. The block is applied on the LEDGER's own authority — nothing
+// weaker, and nothing external.
 //
-// Two things can vouch for the block, and one of them must:
+// The ledger is the only thing that vouches. It finalized this exact block at this height
+// (matched on the canonical commitment, so a differing wrapper of the same inner block is
+// an alias, not a rival), so re-executing it decides nothing new — it aligns the VM with a
+// decision the ledger already committed. A block the ledger finalized DIFFERENTLY is
+// refused; a height the ledger cannot speak for is deferred, NOT executed on a cert.
 //
-//   - the LEDGER's own record — IsFinalizedAt says this block is the one finalized at
-//     this height; or
-//   - the CERT riding with it — a quorum cert naming this exact position, verified
-//     through the same predicate live finality uses (α-floor, ⅔ of stake, epoch-bound).
-//
-// The second exists because the first has a blind spot that this defect lives in. A
-// ledger built from a boot seed holds ONE height, and grows only upward from there, so a
-// node that restarted below its own finalized height cannot name the very range it needs
-// to replay. Refusing there strands it exactly as before — which is what a fleet showed:
-// the applied head moved a handful of blocks, to the bottom of the seed, and stopped.
-//
-// A cert is not a weaker authority than the ledger; it is what put entries in the ledger
-// in the first place. What replay must never do is DECIDE, and it does not: no cert is
-// consumed, no height is finalized, nothing is voted. It applies a decision the network
-// already made. A peer with a forged or sub-quorum cert, or one naming a different block,
-// earns a rejection and nothing else.
-func (rt *Runtime) replayFinalized(ctx context.Context, blk block.Block, certBytes []byte, held bool) error {
+// WHY NO CERT PATH. On restart the ledger seeds at the VM's applied head and folds gap
+// heights ABOVE that seed, so the shallow ledger-ahead-of-VM gap (a roll, a restart, an
+// OOM) is entirely within byHeight and the ledger names every height of it. A gap deeper
+// than the pruning window is a node that fell too far to catch up in place; its recovery
+// is bootstrap/resync, the descent's job, not a runtime replay on a cert whose epoch the
+// offered block would itself supply. Replay stays exactly one concern: re-run what the
+// ledger decided.
+func (rt *Runtime) replayFinalized(ctx context.Context, blk block.Block, held bool) error {
 	// CONTIGUITY, before anything is applied. Accept must run only on the block that
 	// extends the applied head by one. proposervm commits its OUTER envelope (height
 	// index, last-accepted, PutBlock) BEFORE the inner EVM refuses a non-child, so a gap
 	// accepted here leaves a durable proposervm index hole that survives the EVM's own
-	// fail-closed check and re-creates the very wedge this path exists to cure (the
-	// applied head then reads AHEAD of the executed state). The check the EVM makes
-	// internally has to be made here, in front of the outer commit.
+	// fail-closed check and re-creates the very wedge this path exists to cure.
 	headID, headH, herr := rt.AppliedHead(ctx)
 	if herr != nil || blk.Height() != headH+1 || blk.ParentID() != headID {
 		return ErrCatchupCertRejected
 	}
-	// The ledger gets the first and last word wherever it has one. Where it has none —
-	// below a boot seed, below the pruning window — a verified cert may speak instead.
-	// The order matters: a cert that contradicts a height the ledger has already
-	// finalized is equivocation, and letting it through here would overwrite decided
-	// state on this node's own VM. It is refused without consulting the cert at all.
-	// Identity is matched on the CANONICAL commitment, never the outer envelope: a
-	// differing wrapper of the same certified inner block is an alias, not a rival.
 	canonical, envelope, known := rt.Transitive.consensus.FinalizedAt(blk.Height())
 	switch {
 	case known && (canonical == canonicalIDOf(blk) || envelope == blk.ID()):
+		// The ledger names this block at this height. Fall through and execute it.
 	case known:
-		// A block offered at a height the ledger has already finalized to a DIFFERENT
-		// canonical commitment. Refused, and worth a line: it is either a stale sibling
-		// or a peer probing for a fork. Not silent, but not slashing evidence either —
-		// evidence requires a verified conflicting cert, which lives in HandleIncomingCert.
+		// A block offered at a height the ledger finalized to a DIFFERENT canonical
+		// commitment — a stale sibling or a peer probing for a fork. Refused, and worth
+		// a line; not slashing evidence (that needs a verified conflicting cert, which
+		// lives in HandleIncomingCert).
 		if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
 			rt.config.Logger.Warn("catch-up replay refused a block conflicting with finalized state",
 				log.Uint64("height", blk.Height()),
@@ -267,8 +255,12 @@ func (rt *Runtime) replayFinalized(ctx context.Context, blk block.Block, certByt
 				log.Stringer("finalized", canonical))
 		}
 		return ErrCatchupCertRejected
-	case rt.certVouchesFor(blk, certBytes):
 	default:
+		// The ledger cannot speak for this height — it sits below the pruning window, so
+		// this node is behind by more than the window can name. It cannot replay in
+		// place; recovery is the descent / bootstrap. A plain rejection is the honest
+		// signal there — NOT ErrCatchupDeferred, which reads as progress and would keep
+		// the descent from firing on exactly the node that needs it.
 		return ErrCatchupCertRejected
 	}
 	// A block our VM already holds was verified when it was stored; re-verifying asks the
@@ -283,89 +275,6 @@ func (rt *Runtime) replayFinalized(ctx context.Context, blk block.Block, certByt
 	}
 	_ = rt.config.VM.SetPreference(ctx, blk.ID())
 	return nil
-}
-
-// certVouchesFor reports whether certBytes is a verified quorum cert proving THIS block
-// at THIS height on THIS chain. It answers a question; nothing here finalizes, votes, or
-// moves the ledger.
-//
-// The binding is over what the cert SIGNS, never over transport. Position.BlockID and
-// Position.ParentID are the outer envelope ids and are NOT in the signed message (see
-// cert_codec.go), so binding on them lets anyone rewrite a held cert to name any block
-// without touching a signature. The signed identity is the canonical tuple —
-// {CanonicalID, ParentCanonicalID, ExecutionStateRoot, PayloadRoot, Height} — so this
-// compares the cert's canonical position against the block's OWN canonical commitment.
-// On a bare (non-wrapped) chain the canonical id degrades to the outer id on both sides
-// and the roots are Empty on both, so the comparison is exact there too.
-func (rt *Runtime) certVouchesFor(blk block.Block, certBytes []byte) bool {
-	if len(certBytes) == 0 {
-		return false
-	}
-	cert, err := UnmarshalQuorumCert(certBytes)
-	if err != nil {
-		return false
-	}
-	t := rt.Transitive
-	t.mu.RLock()
-	chainID := t.chainID
-	setRootSrc := t.setRootSource
-	t.mu.RUnlock()
-
-	if cert.Position.ChainID != chainID || cert.Position.Height != blk.Height() {
-		return false
-	}
-
-	// SIGNED-IDENTITY BINDING. Match the cert's canonical position to the block's own
-	// canonical commitment, the same equality finalizeLocalAliasFromVerifiedCert uses to
-	// finalize a wrapper against a verified cert. The canonical id degrade (Empty →
-	// signed outer id) mirrors the signing path, so it cannot be used to launder in a
-	// different block: an attacker who rewrites the outer BlockID must still match the
-	// block's canonicalID, which is the signed value.
-	certCanon := cert.Position.CanonicalID
-	if certCanon == ids.Empty {
-		certCanon = cert.Position.BlockID
-	}
-	if certCanon != canonicalIDOf(blk) {
-		return false
-	}
-	if c, ok := blk.(canonicalCommitter); ok {
-		if cert.Position.ParentCanonicalID != c.ParentCanonicalID() ||
-			cert.Position.ExecutionStateRoot != c.ExecutionStateRoot() ||
-			cert.Position.PayloadRoot != c.PayloadRoot() {
-			return false
-		}
-	}
-
-	// QUASAR ONLY. Replay applies a decision claimed already made, so it must rest on the
-	// irreversible export tier. A Nova cert is a reorgable majority (2α−n = 1, not > f),
-	// and live finality only VM-Accepts on Nova behind the ledger fold's contiguity and
-	// per-height equivocation guard — neither of which replay runs.
-	if cert.Tier != Quasar {
-		return false
-	}
-	if floor := t.consensus.Alpha(); floor > 0 && cert.Threshold < uint32(floor) {
-		return false
-	}
-
-	// EPOCH from the block itself, not from a pendingBlocks lookup that always misses on
-	// the replay path (the block is below the ledger, so it was dropped from pending at
-	// finalize). Resolving at 0 would verify against the GENESIS validator set, which both
-	// rejects every honest cert on a chain with a live epoch and admits a long-range cert
-	// from rotated-out genesis keys. The block carries the P-chain height its votes were
-	// cast under.
-	epochHeight := pChainHeightOf(blk)
-
-	// SET-ROOT LOCK, as HandleIncomingCert applies it: the validator-set root we recompute
-	// at the block's epoch must equal the one folded into the signed votes, so a cert
-	// laundered from a different epoch is refused even if its signatures verify. A nil
-	// source (fixed-set chain) makes both sides Empty — a no-op.
-	if setRootSrc != nil {
-		if setRootSrc.ValidatorSetRoot(epochHeight) != cert.Position.ValidatorSetRoot {
-			return false
-		}
-	}
-
-	return t.verifyCert(cert, epochHeight) == nil
 }
 
 func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes []byte) error {
@@ -426,7 +335,7 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 		// refused too. Nothing here decides anything — replay applies a decision that
 		// already exists.
 		if ledgerH, ok := rt.Transitive.consensus.GetFinalizedHeight(); ok && blk.Height() <= ledgerH {
-			return rt.replayFinalized(ctx, blk, certBytes, held)
+			return rt.replayFinalized(ctx, blk, held)
 		}
 		if blk.Height() > fh+1 {
 			// ABOVE our next height — verify and TRACK it rather than discard it.
