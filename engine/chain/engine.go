@@ -4284,21 +4284,21 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 	}
 	t.mu.RLock()
 	path := make([]pathBlock, 0, len(plan.Accept))
-	for _, id := range plan.Accept {
+	for i, id := range plan.Accept {
+		// The height comes from the PLAN (the fold knows it for every step), not from
+		// pendingBlocks — a gap block is by definition no longer tracked, so deriving the
+		// height from pendingBlocks yields 0 and the recovery index would record it at the
+		// wrong height. AcceptHeights is populated in lockstep with Accept.
+		var h uint64
+		if i < len(plan.AcceptHeights) {
+			h = plan.AcceptHeights[i]
+		}
 		pending, ok := t.pendingBlocks[id]
 		if !ok || pending.Decided {
 			// Untracked or already applied: treat as accepted for floor purposes (the ledger
 			// is the truth) but nothing to Accept on the VM.
-			var h uint64
-			if ok && pending.ConsensusBlock != nil {
-				h = pending.ConsensusBlock.height
-			}
 			path = append(path, pathBlock{id: id, vmb: nil, height: h})
 			continue
-		}
-		var h uint64
-		if pending.ConsensusBlock != nil {
-			h = pending.ConsensusBlock.height
 		}
 		path = append(path, pathBlock{id: id, vmb: pending.VMBlock, height: h})
 	}

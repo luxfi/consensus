@@ -58,7 +58,9 @@ func (d mapDAG) Children(id ids.ID) []ids.ID {
 	return out
 }
 
-func (d mapDAG) add(id, parent ids.ID, height uint64) { d[id] = dagNode{parent: parent, height: height} }
+func (d mapDAG) add(id, parent ids.ID, height uint64) {
+	d[id] = dagNode{parent: parent, height: height}
+}
 
 // seedFold finalizes a genesis at height 0 through the public fold (not the
 // seedLedger helper) so every test exercises Finalize end to end.
@@ -389,5 +391,36 @@ func BenchmarkFinalize_FlatCost(b *testing.B) {
 				_, _, _ = Finalize(led, cert, dag)
 			}
 		})
+	}
+}
+
+// TestLedger_PlanCarriesAcceptHeights: the fold's plan reports the height of every
+// Accept entry, in the same order. The engine's accept loop reads these to record the
+// recovery index at the true height — a gap block is no longer tracked, so deriving its
+// height from pendingBlocks yields 0 and files it under the wrong height. This is the
+// authoritative source that makes the recovery index name the right heights.
+func TestLedger_PlanCarriesAcceptHeights(t *testing.T) {
+	g := ids.GenerateTestID()
+	a1 := ids.GenerateTestID()
+	a2 := ids.GenerateTestID()
+	a3 := ids.GenerateTestID()
+	dag := mapDAG{}
+	dag.add(a1, g, 1)
+	dag.add(a2, a1, 2)
+	dag.add(a3, a2, 3)
+
+	led := seedFold(t, g, dag)
+	_, plan, err := Finalize(led, Cert{Block: a3, Parent: a2, Height: 3}, dag)
+	if err != nil {
+		t.Fatalf("finalize A3: %v", err)
+	}
+	if len(plan.AcceptHeights) != len(plan.Accept) {
+		t.Fatalf("AcceptHeights len %d != Accept len %d — heights lost", len(plan.AcceptHeights), len(plan.Accept))
+	}
+	want := []uint64{1, 2, 3}
+	for i, h := range plan.AcceptHeights {
+		if h != want[i] {
+			t.Fatalf("AcceptHeights[%d]=%d, want %d (id %s)", i, h, want[i], plan.Accept[i])
+		}
 	}
 }
