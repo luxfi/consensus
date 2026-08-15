@@ -81,6 +81,13 @@ const maxServedCerts = 64 * 1024
 // chain and covers any gap a restart, roll, or transient OOM produces. It is deliberately
 // far deeper than the ledger's equivocation window, because the two answer opposite
 // questions — equivocation looks near the tip, recovery looks far below it.
+//
+// The FIFO evicts by INSERTION order, which equals height order while finality advances
+// monotonically (the common case) — so the retained set is the 64Ki heights nearest the
+// tip. It does not track depth-below-tip directly: were heights ever recorded out of
+// order, the oldest INSERTION is evicted, not the lowest height. That is acceptable
+// because eviction only forfeits the in-place replay shortcut; a height evicted from the
+// index still recovers by descent/resync (the else arm below), never incorrectly.
 const recoveryDepth = 64 * 1024
 
 // recordRecoveredLocked notes that this node finalized outerID at height h, for the deep
@@ -299,6 +306,16 @@ func (rt *Runtime) replayFinalized(ctx context.Context, blk block.Block, held bo
 		// same authority the ledger arm carries: a height enters the index only after a
 		// verified cert folded over it.
 		if outer, ok := rt.recoveredOuterAt(blk.Height()); ok {
+			// Match the OUTER id, not the canonical inner commitment. The ledger arm
+			// above is alias-tolerant (canonical OR envelope) because a tracked block
+			// carries its inner canonicalID; a gap-folded height does not — the block is
+			// untracked by the time the fold reaches it, so all the ledger fold knows is
+			// the outer id from plan.Accept, and that is what the index stores. Matching
+			// the outer is therefore not a weaker check but a STRONGER one: the outer id
+			// is the hash of the whole envelope, so an envelope re-wrap (same inner
+			// content, different proposer/timestamp) shares the canonical but NOT the
+			// outer, and is correctly refused here. Finalization is unique per height, so
+			// the legitimate chain always re-serves the exact envelope this node folded.
 			if outer != blk.ID() {
 				return ErrCatchupCertRejected
 			}
@@ -456,6 +473,13 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 			return ErrCatchupDeferred
 		}
 	}
+	// LEDGER UNSET (fresh process / post-restart, before the first fold of this session)
+	// is deliberately NOT special-cased here. The seed-anchor invariant — the ledger may
+	// not seed above the VM's applied head — lives in ONE place, acceptWithCertCore (see
+	// ErrSeedAboveAppliedHead), through which this path funnels via HandleIncomingCert
+	// below. A tip cert on an unset ledger is verified+tracked here (harmless — the same
+	// as the >settled+1 arm above) and then refused at the fold, which surfaces as a
+	// rejection and drives the descent that fetches the gap in order.
 
 	// Locally VERIFY the block, unless our VM already holds it — in which case it was
 	// verified when we accepted it, and asking again is the re-insertion the VM
