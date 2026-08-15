@@ -3587,6 +3587,30 @@ func (t *Transitive) AcceptWithCert(ctx context.Context, blockID ids.ID, cert Ve
 	return t.acceptWithCertCore(ctx, blockID, cert, true)
 }
 
+// ensureAppliedHeadHint seeds the certified ledger's recovery hint from the VM's applied
+// head when no hint is present yet. The hint is the FLOOR Finalize walks the tracked
+// ancestry down to when it seeds a fresh (unset) ledger, so without it the first cert
+// would seed blind at its own height. Idempotent and cheap: it returns immediately once a
+// hint exists (SyncStateFromVM sets one on boot), and only reads the VM to close the boot
+// race where a cert arrives first. A VM naming no block (Empty) or an unreadable head
+// leaves the ledger hint-less — Finalize then falls back to seeding at the cert height,
+// the correct behaviour for a genuine genesis/first-finalize with no applied head to
+// anchor to. Never lowers finality: SyncState imports a hint, never a certified entry.
+func (t *Transitive) ensureAppliedHeadHint(ctx context.Context) {
+	if t.consensus.HasHint() {
+		return
+	}
+	id, err := t.vm.LastAccepted(ctx)
+	if err != nil || id == ids.Empty {
+		return
+	}
+	blk, err := t.vm.GetBlock(ctx, id)
+	if err != nil || blk == nil {
+		return
+	}
+	_ = t.consensus.SyncState(id, blk.Height())
+}
+
 // acceptWithCertCore is the one finalization body. signalNext controls only
 // whether it wakes the pipeline afterward (see AcceptWithCert). Everything that
 // makes finality safe — the zero-cert refusal, the Decided/idempotency guard,
@@ -3637,6 +3661,21 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	if pos.BlockID != blockID {
 		return fmt.Errorf("cert position block %s != finalize target %s (inconsistent cert trio)", pos.BlockID, blockID)
 	}
+
+	// ANCHOR THE SEED TO THE APPLIED HEAD. On a fresh process the certified ledger is
+	// unset until the first cert folds; the first cert to fold would otherwise SEED it at
+	// the cert's own height, vaulting the finalized height over every block between the
+	// VM's applied head and that cert — a gap the process cannot execute or later name.
+	// Guaranteeing the recovery hint (the VM's applied head) is present BEFORE the fold
+	// makes Finalize walk the tracked ancestry down from the applied head instead of
+	// seeding blind: an untracked run fails closed (a DEFER, the node fetches more), a
+	// tracked run folds and executes every height. Idempotent — a hint already seeded by
+	// SyncStateFromVM on boot is left untouched; this only closes the boot race where a
+	// cert arrives before that import. Costs a VM read only while the ledger is unset.
+	if _, set := t.consensus.GetFinalizedHeight(); !set && t.vm != nil {
+		t.ensureAppliedHeadHint(ctx)
+	}
+
 	plan, err := t.consensus.ApplyCert(Cert{Block: pos.BlockID, Parent: pos.ParentID, ParentCanonical: pos.ParentCanonicalID, Height: pos.Height, Canonical: pos.CanonicalID})
 	if err != nil {
 		return err
@@ -4304,6 +4343,19 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 	}
 	t.mu.RUnlock()
 
+	// Record recovery for EVERY height the ledger just folded, BEFORE applying any of them
+	// to the VM. The ledger has already committed these heights (ApplyCert ran); the
+	// recovery index must reflect what the LEDGER decided, not what the VM manages to apply.
+	// Recording inside the accept loop missed exactly the gap this index exists to close:
+	// the loop stops at the first VM.Accept failure, and the height it failed on — plus
+	// every height above it — is precisely the gap, folded but unapplied. Those heights were
+	// never recorded, so replay could never name them. Recording up front closes that.
+	t.mu.Lock()
+	for _, pb := range path {
+		t.recordRecoveredLocked(pb.height, pb.id)
+	}
+	t.mu.Unlock()
+
 	// Accept ascending; commit each block's finality ONLY after the VM applied it. Stop (fail
 	// closed) at the first VM.Accept error — the floor will advance only to the last success.
 	for _, pb := range path {
@@ -4325,7 +4377,6 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 		} else {
 			t.finalizedByCert[pb.id] = struct{}{}
 		}
-		t.recordRecoveredLocked(pb.height, pb.id)
 		t.mu.Unlock()
 		if pb.height > highestAccepted {
 			highestAccepted = pb.height

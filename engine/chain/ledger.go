@@ -294,11 +294,27 @@ func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan
 			ErrHeightAlreadyFinalized, cert.Height, existing.canonical, existing.envelope, canonical, cert.Block)
 	}
 
-	// First CERT finalize seeds certified history — no prior certified tip to
-	// extend or reorg. The recovery hint (if any) is non-authoritative and is simply
-	// superseded here: a cert at the hint's height, even for a different canonical id
-	// than the hint guessed, finalizes cleanly (the hint never blocks a cert).
+	// First CERT on a fresh (unset) ledger seeds certified history. When a recovery hint
+	// is present — the VM's applied head, imported by SyncState — the cert must extend a
+	// TRACKED chain up FROM that head, the same contiguous-ancestry proof the certified
+	// path below demands above the certified tip. Walking from the hint is what stops a
+	// fresh ledger from seeding blind at the cert's own height and vaulting the finalized
+	// height over blocks the VM never executed (the post-restart wedge): an unheld
+	// ancestry fails closed (AncestorNotTracked → a behind-node DEFER, fetch the gap),
+	// while a tracked run folds and EXECUTES every height from the applied head up. With
+	// no hint (a genuine genesis, no applied head to anchor to) or a cert at/below the
+	// hint (the applied head's own first cert, or a straggler), seed the cert directly —
+	// even for a different canonical id than the hint guessed, the hint never blocks it.
 	if !led.set {
+		if led.hasHint && cert.Height > led.hintHeight {
+			floor := FinalityLedger{tip: led.hint, height: led.hintHeight, set: true}
+			path, err := pathFromTip(floor, cert, dag)
+			if err != nil {
+				return led, Plan{}, err
+			}
+			next, plan := foldPath(FinalityLedger{set: true, byHeight: map[uint64]finalizedEntry{}}, path, dag)
+			return next, plan, nil
+		}
 		return seedLedger(cert.Block, canonical, cert.Height), Plan{Accept: []ids.ID{cert.Block}, AcceptHeights: []uint64{cert.Height}}, nil
 	}
 
@@ -315,11 +331,18 @@ func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan
 	if err != nil {
 		return led, Plan{}, err
 	}
+	// Fold the walked path into a COPY of the ledger (never mutate the input map).
+	next, plan := foldPath(led.clone(), path, dag)
+	return next, plan, nil
+}
 
-	// Build the NEXT ledger by COPY (never mutate the input map) and the plan: Accept
-	// the path ascending, Reject every losing-sibling subtree along it. byHeight
-	// records the CANONICAL commitment of each step (the authoritative finality id).
-	next := led.clone()
+// foldPath folds a walked, ascending-height path into `next` — the ONE fold body shared
+// by both seed shapes: a clone of the live ledger when extending certified history above
+// the certified tip, or a fresh set ledger when seeding from a recovery hint (walking up
+// from the VM's applied head). It Accepts the path ascending, Rejects every losing-sibling
+// subtree along it, and records each step's CANONICAL commitment (the authoritative
+// finality id) in byHeight, bounded to the equivocation window on return.
+func foldPath(next FinalityLedger, path []step, dag Ancestry) (FinalityLedger, Plan) {
 	var plan Plan
 	for _, s := range path {
 		plan.Reject = append(plan.Reject, losingSubtrees(s.id, s.parentID, dag)...)
@@ -330,8 +353,8 @@ func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan
 		plan.Accept = append(plan.Accept, s.id)
 		plan.AcceptHeights = append(plan.AcceptHeights, s.height)
 	}
-	next.pruneBelowWindow() // keep byHeight (and the next clone) O(window), not O(chain height)
-	return next, plan, nil
+	next.pruneBelowWindow() // keep byHeight O(window), not O(chain height)
+	return next, plan
 }
 
 // seedLedger constructs the first CERTIFIED ledger value from the seed (outer
