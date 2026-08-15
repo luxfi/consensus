@@ -163,6 +163,64 @@ func (t *Transitive) CertForBlock(blockID ids.ID) ([]byte, bool) {
 // per-height guard requires height == finalizedHeight+1 AND parent == finalizedTip,
 // so a gapped or out-of-order block is REFUSED, never force-accepted. The node-side
 // catch-up transport delivers ancestors oldest-first for exactly this reason.
+// settledHeight is the height below which catch-up has nothing to offer: the highest
+// height this node has BOTH finalized in consensus AND applied to its VM.
+//
+// These two are not the same number, and reading only the first is what makes a behind
+// node stop. The ledger records what a quorum decided; the VM records what this node
+// actually executed. Finalization can fold the ledger across a block the VM never
+// applied — a pendingBlocks miss is folded as accepted-with-no-VM-block, and the recall
+// bridge answers for blocks the VM merely holds — so the ledger legitimately runs ahead
+// of the applied head. Catch-up steering by the ledger alone then discards every block
+// in exactly the range it is trying to fetch: the responder serves the gap, each entry
+// is at or below the ledger, each is skipped as "already decided", and the node reports
+// a full batch accepted while applying none of it. Nothing retries, because nothing
+// registered a failure.
+//
+// The lower of the two is the honest floor. A height is worth fetching whenever either
+// half is missing, and skipping requires both.
+func (rt *Runtime) settledHeight(ctx context.Context) (uint64, bool) {
+	fh, set := rt.Transitive.consensus.GetFinalizedHeight()
+	if !set {
+		return 0, false
+	}
+	// A VM that names NO accepted block tells us nothing about what it has applied, and
+	// an absent reading is not a reading of zero: taking it as zero would collapse the
+	// floor to genesis and refuse every block above height 1. Lower the floor only on a
+	// VM that actually names a block, and only when that block sits below the ledger.
+	id, applied, err := rt.AppliedHead(ctx)
+	if err != nil || id == ids.Empty || applied >= fh {
+		return fh, true
+	}
+	return applied, true
+}
+
+// replayFinalized executes a block the ledger has already finalized but this node's VM
+// never applied. It moves the applied head; it does not move the ledger, cast a vote, or
+// consume a cert.
+//
+// Safety rests entirely on the ledger's own record: the block must BE the one finalized
+// at its height, matched through IsFinalizedAt. A block that is not is refused, as is a
+// height the ledger cannot speak for. Replay therefore cannot introduce a block the
+// network did not already finalize — the worst a lying peer achieves is a rejection.
+func (rt *Runtime) replayFinalized(ctx context.Context, blk block.Block, held bool) error {
+	if !rt.Transitive.consensus.IsFinalizedAt(blk.Height(), blk.ID()) {
+		return ErrCatchupCertRejected
+	}
+	// A block our VM already holds was verified when it was stored; re-verifying asks the
+	// VM to insert it a second time, which it refuses.
+	if !held {
+		if err := blk.Verify(ctx); err != nil {
+			return errors.Join(ErrCatchupCertRejected, err)
+		}
+	}
+	if err := blk.Accept(ctx); err != nil {
+		return errors.Join(ErrCatchupCertRejected, err)
+	}
+	_ = rt.config.VM.SetPreference(ctx, blk.ID())
+	return nil
+}
+
 func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes []byte) error {
 	if rt.config.VM == nil {
 		return ErrCatchupCertRejected
@@ -197,18 +255,31 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 	// CONTIGUITY (defence-in-depth over the per-height guard, and an orphan-accrual
 	// bound). The catch-up window the responder serves overlaps blocks we already
 	// have AND, on a node lagging by more than that window, starts ABOVE our tip.
-	//   - height ≤ finalized: already decided. Skip cleanly — not new work, not an
-	//     error (the responder always includes some blocks we hold).
-	//   - height > finalized+1: NOT our contiguous next block — either out of order,
+	//   - height ≤ settled: already decided AND already applied. Skip cleanly — not
+	//     new work, not an error (the responder always includes blocks we hold).
+	//   - height > settled+1: NOT our contiguous next block — either out of order,
 	//     or the gap exceeds the served window (a too-far-behind node: it should
 	//     BOOTSTRAP, not runtime-catch-up). Reject WITHOUT tracking, so such a node
 	//     does not accrue unfinalizable orphans in pendingBlocks. The per-height guard
 	//     would reject it regardless; this just avoids the wasted verify+track.
 	// Within an ordered (oldest-first) batch this never wrongly rejects: by the time
-	// N+2 is processed, N+1 has finalized, so N+2's height == finalized+1.
-	if fh, set := rt.Transitive.consensus.GetFinalizedHeight(); set {
+	// N+2 is processed, N+1 has finalized, so N+2's height == settled+1.
+	if fh, set := rt.settledHeight(ctx); set {
 		if blk.Height() <= fh {
 			return nil
+		}
+		// REPLAY. Between the applied head and the finalized height sit blocks this node
+		// has already proven and never executed. They are not a finality question —
+		// asking for a cert here asks the network to re-decide what it decided long ago,
+		// and the height guard correctly refuses to finalize below the ledger, so the
+		// two rules meet and the node stops. What is missing is execution, so execute.
+		//
+		// The ledger is the authority for which block belongs at the height; a block
+		// that does not match it is refused, and a height the ledger does not know is
+		// refused too. Nothing here decides anything — replay applies a decision that
+		// already exists.
+		if ledgerH, ok := rt.Transitive.consensus.GetFinalizedHeight(); ok && blk.Height() <= ledgerH {
+			return rt.replayFinalized(ctx, blk, held)
 		}
 		if blk.Height() > fh+1 {
 			// ABOVE our next height — verify and TRACK it rather than discard it.
