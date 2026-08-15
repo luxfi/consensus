@@ -245,7 +245,12 @@ type Cert struct {
 //     all its descendants — rejectTransitively.
 type Plan struct {
 	Accept []ids.ID
-	Reject []ids.ID
+	// AcceptHeights is the height of each Accept entry, in the same order. The fold knows
+	// every step's height; the engine's accept loop otherwise recovers it from
+	// pendingBlocks and gets 0 for a block that is no longer tracked — which is exactly a
+	// gap block. Carrying it here lets the recovery index record the true height.
+	AcceptHeights []uint64
+	Reject        []ids.ID
 }
 
 // Finalize is THE finality function: a pure fold of a Cert into the ledger. No
@@ -294,7 +299,7 @@ func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan
 	// superseded here: a cert at the hint's height, even for a different canonical id
 	// than the hint guessed, finalizes cleanly (the hint never blocks a cert).
 	if !led.set {
-		return seedLedger(cert.Block, canonical, cert.Height), Plan{Accept: []ids.ID{cert.Block}}, nil
+		return seedLedger(cert.Block, canonical, cert.Height), Plan{Accept: []ids.ID{cert.Block}, AcceptHeights: []uint64{cert.Height}}, nil
 	}
 
 	// Below/at the frontier with no record for this height → stale or non-monotonic.
@@ -323,6 +328,7 @@ func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan
 		next.canonical = s.canonical
 		next.height = s.height
 		plan.Accept = append(plan.Accept, s.id)
+		plan.AcceptHeights = append(plan.AcceptHeights, s.height)
 	}
 	next.pruneBelowWindow() // keep byHeight (and the next clone) O(window), not O(chain height)
 	return next, plan, nil
