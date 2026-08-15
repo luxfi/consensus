@@ -326,3 +326,45 @@ func TestSettledHeight_LowersToGenuineZero(t *testing.T) {
 		t.Fatalf("settledHeight = (%d,%v), want (0,true) — a genuine-zero VM under a ledger is a wedge the floor must expose", got, set)
 	}
 }
+
+// TestRecoveryIndex_RecordsTheRealHeightThroughTheFold guards the population half of the
+// recovery index (red pass-4 Q2): a block finalized through the real cert fold must land
+// in recoveredAt at its TRUE height, not 0. The height a gap block carries into the accept
+// loop comes from the Plan (AcceptHeights), because a gap block is no longer tracked and
+// deriving its height from pendingBlocks yields 0 — which would file it under the wrong
+// height and make the whole index inert for exactly the blocks it exists to serve.
+func TestRecoveryIndex_RecordsTheRealHeightThroughTheFold(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	vm := newCatchupVM()
+	rt, chainID, _ := newCatchupRuntime(t, vs, 0, vm)
+
+	const N = uint64(500_000)
+	const k = 20
+	tip := newTestBlock(N, ids.Empty, "tip@N")
+	seedBehindAt(t, rt, vm, tip)
+	gap := buildGap(vm, tip, k)
+
+	// Finalize the gap through the real cert path — applyBranchFinalization runs, and its
+	// accept loop is what records recovery.
+	for _, blk := range gap {
+		cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 3)
+		if err := rt.AcceptCatchupBlock(context.Background(), blk.bytes, cert); err != nil {
+			t.Fatalf("finalize height %d: %v", blk.height, err)
+		}
+	}
+
+	// Every finalized height must be in the recovery index under its OWN height, mapping
+	// to its OWN id — never height 0.
+	if id, ok := rt.Transitive.recoveredOuterAt(0); ok {
+		t.Fatalf("recovery index has a bogus height-0 entry (%s) — a gap block was filed under 0", id)
+	}
+	for _, blk := range gap {
+		id, ok := rt.Transitive.recoveredOuterAt(blk.height)
+		if !ok {
+			t.Fatalf("recovery index missing height %d entirely", blk.height)
+		}
+		if id != blk.id {
+			t.Fatalf("recovery index height %d → %s, want %s", blk.height, id, blk.id)
+		}
+	}
+}
