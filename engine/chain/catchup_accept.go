@@ -74,6 +74,44 @@ var ErrCatchupDeferred = errors.New("chain: catch-up block tracked — finality 
 // simply set by what recovery costs rather than by what felt tidy.
 const maxServedCerts = 64 * 1024
 
+// recoveryDepth bounds the per-height recovery index (recoveredAt) — how many heights
+// below the finalized tip catch-up replay can still name after the ledger's own byHeight
+// window has pruned them. Sized like maxServedCerts and for the same reason: recovery
+// cost, not tidiness. A height entry is one id, so 64Ki heights is a few megabytes per
+// chain and covers any gap a restart, roll, or transient OOM produces. It is deliberately
+// far deeper than the ledger's equivocation window, because the two answer opposite
+// questions — equivocation looks near the tip, recovery looks far below it.
+const recoveryDepth = 64 * 1024
+
+// recordRecoveredLocked notes that this node finalized outerID at height h, for the deep
+// recovery index. Caller holds t.mu. Idempotent per height; FIFO-bounded to recoveryDepth.
+func (t *Transitive) recordRecoveredLocked(h uint64, outerID ids.ID) {
+	if t.recoveredAt == nil {
+		t.recoveredAt = make(map[uint64]ids.ID, recoveryDepth)
+	}
+	if _, ok := t.recoveredAt[h]; ok {
+		return
+	}
+	t.recoveredAt[h] = outerID
+	t.recoveredOrder = append(t.recoveredOrder, h)
+	for len(t.recoveredOrder) > recoveryDepth {
+		evict := t.recoveredOrder[0]
+		t.recoveredOrder = t.recoveredOrder[1:]
+		delete(t.recoveredAt, evict)
+	}
+}
+
+// recoveredOuterAt returns the outer block id this node finalized at height h, if the
+// recovery index still holds it. This is a lookup of this node's OWN finalization
+// history — a height enters the index only after acceptWithCertCore folded a verified
+// cert over it — so a match is local provenance, never a peer's say-so.
+func (t *Transitive) recoveredOuterAt(h uint64) (ids.ID, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	id, ok := t.recoveredAt[h]
+	return id, ok
+}
+
 // storeServedCertLocked records the marshaled finality cert for a just-finalized
 // block so this node can serve it to a peer catching up. Called from the SOLE
 // finalizer (acceptWithCertCore) with the engine lock held, so EVERY finalize path
@@ -196,16 +234,15 @@ func (rt *Runtime) settledHeight(ctx context.Context) (uint64, bool) {
 	if !set {
 		return 0, false
 	}
-	// A VM that names NO accepted block tells us nothing about what it has applied, and
-	// an absent reading is not a reading of zero: taking it as zero would collapse the
-	// floor to genesis and make the WHOLE chain replay-eligible. Two absence signals,
-	// not one — localLastAccepted returns (Empty, 0) for a VM with no block, and
-	// (id, 0) when the last-accepted id is known but its block is unreadable (a pruned
-	// or partially-imported index, both live conditions). A zero applied height while
-	// the ledger is set is never a reason to lower the floor. Lower it only for a VM
-	// naming a block at a real height below the ledger.
+	// Lower the floor to the VM's applied head only when we can READ that head and it
+	// sits below the ledger. AppliedHead now returns an error for an unreadable head (a
+	// pruned/partial index), so a failed read no longer masquerades as height 0 — which
+	// would collapse the floor to genesis and skip the whole chain as already-applied.
+	// A VM naming no block (Empty) stays at the ledger floor. A VM genuinely at height 0
+	// with a ledger above it IS a wedge, and lowering the floor to 0 is exactly what lets
+	// replay execute height 1 onward.
 	id, applied, err := rt.AppliedHead(ctx)
-	if err != nil || id == ids.Empty || applied == 0 || applied >= fh {
+	if err != nil || id == ids.Empty || applied >= fh {
 		return fh, true
 	}
 	return applied, true
@@ -256,15 +293,32 @@ func (rt *Runtime) replayFinalized(ctx context.Context, blk block.Block, held bo
 		}
 		return ErrCatchupCertRejected
 	default:
-		// The ledger cannot speak for this height — it sits below the pruning window, so
-		// this node is behind by more than the window can name. It cannot replay in
-		// place; recovery is the descent / bootstrap. A plain rejection is the honest
-		// signal there — NOT ErrCatchupDeferred, which reads as progress and would keep
-		// the descent from firing on exactly the node that needs it.
-		return ErrCatchupCertRejected
+		// The ledger's own byHeight has pruned this height (it retains only a near-tip
+		// window for equivocation). Fall back to the deep recovery index — this node's
+		// record of what IT finalized at each height this session. A match there is the
+		// same authority the ledger arm carries: a height enters the index only after a
+		// verified cert folded over it.
+		if outer, ok := rt.recoveredOuterAt(blk.Height()); ok {
+			if outer != blk.ID() {
+				return ErrCatchupCertRejected
+			}
+			// authorized by our own finalization record — fall through and execute
+		} else {
+			// Neither the ledger nor the recovery index can name this height — the gap
+			// is deeper than either remembers. This node cannot replay in place; it
+			// recovers by descent / resync. A plain rejection is the honest signal
+			// (NOT ErrCatchupDeferred, which reads as progress and would suppress the
+			// descent on exactly the node that needs it).
+			return ErrCatchupCertRejected
+		}
 	}
-	// A block our VM already holds was verified when it was stored; re-verifying asks the
-	// VM to insert it a second time, which it refuses.
+	// Verify only a block the VM does NOT already hold. Re-verifying a held block asks the
+	// VM to insert it a second time, which it refuses. Skipping Verify here is safe not
+	// because "held implies verified" (an unwrapped VM can hold a state-synced block it
+	// never executed) but because the VM's Accept is itself fail-closed: coreth's
+	// ACCEPT-BACKSTOP re-executes the block against the applied parent and rejects a
+	// state-root mismatch, and contiguity above bound that parent to our applied head. A
+	// held block that is wrong-for-our-state fails at Accept, never commits bad state.
 	if !held {
 		if err := blk.Verify(ctx); err != nil {
 			return errors.Join(ErrCatchupCertRejected, err)
@@ -274,6 +328,25 @@ func (rt *Runtime) replayFinalized(ctx context.Context, blk block.Block, held bo
 		return errors.Join(ErrCatchupCertRejected, err)
 	}
 	_ = rt.config.VM.SetPreference(ctx, blk.ID())
+
+	// Settle the engine's own books, so a block that was TRACKED (from an earlier
+	// out-of-order delivery) and is now applied does not linger in pendingBlocks
+	// forever and the accepted counter does not under-report. Mirrors the fold's
+	// bookkeeping (applyBranchFinalization), minus the vote/cert plumbing replay never
+	// touches. Idempotent: a block already decided is left alone.
+	t := rt.Transitive
+	t.mu.Lock()
+	id := blk.ID()
+	if pending, ok := t.pendingBlocks[id]; ok && !pending.Decided {
+		pending.Decided = true
+		t.finalizedByCert[id] = struct{}{}
+		t.blocksAccepted++
+		t.dropPendingBlockLocked(id)
+		delete(t.bufferedVotes, id)
+		delete(t.catchupRequested, id)
+	}
+	t.recordRecoveredLocked(blk.Height(), id)
+	t.mu.Unlock()
 	return nil
 }
 

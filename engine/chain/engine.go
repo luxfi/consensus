@@ -567,6 +567,18 @@ type Transitive struct {
 	certBytesByBlock map[ids.ID][]byte
 	certServedOrder  []ids.ID
 
+	// recoveredAt names, per finalized HEIGHT, the outer block id this node finalized
+	// there — the deep index catch-up replay reads when the ledger's own byHeight has
+	// been pruned. The ledger prunes byHeight to a near-tip window because EQUIVOCATION
+	// evidence is only actionable near the tip; RECOVERY is the opposite, a behind node
+	// needs to name heights far below the tip. Different concerns, different retentions,
+	// so this is a separate structure — mutated in place (never cloned per finalize like
+	// the value-type ledger) and bounded FIFO to recoveryDepth. In-memory only: after a
+	// restart the ledger re-seeds at the VM's applied head and the gap is exactly the
+	// heights folded ABOVE that seed THIS session, all of which pass through here.
+	recoveredAt    map[uint64]ids.ID
+	recoveredOrder []uint64
+
 	// Vote channels
 	voteRequests chan VoteRequest
 	votes        chan Vote
@@ -4313,6 +4325,7 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 		} else {
 			t.finalizedByCert[pb.id] = struct{}{}
 		}
+		t.recordRecoveredLocked(pb.height, pb.id)
 		t.mu.Unlock()
 		if pb.height > highestAccepted {
 			highestAccepted = pb.height
