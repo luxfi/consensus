@@ -506,25 +506,23 @@ func (c *ChainConsensus) FinalizedBlockAtHeight(height uint64) (ids.ID, bool) {
 	return c.ledger.At(height)
 }
 
-// IsFinalizedAt reports whether `id` is the block this ledger has already finalized at
-// `height` — matching either the canonical commitment or the outer transport envelope,
-// since a differing envelope wrapping the same canonical id is an alias, not a rival.
+// FinalizedAt reports what this ledger holds at `height`: the canonical commitment, the
+// outer transport envelope, and whether it holds an entry there at all.
 //
-// This is the whole authority behind replaying a finalized block onto a VM that has not
-// applied it. The ledger, not the caller and not the sender, decides which block belongs
-// at a height; a block that does not match is refused. A height the ledger does not know
-// answers false, so an unknown height can never be replayed.
-func (c *ChainConsensus) IsFinalizedAt(height uint64, id ids.ID) bool {
-	if id == ids.Empty {
-		return false
-	}
+// The third value carries as much as the first two. A ledger built from a boot seed holds
+// one height and grows upward, and it prunes below a window, so "no entry here" is a
+// routine state and a different answer from "a different block here". Callers that
+// collapse the two either refuse what the ledger simply cannot speak for, or accept over
+// the top of what it can.
+func (c *ChainConsensus) FinalizedAt(height uint64) (canonical, envelope ids.ID, ok bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if canonical, ok := c.ledger.At(height); ok && canonical == id {
-		return true
+	canonical, ok = c.ledger.At(height)
+	if !ok {
+		return ids.Empty, ids.Empty, false
 	}
-	envelope, ok := c.ledger.EnvelopeAt(height)
-	return ok && envelope == id
+	envelope, _ = c.ledger.EnvelopeAt(height)
+	return canonical, envelope, true
 }
 
 // K returns the consensus sample size (the K of α-of-K). Used by the engine to

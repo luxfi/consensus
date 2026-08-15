@@ -104,15 +104,54 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 	// CONTIGUITY pre-check (cheap, oldest-first). The frontier responder serves an
 	// oldest-first window that overlaps blocks we already hold, and on a node lagging
 	// by more than one window starts ABOVE our tip:
-	//   - height ≤ finalized: already synced past — skip cleanly (responder overlap).
+	//   - height ≤ the SETTLED floor (decided AND executed): already synced past —
+	//     skip cleanly (responder overlap).
+	//   - settled < height ≤ finalized: decided but never executed — the ledger folded
+	//     across blocks this VM did not run, so what these heights need is execution,
+	//     not a decision. Verify against our own applied parent state and Accept. The
+	//     authority is the same one this whole path rests on — the ⅔-stake-named
+	//     frontier plus local Verify — and the ledger serves as the NEGATIVE check: a
+	//     block contradicting what it finalized at a height is refused outright.
 	//   - height > finalized+1: NOT our contiguous next block (out of order, or the
 	//     fetch delivered a higher segment first) — reject WITHOUT verifying/accepting;
 	//     the loop fetches the parent and comes back. The per-height guard would refuse
 	//     it regardless; this just avoids the wasted Verify.
+	// Skipping on the LEDGER height alone is the wedge this replaces: every block in
+	// (applied, finalized] read as already-synced and was dropped with a nil error, so
+	// the loop counted a full batch accepted, advanced nothing, and re-asked forever.
 	// Within an ordered (oldest-first) feed this never wrongly rejects: by the time
-	// N+1 is processed, N has finalized, so N+1.height == finalized+1.
+	// N+1 is processed, N has been executed, so N+1.height == floor+1.
 	if fh, set := rt.Transitive.consensus.GetFinalizedHeight(); set {
-		if blk.Height() <= fh {
+		floor := fh
+		// A VM naming no accepted block reports nothing about what it applied — absence
+		// is not a reading of zero, so only a VM that names a block lowers the floor.
+		if id, applied, aerr := rt.AppliedHead(ctx); aerr == nil && id != ids.Empty && applied < fh {
+			floor = applied
+		}
+		if blk.Height() <= floor {
+			return nil
+		}
+		if h := blk.Height(); h <= fh {
+			if canonical, envelope, known := rt.Transitive.consensus.FinalizedAt(h); known &&
+				canonical != canonicalIDOf(blk) && envelope != blk.ID() {
+				return ErrBootstrapBlockRejected
+			}
+			if h != floor+1 {
+				return ErrBootstrapBlockRejected // out of order within the replay band
+			}
+			// Prefer the copy the VM already holds (gossiped ahead into the store):
+			// re-verifying our own stored block asks the VM to insert it a second time.
+			held := blk
+			if hb, herr := rt.config.VM.GetBlock(ctx, blk.ID()); herr == nil && hb != nil {
+				held = hb
+			}
+			if err := held.Verify(ctx); err != nil {
+				return errors.Join(ErrBootstrapBlockRejected, err)
+			}
+			if err := held.Accept(ctx); err != nil {
+				return errors.Join(ErrBootstrapBlockRejected, err)
+			}
+			_ = rt.config.VM.SetPreference(ctx, held.ID())
 			return nil
 		}
 		if blk.Height() > fh+1 {
