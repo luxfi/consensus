@@ -47,6 +47,7 @@ package chain
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
@@ -139,8 +140,15 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 			if herr != nil || h != headH+1 || blk.ParentID() != headID {
 				return ErrBootstrapBlockRejected
 			}
-			if canonical, envelope, known := rt.Transitive.consensus.FinalizedAt(h); known &&
-				canonical != canonicalIDOf(blk) && envelope != blk.ID() {
+			// Identity, matched exactly as the catch-up lane matches it — a one-sided
+			// negative (reject only on a KNOWN mismatch) let an unknown height fall
+			// through to Accept with nothing vouching for it. The ledger's own record
+			// first; where it has pruned the height, this node's deep recovery index.
+			if canonical, envelope, known := rt.Transitive.consensus.FinalizedAt(h); known {
+				if canonical != canonicalIDOf(blk) && envelope != blk.ID() {
+					return ErrBootstrapBlockRejected
+				}
+			} else if outer, ok := rt.recoveredOuterAt(h); !ok || outer != blk.ID() {
 				return ErrBootstrapBlockRejected
 			}
 			// Prefer the copy the VM already holds (gossiped ahead into the store), and
@@ -194,10 +202,14 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 		}
 	}
 
-	// RE-EXECUTE. Local Verify proves the block is VALID against our (already-accepted)
-	// parent state — this is the integrity check that makes frontier-trust safe: a
-	// peer cannot advance our sync with an invalid block. Verified BEFORE any ledger
-	// mutation, so a bad block never advances finalized height.
+	// RE-EXECUTE. This is the FRESH-SYNC path (height == finalized+1, or the M2 first
+	// block): the block is being added to the ledger for the FIRST time, on frontier
+	// trust. Local Verify is the integrity check that makes that trust safe — a peer
+	// cannot advance our sync with an invalid block — so it runs UNCONDITIONALLY here,
+	// never skipped. The held-preference belongs only to the REPLAY band above (h ≤ fh),
+	// where the block was already finalized and the VM genuinely holds a verified copy;
+	// a not-yet-finalized block at fh+1 must be validated, held or not.
+	exec := blk
 	if err := blk.Verify(ctx); err != nil {
 		return errors.Join(ErrBootstrapBlockRejected, err)
 	}
@@ -228,13 +240,13 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 	// VM fault (the network finalized this block — the ledger correctly reflects it),
 	// and the NEXT block's Verify against the missing state will halt forward progress,
 	// surfacing it. SetPreference keeps the VM's preferred head on the synced tip.
-	if err := blk.Accept(ctx); err != nil {
+	if err := exec.Accept(ctx); err != nil {
 		if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
 			rt.config.Logger.Error("bootstrap: VM.Accept failed after Verify (sync will halt at next block)",
-				log.Stringer("blockID", blk.ID()), log.Err(err))
+				log.Stringer("blockID", exec.ID()), log.Err(err))
 		}
 	}
-	_ = rt.config.VM.SetPreference(ctx, blk.ID())
+	_ = rt.config.VM.SetPreference(ctx, exec.ID())
 	return nil
 }
 
@@ -251,9 +263,12 @@ func (rt *Runtime) localLastAccepted(ctx context.Context) (ids.ID, uint64, error
 	}
 	blk, err := rt.config.VM.GetBlock(ctx, id)
 	if err != nil {
-		// Id known, height unknown — treat height as 0 (genesis-ish). The parent check
-		// in the caller still binds the block to this id.
-		return id, 0, nil
+		// The VM names a last-accepted id but cannot produce the block — a pruned or
+		// partially-imported index. This is NOT height 0: reporting it as 0 let the
+		// floor collapse to genesis (a fabricated "we're at the start" that skips the
+		// whole chain as already-applied) and let M2 bind a first block to an unread
+		// head. Surface it as the error it is; every caller fails closed on it.
+		return id, 0, fmt.Errorf("last-accepted block %s is unreadable: %w", id, err)
 	}
 	return id, blk.Height(), nil
 }

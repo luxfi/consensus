@@ -141,18 +141,17 @@ func TestRED_BootstrapBandExecutesWithNoAuthorityWhenTheLedgerIsSilent(t *testin
 	}
 
 	// A block the ledger has NOT recorded, at the contiguous next height, from an
-	// unauthenticated peer. No cert accompanies it — the lane takes none.
+	// unauthenticated peer. No cert accompanies it, and the recovery index does not name
+	// this height either (the ledger was seeded via FinalizeBranch, which does not
+	// populate it). The band must refuse — neither authority vouches. Previously the
+	// one-sided negative let a !known height fall straight through to Accept.
 	impostor := newTestBlock(N+1, tip.id, "IMPOSTOR@N+1")
 	base.register(impostor)
 
 	err := rt.AcceptBootstrapBlock(context.Background(), impostor.bytes)
 	if got := impostor.AcceptCalled(); got != 0 {
-		t.Logf("bootstrap band executed a block with NO ledger entry and NO cert "+
-			"(Accept=%d err=%v) — frontier trust is the only authority here. "+
-			"Contrast catchup_accept.go:270, which requires a verified Quasar cert "+
-			"for the identical state.", got, err)
-	} else {
-		t.Fatalf("unexpected: refused (%v)", err)
+		t.Fatalf("HOLE: bootstrap band executed a block with no ledger entry and no "+
+			"recovery entry (Accept=%d err=%v) — the !known branch must refuse", got, err)
 	}
 }
 
