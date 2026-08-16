@@ -172,15 +172,11 @@ func (a *Adopter[S]) Run(ctx context.Context) (Outcome, error) {
 
 // tip reads the height this node already stands at — the floor under every candidate.
 func (a *Adopter[S]) tip(ctx context.Context) (uint64, error) {
-	id, err := a.cfg.VM.LastAccepted(ctx)
+	h, err := a.cfg.VM.Tip(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("summary: reading the local tip failed: %w", err)
 	}
-	blk, err := a.cfg.VM.GetBlock(ctx, id)
-	if err != nil {
-		return 0, fmt.Errorf("summary: reading the local tip block %s failed: %w", id, err)
-	}
-	return blk.Height(), nil
+	return h, nil
 }
 
 // resumable returns the summary an interrupted sync was fetching, or nil when there is

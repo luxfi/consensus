@@ -77,18 +77,14 @@ type testVM struct {
 	known     map[string]*testSummary
 }
 
-func (v *testVM) LastAccepted(context.Context) (ids.ID, error) {
+func (v *testVM) Tip(context.Context) (uint64, error) {
 	if v.tipErr != nil {
-		return ids.Empty, v.tipErr
+		return 0, v.tipErr
 	}
-	return ids.Empty, nil
-}
-
-func (v *testVM) GetBlock(context.Context, ids.ID) (block.Block, error) {
 	if v.blockErr != nil {
-		return nil, v.blockErr
+		return 0, v.blockErr
 	}
-	return &tipBlock{height: v.tip}, nil
+	return v.tip, nil
 }
 
 func (v *testVM) GetOngoingSyncStateSummary(context.Context) (block.StateSummary, error) {
