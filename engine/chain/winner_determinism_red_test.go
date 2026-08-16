@@ -78,7 +78,7 @@ func TestRedWinner_EqualCanonicalAliases_MapOrderInvariant(t *testing.T) {
 
 		var first ids.ID
 		for iter := 0; iter < 2000; iter++ {
-			w, cnt, ok := tr.convergedWinnerAtHeightLocked(1, parent, true)
+			w, cnt, ok := tr.convergedWinnerAtHeightLocked(1, parent)
 			if !ok {
 				t.Fatalf("n=%d: no winner among %d live aliases", n, n)
 			}
@@ -124,7 +124,7 @@ func TestRedWinner_DistinctCanonicals_LowestWins(t *testing.T) {
 		}
 		for iter := 0; iter < 500; iter++ {
 			tr := redBuildTransitive(mk(), nil, nil)
-			w, cnt, ok := tr.convergedWinnerAtHeightLocked(1, parent, true)
+			w, cnt, ok := tr.convergedWinnerAtHeightLocked(1, parent)
 			if !ok || cnt != n {
 				t.Fatalf("n=%d iter=%d: ok=%v cnt=%d", n, iter, ok, cnt)
 			}
@@ -155,23 +155,19 @@ func TestRedWinner_DecidedAndAbandonedFiltering(t *testing.T) {
 
 	blocks := []*Block{lowest, mid, high, decidedBlk}
 	tr := redBuildTransitive(blocks,
-		map[ids.ID]bool{decidedBlk.id: true},   // decided → excluded in BOTH modes
-		map[ids.ID]bool{lowest.id: true},       // abandoned → excluded only when includeAbandoned=false
+		map[ids.ID]bool{decidedBlk.id: true}, // decided → never a candidate
+		map[ids.ID]bool{lowest.id: true},     // abandoned → still a candidate
 	)
 
-	// includeAbandoned=false (legacy): decided + abandoned excluded → winner = mid, count 2.
-	if w, cnt, ok := tr.convergedWinnerAtHeightLocked(1, parent, false); !ok || w != mid.id || cnt != 2 {
-		t.Fatalf("includeAbandoned=false: got (w=%s,cnt=%d,ok=%v), want (mid=%s,2,true)", w, cnt, ok, mid.id)
+	// Decided is the only thing that removes a sibling. Abandonment does not:
+	// it is a per-node clock decision, and letting it change the candidate set
+	// would let two nodes pick different winners at the same height.
+	w, cnt, ok := tr.convergedWinnerAtHeightLocked(1, parent)
+	if !ok || w != lowest.id || cnt != 3 {
+		t.Fatalf("got (w=%s,cnt=%d,ok=%v), want (lowest=%s,3,true)", w, cnt, ok, lowest.id)
 	}
-	// includeAbandoned=true (view-change): only decided excluded → winner = lowest, count 3.
-	if w, cnt, ok := tr.convergedWinnerAtHeightLocked(1, parent, true); !ok || w != lowest.id || cnt != 3 {
-		t.Fatalf("includeAbandoned=true: got (w=%s,cnt=%d,ok=%v), want (lowest=%s,3,true)", w, cnt, ok, lowest.id)
-	}
-	// A Decided block with the globally-lowest canonical MUST NEVER win in either mode.
-	for _, inc := range []bool{true, false} {
-		if w, _, _ := tr.convergedWinnerAtHeightLocked(1, parent, inc); w == decidedBlk.id {
-			t.Fatalf("includeAbandoned=%v: a DECIDED block won the convergence — double-finalize risk", inc)
-		}
+	if w == decidedBlk.id {
+		t.Fatal("a DECIDED block won the convergence — double-finalize risk")
 	}
 }
 
@@ -195,7 +191,7 @@ func TestRedWinner_ProposerGrindsLowestCanonical(t *testing.T) {
 	blocks := append([]*Block{grinder}, honest...)
 	tr := redBuildTransitive(blocks, nil, nil)
 
-	w, _, ok := tr.convergedWinnerAtHeightLocked(1, parent, true)
+	w, _, ok := tr.convergedWinnerAtHeightLocked(1, parent)
 	if !ok {
 		t.Fatal("no winner")
 	}

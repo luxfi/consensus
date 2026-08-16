@@ -73,10 +73,8 @@ type SignGateStatus struct {
 	// attributed to the right source without re-deriving it, matching the refusal log's own
 	// floor/guardFloor/quasarFloor triple.
 	CertifiedFloor uint64
-	// PersistAttempts, PersistSuccesses and PersistFailures count every DURABLE guard write —
-	// both Persist (binding / certified-floor advance) and Reconcile (bounded phantom-floor
-	// lowering). A failing store is FAIL-CLOSED: it costs this node every vote, forever, and
-	// one of the three write sites does not log its own failure at all. A nonzero
+	// PersistAttempts, PersistSuccesses and PersistFailures count every durable guard write.
+	// A failing store is fail-closed: it costs this node every vote, forever. A nonzero
 	// PersistFailures is that fault's only aggregate signal; PersistAttempts == 0 on a running
 	// signer says the sign path was never reached, which is a different fault entirely.
 	PersistAttempts  uint64
@@ -184,15 +182,12 @@ func (t *Transitive) ExplainHeight(height uint64) HeightSignExplain {
 // recordGuardWriteLocked folds the outcome of ONE durable vote-guard write into the sign-gate
 // counters and returns err UNCHANGED — a pure observer on the fail-closed paths it wraps.
 //
-// It is the SINGLE seam the counters move through, and it counts BOTH durable writers:
-// Persist (a new binding, and the certified-floor advance) and Reconcile (the bounded
-// phantom-floor lowering). They write the same artifact, so an operator needs one aggregate,
-// not three per-site stories — and the Reconcile site is the only one that does not log its
-// own failure (it wraps and returns), so the counter is that path's sole visibility.
+// It is the single seam the counters move through, so an operator reads one aggregate
+// rather than a story per write site.
 //
 // Caller holds slotMu: every guard writer already does (reserveSlotForSign,
-// compactVoteGuardThroughQuasar, writeReconciledStateLocked), so plain uint64s need no
-// atomics and cannot drift from the writes they count.
+// compactVoteGuardThroughQuasar), so plain uint64s need no atomics and cannot drift from
+// the writes they count.
 func (t *Transitive) recordGuardWriteLocked(err error) error {
 	t.persistAttempts++
 	if err != nil {

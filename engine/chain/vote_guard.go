@@ -82,28 +82,6 @@ type VoteGuardStore interface {
 	// PART-A). fsync'd in the SAME write as the bindings, so the floor and the slot removal
 	// are atomic on disk.
 	Persist(bindings map[SlotKey]ids.ID, finalizedThrough uint64) error
-	// Reconcile durably rewrites the binding set AND sets the decided-through floor to
-	// newFloor EXACTLY — the ONE operation permitted to move finalizedThrough DOWN. Every
-	// other writer (Persist) only ever RAISES it (monotonic), so this is the single
-	// auditable place a floor can decrease.
-	//
-	// It exists SOLELY for BOUNDED PHANTOM-FLOOR RECOVERY: the pre-fix swallowed-VM.Accept
-	// bug let a node's durable decided-floor run AHEAD of every VM's applied head, so on
-	// reboot the sign gate treats a range of heights as decided that no VM ever applied and
-	// no observer ever saw — a phantom that re-seeds every boot and permanently wedges
-	// forward progress (the heights are unsignable, so the view-change can never re-finalize
-	// them). The caller (Transitive.ReconcilePhantomFloor) reconciles the floor DOWN to the
-	// fleet-max VM-applied height, having PROVEN out of band that nothing above newFloor was
-	// ever VM-applied or externalized — so abandoning those internal-only finalizations
-	// cannot be observed as a fork (no party holds a presentable cert; the cert material was
-	// in-memory and is gone; no EVM ever served the block via RPC/bridge/light-client).
-	//
-	// newFloor is written verbatim (NO monotonic clamp). Same atomic write-temp + fsync +
-	// rename + fsync-dir as Persist, so a crash mid-reconcile leaves EITHER the old (higher)
-	// or the new (lower) complete file, never a torn one. Called under the engine slotMu.
-	Reconcile(bindings map[SlotKey]ids.ID, newFloor uint64) error
-	// Snapshot returns the bindings recovered from stable storage at open time.
-	// The engine seeds committedSlot from it so the guard spans a restart.
 	Snapshot() map[SlotKey]ids.ID
 	// FinalizedThrough returns the decided-through floor recovered at open time (0 if none
 	// / a legacy v1 snapshot). The engine seeds decidedFloor from it so the sign gate
@@ -247,18 +225,6 @@ func (g *fileVoteGuard) Persist(bindings map[SlotKey]ids.ID, finalizedThrough ui
 		return err
 	}
 	g.finalizedThrough = finalizedThrough // durable write committed — advance the in-memory floor
-	return nil
-}
-
-// Reconcile durably lowers the floor to newFloor (no monotonic clamp) — the one writer
-// permitted to DECREASE finalizedThrough (bounded phantom-floor recovery; see the
-// VoteGuardStore.Reconcile contract). It reuses the exact atomic write Persist uses, so a
-// crash leaves either the old higher-floor file or the new lower-floor file, never a torn one.
-func (g *fileVoteGuard) Reconcile(bindings map[SlotKey]ids.ID, newFloor uint64) error {
-	if err := g.writeSnapshot(encodeVoteGuard(bindings, newFloor)); err != nil {
-		return err
-	}
-	g.finalizedThrough = newFloor // committed — the in-memory floor now matches disk (may be LOWER)
 	return nil
 }
 

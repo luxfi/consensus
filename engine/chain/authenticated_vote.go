@@ -42,6 +42,9 @@ func (t *Transitive) ReceiveAuthenticatedVote(origin ids.NodeID, blockID ids.ID,
 	if origin == ids.EmptyNodeID || blockID == ids.Empty {
 		return false
 	}
+	if !t.holdsStake(origin, blockID) {
+		return false
+	}
 	return t.ReceiveVote(Vote{
 		BlockID:                blockID,
 		NodeID:                 origin,
@@ -49,4 +52,31 @@ func (t *Transitive) ReceiveAuthenticatedVote(origin ids.NodeID, blockID ids.ID,
 		SignedAt:               time.Now(),
 		transportAuthenticated: true,
 	})
+}
+
+// holdsStake answers whether origin is a validator of this chain at the block's
+// epoch.
+//
+// The signed path never has to ask. VerifyVote resolves the voter's key out of
+// the set at that epoch, so an id that is not in the set has no key and its vote
+// dies there — membership is answered as a side effect of checking the
+// signature. This path has no signature to resolve, and the tallies are keyed by
+// NodeID, so without asking directly α would count distinct PEERS. A peer need
+// not be a validator to connect, and its NodeID is a hash of a certificate it
+// generates for itself, so distinct peers are free to mint.
+//
+// Without a stake model there is no membership to check against, so the answer
+// is no. Every chain that runs a quorum has one: a K>1 chain refuses to start
+// unless height-indexed validator state is wired, because zero stake at every
+// height would stall finality anyway. A chain reaching here with none is a chain
+// that cannot say who its validators are, and a vote it cannot attribute is a
+// vote it cannot count.
+func (t *Transitive) holdsStake(origin ids.NodeID, blockID ids.ID) bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	if t.stakeSource == nil {
+		return false
+	}
+	return t.stakeSource.Weight(origin, t.epochHeightLocked(t.pendingBlocks[blockID])) > 0
 }

@@ -277,6 +277,23 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		}
 		return false
 	}
+	// We found this block by the cert's OUTER id, and the outer ids are the one
+	// part of a position no signature covers — the signed identity is the inner
+	// canonical. So the id that led us here proves nothing on its own: re-point it
+	// at a sibling at the same height and a genuine cert for one block arrives
+	// asking us to accept another. The block we found has to BE the block the
+	// signatures name. The no-wrapper arm below already compares the full canonical
+	// tuple before it finalizes an alias; this is the same question asked on the
+	// arm that happens to hold a wrapper.
+	if exists && pending.ConsensusBlock != nil && pending.ConsensusBlock.canonicalRep() != certCanonical(cert) {
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("incoming cert: canonical does not match the block tracked under this id; dropping",
+				log.Stringer("blockID", cert.Position.BlockID),
+				log.Stringer("certCanonical", certCanonical(cert)),
+				log.Stringer("trackedCanonical", pending.ConsensusBlock.canonicalRep()))
+		}
+		return false
+	}
 
 	// Resolve the cert's epoch height from our locally-tracked, locally-verified
 	// block — the proposervm P-chain height we recorded for this block ID. Every
@@ -629,4 +646,14 @@ func (rt *Runtime) reportCertEquivocation(cert *QuorumCert, finalizedCanonical i
 			Proof:       proof,
 		})
 	}
+}
+
+// certCanonical is the execution identity a cert's signatures actually cover.
+// An empty CanonicalID means the position names a bare block, whose canonical is
+// its own id — the same resolution every other reader of a position uses.
+func certCanonical(cert *QuorumCert) ids.ID {
+	if cert.Position.CanonicalID != ids.Empty {
+		return cert.Position.CanonicalID
+	}
+	return cert.Position.BlockID
 }
