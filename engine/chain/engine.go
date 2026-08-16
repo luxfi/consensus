@@ -2793,7 +2793,6 @@ type ConvergenceVoter interface {
 // proposervm eligibility VRF already carried in the wrapped block — which requires
 // plumbing the proposer's VRF output into the consensus Block (a node-layer change) and
 // is the tracked follow-up before adversarial-validator mainnet promotion.
-// includeAbandoned selects whether rePoll-abandoned siblings still count as convergence
 // candidates. The VIEW-CHANGE path passes true: abandonment only stops rePoll's RequestVotes
 // re-solicitation (spam control), it is a PER-NODE decision (each node abandons on its own
 // attempt clock), so excluding abandoned siblings would make different nodes compute a
@@ -2825,7 +2824,7 @@ func (b *Block) parentCanonicalRep() ids.ID {
 	return b.parentID
 }
 
-func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.ID, includeAbandoned bool) (ids.ID, int, bool) {
+func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.ID) (ids.ID, int, bool) {
 	// Resolve the target parent's CANONICAL identity so canonical-equivalent parent
 	// wrappers (same inner block, different outer envelope) collapse to one group. An
 	// unaccepted (possibly forked) parent is tracked in pendingBlocks and resolves to its
@@ -2839,7 +2838,7 @@ func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.I
 	count := 0
 	for id, pb := range t.pendingBlocks {
 		cb := pb.ConsensusBlock
-		if cb == nil || pb.Decided || (!includeAbandoned && pb.rePollAbandoned) {
+		if cb == nil || pb.Decided {
 			continue
 		}
 		// Group by (height, parent CANONICAL) — alias-collapsing. Match a child whose
@@ -2954,9 +2953,14 @@ func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 	latest := make(map[votableSlot]time.Time)
 	for _, pb := range t.pendingBlocks {
 		cb := pb.ConsensusBlock
-		if cb == nil || pb.Decided || pb.rePollAbandoned {
+		if cb == nil || pb.Decided {
 			continue
 		}
+		// An abandoned block is NOT skipped. Abandonment stops re-soliciting other
+		// nodes and says nothing about whether we ourselves may vote: the block is
+		// still held, still undecided, still unsigned. It is also a per-node clock
+		// decision, so withholding our vote here drops nodes out of the tally at
+		// different times and α stops being reachable for a height everyone holds.
 		if cb.height <= decidedFloor {
 			continue // decided height — permanently unsignable, never offer it
 		}
@@ -3145,7 +3149,7 @@ func (t *Transitive) blockPositionLocked(pending *PendingBlock, blockID ids.ID) 
 // VERIFIES under the wired verifier (and clears the ⅔-stake predicate when a
 // stake source is wired) — the genuine BFT path.
 //
-// The load-bearing line is `pChainHeightOf(blk)`: it captures the block's P-CHAIN
+// The required line is `pChainHeightOf(blk)`: it captures the block's P-CHAIN
 // epoch height off the VM block through the SAME boundary the production
 // buildBlocksLocked uses, so a test can prove the boundary delivers the real
 // height (not 0) end to end. The returned position's set-root is stamped at that

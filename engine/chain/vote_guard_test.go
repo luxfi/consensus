@@ -87,9 +87,6 @@ type failingGuard struct{}
 func (failingGuard) Persist(map[SlotKey]ids.ID, uint64) error {
 	return errors.New("simulated durable-write failure")
 }
-func (failingGuard) Reconcile(map[SlotKey]ids.ID, uint64) error {
-	return errors.New("simulated durable-write failure")
-}
 func (failingGuard) Snapshot() map[SlotKey]ids.ID { return map[SlotKey]ids.ID{} }
 func (failingGuard) FinalizedThrough() uint64     { return 0 }
 func (failingGuard) Close() error                 { return nil }

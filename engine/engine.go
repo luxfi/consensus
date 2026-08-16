@@ -42,7 +42,10 @@ type Chain struct {
 
 	// Block storage
 	blocks map[types.ID]*types.Block
-	votes  map[types.ID][]types.Vote
+	// One vote per voter per block. α means α DISTINCT validators agreed, so the
+	// voter is the key: a second vote from the same node replaces its first
+	// rather than counting twice. A slice here let one node reach quorum alone.
+	votes  map[types.ID]map[types.NodeID]types.Vote
 	status map[types.ID]types.Status
 
 	// Consensus state
@@ -58,7 +61,7 @@ func NewChain(config types.Config) *Chain {
 	return &Chain{
 		config:       config,
 		blocks:       make(map[types.ID]*types.Block),
-		votes:        make(map[types.ID][]types.Vote),
+		votes:        make(map[types.ID]map[types.NodeID]types.Vote),
 		status:       make(map[types.ID]types.Status),
 		lastAccepted: types.GenesisID,
 	}
@@ -75,7 +78,7 @@ func (c *Chain) Add(ctx context.Context, block *types.Block) error {
 
 	// Initialize vote tracking
 	if c.votes[block.ID] == nil {
-		c.votes[block.ID] = []types.Vote{}
+		c.votes[block.ID] = map[types.NodeID]types.Vote{}
 	}
 
 	return nil
@@ -92,7 +95,7 @@ func (c *Chain) RecordVote(ctx context.Context, vote *types.Vote) error {
 	}
 
 	// Add vote
-	c.votes[vote.BlockID] = append(c.votes[vote.BlockID], *vote)
+	c.votes[vote.BlockID][vote.Voter] = *vote
 
 	// Check if we have quorum
 	if len(c.votes[vote.BlockID]) >= c.config.Alpha {
