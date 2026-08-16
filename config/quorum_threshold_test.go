@@ -205,11 +205,16 @@ func TestLiveValueNetworkRelaxesStaticFloor(t *testing.T) {
 	if err := k3.ValidateForLiveValueNetwork(constants.MainnetID, 3); !errors.Is(err, ErrKTooLowForValue) {
 		t.Fatalf("K=3 (f=0) must be rejected for value even live-aware, got %v", err)
 	}
-	// An operator that under-samples the live set (K=4 while 11 validators exist on
-	// mainnet) is rejected: effective floor = min(11, 11) = 11 > 4.
+	// K is a number of stake-weighted draws, not a headcount. A committee that
+	// tolerates a fault runs however many validators exist — the size of the set
+	// decides how the draws fall, not whether the chain may start. A small staker
+	// joining must never refuse a boot.
 	k4 := Parameters{K: 4, Alpha: 0.75, Beta: 2, AlphaPreference: 3, AlphaConfidence: 3}
-	if err := k4.ValidateForLiveValueNetwork(constants.MainnetID, 11); !errors.Is(err, ErrKBelowLiveFloor) {
-		t.Fatalf("K=4 under-sampling an 11-validator mainnet must be rejected, got %v", err)
+	if err := k4.ValidateForLiveValueNetwork(constants.MainnetID, 11); err != nil {
+		t.Fatalf("K=4 with 11 validators live must be admitted — the set decides the draws, not the boot: %v", err)
+	}
+	if err := k4.ValidateForLiveValueNetwork(constants.MainnetID, 6); err != nil {
+		t.Fatalf("K=4 with 6 validators live must be admitted: %v", err)
 	}
 	// A full 21-validator mainnet at K=21 is admitted (≥ tier floor 11).
 	full := FeasibleParams(constants.MainnetID, 21)

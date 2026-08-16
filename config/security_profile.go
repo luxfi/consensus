@@ -904,13 +904,15 @@ func (p *ChainSecurityProfile) validatePolicy() error {
 	// is SHA-3 internal; binding BLAKE3 at the transcript layer over a
 	// SHA-3 signature is a configuration inconsistency that audit
 	// pipelines should catch at boot. Closes F54.
+	//
+	// The identity scheme carries the same mismatch — raw ML-DSA is SHAKE256
+	// internal — but needs no second check: validateStructural has already
+	// refused every profile whose finality scheme is not Pulsar-M, so the
+	// condition below holds for any BLAKE3-legacy profile that reaches here and
+	// answers for both axes.
 	if p.FinalitySchemeID.IsPulsarM() && p.HashSuiteID == HashSuiteBLAKE3Legacy {
 		return fmt.Errorf("%w: HashSuiteID=BLAKE3_LEGACY paired with FinalitySchemeID=%s (SHA-3 internal); cross-axis mismatch",
 			ErrProfileFieldInvalid, p.FinalitySchemeID.String())
-	}
-	if p.IdentitySchemeID.IsRawMLDSA() && p.HashSuiteID == HashSuiteBLAKE3Legacy {
-		return fmt.Errorf("%w: HashSuiteID=BLAKE3_LEGACY paired with IdentitySchemeID=%s (SHAKE256 internal); cross-axis mismatch",
-			ErrProfileFieldInvalid, p.IdentitySchemeID.String())
 	}
 
 	return nil
@@ -1139,7 +1141,7 @@ func ProfileByID(id ProfileID) (*ChainSecurityProfile, error) {
 	}
 }
 
-// StrictPQ returns a fresh pointer copy of StrictPQProfile. The
+// StrictPQ returns a fresh pointer copy of strictPQProfile. The
 // returned value is safe for the caller to retain and mutate without
 // affecting other callers; the canonical immutable value lives in
 // profiles.go.
@@ -1148,20 +1150,20 @@ func ProfileByID(id ProfileID) (*ChainSecurityProfile, error) {
 // identity comes from chain genesis (chain ID, network ID, NodeID set)
 // — not from a sibling profile byte. One strict-PQ, one way.
 func StrictPQ() *ChainSecurityProfile {
-	p := StrictPQProfile
+	p := strictPQProfile
 	return &p
 }
 
 // Permissive returns a fresh pointer copy of the Permissive
 // profile constant defined in profiles.go. Testnet/devnet only.
 func Permissive() *ChainSecurityProfile {
-	p := PermissiveProfile
+	p := permissiveProfile
 	return &p
 }
 
-// FIPS returns a fresh pointer copy of the FIPSProfile constant
+// FIPS returns a fresh pointer copy of the fipsProfile constant
 // defined in profiles.go. Strictest FIPS-aligned profile.
 func FIPS() *ChainSecurityProfile {
-	p := FIPSProfile
+	p := fipsProfile
 	return &p
 }

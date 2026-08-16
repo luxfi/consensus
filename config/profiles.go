@@ -19,7 +19,7 @@
 
 package config
 
-// StrictPQProfile is the canonical Lux mainnet locked profile. NIST-
+// strictPQProfile is the canonical Lux mainnet locked profile. NIST-
 // aligned PQ across every axis: SHA3-NIST + STARK_FRI_SHA3_PQ identified
 // proofs, raw ML-DSA-65 identity, Pulsar-M-65 finality with M-87 reserved
 // for high-value roots. Five production STARK backends; no dev backends;
@@ -30,7 +30,7 @@ package config
 // every cert envelope binds the same hash.
 //
 // ProfileHash is computed in init() — see the bottom of this file.
-var StrictPQProfile = ChainSecurityProfile{
+var strictPQProfile = ChainSecurityProfile{
 	ProfileID:         uint32(ProfileStrictPQ),
 	ProfileName:       ProfileNameStrictPQ,
 	HashSuiteID:       HashSuiteSHA3NIST,
@@ -80,7 +80,7 @@ var StrictPQProfile = ChainSecurityProfile{
 	RequireTypedTxAuth:      true,
 }
 
-// PermissiveProfile is the testnet/devnet profile. Accepts the strict-PQ
+// permissiveProfile is the testnet/devnet profile. Accepts the strict-PQ
 // production backends plus the dev backends (RISC0_RAW_STARK_DEV,
 // SP1_CORE_STARK_DEV) so iteration is possible without lying about
 // security level. Still refuses classical wrappers and trusted-setup
@@ -88,7 +88,7 @@ var StrictPQProfile = ChainSecurityProfile{
 //
 // NOT a Lux strict-PQ profile. Marketing as such is forbidden by
 // `ForbidDevProofs == false`.
-var PermissiveProfile = ChainSecurityProfile{
+var permissiveProfile = ChainSecurityProfile{
 	ProfileID:         uint32(ProfilePermissive),
 	ProfileName:       ProfileNamePermissive,
 	HashSuiteID:       HashSuiteSHA3NIST,
@@ -142,7 +142,7 @@ var PermissiveProfile = ChainSecurityProfile{
 	RequireTypedTxAuth:      false,
 }
 
-// FIPSProfile is the FIPS-204-only profile. Drops Pulsar-M (production
+// fipsProfile is the FIPS-204-only profile. Drops Pulsar-M (production
 // fork of Corona; not yet FIPS-approved) — but the profile still has to
 // satisfy `FinalitySchemeID.IsPulsarM()`, so for FIPS deployments the
 // chain DOES use Pulsar-M (FIPS 204-compatible output) at M-65 and M-87.
@@ -152,7 +152,7 @@ var PermissiveProfile = ChainSecurityProfile{
 // stance the FIPS deployment ships is documented per HIP-0077 §"FIPS
 // profile". This struct is the consensus-layer allow-list; the larger
 // FIPS posture lives in the operator manifest.
-var FIPSProfile = ChainSecurityProfile{
+var fipsProfile = ChainSecurityProfile{
 	ProfileID:         uint32(ProfileFIPS),
 	ProfileName:       ProfileNameFIPS,
 	HashSuiteID:       HashSuiteSHA3NIST,
@@ -276,8 +276,8 @@ var ForkClassicalCompatUnsafeProfile = ChainSecurityProfile{
 // the failing profile so a misconfiguration is immediate and visible in
 // the boot log.
 func init() {
-	StrictPQProfile.ProfileHash = StrictPQProfile.MustComputeHash()
-	PermissiveProfile.ProfileHash = PermissiveProfile.MustComputeHash()
-	FIPSProfile.ProfileHash = FIPSProfile.MustComputeHash()
+	strictPQProfile.ProfileHash = strictPQProfile.MustComputeHash()
+	permissiveProfile.ProfileHash = permissiveProfile.MustComputeHash()
+	fipsProfile.ProfileHash = fipsProfile.MustComputeHash()
 	ForkClassicalCompatUnsafeProfile.ProfileHash = ForkClassicalCompatUnsafeProfile.MustComputeHash()
 }

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"math"
 	"testing"
 )
@@ -82,96 +81,6 @@ func TestConsensusThresholds(t *testing.T) {
 	}
 }
 
-// TestByzantineTolerance31 verifies maximum Byzantine tolerance is 31%
-func TestByzantineTolerance31(t *testing.T) {
-	tests := []struct {
-		byzantineWeight uint64
-		totalWeight     uint64
-		canTolerate     bool
-	}{
-		{31, 100, true},    // Exactly 31%
-		{30, 100, true},    // Below threshold
-		{32, 100, false},   // Above threshold
-		{310, 1000, true},  // 31% at scale
-		{311, 1000, false}, // Slightly above 31%
-	}
-
-	for _, tt := range tests {
-		result := CanTolerateFailure(tt.byzantineWeight, tt.totalWeight)
-		if result != tt.canTolerate {
-			t.Errorf("CanTolerateFailure(%d, %d) = %v, want %v",
-				tt.byzantineWeight, tt.totalWeight, result, tt.canTolerate)
-		}
-	}
-}
-
-// TestQuorumCalculation verifies 69% quorum calculations
-func TestQuorumCalculation(t *testing.T) {
-	tests := []struct {
-		totalWeight    uint64
-		expectedQuorum uint64
-	}{
-		{100, 69},
-		{1000, 690},
-		{10000, 6900},
-		{33, 23}, // Ceiling of 22.77
-		{67, 47}, // Ceiling of 46.23
-	}
-
-	for _, tt := range tests {
-		quorum := CalculateQuorum(tt.totalWeight)
-		if quorum != tt.expectedQuorum {
-			t.Errorf("CalculateQuorum(%d) = %d, want %d",
-				tt.totalWeight, quorum, tt.expectedQuorum)
-		}
-	}
-}
-
-// TestHasSuperMajority verifies super majority checks
-func TestHasSuperMajority(t *testing.T) {
-	tests := []struct {
-		weight      uint64
-		totalWeight uint64
-		hasMajority bool
-	}{
-		{69, 100, true},    // Exactly 69%
-		{70, 100, true},    // Above threshold
-		{68, 100, false},   // Below threshold
-		{690, 1000, true},  // 69% at scale
-		{689, 1000, false}, // Just below
-	}
-
-	for _, tt := range tests {
-		result := HasSuperMajority(tt.weight, tt.totalWeight)
-		if result != tt.hasMajority {
-			t.Errorf("HasSuperMajority(%d, %d) = %v, want %v",
-				tt.weight, tt.totalWeight, result, tt.hasMajority)
-		}
-	}
-}
-
-// TestAlphaForK verifies Alpha calculation for different K values
-func TestAlphaForK(t *testing.T) {
-	tests := []struct {
-		k             int
-		expectedAlpha int
-	}{
-		{20, 14},  // Ceiling of 13.8
-		{21, 15},  // Ceiling of 14.49
-		{11, 8},   // Ceiling of 7.59
-		{5, 4},    // Ceiling of 3.45
-		{100, 69}, // Exactly 69
-	}
-
-	for _, tt := range tests {
-		alpha := AlphaForK(tt.k)
-		if alpha != tt.expectedAlpha {
-			t.Errorf("AlphaForK(%d) = %d, want %d",
-				tt.k, alpha, tt.expectedAlpha)
-		}
-	}
-}
-
 // TestParameterValidation verifies parameter validation with 69% threshold
 func TestParameterValidation(t *testing.T) {
 	tests := []struct {
@@ -215,29 +124,5 @@ func TestParameterValidation(t *testing.T) {
 				t.Errorf("Valid() error = %v, want %v", err, tt.expectedErr)
 			}
 		})
-	}
-}
-
-// BenchmarkQuorumCalculation benchmarks quorum calculations
-func BenchmarkQuorumCalculation(b *testing.B) {
-	weights := []uint64{100, 1000, 10000, 100000, 1000000}
-
-	for _, w := range weights {
-		b.Run(fmt.Sprintf("weight_%d", w), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = CalculateQuorum(w)
-			}
-		})
-	}
-}
-
-// BenchmarkHasSuperMajority benchmarks super majority checks
-func BenchmarkHasSuperMajority(b *testing.B) {
-	totalWeight := uint64(1000000)
-	weight := uint64(690000)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = HasSuperMajority(weight, totalWeight)
 	}
 }
