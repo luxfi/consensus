@@ -53,7 +53,7 @@ func TestCanonicalRep_EqualCanonicalWinnerIsDeterministic(t *testing.T) {
 		for _, b := range base {
 			e.pendingBlocks[b.id] = pend(b)
 		}
-		got, count, ok := e.convergedWinnerAtHeightLocked(1082882, parent, true)
+		got, count, ok := e.convergedWinnerAtHeightLocked(1082882, parent)
 		if !ok || count != n {
 			t.Fatalf("trial %d: ok=%v count=%d (want %d)", trial, ok, count, n)
 		}
@@ -92,7 +92,7 @@ func TestCanonicalRep_ForkedParentChildrenConvergeAsOneGroup(t *testing.T) {
 
 	// Calling with EITHER parent wrapper must yield the SAME winner over ALL 10 children.
 	for _, p := range []ids.ID{pw1.id, pw2.id} {
-		got, count, ok := e.convergedWinnerAtHeightLocked(1082882, p, true)
+		got, count, ok := e.convergedWinnerAtHeightLocked(1082882, p)
 		if !ok || count != 10 {
 			t.Fatalf("parent %s: ok=%v count=%d (want 10 — forked-parent children not merged)", p, ok, count)
 		}
@@ -122,11 +122,11 @@ func TestCanonicalRep_GenuineForkNotMerged(t *testing.T) {
 		e.pendingBlocks[cB.id] = pend(cB)
 	}
 	// Group under A must count ONLY A's 3 children — B's must not leak in.
-	_, countA, okA := e.convergedWinnerAtHeightLocked(1082882, pA.id, true)
+	_, countA, okA := e.convergedWinnerAtHeightLocked(1082882, pA.id)
 	if !okA || countA != 3 {
 		t.Fatalf("group A: count=%d want 3 — genuine fork wrongly merged", countA)
 	}
-	_, countB, okB := e.convergedWinnerAtHeightLocked(1082882, pB.id, true)
+	_, countB, okB := e.convergedWinnerAtHeightLocked(1082882, pB.id)
 	if !okB || countB != 3 {
 		t.Fatalf("group B: count=%d want 3 — genuine fork wrongly merged", countB)
 	}
@@ -146,7 +146,7 @@ func TestCanonicalRep_AcceptedTipChildrenMatched(t *testing.T) {
 		e.pendingBlocks[c.id] = pend(c)
 		childIDs = append(childIDs, c.id)
 	}
-	got, count, ok := e.convergedWinnerAtHeightLocked(1082880, tipOuter, true)
+	got, count, ok := e.convergedWinnerAtHeightLocked(1082880, tipOuter)
 	if !ok || count != 4 {
 		t.Fatalf("accepted-tip children: ok=%v count=%d want 4 — children of the finalized tip were filtered out", ok, count)
 	}

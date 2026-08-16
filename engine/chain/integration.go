@@ -975,14 +975,13 @@ func (rt *Runtime) emitConvergedVote(_ context.Context, height uint64, parentID 
 		// conflicting-sibling refusal below keeps it equivocation-safe.
 		pending, winnerID = t.pendingByCanonicalLocked(bound)
 	} else {
-		// includeAbandoned=TRUE (FIX #3 companion): abandonment only stops rePoll's
-		// RE-SOLICITATION (spam control) and is a PER-NODE clock decision, so excluding
-		// abandoned siblings makes different nodes select a different lowest-canonical winner →
-		// converged prevotes never align → the distributed liveness stall. Counting every live
-		// (undecided) sibling keeps the winner globally identical (matching the view-change
-		// path, which already passed true), so α converged votes land on ONE block and a single
-		// cert forms. Never manufactures a vote or bypasses the α-of-K cert — safety intact.
-		w, _, ok := t.convergedWinnerAtHeightLocked(height, parentID, true)
+		// Every live sibling counts, abandoned or not. Abandonment is a per-node
+		// clock decision, so excluding those siblings would let two nodes pick a
+		// different lowest-canonical winner and their converged prevotes would never
+		// align. Counting all of them keeps the winner globally identical, so α
+		// converged votes land on one block and a single cert forms. No vote is
+		// manufactured and the α-of-K cert still gates acceptance.
+		w, _, ok := t.convergedWinnerAtHeightLocked(height, parentID)
 		if !ok {
 			t.mu.Unlock()
 			return

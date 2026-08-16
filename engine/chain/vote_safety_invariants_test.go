@@ -189,17 +189,6 @@ func (g *countingGuard) Persist(bindings map[SlotKey]ids.ID, floor uint64) error
 	return g.inner.Persist(bindings, floor)
 }
 
-func (g *countingGuard) Reconcile(bindings map[SlotKey]ids.ID, floor uint64) error {
-	g.mu.Lock()
-	g.reconciles++
-	fail := g.failWith
-	g.mu.Unlock()
-	if fail != nil {
-		return fail
-	}
-	return g.inner.Reconcile(bindings, floor)
-}
-
 func (g *countingGuard) Snapshot() map[SlotKey]ids.ID { return g.inner.Snapshot() }
 func (g *countingGuard) FinalizedThrough() uint64     { return g.inner.FinalizedThrough() }
 func (g *countingGuard) Close() error                 { return g.inner.Close() }
