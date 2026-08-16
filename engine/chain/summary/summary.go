@@ -82,24 +82,24 @@ func (o Outcome) String() string {
 //
 // There are no windows or deadlines here. Both live in the Source, where the
 // transport that has to honour them lives.
-type Config struct {
+type Config[S Summary] struct {
 	Source Source
-	VM     VM
+	VM     VM[S]
 	Log    log.Logger
 }
 
 // Adopter runs the discovery and ratification rounds and, if the network stands
 // behind a summary, hands it to the VM.
-type Adopter struct {
-	cfg Config
+type Adopter[S Summary] struct {
+	cfg Config[S]
 }
 
 // New builds an Adopter.
-func New(cfg Config) *Adopter {
+func New[S Summary](cfg Config[S]) *Adopter[S] {
 	if cfg.Log == nil {
 		cfg.Log = log.NewNoOpLogger()
 	}
-	return &Adopter{cfg: cfg}
+	return &Adopter[S]{cfg: cfg}
 }
 
 // Run asks the network which summary to adopt and, if one is ratified, adopts it.
@@ -108,7 +108,7 @@ func New(cfg Config) *Adopter {
 // answer for itself. Every other ending — nobody answered, nobody agreed, the VM said
 // no — is OutcomeSkipped, because the caller's fallback is bootstrap and a node whose
 // gap fits the descent window needs nothing more than that.
-func (a *Adopter) Run(ctx context.Context) (Outcome, error) {
+func (a *Adopter[S]) Run(ctx context.Context) (Outcome, error) {
 	tip, err := a.tip(ctx)
 	if err != nil {
 		return OutcomeInvalid, err
@@ -119,7 +119,7 @@ func (a *Adopter) Run(ctx context.Context) (Outcome, error) {
 	// candidate and is preferred only among the summaries that survive ratification.
 	// Entering it here is also what lets it be ratified at all: the beacons that
 	// happen to answer discovery may not include one whose newest summary is ours.
-	resume, err := a.resumable(ctx)
+	resume, haveResume, err := a.resumable(ctx)
 	if err != nil {
 		return OutcomeInvalid, err
 	}
@@ -129,8 +129,8 @@ func (a *Adopter) Run(ctx context.Context) (Outcome, error) {
 		return OutcomeInvalid, fmt.Errorf("summary: the beacons could not be asked what they hold: %w", err)
 	}
 
-	candidates := make(map[ids.ID]block.StateSummary, len(offers)+1)
-	if resume != nil && resume.Height() > tip {
+	candidates := make(map[ids.ID]S, len(offers)+1)
+	if haveResume && resume.Height() > tip {
 		candidates[resume.ID()] = resume
 	}
 	for _, offer := range offers {
@@ -163,15 +163,15 @@ func (a *Adopter) Run(ctx context.Context) (Outcome, error) {
 		return OutcomeInvalid, fmt.Errorf("summary: the beacons could not be asked to ratify: %w", err)
 	}
 
-	chosen := a.elect(candidates, resume, ballots, total)
-	if chosen == nil {
+	chosen, elected := a.elect(candidates, resume, haveResume, ballots, total)
+	if !elected {
 		return OutcomeSkipped, nil
 	}
 	return a.adopt(ctx, chosen)
 }
 
 // tip reads the height this node already stands at — the floor under every candidate.
-func (a *Adopter) tip(ctx context.Context) (uint64, error) {
+func (a *Adopter[S]) tip(ctx context.Context) (uint64, error) {
 	id, err := a.cfg.VM.LastAccepted(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("summary: reading the local tip failed: %w", err)
@@ -185,20 +185,21 @@ func (a *Adopter) tip(ctx context.Context) (uint64, error) {
 
 // resumable returns the summary an interrupted sync was fetching, or nil when there is
 // none. Having no interrupted sync is the ordinary case, not a failure.
-func (a *Adopter) resumable(ctx context.Context) (block.StateSummary, error) {
+func (a *Adopter[S]) resumable(ctx context.Context) (S, bool, error) {
 	s, err := a.cfg.VM.GetOngoingSyncStateSummary(ctx)
+	var zero S
 	switch {
 	case errors.Is(err, database.ErrNotFound):
-		return nil, nil
+		return zero, false, nil
 	case err != nil:
-		return nil, fmt.Errorf("summary: reading the interrupted sync failed: %w", err)
+		return zero, false, fmt.Errorf("summary: reading the interrupted sync failed: %w", err)
 	}
-	return s, nil
+	return s, true, nil
 }
 
 // heights lists the candidate heights, deduplicated and ordered, so the same candidate
 // set always produces the same request no matter what order the map yields.
-func heights(candidates map[ids.ID]block.StateSummary) []uint64 {
+func heights[S Summary](candidates map[ids.ID]S) []uint64 {
 	seen := make(map[uint64]struct{}, len(candidates))
 	out := make([]uint64, 0, len(candidates))
 	for _, s := range candidates {
@@ -215,12 +216,13 @@ func heights(candidates map[ids.ID]block.StateSummary) []uint64 {
 
 // elect sums the stake behind each candidate and returns the summary the network
 // stands behind, or nil when none of them clears the bar.
-func (a *Adopter) elect(
-	candidates map[ids.ID]block.StateSummary,
-	resume block.StateSummary,
+func (a *Adopter[S]) elect(
+	candidates map[ids.ID]S,
+	resume S,
+	haveResume bool,
 	ballots []Ballot,
 	total uint64,
-) block.StateSummary {
+) (S, bool) {
 	var answered uint64
 	stake := make(map[ids.ID]uint64, len(candidates))
 	spoke := make(map[ids.NodeID]struct{}, len(ballots))
@@ -239,7 +241,8 @@ func (a *Adopter) elect(
 			// upstream. Saturating would turn a fault into an infinitely trusted summary;
 			// refusing costs a bootstrap.
 			a.cfg.Log.Warn("summary: responder stake overflowed — adopting nothing this round")
-			return nil
+			var zero S
+			return zero, false
 		}
 		answered = sum
 
@@ -272,39 +275,41 @@ func (a *Adopter) elect(
 	if answered <= config.HalfStakeFloor(total) {
 		a.cfg.Log.Info("summary: too little beacon stake answered to judge a summary — bootstrapping instead",
 			log.Uint64("answered", answered), log.Uint64("total", total))
-		return nil
+		var zero S
+		return zero, false
 	}
 
 	// Ranging over the candidates, not over the stake, is what makes "a beacon cannot
 	// introduce a candidate during the vote" structural: a summary nobody offered has
 	// nothing to be selected, however much stake names it.
 	floor := config.TwoThirdsStakeFloor(answered)
-	var best block.StateSummary
+	var best S
+	haveBest := false
 	for id, s := range candidates {
 		if stake[id] <= floor {
 			continue
 		}
-		if resume != nil && id == resume.ID() {
+		if haveResume && id == resume.ID() {
 			// The trie under this one is already partly on disk. Ratified, it beats a
 			// taller summary this node would have to start from nothing.
 			a.cfg.Log.Info("summary: resuming the interrupted sync — the network still stands behind it",
 				log.Stringer("summary", id), log.Uint64("height", s.Height()))
-			return s
+			return s, true
 		}
-		if best == nil || taller(s, best) {
-			best = s
+		if !haveBest || taller(s, best) {
+			best, haveBest = s, true
 		}
 	}
-	if best == nil {
+	if !haveBest {
 		a.cfg.Log.Info("summary: the beacons answered but split below the ⅔ bar — bootstrapping instead",
 			log.Uint64("answered", answered), log.Uint64("total", total), log.Int("candidates", len(candidates)))
 	}
-	return best
+	return best, haveBest
 }
 
 // taller orders two ratified summaries: the higher one wins, and equal heights fall
 // back to the id so the choice never depends on map order.
-func taller(s, than block.StateSummary) bool {
+func taller[S Summary](s, than S) bool {
 	if h, t := s.Height(), than.Height(); h != t {
 		return h > t
 	}
@@ -314,7 +319,7 @@ func taller(s, than block.StateSummary) bool {
 
 // adopt hands the ratified summary to the VM and reports what the caller should do
 // next.
-func (a *Adopter) adopt(ctx context.Context, s block.StateSummary) (Outcome, error) {
+func (a *Adopter[S]) adopt(ctx context.Context, s S) (Outcome, error) {
 	mode, err := s.Accept(ctx)
 	if err != nil {
 		// This is the call that discards local history. If it failed we cannot say how

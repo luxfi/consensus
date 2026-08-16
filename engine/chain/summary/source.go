@@ -85,19 +85,33 @@ type Source interface {
 // is called and stays where the caller put it whichever Outcome comes back. This
 // package never moves the VM between states. Two owners for one lifecycle is how a
 // VM ends up live on state it never finished fetching.
-type VM interface {
+// Summary is what the round reads off a state summary: the identity stake is
+// counted against, the height that decides whether it is worth adopting, and the
+// Accept that hands it to the VM.
+type Summary interface {
+	ID() ids.ID
+	Height() uint64
+	Accept(context.Context) (block.StateSyncMode, error)
+}
+
+// VM is the local state-syncable VM, narrowed to what this round calls. The
+// summary type is a parameter because a VM's summary interface is declared where
+// the VM is built, and a round that names one concrete declaration silently
+// refuses every VM that carries an identical one under another name — an
+// assertion that fails is indistinguishable from a VM that does not sync.
+type VM[S Summary] interface {
 	// GetOngoingSyncStateSummary returns the summary this node was already syncing
 	// toward when it stopped, so a restart can finish the trie it has partly
 	// fetched instead of throwing it away. database.ErrNotFound means there is no
 	// such sync, which is an ordinary answer and not a failure.
-	GetOngoingSyncStateSummary(context.Context) (block.StateSummary, error)
+	GetOngoingSyncStateSummary(context.Context) (S, error)
 
 	// ParseStateSummary turns a beacon's reply into a summary. It must preserve
 	// identity — ParseStateSummary(s.Bytes()).ID() == s.ID() — because the id it
 	// yields is the name stake is counted against in ratification. A summary whose
 	// id changed on the way through parsing would collect votes cast for a
 	// different one.
-	ParseStateSummary(context.Context, []byte) (block.StateSummary, error)
+	ParseStateSummary(context.Context, []byte) (S, error)
 
 	// LastAccepted and GetBlock give the height this node already stands at. It is
 	// the floor no candidate may sit at or below: adopting a summary throws away
@@ -110,4 +124,4 @@ type VM interface {
 
 // A state-syncable VM satisfies VM as it stands. The narrowing bounds what this
 // package may call; it is not a second interface for the node to implement.
-var _ VM = (block.StateSyncableVM)(nil)
+var _ VM[block.StateSummary] = (block.StateSyncableVM)(nil)

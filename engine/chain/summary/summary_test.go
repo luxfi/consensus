@@ -136,7 +136,7 @@ func (n *testNet) Ballots(_ context.Context, heights []uint64) ([]Ballot, uint64
 }
 
 var (
-	_ VM     = (*testVM)(nil)
+	_ VM[block.StateSummary] = (*testVM)(nil)
 	_ Source = (*testNet)(nil)
 )
 
@@ -476,7 +476,7 @@ func TestRun(t *testing.T) {
 				}
 			}
 
-			outcome, err := New(Config{Source: net, VM: vm}).Run(context.Background())
+			outcome, err := New(Config[block.StateSummary]{Source: net, VM: vm}).Run(context.Background())
 
 			if tt.wantErr && err == nil {
 				t.Fatalf("want an error, got outcome %s", outcome)
@@ -533,7 +533,7 @@ func TestRunRefusesEveryDenominatorBelowMajority(t *testing.T) {
 			net.ballots = []Ballot{{NodeID: ids.GenerateTestNodeID(), Weight: answered, Held: []ids.ID{s.id}}}
 		}
 
-		outcome, err := New(Config{Source: net, VM: vm}).Run(context.Background())
+		outcome, err := New(Config[block.StateSummary]{Source: net, VM: vm}).Run(context.Background())
 		if err != nil {
 			t.Fatalf("answered=%d: unexpected error: %v", answered, err)
 		}
@@ -604,7 +604,7 @@ func TestTipBlockUnreadableRefusesTheRound(t *testing.T) {
 	vm := &testVM{tip: 10, blockErr: boom, known: map[string]*testSummary{}}
 	net := &testNet{}
 
-	out, err := New(Config{Source: net, VM: vm}).Run(context.Background())
+	out, err := New(Config[block.StateSummary]{Source: net, VM: vm}).Run(context.Background())
 	if !errors.Is(err, boom) {
 		t.Fatalf("error = %v, want the tip-block failure", err)
 	}
@@ -631,7 +631,7 @@ func TestDuplicateHeightsAreAskedOnce(t *testing.T) {
 		{NodeID: ids.GenerateTestNodeID(), Bytes: c.bytes},
 	}}
 
-	if _, err := New(Config{Source: net, VM: vm}).Run(context.Background()); err != nil {
+	if _, err := New(Config[block.StateSummary]{Source: net, VM: vm}).Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if len(net.asked) != 1 {
@@ -666,7 +666,7 @@ func TestEqualHeightsElectTheSameWinnerEveryRun(t *testing.T) {
 			total: 100,
 		}
 
-		out, err := New(Config{Source: net, VM: vm}).Run(context.Background())
+		out, err := New(Config[block.StateSummary]{Source: net, VM: vm}).Run(context.Background())
 		if err != nil {
 			t.Fatalf("run: %v", err)
 		}
