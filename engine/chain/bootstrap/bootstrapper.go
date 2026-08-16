@@ -226,10 +226,10 @@ type Chain interface {
 	LastAccepted(ctx context.Context) (id ids.ID, height uint64, err error)
 	// Accepted reports whether block id is on the node's ACCEPTED chain (finalized) —
 	// NOT merely present in the block store. This is the convergence predicate: the node
-	// has REACHED the named frontier only when it has ACCEPTED it. The mainnet luxd-2
-	// freeze was a store-vs-acceptance conflation: a frontier GOSSIPED into the store but
-	// not yet accepted (height ABOVE last-accepted) reported "present", short-circuiting
-	// the loop to caught-up at the stale last-accepted and never descending to accept it.
+	// has REACHED the named frontier only when it has ACCEPTED it. Conflating store with
+	// acceptance false-completes the loop: a frontier GOSSIPED into the store but not yet
+	// accepted (height ABOVE last-accepted) reads as "present", short-circuiting the loop
+	// to caught-up at the stale last-accepted and never descending to accept it.
 	// A stored-but-unaccepted block MUST return false here so the descent drives its
 	// acceptance from last-accepted+1 up to the frontier through the cert/Verify path.
 	Accepted(ctx context.Context, id ids.ID) bool
@@ -483,11 +483,12 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome pas
 
 	// CAUGHT-UP iff the named frontier is ACCEPTED (it IS our last-accepted, or it is on our
 	// accepted chain at/below our last-accepted height) — NOT merely PRESENT in the block
-	// store. THE FREEZE: luxd-2 had the named frontier (1082796) and its run-up (1082781..95)
-	// GOSSIPED into its store but UNACCEPTED at last-accepted 1082780; the old Chain.Has(tip)
-	// returned true for that stored-but-unaccepted block and short-circuited to caught-up at
-	// the stale 1082780, never descending to accept it — self-reinforcing across restarts. The
-	// acceptance predicate falls through for a stored-unaccepted frontier, so the content-
+	// store. THE TRAP: a node can hold the named frontier AND its whole run-up gossiped into
+	// its store while remaining accepted far below them. A presence test (Chain.Has(tip))
+	// answers true for those stored-but-unaccepted blocks and short-circuits to caught-up at
+	// the stale last-accepted, never descending to accept them — and it re-decides the same
+	// way on every restart, so nothing ever converges the node. The acceptance
+	// predicate falls through for a stored-unaccepted frontier, so the content-
 	// addressed descent below DRIVES ACCEPTANCE from last-accepted+1 up to the named frontier
 	// through the per-height-guarded Verify/finality path (it accepts the blocks already in the
 	// store — re-Verify + commit — advancing last-accepted, never marking them accepted merely

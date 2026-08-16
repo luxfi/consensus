@@ -257,6 +257,9 @@ core/                 Core interfaces, dag structures
   dag/                DAG store, event horizon, ordering
 engine/               Consensus engines (Chain, DAG, PQ)
   chain/              Linear chain engine
+    bootstrap/        Fetch+execute initial sync to the beacon-named frontier
+    summary/          State-summary adoption — runs BEFORE bootstrap
+    syncer/           Consensus-pointer reconcile after an RLP import (unrelated)
   dag/                DAG engine
   pq/                 Post-quantum engine
   interfaces/         State enum (Unknown..Stopped)
@@ -394,6 +397,46 @@ the restart unchanged, and then finalizes + certifies a SECOND height on the
 restarted engine. Negative control executed: a Stop that clears
 `finalizedByCert` fails the test at "restart must not lose an accepted block"
 — the old body passed under that same mutilation.
+
+### State-summary adoption (engine/chain/summary)
+
+The client half of state sync: it decides which summary a node adopts before it
+bootstraps, so a node whose trie is damaged or whose gap exceeds the descent
+window has a way back that is not a reseed. `New(Config).Run(ctx)` returns
+`(Outcome, error)` — `OutcomeAdopted` (wait for the VM's done signal, then
+bootstrap the tail from the summary height), `OutcomeSkipped` (bootstrap from the
+local tip; nothing was destroyed), and a zero `OutcomeInvalid` that can never read
+as adopted.
+
+Two rounds. DISCOVERY (`Source.Offers`) asks the connected beacons what each
+holds; its only product is a list of candidate heights and it carries **no**
+threshold — a wrong height costs one entry in the next request. RATIFICATION
+(`Source.Ballots`) asks the WHOLE beacon set, never a sample, and adopts only when
+a summary's stake strictly exceeds ⅔ of the stake that answered AND the stake that
+answered exceeds half the whole set (`config.TwoThirdsStakeFloor` /
+`config.HalfStakeFloor` — the same definitions the cert verifier uses). The second
+term is what stops an eclipse from shrinking the denominator until a sliver of
+stake looks like a supermajority.
+
+Load-bearing details, each pinned by a test that a mutation kills:
+
+- A candidate at or below the local tip is dropped **before** the vote, not left
+  for the VM to refuse inside the state-destroying `Accept`.
+- One beacon, one voice: ballots dedup by NodeID, and ids dedup within a ballot.
+- Selection ranges over the candidates, so an id nobody offered cannot win however
+  much stake names it.
+- Stake overflow refuses the round; it never saturates.
+- An interrupted sync (`GetOngoingSyncStateSummary`) enters as an ordinary
+  candidate — that is what lets it be ratified when no beacon offers it — and wins
+  only among the summaries that clear the bar.
+- Static and dynamic modes both wait for the VM. Bootstrap re-executes from the
+  summary height against the state below it, so "fetch in the background" fails
+  those executions for reasons unrelated to the network.
+
+Zero transport lives here: no request ids, no pending/failed sets, no timeout
+manager, no validator set. `Source` is two blocking, window-bounded calls the node
+implements, exactly as `bootstrap.BlockSource` is. Not to be confused with
+`engine/chain/syncer/`, which reconciles consensus pointers after an RLP import.
 
 ### SDK Status (Honest Assessment)
 - **Go**: Production-ready (protocol/, engine/, core/)

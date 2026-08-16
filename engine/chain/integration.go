@@ -197,12 +197,13 @@ func bftCommittee(presetK, count int) (newK, alpha int, clamped bool) {
 	// declares. Clamp K DOWN to the live set so an oversized preset stays finalizable
 	// (K=21→5), BUT never below the minimal Byzantine-fault-tolerant committee.
 	//
-	// SELF-FINALITY FLOOR (the 1085013 fork fix — the ROOT). validators.Manager.Count
+	// SELF-FINALITY FLOOR (the ROOT of the transient-K=1 fork). validators.Manager.Count
 	// reads len(m.validators[net]), which UNDER-reports during a restart window before the
 	// P-chain has finished replaying the staker set — it transiently returns 1. The old
 	// clamp turned that transient count=1 into K=1/α=1, and a K==1 engine synthesizes a
 	// 1-of-1 finality token that BYPASSES the ⅔-by-stake gate: the lone live node
-	// self-finalized divergent blocks and forked luxd-0/luxd-1 at 1085013. Flooring K at
+	// self-finalizes divergent blocks and forks the chain against the validators that were
+	// merely unresolved, each of which comes back holding a different history. Flooring K at
 	// the minimal BFT committee (K=4, α=3, f=1) means the α-of-K COUNT gate ALWAYS demands
 	// a real BFT quorum (α≥3) that a single node can never reach — so a chain whose live
 	// set is transiently (or genuinely) below the floor HALTS fail-closed (the cert never
@@ -912,8 +913,8 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	// SINGLE-STORE INVARIANT (defect #2): steer only at a tip the VM HOLDS.
 	// A validator that fell behind has a DAG tip ABOVE its own frontier; steering the
 	// proposervm at an unheld id leaves it on its prior preference (at worst lastAccepted)
-	// while BuildBlock spams "failed to fetch preferred block" — the luxd-1 wedge (see
-	// node/vms/proposervm/vm.go SetPreference, defect #1). The resolution lives in
+	// while BuildBlock spams "failed to fetch preferred block" and the node never builds
+	// again (see node/vms/proposervm/vm.go SetPreference, defect #1). The resolution lives in
 	// Transitive.HeldBuildTip so every steer site answers it the same way; the catch-up
 	// path (#3/#5) pulls the gap and a later receipt re-runs this steer once the tip lands.
 	if tip := rt.Transitive.HeldBuildTip(ctx, rt.config.VM, ids.Empty); tip != ids.Empty {
@@ -1234,10 +1235,11 @@ func SyncStateFromVM(ctx context.Context, vm BlockBuilder, consensus *Transitive
 // come back with certified finality above the block its VM last committed. Finality
 // then cannot advance — the fail-closed guard correctly refuses to move past applied
 // state — while catch-up, steering by the ledger, asks peers for the height ABOVE the
-// gap and never fetches the blocks the VM is missing. Measured on mainnet luxd-3:
-// ledger at 1160628, EVM at 1159050, every incoming cert refused with "expected
-// accepted block to have parent …:1159050 but got …:1161398", and no descent running
-// because certs were being accepted.
+// gap and never fetches the blocks the VM is missing. The ledger can lead the VM by
+// thousands of blocks, and in that state every incoming cert is refused for naming a
+// parent the VM has not applied ("expected accepted block to have parent …:H but got
+// …:H+gap") while no descent runs, because from the ledger's side certs are arriving
+// normally.
 //
 // A block can only be applied on top of the one before it, so whichever of the two is
 // LOWER is what the node actually needs next.
