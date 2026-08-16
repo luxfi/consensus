@@ -35,14 +35,14 @@ go.work.sum
 *.swo
 *~
 
-# Build artifacts
+# Build artifacts. Anchored: an unanchored `consensus` or `bench` also matches
+# the cmd/consensus and bench source directories, so new files there were
+# silently untracked. `make build` writes into bin/; release.yml writes
+# consensus-<os>-<arch> here.
 build/
 dist/
-consensus
-bench
-checker
-params
-sim
+/consensus
+/consensus-*
 
 # Coverage
 coverage.html

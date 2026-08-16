@@ -2,29 +2,21 @@
 # See the file LICENSE for licensing terms.
 
 .PHONY: all test build clean lint format check tools help benchmark \
-        generate generate-mocks coverage coverage-html coverage-95 \
-        install-tools remove-generated examples examples-go examples-c examples-cpp examples-rust
+        coverage coverage-html coverage-95 \
+        install-tools examples examples-go examples-c examples-cpp examples-rust
 
 # Default target
 all: build test
 
 # === BUILD TARGETS ===
 
-# Build all tools and commands
+# Build the commands. A failure here fails the build: swallowing it with
+# `|| echo` is how this target came to report success while building nothing.
 build: ## Build all tools and commands
-	@echo "🔨 Building all tools..."
-	@echo "Building params..."
-	@go build -o bin/params ./cmd/params || echo "ERROR: Failed to build params"
-	@echo "Building checker..."
-	@go build -o bin/checker ./cmd/checker || echo "ERROR: Failed to build checker"
-	@echo "Building simulator..."
-	@go build -o bin/sim ./cmd/sim || echo "ERROR: Failed to build sim"
-	@echo "Building bench..."
-	@go build -tags zmq -o bin/bench ./cmd/bench 2>/dev/null || go build -o bin/bench ./cmd/bench || echo "WARNING: Building without ZMQ support"
-	@echo "Building consensus CLI..."
-	@go build -o bin/consensus ./cmd/consensus || echo "ERROR: Failed to build consensus CLI"
-	@echo "✅ Build complete! Tools built:"
-	@ls -1 bin/ 2>/dev/null | grep -v '^$$' || echo "No tools built"
+	@echo "🔨 Building..."
+	@go build -o bin/consensus ./cmd/consensus
+	@echo "✅ Built:"
+	@ls -1 bin/
 
 # === TEST TARGETS ===
 
@@ -108,27 +100,6 @@ benchmark: ## Run pure algorithm benchmarks without networking
 	@echo "🚀 Running pure consensus benchmarks..."
 	@go test -bench=. -benchmem ./config ./protocol/... ./engine/... ./photon ./core/... ./qzmq
 
-# Build zmq-bench tool
-zmq-bench: ## Build the ZMQ benchmark tool
-	@echo "🔨 Building zmq-bench tool..."
-	@go build -tags zmq -o bin/zmq-bench ./cmd/zmq-bench || echo "ERROR: zmq-bench requires ZMQ"
-
-# Run zmq-bench tool
-run-zmq-bench: zmq-bench ## Run ZMQ benchmark tool with configurable parameters
-	@echo "🚀 Running benchmark..."
-	@echo "   Nodes: $(NODES)"
-	@echo "   Batch: $(BATCH)"
-	@echo "   Interval: $(INTERVAL)"
-	@echo "   Rounds: $(ROUNDS)"
-	@echo ""
-	./bin/zmq-bench -nodes $(NODES) -batch $(BATCH) -interval $(INTERVAL) -rounds $(ROUNDS)
-
-# Configuration for benchmarks
-NODES ?= 10
-BATCH ?= 4096
-INTERVAL ?= 5ms
-ROUNDS ?= 100
-
 # Run massively parallel ZMQ benchmarks with Ginkgo
 benchmark-zmq: check-ginkgo ## Run ZeroMQ transport benchmarks
 	@echo "🌐 Running transport benchmarks..."
@@ -138,53 +109,6 @@ benchmark-zmq: check-ginkgo ## Run ZeroMQ transport benchmarks
 test-parallel: check-ginkgo ## Run tests in parallel with Ginkgo
 	@echo "⚡ Running tests in parallel..."
 	ginkgo -p ./...
-
-# Run CI benchmark suite (10, 100, 1000 nodes)
-ci-cluster: zmq-bench ## Run CI multi-node consensus benchmarks (10, 100, 1000 nodes)
-	@echo "🌟 Running CI benchmark suite..."
-	@echo ""
-	@echo "### 10 nodes (default)"
-	@./bin/zmq-bench -nodes 10 -batch 8192 -interval 1ms -rounds 500 -quiet
-	@echo ""
-	@echo "### 100 nodes"
-	@./bin/zmq-bench -nodes 100 -batch 8192 -interval 1ms -rounds 100 -quiet
-	@echo ""
-	@echo "### 500 nodes"
-	@./bin/zmq-bench -nodes 1000 -batch 8192 -interval 1ms -rounds 50 -quiet
-
-# Run quick benchmark
-benchmark-quick: zmq-bench ## Quick benchmark with 10 nodes
-	@./bin/zmq-bench -nodes 10 -batch 8192 -interval 1ms -rounds 20
-
-# Run maximum TPS benchmark
-benchmark-max-tps: zmq-bench ## Run benchmark optimized for maximum TPS
-	@echo "🚀 Running maximum TPS benchmark..."
-	@CPU_COUNT=$$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4); \
-	echo "   CPU cores: $$CPU_COUNT"; \
-	echo "   Nodes: $$((CPU_COUNT * 2))"; \
-	echo "   Batch: 16384"; \
-	echo "   Interval: 1ms"; \
-	echo ""; \
-	./bin/zmq-bench -nodes $$((CPU_COUNT * 2)) -batch 16384 -interval 1ms -rounds 100
-
-# === CODE GENERATION TARGETS ===
-
-# Generate all code (mocks)
-generate: generate-mocks ## Generate all code (mocks)
-	@echo "✅ All code generation complete"
-
-# Generate mock files
-generate-mocks: check-mockgen ## Generate mock files
-	@echo "🔧 Generating mocks..."
-	@go generate ./...
-	@echo "✅ Mocks generated"
-
-# Remove all generated files
-remove-generated: ## Remove all generated files (*_mock.go, mock_*.go)
-	@echo "🧹 Removing generated files..."
-	@find . -name "*_mock.go" -type f -delete
-	@find . -name "mock_*.go" -type f -delete
-	@echo "✅ Generated files removed"
 
 # === CODE QUALITY TARGETS ===
 
@@ -258,7 +182,6 @@ install-tools: ## Install development tools
 	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	@go install honnef.co/go/tools/cmd/staticcheck@latest
 	@go install golang.org/x/tools/cmd/goimports@latest
-	@go install github.com/golang/mock/mockgen@latest
 	@go install golang.org/x/vuln/cmd/govulncheck@latest
 	@$(MAKE) check-ginkgo
 	@echo "✅ Development tools installed"
@@ -295,10 +218,6 @@ clean: ## Clean build artifacts
 	@$(MAKE) paper-clean
 	@cd pkg/rust && cargo clean 2>/dev/null || true
 	@echo "✅ Clean complete"
-
-# Clean everything including generated files
-clean-all: clean remove-generated ## Clean everything including generated files
-	@echo "✅ Complete clean finished"
 
 # === PAPER TARGETS ===
 
@@ -340,12 +259,6 @@ docs-clean: ## Clean documentation build artifacts
 	@cd docs && rm -rf .next out node_modules
 	@echo "✅ Documentation cleaned"
 
-# === UTILITY TARGETS ===
-
-# Run params tool
-run-params: build ## Build and run params tool
-	@./bin/params
-
 # Show comprehensive help
 help: ## Show this help
 	@echo "🔧 Lux Consensus Makefile"
@@ -354,7 +267,7 @@ help: ## Show this help
 	@echo ""
 	@echo "📋 Main Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		grep -E '^(all|build|test|coverage-95|generate|clean|help):' | \
+		grep -E '^(all|build|test|coverage-95|clean|help):' | \
 		sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 	@echo ""
 	@echo "🧪 Test Targets:"
@@ -367,11 +280,6 @@ help: ## Show this help
 		grep -E '^(bench|benchmark)' | \
 		sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 	@echo ""
-	@echo "🔧 Code Generation:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		grep -E '^generate' | \
-		sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
-	@echo ""
 	@echo "🔍 Code Quality:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		grep -E '^(lint|format|security|pre-commit)' | \
@@ -381,11 +289,8 @@ help: ## Show this help
 	@echo "  # Achieve 95% test coverage"
 	@echo "  make coverage-95"
 	@echo ""
-	@echo "  # Generate all code and run tests"
-	@echo "  make generate test"
-	@echo ""
 	@echo "  # Clean and rebuild everything"
-	@echo "  make clean-all generate build test"
+	@echo "  make clean build test"
 	@echo ""
 	@echo "  # Build integration examples"
 	@echo "  make examples"
@@ -395,10 +300,6 @@ help: ## Show this help
 # Check if Ginkgo is installed
 check-ginkgo:
 	@which ginkgo > /dev/null || (echo "📦 Installing Ginkgo..."; go install github.com/onsi/ginkgo/v2/ginkgo@latest)
-
-# Check if mockgen is installed
-check-mockgen:
-	@which mockgen > /dev/null || (echo "📦 Installing mockgen..."; go install github.com/golang/mock/mockgen@latest)
 
 # Check if LaTeX is installed
 check-latex:

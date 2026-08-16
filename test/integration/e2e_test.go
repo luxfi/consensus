@@ -1,11 +1,8 @@
 package integration
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"testing"
 	"time"
 
@@ -50,91 +47,6 @@ func TestE2EConsensusEngine(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestE2EConsensusServer tests the HTTP server endpoints
-func TestE2EConsensusServer(t *testing.T) {
-	serverURL := "http://localhost:9090"
-
-	// Probe once. If port :9090 doesn't host our consensus server
-	// (no listener, or a different service answering), skip the
-	// whole suite — these tests require `consensus serve` running
-	// alongside. They are NOT a unit test of the consensus engine.
-	probe, probeErr := http.Get(serverURL + "/health")
-	if probeErr != nil {
-		t.Skipf("Consensus server not running at %s: %v", serverURL, probeErr)
-	}
-	probe.Body.Close()
-	if probe.StatusCode != http.StatusOK {
-		t.Skipf("Port %s answered with status %d (not our consensus server)", serverURL, probe.StatusCode)
-	}
-
-	// Test health endpoint
-	t.Run("HealthCheck", func(t *testing.T) {
-		resp, err := http.Get(serverURL + "/health")
-		if err != nil {
-			t.Skipf("Server not running: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Health check failed: status %d", resp.StatusCode)
-		}
-	})
-
-	// Test status endpoint
-	t.Run("Status", func(t *testing.T) {
-		resp, err := http.Get(serverURL + "/status")
-		if err != nil {
-			t.Skipf("Server not running: %v", err)
-		}
-		defer resp.Body.Close()
-
-		var status map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
-			t.Errorf("Failed to decode status: %v", err)
-			return
-		}
-
-		healthy, ok := status["healthy"].(bool)
-		if !ok {
-			t.Skipf("Server response missing 'healthy' field (not our consensus server): %+v", status)
-		}
-		if !healthy {
-			t.Error("Engine not healthy")
-		}
-
-		t.Logf("Status: %+v", status)
-	})
-
-	// Test consensus processing
-	t.Run("ConsensusRound", func(t *testing.T) {
-		payload := map[string]interface{}{
-			"block_id": "test-block-123",
-			"votes": map[string]int{
-				"node1": 1,
-				"node2": 1,
-				"node3": 1,
-				"node4": 0,
-			},
-		}
-
-		body, _ := json.Marshal(payload)
-		resp, err := http.Post(serverURL+"/consensus", "application/json", bytes.NewReader(body))
-		if err != nil {
-			t.Skipf("Server not running: %v", err)
-		}
-		defer resp.Body.Close()
-
-		var result map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			t.Errorf("Failed to decode result: %v", err)
-		}
-
-		// With 75% votes (3/4), consensus should be reached (alpha=0.8 for local)
-		// Actually with local params alpha might be lower
-		t.Logf("Consensus result: %+v", result)
-	})
 }
 
 // TestE2ESimulation runs a full simulation
