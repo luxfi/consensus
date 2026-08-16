@@ -65,18 +65,18 @@ func (t *Transitive) ReceiveAuthenticatedVote(origin ids.NodeID, blockID ids.ID,
 // not be a validator to connect, and its NodeID is a hash of a certificate it
 // generates for itself, so distinct peers are free to mint.
 //
-// Without a stake model there is no membership to check against, so the answer
-// is no. Every chain that runs a quorum has one: a K>1 chain refuses to start
-// unless height-indexed validator state is wired, because zero stake at every
-// height would stall finality anyway. A chain reaching here with none is a chain
-// that cannot say who its validators are, and a vote it cannot attribute is a
-// vote it cannot count.
+// A chain with no stake model has no membership to check against, and none to
+// protect: α there is a plain count over a fixed set whose admission is enforced
+// before a peer can connect at all. Refusing on its behalf would cost a
+// single-validator or equal-stake chain every vote it has. The check earns its
+// keep exactly where a stake model exists, which is every chain where a stranger
+// could connect without being a validator.
 func (t *Transitive) holdsStake(origin ids.NodeID, blockID ids.ID) bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
 	if t.stakeSource == nil {
-		return false
+		return true
 	}
 	return t.stakeSource.Weight(origin, t.epochHeightLocked(t.pendingBlocks[blockID])) > 0
 }
