@@ -302,18 +302,13 @@ func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan
 	// height over blocks the VM never executed (the post-restart wedge): an unheld
 	// ancestry fails closed (AncestorNotTracked → a behind-node DEFER, fetch the gap),
 	// while a tracked run folds and EXECUTES every height from the applied head up. With
-	// A cert AT the hint is the applied head's own first cert and seeds directly, even
-	// naming a canonical the hint guessed wrong — the hint is a local guess, and
-	// refusing there would strand a node whose head sits on a branch the network did
-	// not finalize. BELOW the hint it is refused: seeding the certified frontier under
-	// the node's own applied head moves the finalized height backwards and leaves every
-	// later cert deferring on an ancestry walk that has to reach back down to it. With
-	// no hint at all there is no applied head to anchor to, so any height seeds.
+	// no hint (a genuine genesis, no applied head to anchor to) or a cert at/below the
+	// hint (the applied head's own first cert, or a straggler), seed the cert directly —
+	// even for a different canonical id than the hint guessed, the hint never blocks it.
+	// At or below the hint is the safe direction: the certified frontier sits under what
+	// the VM has already applied, which is where it belongs. The dangerous direction is
+	// above, and that is the walk this arm exists for.
 	if !led.set {
-		if led.hasHint && cert.Height < led.hintHeight {
-			return led, Plan{}, fmt.Errorf("%w: seed at height %d under an applied head at %d",
-				ErrNonMonotonicFinalizedHeight, cert.Height, led.hintHeight)
-		}
 		if led.hasHint && cert.Height > led.hintHeight {
 			floor := FinalityLedger{tip: led.hint, height: led.hintHeight, set: true}
 			path, err := pathFromTip(floor, cert, dag)
