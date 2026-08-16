@@ -146,9 +146,9 @@ func (p *testPeer) Ancestors(_ context.Context, blockID ids.ID, maxBlocks int) (
 // It models the REAL VM's store-vs-acceptance distinction the prior mock missed: `have`
 // is the BLOCK STORE (a block PRESENT — e.g. gossiped ahead of acceptance — which the real
 // VM's GetBlock returns), and `accepted` is the ACCEPTED chain (finalized, what LastAccepted
-// advances). A block can be in `have` but not `accepted` — exactly the luxd-2 freeze: the
-// frontier and its run-up sat in the store unaccepted. `Has` reads the store; `Accepted`
-// reads the chain — and the loop's caught-up predicate uses `Accepted`, never `Has`.
+// advances). A block can be in `have` but not `accepted` — a frontier and its run-up
+// sitting in the store unaccepted. `Has` reads the store; `Accepted` reads the chain —
+// and the loop's caught-up predicate uses `Accepted`, never `Has`.
 type testNode struct {
 	reg      map[string]*tBlock
 	have     map[ids.ID]bool // BLOCK STORE: present (returnable by GetBlock), accepted-or-not
@@ -420,8 +420,8 @@ func TestLoop_FreshNet_ConnectingThenCaughtUp_WaitsThenCompletes(t *testing.T) {
 	}
 }
 
-// TestLoop_StoredButUnacceptedFrontierDrivesAcceptance reproduces THE mainnet luxd-2 freeze
-// from production ground truth and proves the acceptance-vs-store fix. The node is at
+// TestLoop_StoredButUnacceptedFrontierDrivesAcceptance pins the acceptance-vs-store predicate
+// on the exact state that traps a presence test. The node is at
 // last-accepted N, but blocks N+1..N+K are ALREADY IN ITS STORE (gossiped / a prior incomplete
 // sync) WITHOUT being accepted — and the beacons name the frontier at N+K, a tip the node HOLDS
 // but has NOT accepted. THE BUG: Chain.Has(tip) returned true for that stored-but-unaccepted
@@ -430,17 +430,17 @@ func TestLoop_FreshNet_ConnectingThenCaughtUp_WaitsThenCompletes(t *testing.T) {
 // loop DESCENDS and ACCEPTS N+1..N+K — through the per-height-guarded re-execute path, accepting
 // the blocks already in the store — reaching N+K, never going Ready at the stale N.
 func TestLoop_StoredButUnacceptedFrontierDrivesAcceptance(t *testing.T) {
-	const N, K = 100, 16 // gap-16, the exact ground-truth skew (1082780 → 1082796)
+	const N, K = 100, 16 // a frontier 16 above last-accepted, every block of it already stored
 	chain, reg := chainOf(N+K, 0)
 	peer := newTestPeer(chain)         // beacons hold + name the real frontier (tip N+K)
 	node := newTestNode(reg, chain[N]) // ACCEPTED only up to N
-	// GROUND TRUTH: N+1..N+K are PRESENT IN THE STORE (gossiped ahead) but UNACCEPTED.
+	// N+1..N+K are PRESENT IN THE STORE (gossiped ahead) but UNACCEPTED.
 	for h := N + 1; h <= N+K; h++ {
 		node.have[chain[h].id] = true
 	}
 
 	ctx := context.Background()
-	// Precondition — the exact freeze state: the node HOLDS the named frontier yet has NOT
+	// Precondition — the trapping state: the node HOLDS the named frontier yet has NOT
 	// accepted it (last-accepted is N).
 	if !node.Has(ctx, chain[N+K].id) {
 		t.Fatal("precondition: the frontier must be present in the store (gossiped ahead)")
@@ -464,7 +464,7 @@ func TestLoop_StoredButUnacceptedFrontierDrivesAcceptance(t *testing.T) {
 	}
 }
 
-// frozenLedgerNode models the REAL C-Chain freeze at the Chain-interface level (red HIGH-1):
+// frozenLedgerNode models a frozen-LastAccepted node at the Chain-interface level (red HIGH-1):
 // LastAccepted is FROZEN at the boot height for the process life (the ZAP client caches its
 // last-accepted id at Initialize and a fire-and-forget Accept never refreshes it), while the
 // consensus finalized ledger (finalizedHeight/finalizedTip — what AcceptBootstrapBlock advances

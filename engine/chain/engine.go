@@ -200,11 +200,11 @@ type PendingBlock struct {
 	// VM refuses to apply it, or its ancestor is not tracked yet) stays pending
 	// and re-broadcasts the same cert on every entry. Each broadcast lands on every
 	// peer as a HandleIncomingCert → finalize attempt, whose votes come back and
-	// re-enter TryAccept: the loop feeds itself. Measured on lux-mainnet C-Chain,
-	// stuck at outer height 1,159,288: one node emitted 7,392 cert gossips in 60s
-	// across 145 pending blocks (51 per block per minute) while every peer took
-	// ~8,280 inbound certs in the same window, on a chain that had not advanced in
-	// 11 hours.
+	// re-enter TryAccept: the loop feeds itself. The send rate is set by the number
+	// of pending blocks times the vote-and-tick rate — nothing in it is a function
+	// of progress — so a chain that has stopped advancing broadcasts HARDEST, and
+	// every broadcast arrives at every peer as more finalize attempts whose votes
+	// come back as more entries. The traffic scales with the stall, not the work.
 	//
 	// Pacing keeps the liveness the broadcast exists for — a follower that missed
 	// the send still gets the proof on a later pass — and takes the amplifier away.
@@ -1791,12 +1791,12 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 		// abandonment, and the block was never looked at again because the flag is
 		// set for the life of the process and cleared nowhere.
 		//
-		// One dropped fetch was therefore permanent. That is what froze lux-mainnet
-		// luxd-2 and luxd-3 on the C-Chain at 1,159,050 while their peers ran on:
-		// both nodes HELD the blocks — the EVM had them canonical — and consensus
-		// simply never accepted them, because the peers were by then 1,500 blocks
-		// ahead and no longer vote on a block that old. Cert catch-up was the only
-		// door and it had already closed. A restart replays the same eight strikes.
+		// One dropped fetch is therefore permanent, and permanent is fatal: a node
+		// can HOLD the blocks — its VM has them canonical — while consensus never
+		// accepts them, because peers that have moved on no longer vote on a block
+		// that old. Cert catch-up is the only remaining door and it has already
+		// shut. A restart replays the same maxRePollAttempts strikes and shuts it
+		// again, so the node stays behind for as long as it runs.
 		//
 		// So keep asking. claimCertCatchupLocked is height-keyed, cooled down and
 		// hard-bounded, which is what keeps this a trickle rather than a storm.
@@ -3340,8 +3340,8 @@ func (t *Transitive) TryAccept(ctx context.Context, blockID ids.ID) error {
 	// reads 1 during a restart, and reclampCommitteeLocked only ever grows K. So K()==1 now
 	// implies a genuinely single-validator chain (presetK≤1: --dev, SingleValidatorParams,
 	// or a launch-single L1 whose live set really is one) — the ONLY case where self-finality
-	// is sound (no peer to fork against). The transient-K=1 self-finalization that forked
-	// luxd-0/luxd-1 at 1085013 is closed at the ROOT (the sizer), not here.
+	// is sound (no peer to fork against). The transient-K=1 self-finalization that forks a
+	// multi-validator chain against itself is closed at the ROOT (the sizer), not here.
 	singleValidator := t.consensus.K() == 1
 
 	if singleValidator {

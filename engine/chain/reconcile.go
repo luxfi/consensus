@@ -4,30 +4,32 @@
 // reconcile.go — BOUNDED PHANTOM-FLOOR RECONCILE: the recovery that un-sticks a chain
 // whose durable decided-floor ran AHEAD of every VM's applied head.
 //
-// THE INCIDENT. Before the fail-closed finalize→VM-accept fix, applyBranchFinalization
-// SWALLOWED VM.Accept's error and advanced the durable decided-floor (vote-guard
-// finalizedThrough) ANYWAY. So a height could be α-of-K FINALIZED in consensus while the
-// EVM refused to apply it — and the floor moved past it regardless. On the frozen testnet
-// C-Chain this left finalizedThrough = 429 uniform across all 5 validators while the EVM
-// heads sat at 421 (luxd-0/4) and 415 (luxd-1/2/3). On every reboot WithVoteGuard re-seeds
-// decidedFloor = 429, the sign gate treats 416..429 as decided (permanently unsignable),
-// the view-change can NEVER re-finalize them, and the chain is wedged forever.
+// HOW A PHANTOM FLOOR FORMS. A finalize path that SWALLOWS VM.Accept's error and advances
+// the durable decided-floor (vote-guard finalizedThrough) ANYWAY lets a height be α-of-K
+// FINALIZED in consensus while the VM refuses to apply it — the floor moves past a height
+// nothing ever executed, uniformly across the validators that finalized it. That state is
+// self-sealing: on every reboot WithVoteGuard re-seeds decidedFloor at the phantom height,
+// the sign gate treats everything up to it as decided (permanently unsignable), the
+// view-change can NEVER re-finalize those heights, and the chain is wedged for good.
+// applyBranchFinalization is fail-closed now, so no new phantom floor forms; this recovery
+// exists for a floor that already carries one.
 //
-// THE GAP SPLITS at the fleet-max VM-applied height (421 = the highest height ANY node
-// actually applied to its EVM):
+// THE GAP SPLITS at the fleet-max VM-applied height — the highest height ANY node actually
+// applied to its VM:
 //
-//   - 416..421 COMMITTED-DIVERGENT — luxd-0/4 VM-applied these (real, non-empty blocks in
-//     their coreth store, served over RPC). They are recoverable and were externalized, so
-//     they MUST NOT be abandoned; a behind node ADOPTS the exact same blocks via the
-//     cert-carrying catch-up path (AcceptCatchupBlock), never re-finalizes a different block.
+//   - AT OR BELOW fleet-max: COMMITTED-DIVERGENT — some nodes VM-applied these (real,
+//     non-empty blocks in their store, served over RPC). They are recoverable and were
+//     externalized, so they MUST NOT be abandoned; a behind node ADOPTS the exact same
+//     blocks via the cert-carrying catch-up path (AcceptCatchupBlock), never re-finalizes a
+//     different block.
 //
-//   - 422..429 PHANTOM — NO VM in the fleet ever applied them (all EVM heads <= 421;
-//     eth_getBlockByNumber(422) returns "cannot query unfinalized data" on every node). The
-//     block bytes are gone (the in-memory pendingBlocks / finalizedByCert / served-cert
+//   - ABOVE fleet-max, up to decidedFloor: PHANTOM — NO VM in the fleet ever applied them
+//     (a height above every VM's head answers "cannot query unfinalized data" everywhere).
+//     The block bytes are gone (the in-memory pendingBlocks / finalizedByCert / served-cert
 //     window were cleared on restart; the durable vote-guard stores NO block bytes and NO
 //     signatures — only the floor, the pruned bindings, and the lock rounds). They can be
 //     neither applied nor served. The ONLY recovery is to abandon them and let the
-//     view-change re-finalize 422+ fresh on the caught-up, consistent state.
+//     view-change re-finalize above fleet-max fresh on the caught-up, consistent state.
 //
 // THE SAFETY PROOF (no observable double-certification). Reconciling the floor down to
 // safeFloor and abandoning the in-consensus finalizations at heights (safeFloor, decidedFloor]
@@ -73,7 +75,7 @@ import (
 // ReconcilePhantomFloor lowers this node's durable decided-through floor to a SAFE height so
 // the sign gate stops treating a range of never-applied heights as decided — the fix for a
 // phantom floor left by the pre-fix swallowed-VM.Accept bug (see the file header for the full
-// incident + safety proof). It is a DELIBERATE, one-shot recovery action driven by the node
+// mechanism + safety proof). It is a DELIBERATE, one-shot recovery action driven by the node
 // at boot when an operator-verified reconcile target is configured.
 //
 //	safeFloor = max(target, localVMHeight)
