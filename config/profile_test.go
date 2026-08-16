@@ -8,120 +8,70 @@ import (
 	"testing"
 )
 
-// TestProfile_String pins the canonical user-facing strings.
-func TestProfile_String(t *testing.T) {
-	cases := []struct {
-		p    Profile
-		want string
-	}{
-		{ProfilePermissiveName, "permissive"},
-		{ProfileStrict, "strict"},
-		{ProfileFIPSx, "fips"},
-	}
-	for _, c := range cases {
-		if got := c.p.String(); got != c.want {
-			t.Errorf("Profile(%q).String() = %q, want %q", c.p, got, c.want)
-		}
-	}
+// The three literals operators write in chain config, in increasing order of
+// enforcement. Spelled out rather than read from the package so that renaming a
+// constant's value breaks this test instead of silently invalidating every
+// deployed YAML.
+var profileLiterals = map[Profile]string{
+	profilePermissive: "permissive",
+	profileStrict:     "strict",
+	profileFIPS:       "fips",
 }
 
-// TestProfile_IsStrict pins the canonical "should this chain refuse
-// classical primitives at the EVM gate?" predicate.
-func TestProfile_IsStrict(t *testing.T) {
-	cases := []struct {
-		p    Profile
-		want bool
-	}{
-		{ProfileStrict, true},
-		{ProfileFIPSx, true},
-		{ProfilePermissiveName, false},
-		{Profile(""), false},
-		{Profile("nonsense"), false},
-	}
-	for _, c := range cases {
-		if got := c.p.IsStrict(); got != c.want {
-			t.Errorf("Profile(%q).IsStrict() = %v, want %v", c.p, got, c.want)
-		}
-	}
-}
+// Each operator string resolves to a security profile that validates, and keeps
+// its literal spelling. Breaks if a profile is renamed out from under deployed
+// configs, or resolves to a struct that would be refused at boot.
+func TestEveryProfileResolvesAndValidates(t *testing.T) {
+	for p, literal := range profileLiterals {
+		t.Run(literal, func(t *testing.T) {
+			if got := p.String(); got != literal {
+				t.Errorf("String() = %q, want %q", got, literal)
+			}
 
-// TestProfile_Resolve pins the canonical Profile → ChainSecurityProfile
-// mapping. Each known Profile resolves to a struct that passes Validate.
-func TestProfile_Resolve(t *testing.T) {
-	for _, p := range AllProfiles {
-		t.Run(string(p), func(t *testing.T) {
 			sp, err := p.Resolve()
 			if err != nil {
-				t.Fatalf("Profile(%q).Resolve(): %v", p, err)
+				t.Fatalf("Resolve(): %v", err)
 			}
 			if sp == nil {
-				t.Fatalf("Profile(%q).Resolve() returned nil profile", p)
+				t.Fatal("Resolve() returned nil profile")
 			}
 			if err := sp.Validate(); err != nil {
-				t.Fatalf("Profile(%q).Resolve().Validate(): %v", p, err)
+				t.Fatalf("resolved profile does not validate: %v", err)
 			}
 		})
 	}
 }
 
-// TestProfile_Resolve_Unknown asserts the typed-error path for unknown
-// / empty Profile strings.
-func TestProfile_Resolve_Unknown(t *testing.T) {
-	cases := []Profile{"", "strict-pq", "STRICT", "hybrid", "bls", "classical", "nonsense"}
-	for _, p := range cases {
+// Anything that is not one of the three literals must fail loudly at config
+// load, naming the alternatives — never fall through to a default posture.
+// Breaks if an unknown or empty profile starts resolving to something.
+func TestUnknownProfileIsRefused(t *testing.T) {
+	for _, p := range []Profile{"", "strict-pq", "STRICT", "hybrid", "bls", "classical", "nonsense"} {
 		t.Run(string(p), func(t *testing.T) {
-			_, err := p.Resolve()
-			if err == nil {
-				t.Fatalf("Profile(%q).Resolve() returned nil error; want unknown-profile error", p)
-			}
-			if !strings.Contains(err.Error(), "permissive, strict, fips") {
-				t.Errorf("error message does not enumerate canonical values: %v", err)
+			if _, err := p.Resolve(); err == nil {
+				t.Fatal("resolved; want an unknown-profile error")
+			} else if !strings.Contains(err.Error(), "permissive, strict, fips") {
+				t.Errorf("error does not name the alternatives: %v", err)
 			}
 		})
 	}
 }
 
-// TestProfile_WireByte pins the wire-byte mapping for each Profile.
-func TestProfile_WireByte(t *testing.T) {
-	cases := []struct {
-		p    Profile
-		want uint8
-	}{
-		{ProfileStrict, 0x01},
-		{ProfilePermissiveName, 0x02},
-		{ProfileFIPSx, 0x03},
-		{Profile(""), 0x00},
-		{Profile("nonsense"), 0x00},
-	}
-	for _, c := range cases {
-		if got := c.p.WireByte(); got != c.want {
-			t.Errorf("Profile(%q).WireByte() = 0x%02x, want 0x%02x", c.p, got, c.want)
-		}
-	}
-}
-
-// TestProfileFromWireByte_RoundTrip asserts WireByte and
-// ProfileFromWireByte are inverses for every known Profile.
-func TestProfileFromWireByte_RoundTrip(t *testing.T) {
-	for _, p := range AllProfiles {
-		t.Run(string(p), func(t *testing.T) {
-			got, err := ProfileFromWireByte(p.WireByte())
-			if err != nil {
-				t.Fatalf("ProfileFromWireByte(WireByte(%q)): %v", p, err)
-			}
-			if got != p {
-				t.Errorf("round-trip mismatch: got %q, want %q", got, p)
-			}
-		})
-	}
-}
-
-// TestProfileFromWireByte_Unknown asserts unknown bytes return error.
-func TestProfileFromWireByte_Unknown(t *testing.T) {
-	for _, b := range []uint8{0x00, 0x04, 0x05, 0x80, 0xFF} {
-		_, err := ProfileFromWireByte(b)
-		if err == nil {
-			t.Errorf("ProfileFromWireByte(0x%02x) returned nil error; want unknown-byte error", b)
+// IsStrict decides whether a chain installs the all-classical-forbidden set at
+// the precompile boundary. Both PQ postures must answer true and permissive
+// false; an unknown string must never read as strict-by-accident, nor as
+// permissive-by-accident — it is refused at Resolve, and this pins the
+// predicate's answer meanwhile.
+func TestIsStrictCoversBothPQPostures(t *testing.T) {
+	for p, want := range map[Profile]bool{
+		profileStrict:       true,
+		profileFIPS:         true,
+		profilePermissive:   false,
+		Profile(""):         false,
+		Profile("nonsense"): false,
+	} {
+		if got := p.IsStrict(); got != want {
+			t.Errorf("Profile(%q).IsStrict() = %v, want %v", p, got, want)
 		}
 	}
 }

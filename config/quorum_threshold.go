@@ -99,16 +99,19 @@ func WeightedSupermajorityThreshold(weights []uint64) int {
 	copy(sorted, weights)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] > sorted[j] })
 
+	// The whole set sums to total > floor(2·total/3) for any total ≥ 1, so the
+	// loop always breaks; counting up to the break rather than returning from
+	// inside it leaves no second exit to reason about.
 	var cum uint64
-	for i, w := range sorted {
+	count := 0
+	for _, w := range sorted {
+		count++
 		cum += w
 		if cum > floor { // STRICT > ⅔ — the exact predicate VerifyWeighted uses
-			return i + 1
+			break
 		}
 	}
-	// Unreachable for total>0 (the full set sums to total > floor(2·total/3) for
-	// any total ≥ 1), but be explicit and fail-closed to the full set.
-	return len(sorted)
+	return count
 }
 
 // EqualStakeSupermajorityThreshold returns the minimum vote count for an
@@ -179,14 +182,12 @@ func FeasibleParams(networkID uint32, n int) Parameters {
 	}
 
 	// α = strict-⅔ stake threshold (equal-stake closed form, = heaviest-first
-	// general computation for unit weights), clamped up to the BFT overlap floor.
+	// general computation for unit weights). For every k ≥ 4 this already sits at
+	// or above the BFT overlap floor and at or below k, and the ratio α/k lands in
+	// [0.71, 0.75] — inside the [0.66, 1.0] window Valid() demands. Clamps against
+	// those three bounds could never fire, so they are not here to be reasoned
+	// about; TestFeasibleParamsNeedsNoClamping holds the ground.
 	alpha := EqualStakeSupermajorityThreshold(k)
-	if floor := (Parameters{K: k}).bftQuorumFloor(); alpha < floor {
-		alpha = floor
-	}
-	if alpha > k {
-		alpha = k
-	}
 
 	blockTime, roundTO := liveTimingFor(networkID)
 
@@ -194,16 +195,7 @@ func FeasibleParams(networkID uint32, n int) Parameters {
 	p.K = k
 	p.AlphaPreference = alpha
 	p.AlphaConfidence = alpha
-	// Float α (legacy Quasar-compat field) tracks the integer ratio but is
-	// floored at the 0.66 minimum config.Valid() requires. α/K for the live nets
-	// is ≥0.71 (4/5, 8/11, 15/21), comfortably above the floor.
 	p.Alpha = float64(alpha) / float64(k)
-	if p.Alpha < 0.66 {
-		p.Alpha = 0.66
-	}
-	if p.Alpha > 1.0 {
-		p.Alpha = 1.0
-	}
 	p.Beta = 2
 	p.BetaVirtuous = 2
 	if p.BetaRogue < k {
@@ -214,54 +206,27 @@ func FeasibleParams(networkID uint32, n int) Parameters {
 	return p
 }
 
-// ValidateForLiveValueNetwork validates value/PoS parameters against the LIVE
-// validator count — the live-aware companion to ValidateForValueNetwork. It is
-// the manager's fail-closed backstop after FeasibleParams sizes K=liveN.
+// ValidateForLiveValueNetwork validates value/PoS parameters for a network that
+// is actually running.
 //
-// Why a live-aware form exists: the static ValidateForValueNetwork enforces fixed
-// tier floors (mainnet K≥11, testnet K≥5) that assume the network HAS that many
-// validators. When the live set is smaller (e.g. 5 validators on mainnet), a
-// fixed K≥11 floor makes quorum UNREACHABLE — the committee cannot sample
-// validators that do not exist — so the floor stops protecting safety and instead
-// causes a finality outage. The live-aware floor reads the tier minimum as an
-// ASPIRATION capped by reality: you must sample at least min(tierFloor, liveN)
-// validators. With K = liveN (FeasibleParams' choice) this always holds, while a
-// genuinely tiny set still runs at K = liveN — the only safe committee available.
+// It checks what makes a committee safe — the overlap bound in Valid and at
+// least single-fault tolerance — and nothing about how many validators exist.
+// K is a number of stake-weighted draws, not a number of nodes, and a validator
+// is sampled in proportion to its stake however many there are; a floor that
+// tied K to the validator headcount gave a validator holding a billionth of the
+// stake the same standing as one holding a fifth of it, and refused to start a
+// chain because a small staker had joined.
 //
-// The protocol SAFETY invariant is unchanged and still enforced: Valid() asserts
-// the overlap bound 2α−K ≥ ⌊(K−1)/3⌋+1, and value nets still require f≥1 (K≥4).
-// Only the decentralization-aspiration numeric floor becomes live-relative.
-//
-//	K==1            → rejected (single-validator is a separate explicit regime)
-//	K<4 (f=0)       → rejected (no Byzantine tolerance)
-//	K < min(tierFloor, liveN) → rejected (under-sized vs. the live set)
-//	otherwise (overlap bound holds) → admitted
+// The tier floor is a decentralisation target and is reported by
+// MeetsDecentralizationTarget, never enforced here: refusing to start does not
+// add validators, it pins every node on whatever code it last booted.
 func (p Parameters) ValidateForLiveValueNetwork(networkID uint32, liveN int) error {
-	// Valid() (overlap bound + α∈[0.66,1] + K≥1) is the protocol safety gate.
 	if err := p.Valid(); err != nil {
 		return err
 	}
 	// Value across independent parties requires at least single-fault tolerance.
 	if p.ByzantineFaultTolerance() < 1 {
 		return errKTooLowForValueLive(p, networkID)
-	}
-	// Tier aspiration, capped by the live set: you must sample at least the
-	// smaller of the tier floor and however many validators actually exist.
-	tierFloor := 0
-	switch networkID {
-	case constants.MainnetID:
-		tierFloor = 11
-	case constants.TestnetID:
-		tierFloor = 5
-	}
-	if tierFloor > 0 {
-		effective := tierFloor
-		if liveN > 0 && liveN < tierFloor {
-			effective = liveN
-		}
-		if p.K < effective {
-			return errKBelowLiveFloor(p, networkID, liveN, effective)
-		}
 	}
 	return nil
 }

@@ -9,42 +9,6 @@ import (
 	"testing"
 )
 
-// TestCertPolicy_WireName_RoundTrip exercises the seven canonical
-// wire names from LP-217 §"(Mode, Variant) enumeration". The eighth
-// slot (PQ-off, strict) must produce the empty string and refuse
-// Validate.
-func TestCertPolicy_WireName_RoundTrip(t *testing.T) {
-	cases := []struct {
-		mode     CertMode
-		variant  CertVariant
-		wireName string
-	}{
-		{CertModeOff, CertVariantHybrid, "PQ-off"},
-		{CertModeFast, CertVariantHybrid, "PQ-fast"},
-		{CertModeStrict, CertVariantHybrid, "PQ-strict"},
-		{CertModeHeavy, CertVariantHybrid, "PQ-heavy"},
-		{CertModeFast, CertVariantStrict, "strict-PQ-fast"},
-		{CertModeStrict, CertVariantStrict, "strict-PQ-strict"},
-		{CertModeHeavy, CertVariantStrict, "strict-PQ-heavy"},
-	}
-	for _, tc := range cases {
-		cp := CertPolicy{Mode: tc.mode, Variant: tc.variant}
-		if got := cp.WireName(); got != tc.wireName {
-			t.Errorf("WireName(%v,%v): got %q want %q",
-				tc.mode, tc.variant, got, tc.wireName)
-		}
-		m, v, err := ParseWireName(tc.wireName)
-		if err != nil {
-			t.Errorf("ParseWireName(%q): %v", tc.wireName, err)
-			continue
-		}
-		if m != tc.mode || v != tc.variant {
-			t.Errorf("ParseWireName(%q): got (%v,%v) want (%v,%v)",
-				tc.wireName, m, v, tc.mode, tc.variant)
-		}
-	}
-}
-
 // TestCertPolicy_WireName_EighthSlot — (PQ-off, strict) is the eighth
 // slot; WireName returns "" and Validate refuses.
 func TestCertPolicy_WireName_EighthSlot(t *testing.T) {
@@ -58,9 +22,9 @@ func TestCertPolicy_WireName_EighthSlot(t *testing.T) {
 // asserts the leg set matches LP-217 §"The 4 modes".
 func TestCertPolicy_RequiredLegs(t *testing.T) {
 	cases := []struct {
-		name    string
-		policy  CertPolicy
-		legs    []LegName
+		name   string
+		policy CertPolicy
+		legs   []LegName
 	}{
 		{"PQ-off",
 			CertPolicy{Mode: CertModeOff, Variant: CertVariantHybrid},
@@ -169,53 +133,6 @@ func TestCertPolicy_Validate_Valid(t *testing.T) {
 		if err := cp.Validate(); err != nil {
 			t.Errorf("Validate %s: unexpected error %v", cp.WireName(), err)
 		}
-	}
-}
-
-// TestParseCertPolicy_RoundTrip parses YAML-form strings and
-// validates the result.
-func TestParseCertPolicy_RoundTrip(t *testing.T) {
-	cp, err := ParseCertPolicy("PQ-strict", "hybrid", 1000, "PQ-fast")
-	if err != nil {
-		t.Fatalf("ParseCertPolicy: %v", err)
-	}
-	want := CertPolicy{
-		Mode:      CertModeStrict,
-		Variant:   CertVariantHybrid,
-		TimeoutMs: 1000,
-		Fallback:  CertModeFast,
-	}
-	if cp != want {
-		t.Errorf("ParseCertPolicy: got %+v want %+v", cp, want)
-	}
-}
-
-// TestParseCertPolicy_VariantStrict — variant=strict parses
-// correctly.
-func TestParseCertPolicy_VariantStrict(t *testing.T) {
-	cp, err := ParseCertPolicy("PQ-heavy", "strict", 2000, "PQ-strict")
-	if err != nil {
-		t.Fatalf("ParseCertPolicy: %v", err)
-	}
-	if cp.Variant != CertVariantStrict {
-		t.Errorf("Variant: got %v want CertVariantStrict", cp.Variant)
-	}
-	if cp.WireName() != "strict-PQ-heavy" {
-		t.Errorf("WireName: got %q want strict-PQ-heavy", cp.WireName())
-	}
-}
-
-// TestParseCertPolicy_Invalid — unknown mode / variant strings are
-// refused.
-func TestParseCertPolicy_Invalid(t *testing.T) {
-	if _, err := ParseCertPolicy("bogus", "hybrid", 1000, "PQ-fast"); err == nil {
-		t.Error("expected error for unknown mode")
-	}
-	if _, err := ParseCertPolicy("PQ-fast", "bogus", 1000, "PQ-fast"); err == nil {
-		t.Error("expected error for unknown variant")
-	}
-	if _, err := ParseCertPolicy("PQ-fast", "hybrid", 1000, "bogus"); err == nil {
-		t.Error("expected error for unknown fallback")
 	}
 }
 

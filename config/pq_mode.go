@@ -36,8 +36,6 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"strings"
 )
 
 // PQMode selects the post-quantum signature stack the consensus engine layers
@@ -604,16 +602,6 @@ func (b ProofBackendID) IsProductionPQ() bool {
 	return false
 }
 
-// IsDirectVerifiable reports whether this backend is verified directly by
-// a full node — no succinct proof, no recursion, no trusted setup. The
-// certificate carries the per-signer FIPS signatures and a Merkle/weight
-// predicate; the verifier replays them. Distinguishes the
-// "full-node-verifiable mode" from the succinct (STARK/SNARK) backends so
-// audit tooling can assert which trust model a cert envelope rides under.
-func (b ProofBackendID) IsDirectVerifiable() bool {
-	return b == ProofBackendDirectWeightedQuorum
-}
-
 // IsForbiddenInPQMode mirrors ProofPolicyID.IsForbiddenInPQMode at the
 // backend layer.
 func (b ProofBackendID) IsForbiddenInPQMode() bool {
@@ -687,68 +675,6 @@ func (m PQMode) DKGRequired() string {
 	default:
 		return "unknown"
 	}
-}
-
-// ParsePQMode parses a canonical mode string (case-insensitive). Every
-// accepted alias names an actual component in the cert; we deliberately
-// don't accept counting words ("triple", "double") because they tell
-// callers nothing about what's signed.
-//
-//	canonical                              aliases (component-named only)
-//	"bls"            (BLS)                 "classical", "bls-only"
-//	"nasua"       (BLS + Corona)      "rt", "academic", "bls-rt", "bls-q", "sha256-rt"
-//	"pulsar"         (BLS + Pulsar)        "sha3-rt", "production-rt", "bls-pulsar"
-//	"quasar"         (BLS + Pulsar + Z)    "rollup", "groth16", "zk",
-//	                                       "bls-z", "bls-zk", "bls-groth16",
-//	                                       "z-chain", "pulsar-z"
-//	"mldsa"          (BLS + ML-DSA raw)    "audit", "bls-mldsa", "bls+mldsa"
-func ParsePQMode(s string) (PQMode, error) {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "", "bls", "bls-only", "classical":
-		return PQModeBLS, nil
-	case "nasua", "rt", "academic", "bls-rt", "bls-q", "sha256-rt":
-		return PQModeNasua, nil
-	case "pulsar", "sha3-rt", "production-rt", "bls-pulsar":
-		return PQModePulsar, nil
-	case "quasar", "rollup", "groth16", "zk",
-		"bls-z", "bls-zk", "bls-groth16", "z-chain", "pulsar-z":
-		return PQModeQuasar, nil
-	case "mldsa", "audit", "bls-mldsa", "bls+mldsa":
-		return PQModeMLDSA, nil
-	default:
-		return PQModeBLS, fmt.Errorf("unknown PQMode %q", s)
-	}
-}
-
-// PQModeFromEnv resolves the consensus PQ mode from CONSENSUS_PQ_MODE.
-// The legacy LUX_-prefixed name is no longer honoured — there is one
-// canonical, unprefixed env var.
-//
-// Empty / unset returns the supplied default. Invalid values return def + error.
-func PQModeFromEnv(def PQMode) (PQMode, error) {
-	v := os.Getenv("CONSENSUS_PQ_MODE")
-	if v == "" {
-		return def, nil
-	}
-	mode, err := ParsePQMode(v)
-	if err != nil {
-		return def, err
-	}
-	return mode, nil
-}
-
-// PQModeFromBool collapses the enum onto a single boolean for operators
-// who don't want to pick a mode explicitly:
-//
-//	true  -> PQModeQuasar   // BLS + Pulsar + Z-Chain Groth16(ML-DSA)
-//	false -> PQModeBLS      // classical fast path
-//
-// Use the explicit constants for the middle modes (Corona, Pulsar, MLDSA).
-func PQModeFromBool(postQuantum bool) PQMode {
-	if postQuantum {
-		return PQModeQuasar
-	}
-	return PQModeBLS
 }
 
 // IsPostQuantum reports whether the mode carries any PQ witness on top of

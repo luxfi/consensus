@@ -168,7 +168,7 @@ func TestForkClassicalCompatUnsafe_Validate(t *testing.T) {
 	}
 	// Critical: the fork uses the keccak-merkle STARK policy so it MUST
 	// NOT collide with StrictPQ's policy.
-	if ForkClassicalCompatUnsafeProfile.ProofPolicyID == StrictPQProfile.ProofPolicyID {
+	if ForkClassicalCompatUnsafeProfile.ProofPolicyID == strictPQProfile.ProofPolicyID {
 		t.Errorf("fork profile ProofPolicyID must NOT match StrictPQ — that's the whole point")
 	}
 }
@@ -387,9 +387,9 @@ func TestChainSecurityProfile_ComputeHash_Determinism(t *testing.T) {
 		t.Errorf("StrictPQ() hashes inconsistently across calls: %x vs %x", ah, bh)
 	}
 	// And the well-known constant matches.
-	if ah != StrictPQProfile.ProfileHash {
+	if ah != strictPQProfile.ProfileHash {
 		t.Errorf("StrictPQ ComputeHash() differs from init-pinned ProfileHash: got %x want %x",
-			ah, StrictPQProfile.ProfileHash)
+			ah, strictPQProfile.ProfileHash)
 	}
 }
 
@@ -558,7 +558,7 @@ func TestChainSecurityProfile_ComputeHash_RefusesInvalidProfile(t *testing.T) {
 // audit-defensible value. The test is a tripwire against future
 // refactors that introduce zero-default branches into a "secure" profile.
 func TestStrictPQProfile_NoOperatorFootguns(t *testing.T) {
-	p := StrictPQProfile
+	p := strictPQProfile
 	if p.ProfileID == 0 {
 		t.Errorf("ProfileID is zero")
 	}

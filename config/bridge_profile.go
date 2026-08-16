@@ -405,7 +405,7 @@ func (p *BridgeProfile) RefusePairingPrecompile() error {
 		ErrBridgeProfileForbidden, p.Name)
 }
 
-// StrictPQBridgeProfile is the canonical Lux strict-PQ bridge
+// strictPQBridgeProfile is the canonical Lux strict-PQ bridge
 // posture. Both source and destination finalise under Pulsar-M-65
 // (NIST PQ Cat 3, FIPS 204-compatible threshold); the destination-side
 // verifier admits STARK/FRI/SHA-3-NIST proofs only; admin is ML-DSA-87
@@ -417,9 +417,9 @@ func (p *BridgeProfile) RefusePairingPrecompile() error {
 //
 // Operators CANNOT override; the profile is a const var and the gate
 // methods consult it directly. Cross-chain code that wants to use a
-// classical primitive must pin BridgeClassicalCompat instead and
+// classical primitive must pin bridgeClassicalCompat instead and
 // accept the non-E2E-PQ label.
-var StrictPQBridgeProfile = BridgeProfile{
+var strictPQBridgeProfile = BridgeProfile{
 	ProfileID:               uint32(BridgeProfileIDLuxStrictPQ),
 	Name:                    "LUX_STRICT_PQ_BRIDGE",
 	SourceFinalityScheme:    SigSchemePulsar65,
@@ -436,14 +436,14 @@ var StrictPQBridgeProfile = BridgeProfile{
 	PostQuantumEndToEnd:     true,
 }
 
-// BridgeClassicalCompat is the bridge profile every cross-chain
+// bridgeClassicalCompat is the bridge profile every cross-chain
 // connector to a chain with classical finality (Ethereum L1, Bitcoin,
 // any EVM L2 still on ecrecover) MUST pin. It is explicitly labelled
 // non-E2E-PQ: PostQuantumEndToEnd=false and the gates allow every
 // classical primitive.
 //
 // A chain may pin StrictPQ as its ChainSecurityProfile *and* operate
-// a BridgeClassicalCompat bridge to an external L1: the chain is still
+// a bridgeClassicalCompat bridge to an external L1: the chain is still
 // strict-PQ, but the bridge into / out of it is labelled as the
 // classical-compat surface it actually is. Block-explorer metadata
 // carries the BridgeProfileID on every deposit / withdrawal so an
@@ -455,7 +455,7 @@ var StrictPQBridgeProfile = BridgeProfile{
 // so an operator who pins it cannot accidentally claim the strict-PQ
 // posture; the bridge_classical_compat_total metric fires on every
 // classical-gated call.
-var BridgeClassicalCompat = BridgeProfile{
+var bridgeClassicalCompat = BridgeProfile{
 	ProfileID:               uint32(BridgeProfileIDClassicalCompat),
 	Name:                    "BRIDGE_CLASSICAL_COMPAT_UNSAFE",
 	SourceFinalityScheme:    SigSchemeBLS12381, // classical aggregate (Ethereum / EVM L1s)
@@ -485,6 +485,6 @@ func (p *BridgeProfile) MustValidate() {
 // panic message names the failing profile so a misconfiguration is
 // immediate and visible in the boot log.
 func init() {
-	StrictPQBridgeProfile.MustValidate()
-	BridgeClassicalCompat.MustValidate()
+	strictPQBridgeProfile.MustValidate()
+	bridgeClassicalCompat.MustValidate()
 }

@@ -38,7 +38,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
 // CertPolicy is the single configuration record that declares a
@@ -172,74 +171,6 @@ func (cp CertPolicy) RequiredLegs() []LegName {
 		legs = append(legs, LegMagnetar)
 	}
 	return legs
-}
-
-// parseMode parses one of the four canonical mode names.
-func parseMode(s string) (CertMode, error) {
-	switch s {
-	case "PQ-off":
-		return CertModeOff, nil
-	case "PQ-fast":
-		return CertModeFast, nil
-	case "PQ-strict":
-		return CertModeStrict, nil
-	case "PQ-heavy":
-		return CertModeHeavy, nil
-	default:
-		return 0, fmt.Errorf("unknown cert mode %q", s)
-	}
-}
-
-// ParseWireName parses one of the seven canonical wire names into a
-// (Mode, Variant) pair. Returns an error for any other string.
-func ParseWireName(s string) (CertMode, CertVariant, error) {
-	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "strict-") {
-		m, err := parseMode(strings.TrimPrefix(s, "strict-"))
-		if err != nil {
-			return 0, 0, err
-		}
-		return m, CertVariantStrict, nil
-	}
-	m, err := parseMode(s)
-	if err != nil {
-		return 0, 0, err
-	}
-	return m, CertVariantHybrid, nil
-}
-
-// ParseCertPolicy parses a YAML-style record into a CertPolicy.
-// Caller passes the four fields as strings (mode, variant, timeout,
-// fallback) — the typical genesis-loader path reads the YAML map and
-// hands strings here so the struct stays decoupled from yaml.v3.
-//
-// Returns the parsed policy AND any error from Validate. A non-nil
-// error means the policy is unsafe to launch the chain with.
-func ParseCertPolicy(mode, variant string, timeoutMs uint32, fallback string) (CertPolicy, error) {
-	m, err := parseMode(mode)
-	if err != nil {
-		return CertPolicy{}, fmt.Errorf("cert_policy.mode: %w", err)
-	}
-	var v CertVariant
-	switch strings.TrimSpace(variant) {
-	case "", "hybrid":
-		v = CertVariantHybrid
-	case "strict":
-		v = CertVariantStrict
-	default:
-		return CertPolicy{}, fmt.Errorf("cert_policy.variant: unknown variant %q (want hybrid|strict)", variant)
-	}
-	f, err := parseMode(fallback)
-	if err != nil {
-		return CertPolicy{}, fmt.Errorf("cert_policy.fallback: %w", err)
-	}
-	cp := CertPolicy{
-		Mode:      m,
-		Variant:   v,
-		TimeoutMs: timeoutMs,
-		Fallback:  f,
-	}
-	return cp, cp.Validate()
 }
 
 // expectedFloorLatencyMs returns the floor latency for a Mode on

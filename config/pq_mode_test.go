@@ -26,92 +26,6 @@ func TestPQMode_String(t *testing.T) {
 	}
 }
 
-// TestParsePQMode_Canonical accepts every canonical lower-case name.
-func TestParsePQMode_Canonical(t *testing.T) {
-	for _, m := range []PQMode{
-		PQModeBLS, PQModeNasua, PQModePulsar, PQModeQuasar, PQModeMLDSA,
-	} {
-		got, err := ParsePQMode(m.String())
-		if err != nil {
-			t.Errorf("ParsePQMode(%q) errored: %v", m.String(), err)
-			continue
-		}
-		if got != m {
-			t.Errorf("ParsePQMode(%q) = %v, want %v", m.String(), got, m)
-		}
-	}
-}
-
-// TestParsePQMode_Aliases ensures legacy env strings still parse to the
-// right mode. Drop entries here only when the alias has been removed
-// from a major release.
-func TestParsePQMode_Aliases(t *testing.T) {
-	cases := []struct {
-		alias string
-		want  PQMode
-	}{
-		// BLS
-		{"", PQModeBLS},
-		{"BLS", PQModeBLS},
-		{"bls-only", PQModeBLS},
-		{"classical", PQModeBLS},
-
-		// Corona (academic, BLAKE3, trusted dealer)
-		{"rt", PQModeNasua},
-		{"academic", PQModeNasua},
-		{"bls-rt", PQModeNasua},
-		{"sha256-rt", PQModeNasua},
-
-		// Pulsar (production fork, SHA-3, Pedersen DKG)
-		{"sha3-rt", PQModePulsar},
-		{"production-rt", PQModePulsar},
-		{"bls-pulsar", PQModePulsar},
-
-		// Quasar — component-named aliases only (no "triple"; tells callers
-		// nothing about what's in the cert).
-		{"rollup", PQModeQuasar},
-		{"groth16", PQModeQuasar},
-		{"bls-z", PQModeQuasar},
-		{"bls-zk", PQModeQuasar},
-		{"z-chain", PQModeQuasar},
-		{"pulsar-z", PQModeQuasar},
-
-		// MLDSA fallback
-		{"audit", PQModeMLDSA},
-		{"bls-mldsa", PQModeMLDSA},
-	}
-	for _, c := range cases {
-		got, err := ParsePQMode(c.alias)
-		if err != nil {
-			t.Errorf("ParsePQMode(%q) errored: %v", c.alias, err)
-			continue
-		}
-		if got != c.want {
-			t.Errorf("ParsePQMode(%q) = %v, want %v", c.alias, got, c.want)
-		}
-	}
-}
-
-func TestParsePQMode_Unknown(t *testing.T) {
-	if _, err := ParsePQMode("nonsense"); err == nil {
-		t.Errorf("ParsePQMode(\"nonsense\") accepted; want error")
-	}
-}
-
-// TestParsePQMode_NoCountingWords pins the policy that mode names must
-// describe what's in the cert. "triple" / "triple-quantum" / "double" /
-// "stack" tell a caller nothing about which witnesses are signed and are
-// rejected. Drop a name from the rejected list only when there is a
-// concrete deployment requiring it AND a HIP amendment justifying it.
-func TestParsePQMode_NoCountingWords(t *testing.T) {
-	rejected := []string{"triple", "triple-quantum", "double", "stack", "all", "max"}
-	for _, s := range rejected {
-		if _, err := ParsePQMode(s); err == nil {
-			t.Errorf("ParsePQMode(%q) accepted; counting words must be rejected per HIP-0077", s)
-		}
-	}
-}
-
 // TestPQMode_PolicyID pins the wire policy ID per mode. Anyone changing
 // the wire layer must update this table at the same time.
 func TestPQMode_PolicyID(t *testing.T) {
@@ -721,16 +635,6 @@ func TestPQMode_SuitableForPublicChain(t *testing.T) {
 	}
 }
 
-// TestPQModeFromBool pins the boolean-shorthand contract.
-func TestPQModeFromBool(t *testing.T) {
-	if got := PQModeFromBool(true); got != PQModeQuasar {
-		t.Errorf("PQModeFromBool(true) = %v, want PQModeQuasar", got)
-	}
-	if got := PQModeFromBool(false); got != PQModeBLS {
-		t.Errorf("PQModeFromBool(false) = %v, want PQModeBLS", got)
-	}
-}
-
 // TestPQMode_IsPostQuantum is true for everything except plain BLS.
 func TestPQMode_IsPostQuantum(t *testing.T) {
 	cases := []struct {
@@ -747,47 +651,5 @@ func TestPQMode_IsPostQuantum(t *testing.T) {
 		if got := c.mode.IsPostQuantum(); got != c.want {
 			t.Errorf("PQMode(%d).IsPostQuantum() = %v, want %v", c.mode, got, c.want)
 		}
-	}
-}
-
-// TestPQModeFromEnv covers the env-var override path. CONSENSUS_PQ_MODE is
-// the one and only env var honoured; the legacy LUX_-prefixed name is gone.
-func TestPQModeFromEnv(t *testing.T) {
-	t.Setenv("CONSENSUS_PQ_MODE", "")
-	if got, err := PQModeFromEnv(PQModeQuasar); err != nil || got != PQModeQuasar {
-		t.Errorf("empty env: got (%v, %v), want (PQModeQuasar, nil)", got, err)
-	}
-
-	t.Setenv("CONSENSUS_PQ_MODE", "pulsar")
-	if got, err := PQModeFromEnv(PQModeBLS); err != nil || got != PQModePulsar {
-		t.Errorf("env=pulsar: got (%v, %v), want (PQModePulsar, nil)", got, err)
-	}
-
-	t.Setenv("CONSENSUS_PQ_MODE", "garbage")
-	got, err := PQModeFromEnv(PQModeQuasar)
-	if err == nil {
-		t.Errorf("env=garbage: expected error, got nil; mode=%v", got)
-	}
-	if got != PQModeQuasar {
-		t.Errorf("env=garbage: fell back to %v, want PQModeQuasar (the supplied default)", got)
-	}
-}
-
-// TestPQModeFromEnv_LegacyNameIgnored asserts that the dropped legacy
-// LUX_CONSENSUS_PQ_MODE env var is no longer honoured. Only CONSENSUS_PQ_MODE
-// affects the resolved mode.
-func TestPQModeFromEnv_LegacyNameIgnored(t *testing.T) {
-	// Legacy name set, canonical unset: default returned, legacy is dead.
-	t.Setenv("CONSENSUS_PQ_MODE", "")
-	t.Setenv("LUX_CONSENSUS_PQ_MODE", "pulsar")
-	if got, err := PQModeFromEnv(PQModeBLS); err != nil || got != PQModeBLS {
-		t.Errorf("legacy-only: got (%v, %v), want (PQModeBLS, nil) — legacy var must be ignored", got, err)
-	}
-
-	// Both set: canonical wins (legacy is ignored entirely).
-	t.Setenv("CONSENSUS_PQ_MODE", "quasar")
-	t.Setenv("LUX_CONSENSUS_PQ_MODE", "bls")
-	if got, err := PQModeFromEnv(PQModeMLDSA); err != nil || got != PQModeQuasar {
-		t.Errorf("both set: got (%v, %v), want (PQModeQuasar, nil) — canonical must win", got, err)
 	}
 }
