@@ -113,15 +113,21 @@ type VM[S Summary] interface {
 	// different one.
 	ParseStateSummary(context.Context, []byte) (S, error)
 
-	// LastAccepted and GetBlock give the height this node already stands at. It is
-	// the floor no candidate may sit at or below: adopting a summary throws away
-	// everything below it, so adopting one at or under the local tip trades real
-	// history for nothing. A majority that happens to be behind must never be able
-	// to drag a node backwards.
-	LastAccepted(context.Context) (ids.ID, error)
-	GetBlock(context.Context, ids.ID) (block.Block, error)
+	// Tip is the height this node already stands at — the floor no candidate may
+	// sit at or below, because adopting a summary throws away everything under it
+	// and a majority that happens to be behind must not be able to drag a node
+	// backwards.
+	//
+	// A height and not a block: the block type belongs to whoever built the VM,
+	// and naming one here would refuse every VM that answers with its own — the
+	// same way naming one summary type did. The height is the whole question.
+	Tip(context.Context) (uint64, error)
 }
 
-// A state-syncable VM satisfies VM as it stands. The narrowing bounds what this
-// package may call; it is not a second interface for the node to implement.
-var _ VM[block.StateSummary] = (block.StateSyncableVM)(nil)
+// The two summary methods come straight off a state-syncable VM; Tip is the one
+// thing the node answers itself, because the height it stands at is a fact about
+// the node and not a shape any particular VM declaration has to carry.
+var _ interface {
+	GetOngoingSyncStateSummary(context.Context) (block.StateSummary, error)
+	ParseStateSummary(context.Context, []byte) (block.StateSummary, error)
+} = (block.StateSyncableVM)(nil)
