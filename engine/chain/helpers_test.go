@@ -375,6 +375,10 @@ func newQuorumEngineOpts(t *testing.T, params config.Parameters, vs *testValidat
 	chainID := ids.GenerateTestID()
 	opts := append([]Option{
 		WithQuorumCert(chainID, vs.nodeID(self), vs, gossiper, vs.signerFor(self)),
+		// Every K>1 chain runs with a stake source — the node refuses to start one
+		// without live validator state — so a quorum engine built without one is not
+		// a configuration these tests should be reasoning about.
+		WithStakeWeighting(vs),
 	}, extra...)
 	e := NewWithConfig(Config{Params: params}, opts...)
 	if err := e.Start(context.Background(), true); err != nil {
