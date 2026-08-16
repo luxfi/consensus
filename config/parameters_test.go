@@ -149,31 +149,6 @@ func TestBurstParams(t *testing.T) {
 	}
 }
 
-func TestWithBlockTime(t *testing.T) {
-	tests := []struct {
-		name      string
-		blockTime time.Duration
-		wantRound time.Duration
-	}{
-		{"1ms ultra-fast", 1 * time.Millisecond, 5 * time.Millisecond},
-		{"5ms very fast", 5 * time.Millisecond, 15 * time.Millisecond},
-		{"10ms fast", 10 * time.Millisecond, 26 * time.Millisecond},
-		{"100ms normal", 100 * time.Millisecond, 251 * time.Millisecond},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := DefaultParams().WithBlockTime(tt.blockTime)
-			if p.BlockTime != tt.blockTime {
-				t.Errorf("BlockTime not set: got %v, want %v", p.BlockTime, tt.blockTime)
-			}
-			if p.RoundTO != tt.wantRound {
-				t.Errorf("RoundTO not adjusted: got %v, want %v", p.RoundTO, tt.wantRound)
-			}
-		})
-	}
-}
-
 func TestValidate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -390,13 +365,5 @@ func BenchmarkValidate(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = p.Validate()
-	}
-}
-
-func BenchmarkWithBlockTime(b *testing.B) {
-	p := DefaultParams()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = p.WithBlockTime(1 * time.Millisecond)
 	}
 }

@@ -20,81 +20,15 @@ import (
 )
 
 // =============================================================================
-// F51 — `github.com/luxfi/consensus/config` does not build (two CTO
-// agents collided; schema split).
-// =============================================================================
-//
-// SEVERITY: critical (blocker)
-//
-// The Blue agent producing security_profile.go used schema A:
-//   - Field names: AllowedProofBackends / AllowedProofFormats
-//   - Forbid flag: ForbidClassicalSNARKs (plural s)
-//   - Profile constants live in profiles.go (not yet written): the
-//     functions StrictPQ() / Permissive() / FIPS() each
-//     `return &StrictPQProfile` / `&PermissiveProfile` / etc.
-//   - ProfileID is a uint32 field in ChainSecurityProfile (line 254);
-//     the constants ProfileStrictPQ (line 60) are typed ProfileID
-//     (uint8). The constants are not assignable to the field.
-//   - ComputeHash returns ([48]byte, error)
-//
-// The Blue agent producing security_profile_test.go used schema B:
-//   - Field names: AllowedBackends / AllowedFormats
-//   - Forbid flag: ForbidClassicalSNARK (no s)
-//   - Tests `if p.ProfileID != ProfileStrictPQ` directly (compile
-//     error: uint32 vs ProfileID)
-//   - Calls `ErrProfileForbiddenPolicy` (not defined; only
-//     ErrProfileFieldInvalid is exported)
-//   - Calls `a.ComputeHash() != b.ComputeHash()` as a value comparison
-//     (the new signature returns (val, err); compile error)
-//
-// Result: the package will not vet, will not build, will not test.
-// This is the F51 finding — the entire locked-profile work needs a
-// single source of truth across struct field names, error variables,
-// and constructor return shapes before the rest of the F##s in this
-// file are runnable.
-//
-// PROOF: `cd ~/work/lux/consensus/config && go vet ./...` produces
-// type-mismatch errors. The proof is the vet output itself.
-//
-// FIX: pick ONE schema and apply consistently. Production-grade
-// choice:
-//   - Plural collection names: AllowedProofBackends / AllowedProofFormats
-//   - Plural forbid name: ForbidClassicalSNARKs (matches every other
-//     plural collection)
-//   - Profile constants typed ProfileID (uint8); the struct field is
-//     also ProfileID (the type). Do NOT make the struct field uint32 —
-//     that is a category error.
-//   - Add profiles.go with the canonical StrictPQProfile /
-//     PermissiveProfile / FIPSProfile constants, computed once
-//     via MustComputeHash at package init.
-//   - Add error variables ErrProfileForbiddenPolicy /
-//     ErrProfileForbiddenBackend / ErrProfileForbiddenFormat /
-//     ErrProfileStrictRequiresTransparent so callers can errors.Is
-//     against the specific failure.
-//   - ComputeHash returns ([48]byte, error); existing callers that
-//     used the no-error variant get a compile-time fix-prompt.
-//
-// This file's tests assume the post-fix schema A names. Once the build
-// is unblocked, every test in this file becomes runnable and the
-// remaining F##s below will either pass (if the property is upheld)
-// or fail (if the footgun is still live).
-func TestF51_PackageBuilds(t *testing.T) {
-	// This test exists to make the build break visible in `go test`
-	// output. If you can read this test name, the package compiled —
-	// good, run the rest of the suite. If you cannot, F51 is unfixed.
-	t.Log("F51 covered: package compiles enough for tests to run")
-}
-
-// =============================================================================
 // F52 — ChainSecurityProfile.Validate exists, but the canonical
 // StrictPQ constructor that should satisfy it cannot be called
-// (StrictPQProfile constant not defined; profiles.go missing).
+// (strictPQProfile constant not defined; profiles.go missing).
 // =============================================================================
 //
 // SEVERITY: critical
 //
-// security_profile.go:724 reads `p := StrictPQProfile; return &p`
-// but the constant StrictPQProfile is not defined anywhere in the
+// security_profile.go:724 reads `p := strictPQProfile; return &p`
+// but the constant strictPQProfile is not defined anywhere in the
 // package. The locked-profile architecture's single source of truth
 // for "this is what mainnet runs" is therefore vapourware. Any caller
 // that thinks they have the canonical profile in hand is actually
@@ -102,9 +36,9 @@ func TestF51_PackageBuilds(t *testing.T) {
 //
 // FIX: write profiles.go that defines:
 //
-//	var StrictPQProfile = ChainSecurityProfile{ /* all fields */ }
-//	var PermissiveProfile = ChainSecurityProfile{ /* all fields */ }
-//	var FIPSProfile = ChainSecurityProfile{ /* all fields */ }
+//	var strictPQProfile = ChainSecurityProfile{ /* all fields */ }
+//	var permissiveProfile = ChainSecurityProfile{ /* all fields */ }
+//	var fipsProfile = ChainSecurityProfile{ /* all fields */ }
 //
 // Then call MustComputeHash on each at init time and write the
 // returned hash back into ProfileHash so the constant carries its
@@ -112,7 +46,7 @@ func TestF51_PackageBuilds(t *testing.T) {
 func TestF52_CanonicalProfilesExist(t *testing.T) {
 	// We try to obtain each canonical profile; any panic / nil here
 	// is the finding's proof. Use defer/recover to capture the panic
-	// because StrictPQ() panics when StrictPQProfile is missing
+	// because StrictPQ() panics when strictPQProfile is missing
 	// (it's a typed-undefined-identifier compile error in fact, so
 	// this test would not link; but assuming it links the panic check
 	// is the runtime guard).

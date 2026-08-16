@@ -49,11 +49,6 @@ var (
 	// fork it. Real-value chains require f≥1 ⟹ K≥4 (α≥3); mainnet requires K≥11.
 	ErrKTooLowForValue = errors.New("consensus: value/PoS chain requires K>=4 (f>=1 Byzantine tolerance); K=3 has f=0 and a single faulty validator forks it")
 
-	// ErrKBelowLiveFloor is returned by ValidateForLiveValueNetwork when the
-	// committee is smaller than min(tierFloor, liveN) — i.e. it under-samples the
-	// live validator set. With K sized to the live set this never fires; it guards
-	// an operator who pins a K smaller than the validators that actually exist.
-	ErrKBelowLiveFloor = errors.New("consensus: K under-samples the live validator set (need K >= min(tierFloor, liveValidators))")
 )
 
 // errKTooLowForValueLive wraps ErrKTooLowForValue with the live-aware context.
@@ -61,10 +56,6 @@ func errKTooLowForValueLive(p Parameters, networkID uint32) error {
 	return fmt.Errorf("%w: K=%d f=%d networkID=%d", ErrKTooLowForValue, p.K, p.ByzantineFaultTolerance(), networkID)
 }
 
-// errKBelowLiveFloor wraps ErrKBelowLiveFloor with the resolved live floor.
-func errKBelowLiveFloor(p Parameters, networkID uint32, liveN, effective int) error {
-	return fmt.Errorf("%w: K=%d < %d (networkID=%d liveValidators=%d)", ErrKBelowLiveFloor, p.K, effective, networkID, liveN)
-}
 
 // Parameters defines consensus parameters
 type Parameters struct {
@@ -101,33 +92,6 @@ type Parameters struct {
 	// alongside BLS. Zero value (PQModeBLSOnly) preserves the classical
 	// fast path. See pq_mode.go for the full enum.
 	PQMode PQMode
-}
-
-// WithPQMode returns a copy of Parameters with the given PQ mode set.
-// Use config.PQModeFromEnv to honour the CONSENSUS_PQ_MODE override.
-func (p Parameters) WithPQMode(m PQMode) Parameters {
-	p.PQMode = m
-	return p
-}
-
-// PostQuantum reports whether this Parameters carries any PQ witness set
-// on top of the classical BLS aggregate (i.e. PQMode != BLSOnly).
-// Mirrors the simple boolean knob exposed to operators who don't want to
-// pick a witness set explicitly.
-func (p Parameters) PostQuantum() bool {
-	return p.PQMode.IsPostQuantum()
-}
-
-// WithPostQuantum collapses the five-way enum onto a boolean:
-//
-//	true  -> PQModeTripleQuantum   // strongest available
-//	false -> PQModeBLSOnly         // classical fast path
-//
-// For middle-ground modes (BLSPlusMLDSA, BLSPlusCorona, BLSPlusGroth16),
-// call WithPQMode directly with the desired constant.
-func (p Parameters) WithPostQuantum(on bool) Parameters {
-	p.PQMode = PQModeFromBool(on)
-	return p
 }
 
 // DefaultParams returns default parameters with 69% threshold
@@ -323,22 +287,6 @@ func SingleValidatorParams() Parameters {
 	}
 }
 
-// WithBlockTime returns a copy of Parameters with updated block time.
-// Round timeout auto-scales: 5x for ultra-fast (<=1ms), 3x for fast (<10ms),
-// 2.5x default. On localhost with GPU BLS, 1ms blocks + 5ms rounds is achievable.
-func (p Parameters) WithBlockTime(blockTime time.Duration) Parameters {
-	p.BlockTime = blockTime
-	switch {
-	case blockTime <= time.Millisecond:
-		p.RoundTO = 5 * blockTime // 5ms for 1ms blocks
-	case blockTime < 10*time.Millisecond:
-		p.RoundTO = 3 * blockTime // 15ms for 5ms blocks
-	default:
-		p.RoundTO = blockTime*5/2 + time.Millisecond // 2.5x + 1ms
-	}
-	return p
-}
-
 // ByzantineFaultTolerance returns f, the maximum number of Byzantine validators
 // this sample size can tolerate under classic BFT (n=K, f<n/3):
 //
@@ -439,10 +387,9 @@ func (p Parameters) Valid() error {
 // Local/devnet (3 / >= 1337) allows any K.
 //
 // The Lux primary-network IDs are convention-fixed: 1 = mainnet, 2 = testnet,
-// 3 = devnet, 1337 = localnet (see luxfi/constants). The testnet floor was
-// previously keyed to networkID 5 (a legacy Avalanche-Fuji id) and therefore
-// NEVER fired for the real Lux testnet (id 2) — a safety floor that did not
-// trigger for the network it protects. It is now correctly keyed to 2.
+// 3 = devnet, 1337 = localnet (see luxfi/constants). Key every floor to those
+// ids: a floor keyed to an id no Lux network carries never fires for the network
+// it is meant to protect.
 func (p Parameters) ValidateForNetwork(networkID uint32) error {
 	if err := p.Valid(); err != nil {
 		return err
@@ -497,10 +444,9 @@ func (p Parameters) ValidateForValueNetwork(networkID uint32) error {
 //
 // It is reported rather than enforced at chain start because refusing to start a
 // safe-but-small fleet does not create validators; it only strands that fleet on
-// whatever code it last booted. Mainnet 96369 (K=5) was held on v1.36.2 that way,
-// missing later consensus fixes — a worse security posture than running small on
-// current code. Chain start uses ValidateForLiveValueNetwork; operators should
-// surface THIS in health and telemetry, and grow the set.
+// whatever code it last booted, which is the worse security posture. Chain start
+// uses ValidateForLiveValueNetwork; operators surface THIS in health and
+// telemetry, and grow the set.
 func (p Parameters) MeetsDecentralizationTarget(networkID uint32) error {
 	if networkID == 1 && p.K < 11 {
 		return fmt.Errorf("%w: K=%d f=%d (target K>=11, f>=3)", ErrKBelowMainnetTarget, p.K, (p.K-1)/3)
