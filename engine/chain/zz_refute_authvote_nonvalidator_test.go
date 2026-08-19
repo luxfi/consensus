@@ -87,10 +87,9 @@ func TestAuthVote_StrangerMovesTheRejectTally(t *testing.T) {
 	}
 }
 
-// The control. The same call with real validator ids is the intended behavior and
-// must keep working — this is the halt fix. If this fails the harness is wrong,
-// not the engine.
-func TestAuthVote_ValidatorsStillCount(t *testing.T) {
+// Even a real validator id is insufficient without a signature over the exact
+// consensus position. Transport identity is not a substitute for that proof.
+func TestAuthVote_ValidatorsWithoutSignaturesAreRefused(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
 	alpha := e.consensus.Alpha()
@@ -101,7 +100,7 @@ func TestAuthVote_ValidatorsStillCount(t *testing.T) {
 	for i := 0; i < alpha; i++ {
 		e.ReceiveAuthenticatedVote(vs.nodeID(i), blk.id, true)
 	}
-	if !waitFor(2*time.Second, func() bool { return readVoteTally(e, blk).acceptVotes >= alpha }) {
-		t.Fatalf("control failed: real validators did not reach α (%+v)", readVoteTally(e, blk))
+	if waitFor(100*time.Millisecond, func() bool { return readVoteTally(e, blk).acceptVotes >= alpha }) {
+		t.Fatalf("unsigned validator identities reached α (%+v)", readVoteTally(e, blk))
 	}
 }
