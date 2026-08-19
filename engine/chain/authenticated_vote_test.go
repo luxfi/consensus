@@ -5,17 +5,13 @@ package chain
 
 import (
 	"testing"
-	"time"
 
 	"github.com/luxfi/ids"
 )
 
-// TestAuthenticatedVote_ReachesAlphaAndFinalizes is the LIVENESS regression for
-// the halt. A Chits carries no signature; before ReceiveAuthenticatedVote existed
-// every inbound preference on a K>1 chain died at the signature gate and α was
-// unreachable no matter how many honest peers agreed. Testnet held at 16820 and
-// devnet at 7323 in exactly this state.
-func TestAuthenticatedVote_ReachesAlphaAndFinalizes(t *testing.T) {
+// TestAuthenticatedVote_IsRefused pins the tombstone: transport identity does not
+// turn an unsigned Chits preference into a cryptographic vote.
+func TestAuthenticatedVote_IsRefused(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
 	alpha := e.consensus.Alpha()
@@ -27,24 +23,19 @@ func TestAuthenticatedVote_ReachesAlphaAndFinalizes(t *testing.T) {
 	trackFollowedBlock(e, chainID, blk)
 
 	for i := 0; i < alpha; i++ {
-		if !e.ReceiveAuthenticatedVote(vs.nodeID(i), blk.id, true) {
-			t.Fatalf("validator %d's authenticated preference was not queued", i)
+		if e.ReceiveAuthenticatedVote(vs.nodeID(i), blk.id, true) {
+			t.Fatalf("validator %d's unsigned preference was queued as a vote", i)
 		}
 	}
 
-	if !waitFor(2*time.Second, func() bool { return readVoteTally(e, blk).acceptVotes >= alpha }) {
-		t.Fatalf("HALT REPRODUCED: %d peers, each authenticated by the transport, agreed on the "+
-			"block and the tally is %+v. A Chits has no signature, so if these are dropped α is "+
-			"unreachable BY CONSTRUCTION and the chain stops — which is what testnet 16820 and "+
-			"devnet 7323 were doing.", alpha, readVoteTally(e, blk))
+	if got := readVoteTally(e, blk); got.acceptVotes != 0 || got.voteCount != 0 || got.certVotes != 0 {
+		t.Fatalf("unsigned transport preferences moved the quorum tally: %+v", got)
 	}
 }
 
-// TestAuthenticatedVote_IsNovaOnly_NeverBuildsACert is the SAFETY half. Transport
-// authentication is meaningful only to the node that performed it; a QuorumCert is
-// a portable claim that travels to nodes which did not. So these votes must never
-// become cert witnesses, no matter how many arrive.
-func TestAuthenticatedVote_IsNovaOnly_NeverBuildsACert(t *testing.T) {
+// TestAuthenticatedVote_NeverBuildsACert is the portable-proof half: no number of
+// unsigned transport messages can produce a certificate witness.
+func TestAuthenticatedVote_NeverBuildsACert(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
 
@@ -55,10 +46,8 @@ func TestAuthenticatedVote_IsNovaOnly_NeverBuildsACert(t *testing.T) {
 		e.ReceiveAuthenticatedVote(vs.nodeID(i), blk.id, true)
 	}
 
-	if got := readVoteTally(e, blk); got.certVotes != 0 {
-		t.Fatalf("EXPORTABLE FINALITY FROM UNSIGNED VOTES: %d cert witnesses were assembled from "+
-			"transport-authenticated preferences (%+v). A cert must be verifiable by a node that "+
-			"never saw this connection, so only signatures may enter it.", got.certVotes, got)
+	if got := readVoteTally(e, blk); got.acceptVotes != 0 || got.certVotes != 0 {
+		t.Fatalf("unsigned transport preferences entered finality state: %+v", got)
 	}
 }
 
@@ -86,10 +75,9 @@ func TestAuthenticatedVote_PayloadOriginStillRefused(t *testing.T) {
 	}
 }
 
-// TestAuthenticatedVote_OneVotePerValidator: transport authentication proves WHO
-// sent a message, not how many times they may be counted. A peer answering the
-// same poll repeatedly must move the tally once.
-func TestAuthenticatedVote_OneVotePerValidator(t *testing.T) {
+// TestAuthenticatedVote_ReplaysRemainRefused ensures retries cannot revive the
+// removed unsigned acceptance path.
+func TestAuthenticatedVote_ReplaysRemainRefused(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
 	alpha := e.consensus.Alpha()
@@ -101,9 +89,7 @@ func TestAuthenticatedVote_OneVotePerValidator(t *testing.T) {
 		e.ReceiveAuthenticatedVote(vs.nodeID(0), blk.id, true)
 	}
 
-	if got := readVoteTally(e, blk); got.acceptVotes > 1 {
-		t.Fatalf("ONE PEER REACHED α ALONE: %d authenticated replays from a single validator moved "+
-			"the tally to %d (%+v). Authentication names the sender; it does not entitle them to "+
-			"vote α times.", alpha+3, got.acceptVotes, got)
+	if got := readVoteTally(e, blk); got.acceptVotes != 0 || got.voteCount != 0 {
+		t.Fatalf("%d unsigned replays moved the tally: %+v", alpha+3, got)
 	}
 }

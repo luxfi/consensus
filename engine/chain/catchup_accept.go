@@ -201,6 +201,56 @@ func (t *Transitive) CertForBlock(blockID ids.ID) ([]byte, bool) {
 	return certs.Get(blockID)
 }
 
+// VerifyCatchupCertificate verifies that certBytes is a portable quorum proof for
+// blockBytes without tracking, finalizing, or otherwise mutating consensus state.
+// Bootstrap frontier discovery uses this read-only predicate to distinguish a peer's
+// unsigned claim about its tip from a tip backed by the same cryptographic evidence
+// that the live finalizer accepts.
+//
+// The block is parsed only to bind the proof to the local chain, height, canonical
+// execution commitment, and validator-set epoch. Its state transition is deliberately
+// not executed here; ordered bootstrap execution still verifies each block when it is
+// applied by AcceptCatchupBlock.
+func (rt *Runtime) VerifyCatchupCertificate(ctx context.Context, blockBytes, certBytes []byte) error {
+	if rt.config.VM == nil || len(certBytes) == 0 {
+		return ErrCatchupCertRejected
+	}
+	blk, err := rt.config.VM.ParseBlock(ctx, blockBytes)
+	if err != nil {
+		return errors.Join(ErrCatchupCertRejected, err)
+	}
+	cert, err := UnmarshalQuorumCert(certBytes)
+	if err != nil {
+		return errors.Join(ErrCatchupCertRejected, err)
+	}
+
+	t := rt.Transitive
+	t.mu.RLock()
+	chainID := t.chainID
+	floor := t.consensus.Alpha()
+	if cert.Tier == Nova {
+		floor = NovaSignerFloor(t.consensus.K())
+	}
+	setRootSource := t.setRootSource
+	t.mu.RUnlock()
+
+	if cert.Position.ChainID != chainID ||
+		cert.Position.Height != blk.Height() ||
+		certCanonical(cert) != canonicalIDOf(blk) ||
+		(floor > 0 && cert.Threshold < uint32(floor)) {
+		return ErrCatchupCertRejected
+	}
+
+	epochHeight := pChainHeightOf(blk)
+	if setRootSource != nil && setRootSource.ValidatorSetRoot(epochHeight) != cert.Position.ValidatorSetRoot {
+		return ErrCatchupCertRejected
+	}
+	if err := t.verifyCert(cert, epochHeight); err != nil {
+		return errors.Join(ErrCatchupCertRejected, err)
+	}
+	return nil
+}
+
 // AcceptCatchupBlock finalizes ONE gap block from a (blockBytes, certBytes) pair
 // fetched during frontier catch-up. It is the receive-side counterpart of
 // CertForBlock: parse → local Verify → track → verified-cert finalize.
