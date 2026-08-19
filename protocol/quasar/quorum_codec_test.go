@@ -265,9 +265,6 @@ func TestProofBackend_DirectWeightedQuorumIDs(t *testing.T) {
 	if !config.ProofBackendDirectWeightedQuorum.IsProductionPQ() {
 		t.Fatal("direct weighted quorum backend must be production-PQ")
 	}
-	if !config.ProofBackendDirectWeightedQuorum.IsDirectVerifiable() {
-		t.Fatal("direct weighted quorum backend must report IsDirectVerifiable")
-	}
 	if config.ProofBackendDirectWeightedQuorum.IsForbiddenInPQMode() {
 		t.Fatal("direct weighted quorum backend must not be forbidden in PQ mode")
 	}

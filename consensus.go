@@ -1,141 +1,57 @@
 // Copyright (C) 2019-2025, Lux Industries Inc All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// Package consensus provides a clean, single-import interface to the Lux consensus system.
-// This is the main SDK surface for applications using Lux consensus.
-//
-// For VM-related types (State, Message, Fx), use github.com/luxfi/vm
 package consensus
 
 import (
-	"context"
 	"errors"
 
-	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/engine"
-	"github.com/luxfi/consensus/engine/interfaces"
-	"github.com/luxfi/consensus/runtime"
 	"github.com/luxfi/consensus/types"
 )
 
-// Type aliases for clean single-import experience
+// The names a caller needs to write down the signatures below. The protocol
+// packages under protocol/ and the production engines under engine/chain/ are
+// imported directly; this root package is the small block-and-vote surface,
+// not a mirror of the module.
 type (
-	// Engine types
-	Engine = engine.Engine
-	Chain  = engine.Chain
-	Config = types.Config
-
-	// VM State type
-	State = interfaces.State
-
-	// Runtime type for VM wiring (chain IDs, validators, logging, etc.)
-	Runtime = runtime.Runtime
-	IDs     = runtime.IDs
-
-	// Core types
-	Block       = types.Block
-	Vote        = types.Vote
-	Certificate = types.Certificate
-	ID          = types.ID
-	NodeID      = types.NodeID
-	Hash        = types.Hash
-	Status      = types.Status
-	Decision    = types.Decision
-	VoteType    = types.VoteType
+	Chain    = engine.Chain
+	Config   = types.Config
+	Block    = types.Block
+	Vote     = types.Vote
+	VoteType = types.VoteType
+	ID       = types.ID
+	NodeID   = types.NodeID
 )
 
-// Constants re-exported for convenience
 const (
-	// Decision outcomes
-	DecideUndecided = types.DecideUndecided
-	DecideAccept    = types.DecideAccept
-	DecideReject    = types.DecideReject
-
-	// Vote types
 	VotePreference = types.VotePreference
 	VoteCommit     = types.VoteCommit
-	VoteCancel     = types.VoteCancel
-
-	// Block status
-	StatusUnknown    = types.StatusUnknown
-	StatusProcessing = types.StatusProcessing
-	StatusRejected   = types.StatusRejected
-	StatusAccepted   = types.StatusAccepted
-
-	// VM states
-	Unknown       = interfaces.Unknown
-	Starting      = interfaces.Starting
-	Syncing       = interfaces.Syncing
-	Bootstrapping = interfaces.Bootstrapping
-	Ready         = interfaces.Ready
-	Degraded      = interfaces.Degraded
-	Stopping      = interfaces.Stopping
-	Stopped       = interfaces.Stopped
 )
 
-// Variables re-exported for convenience
+// GenesisID is the ID of the genesis block.
+var GenesisID = types.GenesisID
+
 var (
-	// GenesisID is the ID of the genesis block
-	GenesisID = types.GenesisID
+	// ErrTimeout reports that an operation did not settle in its window.
+	ErrTimeout = types.ErrTimeout
 
-	// Common errors
-	ErrBlockNotFound  = types.ErrBlockNotFound
-	ErrInvalidBlock   = types.ErrInvalidBlock
-	ErrInvalidVote    = types.ErrInvalidVote
-	ErrNoQuorum       = types.ErrNoQuorum
-	ErrAlreadyVoted   = types.ErrAlreadyVoted
-	ErrNotValidator   = types.ErrNotValidator
-	ErrTimeout        = types.ErrTimeout
-	ErrNotInitialized = types.ErrNotInitialized
-	ErrUnknownState   = errors.New("unknown state")
+	// ErrUnknownState reports a state value outside the defined set.
+	ErrUnknownState = errors.New("unknown state")
 )
 
-// DefaultConfig returns the default consensus configuration
+// DefaultConfig returns the default consensus configuration.
 func DefaultConfig() Config {
 	return types.DefaultConfig()
 }
 
-// NewChain creates a new chain consensus engine
+// NewChain creates a chain consensus engine. A block reaches accepted once
+// cfg.Alpha votes name it.
 func NewChain(cfg Config) *Chain {
 	return engine.NewChain(cfg)
 }
 
-// NewChainEngine creates a new chain consensus engine with default config
-func NewChainEngine() Engine {
-	return NewChain(DefaultConfig())
-}
-
-// NewDAG creates a new DAG consensus engine.
-// Uses Chain with DAG-aware configuration for parallel vertex processing.
-func NewDAG(cfg Config) Engine {
-	// Configure for DAG mode with higher parallelism
-	dagCfg := cfg
-	if dagCfg.MaxOutstanding == 0 {
-		dagCfg.MaxOutstanding = 10 // Enable parallel vertex polling
-	}
-	return engine.NewChain(dagCfg)
-}
-
-// NewDAGEngine creates a new DAG consensus engine with default config.
-func NewDAGEngine() Engine {
-	return NewDAG(DefaultConfig())
-}
-
-// NewPQ creates a new post-quantum consensus engine.
-// Uses Chain with Quasar protocol for BLS + Corona threshold signatures.
-func NewPQ(cfg Config) Engine {
-	// Configure for quantum-safe mode
-	pqCfg := cfg
-	pqCfg.QuantumResistant = true
-	return engine.NewChain(pqCfg)
-}
-
-// NewPQEngine creates a new PQ consensus engine with default config.
-func NewPQEngine() Engine {
-	return NewPQ(DefaultConfig())
-}
-
-// NewBlock creates a new block with default values
+// NewBlock creates a block at height, descending from parentID.
 func NewBlock(id ID, parentID ID, height uint64, payload []byte) *Block {
 	return &Block{
 		ID:       id,
@@ -145,7 +61,7 @@ func NewBlock(id ID, parentID ID, height uint64, payload []byte) *Block {
 	}
 }
 
-// NewVote creates a new vote
+// NewVote creates a vote by voter on blockID.
 func NewVote(blockID ID, voteType VoteType, voter NodeID) *Vote {
 	return &Vote{
 		BlockID:  blockID,
@@ -153,46 +69,3 @@ func NewVote(blockID ID, voteType VoteType, voter NodeID) *Vote {
 		Voter:    voter,
 	}
 }
-
-// QuickStart initializes and starts a consensus engine with default config
-func QuickStart(ctx context.Context) (*Chain, error) {
-	cfg := DefaultConfig()
-	chain := NewChain(cfg)
-	if err := chain.Start(ctx); err != nil {
-		return nil, err
-	}
-	return chain, nil
-}
-
-// GetConfig returns consensus parameters based on the number of nodes
-func GetConfig(nodeCount int) config.Parameters {
-	switch {
-	case nodeCount == 1:
-		return config.SingleValidatorParams()
-	case nodeCount <= 5:
-		return config.LocalParams()
-	case nodeCount <= 11:
-		return config.TestnetParams()
-	case nodeCount <= 21:
-		return config.MainnetParams()
-	default:
-		params := config.MainnetParams()
-		params.K = nodeCount
-		params.AlphaPreference = int(float64(nodeCount) * 0.69)
-		params.AlphaConfidence = int(float64(nodeCount) * 0.69)
-		params.BetaVirtuous = int(float64(nodeCount) * 0.69)
-		params.BetaRogue = nodeCount
-		params.Beta = uint32(int(float64(nodeCount) * 0.69))
-		return params
-	}
-}
-
-// Parameter presets for convenience
-var (
-	SingleValidatorParams = config.SingleValidatorParams
-	LocalParams           = config.LocalParams
-	TestnetParams         = config.TestnetParams
-	MainnetParams         = config.MainnetParams
-	DefaultParams         = config.DefaultParams
-	XChainParams          = config.XChainParams
-)
