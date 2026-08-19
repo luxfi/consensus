@@ -1391,7 +1391,6 @@ func (t *Transitive) PreferredBuildTip() ids.ID {
 // can name an id this VM cannot serve builds on. Ava never has this problem: it steers
 // at Consensus.Preference(), which by construction was Verified INTO the VM
 
-//
 // Steering anyway is silently lossy, not loud: our proposervm keeps its prior preference
 // and returns nil on an unheld id (node/vms/proposervm/vm.go SetPreference), so an
 // unguarded steer drops BOTH the tip AND the caller's own target — the VM keeps building
