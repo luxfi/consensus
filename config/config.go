@@ -48,14 +48,12 @@ var (
 	// validators — i.e. NO fault tolerance — so a single Byzantine validator can
 	// fork it. Real-value chains require f≥1 ⟹ K≥4 (α≥3); mainnet requires K≥11.
 	ErrKTooLowForValue = errors.New("consensus: value/PoS chain requires K>=4 (f>=1 Byzantine tolerance); K=3 has f=0 and a single faulty validator forks it")
-
 )
 
 // errKTooLowForValueLive wraps ErrKTooLowForValue with the live-aware context.
 func errKTooLowForValueLive(p Parameters, networkID uint32) error {
 	return fmt.Errorf("%w: K=%d f=%d networkID=%d", ErrKTooLowForValue, p.K, p.ByzantineFaultTolerance(), networkID)
 }
-
 
 // Parameters defines consensus parameters
 type Parameters struct {

@@ -67,9 +67,9 @@ type CertStore interface {
 type fileCerts struct {
 	dir string
 
-	mu    sync.Mutex
-	order []certSlot        // ascending height — the eviction order
-	byBlock    map[ids.ID]string // blockID -> file name
+	mu      sync.Mutex
+	order   []certSlot        // ascending height — the eviction order
+	byBlock map[ids.ID]string // blockID -> file name
 }
 
 type certSlot struct {
