@@ -172,6 +172,32 @@ func buildGap(vm *catchupVM, tip *verifyOnceBlock, k int) []*verifyOnceBlock {
 	return gap
 }
 
+func TestVerifyCatchupCertificate_ReadOnlyCryptographicFrontierGate(t *testing.T) {
+	vs := newTestValidatorSet(5)
+	vm := newCatchupVM()
+	rt, chainID, _ := newCatchupRuntime(t, vs, 0, vm)
+	blk := newTestBlock(42, ids.GenerateTestID(), "certified-frontier")
+	vm.register(blk)
+	cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 3)
+
+	if err := rt.VerifyCatchupCertificate(context.Background(), blk.bytes, cert); err != nil {
+		t.Fatalf("valid 4-of-5 certified frontier rejected: %v", err)
+	}
+	if blk.VerifyCalls() != 0 || blk.AcceptCalled() != 0 || rt.IsAccepted(blk.id) {
+		t.Fatalf("frontier proof check mutated execution/finality: verify=%d accept=%d accepted=%v",
+			blk.VerifyCalls(), blk.AcceptCalled(), rt.IsAccepted(blk.id))
+	}
+
+	forged := append([]byte(nil), cert...)
+	forged[len(forged)-1] ^= 0xff
+	if err := rt.VerifyCatchupCertificate(context.Background(), blk.bytes, forged); err == nil {
+		t.Fatal("forged frontier certificate verified")
+	}
+	if blk.VerifyCalls() != 0 || blk.AcceptCalled() != 0 || rt.IsAccepted(blk.id) {
+		t.Fatal("rejected frontier proof mutated execution/finality")
+	}
+}
+
 // -----------------------------------------------------------------------------
 // Liveness — a stranded node converges to the tip through the cert path, with no
 // re-voting. The network will not re-vote an already-finalized height, so the only

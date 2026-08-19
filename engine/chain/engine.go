@@ -146,12 +146,6 @@ type Vote struct {
 	// is not separately tracking the block's parent.
 	ParentID ids.ID
 
-	// transportAuthenticated marks a vote whose ORIGIN was supplied as a
-	// PARAMETER by the authenticated transport, rather than read out of the
-	// payload. It is unexported ON PURPOSE: no decoder, no peer, and no caller
-	// outside this package can set it, so it cannot be forged over the wire.
-	// ReceiveAuthenticatedVote is the only constructor that sets it.
-	transportAuthenticated bool
 	// Round is the consensus round the vote was cast in (0 for the first round
 	// at a height). Bound into the signed position.
 	Round uint32
@@ -2262,38 +2256,15 @@ func (t *Transitive) handleVote(vote Vote) {
 	// flip is DELETED: vote.Accept is authoritative once the signature checks
 	// out. Single-validator engines (no verifier) skip authentication — the sole
 	// validator's self-vote is the quorum and carries no signature.
-	if t.voteVerifier != nil && !vote.transportAuthenticated {
+	if t.voteVerifier != nil {
 		pos := t.blockPositionLocked(pending, vote.BlockID)
 		msg := canonicalVoteMessageFor(pos, vote.Accept)
 		// Resolve the voter's pubkey at the block's P-CHAIN epoch height (RESIDUAL-B),
 		// the same height the position's set-root commits to.
-		// WHY THIS STAYS FOR PAYLOAD-SUPPLIED ORIGINS.
-		//
-		// the reference counts unsigned chits: its vote path carries
-		// ZERO, while vms/platformvm/warp signs aggregate BLS for anything that must
-		// travel. Signatures belong at the export layer, not the liveness loop, and
-		// this gate is a signature check one layer too far in. Removing it was tried
-		// here and REVERTED, because Lux cannot yet make that safety argument.
-		//
-		// Ava's engine receives the voter as `Chits(nodeID, requestID, …)` — a
-		// PARAMETER supplied by the router from the authenticated connection. The
-		// type guarantees provenance: a peer cannot claim to be someone else.
-		//
-		// Lux's engine receives `Vote{NodeID: …}` — a FIELD. Nothing at this call
-		// site distinguishes a NodeID read from an authenticated transport from one
-		// a caller copied out of message bytes. Counting unsigned votes here would
-		// therefore trust a value the engine cannot verify the origin of, which is
-		// exactly what vote_safety_invariants_test.go refuses: "counting it makes
-		// finality forgeable by any peer that can send a 32-byte preference."
-		//
-		// So the fix has an ORDER, and it is not this one first:
-		//   1. make voter provenance structural — origin as a parameter, so a
-		//      self-declared source is unrepresentable rather than merely unlikely;
-		//   2. THEN unsigned transport-authenticated votes can count toward the Nova
-		//      tally, as they do there;
-		//   3. Quasar certificates keep requiring signatures either way — that is
-		//      the artifact that must convince a stranger.
-		// Doing (2) before (1) trades a liveness bug for a safety bug.
+		// Transport authentication proves who sent a packet; it does not prove that
+		// the peer signed this consensus position or execution result. There is no
+		// unsigned exemption on a quorum chain: Chits remains sampling input, while
+		// BroadcastVote supplies the cryptographic statement counted here.
 		if len(vote.Signature) == 0 || !t.voteVerifier.VerifyVote(vote.NodeID, msg, vote.Signature, t.epochHeightLocked(pending)) {
 			// Unsigned or invalid: not a real vote from this validator at this
 			// position/decision. Drop it — count nothing.
