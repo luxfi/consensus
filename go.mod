@@ -115,7 +115,7 @@ require (
 	github.com/luxfi/pq v1.1.0 // indirect
 	github.com/luxfi/sampler v1.1.0 // indirect
 	github.com/luxfi/utils v1.3.1 // indirect
-	github.com/luxfi/vm v1.3.1 // indirect
+	github.com/luxfi/vm v1.3.12 // indirect
 	github.com/luxfi/zap v1.2.6 // indirect
 	github.com/luxfi/zapdb v1.10.6 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
