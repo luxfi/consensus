@@ -18,9 +18,7 @@ func TestNewChain(t *testing.T) {
 	require := require.New(t)
 
 	config := types.Config{
-		Alpha:          15,
-		K:              20,
-		MaxOutstanding: 10,
+		Alpha: 15,
 	}
 
 	chain := NewChain(config)
@@ -36,7 +34,7 @@ func TestNewChain(t *testing.T) {
 func TestChainAdd(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 15, K: 20}
+	config := types.Config{Alpha: 15}
 	chain := NewChain(config)
 
 	block := &types.Block{
@@ -67,7 +65,7 @@ func TestChainAdd(t *testing.T) {
 func TestChainAddMultipleBlocks(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 3, K: 5}
+	config := types.Config{Alpha: 3}
 	chain := NewChain(config)
 
 	// Add first block
@@ -97,7 +95,7 @@ func TestChainAddMultipleBlocks(t *testing.T) {
 func TestChainRecordVote(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 2, K: 3}
+	config := types.Config{Alpha: 2}
 	chain := NewChain(config)
 
 	block := &types.Block{
@@ -135,7 +133,7 @@ func TestChainRecordVote(t *testing.T) {
 func TestChainRecordVoteBlockNotFound(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 2, K: 3}
+	config := types.Config{Alpha: 2}
 	chain := NewChain(config)
 
 	vote := &types.Vote{
@@ -153,7 +151,7 @@ func TestChainRecordVoteBlockNotFound(t *testing.T) {
 func TestChainIsAccepted(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 1, K: 1}
+	config := types.Config{Alpha: 1}
 	chain := NewChain(config)
 
 	blockID := ids.GenerateTestID()
@@ -191,7 +189,7 @@ func TestChainIsAccepted(t *testing.T) {
 func TestChainGetStatus(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 1, K: 1}
+	config := types.Config{Alpha: 1}
 	chain := NewChain(config)
 
 	// Unknown block
@@ -228,7 +226,7 @@ func TestChainGetStatus(t *testing.T) {
 func TestChainStart(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 15, K: 20}
+	config := types.Config{Alpha: 15}
 	chain := NewChain(config)
 
 	err := chain.Start(context.Background())
@@ -252,7 +250,7 @@ func TestChainStart(t *testing.T) {
 func TestChainStop(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 15, K: 20}
+	config := types.Config{Alpha: 15}
 	chain := NewChain(config)
 
 	err := chain.Start(context.Background())
@@ -266,7 +264,7 @@ func TestChainStop(t *testing.T) {
 func TestChainAcceptBlock(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 1, K: 1}
+	config := types.Config{Alpha: 1}
 	chain := NewChain(config)
 
 	err := chain.Start(context.Background())
@@ -331,7 +329,7 @@ func TestChainAcceptBlock(t *testing.T) {
 func TestChainAcceptBlockLowerHeight(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 1, K: 1}
+	config := types.Config{Alpha: 1}
 	chain := NewChain(config)
 
 	err := chain.Start(context.Background())
@@ -394,14 +392,13 @@ func TestDefaultConfig(t *testing.T) {
 
 	config := DefaultConfig()
 	require.Equal(20, config.Alpha)
-	require.Equal(20, config.K)
 }
 
 // TestChainConcurrentAccess tests concurrent access to the chain
 func TestChainConcurrentAccess(t *testing.T) {
 	require := require.New(t)
 
-	config := types.Config{Alpha: 5, K: 10}
+	config := types.Config{Alpha: 5}
 	chain := NewChain(config)
 
 	err := chain.Start(context.Background())

@@ -102,29 +102,3 @@ func main() {
 	fmt.Printf("Block 1 accepted: %v\n", chain.IsAccepted(block.ID))
 	fmt.Printf("Block 2 accepted: %v\n", chain.IsAccepted(block2.ID))
 }
-
-// QuickStartExample demonstrates using QuickStart for even simpler initialization
-func QuickStartExample() {
-	ctx := context.Background()
-
-	// One-liner to start consensus
-	chain, err := consensus.QuickStart(ctx)
-	if err != nil {
-		panic(err)
-	}
-	defer chain.Stop()
-
-	// Ready to use!
-	block := consensus.NewBlock(
-		consensus.ID{1, 2, 3},
-		consensus.GenesisID,
-		1,
-		[]byte("Quick start block"),
-	)
-
-	if err := chain.Add(ctx, block); err != nil {
-		panic(err)
-	}
-
-	fmt.Println("QuickStart example complete!")
-}
