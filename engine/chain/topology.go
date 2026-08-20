@@ -652,8 +652,5 @@ func (rt *Runtime) reportCertEquivocation(cert *QuorumCert, finalizedCanonical i
 // An empty CanonicalID means the position names a bare block, whose canonical is
 // its own id — the same resolution every other reader of a position uses.
 func certCanonical(cert *QuorumCert) ids.ID {
-	if cert.Position.CanonicalID != ids.Empty {
-		return cert.Position.CanonicalID
-	}
-	return cert.Position.BlockID
+	return decision(cert.Position.CanonicalID, cert.Position.BlockID)
 }
