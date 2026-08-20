@@ -259,7 +259,17 @@ func (rt *Runtime) VerifyCatchupCertificate(ctx context.Context, blockBytes, cer
 		return ErrCatchupCertRejected
 	}
 
-	epochHeight := pChainHeightOf(blk)
+	epochHeight, parentEpoch, regressed := rt.epochRegresses(blk)
+	if regressed {
+		if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("catch-up: REFUSED block — P-chain epoch regresses below parent (far-past epoch attack)",
+				log.Stringer("blockID", blk.ID()),
+				log.Stringer("parentID", blk.ParentID()),
+				log.Uint64("childEpoch", epochHeight),
+				log.Uint64("parentEpoch", parentEpoch))
+		}
+		return ErrCatchupCertRejected
+	}
 	if setRootSource != nil && setRootSource.ValidatorSetRoot(epochHeight) != cert.Position.ValidatorSetRoot {
 		return ErrCatchupCertRejected
 	}
@@ -267,6 +277,30 @@ func (rt *Runtime) VerifyCatchupCertificate(ctx context.Context, blockBytes, cer
 		return errors.Join(ErrCatchupCertRejected, err)
 	}
 	return nil
+}
+
+// epochRegresses reports whether blk claims a P-chain epoch BELOW its parent's.
+//
+// The epoch selects the validator set that verifies the block's cert, and it is
+// read out of a block a peer handed us. Letting it move backwards lets that peer
+// choose which historical set gets to attest -- so the bound is that a chain's
+// epoch only moves forward, and safety reduces to current-set BFT.
+//
+// The gossip door has enforced this since the far-past epoch work. The catch-up
+// door read the same peer-supplied field and enforced nothing, so a node fetching
+// history could be steered onto a set the live path would have refused. One
+// invariant with two doors is one guarded invariant; this is the second door.
+//
+// A parent that is not tracked leaves nothing to regress against and is admitted:
+// the attack needs an epoch below the PARENT's, which is only meaningful once the
+// parent is tracked, and an orphan cannot extend finalized history anyway.
+func (rt *Runtime) epochRegresses(blk block.Block) (child, parent uint64, bad bool) {
+	child = pChainHeightOf(blk)
+	parentEpoch, ok := rt.Transitive.consensus.EpochHeightOf(blk.ParentID())
+	if !ok || child >= parentEpoch {
+		return child, parentEpoch, false
+	}
+	return child, parentEpoch, true
 }
 
 // classifyVerifyFailure says which of the two failures a Verify error is.
@@ -458,6 +492,21 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 	blk, err := rt.config.VM.ParseBlock(ctx, blockBytes)
 	if err != nil {
 		return errors.Join(ErrCatchupCertRejected, err)
+	}
+
+	// The epoch selects the validator set that gets to attest, and it is read out
+	// of a block a peer handed us — so it is bounded here exactly as it is on the
+	// gossip door. Checked before anything is verified, tracked, or accepted,
+	// because everything after this reads the epoch.
+	if childEpoch, parentEpoch, regressed := rt.epochRegresses(blk); regressed {
+		if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
+			rt.config.Logger.Warn("catch-up: REFUSED block — P-chain epoch regresses below parent (far-past epoch attack)",
+				log.Stringer("blockID", blk.ID()),
+				log.Stringer("parentID", blk.ParentID()),
+				log.Uint64("childEpoch", childEpoch),
+				log.Uint64("parentEpoch", parentEpoch))
+		}
+		return ErrCatchupCertRejected
 	}
 
 	// PREFER THE COPY WE HOLD, before any height decision. A block our VM has already
