@@ -438,6 +438,12 @@ type step struct {
 // its own id on a bare chain that records none. Degrading to the outer id rather
 // than to Empty keeps bare chains byte-for-byte as before — there, two blocks are
 // the same decision only when they are the same block.
+//
+// THIS IS THE ONLY PLACE THE RULE LIVES. It reads as two trivial lines and was
+// therefore re-typed inline at a dozen call sites and behind three separately
+// named helpers, which is how a rule with one meaning acquires places that can
+// disagree with it. certCanonical (a cert's position) and canonicalIDOf (a VM
+// block) differ only in where they FETCH the pair from; both hand it here.
 func decision(canonical, id ids.ID) ids.ID {
 	if canonical == ids.Empty {
 		return id

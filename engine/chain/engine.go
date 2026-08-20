@@ -3023,12 +3023,11 @@ type canonicalCommitter interface {
 // distinguishes a duplicate envelope from a genuine fork. This is the SOLE place the
 // engine reads the canonical id off a VM block.
 func canonicalIDOf(b block.Block) ids.ID {
+	var canonical ids.ID
 	if c, ok := b.(canonicalCommitter); ok {
-		if id := c.CanonicalID(); id != ids.Empty {
-			return id
-		}
+		canonical = c.CanonicalID()
 	}
-	return b.ID()
+	return decision(canonical, b.ID())
 }
 
 // setCanonicalFromVM stamps the canonical execution-commitment fields onto a
