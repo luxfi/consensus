@@ -434,6 +434,17 @@ type step struct {
 	canonical ids.ID // canonical commitment of this step (recorded in byHeight)
 }
 
+// decision returns the execution a block commits to: its canonical commitment, or
+// its own id on a bare chain that records none. Degrading to the outer id rather
+// than to Empty keeps bare chains byte-for-byte as before — there, two blocks are
+// the same decision only when they are the same block.
+func decision(canonical, id ids.ID) ids.ID {
+	if canonical == ids.Empty {
+		return id
+	}
+	return canonical
+}
+
 // pathFromTip returns the contiguous ancestry finalizedTip → target in ASCENDING
 // height order, by walking target's parent links through the DAG. Errors distinguish
 // the three non-extending cases (conflict / behind / gap). Caller guarantees
@@ -498,8 +509,29 @@ func pathFromTip(led FinalityLedger, cert Cert, dag Ancestry) ([]step, error) {
 				ErrNonMonotonicFinalizedHeight, cur, curHeight, childHeight)
 		}
 		// Reaching the finalized height (or below) at a block that is not the tip →
-		// target descends from a branch the network did not finalize.
+		// target descends from a branch the network did not finalize — UNLESS it is
+		// the SAME DECISION under a different envelope.
+		//
+		// Finality's subject is (height, inner canonical) everywhere else in this
+		// package: a cert binds the canonical block and canonical parent, and
+		// attestKey deliberately excludes the outer envelope. Comparing outer ids
+		// alone here refuses certs that do extend the frontier, and a node whose
+		// wrapper of the finalized execution differs from the network's then refuses
+		// every cert the network produces, forever, while holding byte-identical
+		// state. Two wrappers of one execution commit to one state transition, so
+		// arriving at either IS arriving at the frontier.
+		//
+		// The untracked-parent arm above already substitutes a local wrapper for an
+		// absent peer envelope. Without the same rule here, a node that HELD the
+		// peer's envelope refused where a node that held less recovered.
 		if curHeight <= led.height {
+			if curHeight == led.height && decision(curCanonical, cur) == decision(led.canonical, led.tip) {
+				// Rebase onto the wrapper this node actually holds, exactly as the
+				// untracked arm does, so both the accept path and the reject-subtree
+				// walk key on the local envelope rather than the peer's alias.
+				steps[len(steps)-1].parentID = led.tip
+				break
+			}
 			return nil, fmt.Errorf("%w: %s ancestry reaches %s (height %d) not finalized tip %s",
 				ErrConflictsWithFinalizedBranch, cert.Block, cur, curHeight, led.tip)
 		}
