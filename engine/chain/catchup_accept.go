@@ -27,9 +27,11 @@ package chain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/luxfi/consensus/engine/chain/block"
+	"github.com/luxfi/database"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
 )
@@ -41,6 +43,22 @@ import (
 // rejection — nothing was finalized. The caller tries another peer or re-polls the
 // frontier; it must NEVER treat this as a finalize.
 var ErrCatchupCertRejected = errors.New("chain: catch-up cert rejected — block not finalized (unverifiable block, or forged/sub-quorum/out-of-order cert)")
+
+// ErrCatchupMissingAncestor: the block is fine and the cert is fine; this node
+// simply does not hold the OUTER envelope the block names as its parent.
+//
+// It used to share ErrCatchupCertRejected, and sharing one error value with a
+// bad cert is what made the condition unrecoverable. The two facts have opposite
+// remedies: a rejected cert means ask a different peer, a missing ancestor means
+// ask THIS peer for the ancestor. Collapsed together, the only move the requester
+// makes is the one move that cannot help, and every operator reading the log
+// starts from "forged/sub-quorum cert", which is not what happened.
+//
+// A node reaches this while holding byte-identical execution to its peers: it has
+// the right inner block at the parent height under its own wrapper, and the
+// network names a different wrapper of that same block. The wrapper is what is
+// missing, and a wrapper is fetchable.
+var ErrCatchupMissingAncestor = errors.New("chain: catch-up block's parent envelope is not held — fetch the parent")
 
 // ErrCatchupDeferred marks the one non-failure in this file: a block ABOVE the
 // contiguous next height was verified and TRACKED, and its finality is deferred until
@@ -249,6 +267,19 @@ func (rt *Runtime) VerifyCatchupCertificate(ctx context.Context, blockBytes, cer
 		return errors.Join(ErrCatchupCertRejected, err)
 	}
 	return nil
+}
+
+// classifyVerifyFailure says which of the two failures a Verify error is.
+//
+// A missing ancestor surfaces as database.ErrNotFound from deep inside the outer
+// parent resolution, where the operator-visible string is bare "not found" and
+// names nothing at all. Naming the parent here is the difference between a log
+// line an operator can act on and one that sends them looking for a forged cert.
+func classifyVerifyFailure(blk block.Block, err error) error {
+	if errors.Is(err, database.ErrNotFound) {
+		return fmt.Errorf("%w: %s", ErrCatchupMissingAncestor, blk.ParentID())
+	}
+	return errors.Join(ErrCatchupCertRejected, err)
 }
 
 // AcceptCatchupBlock finalizes ONE gap block from a (blockBytes, certBytes) pair
@@ -462,6 +493,23 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 	// N+2 is processed, N+1 has finalized, so N+2's height == settled+1.
 	if fh, set := rt.settledHeight(ctx); set {
 		if blk.Height() <= fh {
+			// Skip only what we actually hold. "At or below the settled height" is
+			// not the same claim as "already ours": a node whose wrapper of a
+			// settled height differs from the network's is missing precisely the
+			// envelope that arrives in this band, and discarding the band unexamined
+			// throws away the one block that would let the next height verify. That
+			// is why a batch can report hundreds of entries skipped while the node
+			// advances nothing.
+			if _, err := rt.config.VM.GetBlock(ctx, blk.ID()); err == nil {
+				return nil
+			}
+			// Verify resolves and stores the alternate envelope. It decides nothing:
+			// the inner block at this height is already applied, so the inner VM
+			// returns immediately, and this path neither tracks, votes, accepts, nor
+			// moves the ledger.
+			if err := blk.Verify(ctx); err != nil {
+				return classifyVerifyFailure(blk, err)
+			}
 			return nil
 		}
 		// REPLAY. Between the applied head and the finalized height sit blocks this node
@@ -509,7 +557,7 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 			// have advanced finality was never reached. Prefer the copy we hold.
 			if !held {
 				if err := blk.Verify(ctx); err != nil {
-					return errors.Join(ErrCatchupCertRejected, err)
+					return classifyVerifyFailure(blk, err)
 				}
 			}
 			rt.trackVerifiedForCatchup(ctx, blk)
@@ -542,7 +590,7 @@ func (rt *Runtime) AcceptCatchupBlock(ctx context.Context, blockBytes, certBytes
 	// tracked, and pathFromTip then defers every cert above it on the resulting hole.
 	if !held {
 		if err := blk.Verify(ctx); err != nil {
-			return errors.Join(ErrCatchupCertRejected, err)
+			return classifyVerifyFailure(blk, err)
 		}
 	}
 
