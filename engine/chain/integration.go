@@ -170,6 +170,14 @@ type Runtime struct {
 	// fastFollowMu serializes fast-follow block acceptance to prevent
 	// duplicate gossip deliveries from racing on the accept path.
 	fastFollowMu sync.Mutex
+	// certMu serializes certificate ingestion. A valid cert commits the ledger
+	// before VM.Accept completes; without a single ingestion lane, a burst of
+	// identical peer deliveries can all clear the stale-height check and perform
+	// the same signature verification concurrently. Only one can advance
+	// finality, but every waiter used to report success and amplify CPU during
+	// catch-up. The winner finalizes; queued duplicates then hit the cheap
+	// finalized-height guard and return without re-verifying or re-accepting.
+	certMu sync.Mutex
 	// fastFollowHeight tracks the highest block height accepted via fast-follow.
 	// We use height instead of parent ID matching because:
 	// 1. VM.LastAccepted() is stale after Accept() calls
