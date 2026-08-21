@@ -183,7 +183,16 @@ func UnmarshalQuorumCert(data []byte) (*QuorumCert, error) {
 		if err != nil {
 			return nil, ErrQCWireCorrupt
 		}
-		sv.Accept = ab != 0
+		// The encoder emits 0 or 1, so the decoder accepts 0 or 1. `ab != 0` took
+		// any of 254 other bytes as true and re-encoded them as 1, so a frame the
+		// encoder could never produce still decoded — two byte strings naming one
+		// cert. Anything that treats cert bytes as identity (the per-block serving
+		// cache, a dedup, a digest) can then be split by flipping a bit no field
+		// reads. A canonical codec refuses what it cannot reproduce.
+		if ab > 1 {
+			return nil, ErrQCWireCorrupt
+		}
+		sv.Accept = ab == 1
 		if sv.Signature, err = r.lenPrefixed(); err != nil {
 			return nil, ErrQCWireCorrupt
 		}
