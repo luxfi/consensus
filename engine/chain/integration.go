@@ -839,13 +839,16 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	// nothing to regress against and is admitted: the far-past attack needs a stale
 	// epoch BELOW the parent's, which is only meaningful once the parent is tracked;
 	// an orphan with no tracked parent cannot extend finalized history anyway.
-	if parentEpoch, ok := rt.Transitive.consensus.EpochHeightOf(blk.ParentID()); ok && childEpoch < parentEpoch {
+	// One predicate, both doors. Open-coding it here left the gossip door checking
+	// only a TRACKED parent while the catch-up door grew a finalized-epoch floor
+	// for the untracked case; the same block admitted here then reached VM.Accept.
+	if childEpoch, anchor, bad := rt.epochRegresses(blk); bad {
 		if rt.config.Logger != nil && !rt.config.Logger.IsZero() {
-			rt.config.Logger.Warn("follow: REFUSED block — P-chain epoch regresses below parent (far-past epoch attack)",
+			rt.config.Logger.Warn("follow: REFUSED block — P-chain epoch regresses below its anchor (far-past epoch attack)",
 				log.Stringer("blockID", blockID),
 				log.Stringer("parentID", blk.ParentID()),
 				log.Uint64("childEpoch", childEpoch),
-				log.Uint64("parentEpoch", parentEpoch),
+				log.Uint64("anchorEpoch", anchor),
 				log.Stringer("from", fromNodeID))
 		}
 		return
