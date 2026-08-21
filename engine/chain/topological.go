@@ -30,9 +30,9 @@
 package chain
 
 import (
-	"slices"
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/luxfi/consensus/engine"
 	"github.com/luxfi/ids"
