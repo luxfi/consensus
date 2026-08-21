@@ -12,9 +12,9 @@
 //  2. FuzzFinalizeDecision — the finalize / equivocation decision function. A random
 //     stream of {hint, cert} operations over small pools of {height, canonical,
 //     envelope} ids must NEVER panic and must NEVER violate the core invariant:
-//       (INV) for every height H at most ONE canonical commitment is finalized, it
-//             is immutable once set, a hint never finalizes, and equivocation is
-//             raised IFF a DIFFERENT canonical is presented at a certified height.
+//     (INV) for every height H at most ONE canonical commitment is finalized, it
+//     is immutable once set, a hint never finalizes, and equivocation is
+//     raised IFF a DIFFERENT canonical is presented at a certified height.
 package chain
 
 import (

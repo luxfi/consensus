@@ -28,16 +28,16 @@ type failingBlock struct {
 	err      error
 }
 
-func (b *failingBlock) ID() ids.ID                    { return b.id }
-func (b *failingBlock) Parent() ids.ID                { return b.parentID }
-func (b *failingBlock) ParentID() ids.ID              { return b.parentID }
-func (b *failingBlock) Height() uint64                { return b.height }
-func (b *failingBlock) Timestamp() time.Time          { return time.Unix(0, 0) }
-func (b *failingBlock) Status() uint8                 { return 0 }
-func (b *failingBlock) Bytes() []byte                 { return []byte{1} }
-func (b *failingBlock) Verify(context.Context) error  { return b.err }
-func (b *failingBlock) Accept(context.Context) error  { return nil }
-func (b *failingBlock) Reject(context.Context) error  { return nil }
+func (b *failingBlock) ID() ids.ID                   { return b.id }
+func (b *failingBlock) Parent() ids.ID               { return b.parentID }
+func (b *failingBlock) ParentID() ids.ID             { return b.parentID }
+func (b *failingBlock) Height() uint64               { return b.height }
+func (b *failingBlock) Timestamp() time.Time         { return time.Unix(0, 0) }
+func (b *failingBlock) Status() uint8                { return 0 }
+func (b *failingBlock) Bytes() []byte                { return []byte{1} }
+func (b *failingBlock) Verify(context.Context) error { return b.err }
+func (b *failingBlock) Accept(context.Context) error { return nil }
+func (b *failingBlock) Reject(context.Context) error { return nil }
 
 // TestMissingAncestorIsNotARejectedCert is the property the live wedge turned on.
 //

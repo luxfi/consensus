@@ -79,7 +79,7 @@ func TestRed_LosingSiblingHoldsValidCert_NoVoteOnceDiscipline(t *testing.T) {
 	// own B-vote is refused by reserveSlotForSign — B can never collect alpha SIGNED
 	// accepts, so no conflicting cert can form. (Pre-fix, the self-vote plus injected
 	// equivocations gave B a full alpha-of-K cert — the fork.)
-	injectVotes(e, vs, posB, 1, 2, 3) // refused: 1,2,3 committed A; self committed A
+	injectVotes(e, vs, posB, 1, 2, 3)  // refused: 1,2,3 committed A; self committed A
 	time.Sleep(300 * time.Millisecond) // let any (refused) vote plumbing settle
 
 	if e.IsAccepted(B.id) {

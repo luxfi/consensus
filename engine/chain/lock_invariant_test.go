@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/consensus/config"
+	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/ids"
 	"github.com/luxfi/log"
 )
@@ -45,9 +45,18 @@ type instrBlock struct {
 	d *lockDetector
 }
 
-func (b *instrBlock) Accept(ctx context.Context) error { b.d.check("block.Accept"); return b.trackingMockBlock.Accept(ctx) }
-func (b *instrBlock) Verify(ctx context.Context) error { b.d.check("block.Verify"); return b.trackingMockBlock.Verify(ctx) }
-func (b *instrBlock) Reject(ctx context.Context) error { b.d.check("block.Reject"); return b.trackingMockBlock.Reject(ctx) }
+func (b *instrBlock) Accept(ctx context.Context) error {
+	b.d.check("block.Accept")
+	return b.trackingMockBlock.Accept(ctx)
+}
+func (b *instrBlock) Verify(ctx context.Context) error {
+	b.d.check("block.Verify")
+	return b.trackingMockBlock.Verify(ctx)
+}
+func (b *instrBlock) Reject(ctx context.Context) error {
+	b.d.check("block.Reject")
+	return b.trackingMockBlock.Reject(ctx)
+}
 
 // instrVM wraps a trackingMockVM and checks the invariant on every VM call-out, returning
 // instrumented blocks so block-level call-outs are covered too.

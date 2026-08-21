@@ -26,15 +26,15 @@
 // Each lane is the REAL one:
 //   - Beam      : luxfi/crypto/bls aggregate verify (one aggregate signature)
 //   - Pulsar    : (a) TALUS compact threshold sig = ONE FIPS-204 ML-DSA-65 verify
-//                 (b) Sampled cert = r dealerless-committee ML-DSA-65 verifies
-//                     over the unbiasable-sortition plan (the default HYBRID_PQ,
-//                     n=8,t=7,m=12,r=8 = PulsarHybridPQv1)
+//     (b) Sampled cert = r dealerless-committee ML-DSA-65 verifies
+//     over the unbiasable-sortition plan (the default HYBRID_PQ,
+//     n=8,t=7,m=12,r=8 = PulsarHybridPQv1)
 //   - Corona    : luxfi/threshold/protocols/corona Ring-LWE threshold verify
-//                 (O(1): one group signature, committee size only affects SIGN)
+//     (O(1): one group signature, committee size only affects SIGN)
 //   - Magnetar  : VerifyMagnetarQuorum = N independent FIPS-205 SLH-DSA-192s
-//                 verifies (Track-A trustless rollup, O(N))
+//     verifies (Track-A trustless rollup, O(N))
 //   - P3Q       : VerifyP3QRollupLeg Direct = N independent FIPS-204 ML-DSA-65
-//                 verifies (O(N) fallback rollup)
+//     verifies (O(N) fallback rollup)
 //
 // Run:
 //
@@ -532,9 +532,9 @@ func BenchmarkPQPolicyTiers_zzSummary(b *testing.B) {
 	// Compose the five tiers. Pulsar lane in the tiers = the sampled cert (the
 	// default HYBRID_PQ); the TALUS compact alternative is reported separately.
 	type tier struct {
-		name  string
-		cost  laneCost
-		legs  string
+		name string
+		cost laneCost
+		legs string
 	}
 	sum := func(parts ...laneCost) laneCost {
 		var out laneCost

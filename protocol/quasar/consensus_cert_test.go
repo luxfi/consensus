@@ -73,9 +73,9 @@ type envValidators struct {
 	classKeys map[ClassicalScheme][]byte
 }
 
-func (v *envValidators) Root() [48]byte                  { return v.root }
-func (v *envValidators) Epoch() uint64                   { return v.epoch }
-func (v *envValidators) WeightedConfig() QuorumVerifierConfig { return v.cfg }
+func (v *envValidators) Root() [48]byte                          { return v.root }
+func (v *envValidators) Epoch() uint64                           { return v.epoch }
+func (v *envValidators) WeightedConfig() QuorumVerifierConfig    { return v.cfg }
 func (v *envValidators) WeightedEnvelope() QuorumMessageEnvelope { return v.env }
 func (v *envValidators) ThresholdGroupKey(kind LegKind) (ThresholdGroupKey, bool) {
 	switch kind {

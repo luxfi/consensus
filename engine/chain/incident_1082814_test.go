@@ -13,13 +13,14 @@
 // DUPLICATES (one inner block, two envelopes), never a fork.
 //
 // THE FIX, proven here:
-//   PART A — vm.LastAccepted is a NON-AUTHORITATIVE recovery HINT, never finality.
-//            finalizedTip/height advance ONLY on a verified QC (or bootstrap
-//            frontier-trust). A locally-seeded sibling can never equivocate.
-//   PART B — finality is defined over the CANONICAL execution commitment, not the
-//            outer envelope. Two certs at one height conflict IFF their
-//            canonical_block_id differs. Same canonical / different envelope =
-//            duplicate alias.
+//
+//	PART A — vm.LastAccepted is a NON-AUTHORITATIVE recovery HINT, never finality.
+//	         finalizedTip/height advance ONLY on a verified QC (or bootstrap
+//	         frontier-trust). A locally-seeded sibling can never equivocate.
+//	PART B — finality is defined over the CANONICAL execution commitment, not the
+//	         outer envelope. Two certs at one height conflict IFF their
+//	         canonical_block_id differs. Same canonical / different envelope =
+//	         duplicate alias.
 //
 // THE INVARIANT (encoded + asserted): for every height H, at most ONE canonical
 // execution commitment may be finalized; all envelopes / VM aliases / seed states

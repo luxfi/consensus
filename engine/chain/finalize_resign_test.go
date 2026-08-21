@@ -7,19 +7,19 @@
 // the epoch-blind height-only slot fix. The remaining defect was in the guard's LIFECYCLE,
 // not its key:
 //
-//   1. A node signs the winner A at height H (committedSlot{H}=A).
-//   2. A's α-of-K cert forms; the node finalizes H. The sole finalizer
-//      (acceptWithCertCore) advanced the certified frontier to H, then PRUNED the
-//      equivocation guard for every height <= H — INCLUDING H itself.
-//   3. A losing sibling B at height H with a DIFFERENT outer parent (a bare/pre-fork
-//      envelope where the winner was proposervm-wrapped, or vice-versa) is NOT in
-//      losingSubtrees(A) — losingSubtrees only rejects the OTHER CHILDREN OF A's parent —
-//      so B stays tracked and UNDECIDED after A finalizes.
-//   4. The convergence pass then re-offers height H (its slot was just deleted), and
-//      reserveSlotForSign(H, B) found an EMPTY slot and admitted B — this node's SECOND
-//      signature at height H. Enough nodes doing this assembled a second α-of-K cert at H
-//      → fatal EQUIVOCATION → os.Exit(1) fleet-wide (the live devnet artifact: the
-//      conflicting cert's canonical == its envelope, i.e. exactly the bare sibling).
+//  1. A node signs the winner A at height H (committedSlot{H}=A).
+//  2. A's α-of-K cert forms; the node finalizes H. The sole finalizer
+//     (acceptWithCertCore) advanced the certified frontier to H, then PRUNED the
+//     equivocation guard for every height <= H — INCLUDING H itself.
+//  3. A losing sibling B at height H with a DIFFERENT outer parent (a bare/pre-fork
+//     envelope where the winner was proposervm-wrapped, or vice-versa) is NOT in
+//     losingSubtrees(A) — losingSubtrees only rejects the OTHER CHILDREN OF A's parent —
+//     so B stays tracked and UNDECIDED after A finalizes.
+//  4. The convergence pass then re-offers height H (its slot was just deleted), and
+//     reserveSlotForSign(H, B) found an EMPTY slot and admitted B — this node's SECOND
+//     signature at height H. Enough nodes doing this assembled a second α-of-K cert at H
+//     → fatal EQUIVOCATION → os.Exit(1) fleet-wide (the live devnet artifact: the
+//     conflicting cert's canonical == its envelope, i.e. exactly the bare sibling).
 //
 // The fix is two-layered and this test pins both:
 //   - PRUNE STRICTLY BELOW the finalized height (retain the tip's slot) — the in-memory belt.
