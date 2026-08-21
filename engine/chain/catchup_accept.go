@@ -297,13 +297,30 @@ func (rt *Runtime) VerifyCatchupCertificate(ctx context.Context, blockBytes, cer
 // history could be steered onto a set the live path would have refused. One
 // invariant with two doors is one guarded invariant; this is the second door.
 //
-// A parent that is not tracked leaves nothing to regress against and is admitted:
-// the attack needs an epoch below the PARENT's, which is only meaningful once the
-// parent is tracked, and an orphan cannot extend finalized history anyway.
+// When the parent IS tracked, the bound is child >= parent. When it is not, the
+// bound is child >= the finalized tip's epoch.
+//
+// Admitting an untracked-parent block unconditionally was "an orphan cannot
+// extend finalized history anyway" -- true only while it stays an orphan, and the
+// SENDER decides that. Send the child first with a stale epoch, send its parent a
+// moment later, and the child is tracked at the stale epoch while nothing
+// re-reads it: a departed coalition, holding no stake in the live set, reaches
+// VM.Accept at Quasar (export) finality. So an orphan must still stand on its own
+// -- its epoch cannot fall below the epoch the chain has already finalized to,
+// which no arrival order can lower.
 func (rt *Runtime) epochRegresses(blk block.Block) (child, parent uint64, bad bool) {
 	child = pChainHeightOf(blk)
 	parentEpoch, ok := rt.Transitive.consensus.EpochHeightOf(blk.ParentID())
-	if !ok || child >= parentEpoch {
+	if !ok {
+		// No parent to anchor against, so anchor against finalized history. The
+		// finalized tip's epoch is the floor no honest extension drops below, and
+		// it is not a value the sender can move by reordering delivery.
+		if tipEpoch, tok := rt.Transitive.consensus.EpochHeightOf(rt.Transitive.consensus.GetFinalizedTip()); tok {
+			return child, tipEpoch, child < tipEpoch
+		}
+		return child, parentEpoch, false
+	}
+	if child >= parentEpoch {
 		return child, parentEpoch, false
 	}
 	return child, parentEpoch, true
