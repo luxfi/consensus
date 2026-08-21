@@ -896,6 +896,14 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	verifier := rt.Transitive.voteVerifier
 	rt.Transitive.mu.Unlock()
 
+	// ARRIVAL-ORDER EPOCH BOUND. This block is now a TRACKED parent. Any orphan child
+	// admitted earlier — before this parent existed, so with nothing to regress against
+	// — must be re-read against it now, and dropped if its epoch fell below. The gate
+	// above bounds a child against a parent already tracked; this bounds a parent
+	// against children already tracked, closing the door the sender opens by delivering
+	// the child first (see epochRegresses).
+	rt.enforceChildEpochBound(blockID)
+
 	// THE SELF-HEAL DRAIN: this block is now tracked, so replay any votes a peer
 	// parked for it before its bytes arrived (the gossip race handleVote buffered).
 	// Each parked vote re-enters handleVote via the channel — now with the block
@@ -937,6 +945,30 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	// SAME block and one α-of-K cert forms. Receipt only tracks + drains buffered votes +
 	// steers the build tip.
 	_ = verifier
+}
+
+// enforceChildEpochBound re-reads the receive-side epoch bound for a block that has
+// just gained tracked status. A child admitted before this parent was tracked carried
+// no parent to regress against; now that the parent is tracked at its own epoch, any
+// such child sitting BELOW it is dropped — from the consensus tree and from the
+// engine's pending indices — before a cert can resolve its set-root, pubkeys, or
+// stake tally at the stale epoch. It is the arrival-ORDER door of the one epoch bound
+// followVerifiedBlock and AcceptCatchupBlock already guard on arrival: the sender can
+// choose to deliver the child first, but not to keep a tracked child below its tracked
+// parent.
+func (rt *Runtime) enforceChildEpochBound(parentID ids.ID) {
+	dropped := rt.Transitive.consensus.DropEpochRegressedChildren(parentID)
+	if len(dropped) == 0 {
+		return
+	}
+	t := rt.Transitive
+	t.mu.Lock()
+	for _, id := range dropped {
+		t.dropPendingBlockLocked(id)
+		delete(t.bufferedVotes, id)
+		delete(t.catchupRequested, id)
+	}
+	t.mu.Unlock()
 }
 
 // emitConvergedVote casts this node's SINGLE per-height accept vote for the

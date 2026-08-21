@@ -309,16 +309,43 @@ func Finalize(led FinalityLedger, cert Cert, dag Ancestry) (FinalityLedger, Plan
 	// the VM has already applied, which is where it belongs. The dangerous direction is
 	// above, and that is the walk this arm exists for.
 	if !led.set {
+		var seeded FinalityLedger
+		var plan Plan
 		if led.hasHint && cert.Height > led.hintHeight {
-			floor := FinalityLedger{tip: led.hint, height: led.hintHeight, set: true}
+			// The recovery hint is the VM's applied head — an OUTER envelope whose INNER
+			// execution commitment the frontier comparison keys on, exactly as the certified
+			// tip's does. Resolve it from the tracked head so a sibling wrapper of the same
+			// execution reaching the hint height IS reaching the frontier; degrade to the
+			// envelope id only when the head records no canonical (a bare chain), the same
+			// way decision() does. Left unset, the floor carries no canonical, decision()
+			// falls back to the envelope, and a node whose wrapper of the applied head
+			// differs from the network's then refuses every cert the network produces while
+			// holding byte-identical execution state.
+			hintCanonical := led.hint
+			if _, _, c, _, ok := dag.Parent(led.hint); ok && c != ids.Empty {
+				hintCanonical = c
+			}
+			floor := FinalityLedger{tip: led.hint, canonical: hintCanonical, height: led.hintHeight, set: true}
 			path, err := pathFromTip(floor, cert, dag)
 			if err != nil {
 				return led, Plan{}, err
 			}
-			next, plan := foldPath(FinalityLedger{set: true, byHeight: map[uint64]finalizedEntry{}}, path, dag)
-			return next, plan, nil
+			seeded, plan = foldPath(FinalityLedger{set: true, byHeight: map[uint64]finalizedEntry{}}, path, dag)
+		} else {
+			seeded = seedLedger(cert.Block, canonical, cert.Height)
+			plan = Plan{Accept: []ids.ID{cert.Block}, AcceptHeights: []uint64{cert.Height}}
 		}
-		return seedLedger(cert.Block, canonical, cert.Height), Plan{Accept: []ids.ID{cert.Block}, AcceptHeights: []uint64{cert.Height}}, nil
+		// Seeding certified history never discards the recovery hint. BuildAnchor is the
+		// HIGHER of {certified tip, recovery hint}; a cert at or below the applied head — a
+		// replayed historical cert — seeds certified history UNDER that head, and dropping
+		// the hint here would send the build anchor back to the old height and demand a
+		// tracked ancestry across every height between. The hint rides along exactly as
+		// clone() carries it through every later fold, and BuildAnchor stops preferring it
+		// on its own once certified history rises past it.
+		if led.hasHint {
+			seeded = seeded.withHint(led.hint, led.hintHeight)
+		}
+		return seeded, plan, nil
 	}
 
 	// Below/at the frontier with no record for this height → stale or non-monotonic.

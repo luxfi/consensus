@@ -402,6 +402,38 @@ func (c *ChainConsensus) EpochHeightOf(blockID ids.ID) (uint64, bool) {
 	return block.pChainHeight, true
 }
 
+// DropEpochRegressedChildren removes every tracked child of parentID whose recorded
+// P-chain epoch sits BELOW parentID's, returning their ids so the engine can evict
+// them from its own pending indices too. It is the arrival-ORDER arm of the
+// receive-side monotonicity bound EpochHeightOf feeds: a child gossiped before its
+// parent is admitted as an orphan with no recorded parent epoch to regress against,
+// and this re-reads the bound the moment the parent makes it answerable — so no
+// TRACKED block keeps an epoch below its TRACKED parent's, whichever order the sender
+// chose to deliver them in. A dropped child, re-gossiped, is refused outright by the
+// arrival gate, its parent now being tracked. Removing only the direct children
+// restores the bound: a grandchild's parent is now untracked, so it is an orphan
+// again with nothing to regress against.
+func (c *ChainConsensus) DropEpochRegressedChildren(parentID ids.ID) []ids.ID {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	parent, ok := c.blocks[parentID]
+	if !ok {
+		return nil
+	}
+	var dropped []ids.ID
+	for id, b := range c.blocks {
+		if b.parentID == parentID && b.pChainHeight < parent.pChainHeight {
+			dropped = append(dropped, id)
+		}
+	}
+	for _, id := range dropped {
+		delete(c.blocks, id)
+		delete(c.tips, id)
+	}
+	return dropped
+}
+
 // ForcePreference reaffirms the engine's preferred tip after a VM SetPreference
 // failure. It exists for the case where SetPreference fails after a block was
 // accepted: left alone, the VM and the engine hold different chain tips and each
