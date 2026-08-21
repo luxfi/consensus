@@ -144,21 +144,34 @@ func (q *QuasarAttestor) Ingest(pos VotePosition, epoch uint64, att SignedVote) 
 	if q.verifier == nil || !q.verifier.VerifyVote(att.NodeID, msg, att.Signature, epoch) {
 		return nil, false, fmt.Errorf("quasar ingest: signature failed verification (voter %s height %d)", att.NodeID, pos.Height)
 	}
+	// A nil stake source is a configuration that cannot certify anything, and
+	// this is fail-closed by DESIGN. It has to be a rejection here, not a nil
+	// dereference at q.stake.ValidatorCount below: every entry point takes peer
+	// data, so the deref is a remote crash on any node wired without stake.
+	if q.stake == nil {
+		return nil, false, fmt.Errorf("quasar ingest: no stake source configured")
+	}
 
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Already certified at this height → idempotent no-op (a late attestation for a done height).
-	if _, done := q.certs[pos.Height]; done {
-		return nil, false, nil
-	}
-
-	// Record the distinct-canonical evidence for the height (>1 distinct canonical attested at
-	// one height is equivocation evidence; under honest-sign-only it cannot yield two certs).
+	// Record the distinct-canonical evidence for the height BEFORE the
+	// already-certified check. A double-signer racing the honest cert gains
+	// nothing, so the ordering it picks is to sign the second execution AFTER the
+	// height certifies — and returning on `done` before recording the subject
+	// dropped exactly that evidence. The signature verified; only the record of
+	// it was skipped. Evidence is a property of the signed votes, not of whether
+	// a cert already exists, so it is recorded either way.
 	if q.subjects[pos.Height] == nil {
 		q.subjects[pos.Height] = map[ids.ID]struct{}{}
 	}
 	q.subjects[pos.Height][canonical] = struct{}{}
+
+	// Already certified at this height → no new cert to emit, but the evidence
+	// above is kept.
+	if _, done := q.certs[pos.Height]; done {
+		return nil, false, nil
+	}
 
 	key := attestKey{height: pos.Height, canonical: canonical}
 	b := q.buckets[key]
