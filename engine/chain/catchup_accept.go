@@ -247,7 +247,11 @@ func (rt *Runtime) VerifyCatchupCertificate(ctx context.Context, blockBytes, cer
 	chainID := t.chainID
 	floor := t.consensus.Alpha()
 	if cert.Tier == Nova {
-		floor = NovaSignerFloor(t.consensus.K())
+		// The live committee's majority. NovaSignerFloor saturates at 3 for every
+		// K, so it asked a committee of nine for three signatures — and this door
+		// is the mirror of the gossip one, so leaving it behind would keep the
+		// whole hole open on the catch-up path. One invariant, two doors.
+		floor = NovaQuorum(t.consensus.K())
 	}
 	setRootSource := t.setRootSource
 	t.mu.RUnlock()
@@ -255,7 +259,9 @@ func (rt *Runtime) VerifyCatchupCertificate(ctx context.Context, blockBytes, cer
 	if cert.Position.ChainID != chainID ||
 		cert.Position.Height != blk.Height() ||
 		certCanonical(cert) != canonicalIDOf(blk) ||
-		(floor > 0 && cert.Threshold < uint32(floor)) {
+		// The votes carried, not the number claimed: a self-declared threshold is
+		// a bar chosen by the party it constrains.
+		(floor > 0 && (cert.Threshold < uint32(floor) || cert.VoterCount() < floor)) {
 		return ErrCatchupCertRejected
 	}
 
