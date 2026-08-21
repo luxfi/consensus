@@ -83,6 +83,20 @@ func (rt *Runtime) From(ctx context.Context, height uint64, max int) (Run, error
 		return Run{Base: height}, nil
 	}
 
+	// The asker names max, so the reservation cannot be sized from it. A peer that
+	// writes MaxInt costs a `makeslice: cap out of range` panic in one packet, and
+	// this is the only peer-sized quantity in the package that was not capped at
+	// the read — vote_count is checked against the remaining frame, sig_len
+	// against the buffer, the Merkle step count at 64, and the served-cert window
+	// is a constant.
+	//
+	// Nothing beyond that window can be served anyway, so a larger request is not
+	// a bigger answer; it is only a bigger allocation. The loop below stops at the
+	// first height this node cannot answer, so capping the RESERVATION changes no
+	// reply — the run is built by appending, not by filling.
+	if max > maxServedCerts {
+		max = maxServedCerts
+	}
 	run := Run{Base: height, Chain: make([]Certified, 0, max)}
 	for h := height; h < height+uint64(max); h++ {
 		id, ok := rt.finalizedAt(h)

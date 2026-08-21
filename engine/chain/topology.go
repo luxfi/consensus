@@ -201,9 +201,21 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	// count majority every legitimate cert already carries, so the filter is unweakened.
 	floor := t.consensus.Alpha() // Quasar ⅔ count floor
 	if cert.Tier == Nova {
-		floor = NovaSignerFloor(t.consensus.K()) // Nova signer floor
+		// The MAJORITY of the live committee, not NovaSignerFloor. That floor
+		// saturates at NovaQuorum(minBFTCommittee) = 3 for every K, so on a
+		// committee of nine it asked for three — and with no stake source wired
+		// nothing downstream re-derives the majority, leaving the cert's own
+		// declared Threshold as the whole bar. Three relayed votes then finalize
+		// on any committee, two disjoint triples both certify at one height with
+		// no validator equivocating, and a three-vote cert for a losing sibling
+		// jails three validators who each signed one block once.
+		floor = NovaQuorum(t.consensus.K())
 	}
-	if floor > 0 && cert.Threshold < uint32(floor) {
+	// Against the votes the cert ACTUALLY carries, not the number it claims to
+	// need. A self-declared threshold is a security parameter chosen by the party
+	// the parameter is meant to constrain; quasar's own weighted verifier already
+	// refuses to let a cert be the sole source of its own bar.
+	if floor > 0 && (cert.Threshold < uint32(floor) || cert.VoterCount() < floor) {
 		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Warn("incoming cert: threshold below chain floor for its tier",
 				log.Stringer("blockID", cert.Position.BlockID),
