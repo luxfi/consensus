@@ -15,6 +15,8 @@ package chain
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -151,6 +153,67 @@ func TestHeightGuard_SecondCertSameBlockIsIdempotent(t *testing.T) {
 	}
 	if len(db.GetAllRecords()) != 0 {
 		t.Fatal("a re-delivered SAME-block cert must NOT be flagged as equivocation")
+	}
+}
+
+// TestHeightGuard_ConcurrentCertReplayIsSingleFlight reproduces the live
+// catch-up amplification where several peers deliver the same valid cert at
+// once. Exactly one delivery may perform the signature checks and finalize;
+// queued duplicates must take the cheap stale-height path rather than repeat
+// cryptography, VM work, and success logging.
+func TestHeightGuard_ConcurrentCertReplayIsSingleFlight(t *testing.T) {
+	const deliveries = 32
+	vs := newTestValidatorSet(4)
+	chainID := ids.GenerateTestID()
+	var verifyCalls atomic.Int64
+	verifier := VoteVerifierFunc(func(nodeID ids.NodeID, message, sig []byte, epochHeight uint64) bool {
+		verifyCalls.Add(1)
+		// Make the pre-fix race deterministic: every concurrent handler clears the
+		// height guard before any one of them can finish verification.
+		time.Sleep(2 * time.Millisecond)
+		return vs.VerifyVote(nodeID, message, sig, epochHeight)
+	})
+	follower := NewWithConfig(Config{Params: params4()},
+		WithQuorumCert(chainID, vs.nodeID(3), verifier, &recordingGossiper{}, vs.signerFor(3)))
+	if err := follower.Start(context.Background(), true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = follower.Stop(context.Background()) })
+	rt := &Runtime{Transitive: follower, config: NetworkConfig{ChainID: chainID, Logger: log.Noop()}}
+
+	blk := newTestBlock(1, ids.Empty, "concurrent-cert-replay")
+	trackVerifiedBlock(rt, blk, 0)
+	cert := buildCertAtRound(t, vs, chainID, blk.id, ids.Empty, 1, 0, 3)
+
+	start := make(chan struct{})
+	results := make(chan bool, deliveries)
+	var wg sync.WaitGroup
+	for range deliveries {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			results <- rt.HandleIncomingCert(cert)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	finalized := 0
+	for result := range results {
+		if result {
+			finalized++
+		}
+	}
+	if finalized != 1 {
+		t.Fatalf("exactly one delivery must report finalization, got %d", finalized)
+	}
+	if got := blk.AcceptCalled(); got != 1 {
+		t.Fatalf("VM.Accept must run exactly once, got %d", got)
+	}
+	if got := verifyCalls.Load(); got != 3 {
+		t.Fatalf("one 3-vote cert should be verified once, got %d signature checks", got)
 	}
 }
 

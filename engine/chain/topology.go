@@ -174,6 +174,14 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 		return false
 	}
 
+	// Certificate gossip is deliberately redundant, so the same cert commonly
+	// arrives from several validators at once. Serialize after the cheap decode:
+	// the first delivery performs the cryptographic verification/finalization;
+	// queued duplicates observe the advanced finalized height below and stop
+	// before repeating signature checks or VM work.
+	rt.certMu.Lock()
+	defer rt.certMu.Unlock()
+
 	t := rt.Transitive
 	t.mu.RLock()
 	verifier := t.voteVerifier
