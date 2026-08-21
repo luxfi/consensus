@@ -210,8 +210,8 @@ func TestRED_INT_DoubleCount_SelfLowStake(t *testing.T) {
 	// defence — before it existed, those replays alone pushed acceptVotes past α and
 	// stake-weighting was the ONLY thing standing between a replay and finality.
 	if rt.HasEnoughResponsesForRetry(blk.id) {
-		t.Fatalf("REPLAY INFLATED THE COUNT: 64 replays of ONE validator tripped the α=3 count "+
-			"predicate. α must mean α DISTINCT validators; a voter that can advance the tally by "+
+		t.Fatalf("REPLAY INFLATED THE COUNT: 64 replays of ONE validator tripped the α=3 count " +
+			"predicate. α must mean α DISTINCT validators; a voter that can advance the tally by " +
 			"repeating itself makes the count road forgeable by a single peer.")
 	}
 

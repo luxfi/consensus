@@ -47,7 +47,7 @@ func TestBlue_SingleValidator_DecidesThroughFullRuntimePath(t *testing.T) {
 		Gossiper:     &recordingGossiper{}, // all sends return 0 (no peers) — the single-node condition
 		VM:           vm,
 		Params:       &p,
-		VoteVerifier: rejectingVerifier{},        // wired like a value chain; rejects → the synthesize path
+		VoteVerifier: rejectingVerifier{}, // wired like a value chain; rejects → the synthesize path
 		VoteSigner:   testAuth.signerFor(self),
 	})
 	ctx := context.Background()

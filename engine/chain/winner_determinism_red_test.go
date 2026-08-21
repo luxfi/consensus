@@ -148,9 +148,9 @@ func TestRedWinner_DistinctCanonicals_LowestWins(t *testing.T) {
 // diverge EXACTLY on the abandoned block.
 func TestRedWinner_DecidedAndAbandonedFiltering(t *testing.T) {
 	parent := mkID(0xF000)
-	lowest := &Block{id: mkID(100), parentID: parent, height: 1, canonicalID: mkID(1)}   // lowest canonical
-	mid := &Block{id: mkID(200), parentID: parent, height: 1, canonicalID: mkID(2)}       // middle
-	high := &Block{id: mkID(300), parentID: parent, height: 1, canonicalID: mkID(3)}      // highest
+	lowest := &Block{id: mkID(100), parentID: parent, height: 1, canonicalID: mkID(1)}     // lowest canonical
+	mid := &Block{id: mkID(200), parentID: parent, height: 1, canonicalID: mkID(2)}        // middle
+	high := &Block{id: mkID(300), parentID: parent, height: 1, canonicalID: mkID(3)}       // highest
 	decidedBlk := &Block{id: mkID(400), parentID: parent, height: 1, canonicalID: mkID(0)} // lowest of all, but DECIDED
 
 	blocks := []*Block{lowest, mid, high, decidedBlk}

@@ -64,8 +64,8 @@ func TestDefaultParams_FailureProbability(t *testing.T) {
 // liveness slack at a precisely-quantified security cost.
 func TestLivenessSlackCostsSecurity(t *testing.T) {
 	p := PulsarHybridPQv1.CaptureProbability()
-	allOfR := SampledFailureProbability(p, 8, 8)  // m=r=8 → p^8
-	slack := SampledFailureProbability(p, 12, 8)  // m=12, r=8
+	allOfR := SampledFailureProbability(p, 8, 8) // m=r=8 → p^8
+	slack := SampledFailureProbability(p, 12, 8) // m=12, r=8
 	if slack.Cmp(allOfR) <= 0 {
 		t.Fatalf("expected P_fail(m=12,r=8) > P_fail(m=8,r=8); got %s vs %s", slack.RatString(), allOfR.RatString())
 	}

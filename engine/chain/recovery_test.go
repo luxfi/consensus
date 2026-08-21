@@ -360,10 +360,10 @@ func TestRecovery_OutOfOrderFollowerCatchesUpAndFinalizes(t *testing.T) {
 // relayCatchup re-delivers a requested missing block to the asking follower via
 // followVerifiedBlock — modelling the node-layer GetAncestors→Put round-trip.
 type relayCatchup struct {
-	net     *relayNetwork
-	store   map[ids.ID]*verifyOnceBlock
-	mu      sync.Mutex
-	count   int
+	net   *relayNetwork
+	store map[ids.ID]*verifyOnceBlock
+	mu    sync.Mutex
+	count int
 }
 
 func (c *relayCatchup) RequestAncestors(_ ids.ID, _ ids.ID, missingBlockID ids.ID, from ids.NodeID) error {
