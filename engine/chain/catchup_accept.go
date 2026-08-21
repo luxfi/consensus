@@ -713,4 +713,10 @@ func (rt *Runtime) trackVerifiedForCatchup(ctx context.Context, blk block.Block)
 		}
 	}
 	rt.Transitive.mu.Unlock()
+
+	// This block is now a tracked parent: re-read the epoch bound against any orphan
+	// child admitted before it, dropping one whose epoch fell below. The same
+	// arrival-order door the gossip path closes, so catch-up cannot leave a tracked
+	// child below its tracked parent either.
+	rt.enforceChildEpochBound(blockID)
 }
