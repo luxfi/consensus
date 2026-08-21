@@ -133,7 +133,7 @@ func (n *testNet) Ballots(_ context.Context, heights []uint64) ([]Ballot, uint64
 
 var (
 	_ VM[block.StateSummary] = (*testVM)(nil)
-	_ Source = (*testNet)(nil)
+	_ Source                 = (*testNet)(nil)
 )
 
 // voter is one beacon in the ratification round.

@@ -115,8 +115,8 @@ func TestRedScale_TwoThirdsStakeFloor_OverflowSafeToUint64Max(t *testing.T) {
 		// 3·floor ≤ 2·total < 3·(floor+1). Check via big.Int (no wrap).
 		three := big.NewInt(3)
 		twoTotal := new(big.Int).Mul(new(big.Int).SetUint64(total), big.NewInt(2))
-		lo := new(big.Int).Mul(new(big.Int).SetUint64(got), three)      // 3·floor
-		hi := new(big.Int).Mul(new(big.Int).SetUint64(got+1), three)    // 3·(floor+1)
+		lo := new(big.Int).Mul(new(big.Int).SetUint64(got), three)   // 3·floor
+		hi := new(big.Int).Mul(new(big.Int).SetUint64(got+1), three) // 3·(floor+1)
 		if lo.Cmp(twoTotal) > 0 || twoTotal.Cmp(hi) >= 0 {
 			t.Errorf("TwoThirdsStakeFloor(%d)=%d violates 3·floor ≤ 2·total < 3·(floor+1)", total, got)
 		}

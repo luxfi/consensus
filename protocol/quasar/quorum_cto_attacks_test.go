@@ -235,10 +235,10 @@ func FuzzUnmarshalWeightedQuorumCert(f *testing.F) {
 	if wire, err := full.Compact().MarshalBinary(); err == nil {
 		f.Add(wire)
 	}
-	f.Add([]byte{})                   // empty
-	f.Add([]byte{wqcKindFull})        // kind only, truncated
-	f.Add([]byte{wqcKindCompact})     // compact kind only, truncated
-	f.Add([]byte{0x99})               // bad kind
+	f.Add([]byte{})               // empty
+	f.Add([]byte{wqcKindFull})    // kind only, truncated
+	f.Add([]byte{wqcKindCompact}) // compact kind only, truncated
+	f.Add([]byte{0x99})           // bad kind
 	// A full header claiming an enormous signer_count with no records.
 	hdr := make([]byte, wqcHeaderSize)
 	hdr[0] = wqcKindFull
@@ -282,17 +282,17 @@ func TestCTO_MalformedNeverPanics(t *testing.T) {
 	}
 
 	cases := map[string][]byte{
-		"nil":                    nil,
-		"empty":                  {},
-		"kind_full_only":         {wqcKindFull},
-		"kind_compact_only":      {wqcKindCompact},
-		"bad_kind":               {0x99, 0x00, 0x01},
-		"single_zero":            {0x00},
-		"header_minus_one":       good[:wqcHeaderSize-1],
-		"good_plus_trailer":      append(append([]byte(nil), good...), 0xDE, 0xAD),
-		"all_0xFF_short":         bytesRepeat(0xFF, 16),
-		"all_0xFF_headerlen":     bytesRepeat(0xFF, wqcHeaderSize),
-		"all_0x00_headerlen":     bytesRepeat(0x00, wqcHeaderSize),
+		"nil":                nil,
+		"empty":              {},
+		"kind_full_only":     {wqcKindFull},
+		"kind_compact_only":  {wqcKindCompact},
+		"bad_kind":           {0x99, 0x00, 0x01},
+		"single_zero":        {0x00},
+		"header_minus_one":   good[:wqcHeaderSize-1],
+		"good_plus_trailer":  append(append([]byte(nil), good...), 0xDE, 0xAD),
+		"all_0xFF_short":     bytesRepeat(0xFF, 16),
+		"all_0xFF_headerlen": bytesRepeat(0xFF, wqcHeaderSize),
+		"all_0x00_headerlen": bytesRepeat(0x00, wqcHeaderSize),
 	}
 	// Plus every truncation prefix of a valid full cert.
 	for n := 0; n < len(good); n++ {

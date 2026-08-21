@@ -68,9 +68,9 @@ func TestBFTCommittee_FormulaReproducesEveryPreset(t *testing.T) {
 		params      config.Parameters
 		wantedAlpha int
 	}{
-		{"DefaultParams", config.DefaultParams(), 14}, // K=20 → 14
-		{"MainnetParams", config.MainnetParams(), 15}, // K=21 → 15
-		{"TestnetParams", config.TestnetParams(), 8},  // K=11 → 8
+		{"DefaultParams", config.DefaultParams(), 14},  // K=20 → 14
+		{"MainnetParams", config.MainnetParams(), 15},  // K=21 → 15
+		{"TestnetParams", config.TestnetParams(), 8},   // K=11 → 8
 		{"LocalBFTParams", config.LocalBFTParams(), 3}, // K=4 → 3
 	}
 	for _, tc := range cases {

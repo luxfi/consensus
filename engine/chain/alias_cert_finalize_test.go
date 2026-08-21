@@ -60,12 +60,12 @@ type innerHeadBlock struct {
 	accepts  int64
 }
 
-func (b *innerHeadBlock) ID() ids.ID           { return b.outerID }
-func (b *innerHeadBlock) Parent() ids.ID       { return b.parentID }
-func (b *innerHeadBlock) ParentID() ids.ID     { return b.parentID }
-func (b *innerHeadBlock) Height() uint64       { return b.height }
-func (b *innerHeadBlock) Timestamp() time.Time { return time.Unix(0, 0) }
-func (b *innerHeadBlock) Status() uint8        { return 0 }
+func (b *innerHeadBlock) ID() ids.ID                   { return b.outerID }
+func (b *innerHeadBlock) Parent() ids.ID               { return b.parentID }
+func (b *innerHeadBlock) ParentID() ids.ID             { return b.parentID }
+func (b *innerHeadBlock) Height() uint64               { return b.height }
+func (b *innerHeadBlock) Timestamp() time.Time         { return time.Unix(0, 0) }
+func (b *innerHeadBlock) Status() uint8                { return 0 }
 func (b *innerHeadBlock) Verify(context.Context) error { return nil }
 func (b *innerHeadBlock) Accept(context.Context) error {
 	atomic.AddInt64(&b.accepts, 1)
@@ -164,9 +164,9 @@ func TestStormAlias_PeerCertFinalizesLocalWrapper_EVMAccepts(t *testing.T) {
 	t.Cleanup(func() { _ = follower.Stop(context.Background()) })
 	rt := &Runtime{Transitive: follower, config: NetworkConfig{ChainID: chainID, Logger: log.Noop()}}
 
-	innerC := ids.GenerateTestID()      // the shared inner execution block at height 1
-	localOuter := ids.GenerateTestID()  // THIS node's proposervm wrapper of innerC
-	peerOuter := ids.GenerateTestID()   // a DIFFERENT validator's wrapper of innerC
+	innerC := ids.GenerateTestID()     // the shared inner execution block at height 1
+	localOuter := ids.GenerateTestID() // THIS node's proposervm wrapper of innerC
+	peerOuter := ids.GenerateTestID()  // a DIFFERENT validator's wrapper of innerC
 	const H = uint64(1)
 
 	// This node tracks ONLY its own wrapper. It has verified innerC (blkLocal) but

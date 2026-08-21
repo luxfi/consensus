@@ -61,8 +61,8 @@ type pChainBlock struct {
 	mu           sync.Mutex
 }
 
-func (b *pChainBlock) ID() ids.ID                    { return b.id }
-func (b *pChainBlock) Parent() ids.ID                { return b.parentID }
+func (b *pChainBlock) ID() ids.ID                   { return b.id }
+func (b *pChainBlock) Parent() ids.ID               { return b.parentID }
 func (b *pChainBlock) ParentID() ids.ID             { return b.parentID }
 func (b *pChainBlock) Height() uint64               { return b.height }
 func (b *pChainBlock) PChainHeight() uint64         { return b.pChainHeight } // the boundary hook
@@ -178,7 +178,9 @@ func newEpochSigners(n int) *epochSigners {
 	return es
 }
 
-func (es *epochSigners) pub(i int) ed25519.PublicKey  { return es.keys[es.ids[i]].Public().(ed25519.PublicKey) }
+func (es *epochSigners) pub(i int) ed25519.PublicKey {
+	return es.keys[es.ids[i]].Public().(ed25519.PublicKey)
+}
 func (es *epochSigners) signerFor(i int) VoteSigner {
 	priv := es.keys[es.ids[i]]
 	return voteSignerFunc(func(message []byte) ([]byte, error) { return ed25519.Sign(priv, message), nil })
@@ -267,8 +269,8 @@ func TestPChainEpochFinality_RealWiring(t *testing.T) {
 	rec := &recordingGossiper{}
 	e := NewWithConfig(Config{Params: params5()},
 		WithQuorumCert(chainID, es.ids[0], src, rec, es.signerFor(0)),
-		WithStakeWeighting(src),     // ⅔-by-stake, read at the epoch height
-		WithValidatorSetRoot(src),   // set-root stamped at the epoch height
+		WithStakeWeighting(src),   // ⅔-by-stake, read at the epoch height
+		WithValidatorSetRoot(src), // set-root stamped at the epoch height
 	)
 	if err := e.Start(context.Background(), true); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -481,4 +483,3 @@ func TestPChainEpochFinality_EmptyEpochFailsClosed(t *testing.T) {
 		t.Fatalf("VM.Accept must NOT run for an empty-epoch block, got %d", blk.AcceptCalled())
 	}
 }
-

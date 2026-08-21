@@ -153,8 +153,8 @@ func TestAdv_DivergentCanonicalNeverCollapsed(t *testing.T) {
 	tipCanon := ids.GenerateTestID()
 	led := seedLedger(tipOuter, tipCanon, 5)
 
-	inner6 := ids.GenerateTestID()       // the TRUE height-6 execution the cert attests
-	inner6evil := ids.GenerateTestID()   // a DIFFERENT height-6 execution
+	inner6 := ids.GenerateTestID()     // the TRUE height-6 execution the cert attests
+	inner6evil := ids.GenerateTestID() // a DIFFERENT height-6 execution
 	inner7 := ids.GenerateTestID()
 	wrapperEvil6 := ids.GenerateTestID() // wrapper of the WRONG execution, chains to tip
 	wrapperA6 := ids.GenerateTestID()    // absent wrapper of the TRUE inner6
@@ -173,7 +173,7 @@ func TestAdv_DivergentCanonicalNeverCollapsed(t *testing.T) {
 	if err == nil {
 		for _, id := range plan.Accept {
 			if id == wrapperEvil6 {
-				t.Fatalf("FORK: collapsed a DIVERGENT-execution wrapper (inner6evil) in place of the "+
+				t.Fatalf("FORK: collapsed a DIVERGENT-execution wrapper (inner6evil) in place of the " +
 					"attested inner6 — two nodes would finalize different state at height 6")
 			}
 		}

@@ -30,16 +30,16 @@ type tBlock struct {
 	valid      bool
 }
 
-func (b *tBlock) ID() ids.ID                    { return b.id }
-func (b *tBlock) Parent() ids.ID                { return b.parent }
-func (b *tBlock) ParentID() ids.ID              { return b.parent }
-func (b *tBlock) Height() uint64                { return b.height }
-func (b *tBlock) Timestamp() time.Time          { return time.Unix(int64(b.height), 0) }
-func (b *tBlock) Status() uint8                 { return 0 }
-func (b *tBlock) Verify(context.Context) error  { return nil }
-func (b *tBlock) Accept(context.Context) error  { return nil }
-func (b *tBlock) Reject(context.Context) error  { return nil }
-func (b *tBlock) Bytes() []byte                 { return b.bytes }
+func (b *tBlock) ID() ids.ID                   { return b.id }
+func (b *tBlock) Parent() ids.ID               { return b.parent }
+func (b *tBlock) ParentID() ids.ID             { return b.parent }
+func (b *tBlock) Height() uint64               { return b.height }
+func (b *tBlock) Timestamp() time.Time         { return time.Unix(int64(b.height), 0) }
+func (b *tBlock) Status() uint8                { return 0 }
+func (b *tBlock) Verify(context.Context) error { return nil }
+func (b *tBlock) Accept(context.Context) error { return nil }
+func (b *tBlock) Reject(context.Context) error { return nil }
+func (b *tBlock) Bytes() []byte                { return b.bytes }
 
 // chainOf builds a genesis→N chain. blocks[0] is genesis (height 0, parent Empty).
 // invalidAt (if > 0) marks that height's block invalid (a corrupt/forged block).
@@ -67,13 +67,13 @@ func chainOf(n int, invalidAt uint64) ([]*tBlock, map[string]*tBlock) {
 // connecting / no-quorum cases, and `connectAfter` models the CANARY boot race (the beacon
 // set is still connecting for the first N frontier queries, then names the tip).
 type testPeer struct {
-	byHeight     []*tBlock
-	byID         map[ids.ID]*tBlock
-	serveNothing bool           // model a dead/withholding peer
-	status       FrontierStatus // status to report once "connected" (default FrontierNamed)
-	connectAfter int            // report FrontierConnecting for the first N queries, then `status`
-	noQuorumFor  int            // after connecting, report FrontierNoQuorum for the next N queries (a TRANSIENT split that settles), then `status`
-	frontierCalls int           // observable: how many times the loop asked for the frontier
+	byHeight      []*tBlock
+	byID          map[ids.ID]*tBlock
+	serveNothing  bool           // model a dead/withholding peer
+	status        FrontierStatus // status to report once "connected" (default FrontierNamed)
+	connectAfter  int            // report FrontierConnecting for the first N queries, then `status`
+	noQuorumFor   int            // after connecting, report FrontierNoQuorum for the next N queries (a TRANSIENT split that settles), then `status`
+	frontierCalls int            // observable: how many times the loop asked for the frontier
 }
 
 func newTestPeer(chain []*tBlock) *testPeer {
@@ -176,6 +176,7 @@ func (n *testNode) ParseBlock(_ context.Context, b []byte) (block.Block, error) 
 func (n *testNode) LastAccepted(context.Context) (ids.ID, uint64, error) {
 	return n.tipID, n.height, nil
 }
+
 // Has reports STORE presence (the block can be served by GetBlock) — accepted or not.
 func (n *testNode) Has(_ context.Context, id ids.ID) bool { return n.have[id] }
 
@@ -224,7 +225,7 @@ func runBootstrap(t *testing.T, peer BlockSource, node Chain) error {
 		Source:            peer,
 		Chain:             node,
 		MaxBlocksPerFetch: 256,
-		RetryInterval:     time.Millisecond,      // keep the stall/connect paths fast in tests
+		RetryInterval:     time.Millisecond,       // keep the stall/connect paths fast in tests
 		ConnectDeadline:   200 * time.Millisecond, // bound the beacon-connectivity wait in tests
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -358,8 +359,8 @@ func TestLoop_StaleNodeConvergesAfterDelayedBeaconConnect(t *testing.T) {
 func TestLoop_GenuinelyCaughtUp_CompletesPromptly(t *testing.T) {
 	const N = 25
 	chain, reg := chainOf(N, 0)
-	peer := newTestPeer(chain)               // FrontierNamed, tip = N
-	node := newTestNode(reg, chain[N])       // already at N — holds the frontier tip
+	peer := newTestPeer(chain)         // FrontierNamed, tip = N
+	node := newTestNode(reg, chain[N]) // already at N — holds the frontier tip
 
 	if err := runBootstrap(t, peer, node); err != nil {
 		t.Fatalf("a genuinely caught-up node must complete promptly, got %v", err)
