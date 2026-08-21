@@ -30,6 +30,7 @@
 package chain
 
 import (
+	"slices"
 	"context"
 	"fmt"
 
@@ -483,6 +484,14 @@ func (a blocksAncestry) Parent(id ids.ID) (ids.ID, uint64, ids.ID, ids.ID, bool)
 // preserving the fail-closed behind-node defer (ErrAncestorNotTracked). This is a rare
 // defer-path O(n) scan over the live block set, matching pendingByCanonicalLocked.
 func (a blocksAncestry) WrapperByCanonical(canonical ids.ID, height uint64) (ids.ID, bool) {
+	// This ranges the live block map, so without a deterministic choice among
+	// equal candidates it returns whichever wrapper Go's map iteration reached
+	// first — a different one per node. Finalize is then not a function of its
+	// inputs: two nodes holding identical blocks accept different envelopes at one
+	// height, hand the VM opposite Accept/Reject for the same pair, and answer a
+	// bootstrapping peer's outer-envelope check differently. A committed wrapper
+	// still wins outright; among uncommitted aliases the lowest id wins, so every
+	// node lands on the same block.
 	var hit ids.ID
 	found := false
 	for id, b := range a.blocks {
@@ -492,17 +501,22 @@ func (a blocksAncestry) WrapperByCanonical(canonical ids.ID, height uint64) (ids
 		if b.accepted {
 			return id, true // the wrapper the VM actually committed — prefer it
 		}
-		hit, found = id, true
+		if !found || id.Compare(hit) < 0 {
+			hit, found = id, true
+		}
 	}
 	return hit, found
 }
 
 func (a blocksAncestry) Children(id ids.ID) []ids.ID {
+	// Sorted, because a map range yields a different order per node and a caller
+	// that acts on the first child would then act on a different one on each.
 	var out []ids.ID
 	for cid, b := range a.blocks {
 		if b.parentID == id {
 			out = append(out, cid)
 		}
 	}
+	slices.SortFunc(out, func(x, y ids.ID) int { return x.Compare(y) })
 	return out
 }
