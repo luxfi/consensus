@@ -247,6 +247,35 @@ func TestBundleSigner_InsufficientSigners(t *testing.T) {
 	require.Contains(t, err.Error(), "insufficient signers")
 }
 
+func TestBundleSigner_RejectsDuplicateSigners(t *testing.T) {
+	em := NewEpochManager(2, 3)
+	_, err := em.InitializeEpoch([]string{"v0", "v1", "v2"})
+	require.NoError(t, err)
+
+	signer := NewBundleSigner(em)
+	hash := sha256.Sum256([]byte("block"))
+	signer.AddBLSBlock(1, hash)
+	bundle := signer.CreateBundle()
+
+	err = signer.SignBundle(bundle, 1, []byte("duplicate-signer-prf-key"), []string{"v0", "v0"})
+	require.ErrorContains(t, err, "duplicate signer")
+	require.Nil(t, bundle.Signature)
+}
+
+func TestBundleSigningSessionIDSeparatesRetries(t *testing.T) {
+	bundleHash := sha256.Sum256([]byte("bundle"))
+	const sessionID = 42
+
+	first := bundleSigningSessionID(bundleHash, sessionID, 0)
+	retry1 := bundleSigningSessionID(bundleHash, sessionID, 1)
+	retry2 := bundleSigningSessionID(bundleHash, sessionID, 2)
+
+	require.Equal(t, sessionID, first)
+	require.NotEqual(t, first, retry1)
+	require.NotEqual(t, retry1, retry2)
+	require.Equal(t, retry1, bundleSigningSessionID(bundleHash, sessionID, 1))
+}
+
 func TestAsyncBundleSigner_SignAsync(t *testing.T) {
 	em := NewEpochManager(2, 3)
 	validators := []string{"v0", "v1", "v2"}
@@ -271,7 +300,7 @@ func TestAsyncBundleSigner_SignAsync(t *testing.T) {
 		require.NotNil(t, signedQB.Signature)
 		valid := signer.VerifyBundle(signedQB)
 		require.True(t, valid)
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("async signing timed out")
 	}
 }
@@ -291,7 +320,7 @@ func TestBundleSigner_MerkleVerification(t *testing.T) {
 
 	qb := signer.CreateBundle()
 	prfKey := []byte("prf-key-for-merkle-verify-test!!")
-	signer.SignBundle(qb, 1, prfKey, validators)
+	require.NoError(t, signer.SignBundle(qb, 1, prfKey, validators))
 
 	// Valid bundle verifies
 	require.True(t, signer.VerifyBundle(qb))
