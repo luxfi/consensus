@@ -51,6 +51,10 @@ import (
 // accessor. Mirrors sign.Q at compile time.
 var signQ = pulsarSign.Q
 
+const maxBundleSigningAttempts = 3
+
+var errBundleSignatureRejected = errors.New("bundle signature did not self-verify")
+
 // pulsarComputeLagrange wraps primitives.ComputeLagrangeCoefficients so
 // callers do not need to import pulsar/primitives directly. Returns
 // Lagrange coefficients keyed by position in the input slice.
@@ -1019,6 +1023,10 @@ func (bs *BundleSigner) SignBundle(
 	prfKey []byte,
 	participatingValidators []string,
 ) error {
+	if bundle == nil {
+		return errors.New("nil bundle")
+	}
+
 	bs.em.mu.RLock()
 	keys := bs.em.currentKeys
 	bs.em.mu.RUnlock()
@@ -1029,8 +1037,13 @@ func (bs *BundleSigner) SignBundle(
 
 	// Build signer indices
 	signerIndices := make([]int, 0, len(participatingValidators))
+	seenSignerIndices := make(map[int]struct{}, len(participatingValidators))
 	for _, v := range participatingValidators {
 		if share, ok := keys.Shares[v]; ok {
+			if _, duplicated := seenSignerIndices[share.Index]; duplicated {
+				return fmt.Errorf("duplicate signer: %s", v)
+			}
+			seenSignerIndices[share.Index] = struct{}{}
 			signerIndices = append(signerIndices, share.Index)
 		}
 	}
@@ -1039,12 +1052,77 @@ func (bs *BundleSigner) SignBundle(
 		return fmt.Errorf("insufficient signers: %d < threshold %d", len(signerIndices), keys.Threshold)
 	}
 
-	subsetSigners, err := newSubsetSigners(keys, participatingValidators, signerIndices)
-	if err != nil {
-		return err
+	message := bundle.SignableMessage()
+	bundleHash := bundle.Hash()
+	var lastErr error
+	for attempt := 0; attempt < maxBundleSigningAttempts; attempt++ {
+		subsetSigners, err := newSubsetSigners(keys, participatingValidators, signerIndices)
+		if err != nil {
+			return err
+		}
+
+		attemptSessionID := bundleSigningSessionID(bundleHash, sessionID, attempt)
+		sig, err := signBundleAttempt(
+			keys,
+			subsetSigners,
+			participatingValidators,
+			signerIndices,
+			attemptSessionID,
+			message,
+			prfKey,
+		)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if !coronaThreshold.Verify(keys.GroupKey, message, sig) {
+			lastErr = errBundleSignatureRejected
+			continue
+		}
+
+		bundle.Signature = sig
+		return nil
 	}
 
-	message := bundle.SignableMessage()
+	bundle.Signature = nil
+	return fmt.Errorf("bundle signing failed after %d attempts: %w", maxBundleSigningAttempts, lastErr)
+}
+
+// bundleSigningSessionID gives every retry a fresh consensus-session domain.
+// The first attempt preserves the caller's session ID. Later attempts bind the
+// logical session, bundle hash and attempt number into a 64-bit ID, avoiding
+// nonce-domain reuse without creating a counter range that can collide with a
+// future bundle after enough uptime.
+func bundleSigningSessionID(bundleHash [32]byte, sessionID, attempt int) int {
+	if attempt == 0 {
+		return sessionID
+	}
+
+	h := sha256.New()
+	h.Write([]byte("QUASAR-BUNDLE-SIGNING-ATTEMPT-v1"))
+	var encoded [8]byte
+	binary.BigEndian.PutUint64(encoded[:], uint64(int64(sessionID)))
+	h.Write(encoded[:])
+	binary.BigEndian.PutUint64(encoded[:], uint64(attempt))
+	h.Write(encoded[:])
+	h.Write(bundleHash[:])
+	digest := h.Sum(nil)
+	retryID := int(int64(binary.BigEndian.Uint64(digest[:8])))
+	if retryID == sessionID {
+		retryID = ^retryID
+	}
+	return retryID
+}
+
+func signBundleAttempt(
+	keys *EpochKeys,
+	subsetSigners map[string]*coronaThreshold.Signer,
+	participatingValidators []string,
+	signerIndices []int,
+	sessionID int,
+	message string,
+	prfKey []byte,
+) (*coronaThreshold.Signature, error) {
 
 	// Round 1: Collect commitments
 	round1Data := make(map[int]*coronaThreshold.Round1Data)
@@ -1055,7 +1133,7 @@ func (bs *BundleSigner) SignBundle(
 		}
 		r1, err := signer.Round1(sessionID, prfKey, signerIndices)
 		if err != nil {
-			return fmt.Errorf("round1: validator %s: %w", v, err)
+			return nil, fmt.Errorf("round1: validator %s: %w", v, err)
 		}
 		round1Data[keys.Shares[v].Index] = r1
 	}
@@ -1069,21 +1147,27 @@ func (bs *BundleSigner) SignBundle(
 		}
 		r2, err := signer.Round2(sessionID, message, prfKey, signerIndices, round1Data)
 		if err != nil {
-			return fmt.Errorf("round2 failed for %s: %w", v, err)
+			return nil, fmt.Errorf("round2 failed for %s: %w", v, err)
 		}
 		round2Data[r2.PartyID] = r2
 	}
 
 	// Finalize
-	firstValidator := participatingValidators[0]
-	finalSigner := subsetSigners[firstValidator]
+	var finalSigner *coronaThreshold.Signer
+	for _, validator := range participatingValidators {
+		if signer, ok := subsetSigners[validator]; ok {
+			finalSigner = signer
+			break
+		}
+	}
+	if finalSigner == nil {
+		return nil, errors.New("no participating signer")
+	}
 	sig, err := finalSigner.Finalize(round2Data)
 	if err != nil {
-		return fmt.Errorf("finalize failed: %w", err)
+		return nil, fmt.Errorf("finalize failed: %w", err)
 	}
-
-	bundle.Signature = sig
-	return nil
+	return sig, nil
 }
 
 // newSubsetSigners produces a fresh set of Signers whose underlying
@@ -1137,7 +1221,7 @@ func newSubsetSigners(keys *EpochKeys, participating []string, signerIndices []i
 
 // VerifyBundle verifies a quantum bundle's Corona signature.
 func (bs *BundleSigner) VerifyBundle(bundle *QuantumBundle) bool {
-	if bundle.Signature == nil {
+	if bundle == nil || bundle.Signature == nil {
 		return false
 	}
 
