@@ -513,6 +513,7 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome pas
 	// beacon + α-weighted-stake quorum) closes the OTHER half — a forged FRONTIER can
 	// never be named.
 	buffer := make(map[uint64][]byte)
+	bufferIDs := make(map[uint64]ids.ID)
 	var bufferBytes int
 	want := tipID // the next block id we require, descending from the agreed frontier
 	// sawCheckpoint is pre-satisfied unless an operator pinned a weak-subjectivity
@@ -522,6 +523,7 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome pas
 		b.cfg.WeakSubjectivityHeight > lastH
 	sawCheckpoint := !checkpointActive
 	connected := false
+	var executeFrom uint64
 	for round := 0; round < maxDescentRounds; round++ {
 		if ctx.Err() != nil {
 			return advanced, passWorking, ctx.Err()
@@ -554,7 +556,6 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome pas
 		// masquerade as an ancestor of the α-agreed frontier because its id is not on
 		// tipID's parent chain.
 		haveLowest := false
-		var lowestHeight uint64
 		var lowestParent ids.ID
 		cur := want
 		for {
@@ -564,16 +565,26 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome pas
 			}
 			if _, dup := buffer[e.height]; !dup {
 				buffer[e.height] = e.raw
+				bufferIDs[e.height] = cur
 				bufferBytes += len(e.raw)
 			}
 			if cur == b.cfg.WeakSubjectivityID && e.height == b.cfg.WeakSubjectivityHeight {
 				sawCheckpoint = true
 			}
 			haveLowest = true
-			lowestHeight = e.height
 			lowestParent = e.parent
-			if e.height <= lastH+1 {
-				break // reached our tip's successor — connected
+			// Height alone does not connect two proposer-wrapper histories. A peer may
+			// carry the same already-accepted inner block under a different outer
+			// envelope, so its H+1 block names an H parent this node does not hold.
+			// Stopping merely because H+1 was reached makes Verify fail on that missing
+			// parent forever. Descend until the fetched path names an envelope that is
+			// actually on this node's accepted chain; overlap blocks above that anchor
+			// are executed below so the alternate envelopes are stored before their
+			// children are verified.
+			if e.parent == lastID || b.cfg.Chain.Accepted(ctx, e.parent) {
+				connected = true
+				executeFrom = e.height
+				break
 			}
 			cur = e.parent
 		}
@@ -583,8 +594,7 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome pas
 			return advanced, passWorking, nil
 		}
 
-		if lowestHeight <= lastH+1 {
-			connected = true
+		if connected {
 			break
 		}
 		if len(buffer) >= b.cfg.MaxBuffer || bufferBytes >= b.cfg.MaxBufferBytes {
@@ -613,17 +623,24 @@ func (b *Bootstrapper) syncOnce(ctx context.Context) (advanced bool, outcome pas
 	// re-executes (Verify) against the already-accepted parent and finalizes on
 	// frontier-trust. A reject (invalid/out-of-order) STOPS the run at that block — the
 	// sync does not advance past an unverifiable block; the next pass re-fetches it.
-	for h := lastH + 1; ; h++ {
+	for h := executeFrom; ; h++ {
 		raw, ok := buffer[h]
 		if !ok {
 			break // reached the top of this contiguous run
 		}
+		wasAccepted := b.cfg.Chain.Accepted(ctx, bufferIDs[h])
 		if aerr := b.cfg.Chain.AcceptBootstrapBlock(ctx, raw); aerr != nil {
 			b.cfg.Log.Warn("bootstrap: block rejected during execute — sync paused at this height",
 				log.Uint64("height", h), log.Err(aerr))
 			break
 		}
-		advanced = true
+		// Replaying an overlapping proposer envelope may be necessary to store a
+		// parent, but it is not finalized-head progress. Count only a block that
+		// became accepted during this pass; otherwise a permanently rejected child
+		// could keep Run alive forever by re-serving already-stored overlap.
+		if !wasAccepted && b.cfg.Chain.Accepted(ctx, bufferIDs[h]) {
+			advanced = true
+		}
 	}
 	return advanced, passWorking, nil
 }
