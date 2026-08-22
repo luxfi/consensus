@@ -209,6 +209,80 @@ func (n *testNode) AcceptBootstrapBlock(_ context.Context, b []byte) error {
 	return nil
 }
 
+// wrapperAliasNode models the recovery boundary where this node accepted inner
+// execution block H under local proposer envelope A, while the certified network
+// path reaches H+1 through a different envelope B around that same inner H. B is
+// not accepted as this node's outer tip, but it must be verified/stored before its
+// child can resolve B as a parent.
+type wrapperAliasNode struct {
+	reg      map[string]*tBlock
+	held     map[ids.ID]bool
+	accepted map[ids.ID]bool
+	tipID    ids.ID
+	height   uint64
+	aliases  int
+	accepts  int
+}
+
+func newWrapperAliasNode(reg map[string]*tBlock, local []*tBlock) *wrapperAliasNode {
+	n := &wrapperAliasNode{
+		reg:      reg,
+		held:     make(map[ids.ID]bool, len(local)),
+		accepted: make(map[ids.ID]bool, len(local)),
+	}
+	for _, blk := range local {
+		n.held[blk.id] = true
+		n.accepted[blk.id] = true
+		n.tipID = blk.id
+		n.height = blk.height
+	}
+	return n
+}
+
+func (n *wrapperAliasNode) ParseBlock(_ context.Context, b []byte) (block.Block, error) {
+	if blk, ok := n.reg[string(b)]; ok {
+		return blk, nil
+	}
+	return nil, errUnknownBytes
+}
+
+func (n *wrapperAliasNode) LastAccepted(context.Context) (ids.ID, uint64, error) {
+	return n.tipID, n.height, nil
+}
+
+func (n *wrapperAliasNode) Accepted(_ context.Context, id ids.ID) bool {
+	return n.accepted[id]
+}
+
+func (n *wrapperAliasNode) AcceptBootstrapBlock(_ context.Context, b []byte) error {
+	blk, ok := n.reg[string(b)]
+	if !ok {
+		return errUnknownBytes
+	}
+	if n.held[blk.id] {
+		return nil
+	}
+	if !blk.valid || !n.held[blk.parent] {
+		return errOutOfOrder
+	}
+	if blk.height <= n.height {
+		// The inner execution at this height is already accepted. Store the
+		// alternate outer envelope, but do not replace the local accepted tip.
+		n.held[blk.id] = true
+		n.aliases++
+		return nil
+	}
+	if blk.height != n.height+1 {
+		return errOutOfOrder
+	}
+	n.held[blk.id] = true
+	n.accepted[blk.id] = true
+	n.tipID = blk.id
+	n.height = blk.height
+	n.accepts++
+	return nil
+}
+
 type bootErr string
 
 func (e bootErr) Error() string { return string(e) }
@@ -279,6 +353,73 @@ func TestLoop_PartialNodeConverges(t *testing.T) {
 	}
 	if node.accepts != N-M {
 		t.Fatalf("expected %d accepts (M+1..N), got %d", N-M, node.accepts)
+	}
+}
+
+// TestLoop_DescendsThroughAlternateAcceptedHeightEnvelope reproduces the live
+// 16,383 -> 16,384 recovery wedge. The local node accepted execution height H
+// under outer envelope A, while the certified network child H+1 names alternate
+// envelope B at height H. A height-only connection stops at H+1, never fetches B,
+// and retries the child's missing parent forever. The descent must connect by an
+// accepted parent ID, replay B as overlap, then verify and accept H+1.
+func TestLoop_DescendsThroughAlternateAcceptedHeightEnvelope(t *testing.T) {
+	const H = 32
+	shared, reg := chainOf(H, 0)
+	local := shared
+
+	alias := &tBlock{
+		id:     ids.GenerateTestID(),
+		parent: shared[H-1].id,
+		height: H,
+		bytes:  []byte("alternate-wrapper@H"),
+		valid:  true,
+	}
+	child := &tBlock{
+		id:     ids.GenerateTestID(),
+		parent: alias.id,
+		height: H + 1,
+		bytes:  []byte("certified-child@H+1"),
+		valid:  true,
+	}
+	reg[string(alias.bytes)] = alias
+	reg[string(child.bytes)] = child
+
+	peerChain := append(append([]*tBlock{}, shared[:H]...), alias, child)
+	peer := newTestPeer(peerChain)
+	node := newWrapperAliasNode(reg, local)
+
+	if err := runBootstrap(t, peer, node); err != nil {
+		t.Fatalf("alternate-wrapper recovery must converge: %v", err)
+	}
+	if !node.held[alias.id] || node.aliases != 1 {
+		t.Fatalf("alternate height-H envelope must be stored exactly once before its child: held=%v aliases=%d", node.held[alias.id], node.aliases)
+	}
+	if node.tipID != child.id || node.height != H+1 || node.accepts != 1 {
+		t.Fatalf("node did not cross the wrapper boundary: tip=%s height=%d accepts=%d", node.tipID, node.height, node.accepts)
+	}
+}
+
+func TestLoop_OverlapEnvelopeDoesNotMaskRejectedChildAsProgress(t *testing.T) {
+	const H = 32
+	shared, reg := chainOf(H, 0)
+	alias := &tBlock{
+		id: ids.GenerateTestID(), parent: shared[H-1].id, height: H,
+		bytes: []byte("alternate-wrapper-before-invalid-child"), valid: true,
+	}
+	child := &tBlock{
+		id: ids.GenerateTestID(), parent: alias.id, height: H + 1,
+		bytes: []byte("invalid-certified-child"), valid: false,
+	}
+	reg[string(alias.bytes)] = alias
+	reg[string(child.bytes)] = child
+	peerChain := append(append([]*tBlock{}, shared[:H]...), alias, child)
+	node := newWrapperAliasNode(reg, shared)
+
+	if err := runBootstrap(t, newTestPeer(peerChain), node); err != ErrStalled {
+		t.Fatalf("a rejected child after overlap replay must stall, got %v", err)
+	}
+	if node.height != H || node.accepts != 0 || node.aliases != 1 {
+		t.Fatalf("overlap must be stored once without masking zero head progress: height=%d accepts=%d aliases=%d", node.height, node.accepts, node.aliases)
 	}
 }
 
