@@ -40,7 +40,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
       # CI owns the expensive race gate for this commit. Repeating it here made
       # two 18-minute crypto suites contend on shared runners and could exceed
       # this job's 30-minute limit. Release still tests the exact tagged tree.
