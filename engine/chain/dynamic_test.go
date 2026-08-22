@@ -365,14 +365,12 @@ func TestVoteRepollPreventsStall(t *testing.T) {
 	}
 
 	// The re-poll loop (interval RoundTO=5ms) must issue a SECOND RequestVotes,
-	// which delivers the peer votes → quorum → real α-of-K cert → VM.Accept. Wait
-	// on VM.Accept (the actual finalization), not just consensus.IsAccepted, since
-	// the VM commit follows the count flip by a hair.
-	if !waitFor(2*time.Second, func() bool { return blk.AcceptCalled() >= 1 }) {
+	// which delivers the peer votes → quorum → real α-of-K cert → VM.Accept. The
+	// engine publishes IsAccepted only after VM.Accept returns successfully, so
+	// wait for that completed commit rather than observing the mock from inside
+	// its Accept call.
+	if !waitFor(2*time.Second, func() bool { return proposer.IsAccepted(blk.id) }) {
 		t.Fatal("WEDGE: re-poll did not recover the stalled block — no second RequestVotes was issued")
-	}
-	if !proposer.IsAccepted(blk.id) {
-		t.Fatal("block must be marked accepted after re-poll recovery")
 	}
 	// Recovery MUST have come from a re-poll (second+ RequestVotes), proving the
 	// fix is what unstuck it — not the dropped first poll.
