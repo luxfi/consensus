@@ -35,10 +35,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
+      - uses: ./.github/actions/setup-go-for-project
       - run: go mod download
       # -timeout=40m, not 15m. protocol/quasar is 11601 tests over SLH-DSA
       # (FIPS 205 at ParamsM192s) and the race detector multiplies it ~22x:
@@ -61,10 +58,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
+      - uses: ./.github/actions/setup-go-for-project
       - name: Install golangci-lint v2
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
       - run: golangci-lint run --timeout=10m
@@ -115,10 +109,7 @@ jobs:
             arch: arm64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: false
+      - uses: ./.github/actions/setup-go-for-project
       - name: Build ${{ matrix.os }}/${{ matrix.arch }}
         env:
           GOOS: ${{ matrix.os }}
