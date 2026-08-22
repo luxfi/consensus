@@ -37,10 +37,7 @@ jobs:
       CGO_ENABLED: '0'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: false
+      - uses: ./.github/actions/setup-go-for-project
       # CI owns the expensive race gate for this commit. Repeating it here made
       # two 18-minute crypto suites contend on shared runners and could exceed
       # this job's 30-minute limit. Release still tests the exact tagged tree.
@@ -62,10 +59,7 @@ jobs:
             arch: arm64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: false
+      - uses: ./.github/actions/setup-go-for-project
       - name: Build ${{ matrix.os }}/${{ matrix.arch }}
         env:
           GOOS: ${{ matrix.os }}
