@@ -11,6 +11,7 @@
     "postinstall": "docs-mdx source.config.ts .source"
   },
   "dependencies": {
+    "@hanzo/font": "^1.8.0",
     "@hanzo/docs": "^16.4.1",
     "@hanzo/docs-mdx": "^14.2.8",
     "@hanzo/docs-ui": "^16.5.3",

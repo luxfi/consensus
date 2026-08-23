@@ -17,6 +17,9 @@ importers:
       '@hanzo/docs-ui':
         specifier: ^16.5.3
         version: 16.5.3(@hanzo/docs-core@16.5.3(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.4)(@types/mdast@4.0.4)(@types/react@19.2.7)(lucide-react@0.468.0(react@19.2.0))(mdast-util-mdx-jsx@3.2.0)(next@16.0.1(@babel/core@7.29.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react-router@7.13.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)(zod@3.25.76))(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(next@16.0.1(@babel/core@7.29.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(tailwindcss@4.1.18)
+      '@hanzo/font':
+        specifier: ^1.8.0
+        version: 1.8.2(next@16.0.1(@babel/core@7.29.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.2.0)
@@ -1107,6 +1110,11 @@ packages:
       waku:
         optional: true
 
+  '@hanzo/font@1.8.2':
+    resolution: {integrity: sha512-Ag9gldPYdVoBn7sXIyXFf7GQtruW2hbs8UDwFPmr1JQX78V8n9wcFrwrRVySkepAb3DrJZ2VQ7Lj3gy1yRqq9Q==}
+    peerDependencies:
+      next: '>=13.2.0'
+
   '@hanzo/mdx-runtime@1.6.1':
     resolution: {integrity: sha512-XPJdiLcKmVJfsI0VEJsxcLeDQ1XbqPoQ+BtZbujwus1ulRO0q/rOKXNne/Fb66MOw5+3U+WKolE86WhdtlVwNw==}
     peerDependencies:
@@ -1137,7 +1145,7 @@ packages:
 
   '@hanzo/ui@5.3.34':
     resolution: {integrity: sha512-iFMZLT8L5BNFYNJec8cBSHeSH3ookWq3am3RsJauyGOnel4faGF2tv9p81Yt7ZiJQkH6qyqCtJ/1avvI5oQaNg==}
-    deprecated: → @hanzo/ui-shadcn; @hanzo/ui@8 is the @hanzo/gui unified lib
+    deprecated: moved to @hanzo/ui-shadcn; @hanzo/ui@8+ is the @hanzo/gui-based unified library
     hasBin: true
     peerDependencies:
       '@dnd-kit/core': ^6.0.0
@@ -5254,6 +5262,10 @@ snapshots:
       - typescript
       - vite
       - yaml
+
+  '@hanzo/font@1.8.2(next@16.0.1(@babel/core@7.29.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))':
+    dependencies:
+      next: 16.0.1(@babel/core@7.29.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
 
   '@hanzo/mdx-runtime@1.6.1(@hanzo/docs-core@16.5.3(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.4)(@types/mdast@4.0.4)(@types/react@19.2.7)(lucide-react@0.468.0(react@19.2.0))(mdast-util-mdx-jsx@3.2.0)(next@16.0.1(@babel/core@7.29.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react-router@7.13.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)(zod@3.25.76))(@types/react@19.2.7)(react@19.2.0)':
     dependencies:
