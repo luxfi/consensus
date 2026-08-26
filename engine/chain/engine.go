@@ -3657,10 +3657,10 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// REMEMBER THE ACCEPTED POSITION BEFORE FINALITY BECOMES VISIBLE. handleVote routes a vote
 	// for a block that is no longer pending but IS in finalizedByCert to attestFinalizedVote,
 	// which resolves the signed position through lookupAcceptedPos. applyBranchFinalization sets
-	// finalizedByCert and drops the pending block; this record used to be written later still,
-	// inside promoteQuasar. Between those two points the tap was OPEN and the position ABSENT,
-	// so a vote arriving there took the finalized path, missed the lookup, and returned in
-	// silence.
+	// finalizedByCert and drops the pending block, so from that moment the finalized path is
+	// the one a vote takes. The position has to be recorded before then: written any later,
+	// there is a window where the path is open and the position absent, and a vote arriving
+	// in it misses the lookup and returns in silence.
 	//
 	// That vote is not recoverable. Accept votes are solicited once and there is no retroactive
 	// promotion, so losing the ⅔-th one leaves the height Nova-only PERMANENTLY — settlement
@@ -3692,10 +3692,10 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	// applied; the durable floor advances only to it (never past the VM's state).
 	highestAccepted, acceptErr := t.applyBranchFinalization(ctx, plan, blockID, cert)
 
-	// THE NOVA ACCEPT DOES NOT TOUCH THE VOTE GUARD. This is the tier separation, at the one
-	// place it used to be violated: the line here was
-	//     if highestAccepted > 0 { t.pruneCommittedSlotsBelow(highestAccepted) }   // ← DELETED
-	// which advanced the PERMANENT, fsync'd sign-refusal floor to a height carrying only a bare
+	// THE NOVA ACCEPT DOES NOT TOUCH THE VOTE GUARD. This is the tier separation, and this is
+	// the place it has to hold. Advancing the guard here — pruneCommittedSlotsBelow on
+	// highestAccepted — would move the PERMANENT, fsync'd sign-refusal floor to a height
+	// carrying only a bare
 	// Nova majority. Nova acceptance is reorgable by construction (2α−n = 1, NOT > f=1), so that
 	// welded each validator to whatever it happened to accept first: on a split first vote the
 	// fleet grew divergent Nova ledgers and every node fsync'd a refusal at its own height, then

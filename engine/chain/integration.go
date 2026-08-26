@@ -135,13 +135,11 @@ type Gossiper interface {
 }
 
 // QuorumGossiper is the vote/cert distribution topology required for α-of-K
-// finality. It is the STRUCTURAL fix for the proposer-freeze: under the old
-// SendVote-to-proposer-only topology a follower's vote reached only the
-// proposer, so if the proposer's own Chits dropped it pinned below alpha and
-// froze (which is why self-finality was bolted on). Here followers broadcast
-// their SIGNED votes to ALL validators and any node that collects alpha
-// distinct signed votes assembles + gossips the cert — so finality no longer
-// depends on one node's inbound Chits.
+// finality. Followers broadcast their SIGNED votes to ALL validators, and any
+// node that collects alpha distinct signed votes assembles and gossips the
+// cert. So finality does not depend on any one node's inbound Chits: a vote
+// that reaches only the proposer leaves the round resting on whether that one
+// node hears enough, and this topology does not.
 //
 // A Gossiper that does not implement QuorumGossiper runs in legacy single-
 // validator / no-cert mode (K==1). Multi-validator finality requires it.
@@ -174,9 +172,10 @@ type Runtime struct {
 	// before VM.Accept completes; without a single ingestion lane, a burst of
 	// identical peer deliveries can all clear the stale-height check and perform
 	// the same signature verification concurrently. Only one can advance
-	// finality, but every waiter used to report success and amplify CPU during
-	// catch-up. The winner finalizes; queued duplicates then hit the cheap
-	// finalized-height guard and return without re-verifying or re-accepting.
+	// finality: the winner finalizes, and queued duplicates then hit the cheap
+	// finalized-height guard and return without re-verifying or re-accepting,
+	// so a burst of identical deliveries costs one verification rather than
+	// one each.
 	certMu sync.Mutex
 	// fastFollowHeight tracks the highest block height accepted via fast-follow.
 	// We use height instead of parent ID matching because:
@@ -523,14 +522,11 @@ func (rt *Runtime) FinalizedLedger() (tip ids.ID, height uint64, set bool) {
 // per-height ledger, with ok=false when the node has not finalized that height THIS
 // session (a height below the boot seed is never re-seeded, so it reads absent).
 //
-// It is the authoritative in-process fork-sibling oracle, in place of the VM height
-// index the node's acceptance check used to call. That is a choice about where
-// finality is decided and not a workaround: this ledger is what finality means here,
+// It is the authoritative in-process fork-sibling oracle, and the node's acceptance
+// check asks it rather than a VM height index. That is a choice about where finality
+// is decided: this ledger is what finality means here,
 // while a VM's height index answers what that VM has accepted, and the two can
-// disagree while a decision is in flight. (The note that used to sit here said the
-// index was unhandled over ZAP. It is handled now — vm/rpc/vm_server_zap.go — and the
-// C-Chain implements the method, so that reason has expired while the decision has
-// not.) When the ledger
+// disagree while a decision is in flight. When the ledger
 // knows h it rejects a stored-but-losing sibling (canonical != id); when it does not
 // (a height below the boot seed), the node degrades to the height-bound anchor
 // (h > finalizedHeight ⇒ not accepted), which the ⅔-by-stake frontier naming (C1) backs.
@@ -784,21 +780,20 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 			log.Stringer("from", fromNodeID))
 	}
 
-	// QUORUM-GATED FOLLOW (replaces the old unverified fast-follow Accept):
+	// QUORUM-GATED FOLLOW:
 	//
-	// A follower MUST NOT Accept a gossiped block on mere arrival — that was the
-	// follower-side half of the self-finality hole (an equivocating proposer
-	// could get followers to commit two different blocks at one height). Instead
-	// the follower:
+	// A follower MUST NOT Accept a gossiped block on mere arrival. Arrival is
+	// not agreement, and an equivocating proposer can put two blocks for one
+	// height in front of two followers. Instead the follower:
 	//   1. has already VERIFIED the block (above),
 	//   2. tracks it for consensus and casts its OWN signed accept vote,
 	//   3. BROADCASTS that signed vote to ALL validators (topology fix), and
 	//   4. Accepts ONLY when it holds a verified α-of-K QuorumCert
 	//      (handleIncomingCert, or a cert it assembles from gossiped votes).
 	//
-	// This both closes the fork (no commit without α-of-K witness) AND keeps
-	// liveness (votes reach every validator, so finality does not hinge on one
-	// node's inbound Chits; the proposer-freeze cannot recur).
+	// No commit without an α-of-K witness, so two followers cannot commit
+	// different blocks at one height; and votes reach every validator, so
+	// finality does not hinge on one node's inbound Chits.
 	blockID := blk.ID()
 	rt.fastFollowMu.Lock()
 	defer rt.fastFollowMu.Unlock()
@@ -1002,9 +997,10 @@ func (rt *Runtime) emitConvergedVote(_ context.Context, height uint64, parentID 
 	// signature at this height, our target is the DURABLE committedSlot[H] canonical, and we
 	// re-sign it IFF our own vote is missing from its cert set. That is the frozen-clone
 	// artifact — after a mass-restart from a mid-vote snapshot, committedSlot[H] is re-seeded
-	// but certVotes is EMPTY (v1/v2/v3 persisted the binding, not the signature), so the old
-	// unconditional "already signed → return" suppressed our vote forever and the height
-	// never reached α-of-K (the wedge). Re-sign the DURABLE binding ONLY (never a fresh
+	// but certVotes is EMPTY, because what is persisted is the binding and not the
+	// signature. An unconditional "already signed → return" would suppress this node's vote
+	// for that height forever, and the height would never reach α-of-K. Re-sign the DURABLE
+	// binding ONLY (never a fresh
 	// winner — HARD RULE); reserveSlotForSign below admits the idempotent same-canonical
 	// re-sign and REFUSES any conflicting sibling, so this can never double-finalize.
 	bound, alreadySigned := t.committedCanonical(height)
@@ -1013,14 +1009,14 @@ func (rt *Runtime) emitConvergedVote(_ context.Context, height uint64, parentID 
 	var winnerID ids.ID
 	var pending *PendingBlock
 	if alreadySigned {
-		// CLONE-RECOVERY re-sign: `bound` is the DURABLE committedSlot[H] canonical — the
-		// INNER execution id (reserveSlotForSign stored slotCanonical(pos)). pendingBlocks is
-		// OUTER-keyed, so the old `pendingBlocks[bound]` MISSED for a proposervm-wrapped block
-		// (inner != outer) → pending==nil → silent no-op: the v4 fallback only ever worked on
-		// bare sim blocks (inner==outer), and on mainnet the missing self-vote was never
-		// re-contributed (the wedge). Resolve the tracked OUTER wrapper carrying that canonical
-		// and re-sign THAT — still the durable binding, so reserveSlotForSign's
-		// conflicting-sibling refusal below keeps it equivocation-safe.
+		// CLONE-RECOVERY re-sign. `bound` is the DURABLE committedSlot[H] canonical, which
+		// is the INNER execution id (reserveSlotForSign stores slotCanonical(pos)), while
+		// pendingBlocks is OUTER-keyed. For a proposervm-wrapped block inner != outer, so
+		// `bound` is not a key into pendingBlocks and looking it up there finds nothing —
+		// the two ids coincide only on bare blocks. Resolve the tracked OUTER wrapper
+		// carrying that canonical and re-sign THAT: still the durable binding, so
+		// reserveSlotForSign's conflicting-sibling refusal below keeps it
+		// equivocation-safe.
 		pending, winnerID = t.pendingByCanonicalLocked(bound)
 	} else {
 		// Every live sibling counts, abandoned or not. Abandonment is a per-node

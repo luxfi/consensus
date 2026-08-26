@@ -117,9 +117,9 @@ func (rt *Runtime) AcceptBootstrapBlock(ctx context.Context, blockBytes []byte) 
 	//     fetch delivered a higher segment first) — reject WITHOUT verifying/accepting;
 	//     the loop fetches the parent and comes back. The per-height guard would refuse
 	//     it regardless; this just avoids the wasted Verify.
-	// Skipping on the LEDGER height alone is the wedge this replaces: every block in
-	// (applied, finalized] read as already-synced and was dropped with a nil error, so
-	// the loop counted a full batch accepted, advanced nothing, and re-asked forever.
+	// The LEDGER height alone cannot decide this: every block in (applied, finalized]
+	// reads as already-synced against it and would be dropped with a nil error, so the
+	// loop would count a full batch accepted, advance nothing, and re-ask forever.
 	// Within an ordered (oldest-first) feed this never wrongly rejects: by the time
 	// N+1 is processed, N has been executed, so N+1.height == floor+1.
 	if fh, set := rt.Transitive.consensus.GetFinalizedHeight(); set {
