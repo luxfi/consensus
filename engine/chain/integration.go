@@ -523,9 +523,14 @@ func (rt *Runtime) FinalizedLedger() (tip ids.ID, height uint64, set bool) {
 // per-height ledger, with ok=false when the node has not finalized that height THIS
 // session (a height below the boot seed is never re-seeded, so it reads absent).
 //
-// It is the authoritative IN-PROCESS fork-sibling oracle — it replaces the dead coreth
-// height index the node's acceptance check used to call (block.ChainVM.GetBlockIDAtHeight
-// is unhandled over ZAP, so it returned nothing on the real C-Chain). When the ledger
+// It is the authoritative in-process fork-sibling oracle, in place of the VM height
+// index the node's acceptance check used to call. That is a choice about where
+// finality is decided and not a workaround: this ledger is what finality means here,
+// while a VM's height index answers what that VM has accepted, and the two can
+// disagree while a decision is in flight. (The note that used to sit here said the
+// index was unhandled over ZAP. It is handled now — vm/rpc/vm_server_zap.go — and the
+// C-Chain implements the method, so that reason has expired while the decision has
+// not.) When the ledger
 // knows h it rejects a stored-but-losing sibling (canonical != id); when it does not
 // (a height below the boot seed), the node degrades to the height-bound anchor
 // (h > finalizedHeight ⇒ not accepted), which the ⅔-by-stake frontier naming (C1) backs.
