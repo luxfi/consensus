@@ -1616,9 +1616,9 @@ const (
 // the network boundary), the proposer's block sits in pendingBlocks with only its
 // own self-vote and NOTHING re-solicits the missing votes. The finality poll loop
 // (processPendingBlocks) only CHECKS consensus.IsAccepted; it never re-requests.
-// So a single lagging validator at height 0 wedged finality forever — the devnet
-// freeze. This loop implements the "poll-timeout re-request" the topology doc
-// (topology.go) already promises but that was never wired.
+// Without a retry, one lagging validator at height 0 is enough to hold finality
+// there indefinitely. This loop implements the poll-timeout re-request the
+// topology doc (topology.go) describes.
 //
 // It is a pure liveness retry: it re-solicits votes and re-attempts cert
 // assembly, and changes NOTHING about the finality predicate. A block still
