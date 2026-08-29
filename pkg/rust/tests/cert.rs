@@ -508,6 +508,147 @@ fn assembly_is_canonical() {
     assert_eq!(cert.verify(&set, 0), Ok(()));
 }
 
+// ------------------------------------------------- the probabilistic engine's cert
+
+/// `QuasarConsensus` issues a certificate only from votes that carry a verified
+/// signature, and the certificate it issues verifies. Unsigned ballots — which
+/// is what the probabilistic engine actually collects today — produce no
+/// certificate rather than an empty one that later passes.
+#[test]
+fn the_engine_issues_certificates_only_from_signatures() {
+    use lux_consensus::{ConsensusError, NodeID, QuasarConfig, QuasarConsensus, VoteType};
+
+    let (signers, _) = committee(4, 100);
+    let mut config = QuasarConfig::testnet();
+    config.k = 4;
+    config.alpha = 0.75; // threshold = 3
+    let mut q = QuasarConsensus::new(&config);
+
+    for s in &signers {
+        q.add_validator_with_key(NodeID::from(s.id), s.weight, &s.public())
+            .expect("register");
+    }
+
+    let pos = position();
+    let message = canonical_vote_message(&pos, true);
+
+    // Unsigned ballots: members, but no evidence.
+    let unsigned: Vec<lux_consensus::Vote> = signers
+        .iter()
+        .map(|s| {
+            lux_consensus::Vote::new(
+                lux_consensus::ID::from(pos.block_id),
+                VoteType::Preference,
+                NodeID::from(s.id),
+            )
+        })
+        .collect();
+    assert!(matches!(
+        q.create_certificate(pos.clone(), &unsigned),
+        Err(ConsensusError::NoQuorum)
+    ));
+
+    // The same ballots, signed.
+    let signed: Vec<lux_consensus::Vote> = signers
+        .iter()
+        .map(|s| {
+            lux_consensus::Vote::new(
+                lux_consensus::ID::from(pos.block_id),
+                VoteType::Preference,
+                NodeID::from(s.id),
+            )
+            .with_signature(s.sign(&message))
+        })
+        .collect();
+
+    let cert = q.create_certificate(pos.clone(), &signed).expect("certificate");
+    assert_eq!(cert.signers.len(), 4);
+    assert!(cert.quantum_sigs.is_empty(), "no post-quantum signer exists yet");
+    assert!(q.verify_certificate(&cert));
+
+    // The forgeries, against this path too.
+    let mut zeroed = cert.clone();
+    zeroed.aggregated_sig = vec![0u8; SIGNATURE_LEN];
+    assert!(!q.verify_certificate(&zeroed));
+
+    let mut garbage = cert.clone();
+    garbage.aggregated_sig = vec![0xABu8; SIGNATURE_LEN];
+    assert!(!q.verify_certificate(&garbage));
+
+    let mut empty = cert.clone();
+    empty.aggregated_sig = Vec::new();
+    assert!(!q.verify_certificate(&empty));
+
+    // Moved to another position, the aggregate is no longer a proof.
+    let mut moved = cert.clone();
+    moved.position.height += 1;
+    assert!(!q.verify_certificate(&moved));
+
+    // A signer swapped for a stranger.
+    let mut swapped = cert.clone();
+    swapped.signers[3] = NodeID::from([0xEEu8; 32]);
+    assert!(!q.verify_certificate(&swapped));
+}
+
+/// A member with no registered key holds stake and may have its ballot counted,
+/// but can never contribute to a certificate.
+#[test]
+fn a_keyless_member_cannot_be_certified() {
+    use lux_consensus::{ConsensusError, NodeID, QuasarConfig, QuasarConsensus, VoteType};
+
+    let (signers, _) = committee(4, 100);
+    let mut config = QuasarConfig::testnet();
+    config.k = 4;
+    config.alpha = 0.75; // threshold = 3
+    let mut q = QuasarConsensus::new(&config);
+
+    // Two keyed, two not.
+    q.add_validator_with_key(NodeID::from(signers[0].id), 100, &signers[0].public())
+        .unwrap();
+    q.add_validator_with_key(NodeID::from(signers[1].id), 100, &signers[1].public())
+        .unwrap();
+    q.add_validator(NodeID::from(signers[2].id), 100);
+    q.add_validator(NodeID::from(signers[3].id), 100);
+
+    assert_eq!(q.validator_count(), 4);
+    for s in &signers {
+        assert!(q.is_validator(&NodeID::from(s.id)));
+    }
+
+    let pos = position();
+    let message = canonical_vote_message(&pos, true);
+    let votes: Vec<lux_consensus::Vote> = signers
+        .iter()
+        .map(|s| {
+            lux_consensus::Vote::new(
+                lux_consensus::ID::from(pos.block_id),
+                VoteType::Preference,
+                NodeID::from(s.id),
+            )
+            .with_signature(s.sign(&message))
+        })
+        .collect();
+
+    // All four signed, but only two can be checked — below the threshold of 3.
+    assert!(matches!(
+        q.create_certificate(pos, &votes),
+        Err(ConsensusError::NoQuorum)
+    ));
+}
+
+/// An invalid key is refused at registration, so it never becomes a member.
+#[test]
+fn the_engine_refuses_an_invalid_key() {
+    use lux_consensus::{NodeID, QuasarConfig, QuasarConsensus};
+
+    let mut q = QuasarConsensus::new(&QuasarConfig::testnet());
+    assert!(q
+        .add_validator_with_key(NodeID::from([1u8; 32]), 100, &[0u8; 48])
+        .is_err());
+    assert_eq!(q.validator_count(), 0);
+    assert!(!q.is_validator(&NodeID::from([1u8; 32])));
+}
+
 /// Assembly cannot manufacture a quorum it does not have.
 #[test]
 fn assembly_refuses_to_under_fill() {

@@ -58,6 +58,13 @@ fn test_consensus_flow() {
     let mut chain = QuasarEngine::new(config);
     chain.start().unwrap();
 
+    // The committee whose ballots count. Without this the votes below are from
+    // nobody, and an engine that counts them is sampling the network rather
+    // than the validator set.
+    for i in 0..3 {
+        chain.add_validator(make_node_id(i), 1);
+    }
+
     // Create and add a block
     let block = Block::new(
         make_id(1),
@@ -80,6 +87,42 @@ fn test_consensus_flow() {
     // Check status (should be at least processing)
     let status = chain.get_status(&block.id);
     assert!(status == Status::Processing || status == Status::Accepted);
+
+    chain.stop().unwrap();
+}
+
+/// A ballot from outside the validator set is refused, and refused whether or
+/// not the set is empty. This is the hole that let nine unregistered node ids
+/// drive a block to Accepted.
+#[test]
+fn votes_from_outside_the_committee_are_refused() {
+    let mut config = QuasarConfig::testnet();
+    config.k = 3;
+    config.beta = 1;
+
+    let mut chain = QuasarEngine::new(config);
+    chain.start().unwrap();
+
+    let block = Block::new(make_id(1), ID::zero(), 1, b"Test Block".to_vec());
+    chain.add(block.clone()).unwrap();
+
+    // No validators registered: nobody may vote.
+    for i in 0..9 {
+        let vote = Vote::new(block.id.clone(), VoteType::Preference, make_node_id(i));
+        assert!(chain.record_vote(vote).is_err(), "voter {i} was counted");
+    }
+    assert!(!chain.is_accepted(&block.id));
+
+    // With a committee, its members are counted and a stranger still is not.
+    for i in 0..3 {
+        chain.add_validator(make_node_id(i), 1);
+    }
+    for i in 0..3 {
+        let vote = Vote::new(block.id.clone(), VoteType::Preference, make_node_id(i));
+        chain.record_vote(vote).unwrap();
+    }
+    let stranger = Vote::new(block.id.clone(), VoteType::Preference, make_node_id(200));
+    assert!(chain.record_vote(stranger).is_err());
 
     chain.stop().unwrap();
 }

@@ -25,6 +25,11 @@
 //!     let mut engine = QuasarEngine::new(config);
 //!     engine.start().unwrap();
 //!
+//!     // The committee. Only its members' ballots are counted.
+//!     for i in 0..20 {
+//!         engine.add_validator(NodeID::from([i; 32]), 1);
+//!     }
+//!
 //!     // Add a block
 //!     let block = Block::new(
 //!         ID::from([1u8; 32]),
@@ -237,14 +242,26 @@ pub mod types {
         }
     }
 
-    /// Consensus certificate with aggregated signatures
+    /// Consensus certificate with aggregated signatures.
+    ///
+    /// It carries the position its signers signed over, because a signature is
+    /// only evidence about the thing it was made over: without the position a
+    /// holder cannot rebuild the signed message, and can only check the
+    /// certificate's shape.
     #[derive(Debug, Clone)]
     pub struct Certificate {
         pub block_id: ID,
         pub height: u64,
+        /// The exact position every signature here was made over.
+        pub position: crate::finality::Position,
         pub signers: Vec<NodeID>,
-        pub aggregated_sig: Vec<u8>,      // BLS aggregated signature
-        pub quantum_sigs: Vec<Vec<u8>>,   // Corona individual signatures
+        /// BLS aggregate over `canonical_vote_message(position, true)`,
+        /// compressed G2, 96 bytes.
+        pub aggregated_sig: Vec<u8>,
+        /// Post-quantum signatures, one per signer. Empty: this crate carries
+        /// no post-quantum signer yet, and an empty list says so, where a copy
+        /// of the BLS signature under a second name would not.
+        pub quantum_sigs: Vec<Vec<u8>>,
         pub timestamp: SystemTime,
     }
 
@@ -1073,22 +1090,17 @@ pub mod wave {
 
 pub mod quasar {
     use super::*;
+    use crate::cert::{ValidatorSet, VoteVerifier};
 
-    /// Validator in the Quasar consensus
-    #[derive(Debug, Clone)]
-    pub struct Validator {
-        pub id: NodeID,
-        pub weight: u64,
-        pub active: bool,
-        pub bls_pubkey: Option<Vec<u8>>,      // BLS12-381 public key (96 bytes)
-        pub corona_pubkey: Option<Vec<u8>>,   // Corona post-quantum public key
-    }
-
-    /// Quasar hybrid consensus with post-quantum signatures
+    /// Quasar finality: the certificate side of the engine.
+    ///
+    /// It holds the one validator set — membership, stake and signing keys —
+    /// and it will only issue or accept a certificate whose signatures verify
+    /// under it. A vote from a member with no registered key contributes
+    /// nothing here, which is the fail-closed direction.
     pub struct QuasarConsensus {
-        validators: HashMap<NodeID, Validator>,
+        validators: ValidatorSet,
         threshold: usize,
-        security_level: SecurityLevel,
         finalized: HashMap<ID, Certificate>,
     }
 
@@ -1096,44 +1108,39 @@ pub mod quasar {
         /// Create new Quasar consensus
         pub fn new(config: &QuasarConfig) -> Self {
             QuasarConsensus {
-                validators: HashMap::new(),
+                validators: ValidatorSet::new(),
                 threshold: config.alpha_count(),
-                security_level: config.security_level,
                 finalized: HashMap::new(),
             }
         }
 
-        /// Add a validator
+        /// Register a validator this node has no signing key for.
+        ///
+        /// It is a member and it holds stake, so its ballots count toward
+        /// preference — but it cannot contribute to a certificate until its key
+        /// is known.
         pub fn add_validator(&mut self, id: NodeID, weight: u64) {
-            self.validators.insert(id.clone(), Validator {
-                id,
-                weight,
-                active: true,
-                bls_pubkey: None,
-                corona_pubkey: None,
-            });
+            self.validators.insert_unkeyed(*id.as_bytes(), weight);
         }
 
-        /// Add a validator with cryptographic keys
-        pub fn add_validator_with_keys(
+        /// Register a validator with the BLS key it signs with.
+        ///
+        /// An invalid key is refused rather than stored, so a registered key is
+        /// always one a signature can actually be checked against.
+        pub fn add_validator_with_key(
             &mut self,
             id: NodeID,
             weight: u64,
-            bls_pubkey: Option<Vec<u8>>,
-            corona_pubkey: Option<Vec<u8>>,
-        ) {
-            self.validators.insert(id.clone(), Validator {
-                id,
-                weight,
-                active: true,
-                bls_pubkey,
-                corona_pubkey,
-            });
+            bls_pubkey: &[u8],
+        ) -> Result<()> {
+            self.validators
+                .insert(*id.as_bytes(), weight, bls_pubkey)
+                .map_err(|e| ConsensusError::CryptoError(format!("{e:?}")))
         }
 
         /// Remove a validator
         pub fn remove_validator(&mut self, id: &NodeID) {
-            self.validators.remove(id);
+            self.validators.remove(id.as_bytes());
         }
 
         /// Get validator count
@@ -1141,48 +1148,81 @@ pub mod quasar {
             self.validators.len()
         }
 
+        /// Whether this node may count `id`'s ballot.
+        pub fn is_validator(&self, id: &NodeID) -> bool {
+            self.validators.contains(id.as_bytes())
+        }
+
+        /// The validator set, for verifying certificates against.
+        pub fn validators(&self) -> &ValidatorSet {
+            &self.validators
+        }
+
         /// Check if we have enough validators for consensus
         pub fn has_quorum(&self) -> bool {
             self.validators.len() >= self.threshold
         }
 
-        /// Create a certificate from votes
+        /// Issue a certificate for `position` from the votes that actually
+        /// support it.
         ///
-        /// Aggregates BLS signatures and collects Corona signatures
-        /// for quantum-safe finality verification.
+        /// A vote counts only if its signature verifies under the voter's
+        /// registered key over `canonical_vote_message(position, true)`. So a
+        /// certificate is issued from evidence or not at all — unsigned ballots
+        /// produce `NoQuorum`, not an empty certificate that later verifies.
         pub fn create_certificate(
             &mut self,
-            block_id: ID,
-            height: u64,
+            position: Position,
             votes: &[Vote],
         ) -> Result<Certificate> {
-            if votes.len() < self.threshold {
-                return Err(ConsensusError::NoQuorum);
-            }
+            let message = canonical_vote_message(&position, true);
 
-            // Collect signers (validators who voted)
-            let signers: Vec<NodeID> = votes
-                .iter()
-                .filter(|v| self.validators.contains_key(&v.voter))
-                .map(|v| v.voter.clone())
-                .collect();
+            let mut signers: Vec<NodeID> = Vec::new();
+            let mut sigs: Vec<BlsSignature> = Vec::new();
+            let mut seen: std::collections::HashSet<[u8; 32]> = std::collections::HashSet::new();
+
+            for v in votes.iter().filter(|v| v.prefer()) {
+                let id = *v.voter.as_bytes();
+                if !seen.insert(id) {
+                    continue;
+                }
+                if !self.validators.verify_vote(&id, &message, &v.signature, position.height) {
+                    continue;
+                }
+                match BlsSignature::uncompress(&v.signature) {
+                    Ok(sig) => {
+                        signers.push(v.voter.clone());
+                        sigs.push(sig);
+                    }
+                    Err(_) => continue,
+                }
+            }
 
             if signers.len() < self.threshold {
                 return Err(ConsensusError::NoQuorum);
             }
 
-            // Aggregate BLS signatures from all valid votes
-            let aggregated_sig = self.aggregate_bls_signatures(votes);
+            // Canonical order, so one set of votes has one certificate.
+            let mut paired: Vec<(NodeID, BlsSignature)> =
+                signers.into_iter().zip(sigs.into_iter()).collect();
+            paired.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+            let signers: Vec<NodeID> = paired.iter().map(|(n, _)| n.clone()).collect();
+            let sigs: Vec<&BlsSignature> = paired.iter().map(|(_, s)| s).collect();
 
-            // Collect Corona signatures for quantum-safe verification
-            let quantum_sigs = self.collect_corona_signatures(votes);
+            let aggregated_sig = AggregateSignature::aggregate(&sigs, false)
+                .map_err(|e| ConsensusError::CryptoError(format!("{e:?}")))?
+                .to_signature()
+                .compress()
+                .to_vec();
 
+            let block_id = ID::from(position.block_id);
             let cert = Certificate {
                 block_id: block_id.clone(),
-                height,
+                height: position.height,
+                position,
                 signers,
                 aggregated_sig,
-                quantum_sigs,
+                quantum_sigs: Vec::new(),
                 timestamp: SystemTime::now(),
             };
 
@@ -1190,27 +1230,29 @@ pub mod quasar {
             Ok(cert)
         }
 
-        /// Verify a certificate
+        /// Whether `cert` is evidence that its position was accepted.
+        ///
+        /// Threshold, membership, canonical order, and — the part that was
+        /// missing — the aggregate signature itself, checked against the
+        /// aggregate of the signers' keys over the message rebuilt from the
+        /// certificate's own position.
         pub fn verify_certificate(&self, cert: &Certificate) -> bool {
-            // Check signer count
             if cert.signers.len() < self.threshold {
                 return false;
             }
-
-            // Verify all signers are validators
-            for signer in &cert.signers {
-                if !self.validators.contains_key(signer) {
-                    return false;
-                }
+            // Strictly increasing: distinct signers, one encoding per set.
+            if cert
+                .signers
+                .windows(2)
+                .any(|w| w[0].as_bytes() >= w[1].as_bytes())
+            {
+                return false;
             }
 
-            // BLS signature verification would use:
-            // blst::min_pk::PublicKey for aggregated public key
-            // BlsSignature::verify() for the aggregated signature
-            // Corona signatures are verified individually against validator public keys
-
-            // Structural checks pass - signature verification depends on having public keys
-            !cert.aggregated_sig.is_empty() || !cert.quantum_sigs.is_empty()
+            let ids: Vec<[u8; 32]> = cert.signers.iter().map(|s| *s.as_bytes()).collect();
+            let message = canonical_vote_message(&cert.position, true);
+            self.validators
+                .verify_aggregate(&ids, &message, &cert.aggregated_sig)
         }
 
         /// Check if a block has quantum finality
@@ -1221,57 +1263,6 @@ pub mod quasar {
         /// Get certificate for a block
         pub fn get_certificate(&self, block_id: &ID) -> Option<&Certificate> {
             self.finalized.get(block_id)
-        }
-
-        /// Aggregate BLS12-381 signatures from votes
-        ///
-        /// Uses the blst crate for real BLS signature aggregation.
-        /// Returns 48-byte aggregated G1 signature.
-        fn aggregate_bls_signatures(&self, votes: &[Vote]) -> Vec<u8> {
-            // Filter votes with valid BLS signatures (48 bytes for G1)
-            let bls_sigs: Vec<&[u8]> = votes
-                .iter()
-                .filter_map(|v| {
-                    if v.signature.len() >= 48 {
-                        Some(&v.signature[..48])
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            if bls_sigs.is_empty() {
-                return vec![0u8; 48];
-            }
-
-            // Parse first valid signature to initialize aggregator
-            let first_sig = match BlsSignature::uncompress(&bls_sigs[0]) {
-                Ok(sig) => sig,
-                Err(_) => return vec![0u8; 48], // Invalid first signature
-            };
-
-            let mut agg = AggregateSignature::from_signature(&first_sig);
-
-            // Add remaining signatures
-            for sig_bytes in bls_sigs.iter().skip(1) {
-                if let Ok(sig) = BlsSignature::uncompress(sig_bytes) {
-                    let _ = agg.add_signature(&sig, true);
-                }
-            }
-
-            agg.to_signature().compress().to_vec()
-        }
-
-        /// Collect Corona post-quantum signatures from votes
-        ///
-        /// Corona signatures are lattice-based and cannot be aggregated like BLS.
-        /// Each validator's Corona signature is collected for quantum-safe verification.
-        fn collect_corona_signatures(&self, votes: &[Vote]) -> Vec<Vec<u8>> {
-            votes
-                .iter()
-                .filter(|v| !v.signature.is_empty())
-                .map(|v| v.signature.clone())
-                .collect()
         }
     }
 
@@ -1411,16 +1402,22 @@ pub mod engine {
                 }
             }
 
-            // Create certificate if we have quorum
-            if let Some(state) = self.wave.state(block_id) {
+            // Issue a certificate if the votes carry signatures that support
+            // one. They often will not — this engine's ballots are unsigned —
+            // and then there is no certificate, which is the honest outcome.
+            let position = {
                 let blocks = self.blocks.read().unwrap();
-                if let Some(block) = blocks.get(block_id) {
-                    let _ = self.quasar.create_certificate(
-                        block_id.clone(),
-                        block.height,
-                        &state.votes,
-                    );
-                }
+                blocks.get(block_id).map(|block| Position {
+                    height: block.height,
+                    block_id: *block_id.as_bytes(),
+                    parent_id: *block.parent_id.as_bytes(),
+                    ..Position::default()
+                })
+            };
+            if let (Some(position), Some(votes)) =
+                (position, self.wave.state(block_id).map(|s| s.votes.clone()))
+            {
+                let _ = self.quasar.create_certificate(position, &votes);
             }
         }
     }
@@ -1460,6 +1457,15 @@ pub mod engine {
                 if !blocks.contains_key(&vote.block_id) {
                     return Err(ConsensusError::BlockNotFound);
                 }
+            }
+
+            // Only members are counted. Without this the sample is whoever
+            // happened to send a message: nine unregistered node ids used to
+            // carry a block to Accepted against an engine holding no validators
+            // at all. An empty set now counts nobody, which is the direction to
+            // fail in.
+            if !self.quasar.is_validator(&vote.voter) {
+                return Err(ConsensusError::NotValidator);
             }
 
             let block_id = vote.block_id.clone();
