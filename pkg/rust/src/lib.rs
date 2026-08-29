@@ -762,6 +762,48 @@ pub mod focus {
         }
     }
 
+    /// What one round said: a quorum for, a quorum against, or neither.
+    ///
+    /// A round produces this; confidence is a fold over a sequence of them.
+    /// Keeping the two apart is what lets the tally be counted in whatever unit
+    /// suits the caller — Wave counts votes, Focus takes a ratio — while the
+    /// rule about consecutive agreement stays in exactly one place.
+    pub type Verdict = Option<bool>;
+
+    /// Fold one verdict into a running confidence, and report a decision when
+    /// `beta` consecutive rounds have agreed.
+    ///
+    /// A verdict that agrees with the standing preference deepens confidence; a
+    /// verdict that opposes it replaces the preference and starts again at one;
+    /// no quorum at all resets to zero. That reset is the point of the
+    /// mechanism — β must be β *consecutive* rounds, or a block could
+    /// accumulate agreement across rounds that disagreed in between.
+    pub fn accumulate(
+        preference: &mut bool,
+        confidence: &mut u32,
+        verdict: Verdict,
+        beta: u32,
+    ) -> Option<Decision> {
+        match verdict {
+            Some(v) if *preference == v => *confidence += 1,
+            Some(v) => {
+                *preference = v;
+                *confidence = 1;
+            }
+            None => *confidence = 0,
+        }
+
+        if *confidence >= beta {
+            Some(if *preference {
+                Decision::Accept
+            } else {
+                Decision::Reject
+            })
+        } else {
+            None
+        }
+    }
+
     impl<ID: Eq + std::hash::Hash + Clone> Focus<ID> {
         /// Create new focus tracker
         pub fn new(threshold: u32, alpha: f64) -> Self {
@@ -781,7 +823,9 @@ pub mod focus {
             }
 
             let ratio = yes_votes as f64 / total_votes as f64;
-            let state = self.states.entry(id).or_insert_with(FocusState::default);
+            let beta = self.threshold;
+            let alpha = self.alpha;
+            let state = self.states.entry(id).or_default();
 
             if state.decided {
                 return false;
@@ -789,42 +833,23 @@ pub mod focus {
 
             state.last_ratio = ratio;
 
-            // Check if ratio exceeds alpha threshold
-            if ratio >= self.alpha {
-                // Voting YES
-                if state.preference {
-                    // Same preference, increment confidence
-                    state.confidence += 1;
-                } else {
-                    // Preference switched, reset
-                    state.preference = true;
-                    state.confidence = 1;
-                }
-            } else if ratio <= 1.0 - self.alpha {
-                // Voting NO (below inverse threshold)
-                if !state.preference {
-                    state.confidence += 1;
-                } else {
-                    state.preference = false;
-                    state.confidence = 1;
-                }
+            // This round's verdict, read as a ratio against alpha.
+            let verdict = if ratio >= alpha {
+                Some(true)
+            } else if ratio <= 1.0 - alpha {
+                Some(false)
             } else {
-                // In the uncertain zone, reset confidence
-                state.confidence = 0;
-            }
+                None
+            };
 
-            // Check for finality
-            if state.confidence >= self.threshold {
-                state.decided = true;
-                state.decision = if state.preference {
-                    Decision::Accept
-                } else {
-                    Decision::Reject
-                };
-                return true;
+            match accumulate(&mut state.preference, &mut state.confidence, verdict, beta) {
+                Some(decision) => {
+                    state.decided = true;
+                    state.decision = decision;
+                    true
+                }
+                None => false,
             }
-
-            false
         }
 
         /// Get state for an item
@@ -992,7 +1017,9 @@ pub mod wave {
 
         /// Check for consensus on a block
         fn check_consensus(&mut self, block_id: &ID) -> bool {
-            let threshold = self.get_threshold();
+            self.advance_phase();
+            let threshold = self.threshold();
+            let (k, beta) = (self.config.k, self.config.beta);
 
             let state = match self.states.get_mut(block_id) {
                 Some(s) => s,
@@ -1003,53 +1030,56 @@ pub mod wave {
                 return false;
             }
 
-            let total = state.yes_count + state.no_count;
-
             // Need at least k votes
-            if total < self.config.k {
+            if state.yes_count + state.no_count < k {
                 return false;
             }
 
-            // Check for quorum
-            if state.yes_count >= threshold {
-                if state.preference {
-                    state.confidence += 1;
-                } else {
-                    state.preference = true;
-                    state.confidence = 1;
-                }
+            // This round's verdict, read as counts against the threshold.
+            let verdict = if state.yes_count >= threshold {
+                Some(true)
             } else if state.no_count >= threshold {
-                if !state.preference {
-                    state.confidence += 1;
-                } else {
-                    state.preference = false;
-                    state.confidence = 1;
-                }
+                Some(false)
             } else {
-                state.confidence = 0;
-            }
+                None
+            };
 
-            // Check for finality (β consecutive rounds)
-            if state.confidence >= self.config.beta {
-                state.decided = true;
-                state.decision = if state.preference {
-                    Decision::Accept
-                } else {
-                    Decision::Reject
-                };
-                return true;
+            match crate::focus::accumulate(
+                &mut state.preference,
+                &mut state.confidence,
+                verdict,
+                beta,
+            ) {
+                Some(decision) => {
+                    state.decided = true;
+                    state.decision = decision;
+                    true
+                }
+                None => false,
             }
-
-            false
         }
 
-        /// Get threshold based on FPC or fixed alpha
-        pub fn get_threshold(&mut self) -> usize {
-            if let Some(ref fpc) = self.fpc {
+        /// The votes a block needs in the current phase.
+        ///
+        /// Pure: asking does not move the phase on. It used to, which meant the
+        /// FPC schedule advanced once per vote rather than once per round.
+        pub fn threshold(&self) -> usize {
+            match self.fpc {
+                Some(ref fpc) => fpc.select_threshold(self.phase, self.config.k),
+                None => self.config.alpha_count(),
+            }
+        }
+
+        /// Move to the next FPC phase.
+        ///
+        /// This engine has no round boundary — `check_consensus` runs on every
+        /// vote — so a phase is currently a vote. That is the gap: FPC draws a
+        /// threshold per ROUND, and a round is a fresh sample of k validators.
+        /// Until a round loop exists, the advance is at least explicit and in
+        /// one place rather than hidden inside a getter.
+        fn advance_phase(&mut self) {
+            if self.fpc.is_some() {
                 self.phase += 1;
-                fpc.select_threshold(self.phase, self.config.k)
-            } else {
-                self.config.alpha_count()
             }
         }
 
