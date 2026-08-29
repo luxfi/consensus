@@ -9,6 +9,7 @@ exclude github.com/ethereum/go-ethereum v1.16.3
 require (
 	github.com/luxfi/accel v1.2.4
 	github.com/luxfi/bft v0.1.5
+<<<<<<< Updated upstream
 	github.com/luxfi/constants v1.5.8
 	github.com/luxfi/crypto v1.19.26
 	github.com/luxfi/database v1.19.3
@@ -26,11 +27,32 @@ require (
 	github.com/luxfi/validators v1.2.0
 	github.com/luxfi/version v1.0.1
 	github.com/luxfi/warp v1.24.0
+=======
+	github.com/luxfi/corona v0.7.6
+	github.com/luxfi/crypto v1.19.10
+	github.com/luxfi/database v1.18.3
+	github.com/luxfi/ids v1.2.9
+	github.com/luxfi/lattice/v7 v7.1.0
+	github.com/luxfi/log v1.4.1
+	github.com/luxfi/math v1.4.0
+	github.com/luxfi/metric v1.5.0
+	github.com/luxfi/p2p v1.18.9
+	github.com/luxfi/pulsar v1.0.12
+	github.com/luxfi/runtime v1.0.0
+	github.com/luxfi/threshold v1.6.17
+	github.com/luxfi/validators v1.0.0
+	github.com/luxfi/version v1.0.1
+	github.com/luxfi/warp v1.18.5
+>>>>>>> Stashed changes
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0
+<<<<<<< Updated upstream
 	golang.org/x/crypto v0.52.0
+=======
+	golang.org/x/crypto v0.49.0
+>>>>>>> Stashed changes
 )
 
 require (
@@ -60,7 +82,6 @@ require (
 	github.com/aws/smithy-go v1.24.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
-	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cockroachdb/errors v1.12.0 // indirect
@@ -86,7 +107,6 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/rpc v1.2.1 // indirect
-	github.com/grandcat/zeroconf v1.0.0 // indirect
 	github.com/gtank/merlin v0.1.1 // indirect
 	github.com/gtank/ristretto255 v0.2.0 // indirect
 	github.com/hanzoai/vfs v0.4.1 // indirect
@@ -107,6 +127,7 @@ require (
 	github.com/luxfi/geth v1.20.1 // indirect
 	github.com/luxfi/lens v0.1.4 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
+<<<<<<< Updated upstream
 	github.com/luxfi/mdns v0.1.1 // indirect
 	github.com/luxfi/mlwe v0.2.1 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
@@ -119,6 +140,15 @@ require (
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/miekg/dns v1.1.72 // indirect
+=======
+	github.com/luxfi/mock v0.1.1 // indirect
+	github.com/luxfi/sampler v1.0.0 // indirect
+	github.com/luxfi/utils v1.1.4 // indirect
+	github.com/luxfi/vm v1.0.27 // indirect
+	github.com/luxfi/zapdb v1.8.0 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+>>>>>>> Stashed changes
 	github.com/mimoo/StrobeGo v0.0.0-20220103164710-9a04d6ca976b // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
@@ -144,6 +174,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
+<<<<<<< Updated upstream
 	golang.org/x/exp v0.0.0-20260529124908-c761662dc8c9 // indirect
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
@@ -151,6 +182,13 @@ require (
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/tools v0.45.0 // indirect
+=======
+	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
+	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
+>>>>>>> Stashed changes
 	gonum.org/v1/gonum v0.17.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
