@@ -217,6 +217,18 @@ countVotes:
 	}
 }
 
+// Threshold reports the votes a round at this phase must see before it moves.
+// Under FPC the number is drawn from the epoch seed, so two validators holding
+// the same seed demand the same majority; the fixed-Alpha branch is the same
+// number for every phase. Reads only immutable configuration, so it takes no
+// lock and can be asked before a round runs.
+func (w *Wave[T]) Threshold(phase uint64) int {
+	if w.fpcSelector != nil {
+		return w.fpcSelector.SelectThreshold(phase, w.cfg.K)
+	}
+	return int(math.Ceil(float64(w.cfg.K) * w.cfg.Alpha))
+}
+
 // State returns the current polling state of an item
 func (w *Wave[T]) State(item T) (*WaveState, bool) {
 	w.mu.RLock()

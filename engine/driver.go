@@ -5,7 +5,6 @@ package engine
 
 import (
 	"context"
-	crand "crypto/rand"
 	"errors"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/luxfi/consensus/protocol/focus"
 	"github.com/luxfi/consensus/protocol/prism"
 	"github.com/luxfi/consensus/protocol/wave"
+	"github.com/luxfi/consensus/protocol/wave/fpc"
 	"github.com/luxfi/ids"
 )
 
@@ -94,11 +94,14 @@ func NewLuxConsensus(k int, alpha int, beta int, opts ...Option) *Driver {
 		transport = &SimpleTransport{}
 	}
 
-	// Generate FPC seed from crypto/rand for this instance.
-	var fpcSeed [32]byte
-	if _, err := crand.Read(fpcSeed[:]); err != nil {
-		panic("failed to generate FPC seed: " + err.Error())
-	}
+	// The FPC seed is derived, never drawn. A seed a node draws for itself is a
+	// seed no other node can reproduce, so two honest validators sampling the
+	// same committee demand different majorities of it: at k=20 the threshold
+	// landed anywhere in 11..16 across instances. Deriving it from the epoch,
+	// the chain and the last finalized parent gives every validator the same
+	// threshold sequence, and gives no one it in advance — the parent hash is
+	// only known once the previous epoch has finalized.
+	fpcSeed := fpc.DeriveEpochSeed(o.epoch, o.chain, o.parent)
 
 	// Create Wave configuration with FPC enabled for dynamic thresholds
 	waveCfg := wave.Config{
@@ -109,7 +112,7 @@ func NewLuxConsensus(k int, alpha int, beta int, opts ...Option) *Driver {
 		EnableFPC: true, // Enable Fast Probabilistic Consensus
 		ThetaMin:  0.5,  // FPC minimum threshold
 		ThetaMax:  0.8,  // FPC maximum threshold
-		FPCSeed:   fpcSeed[:],
+		FPCSeed:   fpcSeed,
 	}
 
 	// Create consensus components
@@ -139,6 +142,14 @@ type Option func(*options)
 type options struct {
 	cut       prism.Cut[ids.ID]
 	transport wave.Transport[ids.ID]
+
+	// The epoch the FPC thresholds are drawn for. The zero value is the
+	// genesis epoch: epoch 0, no chain, no parent. It is a real epoch and
+	// every node computes the same seed from it, which is the property that
+	// matters; a chain past genesis is expected to say which epoch it is in.
+	epoch  uint64
+	chain  []byte
+	parent []byte
 }
 
 // WithCut sets the peer sampling strategy.
@@ -149,6 +160,16 @@ func WithCut(cut prism.Cut[ids.ID]) Option {
 // WithTransport sets the network transport for vote requests.
 func WithTransport(transport wave.Transport[ids.ID]) Option {
 	return func(o *options) { o.transport = transport }
+}
+
+// WithEpoch names the epoch the FPC thresholds are drawn for: its number, the
+// chain it belongs to, and the hash of the last block the previous epoch
+// finalized. These three are the whole seed preimage — same three, same
+// threshold sequence, on every validator.
+func WithEpoch(number uint64, chain, parent []byte) Option {
+	return func(o *options) {
+		o.epoch, o.chain, o.parent = number, chain, parent
+	}
 }
 
 // RecordVote records a vote for an item
@@ -305,6 +326,13 @@ func (t *SimpleTransport) MakeLocalPhoton(item ids.ID, prefer bool) wave.Photon[
 		Sender:    ids.GenerateTestNodeID(),
 		Timestamp: time.Now(),
 	}
+}
+
+// Threshold reports the vote count a round at this phase must see before it
+// moves. Under FPC the number is drawn per phase from the epoch seed, so it is
+// the number two validators must agree on to agree at all.
+func (lc *Driver) Threshold(phase uint64) int {
+	return lc.wave.Threshold(phase)
 }
 
 // Parameters returns the consensus parameters
