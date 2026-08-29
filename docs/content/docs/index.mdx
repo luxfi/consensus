@@ -1,175 +1,131 @@
 ---
 title: Introduction
-description: Quasar consensus engine with post-quantum finality for Lux blockchain
+description: Leaderless finality for Lux, in Go, Rust and C++
 ---
 
 # Lux Consensus
 
-Quasar is the unified consensus engine for the Lux blockchain, combining classical BLS signature aggregation with post-quantum lattice cryptography to deliver 2-round finality with both classical and quantum security.
+Lux finality is leaderless. Each validator signs one fixed byte string over one
+position; any node holding enough of those signatures assembles the same
+certificate. Nothing is aggregated, no secret share is combined, and building a
+certificate needs no secret — so there is nothing for a leader to be.
 
-## Features
+Acceptance is decided by metastable sampling to β-confidence. A certificate is the
+portable witness of that decision, not a second decider.
 
-- **Unified Protocol**: Same engine for DAG, linear, EVM, and MPC chains
-- **Quantum Finality**: Every block requires post-quantum certificates
-- **2-Round Finality**: BLS signatures + lattice signatures = quantum finality
-- **Zero Leaders**: Fully decentralized, leaderless consensus
-- **Sub-Second Performance**: Less than 1 second finality with quantum security
-- **Multi-Language SDKs**: Go, C, Rust, and Python implementations
+Start here:
 
-## Quick Start
+- [The finality standard](/docs/standard) — the ladder, the signed message, the certificate, the thresholds.
+- [Conformance](/docs/conformance) — Go is the network; how Rust and C++ are held to it.
 
-### Installation
+## The ladder
 
-```go
+A block carries exactly one rung, and the rungs are distinct authorization
+boundaries that are never collapsed into one another.
+
+```text
+photon → wave → nova → quasar → horizon
+```
+
+**Nova** is a strict majority of stake. It authorizes local execution and is
+reorgable — a lone equivocator can fork a bare majority. **Quasar** is a strict two
+thirds of stake by distinct signers. It is the export rung: bridges, DEX
+settlement, cross-chain messages, validator-set transitions. **Horizon** adds a
+post-quantum seal and is irreversible.
+
+The invariant: a block below quasar may drive local execution and may never be
+exported as final.
+
+## Three implementations, one rule
+
+`luxfi/node` (Go) runs mainnet, testnet and devnet — `chains/manager.go` builds
+`engine/chain` and injects a BLS vote verifier. The Rust and C++ implementations
+are correct exactly insofar as they reproduce what it produces, byte for byte.
+
+That is not a reading exercise. `conformance/corpus.json` is the standard as data,
+projected from the live Go definitions, and an implementation is conformant when it
+reproduces that file. Two real divergences were found this way and are described
+in [Conformance](/docs/conformance) — a C++ vote message that was 70 bytes under a
+v1 tag where Go signs 226 under v2, and a Rust θ that accepted on eleven votes
+where Go requires fifteen.
+
+## Quick start
+
+```bash
 go get github.com/luxfi/consensus@latest
 ```
 
-### Basic Usage
+The root package is the small block-and-vote surface. The protocol packages under
+`protocol/` and the production engine under `engine/chain/` are imported directly.
 
 ```go
 package main
 
 import (
-    "context"
-    "github.com/luxfi/consensus"
+	"context"
+	"fmt"
+
+	"github.com/luxfi/consensus"
+	"github.com/luxfi/ids"
 )
 
 func main() {
-    // Create chain with default config
-    chain := consensus.NewChain(consensus.DefaultConfig())
+	// Alpha is the quorum: how many distinct voters must name a block.
+	chain := consensus.NewChain(consensus.Config{Alpha: 3})
 
-    // Start the chain
-    ctx := context.Background()
-    if err := chain.Start(ctx); err != nil {
-        panic(err)
-    }
-    defer chain.Stop()
+	ctx := context.Background()
+	if err := chain.Start(ctx); err != nil {
+		panic(err)
+	}
+	defer chain.Stop()
 
-    // Add a block
-    block := &consensus.Block{
-        ID:       consensus.NewID(),
-        ParentID: consensus.GenesisID,
-        Height:   1,
-        Payload:  []byte("Hello, Lux!"),
-    }
-    if err := chain.Add(ctx, block); err != nil {
-        panic(err)
-    }
+	block := consensus.NewBlock(ids.ID{0x01}, consensus.GenesisID, 1, []byte("hello"))
+	if err := chain.Add(ctx, block); err != nil {
+		panic(err)
+	}
+
+	for _, voter := range []consensus.NodeID{{0x0a}, {0x0b}, {0x0c}} {
+		if err := chain.RecordVote(ctx, consensus.NewVote(block.ID, consensus.VoteCommit, voter)); err != nil {
+			panic(err)
+		}
+	}
+
+	fmt.Println(chain.IsAccepted(block.ID)) // true
 }
 ```
 
-## Architecture
+## Post-quantum finality
 
-### Core Components
+Horizon is reached when a post-quantum signature seals the certificate. The rule
+does not change at that rung — only the cryptography of the witness.
 
-```text
-consensus/
-├── photon/                # K-of-N committee selection
-│   ├── emitter.go        # Light emission-based peer selection
-│   └── luminance.go      # Node brightness tracking (lux units)
-│
-├── core/
-│   ├── wave/             # Wave consensus mechanism
-│   │   └── engine.go     # Threshold voting
-│   ├── dag/              # DAG structure & ordering
-│   │   ├── flare/        # Certificate generation
-│   │   └── horizon/      # Frontier management
-│   └── focus/            # Confidence tracking
-│
-├── protocol/
-│   ├── quasar/           # Post-quantum security
-│   │   └── corona_gob.go # Quantum-resistant signatures
-│   ├── nebula/           # DAG consensus mode (wraps field)
-│   └── nova/             # Linear chain consensus mode (wraps ray)
-│
-├── qzmq/                 # Post-quantum transport
-│   ├── session.go        # Hybrid key exchange
-│   └── messages.go       # Wire protocol
-│
-└── engine/               # Consensus engines
-    ├── chain/            # Linear blockchain
-    └── dag/              # DAG-based chains
-```
-
-### Quasar Consensus
-
-Quasar is built on two core components that provide both classical and quantum finality:
-
-#### Classical Finality (Wave + Focus)
-- **Sampling**: k-peer sampling for vote collection
-- **Confidence**: Build confidence through repeated sampling
-- **Thresholds**: Beta-1 for early preference, Beta-2 for decision
-- **Time**: 600-700ms to classical finality
-
-#### Quasar (Quantum Finality)
-- **Phase I - Propose**: Sample DAG frontier, propose highest confidence
-- **Phase II - Commit**: Aggregate threshold signatures if quorum agrees
-- **Certificates**: Lattice-based post-quantum certificates
-- **Time**: 200-300ms additional for quantum finality
-
-## Performance
-
-### Consensus Metrics
-
-| Network | Validators | Finality | Block Time |
-|---------|-----------|----------|------------|
-| Mainnet | 21 | 9.63s | 200ms |
-| Testnet | 11 | 6.3s | 100ms |
-| Local | 5 | 3.69s | 10ms |
-| X-Chain | 5 | 5ms | 1ms |
-
-### Benchmark Results
-
-| Component | Operation | Time/Op | Memory |
-|-----------|-----------|---------|--------|
-| Wave Consensus | Vote Round | 3.38us | 2.3KB |
-| Photon Emitter | K-of-N Selection | 3.03us | 3.0KB |
-| Luminance | Brightness Update | 72ns | 0B |
-| Quasar Sign (BLS share) | Threshold share | ~45us | varies |
-
-## Security Model
-
-1. **Pre-quantum**: Attacker must corrupt at least 1/3 stake to fork
-2. **Q-day (BLS broken)**: Attacker can forge BLS but not lattice - block fails quantum check
-3. **Post-quantum**: Security rests on lattice SVP (2^160 operations)
-
-Attack window is limited to PQ round time (50ms on mainnet).
+`protocol/quasar` runs its signing paths in parallel rather than in sequence:
+BLS12-381 threshold signatures on ECDL hardness, Corona two-round threshold on
+Ring-LWE, ML-DSA-65 (FIPS 204) identity signatures on Module-LWE and Module-SIS,
+and an SLH-DSA (FIPS 205) hash-based leg. Each layer is independently toggleable.
+An adversary against the full set must break all of those assumptions at once.
 
 ## Protocols
 
-All 12 Lux consensus protocols use light metaphors:
+The engine is assembled from named pieces, each in `protocol/`:
 
-### Core Protocols
-- [Wave](/docs/wave) — Classical threshold voting consensus
-- [Flare](/docs/flare) — Rapid finalization with certificate/skip mechanism
-- [Ray](/docs/ray) — Directed acyclic consensus with ray-casting
-- [Field](/docs/field) — Field-theoretic vertex ordering engine
+- [Wave](/docs/wave) — threshold voting
+- [Flare](/docs/flare) — rapid finalization, certificate and skip
+- [Ray](/docs/ray) — directed acyclic consensus
+- [Field](/docs/field) — vertex ordering
+- [Quasar](/docs/quasar) — the export rung and its post-quantum seal
+- [Photon](/docs/photon) — committee selection
+- [Nova](/docs/nova) — linear chain mode
+- [Nebula](/docs/nebula) — DAG mode
+- [Prism](/docs/prism) — conflict resolution
+- [Horizon](/docs/horizon) — DAG view and vertex relationships
+- [Focus](/docs/focus) — confidence tracking
+- [Chain](/docs/chain) — linear chain consensus
 
-### Quantum & Security
-- [Quasar](/docs/quasar) — Post-quantum finality (BLS + Pulsar hybrid)
-- [Photon](/docs/photon) — K-of-N committee selection via light emission
+## Next
 
-### DAG & Parallel
-- [Nova](/docs/nova) — Linear chain consensus mode (wraps ray)
-- [Nebula](/docs/nebula) — DAG consensus using Field engine
-- [Prism](/docs/prism) — Light-path refraction for conflict resolution
-
-### Infrastructure
-- [Horizon](/docs/horizon) — DAG view and vertex relationship layer
-- [Focus](/docs/focus) — Confidence tracking and convergence
-- [Chain](/docs/chain) — Linear chain consensus for P-Chain/C-Chain
-
-## Formal Verification
-
-All protocols are formally verified using Lean 4 with Mathlib:
-- **33 Lean 4 theorems** proved across all 12 protocols
-- **68 Halmos symbolic proofs** for Solidity smart contracts
-- [Full Formal Verification Details](/docs/formal-verification)
-
-*Formal verification conducted by Woo Bin, Lux Network.*
-
-## Next Steps
-
-- [Formal Verification](/docs/formal-verification) - Machine-checked proofs
-- [Configuration](/docs/configuration) - Parameter tuning guide
-- [API Reference](/docs/api) - Complete API documentation
+- [The finality standard](/docs/standard) — the rule, stated once
+- [Conformance](/docs/conformance) — the measured state of Go, Rust and C++
+- [Configuration](/docs/configuration) — parameter tuning
+- [Formal verification](/docs/formal-verification) — machine-checked proofs
+- [API reference](/docs/api)
