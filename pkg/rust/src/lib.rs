@@ -251,14 +251,6 @@ pub mod types {
     /// certificate claims is its `position`, and every claim is signed.
     pub type Certificate = crate::cert::QuorumCert;
 
-    /// Quasar signature (BLS + Corona)
-    #[derive(Debug, Clone)]
-    pub struct QuasarSignature {
-        pub bls_sig: Vec<u8>,        // BLS signature (48 bytes)
-        pub corona_sig: Vec<u8>,     // Corona post-quantum signature
-        pub signer: NodeID,
-    }
-
     /// Security level for Corona post-quantum crypto
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     #[derive(Default)]
