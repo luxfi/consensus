@@ -1,384 +1,143 @@
-// Copyright (C) 2019-2025, Lux Industries Inc. All rights reserved.
+// Copyright (C) 2019-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
-use lux_consensus::{ConsensusEngine, LuxBlock, LuxConsensusConfig, LuxEngineType, LuxVote};
-use std::ptr;
-use std::time::Duration;
+//! What a node actually spends time on, measured.
+//!
+//! The benchmark that stood here imported `LuxBlock`, `LuxVote`,
+//! `LuxConsensusConfig`, `LuxEngineType` and `ConsensusEngine` — five names this
+//! crate has not exported for a long time — so `cargo bench` did not compile,
+//! and the report beside it carried numbers no binary in this repository could
+//! produce. It has been retracted in place since; this replaces it with the
+//! paths that are on the round and certificate hot loop.
+//!
+//! Four groups, in the order a round runs them:
+//!
+//!   * `threshold` — the FPC PRF, once per round per node.
+//!   * `message`   — the canonical vote message, once per vote signed and once
+//!                   per certificate verified.
+//!   * `wire`      — certificate encode and decode, once per gossip hop.
+//!   * `verify`    — the whole finality predicate over real BLS signatures. This
+//!                   is the expensive one and the one that decides.
 
-/// Generate a sample block with given ID and parent
-fn create_block(id: u8, parent_id: u8, height: u64) -> LuxBlock {
-    LuxBlock {
-        id: [id; 32],
-        parent_id: [parent_id; 32],
-        height,
-        timestamp: 1234567890 + height,
-        data: ptr::null_mut(),
-        data_size: 0,
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use lux_consensus::bls::{Registry, DST};
+use lux_consensus::finality::{canonical_vote_message, Cert, Finality, Keys, Position, Vote, NODE_LEN};
+use lux_consensus::{derive_epoch_seed, FpcSelector};
+use std::hint::black_box;
+
+fn position() -> Position {
+    Position {
+        chain_id: [0x11; 32],
+        height: 0x0102030405060708,
+        round: 0x0A0B0C0D,
+        block_id: [0x22; 32],
+        parent_id: [0x33; 32],
+        canonical_id: [0x44; 32],
+        parent_canonical_id: [0x55; 32],
+        execution_state_root: [0x66; 32],
+        payload_root: [0x77; 32],
+        validator_set_root: [0x88; 32],
     }
 }
 
-/// Generate a vote for a block
-fn create_vote(voter_id: u8, block_id: [u8; 32], is_preference: bool) -> LuxVote {
-    LuxVote {
-        voter_id: [voter_id; 32],
-        block_id,
-        is_preference,
-    }
-}
+/// A committee of `n` validators with real keys, and a certificate they all
+/// signed. Deterministic: the key material is derived from the index, so a run
+/// is comparable to the run before it.
+fn signed(n: usize) -> (Cert, Registry) {
+    let pos = position();
+    let message = canonical_vote_message(&pos, true);
+    let mut registry = Registry::new();
+    let mut votes = Vec::with_capacity(n);
 
-/// Create a standard consensus configuration
-fn create_config(engine_type: LuxEngineType) -> LuxConsensusConfig {
-    LuxConsensusConfig {
-        k: 20,
-        alpha_preference: 15,
-        alpha_confidence: 15,
-        beta: 20,
-        concurrent_polls: 1,
-        optimal_processing: 1,
-        max_outstanding_items: 10240,
-        max_item_processing_time_ns: 2000000000,
-        engine_type,
-    }
-}
+    for i in 0..n {
+        let mut ikm = [0u8; 32];
+        ikm[..8].copy_from_slice(&(i as u64 + 1).to_be_bytes());
+        let sk = blst::min_pk::SecretKey::key_gen(&ikm, &[]).expect("key_gen");
 
-/// Benchmark single block addition
-fn bench_single_block_add(c: &mut Criterion) {
-    ConsensusEngine::init().expect("Failed to init consensus");
+        let mut node = [0u8; NODE_LEN];
+        node[..8].copy_from_slice(&(i as u64).to_be_bytes());
+        assert!(registry.insert(node, &sk.sk_to_pk().compress()));
 
-    let config = create_config(LuxEngineType::DAG);
-
-    c.bench_function("single_block_add", |b| {
-        b.iter_batched(
-            || ConsensusEngine::new(&config).expect("Failed to create engine"),
-            |mut engine| {
-                let block = create_block(1, 0, 1);
-                engine.add_block(black_box(&block)).expect("Failed to add block");
-            },
-            BatchSize::SmallInput,
-        );
-    });
-
-    ConsensusEngine::cleanup().expect("Failed to cleanup");
-}
-
-/// Benchmark batch block additions with different sizes
-fn bench_batch_block_add(c: &mut Criterion) {
-    ConsensusEngine::init().expect("Failed to init consensus");
-
-    let config = create_config(LuxEngineType::DAG);
-    let batch_sizes = vec![100, 1000, 10000];
-
-    let mut group = c.benchmark_group("batch_block_add");
-
-    for size in batch_sizes {
-        group.throughput(Throughput::Elements(size));
-        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
-            b.iter_batched(
-                || {
-                    let engine = ConsensusEngine::new(&config).expect("Failed to create engine");
-                    let blocks: Vec<LuxBlock> = (0..size)
-                        .map(|i| create_block((i % 256) as u8, if i == 0 { 0 } else { (i - 1) % 256 } as u8, i as u64))
-                        .collect();
-                    (engine, blocks)
-                },
-                |(mut engine, blocks)| {
-                    for block in blocks.iter() {
-                        engine.add_block(black_box(block)).expect("Failed to add block");
-                    }
-                },
-                BatchSize::SmallInput,
-            );
+        votes.push(Vote {
+            node,
+            accept: true,
+            signature: sk.sign(&message, DST, &[]).compress().to_vec(),
         });
     }
 
-    group.finish();
-    ConsensusEngine::cleanup().expect("Failed to cleanup");
+    let cert = Cert::assemble(pos, Finality::Quasar, n as u32, votes).expect("assemble");
+    (cert, registry)
 }
 
-/// Benchmark single vote processing
-fn bench_single_vote(c: &mut Criterion) {
-    ConsensusEngine::init().expect("Failed to init consensus");
+fn threshold(c: &mut Criterion) {
+    let seed = derive_epoch_seed(42, &[0x11; 32], &[0x22; 32]);
+    let sel = FpcSelector::new(0.5, 0.8, seed);
+    let mut group = c.benchmark_group("threshold");
 
-    let config = create_config(LuxEngineType::DAG);
-
-    c.bench_function("single_vote_process", |b| {
-        b.iter_batched(
-            || {
-                let mut engine = ConsensusEngine::new(&config).expect("Failed to create engine");
-                let block = create_block(1, 0, 1);
-                engine.add_block(&block).expect("Failed to add block");
-                (engine, block.id)
-            },
-            |(mut engine, block_id)| {
-                let vote = create_vote(1, block_id, true);
-                engine.process_vote(black_box(&vote)).expect("Failed to process vote");
-            },
-            BatchSize::SmallInput,
-        );
+    group.bench_function("derive_epoch_seed", |b| {
+        b.iter(|| derive_epoch_seed(black_box(42), black_box(&[0x11; 32]), black_box(&[0x22; 32])))
     });
 
-    ConsensusEngine::cleanup().expect("Failed to cleanup");
+    for k in [4usize, 21, 100] {
+        group.bench_with_input(BenchmarkId::new("select", k), &k, |b, &k| {
+            let mut phase = 0u64;
+            b.iter(|| {
+                phase = phase.wrapping_add(1);
+                sel.select_threshold(black_box(phase), black_box(k))
+            })
+        });
+    }
+    group.finish();
 }
 
-/// Benchmark batch vote processing with different sizes
-fn bench_batch_vote(c: &mut Criterion) {
-    ConsensusEngine::init().expect("Failed to init consensus");
+fn message(c: &mut Criterion) {
+    let pos = position();
+    c.benchmark_group("message")
+        .throughput(Throughput::Bytes(lux_consensus::VOTE_MESSAGE_LEN as u64))
+        .bench_function("canonical_vote", |b| {
+            b.iter(|| canonical_vote_message(black_box(&pos), black_box(true)))
+        });
+}
 
-    let config = create_config(LuxEngineType::DAG);
-    let batch_sizes = vec![100, 1000, 10000];
+fn wire(c: &mut Criterion) {
+    let mut group = c.benchmark_group("wire");
+    for n in [1usize, 21, 100] {
+        let (cert, _) = signed(n);
+        let bytes = cert.encode();
+        group.throughput(Throughput::Bytes(bytes.len() as u64));
+        group.bench_with_input(BenchmarkId::new("encode", n), &cert, |b, cert| {
+            b.iter(|| cert.encode())
+        });
+        group.bench_with_input(BenchmarkId::new("decode", n), &bytes, |b, bytes| {
+            b.iter(|| Cert::decode(black_box(bytes)).expect("decode"))
+        });
+    }
+    group.finish();
+}
 
-    let mut group = c.benchmark_group("batch_vote_process");
+fn verify(c: &mut Criterion) {
+    let mut group = c.benchmark_group("verify");
+    group.sample_size(20);
 
-    for size in batch_sizes {
-        group.throughput(Throughput::Elements(size));
-        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
-            b.iter_batched(
-                || {
-                    let mut engine = ConsensusEngine::new(&config).expect("Failed to create engine");
-                    let block = create_block(1, 0, 1);
-                    engine.add_block(&block).expect("Failed to add block");
-
-                    let votes: Vec<LuxVote> = (0..size)
-                        .map(|i| create_vote((i % 256) as u8, block.id, i % 2 == 0))
-                        .collect();
-                    (engine, votes)
-                },
-                |(mut engine, votes)| {
-                    for vote in votes.iter() {
-                        engine.process_vote(black_box(vote)).expect("Failed to process vote");
-                    }
-                },
-                BatchSize::SmallInput,
-            );
+    for n in [1usize, 4, 21] {
+        let (cert, registry) = signed(n);
+        group.throughput(Throughput::Elements(n as u64));
+        group.bench_with_input(BenchmarkId::new("certificate", n), &n, |b, _| {
+            b.iter(|| cert.verify(black_box(&registry)).expect("verify"))
         });
     }
 
+    // One signature on its own, so the certificate figures above divide cleanly
+    // and a change in the predicate is distinguishable from a change in the
+    // pairing.
+    let (cert, registry) = signed(1);
+    let msg = cert.message();
+    let v = &cert.votes[0];
+    group.bench_function("signature", |b| {
+        b.iter(|| registry.verify(black_box(&v.node), black_box(&msg), black_box(&v.signature)))
+    });
     group.finish();
-    ConsensusEngine::cleanup().expect("Failed to cleanup");
 }
 
-/// Benchmark finalization (acceptance checking)
-fn bench_finalization(c: &mut Criterion) {
-    ConsensusEngine::init().expect("Failed to init consensus");
-
-    let config = LuxConsensusConfig {
-        k: 5,
-        alpha_preference: 3,
-        alpha_confidence: 3,
-        beta: 5,
-        concurrent_polls: 1,
-        optimal_processing: 1,
-        max_outstanding_items: 10240,
-        max_item_processing_time_ns: 2000000000,
-        engine_type: LuxEngineType::DAG,
-    };
-
-    c.bench_function("finalization_check", |b| {
-        b.iter_batched(
-            || {
-                let mut engine = ConsensusEngine::new(&config).expect("Failed to create engine");
-                let block = create_block(1, 0, 1);
-                engine.add_block(&block).expect("Failed to add block");
-
-                // Add enough votes to trigger finalization
-                for i in 0..5 {
-                    let vote = create_vote(i, block.id, true);
-                    engine.process_vote(&vote).expect("Failed to process vote");
-                }
-                (engine, block.id)
-            },
-            |(engine, block_id)| {
-                let _ = engine.is_accepted(black_box(&block_id));
-            },
-            BatchSize::SmallInput,
-        );
-    });
-
-    ConsensusEngine::cleanup().expect("Failed to cleanup");
-}
-
-/// Benchmark preference retrieval
-fn bench_get_preference(c: &mut Criterion) {
-    ConsensusEngine::init().expect("Failed to init consensus");
-
-    let config = create_config(LuxEngineType::DAG);
-
-    c.bench_function("get_preference", |b| {
-        b.iter_batched(
-            || {
-                let mut engine = ConsensusEngine::new(&config).expect("Failed to create engine");
-                let block = create_block(1, 0, 1);
-                engine.add_block(&block).expect("Failed to add block");
-                engine
-            },
-            |engine| {
-                let _ = engine.get_preference();
-            },
-            BatchSize::SmallInput,
-        );
-    });
-
-    ConsensusEngine::cleanup().expect("Failed to cleanup");
-}
-
-/// Benchmark statistics retrieval
-fn bench_get_stats(c: &mut Criterion) {
-    ConsensusEngine::init().expect("Failed to init consensus");
-
-    let config = create_config(LuxEngineType::DAG);
-
-    c.bench_function("get_stats", |b| {
-        b.iter_batched(
-            || {
-                let mut engine = ConsensusEngine::new(&config).expect("Failed to create engine");
-                // Add some activity
-                for i in 0..10 {
-                    let block = create_block(i, if i == 0 { 0 } else { i - 1 }, i as u64);
-                    engine.add_block(&block).expect("Failed to add block");
-                    let vote = create_vote(i, block.id, true);
-                    engine.process_vote(&vote).expect("Failed to process vote");
-                }
-                engine
-            },
-            |engine| {
-                let _ = engine.get_stats();
-            },
-            BatchSize::SmallInput,
-        );
-    });
-
-    ConsensusEngine::cleanup().expect("Failed to cleanup");
-}
-
-/// Benchmark different consensus engine types
-fn bench_engine_types(c: &mut Criterion) {
-    ConsensusEngine::init().expect("Failed to init consensus");
-
-    let engine_types = vec![
-        (LuxEngineType::Chain, "chain"),
-        (LuxEngineType::DAG, "dag"),
-        (LuxEngineType::PQ, "pq"),
-    ];
-
-    let mut group = c.benchmark_group("engine_types");
-
-    for (engine_type, name) in engine_types {
-        group.bench_with_input(BenchmarkId::from_parameter(name), &engine_type, |b, &engine_type| {
-            let config = create_config(engine_type);
-            b.iter_batched(
-                || ConsensusEngine::new(&config).expect("Failed to create engine"),
-                |mut engine| {
-                    let block = create_block(1, 0, 1);
-                    engine.add_block(black_box(&block)).expect("Failed to add block");
-
-                    for i in 0..3 {
-                        let vote = create_vote(i, block.id, true);
-                        engine.process_vote(&vote).expect("Failed to process vote");
-                    }
-
-                    let _ = engine.is_accepted(&block.id);
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-
-    group.finish();
-    ConsensusEngine::cleanup().expect("Failed to cleanup");
-}
-
-/// Benchmark polling operation
-fn bench_poll(c: &mut Criterion) {
-    ConsensusEngine::init().expect("Failed to init consensus");
-
-    let config = create_config(LuxEngineType::DAG);
-
-    c.bench_function("poll_validators", |b| {
-        b.iter_batched(
-            || {
-                let mut engine = ConsensusEngine::new(&config).expect("Failed to create engine");
-                let block = create_block(1, 0, 1);
-                engine.add_block(&block).expect("Failed to add block");
-
-                let validator_ids: Vec<[u8; 32]> = (0..10)
-                    .map(|i| [i; 32])
-                    .collect();
-                (engine, validator_ids)
-            },
-            |(mut engine, validator_ids)| {
-                engine.poll(black_box(&validator_ids)).expect("Failed to poll");
-            },
-            BatchSize::SmallInput,
-        );
-    });
-
-    ConsensusEngine::cleanup().expect("Failed to cleanup");
-}
-
-/// Benchmark complete consensus flow
-fn bench_complete_flow(c: &mut Criterion) {
-    ConsensusEngine::init().expect("Failed to init consensus");
-
-    let config = LuxConsensusConfig {
-        k: 5,
-        alpha_preference: 3,
-        alpha_confidence: 3,
-        beta: 5,
-        concurrent_polls: 1,
-        optimal_processing: 1,
-        max_outstanding_items: 10240,
-        max_item_processing_time_ns: 2000000000,
-        engine_type: LuxEngineType::DAG,
-    };
-
-    c.bench_function("complete_consensus_flow", |b| {
-        b.iter_batched(
-            || ConsensusEngine::new(&config).expect("Failed to create engine"),
-            |mut engine| {
-                // Add blocks
-                for i in 0..5 {
-                    let block = create_block(i, if i == 0 { 0 } else { i - 1 }, i as u64);
-                    engine.add_block(&block).expect("Failed to add block");
-
-                    // Process votes for each block
-                    for j in 0..5 {
-                        let vote = create_vote(j, block.id, true);
-                        engine.process_vote(&vote).expect("Failed to process vote");
-                    }
-
-                    // Check acceptance
-                    let _ = engine.is_accepted(&block.id);
-                }
-
-                // Get final preference and stats
-                let _ = engine.get_preference();
-                let _ = engine.get_stats();
-            },
-            BatchSize::SmallInput,
-        );
-    });
-
-    ConsensusEngine::cleanup().expect("Failed to cleanup");
-}
-
-criterion_group! {
-    name = consensus_benches;
-    config = Criterion::default()
-        .measurement_time(Duration::from_secs(10))
-        .sample_size(100)
-        .warm_up_time(Duration::from_secs(3));
-    targets =
-        bench_single_block_add,
-        bench_batch_block_add,
-        bench_single_vote,
-        bench_batch_vote,
-        bench_finalization,
-        bench_get_preference,
-        bench_get_stats,
-        bench_engine_types,
-        bench_poll,
-        bench_complete_flow
-}
-
-criterion_main!(consensus_benches);
+criterion_group!(benches, threshold, message, wire, verify);
+criterion_main!(benches);

@@ -442,8 +442,45 @@ implements, exactly as `bootstrap.BlockSource` is. Not to be confused with
 - **Go**: Production-ready (protocol/, engine/, core/)
 - **Python** (`pkg/python/`): Only complete non-Go SDK with real consensus logic
 - **C** (`pkg/c/`): Data structures only, not real consensus
-- **Rust** (`pkg/rust/`): FFI wrapper around C, not native
+- **Rust** (`pkg/rust/`): pure Rust, no FFI. Conformant on the finality
+  standard, partial on the protocols — see below.
 - **C++** (`pkg/cpp/`): Stub
+
+### Rust binding — what it is held to
+
+`conformance/corpus.json` is the standard as data, generated from the Go
+definitions by `conformance/corpus.go`. `pkg/rust/tests/conformance.rs` reads
+that file and holds the crate to it. Regenerate with
+`go test ./conformance -update`; the Rust tests fail if the two drift.
+
+Conformant and checked against the corpus: the signed vote message (226 bytes
+under `LUX/chain/vote/v2\0`), the certificate wire form byte for byte, both
+stake floors across the full u64 range, the count thresholds, the ladder, the
+per-epoch FPC seed, and θ/α to the exact IEEE-754 bit over 192 recorded cases.
+
+NOT conformant, and known:
+- The sampler's `NodeID` is 32 bytes; `luxfi/ids.NodeID` and every certificate
+  on the wire use 20. `finality::Node` is the correct width; `quasar` has not
+  been moved onto it, so a node's sampling identity and its signing identity
+  are populated separately by the caller.
+- `wave` accumulates one cumulative tally per block. Go samples K fresh votes
+  per round. The phase now advances per counted round rather than per vote,
+  which is Go's placement, but the round model itself still differs.
+- `QuasarConfig::alpha` is an `f64`. `config/constants.go` requires an integer
+  quorum predicate and says so.
+- There is no P2P, no block store and no engine loop. The crate computes; it
+  does not participate.
+
+`bls` carries the ciphersuite Lux signs under —
+`BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_`, public keys 48 bytes in G1,
+signatures 96 bytes in G2, matching `luxfi/crypto/bls`.
+
+`benches/consensus_bench.rs` measures the round and certificate hot paths.
+Signature verification is per-vote, as Go's `QuorumCert.Verify` is, and it
+dominates: ~0.8 ms a signature, so a 21-signature certificate is ~14.5 ms
+(Ryzen, `--measurement-time 1.5`). Aggregate verification would collapse that
+to one pairing, but only behind proof-of-possession — without it, aggregation
+is a rogue-key attack.
 
 ### Dependencies (Critical)
 - `github.com/luxfi/crypto` -- BLS, ML-DSA, threshold signing

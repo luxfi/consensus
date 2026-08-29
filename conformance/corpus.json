@@ -850,5 +850,1989 @@
       "blockTimeMS": 1,
       "roundTimeoutMS": 5
     }
-  ]
+  ],
+  "fpc": {
+    "seedNote": "seed = sha256(be64(epoch) || chainID || prevBlockHash). Every input is bound, and prevBlockHash is unknown until the previous epoch finalizes, so θ cannot be steered by choosing an input before the epoch opens.",
+    "seeds": [
+      {
+        "note": "epoch zero, no chain, no parent — every input at its floor",
+        "epoch": "0",
+        "chainID": "",
+        "prevBlockHash": "",
+        "seed": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+      },
+      {
+        "note": "first epoch of a chain, genesis has no previous block",
+        "epoch": "1",
+        "chainID": "636861696e2d41",
+        "prevBlockHash": "",
+        "seed": "c5c641e7f33f759a4d3be4c9aa91d5cbea750e650a177e7328300918c339c22e"
+      },
+      {
+        "note": "the epoch moves the seed",
+        "epoch": "2",
+        "chainID": "636861696e2d41",
+        "prevBlockHash": "",
+        "seed": "80a7c0be6d8268069161c536474ff65855a03c416b640b72a349d1388596b03e"
+      },
+      {
+        "note": "the chain moves the seed — two chains at one epoch must not share θ",
+        "epoch": "1",
+        "chainID": "636861696e2d42",
+        "prevBlockHash": "",
+        "seed": "23514ca88c3268155276a23b5e90c8426bbc8c12f51747bfc0c0fb1548d336bf"
+      },
+      {
+        "note": "the previous block moves the seed — this is what makes it unpredictable",
+        "epoch": "1",
+        "chainID": "636861696e2d41",
+        "prevBlockHash": "626c6f636b686173682d616263",
+        "seed": "57d8e506edd195fc3674a3ba2997c77b834318fc869df66d57fe217a265e6d42"
+      },
+      {
+        "note": "a different previous block, everything else held",
+        "epoch": "1",
+        "chainID": "636861696e2d41",
+        "prevBlockHash": "626c6f636b686173682d78797a",
+        "seed": "42a69367a0e20cd76a4e0a33bf0b8b160aab9c1672f3fb3b311354d656f0fcf8"
+      },
+      {
+        "note": "full width: a 32-byte chain id and a 32-byte parent hash",
+        "epoch": "42",
+        "chainID": "1111111111111111111111111111111111111111111111111111111111111111",
+        "prevBlockHash": "2222222222222222222222222222222222222222222222222222222222222222",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7"
+      },
+      {
+        "note": "the top of the epoch range — every byte of the big-endian width is set",
+        "epoch": "18446744073709551615",
+        "chainID": "1111111111111111111111111111111111111111111111111111111111111111",
+        "prevBlockHash": "2222222222222222222222222222222222222222222222222222222222222222",
+        "seed": "a7c4e715d3c0ba85e20309beea361be78dd4435ee30ed471b537bf463118e534"
+      }
+    ],
+    "thetaNote": "θ(phase) = θ_min + be64(sha256(seed || be64(phase))[:8])/(2^64-1) · (θ_max − θ_min), and α = ⌈θ·k⌉ is the vote count a round accepts on. thetaMin, thetaMax and theta are exact IEEE-754 bits in big-endian hex: α is a ceiling, so the last bit of θ is load-bearing.",
+    "thresholds": [
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 20,
+        "alpha": 13
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 21,
+        "alpha": 14
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 20,
+        "alpha": 15
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 21,
+        "alpha": 15
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 5,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 11,
+        "alpha": 7
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 20,
+        "alpha": 12
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 21,
+        "alpha": 12
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 11,
+        "alpha": 9
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 20,
+        "alpha": 15
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 21,
+        "alpha": 16
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 5,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 11,
+        "alpha": 7
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 20,
+        "alpha": 12
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 21,
+        "alpha": 12
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 5,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 11,
+        "alpha": 7
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 20,
+        "alpha": 12
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 21,
+        "alpha": 12
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 20,
+        "alpha": 15
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 21,
+        "alpha": 16
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 5,
+        "alpha": 3
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 11,
+        "alpha": 7
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 20,
+        "alpha": 12
+      },
+      {
+        "note": "the live range — engine/driver.go runs 0.5 to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe0000000000000",
+        "thetaMax": "3fe999999999999a",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 21,
+        "alpha": 13
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 20,
+        "alpha": 13
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "0",
+        "theta": "3fe4b853c190139d",
+        "k": 21,
+        "alpha": 14
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 20,
+        "alpha": 15
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "1",
+        "theta": "3fe6bbe607f87b2a",
+        "k": 21,
+        "alpha": 15
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 5,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 11,
+        "alpha": 7
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 20,
+        "alpha": 12
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "2",
+        "theta": "3fe1bb5921a4fa16",
+        "k": 21,
+        "alpha": 12
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 11,
+        "alpha": 9
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 20,
+        "alpha": 15
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "3",
+        "theta": "3fe782eab4f771b5",
+        "k": 21,
+        "alpha": 16
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 5,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 11,
+        "alpha": 7
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 20,
+        "alpha": 12
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "4",
+        "theta": "3fe1bcf8a1733e0b",
+        "k": 21,
+        "alpha": 12
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 5,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 11,
+        "alpha": 7
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 20,
+        "alpha": 12
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "5",
+        "theta": "3fe1e866b477043b",
+        "k": 21,
+        "alpha": 12
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 20,
+        "alpha": 15
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "6",
+        "theta": "3fe726259647aa68",
+        "k": 21,
+        "alpha": 16
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 5,
+        "alpha": 3
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 11,
+        "alpha": 7
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 20,
+        "alpha": 12
+      },
+      {
+        "note": "θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "0000000000000000",
+        "thetaMax": "4000000000000000",
+        "phase": "7",
+        "theta": "3fe262f12d0b0bbb",
+        "k": 21,
+        "alpha": 13
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "0",
+        "theta": "3fe658c05ee8959c",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "0",
+        "theta": "3fe658c05ee8959c",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "0",
+        "theta": "3fe658c05ee8959c",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "0",
+        "theta": "3fe658c05ee8959c",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "0",
+        "theta": "3fe658c05ee8959c",
+        "k": 20,
+        "alpha": 14
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "0",
+        "theta": "3fe658c05ee8959c",
+        "k": 21,
+        "alpha": 15
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "1",
+        "theta": "3fe7b0773883854f",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "1",
+        "theta": "3fe7b0773883854f",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "1",
+        "theta": "3fe7b0773883854f",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "1",
+        "theta": "3fe7b0773883854f",
+        "k": 11,
+        "alpha": 9
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "1",
+        "theta": "3fe7b0773883854f",
+        "k": 20,
+        "alpha": 15
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "1",
+        "theta": "3fe7b0773883854f",
+        "k": 21,
+        "alpha": 16
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "2",
+        "theta": "3fe45ac3f44bd9ec",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "2",
+        "theta": "3fe45ac3f44bd9ec",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "2",
+        "theta": "3fe45ac3f44bd9ec",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "2",
+        "theta": "3fe45ac3f44bd9ec",
+        "k": 11,
+        "alpha": 7
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "2",
+        "theta": "3fe45ac3f44bd9ec",
+        "k": 20,
+        "alpha": 13
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "2",
+        "theta": "3fe45ac3f44bd9ec",
+        "k": 21,
+        "alpha": 14
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "3",
+        "theta": "3fe83525012d7f01",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "3",
+        "theta": "3fe83525012d7f01",
+        "k": 4,
+        "alpha": 4
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "3",
+        "theta": "3fe83525012d7f01",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "3",
+        "theta": "3fe83525012d7f01",
+        "k": 11,
+        "alpha": 9
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "3",
+        "theta": "3fe83525012d7f01",
+        "k": 20,
+        "alpha": 16
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "3",
+        "theta": "3fe83525012d7f01",
+        "k": 21,
+        "alpha": 16
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "4",
+        "theta": "3fe45bd8f42ab1e5",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "4",
+        "theta": "3fe45bd8f42ab1e5",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "4",
+        "theta": "3fe45bd8f42ab1e5",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "4",
+        "theta": "3fe45bd8f42ab1e5",
+        "k": 11,
+        "alpha": 7
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "4",
+        "theta": "3fe45bd8f42ab1e5",
+        "k": 20,
+        "alpha": 13
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "4",
+        "theta": "3fe45bd8f42ab1e5",
+        "k": 21,
+        "alpha": 14
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "5",
+        "theta": "3fe478cd00d7e0b0",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "5",
+        "theta": "3fe478cd00d7e0b0",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "5",
+        "theta": "3fe478cd00d7e0b0",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "5",
+        "theta": "3fe478cd00d7e0b0",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "5",
+        "theta": "3fe478cd00d7e0b0",
+        "k": 20,
+        "alpha": 13
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "5",
+        "theta": "3fe478cd00d7e0b0",
+        "k": 21,
+        "alpha": 14
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "6",
+        "theta": "3fe7f74c420da4ce",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "6",
+        "theta": "3fe7f74c420da4ce",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "6",
+        "theta": "3fe7f74c420da4ce",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "6",
+        "theta": "3fe7f74c420da4ce",
+        "k": 11,
+        "alpha": 9
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "6",
+        "theta": "3fe7f74c420da4ce",
+        "k": 20,
+        "alpha": 15
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "6",
+        "theta": "3fe7f74c420da4ce",
+        "k": 21,
+        "alpha": 16
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "7",
+        "theta": "3fe4ca7ea68fe5b0",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "7",
+        "theta": "3fe4ca7ea68fe5b0",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "7",
+        "theta": "3fe4ca7ea68fe5b0",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "7",
+        "theta": "3fe4ca7ea68fe5b0",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "7",
+        "theta": "3fe4ca7ea68fe5b0",
+        "k": 20,
+        "alpha": 13
+      },
+      {
+        "note": "θ_max below θ_min clamps to 0.8",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe3333333333333",
+        "thetaMax": "3fe199999999999a",
+        "phase": "7",
+        "theta": "3fe4ca7ea68fe5b0",
+        "k": 21,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "0",
+        "theta": "3fe546ff60e7ca0b",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "0",
+        "theta": "3fe546ff60e7ca0b",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "0",
+        "theta": "3fe546ff60e7ca0b",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "0",
+        "theta": "3fe546ff60e7ca0b",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "0",
+        "theta": "3fe546ff60e7ca0b",
+        "k": 20,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "0",
+        "theta": "3fe546ff60e7ca0b",
+        "k": 21,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "1",
+        "theta": "3fe5582eebc922d4",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "1",
+        "theta": "3fe5582eebc922d4",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "1",
+        "theta": "3fe5582eebc922d4",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "1",
+        "theta": "3fe5582eebc922d4",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "1",
+        "theta": "3fe5582eebc922d4",
+        "k": 20,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "1",
+        "theta": "3fe5582eebc922d4",
+        "k": 21,
+        "alpha": 15
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "2",
+        "theta": "3fe52d7f8ec65a42",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "2",
+        "theta": "3fe52d7f8ec65a42",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "2",
+        "theta": "3fe52d7f8ec65a42",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "2",
+        "theta": "3fe52d7f8ec65a42",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "2",
+        "theta": "3fe52d7f8ec65a42",
+        "k": 20,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "2",
+        "theta": "3fe52d7f8ec65a42",
+        "k": 21,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "3",
+        "theta": "3fe55ed135d1a283",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "3",
+        "theta": "3fe55ed135d1a283",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "3",
+        "theta": "3fe55ed135d1a283",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "3",
+        "theta": "3fe55ed135d1a283",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "3",
+        "theta": "3fe55ed135d1a283",
+        "k": 20,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "3",
+        "theta": "3fe55ed135d1a283",
+        "k": 21,
+        "alpha": 15
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "4",
+        "theta": "3fe52d8d685e4b75",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "4",
+        "theta": "3fe52d8d685e4b75",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "4",
+        "theta": "3fe52d8d685e4b75",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "4",
+        "theta": "3fe52d8d685e4b75",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "4",
+        "theta": "3fe52d8d685e4b75",
+        "k": 20,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "4",
+        "theta": "3fe52d8d685e4b75",
+        "k": 21,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "5",
+        "theta": "3fe52f00029a2765",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "5",
+        "theta": "3fe52f00029a2765",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "5",
+        "theta": "3fe52f00029a2765",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "5",
+        "theta": "3fe52f00029a2765",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "5",
+        "theta": "3fe52f00029a2765",
+        "k": 20,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "5",
+        "theta": "3fe52f00029a2765",
+        "k": 21,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "6",
+        "theta": "3fe55bb992a9a467",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "6",
+        "theta": "3fe55bb992a9a467",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "6",
+        "theta": "3fe55bb992a9a467",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "6",
+        "theta": "3fe55bb992a9a467",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "6",
+        "theta": "3fe55bb992a9a467",
+        "k": 20,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "6",
+        "theta": "3fe55bb992a9a467",
+        "k": 21,
+        "alpha": 15
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "7",
+        "theta": "3fe53315b149c13f",
+        "k": 1,
+        "alpha": 1
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "7",
+        "theta": "3fe53315b149c13f",
+        "k": 4,
+        "alpha": 3
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "7",
+        "theta": "3fe53315b149c13f",
+        "k": 5,
+        "alpha": 4
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "7",
+        "theta": "3fe53315b149c13f",
+        "k": 11,
+        "alpha": 8
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "7",
+        "theta": "3fe53315b149c13f",
+        "k": 20,
+        "alpha": 14
+      },
+      {
+        "note": "a narrow range: θ barely moves, so α is nearly fixed",
+        "seed": "01eef46b832266cb7a14dac126d52053a33f5ae9af4aaf4f16ab405288d956a7",
+        "thetaMin": "3fe51eb851eb851f",
+        "thetaMax": "3fe570a3d70a3d71",
+        "phase": "7",
+        "theta": "3fe53315b149c13f",
+        "k": 21,
+        "alpha": 14
+      }
+    ]
+  }
 }
