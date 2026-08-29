@@ -182,9 +182,14 @@ fn the_attackers_signature_verifies_against_the_summed_key() {
     let summed = PublicKey::uncompress(&sum_g1(&all, false)).expect("the sum is a key");
 
     assert_eq!(
-        Signature::uncompress(&forged.compress())
-            .unwrap()
-            .verify(true, &message, DST, &[], &summed, true),
+        Signature::uncompress(&forged.compress()).unwrap().verify(
+            true,
+            &message,
+            DST,
+            &[],
+            &summed,
+            true
+        ),
         BLST_ERROR::BLST_SUCCESS,
         "one signature stands for all four keys — which is why nothing may sum them"
     );
