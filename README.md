@@ -9,6 +9,36 @@ See [LP-105 §Claims and evidence](https://github.com/luxfi/lps/blob/main/LP-105
 [![CI Status](https://github.com/luxfi/consensus/actions/workflows/ci.yml/badge.svg)](https://github.com/luxfi/consensus/actions)
 [![Go Version](https://img.shields.io/badge/go-1.26-blue)](https://go.dev)
 
+## What decides finality
+
+`engine/chain` is the engine `luxd` builds — `chains/manager.go` calls
+`consensuschain.NewRuntime` and injects a BLS `VoteVerifier`. It decides by
+metastable sampling to β-confidence and records the decision on the ladder in
+[`engine/chain/finality.go`](engine/chain/finality.go):
+
+    Photon → Wave → Nova → Quasar → Horizon
+
+Nova is a strict majority of stake and authorizes LOCAL execution; it is
+reorgable. Quasar is a strict two-thirds of stake and is the export rung —
+bridges, DEX settlement, cross-chain, validator-set transitions. Both floors have
+one definition, `config.TwoThirdsStakeFloor` and `config.HalfStakeFloor`, which
+the certificate verifier enforces and the parameter sizer derives α from, so the
+count threshold cannot drift from the stake predicate.
+
+The certificate ([`engine/chain/cert.go`](engine/chain/cert.go)) is the portable
+witness of a decision, not a second decider: α distinct validators each sign
+ACCEPT over one position, nothing is aggregated, and any node holding the votes
+assembles byte-identical bytes.
+
+**The standard is written down.** The signed message, the certificate wire form,
+both stake floors, the ladder's authorizations and the committee parameters are
+emitted from those definitions into
+[`conformance/corpus.json`](conformance/corpus.json). An implementation in
+another language is conformant when it reproduces that file exactly. Regenerate
+with `go test ./conformance -update`; a diff there is a protocol change.
+
+Of the packages below, `engine/chain` uses `protocol/quasar` and no other.
+
 ## Quasar Family of Consensus
 
 Quasar is the consensus engine for the Lux network. It provides unified
