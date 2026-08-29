@@ -442,8 +442,33 @@ implements, exactly as `bootstrap.BlockSource` is. Not to be confused with
 - **Go**: Production-ready (protocol/, engine/, core/)
 - **Python** (`pkg/python/`): Only complete non-Go SDK with real consensus logic
 - **C** (`pkg/c/`): Data structures only, not real consensus
-- **Rust** (`pkg/rust/`): FFI wrapper around C, not native
+- **Rust** (`pkg/rust/`): pure Rust, no FFI. Two planes, do not confuse them.
+  `cert.rs` is the accept rule — a port of `engine/chain/cert.go`, checked
+  against Go-produced BLS vectors, and the only thing here that decides
+  finality. Everything else is the probabilistic Wave/FPC engine, which forms a
+  *preference* and has no rounds, no networking and no bootstrap, so it is not a
+  consensus participant on its own.
 - **C++** (`pkg/cpp/`): Stub
+
+### What deciding costs (pkg/rust, `cargo bench --bench consensus_bench`)
+
+Verifying a certificate is elliptic-curve work and it dominates everything
+else by three orders of magnitude. Building the signed message is ~16ns and
+the FPC threshold ~57ns; verifying one BLS signature is ~620µs. So a
+21-validator certificate costs ~13ms verified vote by vote, and ~625µs
+verified as a single aggregate — flat in committee size, because aggregating
+the keys is point addition and only one pairing check remains.
+
+The two are not interchangeable. Per-vote verification is what
+`QuorumCert::verify` does, and it is what makes each vote individually
+attributable — needed to name an equivocator. The aggregate proves the same
+thing about the set as a whole and cannot say who. Use the aggregate for the
+hot path, keep per-vote for anything that must assign blame.
+
+This is also why the old throughput figures were meaningless: recording 21
+unsigned ballots to a decision takes ~3.6µs, roughly 3600× less than checking
+the signatures that would make them evidence. Any "votes/sec" number measured
+without signatures is measuring a HashMap.
 
 ### Dependencies (Critical)
 - `github.com/luxfi/crypto` -- BLS, ML-DSA, threshold signing

@@ -320,9 +320,26 @@ pub mod types {
         pub gpu_acceleration: bool,
     }
 
-    impl QuasarConfig {
-        /// Default configuration (balanced)
-        pub fn default() -> Self {
+    /// The FPC seed a node uses when no epoch seed has been derived yet.
+    ///
+    /// It is the seed the Go selector defaults to, byte for byte, so a default
+    /// Rust node and a default Go node draw the same θ schedule. In production
+    /// the seed comes from the epoch instead — `sha256(epoch ‖ chain ‖ last
+    /// finalized block)` — which is unpredictable until the previous epoch
+    /// finalizes.
+    pub const DEFAULT_FPC_SEED: [u8; 32] = *b"lux-fpc-default-seed-00000000000";
+
+    /// Testnet's standing seed, until epoch derivation is wired.
+    pub const TESTNET_FPC_SEED: [u8; 32] = *b"lux-testnet-fpc-seed-00000000000";
+
+    /// Mainnet's standing seed, until epoch derivation is wired.
+    pub const MAINNET_FPC_SEED: [u8; 32] = *b"lux-mainnet-fpc-secure-seed-2025";
+
+    /// The balanced configuration. The two network presets below are stated as
+    /// what they change about it, so a field that ought to be shared cannot
+    /// quietly drift in one of three copies.
+    impl Default for QuasarConfig {
+        fn default() -> Self {
             QuasarConfig {
                 // Wave
                 k: 20,
@@ -334,7 +351,7 @@ pub mod types {
                 enable_fpc: true,
                 theta_min: 0.5,
                 theta_max: 0.8,
-                fpc_seed: *b"lux-consensus-fpc-default-seed!!", // 32 bytes
+                fpc_seed: DEFAULT_FPC_SEED,
 
                 // Photon
                 base_luminance: 100.0,
@@ -354,8 +371,10 @@ pub mod types {
                 gpu_acceleration: true,
             }
         }
+    }
 
-        /// Testnet configuration (fast, relaxed)
+    impl QuasarConfig {
+        /// Testnet: a small committee, short rounds, fixed thresholds.
         pub fn testnet() -> Self {
             QuasarConfig {
                 k: 5,
@@ -363,10 +382,8 @@ pub mod types {
                 beta: 5,
                 round_timeout: Duration::from_millis(50),
                 enable_fpc: false,
-                theta_min: 0.5,
                 theta_max: 0.7,
-                fpc_seed: *b"lux-testnet-fpc-seed-00000000000",
-                base_luminance: 100.0,
+                fpc_seed: TESTNET_FPC_SEED,
                 max_luminance: 500.0,
                 min_luminance: 20.0,
                 success_multiplier: 1.05,
@@ -377,31 +394,18 @@ pub mod types {
                 security_level: SecurityLevel::Low,
                 quantum_resistant: false,
                 gpu_acceleration: false,
+                ..QuasarConfig::default()
             }
         }
 
-        /// Mainnet configuration (production, secure)
+        /// Mainnet: an odd committee of 21 for tie-breaking, at the highest
+        /// security level. Everything else is the balanced default.
         pub fn mainnet() -> Self {
             QuasarConfig {
-                k: 21, // Odd number for tie-breaking
-                alpha: 0.69,
-                beta: 20,
-                round_timeout: Duration::from_millis(100),
-                enable_fpc: true,
-                theta_min: 0.5,
-                theta_max: 0.8,
-                fpc_seed: *b"lux-mainnet-fpc-secure-seed-2025",
-                base_luminance: 100.0,
-                max_luminance: 1000.0,
-                min_luminance: 10.0,
-                success_multiplier: 1.1,
-                failure_multiplier: 0.9,
-                network_timeout: Duration::from_secs(5),
-                max_message_size: 2 * 1024 * 1024,
-                max_outstanding: 10,
+                k: 21,
+                fpc_seed: MAINNET_FPC_SEED,
                 security_level: SecurityLevel::High,
-                quantum_resistant: true,
-                gpu_acceleration: true,
+                ..QuasarConfig::default()
             }
         }
 
@@ -410,15 +414,6 @@ pub mod types {
             (self.alpha * self.k as f64).ceil() as usize
         }
     }
-
-    impl Default for QuasarConfig {
-        fn default() -> Self {
-            QuasarConfig::default()
-        }
-    }
-
-    // Legacy Config alias for backward compatibility
-    pub type Config = QuasarConfig;
 }
 
 // ============= ERRORS MODULE =============
@@ -508,10 +503,6 @@ pub mod fpc {
             }
         }
 
-        /// Create default selector
-        pub fn default() -> Self {
-            FpcSelector::new(0.5, 0.8, *b"lux-fpc-default-seed-00000000000")
-        }
 
         /// θ for a phase, from the PRF the network runs.
         ///
@@ -555,6 +546,15 @@ pub mod fpc {
             (self.theta_min, self.theta_max)
         }
     }
+
+    /// The default selector reads the default configuration, so the θ range and
+    /// the seed have one home apiece.
+    impl Default for FpcSelector {
+        fn default() -> Self {
+            let c = QuasarConfig::default();
+            FpcSelector::new(c.theta_min, c.theta_max, c.fpc_seed)
+        }
+    }
 }
 
 // ============= PHOTON MODULE - Light-Based Validator Sampling =============
@@ -589,18 +589,6 @@ pub mod photon {
                 min: config.min_luminance,
                 success_mult: config.success_multiplier,
                 failure_mult: config.failure_multiplier,
-            }
-        }
-
-        /// Create with default parameters
-        pub fn default() -> Self {
-            Luminance {
-                lux: HashMap::new(),
-                base: 100.0,
-                max: 1000.0,
-                min: 10.0,
-                success_mult: 1.1,
-                failure_mult: 0.9,
             }
         }
 
@@ -642,11 +630,18 @@ pub mod photon {
         }
     }
 
+    /// The default tracker reads the default configuration rather than
+    /// restating its five numbers, which is how the two used to disagree.
+    impl Default for Luminance {
+        fn default() -> Self {
+            Luminance::new(&QuasarConfig::default())
+        }
+    }
+
     /// Photon sampler for peer selection
     pub struct PhotonSampler {
         peers: Vec<NodeID>,
         luminance: Luminance,
-        k: usize,
     }
 
     impl PhotonSampler {
@@ -655,7 +650,6 @@ pub mod photon {
             PhotonSampler {
                 peers,
                 luminance: Luminance::new(config),
-                k: config.k,
             }
         }
 
@@ -687,7 +681,7 @@ pub mod photon {
                 let mut best_idx = 0;
                 let mut best_score = f64::MIN;
 
-                for (idx, (peer, &weight)) in self.peers.iter().zip(weights.iter()).enumerate() {
+                for (idx, &weight) in weights.iter().enumerate() {
                     if used[idx] {
                         continue;
                     }
@@ -1540,8 +1534,6 @@ pub mod engine {
         }
     }
 
-    // Legacy Chain type alias for backward compatibility
-    pub type Chain = QuasarEngine;
 }
 
 // ============= CONVENIENCE FUNCTIONS =============

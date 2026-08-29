@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["consensus", "post-quantum", "quasar", "probabilistic", "lux"]
 categories = ["cryptography", "algorithms", "network-programming"]
 authors = ["Lux Industries Inc."]
-exclude = ["tests/*.old", "target/"]
+exclude = ["target/"]
 
 [package.metadata.docs.rs]
 no-default-features = true
@@ -32,9 +32,6 @@ blake3 = { version = "1.5", optional = true }
 
 # Parallel processing
 rayon = { version = "1.10", optional = true }
-
-[build-dependencies]
-cc = "1.0"
 
 [lib]
 name = "lux_consensus"

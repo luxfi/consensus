@@ -364,7 +364,6 @@ version = "1.22.1"
 dependencies = [
  "blake3",
  "blst",
- "cc",
  "criterion",
  "hex",
  "libc",
