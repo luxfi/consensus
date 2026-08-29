@@ -1,0 +1,311 @@
+---
+title: The finality standard
+description: What a Lux validator signs, what a certificate proves, and the thresholds that decide
+---
+
+# The finality standard
+
+Lux finality is leaderless. No node proposes a decision and no node aggregates one.
+Each validator signs one fixed byte string over one position, and any node holding
+enough of those signatures assembles the same certificate. Building a certificate
+needs no secret, so there is nothing for a leader to be.
+
+This page is the rule. [Conformance](/docs/conformance) is the record of who
+currently reproduces it.
+
+Go is the network. `luxfi/node` runs mainnet, testnet and devnet, and
+`github.com/luxfi/consensus/engine/chain` is the engine it builds:
+`chains/manager.go` calls `consensuschain.NewRuntime` and injects a BLS
+`VoteVerifier`. Everything below is read out of that package.
+
+## The ladder
+
+A block carries exactly one rung. The rungs are distinct authorization boundaries
+and are never collapsed into one another — not in code, not in RPC, not in metrics.
+
+| Rung | Value | Local execution | Export | Irreversible |
+|---|---|---|---|---|
+| photon | 0 | no | no | no |
+| wave | 1 | no | no | no |
+| nova | 2 | **yes** | no | no |
+| quasar | 3 | yes | **yes** | no |
+| horizon | 4 | yes | yes | **yes** |
+
+- **photon** — a vote is emitted and in flight. The block is being sampled. Authorizes nothing.
+- **wave** — the sampling wave has made this block the forming preference. A preference is not an acceptance. Authorizes nothing.
+- **nova** — β-ignition. A strict majority of stake sustained for `NovaBeta` rounds. Authorizes local execution and is **reorgable**: a lone equivocator can fork a bare majority, so nova is safe to act on locally and never safe to export.
+- **quasar** — a certificate exists whose distinct signers hold strictly more than two thirds of stake. Byzantine-safe. This is the rung bridges, DEX settlement, cross-chain messages and validator-set transitions read.
+- **horizon** — a post-quantum signature seals the certificate. Irreversible against a quantum adversary.
+
+The invariant: a block below quasar can never be exported as final. Nova authorizes
+local execution; export requires quasar; quantum irreversibility requires horizon.
+
+The names are the lowercase strings used verbatim in RPC status and metrics.
+
+Source: [`engine/chain/finality.go`](https://github.com/luxfi/consensus/blob/main/engine/chain/finality.go).
+
+## What a validator signs
+
+One message, 226 bytes, big-endian, fixed width in every field, so it carries no
+lengths and is always exactly that long.
+
+```text
+"LUX/chain/vote/v2\x00"   18   domain tag, NUL-terminated
+version                    2   = 3
+qc_type                    1   = 1 (finality)
+chain_id                  32
+height                     8
+round                      4
+canonical_id              32   the inner execution commitment
+parent_canonical_id       32
+execution_state_root      32
+payload_root              32   tx_root
+validator_set_root        32   the weighted set the vote was cast under
+accept                     1   0x01 accept | 0x00 reject
+```
+
+Three properties are worth stating outright, because each one is a fork if an
+implementation gets it wrong.
+
+**The outer envelope is not signed.** `block_id` and `parent_id` — the proposervm
+wrapper ids — are transport cache keys and appear nowhere in the message. Two
+validators that executed the same inner block sign identical bytes however it
+arrived, so their votes interoperate. A locally derived wrapper id can never reach
+a signature. When a block has no inner/outer split, the canonical slots are unset
+and the transport ids are bound under them; that degrade is resolved in one place,
+in the encoder, because two places resolving it is how one node signs the block id
+and another signs the empty id for the same block.
+
+**The decision is bound.** Accept and reject differ in the final byte alone, which
+is what makes an accept signature unliftable to a reject and the reverse. Both
+halves are exported — `CanonicalVoteMessage` and `CanonicalRejectMessage` — so an
+implementation can be checked against the whole standard rather than the half a
+certificate happens to carry.
+
+**The validator set is bound.** `validator_set_root` commits the vote to the exact
+weighted set it was cast under. A certificate gathered under root R cannot be
+re-presented as certifying under R′: every signature was over R. This turns
+"two thirds of stake at the certificate's epoch" from an assumption into an
+enforced property — a later stake change cannot retroactively flip a correct
+certificate, and a certificate cannot be laundered across epochs.
+
+Source: [`engine/chain/cert.go`](https://github.com/luxfi/consensus/blob/main/engine/chain/cert.go).
+
+## The signature
+
+Votes are signed BLS12-381 over G2 under the **basic** ciphersuite:
+
+```text
+BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_
+```
+
+43 bytes of domain, no NUL terminator. A public key is 48 bytes, a signature is 96.
+
+The neighbouring eth2 precompile suite ends `_RO_POP_`. Same key, same message,
+different hash-to-curve, different signature, and each side rejects the other's
+votes while passing all of its own tests. That trap cost the C++ implementation its
+interoperability once and is now held in place by vectors that sign through both
+surfaces and assert the results differ.
+
+## The certificate
+
+A quorum certificate is the portable witness of a decision, not a second decider.
+The α-of-K counting in the engine is the sole finality authority.
+
+Nothing is aggregated and no secret share is combined. α distinct validators each
+produce one signed ACCEPT over one position; any node holding those votes assembles
+byte-identical bytes. A proposer's own vote is one vote and buys its own proposal no
+credit, and a peer's REJECT is never read as an ACCEPT.
+
+Wire form:
+
+```text
+version         2
+type            1
+tier            1
+chain_id       32
+height          8
+round           4
+block_id       32
+parent_id      32
+canonical_id   32
+parent_canonical_id  32
+execution_state_root 32
+payload_root         32
+validator_set_root   32
+threshold       4
+vote_count      4
+per vote:  node_id 20 ‖ accept 1 ‖ sig_len 4 ‖ sig sig_len
+```
+
+Votes are written strictly ascending by node id whatever order they arrived in, so
+two nodes that collected the same votes emit the same bytes. A one-signer nova
+certificate is 313 bytes; a three-signer quasar certificate is 503.
+
+**The tier is read from the certificate; the threshold is not.** It is re-derived
+from the authoritative validator set at the certificate's epoch height. A nova set
+of votes relabelled quasar fails the two-thirds check. A quasar certificate
+relabelled nova merely under-claims. An unknown tier fails closed, and so does a
+missing stake source — a mis-connected caller is loud rather than silently
+count-only.
+
+The four reads a certificate needs — membership, public key, set root, stake — all
+key off the same epoch height, so a certificate is internally consistent at exactly
+one epoch. Resolving a voter's key from the *current* set instead would drop the
+legitimate vote of a validator that has since left, stalling finality during any
+staking change.
+
+## The thresholds
+
+A quorum must **strictly exceed** its floor. Equality is not a quorum.
+
+```text
+TwoThirdsStakeFloor(total) = 2·⌊total/3⌋ + (1 if total mod 3 == 2 else 0)
+HalfStakeFloor(total)      = ⌊total/2⌋
+```
+
+Both are computed in integers and hold to the top of the range:
+
+| total | ⅔ floor | quasar needs | ½ floor | nova needs |
+|---|---|---|---|---|
+| 3 | 2 | 3 | 1 | 2 |
+| 5 | 3 | 4 | 2 | 3 |
+| 2^64−1 | 12297829382473034410 | 12297829382473034411 | 9223372036854775807 | 9223372036854775808 |
+
+Quasar is `voted > TwoThirdsStakeFloor(total)`. Nova is
+`voted > HalfStakeFloor(total)` **and** at least `NovaSignerFloor(n)` distinct
+signers. The signer floor is the guard the stake predicate cannot give: a single
+validator holding a majority of stake would otherwise ignite a block on its own.
+Stake majority and signer floor are two independent predicates and neither is
+sufficient alone.
+
+Nova is read in stake rather than head-count for a reason. Registration is open at
+the minimum stake, so a head-count is purchasable in both directions: one dust
+entry takes ⌊n/2⌋+1 from 3 to 4, and that same dust votes toward the majority that
+decides what the chain is. A majority of stake is neither.
+
+Counts as a function of the live set size:
+
+| n | nova quorum | signer floor | β | crash tolerance | quasar (equal stake) |
+|---|---|---|---|---|---|
+| 1 | 1 | 1 | 1 | 0 | 1 |
+| 5 | 3 | 3 | 2 | 2 | 4 |
+| 11 | 6 | 3 | 2 | 5 | 8 |
+| 21 | 11 | 3 | 2 | 10 | 15 |
+| 100 | 51 | 3 | 2 | 49 | 67 |
+| 1000 | 501 | 3 | 2 | 499 | 667 |
+
+`NovaQuorum(n) = ⌊n/2⌋+1`, `NovaSignerFloor(n) = min(NovaQuorum(n), 3)`,
+`CrashTolerance(n) = n − NovaQuorum(n)`, and the equal-stake quasar count is
+⌊2n/3⌋+1. β is 1 for a lone node and 2 otherwise: one confirming round of
+hysteresis, so a transient majority flip cannot ignite, without the fragility of a
+deep β at zero margin.
+
+Beyond crash tolerance nova pauses fail-closed — no ignition, so no acceptance, so
+no fork — and resumes the instant a node returns.
+
+Sources: [`config/quorum_threshold.go`](https://github.com/luxfi/consensus/blob/main/config/quorum_threshold.go),
+[`engine/chain/quorum.go`](https://github.com/luxfi/consensus/blob/main/engine/chain/quorum.go).
+
+## The accept threshold per round
+
+Within a sampling round, the vote count a round accepts on is drawn from a PRF
+rather than fixed, so it cannot be predicted and targeted.
+
+```text
+seed  = sha256( be64(epoch) ‖ chain_id ‖ prev_block_hash )
+θ(p)  = θmin + be64( sha256(seed ‖ be64(p))[:8] ) / (2^64 − 1) · (θmax − θmin)
+α     = ⌈θ · k⌉
+```
+
+Defaults are θmin = 0.5, θmax = 0.8. Every input to the seed is bound, and
+`prev_block_hash` is unknown until the previous epoch finalizes, so θ cannot be
+steered by choosing an input before the epoch opens.
+
+θ is compared as exact IEEE-754 bits, never as a decimal. α is a ceiling, so the
+last bit of θ is load-bearing: two implementations agreeing to seventeen decimal
+places can still pick different accept counts at the k where the ceiling steps.
+This is not hypothetical — a mixer commented "SHA256-like" returned 11 where Go
+returns 15 at phase 0 with k = 20, which is a fork, not a rounding difference.
+
+The phase advances once per counted round, past the k-vote gate. Advancing per vote
+runs it k times too fast and puts two nodes one round apart on different θ.
+
+Source: [`protocol/wave/fpc/fpc.go`](https://github.com/luxfi/consensus/blob/main/protocol/wave/fpc/fpc.go).
+
+## Committee parameters
+
+k is the committee sampled, α the count a round accepts on, β the confidence depth.
+Below about four validators k floors at the smallest Byzantine committee, K = 4 with
+α = 3, so f = 1 and 2α − K ≥ f + 1.
+
+| n | k | α preference | α confidence | β | β rogue |
+|---|---|---|---|---|---|
+| 1 | 4 | 3 | 3 | 2 | 20 |
+| 5 | 5 | 4 | 4 | 2 | 20 |
+| 11 | 11 | 8 | 8 | 2 | 20 |
+| 21 | 21 | 15 | 15 | 2 | 21 |
+| 100 | 100 | 67 | 67 | 2 | 100 |
+
+Pacing is the only axis that differs by network:
+
+| network | id | block | round timeout |
+|---|---|---|---|
+| mainnet | 1 | 200 ms | 400 ms |
+| testnet | 2 | 100 ms | 225 ms |
+| local | 1337 | 1 ms | 5 ms |
+
+## Post-quantum finality
+
+Horizon is reached when a post-quantum signature seals the certificate. The
+finality *rule* does not change at that rung — only the cryptography of the
+witness.
+
+The engine's certificate keys voters by `ids.NodeID`, each carrying one signature,
+and needs only a pluggable `VoteVerifier`. That is what every chain runs today on
+every deployment. `protocol/quasar.WeightedQuorumCert` witnesses the same relation
+with the heavyweight apparatus: signers are leaves of the epoch's weighted
+validator set, each carrying a FIPS 204/205 record and a Merkle inclusion proof
+against the set root.
+
+Quasar runs its signing paths in parallel rather than in sequence:
+
+- **BLS12-381** threshold signatures — the classical path, ECDL hardness
+- **Corona** — Ring-LWE two-round threshold, Module-LWE hardness
+- **ML-DSA-65** (FIPS 204) — identity signatures, Module-LWE and Module-SIS
+- **Magnetar** — SLH-DSA (FIPS 205), hash-based
+
+Each layer is independently toggleable, so a deployment picks BLS alone, BLS with
+ML-DSA, BLS with Corona, or all three. An adversary against the full set must break
+ECDL *and* Module-LWE *and* Module-SIS at once.
+
+When a chain has its weighted validator set and ML-DSA key material plumbed
+through the node layer, the engine certificate upgrades to carry the weighted
+certificate as its witness with no change to the rule. One rule; the witness format
+is orthogonal and forward-compatible.
+
+Sources: [`protocol/quasar/doc.go`](https://github.com/luxfi/consensus/blob/main/protocol/quasar/doc.go),
+[`engine/chain/quasar.go`](https://github.com/luxfi/consensus/blob/main/engine/chain/quasar.go).
+
+## The standard as data
+
+The rule above is projected to `conformance/corpus.json`, which is read out of the
+live definitions rather than restated beside them: the signed message from
+`CanonicalVoteMessage`, the wire form from `QuorumCert.MarshalBinary`, the floors
+from `config`, the ladder from the `Finality` type, the committee parameters from
+`config.FeasibleParams`. An edit to a rule moves the corpus and the golden test
+fails at the source, rather than at a foreign node six months later.
+
+An implementation in another language is conformant when it reproduces that file.
+
+A golden file alone would be weak — it can be re-blessed and the change vanishes —
+so the load-bearing facts are also asserted outright, transcribed from the
+specification and sharing no code with the encoder: the message is 226 bytes, the
+tag is the one the network uses, the two-thirds floor recomputed in arbitrary
+precision, and every signed axis moved one at a time to prove it is bound.
+Re-blessing the golden does not get past those.
+
+The corpus is deterministic by construction: no clock, no randomness, no I/O, no
+map iteration in the output. Every `uint64` is written as a decimal string, because
+a stake total near 2^64 loses precision in a JSON parser that keeps numbers as
+doubles, and a conformance comparison must never be lost to formatting.

@@ -1,231 +1,147 @@
 ---
-title: Quasar Protocol
-description: Post-quantum consensus with dual-certificate finality
+title: Quasar
+description: The export rung, and the post-quantum witness that seals it
 ---
 
-# Quasar Protocol
+# Quasar
 
-Quasar is the quantum finality layer of Lux consensus. It combines classical BLS signature aggregation with lattice-based post-quantum cryptography to provide finality guarantees that survive quantum computing attacks.
+Quasar is two things that share a name because they are the same claim at two
+strengths.
 
-## Overview
+**The rung.** On the [finality ladder](/docs/standard#the-ladder), quasar is the
+rung where a certificate exists whose distinct signers hold strictly more than two
+thirds of stake. It is the export boundary: bridges, DEX settlement, cross-chain
+messages and validator-set transitions read quasar and nothing below it.
 
-Every block in Lux requires two certificates for finality:
+**The package.** `protocol/quasar` is the post-quantum apparatus that carries the
+same relation with post-quantum cryptography, which is what takes a block from
+quasar to horizon.
 
-```go
-type CertBundle struct {
-    BLSAgg  []byte  // 96B BLS aggregate signature
-    PQCert  []byte  // ~3KB lattice certificate
-}
+The finality *rule* is identical at both. Only the cryptography of the witness
+differs, and that is the whole design: one rule, an orthogonal witness format.
 
-// Block is only final when BOTH certificates are valid
-isFinal := verifyBLS(blsAgg, quorum) && verifyPQ(pqCert, quorum)
+## Two witnesses, one relation
+
+The engine-level `QuorumCert` in `engine/chain` keys voters by `ids.NodeID`, each
+carrying one signature over the canonical vote message, and needs only a pluggable
+`VoteVerifier`. That is what every chain — P, X, C, D — runs today on every
+deployment, with no extra plumbing.
+
+`quasar.WeightedQuorumCert` witnesses the same relation with the heavyweight
+apparatus. Signers are leaves of the epoch's weighted validator set, each carrying
+a FIPS 204 / FIPS 205 record and a Merkle inclusion proof against the set root. It
+needs three pieces of node-layer state the engine does not own: the epoch's
+weighted-set Merkle root, each validator's post-quantum public-key leaf and voting
+weight, and per-validator Merkle paths.
+
+When a chain has those plumbed through, the engine certificate upgrades to carry
+the weighted certificate as its witness — no change to the rule. When it has not,
+the source is nil and the engine certificate remains the witness. Same rule,
+lighter witness. The bridge between them is `engine/chain/quasar.go`; no
+cryptography is invented at the engine level.
+
+## What the weighted certificate proves
+
+A quorum-weight subset of the epoch validator set each produced a valid,
+**independent** FIPS 204 / 205 signature over the same domain-separated message.
+Verification is direct — there is no succinct proof layer between the reader and
+the signatures:
+
+```text
+for each signer record:
+  (a) the leaf is included under validator_set_root      (Merkle)
+  (b) the parameter set is in the allowed set
+  (c) the signature verifies under the stock FIPS verifier
+  (d) validator ids are strictly increasing              (distinct, canonical)
+accumulate weight; then
+  Σ weight ≥ quorum_threshold
+  Σ weight == aggregate_weight
+  commit(signer_ids) == signer_commitment
 ```
 
-## Two-Round Finality
+Soundness rests on exactly two things: unmodified FIPS 204/205 verification — each
+signature is byte-identical to what the NIST reference accepts — and the
+second-preimage resistance of the weighted-set Merkle commitment.
 
-### Phase I: Propose
+This is threshold **certification**, not threshold signing. There is no DKG, no
+seed or WOTS+ or FORS or secret share ever combined or exposed. No private key
+material is shared or reconstructed. Building a certificate therefore needs no
+secret: a node collects already-produced signer records, sorts them, and assembles.
+Any node with the records builds the identical certificate — permissionless and
+leaderless, the same property the engine certificate has.
 
-1. Sample the DAG frontier for highest-confidence vertices
-2. Propose the candidate block to validators
-3. Collect BLS signatures from responding validators
-4. Aggregate signatures once quorum (alpha-c) is reached
+## The legs
 
-### Phase II: Commit
+A Quasar certificate carries independent signing paths, run in parallel rather than
+in sequence:
 
-1. Broadcast aggregated BLS signature
-2. Validators verify and add lattice signatures
-3. Aggregate lattice signatures once quorum is reached
-4. Block achieves quantum finality
+| Leg | Primitive | Hardness |
+|---|---|---|
+| BLS | BLS12-381 aggregate | ECDL — classical fast path, empty in pure-PQ |
+| Pulsar | Module-LWE threshold | Module-LWE |
+| Corona | Ring-LWE threshold | Ring-LWE |
+| Magnetar | SLH-DSA (FIPS 205) | hash-based |
+| ML-DSA rollup | per-validator ML-DSA-65 (FIPS 204) | Module-LWE + Module-SIS |
 
-```go
-func (q *Quasar) ProcessPhaseI(ctx context.Context, block *Block) error {
-    // Collect BLS signatures
-    sigs := make([]bls.Signature, 0, q.config.AlphaConfidence)
+Corona and Pulsar together are the honest post-quantum cardinality: two independent
+algebraic-lattice families, each independently a FIPS 204 class threshold producer.
+BLS is irrelevant to that predicate by design — a pure-PQ certificate carries no
+BLS bytes; a hybrid certificate layers BLS over the post-quantum surface.
 
-    for _, validator := range q.sampleValidators() {
-        sig, err := validator.SignBLS(block.Hash())
-        if err != nil {
-            continue
-        }
-        sigs = append(sigs, sig)
-    }
+An adversary against the full set must break ECDL *and* Module-LWE *and*
+Module-SIS at once.
 
-    if len(sigs) < q.config.AlphaConfidence {
-        return ErrInsufficientQuorum
-    }
+## Postures
 
-    block.BLSAgg = bls.AggregateSignatures(sigs)
-    return nil
-}
+An operator does not assemble legs by hand. A chain selects a posture, and the
+posture pins both the required leg kinds and the permitted modes for them:
 
-func (q *Quasar) ProcessPhaseII(ctx context.Context, block *Block) error {
-    // Collect lattice signatures
-    pqSigs := make([][]byte, 0, q.config.AlphaConfidence)
+| Posture | Requires | For |
+|---|---|---|
+| `BLS_FAST` | BLS | mempool, fast local acceptance |
+| `HYBRID_PQ_CHECKPOINT` | BLS ∧ (Pulsar ∨ ML-DSA rollup) | checkpoints |
+| `STRICT_QUASAR` | BLS ∧ Pulsar ∧ Corona | dual-lattice strict finality |
+| `RECOVERY_MODE` | BLS ∧ ML-DSA rollup | recovery, migration, bridge — no Pulsar key |
+| `POLARIS_HASH_PQ` | BLS ∧ Pulsar ∧ Magnetar rollup | adds hash-based diversity |
+| `POLARIS_MAX` | BLS ∧ Pulsar ∧ Corona ∧ Magnetar rollup | Module-LWE ∥ Ring-LWE ∥ hash-based |
 
-    for _, validator := range q.validators {
-        sig, err := validator.SignLattice(block.Hash())
-        if err != nil {
-            continue
-        }
-        pqSigs = append(pqSigs, sig)
-    }
+The Polaris postures admit Magnetar only as the trustless rollup — independent
+per-validator FIPS 205 signatures with no dealer, no DKG, no shared secret. A
+threshold mode with a signing-time trusted component is never admitted, because
+SLH-DSA cannot be proven by a threshold signature.
 
-    if len(pqSigs) < q.config.AlphaConfidence {
-        return ErrInsufficientQuorum
-    }
+The required leg kinds commit the *requirement*; the policy id and its allow-table
+commit the *mechanism*. `HYBRID` and `RECOVERY` require the same kinds and are
+distinguished only by which modes they permit.
 
-    block.PQCert = aggregateLatticeSigs(pqSigs)
-    return nil
-}
-```
+## The quantum transition
 
-## Key Hierarchy
+Before quantum computers, the model is ordinary Byzantine fault tolerance and the
+BLS aggregate is a fast classical path.
 
-| Layer | Key Type | Purpose | Storage |
-|-------|----------|---------|---------|
-| Node-ID | ed25519 | P2P transport auth | `$HOME/.lux/node.key` |
-| Validator-BLS | bls12-381 | Fast finality votes | `$HOME/.lux/bls.key` |
-| Validator-PQ | lattice | PQ finality shares | `$HOME/.lux/rt.key` |
-| Wallet (EVM) | secp256k1 or Lamport | User tx signatures | In wallet |
-| Wallet (X-Chain) | secp256k1 or ML-DSA | UTXO locking | In wallet |
+When BLS becomes forgeable, the lattice and hash-based legs do not. A block whose
+post-quantum legs do not verify is not final at horizon, whatever its BLS bytes
+say. The network stalls rather than accepting an unsafe fork — which is the correct
+behaviour for an export boundary, and the reason the ladder keeps horizon distinct
+from quasar instead of folding the two together.
 
-The same `rt.key` registered on Q-Chain is reused by all chains.
+## Accelerator dispatch
 
-## Configuration
+Each primitive routes batch operations through `crypto/backend.Resolve` to
+`accel.LatticeOps` when a GPU backend is selected or auto-detected. Single
+signatures stay on CPU: kernel-launch overhead exceeds the win at n = 1. The
+aggregated certificate verify path is the one that benefits and dispatches
+accordingly.
 
-```go
-type QuasarConfig struct {
-    // Number of validators to sample per round
-    K int
+## Where to read the source
 
-    // Preference threshold (early decision)
-    AlphaPreference int
+- [`engine/chain/finality.go`](https://github.com/luxfi/consensus/blob/main/engine/chain/finality.go) — the ladder and what each rung authorizes
+- [`engine/chain/cert.go`](https://github.com/luxfi/consensus/blob/main/engine/chain/cert.go) — the engine certificate and the canonical vote message
+- [`engine/chain/quasar.go`](https://github.com/luxfi/consensus/blob/main/engine/chain/quasar.go) — the bridge to the weighted certificate
+- [`protocol/quasar/quorum_cert.go`](https://github.com/luxfi/consensus/blob/main/protocol/quasar/quorum_cert.go) — the weighted certificate and its verifier
+- [`protocol/quasar/cert_policy_table.go`](https://github.com/luxfi/consensus/blob/main/protocol/quasar/cert_policy_table.go) — the posture table
 
-    // Confidence threshold (final decision)
-    AlphaConfidence int
-
-    // Number of rounds for finalization
-    Beta int
-
-    // Number of quantum rounds
-    QRounds int
-}
-
-// Default mainnet configuration
-func DefaultQuasarConfig() QuasarConfig {
-    return QuasarConfig{
-        K:               21,
-        AlphaPreference: 15,
-        AlphaConfidence: 18,
-        Beta:            8,
-        QRounds:         2,
-    }
-}
-```
-
-## Security Analysis
-
-### Pre-Quantum Security
-
-- Standard Byzantine fault tolerance
-- Requires 1/3+ honest stake
-- BLS signatures provide fast aggregation
-
-### Quantum Transition
-
-When quantum computers can break BLS:
-
-1. BLS certificates become forgeable
-2. Lattice certificates remain secure
-3. Consensus rejects blocks with invalid PQ certificates
-4. Network halts rather than accepting unsafe forks
-
-### Post-Quantum Security
-
-- Lattice-based signatures resist quantum attacks
-- Security based on Shortest Vector Problem (SVP)
-- 2^160 operations required for attack
-- NIST PQC standardized algorithms
-
-## Chain Integration
-
-| Chain | Integration | Rule |
-|-------|-------------|------|
-| Q-Chain | Q-blocks as internal txs | All chains read Q-blocks |
-| C-Chain | Every block has CertBundle | Invalid without quantum certs |
-| X-Chain | Vertex metadata references Q-block | Epoch sealed by quantum cert |
-| M-Chain | MPC rounds reference Q-block height | Custody requires PQ proof |
-
-## Performance
-
-### Certificate Generation
-
-| Operation | Time | Size |
-|-----------|------|------|
-| BLS Sign | 1.2ms | 96B |
-| BLS Aggregate (100) | 0.5ms | 96B |
-| Lattice Sign | 2.5ms | 2.4KB |
-| Lattice Aggregate (100) | 8ms | ~3KB |
-| Total Phase I | 15ms | - |
-| Total Phase II | 25ms | - |
-
-### Network Overhead
-
-- Additional 3KB per block for PQ certificate
-- Negligible impact on block propagation
-- Certificate verification parallelizes well
-
-## Example: Complete Quasar Flow
-
-```go
-package main
-
-import (
-    "context"
-    "log"
-
-    "github.com/luxfi/consensus/config"
-    "github.com/luxfi/consensus/engine/quasar"
-    "github.com/luxfi/ids"
-)
-
-func main() {
-    // 1. Configure Quasar parameters
-    cfg := config.Parameters{
-        K:               21,
-        AlphaPreference: 15,
-        AlphaConfidence: 18,
-        Beta:            8,
-        QRounds:         2,
-    }
-
-    // 2. Create Quasar engine
-    nodeID := ids.GenerateNodeID()
-    engine := quasar.NewQuasar(cfg, nodeID)
-
-    // 3. Initialize with both BLS and PQ keys
-    ctx := context.Background()
-    engine.Initialize(ctx, blsKey, pqKey)
-
-    // 4. Process vertices/blocks
-    engine.AddVertex(ctx, vertex)
-
-    // 5. Dual-certificate finality callback
-    engine.SetFinalizedCallback(func(qBlock QBlock) {
-        log.Printf("Q-block %d finalized with quantum certificates\n", qBlock.Height)
-    })
-}
-```
-
-## Testing
-
-```bash
-# Unit tests with quantum scenarios
-go test ./engine/quasar/...
-
-# Benchmark dual-certificate performance
-go test -bench=QuantumCert ./lattice/
-
-# Fuzz test certificate aggregation
-go test -fuzz=Certificate ./testing/
-```
+The brand-level specification — certificate wire format, profile registry and
+cross-primitive composition proofs — lives at
+[`luxfi/quasar`](https://github.com/luxfi/quasar). The format defined in
+`protocol/quasar` agrees with it byte for byte.

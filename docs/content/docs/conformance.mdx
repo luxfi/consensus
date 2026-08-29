@@ -1,0 +1,193 @@
+---
+title: Conformance
+description: Go is the network; how the Rust and C++ implementations are held to it
+---
+
+# Conformance
+
+Go is the network. `luxfi/node` runs mainnet, testnet and devnet, and the Rust and
+C++ implementations are correct exactly insofar as they reproduce what it produces,
+byte for byte. Equality is exact. Close is a fork.
+
+A harness that is not green does not ship, and a network is not migrated to an
+implementation until its harness is green against a corpus captured from that
+network's own Go node.
+
+## Why a corpus and not a reading
+
+The failure this exists to prevent already happened, twice, and neither instance
+showed up as a test failure. Both sides passed their own tests and rejected each
+other's votes.
+
+The C++ implementation signed 70 bytes under `LUX/chain/vote/v1\0` while Go signs
+226 under `v2`. It diverged at byte 16, carried an `epoch` axis Go does not sign,
+and omitted six axes Go does.
+
+The Rust FPC selector derived θ from a hand-rolled mixer whose doc comment said
+"PRF (SHA256)". Like is not equal: all sixteen phases disagreed, and at phase 0
+with k = 20 Rust accepted a block on eleven votes where Go requires fifteen.
+
+Neither could have been caught by reading. The rule was only ever expressed as Go,
+so the only way to check another language against it was to read it and retype it —
+which is how the two drifted in the first place.
+
+## Two corpora, two planes
+
+They are not versions of each other and neither subsumes the other.
+
+**`luxfi/consensus` → `conformance/corpus.json`** — the finality standard.
+The signed message, the certificate wire form, both stake floors across the full
+u64 range, the ladder's authorizations, the committee parameters, the FPC seeds and
+thresholds. Generated from the live Go definitions inside the same repository, so a
+rule edit moves the corpus in the same commit.
+
+**`luxfi/conformance` → `vectors/`** — the node planes.
+Chain id and genesis header, transaction signing hashes and sender recovery,
+`fpc_theta`, `luminance`, the ZAP handshake and arena codecs, the P-Chain validator
+set. Captured from a *running* node over `/v1/` plus an oracle program linked
+against `luxfi/consensus`, `luxfi/geth` and `luxfi/zap` — one command, so the two
+halves can never come from different builds.
+
+The oracle is pinned. `vectors/node_version.json` records the exact Go build a
+capture came from, so a vector that changes without a version bump is a regression
+in the oracle rather than a new truth.
+
+`corpus.json`'s eventual home is `luxfi/conformance`; that move is a cross-repo
+change and has not been made.
+
+## Measured state
+
+Against the oracle `luxd/1.36.133` (`f81aad95b45e`), network id 36963, answering at
+`http://127.0.0.1:9660/v1/`.
+
+| Implementation | Harness | Result |
+|---|---|---|
+| Go — `luxfi/consensus` | `go test ./conformance/...` | pass |
+| Go — `luxfi/consensus` | `go test ./engine/chain/` (cert, canonical, quorum) | pass |
+| Rust — `lux-consensus` (`pkg/rust`) | `cargo test --test conformance` | 10 / 10 |
+| C++ — `luxfi/consensus2` | `ctest` | 11 / 11 |
+| Rust — `lux-rs/conformance` | `cargo test` | 11 / 12 — one open divergence |
+
+The Rust finality crate checks the whole standard against `corpus.json`: signed
+messages byte for byte, certificate header and wire strictness, both stake floors,
+every count threshold, the ladder, the epoch seeds, the FPC thresholds and the
+range clamp. It is deliberately not a round trip against itself — a round trip
+proves an encoder agrees with itself.
+
+The C++ suite is the finality gate proper: agreement (no two conflicting blocks
+finalize at one height), liveness, the acceptance window, batch-verify attack, the
+two rungs, and the Go corpus.
+
+### The open divergence
+
+`lux-rs/conformance` fails `zap_handshake::the_frame_bytes_match_the_oracle` on
+6 of 6 identities. The Rust encoder writes protocol version `0x01` where the node
+writes `0x02`:
+
+```text
+go    5a4150 0002 0000001000000050 ...
+rust  5a4150 0001 0000001000000050 ...
+```
+
+Everything after the version byte matches, and the companion check — that the
+frames Go refuses are refused — passes. The other eleven checks across FPC,
+luminance, the EVM header and the EVM transaction planes are green.
+
+Accepting a frame the network rejects is not leniency, it is a different protocol;
+so is announcing a version the network does not speak. This one is open.
+
+## Reproducing
+
+```bash
+# Go — the standard, projected from its own definitions
+cd ~/work/lux/consensus && go test ./conformance/...
+
+# Rust — the finality crate against corpus.json
+cd ~/work/lux/consensus/pkg/rust && cargo test --test conformance
+
+# C++ — the gate, plus the Go corpus and the ZAP vote transport
+cd ~/work/lux/consensus2
+cmake -S . -B build -G Ninja \
+  -DLUXCPP_ROOT=/path/to/luxcpp \
+  -DZAP_DIR=/path/to/luxcpp/zap-cpp-core/include \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build && ctest --test-dir build --output-on-failure
+
+# Rust — the node planes against luxfi/conformance
+cd ~/work/lux-rs/conformance && cargo test
+```
+
+Regenerating a corpus is a deliberate act, never a hand edit:
+
+```bash
+cd ~/work/lux/consensus  && go test ./conformance -update
+cd ~/work/lux/consensus2 && (cd scripts/oracle && GOWORK=off go run . -out ../../vectors)
+cd ~/work/lux/conformance && scripts/capture.sh http://127.0.0.1:9660
+```
+
+The `luxfi/conformance` oracle checks its own work before writing: the genesis
+header vector is published only if keccak256 of the recorded bytes equals what
+`Header.Hash()` returns *and* equals the hash the node reported. Three ways of
+getting the same number, or no vector.
+
+## The three implementations
+
+### Go — `luxfi/consensus`
+
+The network. `engine/chain` is the engine `luxd` builds: `chains/manager.go` calls
+`consensuschain.NewRuntime` and injects a BLS `VoteVerifier` built over the
+validator state. It decides by metastable sampling to β-confidence and records the
+decision on the ladder. `protocol/quasar` carries the post-quantum apparatus — BLS,
+Corona, ML-DSA-65, SLH-DSA — behind the same finality rule.
+
+### Rust — `lux-consensus`
+
+A pure-Rust implementation of the standard. `finality.rs` carries the position, the
+canonical degrade, the vote message, the certificate and both thresholds;
+`tests/conformance.rs` holds it to `corpus.json`. It is what `hanzod`
+(`hanzo-libs/hanzo-consensus`) depends on, so the Rust node inherits the same
+finality rule rather than restating it.
+
+`lux-rs/conformance` is the separate harness for the node planes, carrying no
+vectors of its own because a second copy is a second truth. `lux-rs/node` and
+`lux-rs/evm` do not exist yet; the Rust node that does exist is `hanzod`, and
+nothing in the corpus has been claimed about it.
+
+### C++ — `luxfi/consensus2`
+
+The finality gate in C++23: the quorum-certificate engine, the wave, the sampler
+and a vote mesh. It conforms on the message, the BLS domain and the thresholds —
+its `scripts/oracle` reads those values out of the running Go implementation and
+`test/conformance_test.cpp` re-derives each in C++ and demands byte equality, 163
+checks. `-DCONFORMANCE_DIR` points the harness at another checkout's corpus.
+
+Honest scope. What is not there yet, and is known missing:
+
+- **The post-quantum legs.** No ML-DSA, SLH-DSA or Ringtail. Go's `protocol/quasar` is 15k lines of them.
+- **A stake source.** The validator set is frozen at engine construction; Go reads stake and public keys at the block's P-Chain epoch height.
+- **The sampling round trip.** The sampler samples and the wave tallies, but no query/chit exchange runs on the wire; the embedder drives the tally.
+- **Certificate identity.** Voters are keyed by 48-byte BLS public key where Go keys by 20-byte node id. The two certificate shapes do not yet interchange.
+- **The mesh transport.** Votes ride the ZAP plugin-IPC codec, not the post-quantum handshake and AEAD session the Go validator mesh speaks.
+
+## Votes on the ZAP wire
+
+The C++ mesh proves votes cross a real byte channel rather than an in-process bus.
+A vote is one ZAP frame, message type `0x11`:
+
+```text
+block_id 32 ‖ voter public key 48 ‖ signature 96
+```
+
+each field length-framed by the ZAP writer. The decoder refuses any wrong length,
+any truncation, and any trailing bytes after the three fields, so `vote ‖ garbage`
+cannot decode to a valid vote. Two validator groups on opposite ends of a socket
+exchange framed votes and independently reach finality from wire-delivered votes.
+
+Core `consensus2` has no ZAP dependency at all; only the codec and the transport
+do, and they are gated on `-DZAP_DIR`. That separation is why the gate can be
+tested without a network and the transport without a consensus.
+
+The Go validator mesh speaks a different ZAP protocol — the post-quantum handshake
+with ML-DSA identity and an AEAD session over the established connection. Both are
+ZAP and neither is a version of the other; `luxfi/conformance` records the frames
+of each so the shared name stops being an argument.
