@@ -27,11 +27,11 @@ fn run(verdicts: &[Option<bool>], beta: u32) -> Option<(usize, Decision)> {
 /// β agreeing rounds decide, and not one round sooner.
 #[test]
 fn beta_consecutive_rounds_decide() {
-    let yes = vec![Some(true); 8];
+    let yes = [Some(true); 8];
     assert_eq!(run(&yes[..2], 3), None);
     assert_eq!(run(&yes[..3], 3), Some((2, Decision::Accept)));
 
-    let no = vec![Some(false); 8];
+    let no = [Some(false); 8];
     // The standing preference starts false, so the first NO agrees with it and
     // confidence reaches beta one round earlier than a switch would.
     assert_eq!(run(&no[..1], 1), Some((0, Decision::Reject)));

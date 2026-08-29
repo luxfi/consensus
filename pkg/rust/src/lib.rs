@@ -146,7 +146,7 @@ pub mod types {
 
     impl fmt::Display for ID {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", hex::encode(&self.0))
+            write!(f, "{}", hex::encode(self.0))
         }
     }
 
@@ -275,17 +275,15 @@ pub mod types {
 
     /// Security level for Corona post-quantum crypto
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Default)]
     pub enum SecurityLevel {
         Low = 2,    // Corona Level 2
+        #[default]
         Medium = 3, // Corona Level 3 - Default
         High = 5,   // Corona Level 5
     }
 
-    impl Default for SecurityLevel {
-        fn default() -> Self {
-            SecurityLevel::Medium
-        }
-    }
+    
 
     /// Quasar consensus configuration
     #[derive(Debug, Clone)]
@@ -859,7 +857,7 @@ pub mod focus {
 
         /// Check if item has reached finality
         pub fn is_decided(&self, id: &ID) -> bool {
-            self.states.get(id).map_or(false, |s| s.decided)
+            self.states.get(id).is_some_and(|s| s.decided)
         }
 
         /// Get decision for an item
@@ -981,7 +979,7 @@ pub mod wave {
 
         /// Get or create state for a block
         pub fn get_or_create_state(&mut self, block_id: &ID) -> &mut WaveState {
-            self.states.entry(block_id.clone()).or_insert_with(WaveState::default)
+            self.states.entry(block_id.clone()).or_default()
         }
 
         /// Record a vote and check for consensus
@@ -991,7 +989,7 @@ pub mod wave {
             let block_id = vote.block_id.clone();
 
             let state = self.states.entry(block_id.clone())
-                .or_insert_with(WaveState::default);
+                .or_default();
 
             if state.decided {
                 return false;
@@ -1090,7 +1088,7 @@ pub mod wave {
 
         /// Check if block is decided
         pub fn is_decided(&self, block_id: &ID) -> bool {
-            self.states.get(block_id).map_or(false, |s| s.decided)
+            self.states.get(block_id).is_some_and(|s| s.decided)
         }
 
         /// Get decision for a block
@@ -1228,7 +1226,7 @@ pub mod quasar {
 
             // Canonical order, so one set of votes has one certificate.
             let mut paired: Vec<(NodeID, BlsSignature)> =
-                signers.into_iter().zip(sigs.into_iter()).collect();
+                signers.into_iter().zip(sigs).collect();
             paired.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
             let signers: Vec<NodeID> = paired.iter().map(|(n, _)| n.clone()).collect();
             let sigs: Vec<&BlsSignature> = paired.iter().map(|(_, s)| s).collect();
@@ -1308,7 +1306,7 @@ pub mod quasar {
 
         /// Register a chain
         pub fn register_chain(&mut self, chain_id: String) {
-            self.chains.entry(chain_id).or_insert_with(Vec::new);
+            self.chains.entry(chain_id).or_default();
         }
 
         /// Accept a block from a chain
@@ -1383,11 +1381,6 @@ pub mod engine {
             }
         }
 
-        /// Create with default config
-        pub fn default() -> Self {
-            QuasarEngine::new(QuasarConfig::default())
-        }
-
         /// Create testnet engine
         pub fn testnet() -> Self {
             QuasarEngine::new(QuasarConfig::testnet())
@@ -1443,6 +1436,14 @@ pub mod engine {
             {
                 let _ = self.quasar.create_certificate(position, &votes);
             }
+        }
+    }
+
+    /// The balanced configuration, as a trait impl rather than an inherent
+    /// method that shadows it — one `default`, and it is the standard one.
+    impl Default for QuasarEngine {
+        fn default() -> Self {
+            QuasarEngine::new(QuasarConfig::default())
         }
     }
 
@@ -1526,7 +1527,7 @@ pub mod engine {
         fn is_accepted(&self, id: &ID) -> bool {
             self.status.read().unwrap()
                 .get(id)
-                .map_or(false, |s| *s == Status::Accepted)
+                .is_some_and(|s| *s == Status::Accepted)
         }
 
         fn get_status(&self, id: &ID) -> Status {
@@ -1633,7 +1634,7 @@ mod tests {
         // Theta should be in range
         for phase in 0..1000 {
             let theta = fpc.theta(phase);
-            assert!(theta >= 0.5 && theta <= 0.8, "theta {} out of range", theta);
+            assert!((0.5..=0.8).contains(&theta), "theta {} out of range", theta);
         }
     }
 
@@ -1644,7 +1645,7 @@ mod tests {
 
         let threshold = fpc.select_threshold(0, k);
         // Should be between ceil(0.5 * 20) = 10 and ceil(0.8 * 20) = 16
-        assert!(threshold >= 10 && threshold <= 16);
+        assert!((10..=16).contains(&threshold));
     }
 
     #[test]
