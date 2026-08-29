@@ -25,12 +25,16 @@
 package conformance
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"strconv"
 
 	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/engine/chain"
+	"github.com/luxfi/consensus/protocol/wave/fpc"
 	"github.com/luxfi/constants"
 	"github.com/luxfi/ids"
 )
@@ -47,6 +51,7 @@ type Corpus struct {
 	Ladder    []Rung      `json:"ladder"`
 	Threshold Threshold   `json:"threshold"`
 	Committee []Committee `json:"committee"`
+	FPC       FPC         `json:"fpc"`
 }
 
 // Vote is the signed message: the statement every quorum argument is about.
@@ -169,6 +174,51 @@ type Committee struct {
 	RoundTimeoutMS  int64  `json:"roundTimeoutMS"`
 }
 
+// FPC is the adaptive threshold rule: the per-epoch seed, and the PRF that turns
+// a phase into the vote count a round accepts on.
+//
+// This section exists because the count is the decision. θ is not a diagnostic —
+// α = ⌈θ·k⌉ is the number of votes at which a round accepts, so an
+// implementation whose PRF merely resembles SHA-256 accepts on a different count
+// and is a different chain. That divergence was live: a mixer standing in for
+// SHA-256 in the Rust binding returned α=11 at phase 0, k=20, where this
+// definition returns 15.
+type FPC struct {
+	SeedNote   string         `json:"seedNote"`
+	Seeds      []EpochSeed    `json:"seeds"`
+	ThetaNote  string         `json:"thetaNote"`
+	Thresholds []FPCThreshold `json:"thresholds"`
+}
+
+// EpochSeed is one derivation of a per-epoch seed. The seed is unpredictable
+// before the epoch opens because prevBlockHash is only known after the previous
+// epoch finalizes, and every input is bound, so no party can steer θ by choosing
+// one of them.
+type EpochSeed struct {
+	Note          string `json:"note"`
+	Epoch         string `json:"epoch"`
+	ChainID       string `json:"chainID"`
+	PrevBlockHash string `json:"prevBlockHash"`
+	Seed          string `json:"seed"`
+}
+
+// FPCThreshold is one (seed, range, phase, k) and the two values read off it.
+//
+// Theta is the exact IEEE-754 bits, big-endian hex, not a decimal. θ scales a
+// count; a decimal that reads equal to seventeen places and differs in the last
+// bit moves ⌈θ·k⌉ at exactly the k where the two chains part. The standard is
+// the bits.
+type FPCThreshold struct {
+	Note     string `json:"note"`
+	Seed     string `json:"seed"`
+	ThetaMin string `json:"thetaMin"`
+	ThetaMax string `json:"thetaMax"`
+	Phase    string `json:"phase"`
+	Theta    string `json:"theta"`
+	K        int    `json:"k"`
+	Alpha    int    `json:"alpha"`
+}
+
 // Build reads the live definitions and returns the standard. Deterministic: the
 // same binary always returns the same value.
 func Build() Corpus {
@@ -204,6 +254,7 @@ func Build() Corpus {
 		Ladder:    ladder(),
 		Threshold: thresholds(),
 		Committee: committees(),
+		FPC:       fpcRule(),
 	}
 }
 
@@ -500,6 +551,100 @@ func thresholds() Threshold {
 		CountNote: "novaSignerFloor is the count guard the stake predicate cannot give — a lone holder " +
 			"of a stake majority must not self-ignite. equalStakeQuasar is the ⅔ count for a uniform set.",
 	}
+}
+
+// fpcRule reads the adaptive threshold rule off the live selector.
+//
+// Both halves chain: the seeds this emits are the seeds the thresholds are
+// computed under, which is the order a node runs them in — derive once per
+// epoch, select once per round. Nothing here restates the PRF; DeriveEpochSeed
+// and Selector.Theta are called, and what they return is what is written.
+func fpcRule() FPC {
+	seedCases := []struct {
+		note    string
+		epoch   uint64
+		chainID []byte
+		prev    []byte
+	}{
+		{"epoch zero, no chain, no parent — every input at its floor", 0, nil, nil},
+		{"first epoch of a chain, genesis has no previous block", 1, []byte("chain-A"), nil},
+		{"the epoch moves the seed", 2, []byte("chain-A"), nil},
+		{"the chain moves the seed — two chains at one epoch must not share θ", 1, []byte("chain-B"), nil},
+		{"the previous block moves the seed — this is what makes it unpredictable", 1, []byte("chain-A"), []byte("blockhash-abc")},
+		{"a different previous block, everything else held", 1, []byte("chain-A"), []byte("blockhash-xyz")},
+		{"full width: a 32-byte chain id and a 32-byte parent hash", 42, bytes.Repeat([]byte{0x11}, 32), bytes.Repeat([]byte{0x22}, 32)},
+		{"the top of the epoch range — every byte of the big-endian width is set", ^uint64(0), bytes.Repeat([]byte{0x11}, 32), bytes.Repeat([]byte{0x22}, 32)},
+	}
+	seeds := make([]EpochSeed, 0, len(seedCases))
+	for _, c := range seedCases {
+		seeds = append(seeds, EpochSeed{
+			Note:          c.note,
+			Epoch:         u64(c.epoch),
+			ChainID:       hex.EncodeToString(c.chainID),
+			PrevBlockHash: hex.EncodeToString(c.prev),
+			Seed:          hex.EncodeToString(fpc.DeriveEpochSeed(c.epoch, c.chainID, c.prev)),
+		})
+	}
+
+	// The seed every threshold below is taken under: a real derivation, not a
+	// literal, so a binding that reproduces the thresholds has necessarily
+	// reproduced the derivation too.
+	live := fpc.DeriveEpochSeed(42, bytes.Repeat([]byte{0x11}, 32), bytes.Repeat([]byte{0x22}, 32))
+
+	ranges := []struct {
+		note     string
+		min, max float64
+	}{
+		{"the live range — engine/driver.go runs 0.5 to 0.8", 0.5, 0.8},
+		{"θ_min out of range clamps to 0.5 and θ_max out of range clamps to 0.8", 0, 2},
+		{"θ_max below θ_min clamps to 0.8", 0.6, 0.55},
+		{"a narrow range: θ barely moves, so α is nearly fixed", 0.66, 0.67},
+	}
+	// k spans the committee sizes FeasibleParams actually issues, plus the
+	// degenerate lone node.
+	ks := []int{1, 4, 5, 11, 20, 21}
+
+	out := make([]FPCThreshold, 0, len(ranges)*len(ks)*8)
+	for _, r := range ranges {
+		sel, err := fpc.NewSelector(r.min, r.max, live)
+		if err != nil {
+			// Unreachable: live is a 32-byte digest, so it is never empty.
+			panic("conformance: selector over a derived seed: " + err.Error())
+		}
+		for phase := uint64(0); phase < 8; phase++ {
+			for _, k := range ks {
+				out = append(out, FPCThreshold{
+					Note:     r.note,
+					Seed:     hex.EncodeToString(live),
+					ThetaMin: bits(r.min),
+					ThetaMax: bits(r.max),
+					Phase:    u64(phase),
+					Theta:    bits(sel.Theta(phase)),
+					K:        k,
+					Alpha:    sel.SelectThreshold(phase, k),
+				})
+			}
+		}
+	}
+
+	return FPC{
+		SeedNote: "seed = sha256(be64(epoch) || chainID || prevBlockHash). Every input is bound, " +
+			"and prevBlockHash is unknown until the previous epoch finalizes, so θ cannot be " +
+			"steered by choosing an input before the epoch opens.",
+		Seeds: seeds,
+		ThetaNote: "θ(phase) = θ_min + be64(sha256(seed || be64(phase))[:8])/(2^64-1) · (θ_max − θ_min), " +
+			"and α = ⌈θ·k⌉ is the vote count a round accepts on. thetaMin, thetaMax and theta are " +
+			"exact IEEE-754 bits in big-endian hex: α is a ceiling, so the last bit of θ is load-bearing.",
+		Thresholds: out,
+	}
+}
+
+// bits renders a float64 as its exact IEEE-754 big-endian bit pattern. A
+// conformance comparison over a rounded decimal is a comparison of formatters.
+func bits(f float64) string {
+	var b [8]byte
+	binary.BigEndian.PutUint64(b[:], math.Float64bits(f))
+	return hex.EncodeToString(b[:])
 }
 
 func committees() []Committee {
