@@ -167,7 +167,7 @@ impl QuorumCert {
         }
 
         let mut sorted: Vec<Vote> = votes.iter().filter(|v| v.accept).cloned().collect();
-        sorted.sort_by(|a, b| a.node_id.cmp(&b.node_id));
+        sorted.sort_by_key(|a| a.node_id);
         sorted.dedup_by(|a, b| a.node_id == b.node_id);
 
         if (sorted.len() as u64) < threshold as u64 {
