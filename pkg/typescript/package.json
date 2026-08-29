@@ -52,10 +52,10 @@
     "@napi-rs/cli": "^3.8.6"
   },
   "optionalDependencies": {
-    "@luxfi/consensus-darwin-arm64": "1.22.0",
-    "@luxfi/consensus-darwin-x64": "1.22.0",
-    "@luxfi/consensus-linux-arm64-gnu": "1.22.0",
-    "@luxfi/consensus-linux-x64-gnu": "1.22.0",
-    "@luxfi/consensus-win32-x64-msvc": "1.22.0"
+    "@luxfi/consensus-darwin-arm64": null,
+    "@luxfi/consensus-darwin-x64": null,
+    "@luxfi/consensus-linux-arm64-gnu": null,
+    "@luxfi/consensus-linux-x64-gnu": null,
+    "@luxfi/consensus-win32-x64-msvc": null
   }
 }
