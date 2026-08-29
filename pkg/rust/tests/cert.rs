@@ -399,52 +399,54 @@ fn nova_over_an_unresolved_set_fails_closed() {
     );
 }
 
-// ------------------------------------------------------------------- the aggregate
+// -------------------------------------------------- signatures, one per signer
 
+/// Every signature is checked against exactly one key. That is what a
+/// certificate is: n independent statements, not one statement about a sum.
+///
+/// The mutations below are the ones an aggregate over summed keys could not
+/// tell apart — the same evidence re-ordered, a signer swapped for a stranger,
+/// one signature short — and each is refused by name.
 #[test]
-fn an_aggregate_verifies_and_its_mutations_do_not() {
-    use blst::min_pk::{AggregateSignature, Signature};
-
+fn each_signature_is_checked_against_its_own_signer() {
     let (signers, set) = committee(4, 100);
     let pos = position();
     let message = canonical_vote_message(&pos, true);
+    let votes: Vec<Vote> = signers.iter().map(|s| s.vote(&message)).collect();
 
-    let sigs: Vec<Signature> = signers
-        .iter()
-        .map(|s| Signature::uncompress(&s.sign(&message)).unwrap())
-        .collect();
-    let refs: Vec<&Signature> = sigs.iter().collect();
-    let agg = AggregateSignature::aggregate(&refs, false)
-        .unwrap()
-        .to_signature()
-        .compress()
-        .to_vec();
+    let cert = QuorumCert::assemble(Finality::Quasar, pos.clone(), 4, &votes).expect("assemble");
+    assert_eq!(cert.verify(&set, 0), Ok(()));
 
-    let ids: Vec<Id> = signers.iter().map(|s| s.id).collect();
-    assert!(set.verify_aggregate(&ids, &message, &agg));
+    // One voter's signature over a different voter's slot.
+    let mut swapped = cert.clone();
+    swapped.votes[1].signature = cert.votes[0].signature.clone();
+    assert_eq!(swapped.verify(&set, 0), Err(CertError::SigInvalid(1)));
 
-    // One id repeated — one key standing for two votes.
-    let dup = vec![ids[0], ids[0], ids[2], ids[3]];
-    assert!(!set.verify_aggregate(&dup, &message, &agg));
+    // A stranger in place of a member: the id resolves to no key.
+    let mut stranger = cert.clone();
+    stranger.votes[3].node_id = [0xEE; 32];
+    assert_eq!(stranger.verify(&set, 0), Err(CertError::SigInvalid(3)));
 
-    // A stranger among them.
-    let stranger = vec![ids[0], ids[1], ids[2], [0xEE; 32]];
-    assert!(!set.verify_aggregate(&stranger, &message, &agg));
+    // One id repeated — the ordering clause catches it before any key is read.
+    let mut dup = cert.clone();
+    dup.votes[1].node_id = dup.votes[0].node_id;
+    assert_eq!(dup.verify(&set, 0), Err(CertError::NotStrictlyIncreasing(1)));
 
-    // The aggregate of four keys against three signatures.
-    let three: Vec<&Signature> = sigs[..3].iter().collect();
-    let short = AggregateSignature::aggregate(&three, false)
-        .unwrap()
-        .to_signature()
-        .compress()
-        .to_vec();
-    assert!(!set.verify_aggregate(&ids, &message, &short));
+    // Zero, garbage, and the wrong length.
+    for bad in [
+        vec![0u8; SIGNATURE_LEN],
+        vec![0xABu8; SIGNATURE_LEN],
+        cert.votes[2].signature[..95].to_vec(),
+        Vec::new(),
+    ] {
+        let mut broken = cert.clone();
+        broken.votes[2].signature = bad;
+        assert_eq!(broken.verify(&set, 0), Err(CertError::SigInvalid(2)));
+    }
 
-    // Zero, garbage, and wrong length.
-    assert!(!set.verify_aggregate(&ids, &message, &[0u8; SIGNATURE_LEN]));
-    assert!(!set.verify_aggregate(&ids, &message, &[0xABu8; SIGNATURE_LEN]));
-    assert!(!set.verify_aggregate(&ids, &message, &agg[..95]));
-    assert!(!set.verify_aggregate(&[], &message, &agg));
+    // One signature short of the declared threshold.
+    let short = QuorumCert::assemble(Finality::Quasar, pos, 4, &votes[..3]);
+    assert_eq!(short, Err(CertError::BelowThreshold { have: 3, need: 4 }));
 }
 
 /// A single flipped bit anywhere in the signed message invalidates every
@@ -562,32 +564,38 @@ fn the_engine_issues_certificates_only_from_signatures() {
         .collect();
 
     let cert = q.create_certificate(pos.clone(), &signed).expect("certificate");
-    assert_eq!(cert.signers.len(), 4);
-    assert!(cert.quantum_sigs.is_empty(), "no post-quantum signer exists yet");
+    assert_eq!(cert.votes.len(), 4);
+    assert_eq!(cert.tier, Finality::Quasar);
     assert!(q.verify_certificate(&cert));
 
     // The forgeries, against this path too.
-    let mut zeroed = cert.clone();
-    zeroed.aggregated_sig = vec![0u8; SIGNATURE_LEN];
-    assert!(!q.verify_certificate(&zeroed));
+    for bad in [
+        vec![0u8; SIGNATURE_LEN],
+        vec![0xABu8; SIGNATURE_LEN],
+        Vec::new(),
+    ] {
+        let mut broken = cert.clone();
+        broken.votes[0].signature = bad;
+        assert!(!q.verify_certificate(&broken));
+    }
 
-    let mut garbage = cert.clone();
-    garbage.aggregated_sig = vec![0xABu8; SIGNATURE_LEN];
-    assert!(!q.verify_certificate(&garbage));
-
-    let mut empty = cert.clone();
-    empty.aggregated_sig = Vec::new();
-    assert!(!q.verify_certificate(&empty));
-
-    // Moved to another position, the aggregate is no longer a proof.
+    // Moved to another position, the signatures are no longer a proof.
     let mut moved = cert.clone();
     moved.position.height += 1;
     assert!(!q.verify_certificate(&moved));
 
-    // A signer swapped for a stranger.
+    // A signer swapped for a stranger: the id resolves to no key.
     let mut swapped = cert.clone();
-    swapped.signers[3] = NodeID::from([0xEEu8; 32]);
+    swapped.votes[3].node_id = [0xEEu8; 32];
     assert!(!q.verify_certificate(&swapped));
+
+    // Three of the four, which is the declared threshold but not the export
+    // stake floor — 300 of 400 does clear floor(2·400/3) = 266, so it stands.
+    // Two do not.
+    let mut two = cert;
+    two.votes.truncate(2);
+    two.threshold = 2;
+    assert!(!q.verify_certificate(&two));
 }
 
 /// A member with no registered key holds stake and may have its ballot counted,

@@ -11,7 +11,7 @@
 
 use std::hint::black_box;
 
-use blst::min_pk::{AggregateSignature, SecretKey, Signature};
+use blst::min_pk::SecretKey;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 use lux_consensus::cert::{QuorumCert, ValidatorSet, Vote, DST};
@@ -41,11 +41,10 @@ fn node_id(n: usize) -> Id {
 }
 
 /// A committee of `n` signers with a real certificate over `position()`.
-fn certified(n: usize) -> (ValidatorSet, QuorumCert, Vec<u8>) {
+fn certified(n: usize) -> (ValidatorSet, QuorumCert) {
     let message = canonical_vote_message(&position(), true);
     let mut set = ValidatorSet::new();
     let mut votes = Vec::with_capacity(n);
-    let mut sigs = Vec::with_capacity(n);
 
     for i in 0..n {
         let mut ikm = [0u8; 32];
@@ -53,23 +52,15 @@ fn certified(n: usize) -> (ValidatorSet, QuorumCert, Vec<u8>) {
         let sk = SecretKey::key_gen(&ikm, &[]).expect("key_gen");
         let id = node_id(i);
         set.insert(id, 100, &sk.sk_to_pk().compress()).expect("insert");
-        let sig = sk.sign(&message, DST, &[]);
         votes.push(Vote {
             node_id: id,
             accept: true,
-            signature: sig.compress().to_vec(),
+            signature: sk.sign(&message, DST, &[]).compress().to_vec(),
         });
-        sigs.push(sig);
     }
 
     let cert = QuorumCert::assemble(Finality::Quasar, position(), n as u32, &votes).expect("cert");
-    let refs: Vec<&Signature> = sigs.iter().collect();
-    let agg = AggregateSignature::aggregate(&refs, false)
-        .expect("aggregate")
-        .to_signature()
-        .compress()
-        .to_vec();
-    (set, cert, agg)
+    (set, cert)
 }
 
 /// The signed message: 226 fixed-width bytes, no allocation beyond the buffer.
@@ -96,7 +87,7 @@ fn bench_threshold(c: &mut Criterion) {
 fn bench_verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("cert_verify");
     for n in [4usize, 11, 21] {
-        let (set, cert, _) = certified(n);
+        let (set, cert) = certified(n);
         group.throughput(Throughput::Elements(n as u64));
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| black_box(&cert).verify(black_box(&set), 0).is_ok())
@@ -105,25 +96,9 @@ fn bench_verify(c: &mut Criterion) {
     group.finish();
 }
 
-/// The same evidence as one aggregate: one pairing instead of n, at the cost of
-/// aggregating the keys.
-fn bench_verify_aggregate(c: &mut Criterion) {
-    let message = canonical_vote_message(&position(), true);
-    let mut group = c.benchmark_group("aggregate_verify");
-    for n in [4usize, 11, 21] {
-        let (set, cert, agg) = certified(n);
-        let ids: Vec<Id> = cert.votes.iter().map(|v| v.node_id).collect();
-        group.throughput(Throughput::Elements(n as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
-            b.iter(|| set.verify_aggregate(black_box(&ids), black_box(&message), black_box(&agg)))
-        });
-    }
-    group.finish();
-}
-
 /// Assembling a certificate: sort, dedup, and no cryptography at all.
 fn bench_assemble(c: &mut Criterion) {
-    let (_, cert, _) = certified(21);
+    let (_, cert) = certified(21);
     let votes = cert.votes.clone();
     c.bench_function("cert_assemble_21", |b| {
         b.iter(|| {
@@ -182,7 +157,6 @@ criterion_group!(
     bench_message,
     bench_threshold,
     bench_verify,
-    bench_verify_aggregate,
     bench_assemble,
     bench_ballots,
 );

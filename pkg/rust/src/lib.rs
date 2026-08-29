@@ -58,8 +58,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
-// BLS12-381 for signature aggregation
-use blst::min_pk::{AggregateSignature, Signature as BlsSignature};
 
 // The finality standard: the bytes a validator signs and the thresholds that
 // decide. Held to the Go definitions by tests/conformance.rs.
@@ -242,28 +240,16 @@ pub mod types {
         }
     }
 
-    /// Consensus certificate with aggregated signatures.
+    /// A finality certificate is a [`crate::cert::QuorumCert`] — one position and
+    /// the distinct signed accepts that carry it.
     ///
-    /// It carries the position its signers signed over, because a signature is
-    /// only evidence about the thing it was made over: without the position a
-    /// holder cannot rebuild the signed message, and can only check the
-    /// certificate's shape.
-    #[derive(Debug, Clone)]
-    pub struct Certificate {
-        pub block_id: ID,
-        pub height: u64,
-        /// The exact position every signature here was made over.
-        pub position: crate::finality::Position,
-        pub signers: Vec<NodeID>,
-        /// BLS aggregate over `canonical_vote_message(position, true)`,
-        /// compressed G2, 96 bytes.
-        pub aggregated_sig: Vec<u8>,
-        /// Post-quantum signatures, one per signer. Empty: this crate carries
-        /// no post-quantum signer yet, and an empty list says so, where a copy
-        /// of the BLS signature under a second name would not.
-        pub quantum_sigs: Vec<Vec<u8>>,
-        pub timestamp: SystemTime,
-    }
+    /// There is one certificate type in this crate and it is the Go one. The
+    /// type this name used to denote carried an aggregate signature and a pair
+    /// of header fields, `block_id` and `height`, that no signature covered; it
+    /// was forgeable by a registered rogue key and re-labellable to any block.
+    /// Both faults were properties of its shape, so the shape is gone: what a
+    /// certificate claims is its `position`, and every claim is signed.
+    pub type Certificate = crate::cert::QuorumCert;
 
     /// Quasar signature (BLS + Corona)
     #[derive(Debug, Clone)]
@@ -1112,7 +1098,7 @@ pub mod wave {
 
 pub mod quasar {
     use super::*;
-    use crate::cert::{ValidatorSet, VoteVerifier};
+    use crate::cert::{ValidatorSet, Vote as CertVote, VoteVerifier};
 
     /// Quasar finality: the certificate side of the engine.
     ///
@@ -1123,6 +1109,10 @@ pub mod quasar {
     pub struct QuasarConsensus {
         validators: ValidatorSet,
         threshold: usize,
+        /// Certificates this node issued, by the transport id of the block
+        /// they certify. The key is read off `cert.position.block_id`, never
+        /// carried beside it — a certificate cannot name one block and be filed
+        /// under another.
         finalized: HashMap<ID, Certificate>,
     }
 
@@ -1192,6 +1182,11 @@ pub mod quasar {
         /// registered key over `canonical_vote_message(position, true)`. So a
         /// certificate is issued from evidence or not at all — unsigned ballots
         /// produce `NoQuorum`, not an empty certificate that later verifies.
+        ///
+        /// The signatures are kept, one per voter, exactly as Go keeps them.
+        /// They are not summed: an aggregate over summed keys is only sound
+        /// under proof of possession, which no registration on this network
+        /// supplies to this crate, and it is not a form Go can read.
         pub fn create_certificate(
             &mut self,
             position: Position,
@@ -1199,8 +1194,7 @@ pub mod quasar {
         ) -> Result<Certificate> {
             let message = canonical_vote_message(&position, true);
 
-            let mut signers: Vec<NodeID> = Vec::new();
-            let mut sigs: Vec<BlsSignature> = Vec::new();
+            let mut accepted: Vec<CertVote> = Vec::new();
             let mut seen: std::collections::HashSet<[u8; 32]> = std::collections::HashSet::new();
 
             for v in votes.iter().filter(|v| v.prefer()) {
@@ -1211,42 +1205,27 @@ pub mod quasar {
                 if !self.validators.verify_vote(&id, &message, &v.signature, position.height) {
                     continue;
                 }
-                match BlsSignature::uncompress(&v.signature) {
-                    Ok(sig) => {
-                        signers.push(v.voter.clone());
-                        sigs.push(sig);
-                    }
-                    Err(_) => continue,
-                }
+                accepted.push(CertVote {
+                    node_id: id,
+                    accept: true,
+                    signature: v.signature.clone(),
+                });
             }
 
-            if signers.len() < self.threshold {
+            if accepted.len() < self.threshold {
                 return Err(ConsensusError::NoQuorum);
             }
 
-            // Canonical order, so one set of votes has one certificate.
-            let mut paired: Vec<(NodeID, BlsSignature)> =
-                signers.into_iter().zip(sigs).collect();
-            paired.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
-            let signers: Vec<NodeID> = paired.iter().map(|(n, _)| n.clone()).collect();
-            let sigs: Vec<&BlsSignature> = paired.iter().map(|(_, s)| s).collect();
-
-            let aggregated_sig = AggregateSignature::aggregate(&sigs, false)
-                .map_err(|e| ConsensusError::CryptoError(format!("{e:?}")))?
-                .to_signature()
-                .compress()
-                .to_vec();
-
             let block_id = ID::from(position.block_id);
-            let cert = Certificate {
-                block_id: block_id.clone(),
-                height: position.height,
+            // Assembly sorts and dedups, so the certificate satisfies the
+            // ordering clause by construction.
+            let cert = Certificate::assemble(
+                Finality::Quasar,
                 position,
-                signers,
-                aggregated_sig,
-                quantum_sigs: Vec::new(),
-                timestamp: SystemTime::now(),
-            };
+                self.threshold as u32,
+                &accepted,
+            )
+            .map_err(|e| ConsensusError::CryptoError(e.to_string()))?;
 
             self.finalized.insert(block_id, cert.clone());
             Ok(cert)
@@ -1254,27 +1233,23 @@ pub mod quasar {
 
         /// Whether `cert` is evidence that its position was accepted.
         ///
-        /// Threshold, membership, canonical order, and — the part that was
-        /// missing — the aggregate signature itself, checked against the
-        /// aggregate of the signers' keys over the message rebuilt from the
-        /// certificate's own position.
+        /// The whole rule, and only the rule: [`crate::cert::QuorumCert::
+        /// verify_weighted`] — version, type, tier, strictly increasing distinct
+        /// voters, every vote an ACCEPT, every signature checked against its own
+        /// signer's key over the message rebuilt from the certificate's own
+        /// position, and the tier's stake floor recomputed from this set.
+        ///
+        /// A certificate makes exactly one claim, its position, and every part
+        /// of that claim is signed. There is no header field beside it to
+        /// disagree with it, and no aggregate to check in place of the
+        /// signatures.
+        ///
+        /// The epoch height is zero because this set is epoch-independent: its
+        /// weights and membership do not vary with the argument (see the
+        /// `StakeSource` impl on `ValidatorSet`). A set that reads a P-chain
+        /// epoch must take that height from the caller.
         pub fn verify_certificate(&self, cert: &Certificate) -> bool {
-            if cert.signers.len() < self.threshold {
-                return false;
-            }
-            // Strictly increasing: distinct signers, one encoding per set.
-            if cert
-                .signers
-                .windows(2)
-                .any(|w| w[0].as_bytes() >= w[1].as_bytes())
-            {
-                return false;
-            }
-
-            let ids: Vec<[u8; 32]> = cert.signers.iter().map(|s| *s.as_bytes()).collect();
-            let message = canonical_vote_message(&cert.position, true);
-            self.validators
-                .verify_aggregate(&ids, &message, &cert.aggregated_sig)
+            cert.verify_weighted(&self.validators, &self.validators, 0).is_ok()
         }
 
         /// Check if a block has quantum finality

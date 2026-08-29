@@ -144,34 +144,27 @@ fn a_go_signed_certificate_is_accepted() {
     assert_eq!(cert.verify_weighted(&set, &set, 0), Ok(()));
 }
 
-/// The aggregate of three Go signatures verifies against the aggregate of the
-/// three Go keys — so a Rust node can check a Go-assembled aggregate, not only
-/// the signatures one at a time.
+/// Go's signatures are checked one at a time here, because that is the only
+/// form Go produces: `engine/chain/cert.go` — "there is no aggregate field,
+/// because nothing is aggregated". A Rust node that accepted an aggregate would
+/// be accepting evidence this network cannot emit, under a rule Go cannot check.
+///
+/// And each signature is bound to this exact message: one bit elsewhere and it
+/// is not a proof.
 #[test]
-fn a_go_aggregate_verifies_here() {
-    use blst::min_pk::{AggregateSignature, Signature};
-
+fn each_go_signature_is_checked_on_its_own() {
     let (set, votes) = go_set();
     let message = canonical_vote_message(&position(), true);
 
-    let sigs: Vec<Signature> = votes
-        .iter()
-        .map(|v| Signature::uncompress(&v.signature).unwrap())
-        .collect();
-    let refs: Vec<&Signature> = sigs.iter().collect();
-    let agg = AggregateSignature::aggregate(&refs, false)
-        .unwrap()
-        .to_signature()
-        .compress()
-        .to_vec();
+    for v in &votes {
+        assert!(set.verify_vote(&v.node_id, &message, &v.signature, 0));
+    }
 
-    let ids: Vec<Id> = votes.iter().map(|v| v.node_id).collect();
-    assert!(set.verify_aggregate(&ids, &message, &agg));
-
-    // And it is bound to this message: one bit elsewhere and it is not a proof.
     let mut other = message.clone();
     other[225] ^= 0x01; // the accept byte
-    assert!(!set.verify_aggregate(&ids, &other, &agg));
+    for v in &votes {
+        assert!(!set.verify_vote(&v.node_id, &other, &v.signature, 0));
+    }
 }
 
 /// A Go signature is bound to the position Go signed it over. Presenting it

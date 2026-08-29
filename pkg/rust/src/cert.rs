@@ -30,7 +30,7 @@
 
 use std::collections::HashMap;
 
-use blst::min_pk::{AggregatePublicKey, PublicKey, Signature};
+use blst::min_pk::{PublicKey, Signature};
 use blst::BLST_ERROR;
 
 use crate::finality::{
@@ -389,6 +389,20 @@ impl QuorumCert {
 /// verified signature and so can never appear in a verified certificate. That
 /// is the fail-closed direction: a missing key withholds a vote, it never
 /// admits one.
+///
+/// **There is no aggregate verification here, and there must not be.** Summing
+/// the signers' keys and checking one signature against the sum is only sound
+/// when every registrant proved possession of its secret. Registration proves
+/// no such thing — see [`ValidatorSet::insert`] — so an attacker who registers
+/// `g1·x − Σ pk_others` makes the sum collapse to a key it alone can sign
+/// under, and one signature then stands for every named signer. `tests/
+/// rogue_key.rs` builds exactly that key and shows it buys nothing here: each
+/// signature is checked against exactly one public key, so a rogue registrant
+/// cannot even cast its own vote, having no secret for the key it published.
+///
+/// Go does not aggregate either — `engine/chain/cert.go`: "there is no
+/// aggregate field, because nothing is aggregated" — so an aggregate accept
+/// rule would also be an accept this network cannot express.
 #[derive(Clone, Debug, Default)]
 pub struct ValidatorSet {
     keys: HashMap<Id, PublicKey>,
@@ -405,6 +419,14 @@ impl ValidatorSet {
     /// The key is decompressed and group-checked once, here, so an invalid key
     /// is refused at registration rather than at every verification — and a
     /// rejected key leaves no membership behind.
+    ///
+    /// `key_validate` establishes that the bytes decode to a non-identity point
+    /// of the right subgroup. It does NOT establish that the registrant holds
+    /// the matching secret, and no registration here does: a key chosen as
+    /// `g1·x − Σ pk_others` passes every check above. That is harmless while
+    /// every signature is checked against exactly one key, and catastrophic the
+    /// moment any of them are summed — see [`VoteVerifier`] on this type, and
+    /// the note on `ValidatorSet` itself.
     pub fn insert(&mut self, node: Id, weight: u64, public_key: &[u8]) -> Result<(), BLST_ERROR> {
         if public_key.len() != PUBLIC_KEY_LEN {
             return Err(BLST_ERROR::BLST_BAD_ENCODING);
@@ -451,38 +473,6 @@ impl ValidatorSet {
 
     pub fn public_key(&self, node: &Id) -> Option<&PublicKey> {
         self.keys.get(node)
-    }
-
-    /// Verify an aggregate signature that every voter in `nodes` contributed to,
-    /// over one message.
-    ///
-    /// All signers signed the same bytes, so the aggregate is checked against
-    /// the aggregate of their keys. Any unknown voter, and any duplicate voter,
-    /// is a refusal: a duplicate would let one key stand for two.
-    pub fn verify_aggregate(&self, nodes: &[Id], message: &[u8], signature: &[u8]) -> bool {
-        if nodes.is_empty() || signature.len() != SIGNATURE_LEN {
-            return false;
-        }
-        let mut seen = std::collections::HashSet::with_capacity(nodes.len());
-        let mut pks = Vec::with_capacity(nodes.len());
-        for n in nodes {
-            if !seen.insert(n) {
-                return false;
-            }
-            match self.keys.get(n) {
-                Some(pk) => pks.push(pk),
-                None => return false,
-            }
-        }
-        let agg = match AggregatePublicKey::aggregate(&pks, false) {
-            Ok(a) => a,
-            Err(_) => return false,
-        };
-        let sig = match Signature::uncompress(signature) {
-            Ok(s) => s,
-            Err(_) => return false,
-        };
-        sig.verify(true, message, DST, &[], &agg.to_public_key(), true) == BLST_ERROR::BLST_SUCCESS
     }
 }
 
