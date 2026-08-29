@@ -1,0 +1,854 @@
+{
+  "standard": "lux consensus finality",
+  "source": "github.com/luxfi/consensus",
+  "version": 3,
+  "vote": {
+    "tag": "LUX/chain/vote/v2\u0000",
+    "qcType": 1,
+    "length": 226,
+    "layout": [
+      "tag:18",
+      "version:2",
+      "qcType:1",
+      "chainID:32",
+      "height:8",
+      "round:4",
+      "canonicalID:32",
+      "parentCanonicalID:32",
+      "executionStateRoot:32",
+      "payloadRoot:32",
+      "validatorSetRoot:32",
+      "accept:1"
+    ],
+    "cases": [
+      {
+        "name": "zero",
+        "note": "every axis empty, accept — the minimal signed message",
+        "chainID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "height": "0",
+        "round": 0,
+        "blockID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "parentID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "canonicalID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "parentCanonicalID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "executionStateRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "payloadRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "validatorSetRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "accept": true,
+        "message": "4c55582f636861696e2f766f74652f76320000030100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+      },
+      {
+        "name": "zero_reject",
+        "note": "every axis empty, reject — differs from accept in the final byte alone",
+        "chainID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "height": "0",
+        "round": 0,
+        "blockID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "parentID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "canonicalID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "parentCanonicalID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "executionStateRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "payloadRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "validatorSetRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "accept": false,
+        "message": "4c55582f636861696e2f766f74652f76320000030100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "name": "spec",
+        "note": "the reference position; the transport ids (blockID, parentID) do not appear in the message",
+        "chainID": "1111111111111111111111111111111111111111111111111111111111111111",
+        "height": "72623859790382856",
+        "round": 168496141,
+        "blockID": "2222222222222222222222222222222222222222222222222222222222222222",
+        "parentID": "3333333333333333333333333333333333333333333333333333333333333333",
+        "canonicalID": "4444444444444444444444444444444444444444444444444444444444444444",
+        "parentCanonicalID": "5555555555555555555555555555555555555555555555555555555555555555",
+        "executionStateRoot": "6666666666666666666666666666666666666666666666666666666666666666",
+        "payloadRoot": "7777777777777777777777777777777777777777777777777777777777777777",
+        "validatorSetRoot": "8888888888888888888888888888888888888888888888888888888888888888",
+        "accept": true,
+        "message": "4c55582f636861696e2f766f74652f763200000301111111111111111111111111111111111111111111111111111111111111111101020304050607080a0b0c0d4444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666667777777777777777777777777777777777777777777777777777777777777777888888888888888888888888888888888888888888888888888888888888888801"
+      },
+      {
+        "name": "spec_reject",
+        "note": "the reference position, reject",
+        "chainID": "1111111111111111111111111111111111111111111111111111111111111111",
+        "height": "72623859790382856",
+        "round": 168496141,
+        "blockID": "2222222222222222222222222222222222222222222222222222222222222222",
+        "parentID": "3333333333333333333333333333333333333333333333333333333333333333",
+        "canonicalID": "4444444444444444444444444444444444444444444444444444444444444444",
+        "parentCanonicalID": "5555555555555555555555555555555555555555555555555555555555555555",
+        "executionStateRoot": "6666666666666666666666666666666666666666666666666666666666666666",
+        "payloadRoot": "7777777777777777777777777777777777777777777777777777777777777777",
+        "validatorSetRoot": "8888888888888888888888888888888888888888888888888888888888888888",
+        "accept": false,
+        "message": "4c55582f636861696e2f766f74652f763200000301111111111111111111111111111111111111111111111111111111111111111101020304050607080a0b0c0d4444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666667777777777777777777777777777777777777777777777777777777777777777888888888888888888888888888888888888888888888888888888888888888800"
+      },
+      {
+        "name": "outer_moved",
+        "note": "the reference position with both transport ids changed — the message is unchanged",
+        "chainID": "1111111111111111111111111111111111111111111111111111111111111111",
+        "height": "72623859790382856",
+        "round": 168496141,
+        "blockID": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1",
+        "parentID": "e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2",
+        "canonicalID": "4444444444444444444444444444444444444444444444444444444444444444",
+        "parentCanonicalID": "5555555555555555555555555555555555555555555555555555555555555555",
+        "executionStateRoot": "6666666666666666666666666666666666666666666666666666666666666666",
+        "payloadRoot": "7777777777777777777777777777777777777777777777777777777777777777",
+        "validatorSetRoot": "8888888888888888888888888888888888888888888888888888888888888888",
+        "accept": true,
+        "message": "4c55582f636861696e2f766f74652f763200000301111111111111111111111111111111111111111111111111111111111111111101020304050607080a0b0c0d4444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666667777777777777777777777777777777777777777777777777777777777777777888888888888888888888888888888888888888888888888888888888888888801"
+      },
+      {
+        "name": "degrade",
+        "note": "canonical slots unset: the transport ids are bound under them",
+        "chainID": "1111111111111111111111111111111111111111111111111111111111111111",
+        "height": "9",
+        "round": 1,
+        "blockID": "2222222222222222222222222222222222222222222222222222222222222222",
+        "parentID": "3333333333333333333333333333333333333333333333333333333333333333",
+        "canonicalID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "parentCanonicalID": "0000000000000000000000000000000000000000000000000000000000000000",
+        "executionStateRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "payloadRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "validatorSetRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "accept": true,
+        "message": "4c55582f636861696e2f766f74652f76320000030111111111111111111111111111111111111111111111111111111111111111110000000000000009000000012222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+      },
+      {
+        "name": "degrade_explicit",
+        "note": "the same position with canonical == outer stated outright — identical bytes",
+        "chainID": "1111111111111111111111111111111111111111111111111111111111111111",
+        "height": "9",
+        "round": 1,
+        "blockID": "2222222222222222222222222222222222222222222222222222222222222222",
+        "parentID": "3333333333333333333333333333333333333333333333333333333333333333",
+        "canonicalID": "2222222222222222222222222222222222222222222222222222222222222222",
+        "parentCanonicalID": "3333333333333333333333333333333333333333333333333333333333333333",
+        "executionStateRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "payloadRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "validatorSetRoot": "0000000000000000000000000000000000000000000000000000000000000000",
+        "accept": true,
+        "message": "4c55582f636861696e2f766f74652f76320000030111111111111111111111111111111111111111111111111111111111111111110000000000000009000000012222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+      },
+      {
+        "name": "max",
+        "note": "every field at its maximum width — catches a truncated or byte-swapped integer",
+        "chainID": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "height": "18446744073709551615",
+        "round": 4294967295,
+        "blockID": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "parentID": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "canonicalID": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "parentCanonicalID": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "executionStateRoot": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "payloadRoot": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "validatorSetRoot": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "accept": true,
+        "message": "4c55582f636861696e2f766f74652f763200000301ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff01"
+      }
+    ]
+  },
+  "cert": {
+    "layout": [
+      "version:2",
+      "type:1",
+      "tier:1",
+      "chainID:32",
+      "height:8",
+      "round:4",
+      "blockID:32",
+      "parentID:32",
+      "canonicalID:32",
+      "parentCanonicalID:32",
+      "executionStateRoot:32",
+      "payloadRoot:32",
+      "validatorSetRoot:32",
+      "threshold:4",
+      "voteCount:4",
+      "per vote: nodeID:20 accept:1 sigLen:4 sig:sigLen"
+    ],
+    "cases": [
+      {
+        "name": "nova_single",
+        "note": "one signer at the local-execution rung — the smallest well-formed certificate",
+        "tier": "nova",
+        "threshold": 1,
+        "position": "spec",
+        "votes": [
+          {
+            "nodeID": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "accept": true,
+            "signature": "0101010101010101"
+          }
+        ],
+        "wire": "00030102111111111111111111111111111111111111111111111111111111111111111101020304050607080a0b0c0d22222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444455555555555555555555555555555555555555555555555555555555555555556666666666666666666666666666666666666666666666666666666666666666777777777777777777777777777777777777777777777777777777777777777788888888888888888888888888888888888888888888888888888888888888880000000100000001a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a101000000080101010101010101",
+        "length": 313
+      },
+      {
+        "name": "quasar_sorted",
+        "note": "votes handed in descending order; the wire carries them ascending by node id",
+        "tier": "quasar",
+        "threshold": 3,
+        "position": "spec",
+        "votes": [
+          {
+            "nodeID": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "accept": true,
+            "signature": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+          },
+          {
+            "nodeID": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+            "accept": true,
+            "signature": "222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "nodeID": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+            "accept": true,
+            "signature": "33333333"
+          }
+        ],
+        "wire": "00030103111111111111111111111111111111111111111111111111111111111111111101020304050607080a0b0c0d22222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444455555555555555555555555555555555555555555555555555555555555555556666666666666666666666666666666666666666666666666666666666666666777777777777777777777777777777777777777777777777777777777777777788888888888888888888888888888888888888888888888888888888888888880000000300000003a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a10100000060111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b20100000030222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3010000000433333333",
+        "length": 503
+      },
+      {
+        "name": "empty_signature",
+        "note": "a zero-length signature — the length prefix stands alone",
+        "tier": "nova",
+        "threshold": 1,
+        "position": "spec",
+        "votes": [
+          {
+            "nodeID": "0101010101010101010101010101010101010101",
+            "accept": true,
+            "signature": ""
+          }
+        ],
+        "wire": "00030102111111111111111111111111111111111111111111111111111111111111111101020304050607080a0b0c0d2222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444445555555555555555555555555555555555555555555555555555555555555555666666666666666666666666666666666666666666666666666666666666666677777777777777777777777777777777777777777777777777777777777777778888888888888888888888888888888888888888888888888888888888888888000000010000000101010101010101010101010101010101010101010100000000",
+        "length": 305
+      }
+    ]
+  },
+  "ladder": [
+    {
+      "name": "photon",
+      "value": 0,
+      "authorizesLocalExecution": false,
+      "authorizesExport": false,
+      "authorizesIrreversibleSettlement": false
+    },
+    {
+      "name": "wave",
+      "value": 1,
+      "authorizesLocalExecution": false,
+      "authorizesExport": false,
+      "authorizesIrreversibleSettlement": false
+    },
+    {
+      "name": "nova",
+      "value": 2,
+      "authorizesLocalExecution": true,
+      "authorizesExport": false,
+      "authorizesIrreversibleSettlement": false
+    },
+    {
+      "name": "quasar",
+      "value": 3,
+      "authorizesLocalExecution": true,
+      "authorizesExport": true,
+      "authorizesIrreversibleSettlement": false
+    },
+    {
+      "name": "horizon",
+      "value": 4,
+      "authorizesLocalExecution": true,
+      "authorizesExport": true,
+      "authorizesIrreversibleSettlement": true
+    }
+  ],
+  "threshold": {
+    "stake": [
+      {
+        "total": "0",
+        "twoThirds": "0",
+        "half": "0",
+        "quasarNeed": "1",
+        "novaNeed": "1"
+      },
+      {
+        "total": "1",
+        "twoThirds": "0",
+        "half": "0",
+        "quasarNeed": "1",
+        "novaNeed": "1"
+      },
+      {
+        "total": "2",
+        "twoThirds": "1",
+        "half": "1",
+        "quasarNeed": "2",
+        "novaNeed": "2"
+      },
+      {
+        "total": "3",
+        "twoThirds": "2",
+        "half": "1",
+        "quasarNeed": "3",
+        "novaNeed": "2"
+      },
+      {
+        "total": "4",
+        "twoThirds": "2",
+        "half": "2",
+        "quasarNeed": "3",
+        "novaNeed": "3"
+      },
+      {
+        "total": "5",
+        "twoThirds": "3",
+        "half": "2",
+        "quasarNeed": "4",
+        "novaNeed": "3"
+      },
+      {
+        "total": "6",
+        "twoThirds": "4",
+        "half": "3",
+        "quasarNeed": "5",
+        "novaNeed": "4"
+      },
+      {
+        "total": "7",
+        "twoThirds": "4",
+        "half": "3",
+        "quasarNeed": "5",
+        "novaNeed": "4"
+      },
+      {
+        "total": "99",
+        "twoThirds": "66",
+        "half": "49",
+        "quasarNeed": "67",
+        "novaNeed": "50"
+      },
+      {
+        "total": "100",
+        "twoThirds": "66",
+        "half": "50",
+        "quasarNeed": "67",
+        "novaNeed": "51"
+      },
+      {
+        "total": "101",
+        "twoThirds": "67",
+        "half": "50",
+        "quasarNeed": "68",
+        "novaNeed": "51"
+      },
+      {
+        "total": "102",
+        "twoThirds": "68",
+        "half": "51",
+        "quasarNeed": "69",
+        "novaNeed": "52"
+      },
+      {
+        "total": "1048576",
+        "twoThirds": "699050",
+        "half": "524288",
+        "quasarNeed": "699051",
+        "novaNeed": "524289"
+      },
+      {
+        "total": "4294967295",
+        "twoThirds": "2863311530",
+        "half": "2147483647",
+        "quasarNeed": "2863311531",
+        "novaNeed": "2147483648"
+      },
+      {
+        "total": "4294967296",
+        "twoThirds": "2863311530",
+        "half": "2147483648",
+        "quasarNeed": "2863311531",
+        "novaNeed": "2147483649"
+      },
+      {
+        "total": "4611686018427387904",
+        "twoThirds": "3074457345618258602",
+        "half": "2305843009213693952",
+        "quasarNeed": "3074457345618258603",
+        "novaNeed": "2305843009213693953"
+      },
+      {
+        "total": "6148914691236517205",
+        "twoThirds": "4099276460824344803",
+        "half": "3074457345618258602",
+        "quasarNeed": "4099276460824344804",
+        "novaNeed": "3074457345618258603"
+      },
+      {
+        "total": "18446744073709551614",
+        "twoThirds": "12297829382473034409",
+        "half": "9223372036854775807",
+        "quasarNeed": "12297829382473034410",
+        "novaNeed": "9223372036854775808"
+      },
+      {
+        "total": "18446744073709551615",
+        "twoThirds": "12297829382473034410",
+        "half": "9223372036854775807",
+        "quasarNeed": "12297829382473034411",
+        "novaNeed": "9223372036854775808"
+      }
+    ],
+    "count": [
+      {
+        "n": 0,
+        "novaQuorum": 1,
+        "novaSignerFloor": 1,
+        "novaBeta": 1,
+        "crashTolerance": 0,
+        "equalStakeQuasar": 1
+      },
+      {
+        "n": 1,
+        "novaQuorum": 1,
+        "novaSignerFloor": 1,
+        "novaBeta": 1,
+        "crashTolerance": 0,
+        "equalStakeQuasar": 1
+      },
+      {
+        "n": 2,
+        "novaQuorum": 2,
+        "novaSignerFloor": 2,
+        "novaBeta": 2,
+        "crashTolerance": 0,
+        "equalStakeQuasar": 2
+      },
+      {
+        "n": 3,
+        "novaQuorum": 2,
+        "novaSignerFloor": 2,
+        "novaBeta": 2,
+        "crashTolerance": 1,
+        "equalStakeQuasar": 3
+      },
+      {
+        "n": 4,
+        "novaQuorum": 3,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 1,
+        "equalStakeQuasar": 3
+      },
+      {
+        "n": 5,
+        "novaQuorum": 3,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 2,
+        "equalStakeQuasar": 4
+      },
+      {
+        "n": 6,
+        "novaQuorum": 4,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 2,
+        "equalStakeQuasar": 5
+      },
+      {
+        "n": 7,
+        "novaQuorum": 4,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 3,
+        "equalStakeQuasar": 5
+      },
+      {
+        "n": 8,
+        "novaQuorum": 5,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 3,
+        "equalStakeQuasar": 6
+      },
+      {
+        "n": 11,
+        "novaQuorum": 6,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 5,
+        "equalStakeQuasar": 8
+      },
+      {
+        "n": 20,
+        "novaQuorum": 11,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 9,
+        "equalStakeQuasar": 14
+      },
+      {
+        "n": 21,
+        "novaQuorum": 11,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 10,
+        "equalStakeQuasar": 15
+      },
+      {
+        "n": 22,
+        "novaQuorum": 12,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 10,
+        "equalStakeQuasar": 15
+      },
+      {
+        "n": 100,
+        "novaQuorum": 51,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 49,
+        "equalStakeQuasar": 67
+      },
+      {
+        "n": 1000,
+        "novaQuorum": 501,
+        "novaSignerFloor": 3,
+        "novaBeta": 2,
+        "crashTolerance": 499,
+        "equalStakeQuasar": 667
+      }
+    ],
+    "weighted": [
+      {
+        "note": "equal stake, five validators — collapses to ⌊2n/3⌋+1",
+        "weights": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "count": 4
+      },
+      {
+        "note": "equal stake, twenty-one validators — 15, not 14: 14/21 does not strictly exceed ⅔",
+        "weights": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "count": 15
+      },
+      {
+        "note": "one validator holds most of the stake",
+        "weights": [
+          "100",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "count": 1
+      },
+      {
+        "note": "two heavy validators cannot reach ⅔ alone",
+        "weights": [
+          "5",
+          "5",
+          "4",
+          "3",
+          "3"
+        ],
+        "count": 3
+      },
+      {
+        "note": "a dust registration must not move the gate",
+        "weights": [
+          "1000",
+          "1000",
+          "1000",
+          "1"
+        ],
+        "count": 3
+      },
+      {
+        "note": "empty set — no stake model, fail closed",
+        "weights": [],
+        "count": 0
+      },
+      {
+        "note": "all weights zero — no stake model, fail closed",
+        "weights": [
+          "0",
+          "0",
+          "0"
+        ],
+        "count": 0
+      }
+    ],
+    "stakeNote": "a quorum must STRICTLY EXCEED its floor. Quasar (export) needs voted \u003e twoThirds; Nova (local execution) needs voted \u003e half. Equality is not a quorum.",
+    "countNote": "novaSignerFloor is the count guard the stake predicate cannot give — a lone holder of a stake majority must not self-ignite. equalStakeQuasar is the ⅔ count for a uniform set."
+  },
+  "committee": [
+    {
+      "network": "mainnet",
+      "networkID": 1,
+      "n": 1,
+      "k": 4,
+      "alphaPreference": 3,
+      "alphaConfidence": 3,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 200,
+      "roundTimeoutMS": 400
+    },
+    {
+      "network": "mainnet",
+      "networkID": 1,
+      "n": 4,
+      "k": 4,
+      "alphaPreference": 3,
+      "alphaConfidence": 3,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 200,
+      "roundTimeoutMS": 400
+    },
+    {
+      "network": "mainnet",
+      "networkID": 1,
+      "n": 5,
+      "k": 5,
+      "alphaPreference": 4,
+      "alphaConfidence": 4,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 200,
+      "roundTimeoutMS": 400
+    },
+    {
+      "network": "mainnet",
+      "networkID": 1,
+      "n": 11,
+      "k": 11,
+      "alphaPreference": 8,
+      "alphaConfidence": 8,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 200,
+      "roundTimeoutMS": 400
+    },
+    {
+      "network": "mainnet",
+      "networkID": 1,
+      "n": 21,
+      "k": 21,
+      "alphaPreference": 15,
+      "alphaConfidence": 15,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 21,
+      "blockTimeMS": 200,
+      "roundTimeoutMS": 400
+    },
+    {
+      "network": "mainnet",
+      "networkID": 1,
+      "n": 100,
+      "k": 100,
+      "alphaPreference": 67,
+      "alphaConfidence": 67,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 100,
+      "blockTimeMS": 200,
+      "roundTimeoutMS": 400
+    },
+    {
+      "network": "testnet",
+      "networkID": 2,
+      "n": 1,
+      "k": 4,
+      "alphaPreference": 3,
+      "alphaConfidence": 3,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 100,
+      "roundTimeoutMS": 225
+    },
+    {
+      "network": "testnet",
+      "networkID": 2,
+      "n": 4,
+      "k": 4,
+      "alphaPreference": 3,
+      "alphaConfidence": 3,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 100,
+      "roundTimeoutMS": 225
+    },
+    {
+      "network": "testnet",
+      "networkID": 2,
+      "n": 5,
+      "k": 5,
+      "alphaPreference": 4,
+      "alphaConfidence": 4,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 100,
+      "roundTimeoutMS": 225
+    },
+    {
+      "network": "testnet",
+      "networkID": 2,
+      "n": 11,
+      "k": 11,
+      "alphaPreference": 8,
+      "alphaConfidence": 8,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 100,
+      "roundTimeoutMS": 225
+    },
+    {
+      "network": "testnet",
+      "networkID": 2,
+      "n": 21,
+      "k": 21,
+      "alphaPreference": 15,
+      "alphaConfidence": 15,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 21,
+      "blockTimeMS": 100,
+      "roundTimeoutMS": 225
+    },
+    {
+      "network": "testnet",
+      "networkID": 2,
+      "n": 100,
+      "k": 100,
+      "alphaPreference": 67,
+      "alphaConfidence": 67,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 100,
+      "blockTimeMS": 100,
+      "roundTimeoutMS": 225
+    },
+    {
+      "network": "local",
+      "networkID": 1337,
+      "n": 1,
+      "k": 4,
+      "alphaPreference": 3,
+      "alphaConfidence": 3,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 1,
+      "roundTimeoutMS": 5
+    },
+    {
+      "network": "local",
+      "networkID": 1337,
+      "n": 4,
+      "k": 4,
+      "alphaPreference": 3,
+      "alphaConfidence": 3,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 1,
+      "roundTimeoutMS": 5
+    },
+    {
+      "network": "local",
+      "networkID": 1337,
+      "n": 5,
+      "k": 5,
+      "alphaPreference": 4,
+      "alphaConfidence": 4,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 1,
+      "roundTimeoutMS": 5
+    },
+    {
+      "network": "local",
+      "networkID": 1337,
+      "n": 11,
+      "k": 11,
+      "alphaPreference": 8,
+      "alphaConfidence": 8,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 20,
+      "blockTimeMS": 1,
+      "roundTimeoutMS": 5
+    },
+    {
+      "network": "local",
+      "networkID": 1337,
+      "n": 21,
+      "k": 21,
+      "alphaPreference": 15,
+      "alphaConfidence": 15,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 21,
+      "blockTimeMS": 1,
+      "roundTimeoutMS": 5
+    },
+    {
+      "network": "local",
+      "networkID": 1337,
+      "n": 100,
+      "k": 100,
+      "alphaPreference": 67,
+      "alphaConfidence": 67,
+      "beta": 2,
+      "betaVirtuous": 2,
+      "betaRogue": 100,
+      "blockTimeMS": 1,
+      "roundTimeoutMS": 5
+    }
+  ]
+}
