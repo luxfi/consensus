@@ -370,6 +370,7 @@ dependencies = [
  "libc",
  "mlx-sys",
  "rayon",
+ "serde_json",
 ]
 
 [[package]]

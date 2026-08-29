@@ -376,11 +376,19 @@ impl QuorumCert {
     }
 }
 
-/// A validator set: the keys that may sign, and the stake each one carries.
+/// A validator set: who is a member, what stake each carries, and the keys
+/// those members sign with.
 ///
-/// One structure answers both questions because they are read together and at
-/// the same epoch — splitting them is how a node ends up verifying a signature
+/// One structure answers all three because they are read together and at the
+/// same epoch — splitting them is how a node ends up verifying a signature
 /// against one set and weighing it against another.
+///
+/// Membership and key material are separate facts, and a member may have no
+/// key. Such a member counts toward the set size and toward total stake, which
+/// is what raises the bar for everyone else, but it can never produce a
+/// verified signature and so can never appear in a verified certificate. That
+/// is the fail-closed direction: a missing key withholds a vote, it never
+/// admits one.
 #[derive(Clone, Debug, Default)]
 pub struct ValidatorSet {
     keys: HashMap<Id, PublicKey>,
@@ -392,12 +400,11 @@ impl ValidatorSet {
         Self::default()
     }
 
-    /// Register a validator from its compressed public key.
+    /// Register a validator with the key it signs with.
     ///
     /// The key is decompressed and group-checked once, here, so an invalid key
-    /// is refused at registration rather than at every verification. A
-    /// validator with no valid key cannot enter the set, so there is no state
-    /// in which a registered voter has nothing to check against.
+    /// is refused at registration rather than at every verification — and a
+    /// rejected key leaves no membership behind.
     pub fn insert(&mut self, node: Id, weight: u64, public_key: &[u8]) -> Result<(), BLST_ERROR> {
         if public_key.len() != PUBLIC_KEY_LEN {
             return Err(BLST_ERROR::BLST_BAD_ENCODING);
@@ -408,20 +415,37 @@ impl ValidatorSet {
         Ok(())
     }
 
+    /// Register a validator whose signing key this node does not have.
+    ///
+    /// It is a member and it holds stake; it cannot sign anything this set will
+    /// accept until a key arrives.
+    pub fn insert_unkeyed(&mut self, node: Id, weight: u64) {
+        self.weights.insert(node, weight);
+    }
+
     pub fn remove(&mut self, node: &Id) {
         self.keys.remove(node);
         self.weights.remove(node);
     }
 
+    /// The number of members, keyed or not — the `n` every threshold is read
+    /// against.
     pub fn len(&self) -> usize {
-        self.keys.len()
+        self.weights.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.keys.is_empty()
+        self.weights.is_empty()
     }
 
+    /// Whether `node` is a member. Membership decides whose ballot is counted;
+    /// it does not decide whose signature verifies.
     pub fn contains(&self, node: &Id) -> bool {
+        self.weights.contains_key(node)
+    }
+
+    /// Whether `node` has a key here, and so can contribute to a certificate.
+    pub fn can_verify(&self, node: &Id) -> bool {
         self.keys.contains_key(node)
     }
 
@@ -492,6 +516,6 @@ impl StakeSource for ValidatorSet {
     }
 
     fn validator_count(&self, _epoch_height: u64) -> i64 {
-        self.keys.len() as i64
+        self.weights.len() as i64
     }
 }
