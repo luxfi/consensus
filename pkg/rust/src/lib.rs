@@ -56,7 +56,33 @@ use std::time::{Duration, Instant, SystemTime};
 // BLS12-381 for signature aggregation
 use blst::min_pk::{AggregateSignature, Signature as BlsSignature};
 
+// The finality standard: the bytes a validator signs and the thresholds that
+// decide. Held to the Go definitions by tests/conformance.rs.
+pub mod finality;
+
+// The quorum certificate: the predicate that decides whether a block is
+// accepted. Held to `engine/chain/cert.go` by tests/cert.rs.
+pub mod cert;
+
+/// SHA-256. The crate's one hash, from the BLS library already linked here.
+///
+/// Every derivation the network agrees on runs through this — there is no
+/// second hash and no "close enough" mixing function. Go computes the same
+/// bytes with `crypto/sha256`.
+pub fn sha256(input: &[u8]) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    // SAFETY: blst_sha256 writes exactly 32 bytes to `out` and reads `len`
+    // bytes from `input`; both are sized here from the slices themselves.
+    unsafe { blst::blst_sha256(out.as_mut_ptr(), input.as_ptr(), input.len()) };
+    out
+}
+
 // Re-export all public types
+pub use crate::finality::{
+    canonical_vote_message, crash_tolerance, equal_stake_quasar, half_stake_floor, nova_beta,
+    nova_quorum, nova_signer_floor, two_thirds_stake_floor, weighted_quasar, Finality, Position,
+    QC_FINALITY, QUORUM_CERT_VERSION, VOTE_MESSAGE_LEN, VOTE_TAG,
+};
 pub use crate::types::*;
 pub use crate::errors::*;
 pub use crate::fpc::*;
@@ -470,88 +496,30 @@ pub mod fpc {
             FpcSelector::new(0.5, 0.8, *b"lux-fpc-default-seed-00000000000")
         }
 
-        /// Compute θ for a given phase using PRF (SHA256)
+        /// θ for a phase, from the PRF the network runs.
+        ///
+        /// `θ(phase) = θ_min + sha256(seed ‖ be64(phase))[0..8] / (2⁶⁴−1) · (θ_max − θ_min)`
+        ///
+        /// This must be SHA-256 and nothing else. Go computes the quorum
+        /// threshold this way (`protocol/wave/fpc.computeTheta`), and two nodes
+        /// that derive different θ for one phase require different majorities of
+        /// the same committee — a fork by arithmetic, with no bad actor in it.
+        /// `tests/fpc_conformance.rs` holds this to the Go values.
         fn compute_theta(&self, phase: u64) -> f64 {
-            // PRF input: seed || phase (as big-endian u64)
             let mut input = [0u8; 40];
             input[..32].copy_from_slice(&self.seed);
             input[32..40].copy_from_slice(&phase.to_be_bytes());
 
-            // Simple SHA256-like hash (using basic mixing for no-std compatibility)
-            let hash = self.simple_hash(&input);
+            let hash = sha256(&input);
 
-            // Convert first 8 bytes to u64, normalize to [0, 1]
+            // Big-endian, first 8 bytes — the same window and order Go reads.
             let hash_u64 = u64::from_be_bytes([
                 hash[0], hash[1], hash[2], hash[3],
                 hash[4], hash[5], hash[6], hash[7],
             ]);
             let normalized = (hash_u64 as f64) / (u64::MAX as f64);
 
-            // Scale to [theta_min, theta_max]
             self.theta_min + normalized * (self.theta_max - self.theta_min)
-        }
-
-        /// Simple hash function (SipHash-like mixing)
-        fn simple_hash(&self, input: &[u8]) -> [u8; 32] {
-            let mut state: [u64; 4] = [
-                0x736f6d6570736575,
-                0x646f72616e646f6d,
-                0x6c7967656e657261,
-                0x7465646279746573,
-            ];
-
-            // Mix input bytes
-            for chunk in input.chunks(8) {
-                let mut block = [0u8; 8];
-                block[..chunk.len()].copy_from_slice(chunk);
-                let m = u64::from_le_bytes(block);
-
-                state[3] ^= m;
-                for _ in 0..2 {
-                    state[0] = state[0].wrapping_add(state[1]);
-                    state[1] = state[1].rotate_left(13);
-                    state[1] ^= state[0];
-                    state[0] = state[0].rotate_left(32);
-                    state[2] = state[2].wrapping_add(state[3]);
-                    state[3] = state[3].rotate_left(16);
-                    state[3] ^= state[2];
-                    state[0] = state[0].wrapping_add(state[3]);
-                    state[3] = state[3].rotate_left(21);
-                    state[3] ^= state[0];
-                    state[2] = state[2].wrapping_add(state[1]);
-                    state[1] = state[1].rotate_left(17);
-                    state[1] ^= state[2];
-                    state[2] = state[2].rotate_left(32);
-                }
-                state[0] ^= m;
-            }
-
-            // Finalize
-            state[2] ^= 0xff;
-            for _ in 0..4 {
-                state[0] = state[0].wrapping_add(state[1]);
-                state[1] = state[1].rotate_left(13);
-                state[1] ^= state[0];
-                state[0] = state[0].rotate_left(32);
-                state[2] = state[2].wrapping_add(state[3]);
-                state[3] = state[3].rotate_left(16);
-                state[3] ^= state[2];
-                state[0] = state[0].wrapping_add(state[3]);
-                state[3] = state[3].rotate_left(21);
-                state[3] ^= state[0];
-                state[2] = state[2].wrapping_add(state[1]);
-                state[1] = state[1].rotate_left(17);
-                state[1] ^= state[2];
-                state[2] = state[2].rotate_left(32);
-            }
-
-            // Output
-            let mut result = [0u8; 32];
-            result[0..8].copy_from_slice(&state[0].to_le_bytes());
-            result[8..16].copy_from_slice(&state[1].to_le_bytes());
-            result[16..24].copy_from_slice(&state[2].to_le_bytes());
-            result[24..32].copy_from_slice(&state[3].to_le_bytes());
-            result
         }
 
         /// Select threshold α for given phase and committee size k
