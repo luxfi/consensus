@@ -56,7 +56,16 @@ use std::time::{Duration, Instant, SystemTime};
 // BLS12-381 for signature aggregation
 use blst::min_pk::{AggregateSignature, Signature as BlsSignature};
 
+// The finality standard: the bytes a validator signs and the thresholds that
+// decide. Held to the Go definitions by tests/conformance.rs.
+pub mod finality;
+
 // Re-export all public types
+pub use crate::finality::{
+    canonical_vote_message, crash_tolerance, equal_stake_quasar, half_stake_floor, nova_beta,
+    nova_quorum, nova_signer_floor, two_thirds_stake_floor, weighted_quasar, Finality, Position,
+    QC_FINALITY, QUORUM_CERT_VERSION, VOTE_MESSAGE_LEN, VOTE_TAG,
+};
 pub use crate::types::*;
 pub use crate::errors::*;
 pub use crate::fpc::*;

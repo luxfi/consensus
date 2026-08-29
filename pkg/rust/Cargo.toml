@@ -58,6 +58,9 @@ gpu = ["mlx", "cuda"]
 
 [dev-dependencies]
 criterion = { version = "0.7.0", features = ["html_reports"] }
+# Reads conformance/corpus.json — the Go-generated finality standard this crate
+# is checked against. Tests only; it is not in the shipped crate.
+serde_json = "1.0"
 
 [[bench]]
 name = "consensus_bench"
