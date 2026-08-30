@@ -192,11 +192,16 @@ func (c *fileCerts) evictLocked() {
 	for len(c.order) > maxServedCerts {
 		ev := c.order[0]
 		c.order = c.order[1:]
-		name, ok := c.byDecision[ev.id]
-		if !ok {
-			continue
-		}
-		delete(c.byDecision, ev.id)
+		// Drop the file THIS slot names, not whatever the map points at. If a
+		// decision ever has two names on disk — a failed remove, an operator
+		// copy — the map names one and the evicted slot the other, and the slot's
+		// is the stale one to drop; deleting the map's would take the live cert.
+		name := certName(ev.height, ev.id)
 		_ = os.Remove(filepath.Join(c.dir, name))
+		// Unmap the decision only if the map still points at the file just
+		// removed, so a decision that survives under a different name stays served.
+		if mapped, ok := c.byDecision[ev.id]; ok && mapped == name {
+			delete(c.byDecision, ev.id)
+		}
 	}
 }

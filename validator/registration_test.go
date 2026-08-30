@@ -114,6 +114,40 @@ func TestOneKeyOneNode(t *testing.T) {
 	}
 }
 
+// TestOneNodeOneKey is the other axis: one node id, two keys, each with a genuine
+// proof. Possession does not catch it — both proofs are sound — so only a node
+// uniqueness rule refuses it, and it must, or one operator holds several signer
+// indices and several shares of the weight under one identity.
+func TestOneNodeOneKey(t *testing.T) {
+	node := nodeID(0x40)
+	skA, skB := secret(t, 40), secret(t, 41)
+	keyA := bls.PublicKeyToCompressedBytes(skA.PublicKey())
+	keyB := bls.PublicKeyToCompressedBytes(skB.PublicKey())
+	proofA, err := pop.Sign(skA, node)
+	if err != nil {
+		t.Fatalf("pop.Sign A: %v", err)
+	}
+	proofB, err := pop.Sign(skB, node)
+	if err != nil {
+		t.Fatalf("pop.Sign B: %v", err)
+	}
+	// Both proofs are real: possession holds for each pair on its own.
+	if err := pop.Verify(node, keyA, proofA); err != nil {
+		t.Fatalf("first proof is not sound: %v", err)
+	}
+	if err := pop.Verify(node, keyB, proofB); err != nil {
+		t.Fatalf("second proof is not sound: %v", err)
+	}
+
+	set, err := Register([]Registration{
+		{NodeID: node, Key: keyA, Proof: proofA, Weight: 100},
+		{NodeID: node, Key: keyB, Proof: proofB, Weight: 100},
+	})
+	if !errors.Is(err, ErrDuplicateNode) {
+		t.Fatalf("one node admitted under two keys: err=%v set=%d validators", err, len(set.Validators))
+	}
+}
+
 // TestRegisterRefusesTheUnproven walks the possession gate.
 func TestRegisterRefusesTheUnproven(t *testing.T) {
 	good := registration(t, 6, 0x30, 1)
@@ -261,16 +295,36 @@ func TestFlattenMatchesUpstreamWhenKeysAreDistinct(t *testing.T) {
 	if len(mine.Validators) != len(theirs.Validators) {
 		t.Fatalf("validator count diverged: %d vs %d", len(mine.Validators), len(theirs.Validators))
 	}
-	for i := range mine.Validators {
-		a, b := mine.Validators[i], theirs.Validators[i]
-		if !bytes.Equal(a.PublicKeyBytes, b.PublicKeyBytes) {
-			t.Fatalf("canonical order diverged at %d", i)
+
+	// Same CONTENT, compared as a set keyed by node id, not index by index:
+	// upstream sorts by uncompressed bytes, which are 96 under cgo and 48 under
+	// purego, so its ORDER is build-dependent. Ours sorts by the compressed bytes
+	// and is the same on every build; that the two orders can differ under cgo is
+	// the divergence this branch removes, not a parity failure.
+	theirByNode := map[ids.NodeID]*CanonicalValidator{}
+	for _, v := range theirs.Validators {
+		theirByNode[v.NodeIDs[0]] = v
+	}
+	for _, a := range mine.Validators {
+		if len(a.NodeIDs) != 1 {
+			t.Fatalf("a validator carries %d node ids, want 1", len(a.NodeIDs))
+		}
+		b, ok := theirByNode[a.NodeIDs[0]]
+		if !ok {
+			t.Fatalf("node %s is in mine but not upstream", a.NodeIDs[0])
 		}
 		if a.Weight != b.Weight {
-			t.Fatalf("weight diverged at %d: %d vs %d", i, a.Weight, b.Weight)
+			t.Fatalf("weight diverged for %s: %d vs %d", a.NodeIDs[0], a.Weight, b.Weight)
 		}
-		if len(a.NodeIDs) != 1 || a.NodeIDs[0] != b.NodeIDs[0] {
-			t.Fatalf("node ids diverged at %d: %v vs %v", i, a.NodeIDs, b.NodeIDs)
+		if !bytes.Equal(a.PublicKeyBytes, bls.PublicKeyToCompressedBytes(b.PublicKey)) {
+			t.Fatalf("key diverged for %s", a.NodeIDs[0])
+		}
+	}
+
+	// And ours is deterministically ordered by the compressed key, on any build.
+	for i := 1; i < len(mine.Validators); i++ {
+		if bytes.Compare(mine.Validators[i-1].PublicKeyBytes, mine.Validators[i].PublicKeyBytes) >= 0 {
+			t.Fatalf("mine is not sorted ascending by compressed key at %d", i)
 		}
 	}
 }
