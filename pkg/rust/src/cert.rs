@@ -43,6 +43,23 @@ use crate::finality::{
 /// which is blst's `min_pk`.
 pub const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_";
 
+/// The ciphersuite a validator proves possession of its secret under. Distinct
+/// from [`DST`] by the `_POP_` tag, so a proof of possession is not a vote and a
+/// vote is not a proof of possession — the two live in separate signature
+/// spaces and neither can be replayed as the other.
+pub const POP_DST: &[u8] = b"BLS_POP_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
+
+/// The message a proof of possession signs: the node id it registers, then the
+/// compressed public key, in that order. Binding the id as well as the key means
+/// a proof made for one (node, key) pair proves nothing for any other, so a
+/// published key cannot be adopted under a second identity.
+pub fn pop_message(node: &Id, public_key: &[u8]) -> Vec<u8> {
+    let mut m = Vec::with_capacity(node.len() + public_key.len());
+    m.extend_from_slice(node);
+    m.extend_from_slice(public_key);
+    m
+}
+
 /// A compressed BLS public key, in bytes.
 pub const PUBLIC_KEY_LEN: usize = 48;
 
@@ -80,6 +97,15 @@ pub enum CertError {
     StakeZero { epoch_height: u64 },
     StakeBelowMajority { voted: u64, total: u64, need_above: u64 },
     StakeBelowSupermajority { voted: u64, total: u64, need_above: u64 },
+    /// A public key that does not decode to a non-identity point of the right
+    /// subgroup.
+    KeyEncoding,
+    /// A public key already registered to a different node. A key belongs to at
+    /// most one validator, so counting distinct voters counts distinct keys.
+    DuplicateKey,
+    /// A proof of possession that is not a valid signature by this key over its
+    /// own (node, key) message under [`POP_DST`].
+    PopInvalid,
 }
 
 impl std::fmt::Display for CertError {
@@ -113,6 +139,9 @@ impl std::fmt::Display for CertError {
             CertError::StakeBelowSupermajority { voted, total, need_above } => {
                 write!(f, "quasar voted={voted} total={total}, need > {need_above}")
             }
+            CertError::KeyEncoding => write!(f, "public key does not decode to a valid point"),
+            CertError::DuplicateKey => write!(f, "public key is already registered to another node"),
+            CertError::PopInvalid => write!(f, "proof of possession does not verify for this key"),
         }
     }
 }
@@ -201,9 +230,14 @@ impl QuorumCert {
     /// The count-only predicate: every structural clause, plus a valid signature
     /// from each of at least `threshold` distinct voters.
     ///
-    /// This is the whole rule on an equal-stake chain. Where weights differ,
-    /// [`Self::verify_weighted`] adds the stake floor, and a count alone is not
-    /// an accept.
+    /// This is NOT a standalone accept rule, and must not be used as one. The
+    /// `threshold` it counts against is a field of the certificate — the
+    /// certificate names its own quorum — so on its own this clears a 1-of-n
+    /// certificate that declares `threshold: 1`. It is a building block:
+    /// [`Self::verify_weighted`] is the accept rule, recomputing the floor from
+    /// the live stake set so a certificate cannot declare its own quorum. Call
+    /// `verify` directly only where the caller itself supplies and checks the
+    /// admissible threshold against the set — never as the whole of accept.
     ///
     /// Clauses, in the order Go checks them:
     ///
@@ -407,6 +441,11 @@ impl QuorumCert {
 pub struct ValidatorSet {
     keys: HashMap<Id, PublicKey>,
     weights: HashMap<Id, u64>,
+    /// The node each public key belongs to, so a key registered to one validator
+    /// cannot be registered to a second. Without it, `nova_signer_floor` bounds
+    /// distinct node ids and not distinct signers, and one secret key registered
+    /// under many ids clears a floor written to require many.
+    owner: HashMap<[u8; PUBLIC_KEY_LEN], Id>,
 }
 
 impl ValidatorSet {
@@ -414,39 +453,84 @@ impl ValidatorSet {
         Self::default()
     }
 
-    /// Register a validator with the key it signs with.
+    /// Register a validator with the key it signs with, and its proof that it
+    /// holds the matching secret.
     ///
-    /// The key is decompressed and group-checked once, here, so an invalid key
-    /// is refused at registration rather than at every verification — and a
-    /// rejected key leaves no membership behind.
+    /// Three things are checked, and a registration that fails any of them
+    /// leaves no membership behind:
     ///
-    /// `key_validate` establishes that the bytes decode to a non-identity point
-    /// of the right subgroup. It does NOT establish that the registrant holds
-    /// the matching secret, and no registration here does: a key chosen as
-    /// `g1·x − Σ pk_others` passes every check above. That is harmless while
-    /// every signature is checked against exactly one key, and catastrophic the
-    /// moment any of them are summed — see [`VoteVerifier`] on this type, and
-    /// the note on `ValidatorSet` itself.
-    pub fn insert(&mut self, node: Id, weight: u64, public_key: &[u8]) -> Result<(), BLST_ERROR> {
+    /// 1. the key decodes to a non-identity point of the right subgroup
+    ///    (`key_validate`);
+    /// 2. no other node already holds this key — a key belongs to exactly one
+    ///    validator, so a floor on distinct voters is a floor on distinct
+    ///    signers, not on ids one holder can mint at will;
+    /// 3. `pop` is a valid signature by this key over [`pop_message`] under
+    ///    [`POP_DST`] — the registrant proves possession of the secret, so a
+    ///    key it does not control (an honest validator's published key, or a
+    ///    `g1·x − Σ pk_others` cancelling key) cannot be registered in its name.
+    ///
+    /// Re-registering the same (node, key) pair with a fresh proof is allowed and
+    /// updates the weight; registering a node under a different key first frees
+    /// the old one.
+    pub fn insert(
+        &mut self,
+        node: Id,
+        weight: u64,
+        public_key: &[u8],
+        pop: &[u8],
+    ) -> Result<(), CertError> {
         if public_key.len() != PUBLIC_KEY_LEN {
-            return Err(BLST_ERROR::BLST_BAD_ENCODING);
+            return Err(CertError::KeyEncoding);
         }
-        let pk = PublicKey::key_validate(public_key)?;
+        let pk = PublicKey::key_validate(public_key).map_err(|_| CertError::KeyEncoding)?;
+
+        // A key belongs to one node. Its own node re-registering is fine; any
+        // other node claiming it is refused.
+        let mut key_bytes = [0u8; PUBLIC_KEY_LEN];
+        key_bytes.copy_from_slice(public_key);
+        if let Some(owner) = self.owner.get(&key_bytes) {
+            if *owner != node {
+                return Err(CertError::DuplicateKey);
+            }
+        }
+
+        // Possession: a signature this key alone could make, over its own
+        // (node, key) message, in the proof-of-possession space.
+        if pop.len() != SIGNATURE_LEN {
+            return Err(CertError::PopInvalid);
+        }
+        let proof = Signature::uncompress(pop).map_err(|_| CertError::PopInvalid)?;
+        let msg = pop_message(&node, public_key);
+        if proof.verify(true, &msg, POP_DST, &[], &pk, true) != BLST_ERROR::BLST_SUCCESS {
+            return Err(CertError::PopInvalid);
+        }
+
+        // If this node had a different key, free it before taking the new one.
+        if let Some(old) = self.keys.get(&node) {
+            self.owner.remove(&old.compress());
+        }
         self.keys.insert(node, pk);
         self.weights.insert(node, weight);
+        self.owner.insert(key_bytes, node);
         Ok(())
     }
 
     /// Register a validator whose signing key this node does not have.
     ///
     /// It is a member and it holds stake; it cannot sign anything this set will
-    /// accept until a key arrives.
+    /// accept until a key arrives. Any key it held before is revoked, so this
+    /// truly removes the ability to sign rather than leaving a retired key live.
     pub fn insert_unkeyed(&mut self, node: Id, weight: u64) {
+        if let Some(old) = self.keys.remove(&node) {
+            self.owner.remove(&old.compress());
+        }
         self.weights.insert(node, weight);
     }
 
     pub fn remove(&mut self, node: &Id) {
-        self.keys.remove(node);
+        if let Some(old) = self.keys.remove(node) {
+            self.owner.remove(&old.compress());
+        }
         self.weights.remove(node);
     }
 
