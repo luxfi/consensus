@@ -1,6 +1,6 @@
 [package]
 name = "lux-consensus"
-version = "1.22.1"
+version = "1.22.2"
 edition = "2021"
 description = "Lux Consensus SDK — pure-Rust Quasar post-quantum probabilistic consensus (Wave / FPC / Photon / Focus / Quasar PQ finality via hybrid BLS12-381 + Pulsar = P3Q)"
 license-file = "LICENSE"
@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["consensus", "post-quantum", "quasar", "probabilistic", "lux"]
 categories = ["cryptography", "algorithms", "network-programming"]
 authors = ["Lux Industries Inc."]
-exclude = ["tests/*.old", "target/"]
+exclude = ["target/"]
 
 [package.metadata.docs.rs]
 no-default-features = true
@@ -18,11 +18,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 hex = "0.4"
-
-# The FPC threshold PRF. Go derives θ with crypto/sha256, so this crate must
-# derive it with SHA-256 and not with something resembling it — θ sets the vote
-# count at which a round accepts, and two PRFs mean two chains.
-sha2 = { version = "0.10", default-features = false }
+libc = "0.2"
 
 # BLS12-381 signatures for Quasar consensus
 blst = "0.3"
@@ -59,10 +55,6 @@ gpu = ["mlx", "cuda"]
 
 [dev-dependencies]
 criterion = { version = "0.7.0", features = ["html_reports"] }
-# The benchmarks sign with real keys, because a verification benchmark over
-# signatures nobody made measures the refusal path. Same version the crate
-# already depends on.
-blst = "0.3"
 # Reads conformance/corpus.json — the Go-generated finality standard this crate
 # is checked against. Tests only; it is not in the shipped crate.
 serde_json = "1.0"

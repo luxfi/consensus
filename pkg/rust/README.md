@@ -47,7 +47,7 @@ engine.stop().unwrap();
 - **FPC** — PRF-derived per-round thresholds for fast probabilistic consensus
 - **Photon** — luminance-tracked validator sampling
 - **Focus** — β consecutive rounds of confidence before commit
-- **Quasar** — post-quantum hybrid signature aggregation
+- **Quasar** — a two-thirds-by-stake certificate: the distinct signed accepts themselves, each checked against its own signer's key
 
 ## License
 

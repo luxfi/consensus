@@ -149,6 +149,26 @@ func TestVoteMessage_AcceptAndRejectAreDistinct(t *testing.T) {
 	}
 }
 
+// TestVoteMessage_ExportedAccessorsCarryTheirOwnDecision pins the two exported
+// message builders to the decision each one names. The test above proves the
+// accept and reject legs differ, but it calls the unexported builder directly,
+// so it would still pass if an exported wrapper handed it the wrong bool —
+// which is the only way a three-line wrapper can be wrong. The corpus generator
+// reaches these two names and nothing else, so a swapped bool here would ship
+// reject bytes to every port as the accept vector.
+func TestVoteMessage_ExportedAccessorsCarryTheirOwnDecision(t *testing.T) {
+	pos := vectorPosition()
+	if !bytes.Equal(CanonicalVoteMessage(pos), canonicalVoteMessageFor(pos, true)) {
+		t.Fatal("CanonicalVoteMessage is not the accept leg")
+	}
+	if !bytes.Equal(CanonicalRejectMessage(pos), canonicalVoteMessageFor(pos, false)) {
+		t.Fatal("CanonicalRejectMessage is not the reject leg")
+	}
+	if bytes.Equal(CanonicalVoteMessage(pos), CanonicalRejectMessage(pos)) {
+		t.Fatal("the exported accept and reject builders return the same bytes")
+	}
+}
+
 // TestVoteMessage_DegradesUnsetCanonicalToTheOuterID pins the one place the
 // non-wrapped degrade lives. A bare chain must sign its outer id under the
 // canonical slot, and it must produce the SAME bytes a wrapped position with
