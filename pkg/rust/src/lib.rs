@@ -1128,18 +1128,23 @@ pub mod quasar {
             self.validators.insert_unkeyed(*id.as_bytes(), weight);
         }
 
-        /// Register a validator with the BLS key it signs with.
+        /// Register a validator with the BLS key it signs with, and its proof
+        /// that it holds the matching secret.
         ///
-        /// An invalid key is refused rather than stored, so a registered key is
-        /// always one a signature can actually be checked against.
+        /// An invalid key, a key already claimed by another validator, or a
+        /// proof of possession that does not verify is refused rather than
+        /// stored — so a registered key is one a signature can be checked
+        /// against AND one the registrant demonstrably controls. The proof
+        /// travels with the validator declaration; this node does not mint it.
         pub fn add_validator_with_key(
             &mut self,
             id: NodeID,
             weight: u64,
             bls_pubkey: &[u8],
+            pop: &[u8],
         ) -> Result<()> {
             self.validators
-                .insert(*id.as_bytes(), weight, bls_pubkey)
+                .insert(*id.as_bytes(), weight, bls_pubkey, pop)
                 .map_err(|e| ConsensusError::CryptoError(format!("{e:?}")))
         }
 
@@ -1209,7 +1214,11 @@ pub mod quasar {
                 return Err(ConsensusError::NoQuorum);
             }
 
-            let block_id = ID::from(position.block_id);
+            // Key finality on the identity the votes actually signed, never on
+            // the transport block id, which is unsigned: a verified certificate
+            // must not be relabelable to a block it never attested. See
+            // `Position::signed_identity`.
+            let key = ID::from(position.signed_identity());
             // Assembly sorts and dedups, so the certificate satisfies the
             // ordering clause by construction.
             let cert = Certificate::assemble(
@@ -1220,7 +1229,7 @@ pub mod quasar {
             )
             .map_err(|e| ConsensusError::CryptoError(e.to_string()))?;
 
-            self.finalized.insert(block_id, cert.clone());
+            self.finalized.insert(key, cert.clone());
             Ok(cert)
         }
 
@@ -1245,14 +1254,18 @@ pub mod quasar {
             cert.verify_weighted(&self.validators, &self.validators, 0).is_ok()
         }
 
-        /// Check if a block has quantum finality
-        pub fn is_finalized(&self, block_id: &ID) -> bool {
-            self.finalized.contains_key(block_id)
+        /// Whether the position with this signed identity has quantum finality.
+        /// The argument is `Position::signed_identity` — the value the votes
+        /// committed to, not the transport block id, which finality is never
+        /// keyed on.
+        pub fn is_finalized(&self, signed_identity: &ID) -> bool {
+            self.finalized.contains_key(signed_identity)
         }
 
-        /// Get certificate for a block
-        pub fn get_certificate(&self, block_id: &ID) -> Option<&Certificate> {
-            self.finalized.get(block_id)
+        /// The certificate for a signed identity (`Position::signed_identity`),
+        /// if one is finalized.
+        pub fn get_certificate(&self, signed_identity: &ID) -> Option<&Certificate> {
+            self.finalized.get(signed_identity)
         }
     }
 

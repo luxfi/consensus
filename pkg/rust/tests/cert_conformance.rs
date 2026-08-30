@@ -42,7 +42,8 @@
 //! go run ./zz_vec && rm -rf zz_vec
 //! ```
 
-use lux_consensus::cert::{QuorumCert, ValidatorSet, Vote, VoteVerifier};
+use blst::min_pk::SecretKey;
+use lux_consensus::cert::{pop_message, QuorumCert, ValidatorSet, Vote, VoteVerifier, POP_DST};
 use lux_consensus::finality::{canonical_vote_message, Finality, Id, Position};
 
 /// The position the Go program signed over.
@@ -94,7 +95,24 @@ fn go_set() -> (ValidatorSet, Vec<Vote>) {
     let mut votes = Vec::new();
     for (i, (pk, sig)) in GO_SIGNERS.iter().enumerate() {
         let id = node_id(i as u8 + 1);
-        set.insert(id, 100, &hex::decode(pk).unwrap())
+        let pk_bytes = hex::decode(pk).unwrap();
+
+        // Go generated these from `SecretKeyFromSeed([n; 32])`. Regenerating the
+        // key from the same seed here and getting the same public key is itself
+        // a conformance check — Go and this crate derive one key from one seed —
+        // and it yields the secret needed to form the proof of possession that
+        // registration now requires. If the two KDFs ever diverged, this
+        // assertion would catch it before any signature test ran.
+        let seed = [i as u8 + 1; 32];
+        let sk = SecretKey::key_gen(&seed, &[]).expect("key_gen");
+        assert_eq!(
+            sk.sk_to_pk().compress().to_vec(),
+            pk_bytes,
+            "signer {i}: Go's SecretKeyFromSeed and this crate's key_gen disagree on the seed",
+        );
+        let pop = sk.sign(&pop_message(&id, &pk_bytes), POP_DST, &[]).compress().to_vec();
+
+        set.insert(id, 100, &pk_bytes, &pop)
             .expect("Go public key rejected at registration");
         let signature = hex::decode(sig).unwrap();
         assert!(

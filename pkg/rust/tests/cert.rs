@@ -15,7 +15,8 @@
 
 use blst::min_pk::SecretKey;
 use lux_consensus::cert::{
-    CertError, QuorumCert, StakeSource, ValidatorSet, Vote, VoteVerifier, DST, SIGNATURE_LEN,
+    pop_message, CertError, QuorumCert, StakeSource, ValidatorSet, Vote, VoteVerifier, DST,
+    POP_DST, SIGNATURE_LEN,
 };
 use lux_consensus::finality::{canonical_vote_message, Finality, Id, Position};
 
@@ -44,6 +45,13 @@ impl Signer {
         self.sk.sign(message, DST, &[]).compress().to_vec()
     }
 
+    /// The proof of possession this validator presents at registration: a
+    /// signature over its own (node, key) under the proof-of-possession DST.
+    fn pop(&self) -> Vec<u8> {
+        let msg = pop_message(&self.id, &self.public());
+        self.sk.sign(&msg, POP_DST, &[]).compress().to_vec()
+    }
+
     fn vote(&self, message: &[u8]) -> Vote {
         Vote {
             node_id: self.id,
@@ -58,7 +66,7 @@ fn committee(n: u8, weight: u64) -> (Vec<Signer>, ValidatorSet) {
     let signers: Vec<Signer> = (1..=n).map(|i| Signer::new(i, weight)).collect();
     let mut set = ValidatorSet::new();
     for s in &signers {
-        set.insert(s.id, s.weight, &s.public()).expect("insert");
+        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
     }
     (signers, set)
 }
@@ -281,7 +289,7 @@ fn a_count_quorum_without_the_stake_is_refused() {
         .collect();
     let mut set = ValidatorSet::new();
     for s in &signers {
-        set.insert(s.id, s.weight, &s.public()).expect("insert");
+        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
     }
 
     let cert = valid_cert(&signers, 4, 4);
@@ -326,7 +334,7 @@ fn zero_total_stake_fails_closed() {
     let (signers, _) = committee(5, 0);
     let mut set = ValidatorSet::new();
     for s in &signers {
-        set.insert(s.id, 0, &s.public()).expect("insert");
+        set.insert(s.id, 0, &s.public(), &s.pop()).expect("insert");
     }
     let cert = valid_cert(&signers, 4, 4);
 
@@ -347,7 +355,7 @@ fn nova_needs_both_the_majority_and_the_signer_floor() {
         .collect();
     let mut set = ValidatorSet::new();
     for s in &signers {
-        set.insert(s.id, s.weight, &s.public()).expect("insert");
+        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
     }
 
     let pos = position();
@@ -479,11 +487,11 @@ fn every_byte_of_the_message_is_bound() {
 #[test]
 fn an_invalid_public_key_is_refused_at_registration() {
     let mut set = ValidatorSet::new();
-    assert!(set.insert([1u8; 32], 100, &[0u8; 48]).is_err());
-    assert!(set.insert([2u8; 32], 100, &[0xABu8; 48]).is_err());
-    assert!(set.insert([3u8; 32], 100, &[]).is_err());
+    assert!(set.insert([1u8; 32], 100, &[0u8; 48], &[]).is_err());
+    assert!(set.insert([2u8; 32], 100, &[0xABu8; 48], &[]).is_err());
+    assert!(set.insert([3u8; 32], 100, &[], &[]).is_err());
     // A 96-byte signature offered where a 48-byte key belongs.
-    assert!(set.insert([4u8; 32], 100, &[0u8; 96]).is_err());
+    assert!(set.insert([4u8; 32], 100, &[0u8; 96], &[]).is_err());
     assert!(set.is_empty());
 }
 
@@ -527,7 +535,7 @@ fn the_engine_issues_certificates_only_from_signatures() {
     let mut q = QuasarConsensus::new(&config);
 
     for s in &signers {
-        q.add_validator_with_key(NodeID::from(s.id), s.weight, &s.public())
+        q.add_validator_with_key(NodeID::from(s.id), s.weight, &s.public(), &s.pop())
             .expect("register");
     }
 
@@ -611,9 +619,9 @@ fn a_keyless_member_cannot_be_certified() {
     let mut q = QuasarConsensus::new(&config);
 
     // Two keyed, two not.
-    q.add_validator_with_key(NodeID::from(signers[0].id), 100, &signers[0].public())
+    q.add_validator_with_key(NodeID::from(signers[0].id), 100, &signers[0].public(), &signers[0].pop())
         .unwrap();
-    q.add_validator_with_key(NodeID::from(signers[1].id), 100, &signers[1].public())
+    q.add_validator_with_key(NodeID::from(signers[1].id), 100, &signers[1].public(), &signers[1].pop())
         .unwrap();
     q.add_validator(NodeID::from(signers[2].id), 100);
     q.add_validator(NodeID::from(signers[3].id), 100);
@@ -651,7 +659,7 @@ fn the_engine_refuses_an_invalid_key() {
 
     let mut q = QuasarConsensus::new(&QuasarConfig::testnet());
     assert!(q
-        .add_validator_with_key(NodeID::from([1u8; 32]), 100, &[0u8; 48])
+        .add_validator_with_key(NodeID::from([1u8; 32]), 100, &[0u8; 48], &[])
         .is_err());
     assert_eq!(q.validator_count(), 0);
     assert!(!q.is_validator(&NodeID::from([1u8; 32])));

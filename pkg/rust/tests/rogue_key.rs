@@ -32,7 +32,9 @@ use blst::{
     blst_p1_from_affine, blst_p1_to_affine, blst_p1_uncompress, BLST_ERROR,
 };
 
-use lux_consensus::cert::{CertError, QuorumCert, ValidatorSet, Vote, VoteVerifier, DST};
+use lux_consensus::cert::{
+    pop_message, CertError, QuorumCert, ValidatorSet, Vote, VoteVerifier, DST, POP_DST,
+};
 use lux_consensus::finality::{canonical_vote_message, Finality, Id, Position};
 use lux_consensus::quasar::QuasarConsensus;
 use lux_consensus::{NodeID, QuasarConfig};
@@ -91,6 +93,15 @@ impl Honest {
     fn pk(&self) -> [u8; 48] {
         self.sk.sk_to_pk().compress()
     }
+
+    /// A genuine proof of possession — this validator holds the secret, so it
+    /// can sign its own (node, key) under the proof-of-possession DST.
+    fn pop(&self) -> Vec<u8> {
+        self.sk
+            .sign(&pop_message(&self.id, &self.pk()), POP_DST, &[])
+            .compress()
+            .to_vec()
+    }
 }
 
 /// The attacker: a registered key it cannot sign under, and a secret whose real
@@ -99,6 +110,19 @@ struct Rogue {
     id: Id,
     pk: [u8; 48],
     sk: SecretKey,
+}
+
+impl Rogue {
+    /// The best proof of possession the attacker can produce for the key it
+    /// registered: a signature by the only secret it holds. That secret's public
+    /// key is the SUM (`target`), not the cancelling key `pk`, so this proof does
+    /// not verify against `pk` — which is exactly why possession cannot be faked.
+    fn forged_pop(&self) -> Vec<u8> {
+        self.sk
+            .sign(&pop_message(&self.id, &self.pk), POP_DST, &[])
+            .compress()
+            .to_vec()
+    }
 }
 
 /// Build the rogue key that cancels `others` out of a sum.
@@ -135,12 +159,19 @@ fn stage() -> (Vec<Honest>, Rogue, ValidatorSet) {
 
     let mut set = ValidatorSet::new();
     for h in &honest {
-        set.insert(h.id, 100, &h.pk()).expect("honest registers");
+        set.insert(h.id, 100, &h.pk(), &h.pop())
+            .expect("honest registers");
     }
-    // The registration the attack needs, and it succeeds: `key_validate` has no
-    // opinion about who holds the secret.
-    set.insert(rogue.id, 100, &rogue.pk)
-        .expect("a rogue key registers");
+    // The registration the attack needs no longer succeeds: proof of possession
+    // has an opinion about who holds the secret, and the rogue holds none for the
+    // key it published. The set the attack must work against therefore contains
+    // the honest three and not the rogue — see
+    // `the_rogue_key_cannot_register_without_possession`.
+    assert_eq!(
+        set.insert(rogue.id, 100, &rogue.pk, &rogue.forged_pop()),
+        Err(CertError::PopInvalid),
+        "the rogue cannot prove possession of a key it does not control"
+    );
 
     (honest, rogue, set)
 }
@@ -224,19 +255,63 @@ fn the_forged_signature_is_refused_vote_by_vote() {
     assert_eq!(cert.verify(&set, 0), Err(CertError::SigInvalid(0)));
 }
 
-/// The rogue registrant cannot even cast its own vote. It published
-/// `g1·x − Σ pk_others` and does not know that key's secret, so there is no
-/// signature it can produce that verifies under it. Registering a rogue key
-/// costs the attacker its own ballot.
+/// THE POP DEFENSE. The rogue published `g1·x − Σ pk_others` and does not hold
+/// that key's secret, so it cannot produce a proof of possession for it. Every
+/// proof it can offer is refused, so the key never enters the set — the forgery
+/// is stopped one step earlier than the per-signature check, at registration.
 #[test]
-fn the_rogue_registrant_cannot_sign_for_itself() {
-    let (_, rogue, set) = stage();
-    let message = canonical_vote_message(&position(), true);
+fn the_rogue_key_cannot_register_without_possession() {
+    let honest: Vec<Honest> = (1..=3u8).map(Honest::new).collect();
+    let pks: Vec<[u8; 48]> = honest.iter().map(|h| h.pk()).collect();
+    let rogue = forge_key(&pks, 4);
 
+    let mut set = ValidatorSet::new();
+    for h in &honest {
+        set.insert(h.id, 100, &h.pk(), &h.pop()).expect("honest registers");
+    }
+
+    // The best proof the attacker can make — by the one secret it holds, whose
+    // public key is the sum, not the registered cancelling key.
+    assert_eq!(
+        set.insert(rogue.id, 100, &rogue.pk, &rogue.forged_pop()),
+        Err(CertError::PopInvalid),
+    );
+    // No proof at all, and a well-formed proof over the wrong (someone else's)
+    // key, are refused just the same.
+    assert_eq!(set.insert(rogue.id, 100, &rogue.pk, &[]), Err(CertError::PopInvalid));
+    assert_eq!(
+        set.insert(rogue.id, 100, &rogue.pk, &honest[0].pop()),
+        Err(CertError::PopInvalid),
+    );
+
+    // The rogue is not a member, so nothing it signs is even looked up.
+    let message = canonical_vote_message(&position(), true);
     let own = rogue.sk.sign(&message, DST, &[]).compress().to_vec();
-    assert!(
-        !set.verify_vote(&rogue.id, &message, &own, 0),
-        "the attacker has no secret for the key it registered"
+    assert!(!set.verify_vote(&rogue.id, &message, &own, 0));
+}
+
+/// A key belongs to one validator: it cannot be registered under a second id,
+/// so `nova_signer_floor` counts distinct signers and not ids one holder mints.
+/// This is the other half of the floor's guarantee — proof of possession stops
+/// a key you do not hold; uniqueness stops a key you do hold from voting twice.
+#[test]
+fn one_secret_key_cannot_be_registered_under_two_ids() {
+    let h = Honest::new(1);
+    let mut set = ValidatorSet::new();
+    set.insert(h.id, 100, &h.pk(), &h.pop()).expect("first id");
+
+    // The same key, a second id, and a valid proof of possession for that id —
+    // still refused, because the key already belongs to the first.
+    let mut second = [0u8; 32];
+    second[0] = 9;
+    let pop_second = h
+        .sk
+        .sign(&pop_message(&second, &h.pk()), POP_DST, &[])
+        .compress()
+        .to_vec();
+    assert_eq!(
+        set.insert(second, 100, &h.pk(), &pop_second),
+        Err(CertError::DuplicateKey),
     );
 }
 
@@ -255,12 +330,14 @@ fn the_engine_issues_nothing_from_a_forged_signature() {
     let mut quasar = QuasarConsensus::new(&config);
     for h in &honest {
         quasar
-            .add_validator_with_key(NodeID::from(h.id), 100, &h.pk())
+            .add_validator_with_key(NodeID::from(h.id), 100, &h.pk(), &h.pop())
             .expect("register");
     }
-    quasar
-        .add_validator_with_key(NodeID::from(rogue.id), 100, &rogue.pk)
-        .expect("a rogue key registers here too");
+    // The rogue is refused here too — the engine registration path verifies the
+    // same proof of possession.
+    assert!(quasar
+        .add_validator_with_key(NodeID::from(rogue.id), 100, &rogue.pk, &rogue.forged_pop())
+        .is_err());
 
     let pos = position();
     let message = canonical_vote_message(&pos, true);
@@ -305,7 +382,7 @@ fn a_certificate_names_only_what_was_signed() {
     let mut quasar = QuasarConsensus::new(&config);
     for h in &honest {
         quasar
-            .add_validator_with_key(NodeID::from(h.id), 100, &h.pk())
+            .add_validator_with_key(NodeID::from(h.id), 100, &h.pk(), &h.pop())
             .expect("register");
     }
 
@@ -329,13 +406,33 @@ fn a_certificate_names_only_what_was_signed() {
     assert!(quasar.verify_certificate(&cert));
     assert_eq!(cert.position, pos, "the position is the whole claim");
 
-    // Re-label it: the certificate now names a different block, and every
-    // signature it carries stops verifying.
+    // Re-label a SIGNED axis: the certificate now names a different block, and
+    // every signature it carries stops verifying.
     let mut relabelled = cert.clone();
     relabelled.position.canonical_id = [0xEE; 32];
     assert!(!quasar.verify_certificate(&relabelled));
 
-    let mut higher = cert;
+    let mut higher = cert.clone();
     higher.position.height = 999_999;
     assert!(!quasar.verify_certificate(&higher));
+
+    // Re-label the UNSIGNED transport id: verification still passes, because the
+    // transport id is deliberately outside the signature — so finality must NOT
+    // be keyed on it. It is keyed on the signed identity, so the relabelled
+    // transport id finalizes nothing of its own, and the real signed identity is
+    // the one that is finalized.
+    let mut transport = cert;
+    transport.position.block_id = [0xAB; 32];
+    assert!(
+        quasar.verify_certificate(&transport),
+        "the transport id is unsigned, so mutating it cannot break verification"
+    );
+    assert!(
+        !quasar.is_finalized(&lux_consensus::ID::from([0xAB; 32])),
+        "a relabelled transport id finalizes nothing"
+    );
+    assert!(
+        quasar.is_finalized(&lux_consensus::ID::from(pos.signed_identity())),
+        "finality is keyed on the signed identity"
+    );
 }

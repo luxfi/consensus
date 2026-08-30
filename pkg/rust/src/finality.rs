@@ -58,6 +58,24 @@ pub struct Position {
     pub validator_set_root: Id,
 }
 
+impl Position {
+    /// The identity a finality index must key on: the value the signature
+    /// actually commits to. It is `canonical_id`, or `block_id` only in the
+    /// degrade where no canonical id is set — exactly the byte
+    /// [`canonical_vote_message`] folds in as the canonical. The transport
+    /// `block_id` is otherwise unsigned, so keying finality on it lets a
+    /// verified certificate be relabelled to a block it never attested; keying
+    /// on this value cannot be, and two positions that sign to the same bytes
+    /// resolve to the same finality entry rather than two.
+    pub fn signed_identity(&self) -> Id {
+        if self.canonical_id == EMPTY {
+            self.block_id
+        } else {
+            self.canonical_id
+        }
+    }
+}
+
 /// The exact bytes a validator signs.
 ///
 /// Layout, big-endian and fixed width throughout:
