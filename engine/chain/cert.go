@@ -208,6 +208,17 @@ func CanonicalVoteMessage(pos VotePosition) []byte {
 	return canonicalVoteMessageFor(pos, true)
 }
 
+// CanonicalRejectMessage is the exact byte string a validator signs to vote
+// REJECT on a position — the accept=0 leg of the same layout. It is not a
+// certificate message: a finality cert proves ACCEPT and carries only accept
+// signatures. It exists because the accept byte is bound, so the two decisions
+// are distinct messages, and proving that is what the conformance corpus does:
+// a reject signature presented as an accept must fail, and a port that folded
+// the decision out of the message would pass every accept-only vector.
+func CanonicalRejectMessage(pos VotePosition) []byte {
+	return canonicalVoteMessageFor(pos, false)
+}
+
 // canonicalVoteMessageFor builds the domain-separated vote message for a
 // position AND a decision. The accept byte is bound, so an ACCEPT signature
 // (accept=1, what a cert carries) and a REJECT signature (accept=0) over the
