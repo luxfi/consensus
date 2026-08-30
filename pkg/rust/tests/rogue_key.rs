@@ -3,28 +3,27 @@
 
 //! The rogue-key forgery, and why it now buys nothing.
 //!
-//! Registration proves possession of nothing. `ValidatorSet::insert` runs
-//! `PublicKey::key_validate`, which checks the encoding, the subgroup and
-//! non-identity — every one of them a property a *chosen* key can satisfy — and
-//! never asks the registrant to sign anything. So an attacker can register
+//! The attacker can compute
 //!
 //! ```text
 //!     pk_x = g1·x − (pk_a + pk_b + pk_c)
 //! ```
 //!
-//! and the four keys sum to `g1·x`, a key the attacker alone holds the secret
-//! for. Against any verifier that sums the signers' keys and checks one
+//! so that the four keys sum to `g1·x`, a key the attacker alone holds the
+//! secret for. Against any verifier that sums the signers' keys and checks one
 //! signature against the sum, one signature made with `x` is then a certificate
 //! naming four signers of whom three never saw the block. That is the Rogue Key
 //! Attack (Boneh–Drijvers–Neven 2018, §2); its standard defences are proof of
 //! possession and distinct-message aggregation.
 //!
-//! This crate takes the third option, which is the one Go already takes: it
-//! never sums keys. Every signature is checked against exactly one public key.
-//! The rogue key below still registers — nothing here prevents it — and it is
-//! worthless twice over. It cannot make the honest three appear to have signed,
-//! and it cannot even cast its own vote, because its owner does not know a
-//! secret for the key it published.
+//! This crate closes it at both ends. `ValidatorSet::insert` demands a proof of
+//! possession — a signature the key alone can make over its own (node, key) —
+//! so `pk_x`, whose secret the attacker does not know, cannot be registered:
+//! the rogue is refused at the door. And the accept rule never sums keys — every
+//! signature is checked against exactly one public key, the form Go reads — so
+//! even a key that somehow entered the set stands for no one but itself. The
+//! tests below build exactly `pk_x` and show both: registration refuses it, and
+//! its holder cannot sign under it.
 
 use blst::min_pk::{PublicKey, SecretKey};
 use blst::{
@@ -432,7 +431,107 @@ fn a_certificate_names_only_what_was_signed() {
         "a relabelled transport id finalizes nothing"
     );
     assert!(
-        quasar.is_finalized(&lux_consensus::ID::from(pos.signed_identity())),
+        // Pinned to the literal canonical id, not `pos.signed_identity()`: the
+        // production keying and the assertion must not move together, or a
+        // signed_identity that ignored the canonical would pass its own test.
+        quasar.is_finalized(&lux_consensus::ID::from([12u8; 32])),
         "finality is keyed on the signed identity"
     );
+}
+
+/// The per-key property the whole no-aggregate design rests on, asserted on the
+/// curve and not via a set membership miss: the holder of the cancelling key
+/// `g1·x − Σ pk_others` cannot sign under it. It knows a secret for the SUM, not
+/// for this key, so no signature it makes verifies — whether or not the key was
+/// ever registered. During a partial rollout, a peer without proof-of-possession
+/// could still hand this key to a verifier, and per-key verification is then the
+/// only layer left; this is that layer, tested directly.
+#[test]
+fn the_rogue_holder_cannot_sign_under_its_registered_key() {
+    use blst::min_pk::Signature;
+
+    let honest: Vec<Honest> = (1..=3u8).map(Honest::new).collect();
+    let pks: Vec<[u8; 48]> = honest.iter().map(|h| h.pk()).collect();
+    let rogue = forge_key(&pks, 4);
+
+    let message = canonical_vote_message(&position(), true);
+    let sig = rogue.sk.sign(&message, DST, &[]); // the only secret it holds
+    let pk = PublicKey::uncompress(&rogue.pk).expect("the cancelling key is a valid point");
+
+    assert_eq!(
+        Signature::uncompress(&sig.compress())
+            .unwrap()
+            .verify(true, &message, DST, &[], &pk, true),
+        BLST_ERROR::BLST_VERIFY_FAIL,
+        "no signature the attacker can make verifies under the cancelling key",
+    );
+}
+
+/// The proof binds the node id, not the key alone: a proof made for one node
+/// does not register the same (still-unowned) key under another id. Drop the
+/// node from the proof message and this passes — so it pins that the node is
+/// bound, which is the defence for a victim not yet in the set.
+#[test]
+fn a_proof_for_one_node_does_not_register_the_key_under_another() {
+    let h = Honest::new(1);
+    let mut other = [0u8; 32];
+    other[0] = 2;
+
+    let mut set = ValidatorSet::new();
+    // h's own proof, over (h.id, h.pk), offered for a different id and the same
+    // key — which no one owns yet, so this is the proof clause failing, not the
+    // duplicate-key clause.
+    assert_eq!(
+        set.insert(other, 100, &h.pk(), &h.pop()),
+        Err(CertError::PopInvalid),
+    );
+    assert!(set.insert(h.id, 100, &h.pk(), &h.pop()).is_ok());
+}
+
+/// A vote-DST signature is not a proof of possession. Collapse the two domains
+/// and this passes — so it pins that a signature made to vote cannot be replayed
+/// to register.
+#[test]
+fn a_vote_dst_signature_is_not_a_proof_of_possession() {
+    let h = Honest::new(1);
+    let vote_dst = h
+        .sk
+        .sign(&pop_message(&h.id, &h.pk()), DST, &[])
+        .compress()
+        .to_vec();
+
+    let mut set = ValidatorSet::new();
+    assert_eq!(
+        set.insert(h.id, 100, &h.pk(), &vote_dst),
+        Err(CertError::PopInvalid),
+    );
+}
+
+/// A point that decodes but is the identity is refused by `key_validate` before
+/// any proof is examined. Weaken registration to a bare `uncompress` and this
+/// key slips to the proof clause instead — so the error kind, not merely the
+/// refusal, is asserted.
+#[test]
+fn the_identity_key_is_refused_before_the_proof() {
+    // Compressed G1 identity: compression and infinity bits set, rest zero.
+    let mut identity = [0u8; 48];
+    identity[0] = 0xC0;
+
+    let h = Honest::new(1);
+    let mut set = ValidatorSet::new();
+    assert_eq!(
+        set.insert(h.id, 100, &identity, &h.pop()),
+        Err(CertError::KeyEncoding),
+    );
+}
+
+/// `signed_identity` is the canonical id, and the transport id only in the
+/// degrade where none is set. Both branches are pinned to literals, so dropping
+/// the degrade branch — or always returning the transport id — is caught.
+#[test]
+fn signed_identity_uses_the_transport_id_only_in_the_degrade() {
+    let mut p = position(); // canonical_id = [12; 32], block_id = [11; 32]
+    assert_eq!(p.signed_identity(), [12u8; 32], "non-degrade: the canonical id");
+    p.canonical_id = [0u8; 32]; // EMPTY
+    assert_eq!(p.signed_identity(), [11u8; 32], "degrade: the transport id");
 }

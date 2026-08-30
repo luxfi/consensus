@@ -111,9 +111,12 @@ pub fn canonical_vote_message(pos: &Position, accept: bool) -> Vec<u8> {
     buf.extend_from_slice(&pos.height.to_be_bytes());
     buf.extend_from_slice(&pos.round.to_be_bytes());
 
-    let canonical = if pos.canonical_id == EMPTY { &pos.block_id } else { &pos.canonical_id };
+    // The same degrade rule the finality index keys on — one home, so the bytes
+    // signed and the bytes finalized cannot drift apart. See
+    // `Position::signed_identity`.
+    let canonical = pos.signed_identity();
     let parent = if pos.parent_canonical_id == EMPTY { &pos.parent_id } else { &pos.parent_canonical_id };
-    buf.extend_from_slice(canonical);
+    buf.extend_from_slice(&canonical);
     buf.extend_from_slice(parent);
 
     buf.extend_from_slice(&pos.execution_state_root);

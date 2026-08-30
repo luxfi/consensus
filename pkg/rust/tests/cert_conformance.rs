@@ -97,12 +97,14 @@ fn go_set() -> (ValidatorSet, Vec<Vote>) {
         let id = node_id(i as u8 + 1);
         let pk_bytes = hex::decode(pk).unwrap();
 
-        // Go generated these from `SecretKeyFromSeed([n; 32])`. Regenerating the
-        // key from the same seed here and getting the same public key is itself
-        // a conformance check — Go and this crate derive one key from one seed —
-        // and it yields the secret needed to form the proof of possession that
-        // registration now requires. If the two KDFs ever diverged, this
-        // assertion would catch it before any signature test ran.
+        // Go generated these from `SecretKeyFromSeed([n; 32])` under cgo, which
+        // is `blst.KeyGen(seed, info=nil)` with the standard keygen salt —
+        // byte-identical to this crate's `key_gen`. Regenerating the key from the
+        // seed and getting the same public key confirms that cgo path and yields
+        // the secret needed to form the proof of possession registration now
+        // requires. (The non-cgo build of `luxfi/crypto` routes through CIRCL
+        // with an empty HKDF salt and would derive a different key; these vectors
+        // pin the cgo path, which is what Lux ships.)
         let seed = [i as u8 + 1; 32];
         let sk = SecretKey::key_gen(&seed, &[]).expect("key_gen");
         assert_eq!(

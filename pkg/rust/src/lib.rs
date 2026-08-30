@@ -1102,10 +1102,10 @@ pub mod quasar {
     pub struct QuasarConsensus {
         validators: ValidatorSet,
         threshold: usize,
-        /// Certificates this node issued, by the transport id of the block
-        /// they certify. The key is read off `cert.position.block_id`, never
-        /// carried beside it — a certificate cannot name one block and be filed
-        /// under another.
+        /// Certificates this node issued, keyed by the signed identity of the
+        /// position (`Position::signed_identity`) — the value every vote
+        /// committed to, never the unsigned transport id. A certificate cannot
+        /// be filed under a block it never attested.
         finalized: HashMap<ID, Certificate>,
     }
 
@@ -1182,9 +1182,10 @@ pub mod quasar {
         /// produce `NoQuorum`, not an empty certificate that later verifies.
         ///
         /// The signatures are kept, one per voter, exactly as Go keeps them.
-        /// They are not summed: an aggregate over summed keys is only sound
-        /// under proof of possession, which no registration on this network
-        /// supplies to this crate, and it is not a form Go can read.
+        /// They are not summed: per-signature is the form Go reads, and it is
+        /// the interoperable choice. Registration now supplies a proof of
+        /// possession, so an aggregate would be sound too — but it would not be
+        /// a form Go can read, so the certificate stays per-signature.
         pub fn create_certificate(
             &mut self,
             position: Position,
@@ -1228,6 +1229,13 @@ pub mod quasar {
                 &accepted,
             )
             .map_err(|e| ConsensusError::CryptoError(e.to_string()))?;
+
+            // Finalize only what the accept rule accepts. The count above is a
+            // cheap pre-gate; the authority is the stake floor, recomputed from
+            // the live set — so `is_finalized` can never report a certificate
+            // `verify_certificate` would reject.
+            cert.verify_weighted(&self.validators, &self.validators, 0)
+                .map_err(|_| ConsensusError::NoQuorum)?;
 
             self.finalized.insert(key, cert.clone());
             Ok(cert)
