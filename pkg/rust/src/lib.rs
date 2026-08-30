@@ -847,7 +847,40 @@ pub mod errors {
 pub mod fpc {
     use super::*;
 
-    /// The per-epoch threshold seed: `sha256(be64(epoch) || chain_id || prev_block_hash)`.
+    /// The label the epoch seed is taken under, so this digest cannot collide
+    /// with any other digest the protocol takes over similar bytes.
+    pub const SEED_DOMAIN: &[u8] = b"lux.consensus.fpc.seed";
+
+    /// The exact bytes [`derive_epoch_seed`] hashes.
+    ///
+    /// ```text
+    /// domain || be64(epoch) || be64(len(chain_id)) || chain_id
+    ///        || be64(len(prev_block_hash)) || prev_block_hash
+    /// ```
+    ///
+    /// Every variable-length field is written at its length, so the preimage
+    /// reads back apart into exactly the three inputs that produced it. Written
+    /// end to end they would not: a chain calling itself `lux-mainnet||H`
+    /// derives, binding no parent at all, the seed `lux-mainnet` derives at
+    /// parent `H` — trading the parent away for a name the chain picks itself,
+    /// when the parent is the one input nobody can know in advance.
+    ///
+    /// This is `protocol/wave/fpc.EpochSeedPreimage`. The corpus records these
+    /// bytes, so this crate is held to what it hashed and not only to what came
+    /// out.
+    pub fn epoch_seed_preimage(epoch: u64, chain_id: &[u8], prev_block_hash: &[u8]) -> Vec<u8> {
+        let mut out =
+            Vec::with_capacity(SEED_DOMAIN.len() + 24 + chain_id.len() + prev_block_hash.len());
+        out.extend_from_slice(SEED_DOMAIN);
+        out.extend_from_slice(&epoch.to_be_bytes());
+        out.extend_from_slice(&(chain_id.len() as u64).to_be_bytes());
+        out.extend_from_slice(chain_id);
+        out.extend_from_slice(&(prev_block_hash.len() as u64).to_be_bytes());
+        out.extend_from_slice(prev_block_hash);
+        out
+    }
+
+    /// The per-epoch threshold seed: `sha256(epoch_seed_preimage(..))`.
     ///
     /// This is `protocol/wave/fpc.DeriveEpochSeed`, and it is the only way a seed
     /// should be produced. A hardcoded seed — which is what this module carried
@@ -862,9 +895,7 @@ pub mod fpc {
     /// [`FpcSelector::new`] is the whole intended path.
     pub fn derive_epoch_seed(epoch: u64, chain_id: &[u8], prev_block_hash: &[u8]) -> [u8; 32] {
         let mut h = Sha256::new();
-        h.update(epoch.to_be_bytes());
-        h.update(chain_id);
-        h.update(prev_block_hash);
+        h.update(epoch_seed_preimage(epoch, chain_id, prev_block_hash));
         h.finalize().into()
     }
 
