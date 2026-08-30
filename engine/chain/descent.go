@@ -103,12 +103,16 @@ func (rt *Runtime) From(ctx context.Context, height uint64, max int) (Run, error
 		if !ok {
 			break
 		}
-		cert, ok := rt.Transitive.CertForBlock(id)
-		if !ok {
-			break
-		}
+		// The block comes first: the cert is filed under the DECISION its signatures
+		// cover, and the block is what names it (canonicalIDOf, inside CertForBlock).
+		// Asking by the outer id from the recovery index would miss a cert this node
+		// holds under a sibling wrapper of the same inner block.
 		blk, err := rt.config.VM.GetBlock(ctx, id)
 		if err != nil || blk == nil {
+			break
+		}
+		cert, ok := rt.Transitive.CertForBlock(blk)
+		if !ok {
 			break
 		}
 		run.Chain = append(run.Chain, Certified{Block: blk.Bytes(), Cert: cert})

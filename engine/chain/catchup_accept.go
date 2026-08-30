@@ -138,33 +138,39 @@ func (t *Transitive) recoveredOuterAt(h uint64) (ids.ID, bool) {
 }
 
 // storeServedCertLocked records the marshaled finality cert for a just-finalized
-// block so this node can serve it to a peer catching up. Called from the SOLE
+// DECISION so this node can serve it to a peer catching up. Called from the SOLE
 // finalizer (acceptWithCertCore) with the engine lock held, so EVERY finalize path
 // — local assembly, an incoming gossiped cert, and the K==1 single-validator cert —
-// captures its cert in this ONE place. Idempotent per block id; bounded to
+// captures its cert in this ONE place. Idempotent per decision; bounded to
 // maxServedCerts by oldest-height (== FIFO) eviction.
+//
+// The key is certCanonical(cert) — the identity the signatures cover — and not the
+// outer envelope that carried it, so a peer holding a canonical-equivalent sibling
+// wrapper finds the cert this node actually has. See CertStore for the whole
+// argument; the in-memory window and the durable store are keyed alike, because a
+// restart must not change which asks are answerable.
 //
 // The caller holds t.mu. The DURABLE copy is written separately, by
 // persistServedCert, off the lock — see there for why.
-func (t *Transitive) storeServedCertLocked(blockID ids.ID, certBytes []byte) {
+func (t *Transitive) storeServedCertLocked(decision ids.ID, certBytes []byte) {
 	if len(certBytes) == 0 {
 		return
 	}
-	if t.certBytesByBlock == nil {
-		t.certBytesByBlock = make(map[ids.ID][]byte, maxServedCerts)
+	if t.certByDecision == nil {
+		t.certByDecision = make(map[ids.ID][]byte, maxServedCerts)
 	}
-	if _, exists := t.certBytesByBlock[blockID]; exists {
+	if _, exists := t.certByDecision[decision]; exists {
 		return
 	}
-	t.certBytesByBlock[blockID] = certBytes
-	t.certServedOrder = append(t.certServedOrder, blockID)
+	t.certByDecision[decision] = certBytes
+	t.certServedOrder = append(t.certServedOrder, decision)
 	// Evict the oldest finalized cert(s) once past the window. A single insert can
 	// only overflow by one, but loop defensively so the invariant holds even if the
 	// cap is lowered at runtime.
 	for len(t.certServedOrder) > maxServedCerts {
 		evict := t.certServedOrder[0]
 		t.certServedOrder = t.certServedOrder[1:]
-		delete(t.certBytesByBlock, evict)
+		delete(t.certByDecision, evict)
 	}
 }
 
@@ -178,33 +184,53 @@ func (t *Transitive) storeServedCertLocked(blockID ids.ID, certBytes []byte) {
 // is whether a crash loses the ability to SERVE this one height. That costs a
 // straggler one fetch from another peer; it cannot cost safety, because nothing
 // finalizes on a cert this node failed to write.
-func (t *Transitive) persistServedCert(blockID ids.ID, height uint64, certBytes []byte) {
+func (t *Transitive) persistServedCert(decision ids.ID, height uint64, certBytes []byte) {
 	t.mu.RLock()
 	certs := t.certs
 	t.mu.RUnlock()
 	if certs == nil || len(certBytes) == 0 {
 		return
 	}
-	if err := certs.Put(blockID, height, certBytes); err != nil && t.log != nil {
+	if err := certs.Put(decision, height, certBytes); err != nil && t.log != nil {
 		t.log.Warn("could not persist the finality cert — once this process exits, no peer can be caught up through this height",
-			log.Stringer("blockID", blockID),
+			log.Stringer("decision", decision),
 			log.Uint64("height", height),
 			log.Err(err))
 	}
 }
 
 // CertForBlock returns the marshaled α-of-K finality cert this node recorded when
-// it finalized blockID, so the node can hand it to a peer catching up. ok is false
-// when blockID is not finalized here, or its cert has aged out of the served window
-// (the peer then fetches from another node, or bootstraps if it is too far behind).
+// it finalized blk, so the node can hand it to a peer catching up. ok is false when
+// blk is not finalized here, or its cert has aged out of the served window (the
+// peer then fetches from another node, or bootstraps if it is too far behind).
+//
+// IT TAKES THE BLOCK, NOT AN ID, because the cert is filed under the DECISION and
+// only the block knows its own: canonicalIDOf reads the inner execution commitment
+// off it, degrading to the outer id on a bare chain. An id alone cannot be resolved
+// — the engine drops a block's pending state at finality, and the durable store
+// outlives the process — so asking for the block is asking for the one thing that
+// can answer. Every caller already holds it: the serve path fetches the block to
+// pair with the cert, and pairing a block with a cert filed under a DIFFERENT
+// envelope of the same decision is exactly what this fixes.
 //
 // The returned bytes decode+verify to the SAME VerifiedQuorumCert every node
-// finalized blockID on — serving it lets the peer finalize through its own
+// finalized that decision on — serving it lets the peer finalize through its own
 // HandleIncomingCert with no trust in this node. A defensive copy is returned so a
 // caller cannot mutate the served buffer.
-func (t *Transitive) CertForBlock(blockID ids.ID) ([]byte, bool) {
+func (t *Transitive) CertForBlock(blk block.Block) ([]byte, bool) {
+	if blk == nil {
+		return nil, false
+	}
+	return t.certFor(canonicalIDOf(blk))
+}
+
+// certFor is the lookup itself, given the decision already resolved. It is the
+// ONE place the two tiers are read in order — the process window, then the
+// durable store — so a restart changes how far back an ask reaches and nothing
+// else about how it is answered.
+func (t *Transitive) certFor(decision ids.ID) ([]byte, bool) {
 	t.mu.RLock()
-	b, ok := t.certBytesByBlock[blockID]
+	b, ok := t.certByDecision[decision]
 	certs := t.certs
 	t.mu.RUnlock()
 	if ok {
@@ -216,7 +242,7 @@ func (t *Transitive) CertForBlock(blockID ids.ID) ([]byte, bool) {
 	if certs == nil {
 		return nil, false
 	}
-	return certs.Get(blockID)
+	return certs.Get(decision)
 }
 
 // VerifyCatchupCertificate verifies that certBytes is a portable quorum proof for

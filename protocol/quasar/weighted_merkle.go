@@ -74,6 +74,14 @@ var (
 	// over by dedup.
 	ErrWVSetDuplicateID = errors.New("quasar: duplicate validator_id in weighted validator set")
 
+	// ErrWVSetDuplicateKey is returned when two leaves share a public key.
+	// One key belongs to at most one validator: counting distinct voters has
+	// to count distinct SIGNERS, and a set that lets one holder appear under
+	// several validator_ids clears a signer floor written to require several
+	// holders. Refused at build, alongside the duplicate-identity check —
+	// neither implies the other, and the set has to be a set on both axes.
+	ErrWVSetDuplicateKey = errors.New("quasar: duplicate public key in weighted validator set")
+
 	// ErrWVSetZeroWeight is returned when a leaf carries zero voting weight.
 	// A zero-weight signer contributes nothing to a quorum and is almost
 	// always a misconfiguration; refusing it closes a silent
@@ -276,6 +284,19 @@ func BuildWeightedValidatorSet(epoch uint64, leaves []WeightedValidatorLeaf) (*W
 		if sorted[i].ValidatorID == sorted[i-1].ValidatorID {
 			return nil, fmt.Errorf("%w: %x", ErrWVSetDuplicateID, sorted[i].ValidatorID[:])
 		}
+	}
+
+	// Reject a public key that appears under more than one validator_id. Keys
+	// are not adjacent after a sort by identity, so this pass carries a map;
+	// it runs over the SORTED slice so the pair a set is refused on is the same
+	// on every node.
+	byKey := make(map[string]int, len(sorted))
+	for i := range sorted {
+		if first, dup := byKey[string(sorted[i].PublicKey)]; dup {
+			return nil, fmt.Errorf("%w: %x and %x", ErrWVSetDuplicateKey,
+				sorted[first].ValidatorID[:], sorted[i].ValidatorID[:])
+		}
+		byKey[string(sorted[i].PublicKey)] = i
 	}
 
 	leafHashes := make([][48]byte, len(sorted))

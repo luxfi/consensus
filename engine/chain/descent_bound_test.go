@@ -40,10 +40,10 @@ func servingNode(t *testing.T, count int) (*Runtime, []ids.ID) {
 			rt.Transitive.recoveredAt = map[uint64]ids.ID{}
 		}
 		rt.Transitive.recoveredAt[uint64(h)] = blk.id
-		if rt.Transitive.certBytesByBlock == nil {
-			rt.Transitive.certBytesByBlock = map[ids.ID][]byte{}
+		if rt.Transitive.certByDecision == nil {
+			rt.Transitive.certByDecision = map[ids.ID][]byte{}
 		}
-		rt.Transitive.certBytesByBlock[blk.id] = []byte{byte(h)}
+		rt.Transitive.certByDecision[blk.id] = []byte{byte(h)}
 		rt.Transitive.mu.Unlock()
 		ids_ = append(ids_, blk.id)
 	}

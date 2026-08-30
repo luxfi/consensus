@@ -544,22 +544,25 @@ type Transitive struct {
 	// alongside the slashing window if retention ever matters.
 	finalizedByCert map[ids.ID]struct{}
 
-	// certBytesByBlock persists the marshaled finality cert for each block this node
+	// certByDecision persists the marshaled finality cert for each DECISION this node
 	// finalized, so it can SERVE that cert to a peer catching up (CertForBlock). It
 	// is written at the SOLE finalizer (acceptWithCertCore), so every finalize path
-	// captures its cert in ONE place. certServedOrder is the companion FIFO of block
-	// ids in finalize (== ascending height) order, used to evict the oldest cert once
-	// the store passes maxServedCerts — a bounded sliding window, never an unbounded
-	// map. A node lagging beyond the window bootstraps instead of catching up.
-	// certs is the DURABLE backing for the same evidence. certBytesByBlock above is
+	// captures its cert in ONE place. The key is the identity the signatures cover
+	// (certCanonical), not the envelope that carried them, so two wrappers of one
+	// inner block are one entry and a peer holding either one is answered.
+	// certServedOrder is the companion FIFO of those ids in finalize (== ascending
+	// height) order, used to evict the oldest cert once the store passes
+	// maxServedCerts — a bounded sliding window, never an unbounded map. A node
+	// lagging beyond the window bootstraps instead of catching up.
+	// certs is the DURABLE backing for the same evidence. certByDecision above is
 	// a process-lifetime read cache in front of it; certs is what survives a restart,
 	// and therefore what decides whether a peer that fell behind can ever be served
 	// its next block. nil keeps certs memory-only — correct for a single-validator or
 	// test engine, and a liveness hazard on a real fleet (see cert_store.go).
 	certs CertStore
 
-	certBytesByBlock map[ids.ID][]byte
-	certServedOrder  []ids.ID
+	certByDecision  map[ids.ID][]byte
+	certServedOrder []ids.ID
 
 	// recoveredAt names, per finalized HEIGHT, the outer block id this node finalized
 	// there — the deep index catch-up replay reads when the ledger's own byHeight has
@@ -917,7 +920,7 @@ func NewWithConfig(cfg Config, opts ...Option) *Transitive {
 		pendingBlocks:        make(map[ids.ID]*PendingBlock),
 		pendingOwnProposals:  make(map[ProposalKey]*PendingBlock),
 		finalizedByCert:      make(map[ids.ID]struct{}),
-		certBytesByBlock:     make(map[ids.ID][]byte),
+		certByDecision:       make(map[ids.ID][]byte),
 		committedSlot:        make(map[SlotKey]ids.ID),
 		catchupRequested:     make(map[ids.ID]time.Time),
 		certCatchupRequested: make(map[uint64]time.Time),
@@ -4392,11 +4395,22 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 	// certRejected=0 that kept lux-mainnet halted with every node holding data and
 	// none able to catch up — and it only bites after a restart, when the
 	// in-memory window that had been covering for it is gone.
+	//
+	// The cert is filed under the DECISION its signatures cover, never under
+	// certifiedTip — the outer envelope this call happened to finalize. The two
+	// differ exactly when a proposervm wraps an inner block, which is every block on
+	// a live chain, and the difference is not cosmetic: HandleIncomingCert already
+	// resolves an incoming cert ACROSS a differing envelope, so two honest nodes can
+	// finalize one decision under sibling wrappers. Filed by envelope, each stored a
+	// cert the other could not find, and a straggler holding either wrapper was told
+	// no by a node that had the proof. Filed by decision, one entry answers both.
 	var servedCert []byte
 	var servedHeight uint64
+	var servedDecision ids.ID
 	if qc := cert.Cert(); qc != nil {
 		if b, err := qc.MarshalBinary(); err == nil {
-			t.storeServedCertLocked(certifiedTip, b)
+			servedDecision = certCanonical(qc)
+			t.storeServedCertLocked(servedDecision, b)
 			servedCert = b
 			servedHeight = qc.Position.Height
 		}
@@ -4404,7 +4418,7 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 	t.mu.Unlock()
 	// Both of these are carried out of the critical section on purpose: Reject calls
 	// into the VM, and persisting the cert fsyncs. Neither belongs under the engine lock.
-	t.persistServedCert(certifiedTip, servedHeight, servedCert)
+	t.persistServedCert(servedDecision, servedHeight, servedCert)
 	for _, vmb := range toReject {
 		_ = vmb.Reject(ctx)
 	}

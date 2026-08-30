@@ -23,7 +23,7 @@ func blockAt(n int) ids.ID {
 // TestCertOutlivesTheProcess pins the property the store exists for: a height
 // this node decided stays serveable to a peer catching up after the node
 // restarts. The engine that finalized the block is thrown away between the write
-// and the read, which is what a restart does to certBytesByBlock.
+// and the read, which is what a restart does to certByDecision.
 func TestCertOutlivesTheProcess(t *testing.T) {
 	dir := t.TempDir()
 	blockID, cert := blockAt(1), []byte("finality-cert-for-15499")
@@ -40,7 +40,7 @@ func TestCertOutlivesTheProcess(t *testing.T) {
 	finalizer.mu.Unlock()
 	finalizer.persistServedCert(blockID, 15499, cert)
 
-	if _, ok := finalizer.CertForBlock(blockID); !ok {
+	if _, ok := finalizer.certFor(blockID); !ok {
 		t.Fatal("the finalizing engine cannot serve the cert it just wrote")
 	}
 
@@ -51,7 +51,7 @@ func TestCertOutlivesTheProcess(t *testing.T) {
 	}
 	restarted := New(WithCerts(reopened))
 
-	got, ok := restarted.CertForBlock(blockID)
+	got, ok := restarted.certFor(blockID)
 	if !ok {
 		t.Fatal("cert did not survive the restart — a peer whose gap predates our restart could never be served its next block")
 	}
@@ -71,11 +71,11 @@ func TestCertsWithoutAStoreDieWithTheProcess(t *testing.T) {
 	finalizer.storeServedCertLocked(blockID, cert)
 	finalizer.mu.Unlock()
 	finalizer.persistServedCert(blockID, 7, cert) // no store wired: a no-op
-	if _, ok := finalizer.CertForBlock(blockID); !ok {
+	if _, ok := finalizer.certFor(blockID); !ok {
 		t.Fatal("in-process serve must still work without a store")
 	}
 
-	if _, ok := New().CertForBlock(blockID); ok {
+	if _, ok := New().certFor(blockID); ok {
 		t.Fatal("a memory-only engine must not claim a cert it never assembled")
 	}
 }

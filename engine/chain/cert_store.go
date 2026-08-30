@@ -38,26 +38,36 @@ import (
 	"github.com/luxfi/ids"
 )
 
-// CertStore is the durable home for finality certs, keyed by the block each one
-// finalizes. The engine writes one at the sole finalizer and reads one to serve
+// CertStore is the durable home for finality certs, keyed by the DECISION each
+// one proves. The engine writes one at the sole finalizer and reads one to serve
 // a peer catching up.
 //
-// Put is idempotent per block. Get reports absence rather than error — a cert
+// THE KEY IS THE SIGNED IDENTITY, NOT THE ENVELOPE. A cert's signatures cover the
+// canonical execution commitment (chain.decision: the inner CanonicalID, or the
+// block's own id on a bare chain that records none) — never the outer proposervm
+// envelope that happened to carry it. Two envelopes wrapping the same inner block
+// are the same decision and are collapsed to duplicates everywhere else in the
+// engine; keyed by envelope, they were two store entries for one finality fact,
+// and a peer that held the sibling wrapper asked for a cert this node had and was
+// told no. Keyed by decision, the cert is found by anything that finalized the
+// same thing, which is exactly the set of nodes it is valid for.
+//
+// Put is idempotent per decision. Get reports absence rather than error — a cert
 // this node cannot produce is a cert the peer fetches elsewhere, which is the
 // same handling either way.
 type CertStore interface {
-	// Put durably records cert as the finality proof for blockID at height. The
+	// Put durably records cert as the finality proof for decision at height. The
 	// height orders eviction: the store keeps the most recent maxServedCerts and
 	// drops the lowest heights, so retention follows the chain rather than the
 	// order writes happened to arrive.
-	Put(blockID ids.ID, height uint64, cert []byte) error
-	// Get returns the cert recorded for blockID, or ok=false when this node never
+	Put(decision ids.ID, height uint64, cert []byte) error
+	// Get returns the cert recorded for decision, or ok=false when this node never
 	// finalized it, it has aged out of the window, or it cannot be read back.
-	Get(blockID ids.ID) ([]byte, bool)
+	Get(decision ids.ID) ([]byte, bool)
 }
 
 // fileCerts is the one concrete CertStore: a directory holding one file per
-// cert, named "<height>-<blockID>" with the height zero-padded so lexical order
+// cert, named "<height>-<decision>" with the height zero-padded so lexical order
 // IS height order. That name carries everything the store needs, which is why
 // there is no index file — nothing to fall out of step with the directory, and
 // nothing whose corruption would lose certs that are sitting right there.
@@ -67,9 +77,9 @@ type CertStore interface {
 type fileCerts struct {
 	dir string
 
-	mu      sync.Mutex
-	order   []certSlot        // ascending height — the eviction order
-	byBlock map[ids.ID]string // blockID -> file name
+	mu         sync.Mutex
+	order      []certSlot        // ascending height — the eviction order
+	byDecision map[ids.ID]string // decision -> file name
 }
 
 type certSlot struct {
@@ -81,11 +91,11 @@ type certSlot struct {
 // numeric sort by height. 20 digits covers the full uint64 range.
 const certNameWidth = 20
 
-func certName(height uint64, blockID ids.ID) string {
-	return fmt.Sprintf("%0*d-%s", certNameWidth, height, blockID)
+func certName(height uint64, decision ids.ID) string {
+	return fmt.Sprintf("%0*d-%s", certNameWidth, height, decision)
 }
 
-// parseCertName recovers (height, blockID) from a file name written by certName.
+// parseCertName recovers (height, decision) from a file name written by certName.
 // A name that does not round-trip is not ours; the caller ignores the file rather
 // than deleting it, so an operator's notes in the directory survive.
 func parseCertName(name string) (uint64, ids.ID, bool) {
@@ -97,11 +107,11 @@ func parseCertName(name string) (uint64, ids.ID, bool) {
 	if err != nil {
 		return 0, ids.Empty, false
 	}
-	blockID, err := ids.FromString(name[dash+1:])
+	decision, err := ids.FromString(name[dash+1:])
 	if err != nil {
 		return 0, ids.Empty, false
 	}
-	return height, blockID, true
+	return height, decision, true
 }
 
 // OpenCerts opens (or creates) the durable cert store at dir and recovers the
@@ -112,7 +122,7 @@ func OpenCerts(dir string) (CertStore, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create cert store %s: %w", dir, err)
 	}
-	c := &fileCerts{dir: dir, byBlock: map[ids.ID]string{}}
+	c := &fileCerts{dir: dir, byDecision: map[ids.ID]string{}}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -122,48 +132,48 @@ func OpenCerts(dir string) (CertStore, error) {
 		if e.IsDir() {
 			continue
 		}
-		height, blockID, ok := parseCertName(e.Name())
+		height, decision, ok := parseCertName(e.Name())
 		if !ok {
 			continue
 		}
-		c.order = append(c.order, certSlot{height: height, id: blockID})
-		c.byBlock[blockID] = e.Name()
+		c.order = append(c.order, certSlot{height: height, id: decision})
+		c.byDecision[decision] = e.Name()
 	}
 	sort.Slice(c.order, func(i, j int) bool { return c.order[i].height < c.order[j].height })
 	c.evictLocked()
 	return c, nil
 }
 
-func (c *fileCerts) Put(blockID ids.ID, height uint64, cert []byte) error {
+func (c *fileCerts) Put(decision ids.ID, height uint64, cert []byte) error {
 	if len(cert) == 0 {
 		return nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if _, exists := c.byBlock[blockID]; exists {
+	if _, exists := c.byDecision[decision]; exists {
 		return nil
 	}
-	name := certName(height, blockID)
+	name := certName(height, decision)
 	if err := writeFileAtomic(filepath.Join(c.dir, name), c.dir, cert); err != nil {
 		return fmt.Errorf("write cert %s: %w", name, err)
 	}
-	c.byBlock[blockID] = name
+	c.byDecision[decision] = name
 	// Finality is monotonic, so appending keeps order ascending on the hot path.
 	// A cert arriving out of order (a re-delivered older height) is rare enough
 	// that re-sorting it into place costs nothing and keeps eviction honest.
 	if n := len(c.order); n > 0 && c.order[n-1].height > height {
-		c.order = append(c.order, certSlot{height: height, id: blockID})
+		c.order = append(c.order, certSlot{height: height, id: decision})
 		sort.Slice(c.order, func(i, j int) bool { return c.order[i].height < c.order[j].height })
 	} else {
-		c.order = append(c.order, certSlot{height: height, id: blockID})
+		c.order = append(c.order, certSlot{height: height, id: decision})
 	}
 	c.evictLocked()
 	return nil
 }
 
-func (c *fileCerts) Get(blockID ids.ID) ([]byte, bool) {
+func (c *fileCerts) Get(decision ids.ID) ([]byte, bool) {
 	c.mu.Lock()
-	name, ok := c.byBlock[blockID]
+	name, ok := c.byDecision[decision]
 	c.mu.Unlock()
 	if !ok {
 		return nil, false
@@ -182,11 +192,11 @@ func (c *fileCerts) evictLocked() {
 	for len(c.order) > maxServedCerts {
 		ev := c.order[0]
 		c.order = c.order[1:]
-		name, ok := c.byBlock[ev.id]
+		name, ok := c.byDecision[ev.id]
 		if !ok {
 			continue
 		}
-		delete(c.byBlock, ev.id)
+		delete(c.byDecision, ev.id)
 		_ = os.Remove(filepath.Join(c.dir, name))
 	}
 }

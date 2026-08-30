@@ -6,7 +6,6 @@ package validators
 
 import (
 	"github.com/luxfi/crypto/bls"
-	"github.com/luxfi/ids"
 	"github.com/luxfi/math/set"
 	"github.com/luxfi/validators"
 )
@@ -26,10 +25,8 @@ type CanonicalValidatorSet = validators.CanonicalValidatorSet
 // CanonicalValidator is an alias for validators.CanonicalValidator
 type CanonicalValidator = validators.CanonicalValidator
 
-// FlattenValidatorSet re-exports validators.FlattenValidatorSet
-func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalValidatorSet, error) {
-	return validators.FlattenValidatorSet(vdrSet)
-}
+// FlattenValidatorSet lives in registration.go: this package enforces one key
+// per node, so the upstream merge of duplicate keys is not re-exported.
 
 // FilterValidators re-exports validators.FilterValidators
 func FilterValidators(
