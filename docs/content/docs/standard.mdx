@@ -213,7 +213,10 @@ Within a sampling round, the vote count a round accepts on is drawn from a PRF
 rather than fixed, so it cannot be predicted and targeted.
 
 ```text
-seed  = sha256( be64(epoch) ‖ chain_id ‖ prev_block_hash )
+seed  = sha256( "lux.consensus.fpc.seed"
+                ‖ be64(epoch)
+                ‖ be64(len(chain_id))        ‖ chain_id
+                ‖ be64(len(prev_block_hash)) ‖ prev_block_hash )
 θ(p)  = θmin + be64( sha256(seed ‖ be64(p))[:8] ) / (2^64 − 1) · (θmax − θmin)
 α     = ⌈θ · k⌉
 ```
@@ -221,6 +224,15 @@ seed  = sha256( be64(epoch) ‖ chain_id ‖ prev_block_hash )
 Defaults are θmin = 0.5, θmax = 0.8. Every input to the seed is bound, and
 `prev_block_hash` is unknown until the previous epoch finalizes, so θ cannot be
 steered by choosing an input before the epoch opens.
+
+The lengths are what make that last sentence true. Written end to end, the
+preimage does not record where one field stops and the next begins, so a chain
+naming itself `chain_id ‖ H` binds no parent at all and still derives the seed
+`chain_id` derives at parent `H` — trading the one input nobody can know in
+advance for a name it picks for itself. Every variable-length field is written at
+its length, so the preimage reads back apart into exactly the triple that
+produced it; the domain keeps the digest from colliding with any other the
+protocol takes over similar bytes.
 
 θ is compared as exact IEEE-754 bits, never as a decimal. α is a ceiling, so the
 last bit of θ is load-bearing: two implementations agreeing to seventeen decimal
