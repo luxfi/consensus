@@ -43,6 +43,15 @@ var (
 	// One key, one node: counting distinct voters has to count distinct signers.
 	ErrDuplicateKey = errors.New("validators: public key is registered to more than one node")
 
+	// ErrDuplicateNode is returned when one node id is registered twice. One
+	// node, one key: a slice can name a node twice where a map could not, and
+	// each entry is a separate signer index and a separate share of the weight.
+	ErrDuplicateNode = errors.New("validators: node is registered more than once")
+
+	// ErrZeroWeight is returned when a validator is admitted with no stake — a
+	// signer that counts toward the number of signers but not toward the weight.
+	ErrZeroWeight = errors.New("validators: validator has zero weight")
+
 	// ErrNoKey is returned when a registration carries no public key. A validator
 	// with no key cannot sign, so it cannot be admitted through the proof path.
 	ErrNoKey = errors.New("validators: registration carries no public key")
@@ -86,11 +95,19 @@ func Register(rs []Registration) (CanonicalValidatorSet, error) {
 	var (
 		out         = make([]*CanonicalValidator, 0, len(sorted))
 		byKey       = make(map[string]ids.NodeID, len(sorted))
+		byNode      = make(map[ids.NodeID]struct{}, len(sorted))
 		totalWeight uint64
 	)
 	for _, r := range sorted {
 		if len(r.Key) == 0 {
 			return CanonicalValidatorSet{}, fmt.Errorf("%w: %s", ErrNoKey, r.NodeID)
+		}
+		// A keyed validator with no stake is a phantom signer: it raises the
+		// signer count without raising the weight, which is the same disagreement
+		// between "how many signed" and "how much signed" that BuildWeightedValidatorSet
+		// refuses for the same reason.
+		if r.Weight == 0 {
+			return CanonicalValidatorSet{}, fmt.Errorf("%w: %s", ErrZeroWeight, r.NodeID)
 		}
 		// ENCODING, then POSSESSION — both inside pop.Verify, in that order.
 		if err := pop.Verify(r.NodeID, r.Key, r.Proof); err != nil {
@@ -100,12 +117,24 @@ func Register(rs []Registration) (CanonicalValidatorSet, error) {
 		if err != nil {
 			return CanonicalValidatorSet{}, fmt.Errorf("%s: %w", r.NodeID, err)
 		}
-		// UNIQUENESS. Keyed on the canonical compressed encoding, which pop.Verify
-		// has already established is the only spelling of this point.
-		if first, dup := byKey[string(r.Key)]; dup {
+		// The set has to be a set on BOTH axes, and neither implies the other.
+		// UNIQUENESS OF KEY, keyed on the canonical compressed encoding decoded
+		// from the point — never the caller's input bytes, which pop.Verify read
+		// but which a caller could mutate between reads.
+		canonical := string(bls.PublicKeyToCompressedBytes(pk))
+		if first, dup := byKey[canonical]; dup {
 			return CanonicalValidatorSet{}, fmt.Errorf("%w: %s and %s", ErrDuplicateKey, first, r.NodeID)
 		}
-		byKey[string(r.Key)] = r.NodeID
+		byKey[canonical] = r.NodeID
+		// UNIQUENESS OF NODE. A slice can name one node twice under two keys,
+		// each with a genuine proof; possession does not catch it, and one
+		// operator in N canonical slots is N signer indices and N times its
+		// weight. `FlattenValidatorSet`'s map input made this unrepresentable;
+		// a slice does not, so it is refused here.
+		if _, dup := byNode[r.NodeID]; dup {
+			return CanonicalValidatorSet{}, fmt.Errorf("%w: %s", ErrDuplicateNode, r.NodeID)
+		}
+		byNode[r.NodeID] = struct{}{}
 
 		// WEIGHT, last.
 		sum, err := math.Add64(totalWeight, r.Weight)
@@ -114,8 +143,12 @@ func Register(rs []Registration) (CanonicalValidatorSet, error) {
 		}
 		totalWeight = sum
 		out = append(out, &CanonicalValidator{
-			PublicKey:      pk,
-			PublicKeyBytes: bls.PublicKeyToUncompressedBytes(pk),
+			PublicKey: pk,
+			// Compressed, always 48 bytes — the sort key `Compare` reads, so the
+			// canonical ORDER does not depend on which crypto build produced it.
+			// Upstream's uncompressed bytes are 96 under cgo and 48 under purego,
+			// which orders the same set two ways; the oracle must have one order.
+			PublicKeyBytes: []byte(canonical),
 			Weight:         r.Weight,
 			NodeIDs:        []ids.NodeID{r.NodeID},
 		})
@@ -174,7 +207,9 @@ func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalVa
 		if err != nil {
 			continue
 		}
-		pkBytes := bls.PublicKeyToUncompressedBytes(pk)
+		// Compressed, so uniqueness and the canonical order are the same on every
+		// crypto build — see Register.
+		pkBytes := bls.PublicKeyToCompressedBytes(pk)
 		if first, dup := byKey[string(pkBytes)]; dup {
 			return CanonicalValidatorSet{}, fmt.Errorf("%w: %s and %s", ErrDuplicateKey, first, nodeID)
 		}

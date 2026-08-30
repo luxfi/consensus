@@ -188,3 +188,55 @@ func TestCertStoreNameRoundTrips(t *testing.T) {
 		}
 	}
 }
+
+// canonicalTestBlock is a block whose INNER execution commitment differs from its
+// OUTER envelope id — a proposervm-wrapped block, the regime the cert-store re-key
+// exists for. Without one, canonicalIDOf degrades to the outer id in every test
+// and the re-key is never exercised where it differs.
+type canonicalTestBlock struct {
+	*testBlock
+	canonical ids.ID
+}
+
+func (b *canonicalTestBlock) CanonicalID() ids.ID        { return b.canonical }
+func (b *canonicalTestBlock) ParentCanonicalID() ids.ID  { return ids.Empty }
+func (b *canonicalTestBlock) ExecutionStateRoot() ids.ID { return ids.Empty }
+func (b *canonicalTestBlock) PayloadRoot() ids.ID        { return ids.Empty }
+
+// TestCertStoreKeysOnTheDecisionNotTheEnvelope: when a block exposes a distinct
+// inner canonical id, the cert is filed and found under THAT id, and the outer
+// envelope id finds nothing. This is the mainnet-644 class the re-key closes; a
+// store keyed on the envelope would answer the wrong question here.
+func TestCertStoreKeysOnTheDecisionNotTheEnvelope(t *testing.T) {
+	outer := blockAt(7)
+	inner := blockAt(200)
+	blk := &canonicalTestBlock{
+		testBlock: &testBlock{id: outer, height: 42},
+		canonical: inner,
+	}
+
+	// The engine keys on this, not on blk.ID().
+	decision := canonicalIDOf(blk)
+	if decision != inner {
+		t.Fatalf("canonicalIDOf took the envelope, not the inner commitment: %s", decision)
+	}
+	// And a bare block with no inner commitment degrades to its own id, exactly.
+	if got := canonicalIDOf(blk.testBlock); got != outer {
+		t.Fatalf("a bare block should key on its outer id, got %s", got)
+	}
+
+	dir := t.TempDir()
+	store, err := OpenCerts(dir)
+	if err != nil {
+		t.Fatalf("OpenCerts: %v", err)
+	}
+	if err := store.Put(decision, blk.Height(), []byte("cert-for-inner")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if _, ok := store.Get(decision); !ok {
+		t.Fatalf("a cert filed under the decision is not found under the decision")
+	}
+	if _, ok := store.Get(outer); ok {
+		t.Fatalf("a cert filed under the decision must not be found under the envelope")
+	}
+}
