@@ -152,6 +152,38 @@ func BenchmarkTriLangAggregateFromPoints(b *testing.B) {
 	}
 }
 
+// BenchmarkTriLangAggregateFromCompressed is the sum when the caller hands in
+// COMPRESSED bytes — so every signature is decompressed and group-checked on
+// the way in. This is what the C++ bls::aggregate_sigs signature asks for, and
+// it is why that row looked like a language difference: it is a different
+// question, asked of the same library.
+func BenchmarkTriLangAggregateFromCompressed(b *testing.B) {
+	for _, n := range benchCommitteeSizes {
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			_, _, _, sigs, _, _ := benchCommittee(b, n)
+			raw := make([][]byte, n)
+			for i := range sigs {
+				raw[i] = bls.SignatureToBytes(sigs[i])
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				var agg blst.P2Aggregate
+				pts := make([]*blst.P2Affine, n)
+				for j := range raw {
+					var p blst.P2Affine
+					if p.Uncompress(raw[j]) == nil {
+						b.Fatal("uncompress")
+					}
+					pts[j] = &p
+				}
+				agg.Aggregate(pts, true)
+				benchmarkSink++
+			}
+		})
+	}
+}
+
 // BenchmarkTriLangFastAggVerifyFromPoints sums n public keys already held
 // decompressed and pairs once — the C++ FastAggVerifyFromPoints row's work.
 func BenchmarkTriLangFastAggVerifyFromPoints(b *testing.B) {
