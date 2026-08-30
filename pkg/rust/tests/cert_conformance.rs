@@ -180,3 +180,29 @@ fn a_go_signature_does_not_travel_to_another_position() {
     let cert = QuorumCert::assemble(Finality::Quasar, elsewhere, 3, &votes).expect("assemble");
     assert!(cert.verify(&set, 0).is_err());
 }
+
+/// The domain tag itself, frozen against the network's own constant.
+///
+/// Every other test in this file proves conformance *empirically*: a signature
+/// Go made verifies here. That check is only as good as the vectors, and the
+/// header above says how to regenerate them. Change `DST` and rerun that
+/// recipe and the whole file goes green again — Go and Rust would agree with
+/// each other under a tag the running network never signs under, and a Rust
+/// node would reject every real vote on the wire.
+///
+/// So the tag is pinned as a literal too. This is `dstSignature` in
+/// `luxfi/crypto/bls/bls.go`, the value the live network signs consensus votes
+/// under. Note the suffix: `_NUL_`, not `_POP_`. `luxfi/crypto/bls` also
+/// declares `CiphersuiteSignature = "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_"`,
+/// which is neither the signature tag nor the proof-of-possession tag
+/// (`BLS_POP_..._POP_`). Nothing signs under it today — the `Ciphersuite` type
+/// has no users outside its own file — but it is a wrong constant sitting next
+/// to the right one, and this is the assertion that catches anyone who copies it.
+#[test]
+fn the_domain_tag_is_the_one_the_network_signs_under() {
+    assert_eq!(
+        lux_consensus::cert::DST,
+        b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_",
+        "the vote ciphersuite must be luxfi/crypto/bls dstSignature, byte for byte"
+    );
+}
