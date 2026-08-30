@@ -16,15 +16,15 @@ import (
 func descentAt(from uint64, n int) (*Runtime, []ids.ID) {
 	vm := &mockVM{blocks: map[ids.ID]*mockBlock{}}
 	e := &Transitive{
-		certBytesByBlock: map[ids.ID][]byte{},
-		recoveredAt:      map[uint64]ids.ID{},
+		certByDecision: map[ids.ID][]byte{},
+		recoveredAt:    map[uint64]ids.ID{},
 	}
 	ids_ := make([]ids.ID, 0, n)
 	for i := 0; i < n; i++ {
 		h := from + uint64(i)
 		id := ids.GenerateTestID()
 		vm.blocks[id] = &mockBlock{id: id, height: h, bytes: []byte{byte(h)}}
-		e.certBytesByBlock[id] = []byte{'c', byte(h)}
+		e.certByDecision[id] = []byte{'c', byte(h)}
 		e.recoveredAt[h] = id
 		ids_ = append(ids_, id)
 	}
@@ -70,7 +70,7 @@ func TestDescentStopsAtTheFirstHoleRatherThanSkippingIt(t *testing.T) {
 	// 104 is finalized; 103 is not.
 	orphan := ids.GenerateTestID()
 	rt.config.VM.(*mockVM).blocks[orphan] = &mockBlock{id: orphan, height: 104, bytes: []byte{104}}
-	rt.Transitive.certBytesByBlock[orphan] = []byte{'c', 104}
+	rt.Transitive.certByDecision[orphan] = []byte{'c', 104}
 	rt.Transitive.recoveredAt[104] = orphan
 
 	run, err := rt.From(context.Background(), 100, 10)
@@ -91,7 +91,7 @@ func TestDescentStopsAtTheFirstHoleRatherThanSkippingIt(t *testing.T) {
 // progress.
 func TestDescentWithoutTheCertServesNothingAtThatHeight(t *testing.T) {
 	rt, idsAt := descentAt(100, 3)
-	delete(rt.Transitive.certBytesByBlock, idsAt[1]) // height 101 loses its cert
+	delete(rt.Transitive.certByDecision, idsAt[1]) // height 101 loses its cert
 
 	run, err := rt.From(context.Background(), 100, 10)
 	if err != nil {

@@ -405,7 +405,7 @@ func TestCatchup_CertForBlockServesWhatWasFinalized(t *testing.T) {
 	blk := buildGap(vm, tip, 1)[0] // N+1
 
 	// Before finalize: nothing to serve.
-	if _, ok := rt.CertForBlock(blk.id); ok {
+	if _, ok := rt.CertForBlock(blk); ok {
 		t.Fatal("CertForBlock returned a cert for an unfinalized block")
 	}
 
@@ -416,7 +416,7 @@ func TestCatchup_CertForBlockServesWhatWasFinalized(t *testing.T) {
 
 	// After finalize: the node serves a cert that decodes and verifies to the same
 	// finality witness, so a peer can finalize on it with zero trust in this node.
-	served, ok := rt.CertForBlock(blk.id)
+	served, ok := rt.CertForBlock(blk)
 	if !ok {
 		t.Fatal("CertForBlock did not serve the finalized block's cert")
 	}

@@ -73,15 +73,17 @@ func (c *busCatchup) RequestAncestors(_ ids.ID, _ ids.ID, _ ids.ID, _ ids.NodeID
 			if !ok {
 				continue
 			}
-			certBytes, ok := server.rt.Transitive.CertForBlock(id)
-			if !ok {
-				continue // cert aged out of the served window — a real node bootstraps instead
-			}
 			server.vm.mu.Lock()
 			blk := server.vm.blockByID[id]
 			server.vm.mu.Unlock()
 			if blk == nil {
 				continue
+			}
+			// The block first: a cert is filed under the decision it proves, and the
+			// block is what names it.
+			certBytes, ok := server.rt.Transitive.CertForBlock(blk)
+			if !ok {
+				continue // cert aged out of the served window — a real node bootstraps instead
 			}
 			if !self.reachable() {
 				return

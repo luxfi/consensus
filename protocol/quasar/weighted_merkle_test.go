@@ -4,6 +4,7 @@
 package quasar
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -105,6 +106,28 @@ func TestWeightedMerkle_RejectsBadInput(t *testing.T) {
 	ep := []WeightedValidatorLeaf{{ValidatorID: [32]byte{1}, VotingWeight: 10, ParameterSetID: 0x42}}
 	if _, err := BuildWeightedValidatorSet(7, ep); err == nil {
 		t.Fatal("empty pubkey accepted, want ErrWVSetEmptyPubKey")
+	}
+}
+
+// TestWeightedMerkle_OneKeyOneValidator is the second registration rule on this
+// tree. Distinct identities were already refused; distinct KEYS were not, so one
+// holder could appear as several validators, each with its own weight, and a
+// quorum written to require several holders was satisfied by one. Neither check
+// implies the other — these leaves have different identities and pass the first.
+func TestWeightedMerkle_OneKeyOneValidator(t *testing.T) {
+	a, b := mkLeaf(0x01, 10, 0x42, 1), mkLeaf(0x02, 20, 0x42, 1)
+	b.PublicKey = append([]byte(nil), a.PublicKey...)
+
+	if _, err := BuildWeightedValidatorSet(7, []WeightedValidatorLeaf{a, b}); !errors.Is(err, ErrWVSetDuplicateKey) {
+		t.Fatalf("one key under two validator_ids: got %v, want ErrWVSetDuplicateKey", err)
+	}
+	// Order must not decide the answer: every node builds the same set.
+	if _, err := BuildWeightedValidatorSet(7, []WeightedValidatorLeaf{b, a}); !errors.Is(err, ErrWVSetDuplicateKey) {
+		t.Fatalf("reversed: got %v, want ErrWVSetDuplicateKey", err)
+	}
+	// Distinct keys still build.
+	if _, err := BuildWeightedValidatorSet(7, []WeightedValidatorLeaf{mkLeaf(0x01, 10, 0x42, 1), mkLeaf(0x02, 20, 0x42, 1)}); err != nil {
+		t.Fatalf("a set that obeys the rule was refused: %v", err)
 	}
 }
 
