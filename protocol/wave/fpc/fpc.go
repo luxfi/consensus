@@ -12,19 +12,47 @@ var (
 	ErrEmptySeed = errors.New("fpc: seed must not be empty")
 )
 
-// DeriveEpochSeed produces a per-epoch seed from an epoch number, chain ID,
-// and the hash of the last finalized block from the previous epoch.
-// The prevBlockHash is only known after finalization, making the seed
-// unpredictable before the epoch starts.
-// seed = sha256(epoch_number || chain_id || prev_block_hash)
+// seedDomain is the label the epoch seed is taken under, so this digest cannot
+// collide with any other digest the protocol takes over similar bytes.
+const seedDomain = "lux.consensus.fpc.seed"
+
+// EpochSeedPreimage returns the exact bytes DeriveEpochSeed hashes.
+//
+//	domain || be64(epoch) || be64(len(chainID)) || chainID
+//	       || be64(len(prevBlockHash)) || prevBlockHash
+//
+// Every variable-length field is written at its length, so the preimage can be
+// read back apart into exactly the three inputs that produced it and no others.
+// Written end to end they could not be: a chain calling itself lux-mainnet||H
+// derives, binding no parent at all, the seed lux-mainnet derives at parent H.
+// That trades the parent away for a name the chain picks itself, and the parent
+// is the input no one can know in advance — which is the whole reason it is an
+// input. Lengths close that; the domain keeps the digest to itself.
+//
+// The corpus records these bytes, so a port is held to what it hashed and not
+// only to what came out: two implementations can agree on every digest in the
+// corpus and still disagree on the first case that is not in it.
+func EpochSeedPreimage(epochNumber uint64, chainID []byte, prevBlockHash []byte) []byte {
+	out := make([]byte, 0, len(seedDomain)+24+len(chainID)+len(prevBlockHash))
+	out = append(out, seedDomain...)
+	out = binary.BigEndian.AppendUint64(out, epochNumber)
+	out = binary.BigEndian.AppendUint64(out, uint64(len(chainID)))
+	out = append(out, chainID...)
+	out = binary.BigEndian.AppendUint64(out, uint64(len(prevBlockHash)))
+	out = append(out, prevBlockHash...)
+	return out
+}
+
+// DeriveEpochSeed produces a per-epoch seed from an epoch number, chain ID, and
+// the hash of the last finalized block from the previous epoch.
+//
+//	seed = sha256(EpochSeedPreimage(epoch, chainID, prevBlockHash))
+//
+// prevBlockHash is only known once the previous epoch has finalized, so no
+// party holds the next epoch's thresholds while the current one is still open.
 func DeriveEpochSeed(epochNumber uint64, chainID []byte, prevBlockHash []byte) []byte {
-	h := sha256.New()
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], epochNumber)
-	h.Write(buf[:])
-	h.Write(chainID)
-	h.Write(prevBlockHash)
-	return h.Sum(nil)
+	sum := sha256.Sum256(EpochSeedPreimage(epochNumber, chainID, prevBlockHash))
+	return sum[:]
 }
 
 // Selector provides phase-dependent threshold selection for FPC
