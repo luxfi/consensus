@@ -24,8 +24,12 @@ permissions:
 
 # A corrective tag supersedes a release still in flight. Keep the publisher on
 # the newest immutable version instead of running obsolete tags in parallel.
+# One release, one artifact. Keyed on the REF, not the repository: a repo-wide
+# group means pushing v1.36.80 cancels v1.36.79's build, so a batch of tags
+# leaves versions that promise an artifact nobody can pull. Re-running the same
+# tag still supersedes its own run.
 concurrency:
-  group: release-${{ github.repository }}
+  group: release-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
