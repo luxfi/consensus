@@ -1,341 +1,163 @@
 // Copyright (C) 2019-2026, Lux Industries Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-//! What a node actually spends time on, measured.
+//! What a node actually pays to decide.
 //!
-//! The benchmark that stood here imported `LuxBlock`, `LuxVote`,
-//! `LuxConsensusConfig`, `LuxEngineType` and `ConsensusEngine` — five names this
-//! crate has not exported for a long time — so `cargo bench` did not compile,
-//! and the report beside it carried numbers no binary in this repository could
-//! produce. It has been retracted in place since; this replaces it with the
-//! paths that are on the round and certificate hot loop.
-//!
-//! Four groups, in the order a round runs them:
-//!
-//!   * `threshold` — the FPC PRF, once per round per node.
-//!   * `message`   — the canonical vote message, once per vote signed and once
-//!                   per certificate verified.
-//!   * `wire`      — certificate encode and decode, once per gossip hop.
-//!   * `verify`    — the whole finality predicate over real BLS signatures. This
-//!                   is the expensive one and the one that decides.
-//!
-//! Three more groups exist so a number here can be divided by a number from the
-//! Go or C++ leg:
-//!
-//!   * `sign`      — one signature, and the aggregate of n.
-//!   * `matched`   — the same blst calls the other two legs make, in the same
-//!                   order. `verify/signature` above is what this crate really
-//!                   pays; `matched/verify` is what is comparable. The gap is a
-//!                   policy this crate chose, and naming it is the point.
-//!   * `round`     — the work of turning a position into an ADMITTED
-//!                   certificate, split by who pays it. No leg was timing this.
+//! The costs are not evenly spread. Building the signed message and picking a
+//! threshold are arithmetic on fixed-width bytes; verifying a certificate is
+//! elliptic-curve pairings, and it grows with the committee. Anything reported
+//! about this crate's throughput that does not separate the two is measuring
+//! the cheap part.
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use lux_consensus::bls::{Registry, DST};
-use lux_consensus::finality::{canonical_vote_message, Cert, Finality, Keys, Position, Vote, NODE_LEN};
-use lux_consensus::{derive_epoch_seed, FpcSelector};
 use std::hint::black_box;
 
+use blst::min_pk::SecretKey;
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+
+use lux_consensus::cert::{QuorumCert, ValidatorSet, Vote, DST};
+use lux_consensus::finality::{canonical_vote_message, Finality, Id, Position};
+use lux_consensus::{sha256, Engine, FpcSelector, QuasarConfig, QuasarEngine, VoteType};
+
 fn position() -> Position {
+    let f = |b: u8| [b; 32];
     Position {
-        chain_id: [0x11; 32],
-        height: 0x0102030405060708,
-        round: 0x0A0B0C0D,
-        block_id: [0x22; 32],
-        parent_id: [0x33; 32],
-        canonical_id: [0x44; 32],
-        parent_canonical_id: [0x55; 32],
-        execution_state_root: [0x66; 32],
-        payload_root: [0x77; 32],
-        validator_set_root: [0x88; 32],
+        chain_id: f(7),
+        height: 42,
+        round: 3,
+        block_id: f(11),
+        parent_id: f(10),
+        canonical_id: f(12),
+        parent_canonical_id: f(13),
+        execution_state_root: f(14),
+        payload_root: f(15),
+        validator_set_root: f(16),
     }
 }
 
-/// A committee of `n` validators with real keys, and a certificate they all
-/// signed. Deterministic: the key material is derived from the index, so a run
-/// is comparable to the run before it.
-fn signed(n: usize) -> (Cert, Registry) {
-    let pos = position();
-    let message = canonical_vote_message(&pos, true);
-    let mut registry = Registry::new();
+fn node_id(n: usize) -> Id {
+    let mut id = [0u8; 32];
+    id[..8].copy_from_slice(&(n as u64).to_be_bytes());
+    id
+}
+
+/// A committee of `n` signers with a real certificate over `position()`.
+fn certified(n: usize) -> (ValidatorSet, QuorumCert) {
+    let message = canonical_vote_message(&position(), true);
+    let mut set = ValidatorSet::new();
     let mut votes = Vec::with_capacity(n);
 
     for i in 0..n {
         let mut ikm = [0u8; 32];
         ikm[..8].copy_from_slice(&(i as u64 + 1).to_be_bytes());
-        let sk = blst::min_pk::SecretKey::key_gen(&ikm, &[]).expect("key_gen");
-
-        let mut node = [0u8; NODE_LEN];
-        node[..8].copy_from_slice(&(i as u64).to_be_bytes());
-        assert!(registry.insert(node, &sk.sk_to_pk().compress()));
-
+        let sk = SecretKey::key_gen(&ikm, &[]).expect("key_gen");
+        let id = node_id(i);
+        set.insert(id, 100, &sk.sk_to_pk().compress()).expect("insert");
         votes.push(Vote {
-            node,
+            node_id: id,
             accept: true,
             signature: sk.sign(&message, DST, &[]).compress().to_vec(),
         });
     }
 
-    let cert = Cert::assemble(pos, Finality::Quasar, n as u32, votes).expect("assemble");
-    (cert, registry)
+    let cert = QuorumCert::assemble(Finality::Quasar, position(), n as u32, &votes).expect("cert");
+    (set, cert)
 }
 
-fn threshold(c: &mut Criterion) {
-    let seed = derive_epoch_seed(42, &[0x11; 32], &[0x22; 32]);
-    let sel = FpcSelector::new(0.5, 0.8, seed);
-    let mut group = c.benchmark_group("threshold");
-
-    group.bench_function("derive_epoch_seed", |b| {
-        b.iter(|| derive_epoch_seed(black_box(42), black_box(&[0x11; 32]), black_box(&[0x22; 32])))
-    });
-
-    for k in [4usize, 21, 100] {
-        group.bench_with_input(BenchmarkId::new("select", k), &k, |b, &k| {
-            let mut phase = 0u64;
-            b.iter(|| {
-                phase = phase.wrapping_add(1);
-                sel.select_threshold(black_box(phase), black_box(k))
-            })
-        });
-    }
-    group.finish();
-}
-
-fn message(c: &mut Criterion) {
+/// The signed message: 226 fixed-width bytes, no allocation beyond the buffer.
+fn bench_message(c: &mut Criterion) {
     let pos = position();
-    c.benchmark_group("message")
-        .throughput(Throughput::Bytes(lux_consensus::VOTE_MESSAGE_LEN as u64))
-        .bench_function("canonical_vote", |b| {
-            b.iter(|| canonical_vote_message(black_box(&pos), black_box(true)))
-        });
+    c.bench_function("canonical_vote_message", |b| {
+        b.iter(|| canonical_vote_message(black_box(&pos), black_box(true)))
+    });
 }
 
-fn wire(c: &mut Criterion) {
-    let mut group = c.benchmark_group("wire");
-    for n in [1usize, 21, 100] {
-        let (cert, _) = signed(n);
-        let bytes = cert.encode();
-        group.throughput(Throughput::Bytes(bytes.len() as u64));
-        group.bench_with_input(BenchmarkId::new("encode", n), &cert, |b, cert| {
-            b.iter(|| cert.encode())
-        });
-        group.bench_with_input(BenchmarkId::new("decode", n), &bytes, |b, bytes| {
-            b.iter(|| Cert::decode(black_box(bytes)).expect("decode"))
-        });
-    }
-    group.finish();
+/// The PRF behind every threshold, and the threshold itself.
+fn bench_threshold(c: &mut Criterion) {
+    let input = [0u8; 40];
+    c.bench_function("sha256_40b", |b| b.iter(|| sha256(black_box(&input))));
+
+    let s = FpcSelector::default();
+    c.bench_function("fpc_select_threshold", |b| {
+        b.iter(|| s.select_threshold(black_box(7), black_box(21)))
+    });
 }
 
-fn verify(c: &mut Criterion) {
-    let mut group = c.benchmark_group("verify");
-    group.sample_size(20);
-
-    for n in [1usize, 4, 21, 41, 100] {
-        let (cert, registry) = signed(n);
+/// Verifying a certificate, signature by signature. This is the real cost of
+/// accepting a block, and it is linear in the committee.
+fn bench_verify(c: &mut Criterion) {
+    let mut group = c.benchmark_group("cert_verify");
+    for n in [4usize, 11, 21] {
+        let (set, cert) = certified(n);
         group.throughput(Throughput::Elements(n as u64));
-        group.bench_with_input(BenchmarkId::new("certificate", n), &n, |b, _| {
-            b.iter(|| cert.verify(black_box(&registry)).expect("verify"))
-        });
-    }
-
-    // One signature on its own, so the certificate figures above divide cleanly
-    // and a change in the predicate is distinguishable from a change in the
-    // pairing.
-    let (cert, registry) = signed(1);
-    let msg = cert.message();
-    let v = &cert.votes[0];
-    group.bench_function("signature", |b| {
-        b.iter(|| registry.verify(black_box(&v.node), black_box(&msg), black_box(&v.signature)))
-    });
-    group.finish();
-}
-
-
-/// One signature, and one aggregate of n. The Go and C++ legs time the same two,
-/// so these are what make the signing side of the table comparable.
-fn sign(c: &mut Criterion) {
-    let pos = position();
-    let message = canonical_vote_message(&pos, true);
-    let mut ikm = [0u8; 32];
-    ikm[..8].copy_from_slice(&1u64.to_be_bytes());
-    let sk = blst::min_pk::SecretKey::key_gen(&ikm, &[]).expect("key_gen");
-
-    let mut group = c.benchmark_group("sign");
-    group.bench_function("one", |b| {
-        b.iter(|| sk.sign(black_box(&message), DST, &[]).compress())
-    });
-
-    for n in [1usize, 4, 21, 41, 100] {
-        let (cert, _) = signed(n);
-        let sigs: Vec<blst::min_pk::Signature> = cert
-            .votes
-            .iter()
-            .map(|v| blst::min_pk::Signature::uncompress(&v.signature).expect("uncompress"))
-            .collect();
-        group.bench_with_input(BenchmarkId::new("aggregate", n), &sigs, |b, sigs| {
-            b.iter(|| {
-                let refs: Vec<&blst::min_pk::Signature> = sigs.iter().collect();
-                blst::min_pk::AggregateSignature::aggregate(black_box(&refs), false)
-                    .expect("aggregate")
-            })
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| black_box(&cert).verify(black_box(&set), 0).is_ok())
         });
     }
     group.finish();
 }
 
-/// The same blst calls the Go and C++ legs make, in the same order.
-///
-/// [`Registry::verify`] validates the PUBLIC KEY on every verification although
-/// [`Registry::insert`] already validated it when the validator joined the set.
-/// That is a subgroup multiplication per vote that the set boundary has already
-/// paid for. `matched/verify` is the same verification without it, so the cost
-/// of the choice is a measured number rather than an opinion, and so the figure
-/// that is compared across languages is a figure of the same work.
-///
-/// The SIGNATURE group check stays on in both. It is not redundant with
-/// anything: the signature arrives from the wire on every call.
-fn matched(c: &mut Criterion) {
-    let pos = position();
-    let message = canonical_vote_message(&pos, true);
-    let mut group = c.benchmark_group("matched");
-
-    let mut ikm = [0u8; 32];
-    ikm[..8].copy_from_slice(&1u64.to_be_bytes());
-    let sk = blst::min_pk::SecretKey::key_gen(&ikm, &[]).expect("key_gen");
-    let pk = sk.sk_to_pk();
-    let compressed = sk.sign(&message, DST, &[]).compress();
-
-    // Decompress the signature, group-check it ONCE, pair. The key is already
-    // decompressed and was validated when the validator joined.
-    group.bench_function("verify", |b| {
+/// Assembling a certificate: sort, dedup, and no cryptography at all.
+fn bench_assemble(c: &mut Criterion) {
+    let (_, cert) = certified(21);
+    let votes = cert.votes.clone();
+    c.bench_function("cert_assemble_21", |b| {
         b.iter(|| {
-            let sig = blst::min_pk::Signature::uncompress(black_box(&compressed)).expect("uncompress");
-            assert_eq!(
-                sig.verify(true, black_box(&message), DST, &[], &pk, false),
-                blst::BLST_ERROR::BLST_SUCCESS
-            );
+            QuorumCert::assemble(
+                Finality::Quasar,
+                position(),
+                21,
+                black_box(&votes),
+            )
         })
     });
+}
 
-    // The same verification with the redundant key validation the registry does.
-    group.bench_function("verify_revalidating_key", |b| {
-        b.iter(|| {
-            let sig = blst::min_pk::Signature::uncompress(black_box(&compressed)).expect("uncompress");
-            assert_eq!(
-                sig.verify(true, black_box(&message), DST, &[], &pk, true),
-                blst::BLST_ERROR::BLST_SUCCESS
-            );
-        })
-    });
+/// The probabilistic engine's ballot path, which does no cryptography — the
+/// number that is easy to make look large.
+fn bench_ballots(c: &mut Criterion) {
+    let mut config = QuasarConfig::testnet();
+    config.k = 21;
+    config.beta = 1;
 
-    // The pairing alone — the floor every leg's verify sits on.
-    let point = blst::min_pk::Signature::uncompress(&compressed).expect("uncompress");
-    group.bench_function("pairing", |b| {
-        b.iter(|| {
-            assert_eq!(
-                point.verify(false, black_box(&message), DST, &[], &pk, false),
-                blst::BLST_ERROR::BLST_SUCCESS
-            );
-        })
-    });
-
-    // The check this crate pays twice, priced.
-    group.bench_function("group_check_signature", |b| {
-        b.iter(|| black_box(&point).validate(true).is_ok())
-    });
-
-    // The O(1) aggregate predicate, over keys a validator set already holds
-    // decompressed. The Go and C++ legs time this; Rust had no counterpart.
-    for n in [1usize, 4, 21, 41, 100] {
-        let (cert, _) = signed(n);
-        let sigs: Vec<blst::min_pk::Signature> = cert
-            .votes
-            .iter()
-            .map(|v| blst::min_pk::Signature::uncompress(&v.signature).expect("uncompress"))
-            .collect();
-        let keys: Vec<blst::min_pk::PublicKey> = (0..n)
-            .map(|i| {
-                let mut ikm = [0u8; 32];
-                ikm[..8].copy_from_slice(&(i as u64 + 1).to_be_bytes());
-                blst::min_pk::SecretKey::key_gen(&ikm, &[]).expect("key_gen").sk_to_pk()
-            })
-            .collect();
-        let refs: Vec<&blst::min_pk::Signature> = sigs.iter().collect();
-        let aggregate = blst::min_pk::AggregateSignature::aggregate(&refs, false)
-            .expect("aggregate")
-            .to_signature();
-
-        group.bench_with_input(BenchmarkId::new("fast_aggregate_verify", n), &keys, |b, keys| {
-            b.iter(|| {
-                let refs: Vec<&blst::min_pk::PublicKey> = keys.iter().collect();
-                let sum = blst::min_pk::AggregatePublicKey::aggregate(black_box(&refs), false)
-                    .expect("aggregate")
-                    .to_public_key();
-                assert_eq!(
-                    aggregate.verify(false, &message, DST, &[], &sum, false),
-                    blst::BLST_ERROR::BLST_SUCCESS
+    c.bench_function("record_ballot_to_decision", |b| {
+        b.iter_batched(
+            || {
+                let mut engine = QuasarEngine::new(config.clone());
+                engine.start().unwrap();
+                for i in 0..21 {
+                    engine.add_validator(lux_consensus::NodeID::from(node_id(i)), 1);
+                }
+                let block = lux_consensus::Block::new(
+                    lux_consensus::ID::from([11u8; 32]),
+                    lux_consensus::ID::zero(),
+                    1,
+                    Vec::new(),
                 );
-            })
-        });
-    }
-    group.finish();
-}
-
-/// A finality round: the work of turning a position into an ADMITTED
-/// certificate. Split by who pays, because the three parties pay different
-/// amounts and only one of them is on the critical path.
-///
-///   * `sign`    one validator's own cost — build the message, sign it once.
-///               Independent of n: a validator does not sign n times.
-///   * `collect` the assembling node — canonical order and the wire. O(n), and
-///               no curve arithmetic at all.
-///   * `admit`   a follower — decode the gossiped bytes and run the predicate.
-///               O(n) pairings, which is finality's critical path.
-fn round(c: &mut Criterion) {
-    let pos = position();
-    let mut group = c.benchmark_group("round");
-    group.sample_size(20);
-
-    let mut ikm = [0u8; 32];
-    ikm[..8].copy_from_slice(&1u64.to_be_bytes());
-    let sk = blst::min_pk::SecretKey::key_gen(&ikm, &[]).expect("key_gen");
-    group.bench_function("sign", |b| {
-        b.iter(|| {
-            let message = canonical_vote_message(black_box(&pos), true);
-            sk.sign(&message, DST, &[]).compress()
-        })
+                engine.add(block.clone()).unwrap();
+                (engine, block)
+            },
+            |(mut engine, block)| {
+                for i in 0..21 {
+                    let vote = lux_consensus::Vote::new(
+                        block.id.clone(),
+                        VoteType::Preference,
+                        lux_consensus::NodeID::from(node_id(i)),
+                    );
+                    let _ = engine.record_vote(vote);
+                }
+                engine.is_accepted(&block.id)
+            },
+            criterion::BatchSize::SmallInput,
+        )
     });
-
-    for n in [4usize, 21, 41, 100] {
-        let (cert, registry) = signed(n);
-        let wire = cert.encode();
-
-        // Reversed, so the assembler's sort does work rather than confirm it:
-        // votes arrive in whatever order they were gossiped.
-        let mut shuffled = cert.votes.clone();
-        shuffled.reverse();
-        group.bench_with_input(BenchmarkId::new("collect", n), &shuffled, |b, votes| {
-            b.iter(|| {
-                Cert::assemble(pos.clone(), Finality::Quasar, n as u32, votes.clone())
-                    .expect("assemble")
-                    .encode()
-            })
-        });
-
-        group.throughput(Throughput::Elements(n as u64));
-        group.bench_with_input(BenchmarkId::new("admit", n), &wire, |b, wire| {
-            b.iter(|| {
-                Cert::decode(black_box(wire))
-                    .expect("decode")
-                    .verify(&registry)
-                    .expect("verify")
-            })
-        });
-    }
-    group.finish();
 }
 
-criterion_group!(more, sign, matched, round);
-
-criterion_group!(benches, threshold, message, wire, verify);
-criterion_main!(benches, more);
+criterion_group!(
+    benches,
+    bench_message,
+    bench_threshold,
+    bench_verify,
+    bench_assemble,
+    bench_ballots,
+);
+criterion_main!(benches);

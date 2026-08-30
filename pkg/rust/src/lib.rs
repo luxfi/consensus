@@ -25,6 +25,11 @@
 //!     let mut engine = QuasarEngine::new(config);
 //!     engine.start().unwrap();
 //!
+//!     // The committee. Only its members' ballots are counted.
+//!     for i in 0..20 {
+//!         engine.add_validator(NodeID::from([i; 32]), 1);
+//!     }
+//!
 //!     // Add a block
 //!     let block = Block::new(
 //!         ID::from([1u8; 32]),
@@ -53,427 +58,26 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
-// The FPC threshold PRF, the same primitive Go's protocol/wave/fpc uses.
-use sha2::{Digest, Sha256};
 
 // The finality standard: the bytes a validator signs and the thresholds that
 // decide. Held to the Go definitions by tests/conformance.rs.
 pub mod finality;
 
-// ============= BLS MODULE - The Signature Primitive =============
+// The quorum certificate: the predicate that decides whether a block is
+// accepted. Held to `engine/chain/cert.go` by tests/cert.rs.
+pub mod cert;
 
-/// The signature scheme Lux consensus votes are carried under.
+/// SHA-256. The crate's one hash, from the BLS library already linked here.
 ///
-/// Every parameter here is read off `github.com/luxfi/crypto/bls` and none of
-/// them is a free choice: the ciphersuite string is the domain separation tag
-/// baked into every signature on the network, and the two lengths follow from
-/// it. `BLS12381G2` in the tag means signatures live in G2, so a public key is a
-/// compressed G1 point at 48 bytes and a signature is a compressed G2 point at
-/// 96 bytes.
-///
-/// This module exists because those two lengths were inverted here — the
-/// aggregator declared "48-byte aggregated G1 signature" and sliced every vote
-/// to 48 bytes before handing it to a G2 decoder. That decoder rejects 48 bytes
-/// every time, so the aggregate was the 48 zero bytes of the error path, always,
-/// and the verifier's only signature test was that the field was non-empty. Zero
-/// bytes are not empty. Forty validators voting with no signatures produced a
-/// certificate that verified.
-pub mod bls {
-    use crate::finality::{Keys, Node};
-    use blst::min_pk::{PublicKey, Signature};
-    use blst::BLST_ERROR;
-    use std::collections::HashMap;
-
-    /// The ciphersuite, byte for byte what `luxfi/crypto/bls` signs and verifies
-    /// under. A signature made under any other tag is not a vote on this network.
-    pub const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_";
-
-    /// A compressed G1 public key.
-    pub const PUBLIC_KEY_LEN: usize = 48;
-
-    /// A compressed G2 signature.
-    pub const SIGNATURE_LEN: usize = 96;
-
-    /// The signing keys of a validator set, by node.
-    ///
-    /// Resolution is the authorization: a node absent from the registry has no
-    /// key, and a vote from it is refused rather than skipped. There is no
-    /// "unknown signer" outcome that is not a refusal.
-    #[derive(Debug, Default, Clone)]
-    pub struct Registry {
-        keys: HashMap<Node, PublicKey>,
-    }
-
-    impl Registry {
-        pub fn new() -> Self {
-            Registry { keys: HashMap::new() }
-        }
-
-        /// Register a validator's compressed public key.
-        ///
-        /// The key is validated on the way in — length, subgroup, and not the
-        /// identity — so a malformed or identity key is refused once here rather
-        /// than being carried to every later verification. An identity public
-        /// key verifies a signature over any message.
-        pub fn insert(&mut self, node: Node, compressed: &[u8]) -> bool {
-            if compressed.len() != PUBLIC_KEY_LEN {
-                return false;
-            }
-            let Ok(pk) = PublicKey::uncompress(compressed) else {
-                return false;
-            };
-            if pk.validate().is_err() {
-                return false;
-            }
-            self.keys.insert(node, pk);
-            true
-        }
-
-        pub fn len(&self) -> usize {
-            self.keys.len()
-        }
-
-        pub fn is_empty(&self) -> bool {
-            self.keys.is_empty()
-        }
-    }
-
-    impl Keys for Registry {
-        fn verify(&self, node: &Node, message: &[u8], signature: &[u8]) -> bool {
-            let Some(pk) = self.keys.get(node) else {
-                return false;
-            };
-            if signature.len() != SIGNATURE_LEN {
-                return false;
-            }
-            let Ok(sig) = Signature::uncompress(signature) else {
-                return false;
-            };
-            // Both group checks on. A subgroup check costs a pairing-free
-            // multiplication and refuses a small-order point; skipping it to
-            // save that is how a signature over one message is replayed as a
-            // signature over another.
-            sig.verify(true, message, DST, &[], pk, true) == BLST_ERROR::BLST_SUCCESS
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-        use crate::finality::{
-            canonical_vote_message, Cert, Finality, Position, Refusal, Vote, NODE_LEN,
-        };
-        use blst::min_pk::SecretKey;
-
-        /// A committee of `n` validators with real keys, and the registry that
-        /// resolves them. Node ids ascend so an assembled certificate is already
-        /// in canonical order.
-        fn committee(n: u8) -> (Vec<SecretKey>, Vec<Node>, Registry) {
-            let mut keys = Vec::new();
-            let mut nodes = Vec::new();
-            let mut registry = Registry::new();
-            for i in 0..n {
-                let sk = SecretKey::key_gen(&[i.wrapping_add(1); 32], &[]).expect("key_gen");
-                let node = [i; NODE_LEN];
-                assert!(registry.insert(node, &sk.sk_to_pk().compress()), "register {i}");
-                keys.push(sk);
-                nodes.push(node);
-            }
-            (keys, nodes, registry)
-        }
-
-        fn position(chain: u8) -> Position {
-            Position {
-                chain_id: [chain; 32],
-                height: 9,
-                round: 3,
-                block_id: [0x22; 32],
-                parent_id: [0x33; 32],
-                canonical_id: [0x44; 32],
-                parent_canonical_id: [0x55; 32],
-                execution_state_root: [0x66; 32],
-                payload_root: [0x77; 32],
-                validator_set_root: [0x88; 32],
-            }
-        }
-
-        /// A signature the network made, over the message the network signs,
-        /// verifies here. Without this the refusals below would be satisfied by
-        /// a verifier that refuses everything.
-        #[test]
-        fn a_real_signature_verifies() {
-            let (keys, nodes, registry) = committee(4);
-            let pos = position(0x11);
-            let message = canonical_vote_message(&pos, true);
-
-            let votes = keys
-                .iter()
-                .zip(&nodes)
-                .map(|(sk, node)| Vote {
-                    node: *node,
-                    accept: true,
-                    signature: sk.sign(&message, DST, &[]).compress().to_vec(),
-                })
-                .collect();
-
-            let cert = Cert::assemble(pos, Finality::Quasar, 3, votes).expect("assemble");
-            assert_eq!(cert.verify(&registry), Ok(()));
-            assert_eq!(
-                cert.votes[0].signature.len(),
-                SIGNATURE_LEN,
-                "a signature is a compressed G2 point"
-            );
-        }
-
-        /// THE regression. Forty registered validators, every one of them voting
-        /// with no signature at all, and the certificate must not verify.
-        ///
-        /// The predicate this replaces answered the question "is the aggregate
-        /// signature field non-empty?", and the aggregator it asked about filled
-        /// that field with forty-eight zero bytes whenever it had nothing to
-        /// aggregate. Zero bytes are not empty, so the answer was yes, and this
-        /// certificate — no signatures, no signers who signed anything — was
-        /// finality.
-        #[test]
-        fn a_certificate_carrying_no_signatures_is_refused() {
-            let (_, nodes, registry) = committee(40);
-            let votes = nodes
-                .iter()
-                .map(|node| Vote { node: *node, accept: true, signature: Vec::new() })
-                .collect();
-
-            let cert = Cert::assemble(position(0x11), Finality::Quasar, 21, votes).expect("assemble");
-            assert_eq!(cert.verify(&registry), Err(Refusal::Signature));
-        }
-
-        /// Forty-eight zero bytes are refused as explicitly as none: that exact
-        /// value is what the broken aggregator produced on every input, so it is
-        /// the one string a verifier must never mistake for a signature.
-        #[test]
-        fn the_broken_aggregate_is_refused() {
-            let (_, nodes, registry) = committee(40);
-            let votes = nodes
-                .iter()
-                .map(|node| Vote { node: *node, accept: true, signature: vec![0u8; 48] })
-                .collect();
-
-            let cert = Cert::assemble(position(0x11), Finality::Quasar, 21, votes).expect("assemble");
-            assert_eq!(cert.verify(&registry), Err(Refusal::Signature));
-
-            // And the same length a compressed signature actually is, all zero.
-            let zeros = vec![0u8; SIGNATURE_LEN];
-            assert!(!registry.verify(&nodes[0], b"any message", &zeros));
-        }
-
-        /// A validator with no registered key cannot contribute a vote, however
-        /// well-formed the signature it presents.
-        #[test]
-        fn an_unregistered_signer_is_refused() {
-            let (keys, nodes, registry) = committee(4);
-            let pos = position(0x11);
-            let message = canonical_vote_message(&pos, true);
-
-            let mut votes: Vec<Vote> = keys
-                .iter()
-                .zip(&nodes)
-                .map(|(sk, node)| Vote {
-                    node: *node,
-                    accept: true,
-                    signature: sk.sign(&message, DST, &[]).compress().to_vec(),
-                })
-                .collect();
-
-            // A stranger, signing the right message with a key nobody registered.
-            let stranger = SecretKey::key_gen(&[0xEE; 32], &[]).expect("key_gen");
-            votes.push(Vote {
-                node: [0xFF; NODE_LEN],
-                accept: true,
-                signature: stranger.sign(&message, DST, &[]).compress().to_vec(),
-            });
-
-            let cert = Cert::assemble(pos, Finality::Quasar, 3, votes).expect("assemble");
-            assert_eq!(cert.verify(&registry), Err(Refusal::Signature));
-        }
-
-        /// A signature made over one position cannot be presented in a
-        /// certificate for another. The message is derived from the certificate's
-        /// own position, so moving a valid signature to a different block
-        /// invalidates it — this is what binds a vote to what it voted on.
-        #[test]
-        fn a_signature_does_not_travel_between_positions() {
-            let (keys, nodes, registry) = committee(4);
-            let signed = position(0x11);
-            let message = canonical_vote_message(&signed, true);
-
-            let votes: Vec<Vote> = keys
-                .iter()
-                .zip(&nodes)
-                .map(|(sk, node)| Vote {
-                    node: *node,
-                    accept: true,
-                    signature: sk.sign(&message, DST, &[]).compress().to_vec(),
-                })
-                .collect();
-
-            // Same votes, a certificate claiming a different chain.
-            let moved = Cert::assemble(position(0x99), Finality::Quasar, 3, votes.clone()).expect("assemble");
-            assert_eq!(moved.verify(&registry), Err(Refusal::Signature));
-
-            // And the accept flag is bound too: an accept signature is not a
-            // reject signature over the same position.
-            assert!(!registry.verify(
-                &nodes[0],
-                &canonical_vote_message(&signed, false),
-                &votes[0].signature
-            ));
-        }
-
-        /// One validator cannot be counted twice, and a certificate whose votes
-        /// are not strictly increasing is refused whatever its byte form.
-        #[test]
-        fn a_duplicate_signer_is_refused() {
-            let (keys, nodes, registry) = committee(4);
-            let pos = position(0x11);
-            let message = canonical_vote_message(&pos, true);
-            let sig = keys[0].sign(&message, DST, &[]).compress().to_vec();
-
-            let twice = vec![
-                Vote { node: nodes[0], accept: true, signature: sig.clone() },
-                Vote { node: nodes[0], accept: true, signature: sig.clone() },
-            ];
-            assert_eq!(
-                Cert::assemble(pos.clone(), Finality::Quasar, 2, twice.clone()).unwrap_err(),
-                Refusal::Order,
-                "assembly must refuse a duplicate signer"
-            );
-
-            // And if one is built around the assembler, verification refuses it too.
-            let forged = Cert {
-                version: crate::finality::QUORUM_CERT_VERSION,
-                role: crate::finality::QC_FINALITY,
-                tier: Finality::Quasar,
-                position: pos,
-                threshold: 2,
-                votes: twice,
-            };
-            assert_eq!(forged.verify(&registry), Err(Refusal::Order));
-        }
-
-        /// A certificate cannot relabel itself to a higher rung. The threshold is
-        /// re-derived from the live set, so a Nova quorum of stake presented as
-        /// Quasar fails the two-thirds check.
-        #[test]
-        fn a_rung_cannot_be_forged_upward() {
-            struct Set;
-            impl crate::finality::Stake for Set {
-                // Five validators, equal weight.
-                fn weight(&self, node: &Node, _height: u64) -> u64 {
-                    if node[0] < 5 {
-                        100
-                    } else {
-                        0
-                    }
-                }
-                fn total(&self, _height: u64) -> u64 {
-                    500
-                }
-                fn count(&self, _height: u64) -> i64 {
-                    5
-                }
-            }
-
-            let (keys, nodes, registry) = committee(5);
-            let pos = position(0x11);
-            let message = canonical_vote_message(&pos, true);
-            let sign = |i: usize| Vote {
-                node: nodes[i],
-                accept: true,
-                signature: keys[i].sign(&message, DST, &[]).compress().to_vec(),
-            };
-
-            // Three of five: 300 of 500 is a majority, and is NOT two thirds
-            // (the floor is 333, and the predicate is strictly greater).
-            let three = vec![sign(0), sign(1), sign(2)];
-            let nova = Cert::assemble(pos.clone(), Finality::Nova, 3, three.clone()).expect("assemble");
-            assert_eq!(nova.verify_stake(&registry, &Set), Ok(()), "three of five is a Nova majority");
-
-            let relabeled = Cert::assemble(pos.clone(), Finality::Quasar, 3, three).expect("assemble");
-            assert_eq!(
-                relabeled.verify_stake(&registry, &Set),
-                Err(Refusal::BelowStake),
-                "a Nova quorum relabeled Quasar must not export"
-            );
-
-            // Four of five is 400 of 500, which does exceed the 333 floor.
-            let four = vec![sign(0), sign(1), sign(2), sign(3)];
-            let quasar = Cert::assemble(pos, Finality::Quasar, 4, four).expect("assemble");
-            assert_eq!(quasar.verify_stake(&registry, &Set), Ok(()));
-        }
-
-        /// An unresolved validator set fails closed. A majority of an unknown set
-        /// is not a majority, and answering "yes" there is how a node with a
-        /// transiently empty view self-accepts.
-        #[test]
-        fn an_unresolved_set_fails_closed() {
-            struct Nothing;
-            impl crate::finality::Stake for Nothing {
-                fn weight(&self, _node: &Node, _height: u64) -> u64 {
-                    0
-                }
-                fn total(&self, _height: u64) -> u64 {
-                    0
-                }
-                fn count(&self, _height: u64) -> i64 {
-                    0
-                }
-            }
-
-            let (keys, nodes, registry) = committee(4);
-            let pos = position(0x11);
-            let message = canonical_vote_message(&pos, true);
-            let votes = keys
-                .iter()
-                .zip(&nodes)
-                .map(|(sk, node)| Vote {
-                    node: *node,
-                    accept: true,
-                    signature: sk.sign(&message, DST, &[]).compress().to_vec(),
-                })
-                .collect();
-
-            let cert = Cert::assemble(pos, Finality::Quasar, 3, votes).expect("assemble");
-            assert_eq!(cert.verify(&registry), Ok(()), "the signatures are real");
-            assert_eq!(
-                cert.verify_stake(&registry, &Nothing),
-                Err(Refusal::BelowStake),
-                "an unresolved set must not certify"
-            );
-        }
-
-        /// The lengths, stated outright. Go's `PublicKeyLen` is 48 and its
-        /// `SignatureLen` is 96; this module had them the other way round, which
-        /// is why nothing it decoded ever parsed.
-        #[test]
-        fn the_group_sizes_are_go_s_way_round() {
-            let sk = SecretKey::key_gen(&[7u8; 32], &[]).expect("key_gen");
-            assert_eq!(sk.sk_to_pk().compress().len(), PUBLIC_KEY_LEN);
-            assert_eq!(sk.sign(b"x", DST, &[]).compress().len(), SIGNATURE_LEN);
-            assert_eq!(PUBLIC_KEY_LEN, 48, "a compressed G1 point");
-            assert_eq!(SIGNATURE_LEN, 96, "a compressed G2 point");
-
-            // The inversion, demonstrated: a signature truncated to the length
-            // the old aggregator assumed does not decode.
-            let sig = sk.sign(b"x", DST, &[]).compress();
-            assert!(
-                blst::min_pk::Signature::uncompress(&sig[..48]).is_err(),
-                "48 bytes is not a G2 signature — the old aggregator's every input"
-            );
-
-            let mut registry = Registry::new();
-            assert!(!registry.insert([1u8; NODE_LEN], &sig), "96 bytes is not a G1 public key");
-            assert!(registry.is_empty());
-        }
-    }
+/// Every derivation the network agrees on runs through this — there is no
+/// second hash and no "close enough" mixing function. Go computes the same
+/// bytes with `crypto/sha256`.
+pub fn sha256(input: &[u8]) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    // SAFETY: blst_sha256 writes exactly 32 bytes to `out` and reads `len`
+    // bytes from `input`; both are sized here from the slices themselves.
+    unsafe { blst::blst_sha256(out.as_mut_ptr(), input.as_ptr(), input.len()) };
+    out
 }
 
 // Re-export all public types
@@ -540,7 +144,7 @@ pub mod types {
 
     impl fmt::Display for ID {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", hex::encode(&self.0))
+            write!(f, "{}", hex::encode(self.0))
         }
     }
 
@@ -636,27 +240,28 @@ pub mod types {
         }
     }
 
-    /// Quasar signature (BLS + Corona)
-    #[derive(Debug, Clone)]
-    pub struct QuasarSignature {
-        pub bls_sig: Vec<u8>,        // BLS signature (48 bytes)
-        pub corona_sig: Vec<u8>,     // Corona post-quantum signature
-        pub signer: NodeID,
-    }
+    /// A finality certificate is a [`crate::cert::QuorumCert`] — one position and
+    /// the distinct signed accepts that carry it.
+    ///
+    /// There is one certificate type in this crate and it is the Go one. The
+    /// type this name used to denote carried an aggregate signature and a pair
+    /// of header fields, `block_id` and `height`, that no signature covered; it
+    /// was forgeable by a registered rogue key and re-labellable to any block.
+    /// Both faults were properties of its shape, so the shape is gone: what a
+    /// certificate claims is its `position`, and every claim is signed.
+    pub type Certificate = crate::cert::QuorumCert;
 
     /// Security level for Corona post-quantum crypto
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Default)]
     pub enum SecurityLevel {
         Low = 2,    // Corona Level 2
+        #[default]
         Medium = 3, // Corona Level 3 - Default
         High = 5,   // Corona Level 5
     }
 
-    impl Default for SecurityLevel {
-        fn default() -> Self {
-            SecurityLevel::Medium
-        }
-    }
+    
 
     /// Quasar consensus configuration
     #[derive(Debug, Clone)]
@@ -691,9 +296,26 @@ pub mod types {
         pub gpu_acceleration: bool,
     }
 
-    impl QuasarConfig {
-        /// Default configuration (balanced)
-        pub fn default() -> Self {
+    /// The FPC seed a node uses when no epoch seed has been derived yet.
+    ///
+    /// It is the seed the Go selector defaults to, byte for byte, so a default
+    /// Rust node and a default Go node draw the same θ schedule. In production
+    /// the seed comes from the epoch instead — `sha256(epoch ‖ chain ‖ last
+    /// finalized block)` — which is unpredictable until the previous epoch
+    /// finalizes.
+    pub const DEFAULT_FPC_SEED: [u8; 32] = *b"lux-fpc-default-seed-00000000000";
+
+    /// Testnet's standing seed, until epoch derivation is wired.
+    pub const TESTNET_FPC_SEED: [u8; 32] = *b"lux-testnet-fpc-seed-00000000000";
+
+    /// Mainnet's standing seed, until epoch derivation is wired.
+    pub const MAINNET_FPC_SEED: [u8; 32] = *b"lux-mainnet-fpc-secure-seed-2025";
+
+    /// The balanced configuration. The two network presets below are stated as
+    /// what they change about it, so a field that ought to be shared cannot
+    /// quietly drift in one of three copies.
+    impl Default for QuasarConfig {
+        fn default() -> Self {
             QuasarConfig {
                 // Wave
                 k: 20,
@@ -705,7 +327,7 @@ pub mod types {
                 enable_fpc: true,
                 theta_min: 0.5,
                 theta_max: 0.8,
-                fpc_seed: *b"lux-consensus-fpc-default-seed!!", // 32 bytes
+                fpc_seed: DEFAULT_FPC_SEED,
 
                 // Photon
                 base_luminance: 100.0,
@@ -725,8 +347,10 @@ pub mod types {
                 gpu_acceleration: true,
             }
         }
+    }
 
-        /// Testnet configuration (fast, relaxed)
+    impl QuasarConfig {
+        /// Testnet: a small committee, short rounds, fixed thresholds.
         pub fn testnet() -> Self {
             QuasarConfig {
                 k: 5,
@@ -734,10 +358,8 @@ pub mod types {
                 beta: 5,
                 round_timeout: Duration::from_millis(50),
                 enable_fpc: false,
-                theta_min: 0.5,
                 theta_max: 0.7,
-                fpc_seed: *b"lux-testnet-fpc-seed-00000000000",
-                base_luminance: 100.0,
+                fpc_seed: TESTNET_FPC_SEED,
                 max_luminance: 500.0,
                 min_luminance: 20.0,
                 success_multiplier: 1.05,
@@ -748,31 +370,18 @@ pub mod types {
                 security_level: SecurityLevel::Low,
                 quantum_resistant: false,
                 gpu_acceleration: false,
+                ..QuasarConfig::default()
             }
         }
 
-        /// Mainnet configuration (production, secure)
+        /// Mainnet: an odd committee of 21 for tie-breaking, at the highest
+        /// security level. Everything else is the balanced default.
         pub fn mainnet() -> Self {
             QuasarConfig {
-                k: 21, // Odd number for tie-breaking
-                alpha: 0.69,
-                beta: 20,
-                round_timeout: Duration::from_millis(100),
-                enable_fpc: true,
-                theta_min: 0.5,
-                theta_max: 0.8,
-                fpc_seed: *b"lux-mainnet-fpc-secure-seed-2025",
-                base_luminance: 100.0,
-                max_luminance: 1000.0,
-                min_luminance: 10.0,
-                success_multiplier: 1.1,
-                failure_multiplier: 0.9,
-                network_timeout: Duration::from_secs(5),
-                max_message_size: 2 * 1024 * 1024,
-                max_outstanding: 10,
+                k: 21,
+                fpc_seed: MAINNET_FPC_SEED,
                 security_level: SecurityLevel::High,
-                quantum_resistant: true,
-                gpu_acceleration: true,
+                ..QuasarConfig::default()
             }
         }
 
@@ -781,15 +390,6 @@ pub mod types {
             (self.alpha * self.k as f64).ceil() as usize
         }
     }
-
-    impl Default for QuasarConfig {
-        fn default() -> Self {
-            QuasarConfig::default()
-        }
-    }
-
-    // Legacy Config alias for backward compatibility
-    pub type Config = QuasarConfig;
 }
 
 // ============= ERRORS MODULE =============
@@ -847,58 +447,6 @@ pub mod errors {
 pub mod fpc {
     use super::*;
 
-    /// The label the epoch seed is taken under, so this digest cannot collide
-    /// with any other digest the protocol takes over similar bytes.
-    pub const SEED_DOMAIN: &[u8] = b"lux.consensus.fpc.seed";
-
-    /// The exact bytes [`derive_epoch_seed`] hashes.
-    ///
-    /// ```text
-    /// domain || be64(epoch) || be64(len(chain_id)) || chain_id
-    ///        || be64(len(prev_block_hash)) || prev_block_hash
-    /// ```
-    ///
-    /// Every variable-length field is written at its length, so the preimage
-    /// reads back apart into exactly the three inputs that produced it. Written
-    /// end to end they would not: a chain calling itself `lux-mainnet||H`
-    /// derives, binding no parent at all, the seed `lux-mainnet` derives at
-    /// parent `H` — trading the parent away for a name the chain picks itself,
-    /// when the parent is the one input nobody can know in advance.
-    ///
-    /// This is `protocol/wave/fpc.EpochSeedPreimage`. The corpus records these
-    /// bytes, so this crate is held to what it hashed and not only to what came
-    /// out.
-    pub fn epoch_seed_preimage(epoch: u64, chain_id: &[u8], prev_block_hash: &[u8]) -> Vec<u8> {
-        let mut out =
-            Vec::with_capacity(SEED_DOMAIN.len() + 24 + chain_id.len() + prev_block_hash.len());
-        out.extend_from_slice(SEED_DOMAIN);
-        out.extend_from_slice(&epoch.to_be_bytes());
-        out.extend_from_slice(&(chain_id.len() as u64).to_be_bytes());
-        out.extend_from_slice(chain_id);
-        out.extend_from_slice(&(prev_block_hash.len() as u64).to_be_bytes());
-        out.extend_from_slice(prev_block_hash);
-        out
-    }
-
-    /// The per-epoch threshold seed: `sha256(epoch_seed_preimage(..))`.
-    ///
-    /// This is `protocol/wave/fpc.DeriveEpochSeed`, and it is the only way a seed
-    /// should be produced. A hardcoded seed — which is what this module carried
-    /// before — is public forever, so an adversary reads every future θ off it
-    /// and knows in advance the exact round where a committee is thinnest.
-    /// Binding `prev_block_hash` closes that: it is unknown until the previous
-    /// epoch finalizes, so no party can compute the next epoch's thresholds
-    /// while the current one is still open, and no party can steer them by
-    /// choosing one of the inputs.
-    ///
-    /// The output is 32 bytes because it is a digest; feeding it straight into
-    /// [`FpcSelector::new`] is the whole intended path.
-    pub fn derive_epoch_seed(epoch: u64, chain_id: &[u8], prev_block_hash: &[u8]) -> [u8; 32] {
-        let mut h = Sha256::new();
-        h.update(epoch_seed_preimage(epoch, chain_id, prev_block_hash));
-        h.finalize().into()
-    }
-
     /// FPC threshold selector using PRF for deterministic phase-dependent thresholds
     ///
     /// Formula: α(phase, k) = ⌈θ(phase) · k⌉
@@ -931,43 +479,30 @@ pub mod fpc {
             }
         }
 
-        /// Create default selector
-        pub fn default() -> Self {
-            FpcSelector::new(0.5, 0.8, *b"lux-fpc-default-seed-00000000000")
-        }
 
-        /// Compute θ for a given phase.
+        /// θ for a phase, from the PRF the network runs.
         ///
-        /// The PRF is SHA-256 over `seed || be64(phase)`, which is what
-        /// `protocol/wave/fpc.(*Selector).computeTheta` computes. What used to
-        /// stand here was a SipHash-style mixer commented "SHA256-like"; like
-        /// is not equal, and it disagreed with Go on all sixteen phases. At
-        /// phase 0 with k=20 it accepted a round on eleven votes where Go
-        /// requires fifteen.
+        /// `θ(phase) = θ_min + sha256(seed ‖ be64(phase))[0..8] / (2⁶⁴−1) · (θ_max − θ_min)`
         ///
-        /// θ sets α, the count at which a wave round accepts, so two nodes
-        /// deriving different θ from the same seed do not agree about when a
-        /// round decides. That is the Nova rung — reorgable, and not the
-        /// two-thirds-stake certificate a bridge reads — so the damage is
-        /// divergent preference and reorg behaviour rather than a broken
-        /// settlement guarantee. It is still two implementations running
-        /// different rules on identical votes.
+        /// This must be SHA-256 and nothing else. Go computes the quorum
+        /// threshold this way (`protocol/wave/fpc.computeTheta`), and two nodes
+        /// that derive different θ for one phase require different majorities of
+        /// the same committee — a fork by arithmetic, with no bad actor in it.
+        /// `tests/fpc_conformance.rs` holds this to the Go values.
         fn compute_theta(&self, phase: u64) -> f64 {
-            // PRF input: seed || phase (as big-endian u64)
             let mut input = [0u8; 40];
             input[..32].copy_from_slice(&self.seed);
             input[32..40].copy_from_slice(&phase.to_be_bytes());
 
-            let hash: [u8; 32] = Sha256::digest(input).into();
+            let hash = sha256(&input);
 
-            // Convert first 8 bytes to u64, normalize to [0, 1]
+            // Big-endian, first 8 bytes — the same window and order Go reads.
             let hash_u64 = u64::from_be_bytes([
                 hash[0], hash[1], hash[2], hash[3],
                 hash[4], hash[5], hash[6], hash[7],
             ]);
             let normalized = (hash_u64 as f64) / (u64::MAX as f64);
 
-            // Scale to [theta_min, theta_max]
             self.theta_min + normalized * (self.theta_max - self.theta_min)
         }
 
@@ -985,6 +520,15 @@ pub mod fpc {
         /// Get configured range
         pub fn range(&self) -> (f64, f64) {
             (self.theta_min, self.theta_max)
+        }
+    }
+
+    /// The default selector reads the default configuration, so the θ range and
+    /// the seed have one home apiece.
+    impl Default for FpcSelector {
+        fn default() -> Self {
+            let c = QuasarConfig::default();
+            FpcSelector::new(c.theta_min, c.theta_max, c.fpc_seed)
         }
     }
 }
@@ -1024,18 +568,6 @@ pub mod photon {
             }
         }
 
-        /// Create with default parameters
-        pub fn default() -> Self {
-            Luminance {
-                lux: HashMap::new(),
-                base: 100.0,
-                max: 1000.0,
-                min: 10.0,
-                success_mult: 1.1,
-                failure_mult: 0.9,
-            }
-        }
-
         /// Update brightness based on vote success/failure
         pub fn illuminate(&mut self, id: &NodeID, success: bool) {
             let current = self.lux.entry(id.clone()).or_insert(self.base);
@@ -1071,6 +603,14 @@ pub mod photon {
         /// Get number of tracked nodes
         pub fn node_count(&self) -> usize {
             self.lux.len()
+        }
+    }
+
+    /// The default tracker reads the default configuration rather than
+    /// restating its five numbers, which is how the two used to disagree.
+    impl Default for Luminance {
+        fn default() -> Self {
+            Luminance::new(&QuasarConfig::default())
         }
     }
 
@@ -1117,7 +657,7 @@ pub mod photon {
                 let mut best_idx = 0;
                 let mut best_score = f64::MIN;
 
-                for (idx, (_peer, &weight)) in self.peers.iter().zip(weights.iter()).enumerate() {
+                for (idx, &weight) in weights.iter().enumerate() {
                     if used[idx] {
                         continue;
                     }
@@ -1198,6 +738,48 @@ pub mod focus {
         }
     }
 
+    /// What one round said: a quorum for, a quorum against, or neither.
+    ///
+    /// A round produces this; confidence is a fold over a sequence of them.
+    /// Keeping the two apart is what lets the tally be counted in whatever unit
+    /// suits the caller — Wave counts votes, Focus takes a ratio — while the
+    /// rule about consecutive agreement stays in exactly one place.
+    pub type Verdict = Option<bool>;
+
+    /// Fold one verdict into a running confidence, and report a decision when
+    /// `beta` consecutive rounds have agreed.
+    ///
+    /// A verdict that agrees with the standing preference deepens confidence; a
+    /// verdict that opposes it replaces the preference and starts again at one;
+    /// no quorum at all resets to zero. That reset is the point of the
+    /// mechanism — β must be β *consecutive* rounds, or a block could
+    /// accumulate agreement across rounds that disagreed in between.
+    pub fn accumulate(
+        preference: &mut bool,
+        confidence: &mut u32,
+        verdict: Verdict,
+        beta: u32,
+    ) -> Option<Decision> {
+        match verdict {
+            Some(v) if *preference == v => *confidence += 1,
+            Some(v) => {
+                *preference = v;
+                *confidence = 1;
+            }
+            None => *confidence = 0,
+        }
+
+        if *confidence >= beta {
+            Some(if *preference {
+                Decision::Accept
+            } else {
+                Decision::Reject
+            })
+        } else {
+            None
+        }
+    }
+
     impl<ID: Eq + std::hash::Hash + Clone> Focus<ID> {
         /// Create new focus tracker
         pub fn new(threshold: u32, alpha: f64) -> Self {
@@ -1217,7 +799,9 @@ pub mod focus {
             }
 
             let ratio = yes_votes as f64 / total_votes as f64;
-            let state = self.states.entry(id).or_insert_with(FocusState::default);
+            let beta = self.threshold;
+            let alpha = self.alpha;
+            let state = self.states.entry(id).or_default();
 
             if state.decided {
                 return false;
@@ -1225,42 +809,23 @@ pub mod focus {
 
             state.last_ratio = ratio;
 
-            // Check if ratio exceeds alpha threshold
-            if ratio >= self.alpha {
-                // Voting YES
-                if state.preference {
-                    // Same preference, increment confidence
-                    state.confidence += 1;
-                } else {
-                    // Preference switched, reset
-                    state.preference = true;
-                    state.confidence = 1;
-                }
-            } else if ratio <= 1.0 - self.alpha {
-                // Voting NO (below inverse threshold)
-                if !state.preference {
-                    state.confidence += 1;
-                } else {
-                    state.preference = false;
-                    state.confidence = 1;
-                }
+            // This round's verdict, read as a ratio against alpha.
+            let verdict = if ratio >= alpha {
+                Some(true)
+            } else if ratio <= 1.0 - alpha {
+                Some(false)
             } else {
-                // In the uncertain zone, reset confidence
-                state.confidence = 0;
-            }
+                None
+            };
 
-            // Check for finality
-            if state.confidence >= self.threshold {
-                state.decided = true;
-                state.decision = if state.preference {
-                    Decision::Accept
-                } else {
-                    Decision::Reject
-                };
-                return true;
+            match accumulate(&mut state.preference, &mut state.confidence, verdict, beta) {
+                Some(decision) => {
+                    state.decided = true;
+                    state.decision = decision;
+                    true
+                }
+                None => false,
             }
-
-            false
         }
 
         /// Get state for an item
@@ -1270,7 +835,7 @@ pub mod focus {
 
         /// Check if item has reached finality
         pub fn is_decided(&self, id: &ID) -> bool {
-            self.states.get(id).map_or(false, |s| s.decided)
+            self.states.get(id).is_some_and(|s| s.decided)
         }
 
         /// Get decision for an item
@@ -1392,7 +957,7 @@ pub mod wave {
 
         /// Get or create state for a block
         pub fn get_or_create_state(&mut self, block_id: &ID) -> &mut WaveState {
-            self.states.entry(block_id.clone()).or_insert_with(WaveState::default)
+            self.states.entry(block_id.clone()).or_default()
         }
 
         /// Record a vote and check for consensus
@@ -1402,7 +967,7 @@ pub mod wave {
             let block_id = vote.block_id.clone();
 
             let state = self.states.entry(block_id.clone())
-                .or_insert_with(WaveState::default);
+                .or_default();
 
             if state.decided {
                 return false;
@@ -1428,82 +993,69 @@ pub mod wave {
 
         /// Check for consensus on a block
         fn check_consensus(&mut self, block_id: &ID) -> bool {
-            // A round is counted only once the sample is full, and the phase
-            // advances with the round — never with the vote. Go advances at
-            // `countVotes`, past the same gate. Advancing per vote ran the phase
-            // k times faster, so two nodes that saw one round each read θ from
-            // different phases and applied different accept counts to the same
-            // votes.
-            let decided_or_short = match self.states.get(block_id) {
-                Some(s) => s.decided || s.yes_count + s.no_count < self.config.k,
-                None => true,
-            };
-            if decided_or_short {
-                return false;
-            }
-
-            let threshold = self.advance_round();
+            self.advance_phase();
+            let threshold = self.threshold();
+            let (k, beta) = (self.config.k, self.config.beta);
 
             let state = match self.states.get_mut(block_id) {
                 Some(s) => s,
                 None => return false,
             };
 
-            // Check for quorum
-            if state.yes_count >= threshold {
-                if state.preference {
-                    state.confidence += 1;
-                } else {
-                    state.preference = true;
-                    state.confidence = 1;
-                }
+            if state.decided {
+                return false;
+            }
+
+            // Need at least k votes
+            if state.yes_count + state.no_count < k {
+                return false;
+            }
+
+            // This round's verdict, read as counts against the threshold.
+            let verdict = if state.yes_count >= threshold {
+                Some(true)
             } else if state.no_count >= threshold {
-                if !state.preference {
-                    state.confidence += 1;
-                } else {
-                    state.preference = false;
-                    state.confidence = 1;
+                Some(false)
+            } else {
+                None
+            };
+
+            match crate::focus::accumulate(
+                &mut state.preference,
+                &mut state.confidence,
+                verdict,
+                beta,
+            ) {
+                Some(decision) => {
+                    state.decided = true;
+                    state.decision = decision;
+                    true
                 }
-            } else {
-                state.confidence = 0;
+                None => false,
             }
-
-            // Check for finality (β consecutive rounds)
-            if state.confidence >= self.config.beta {
-                state.decided = true;
-                state.decision = if state.preference {
-                    Decision::Accept
-                } else {
-                    Decision::Reject
-                };
-                return true;
-            }
-
-            false
         }
 
-        /// Open the next round and return the vote count it accepts on.
+        /// The votes a block needs in the current phase.
         ///
-        /// Under FPC the count is θ(phase)·k rounded up, and the phase is the
-        /// round number — so this both advances and reads, and there is no way
-        /// to read the threshold without having counted a round. Without FPC the
-        /// count is the configured α, fixed for every round.
-        pub fn advance_round(&mut self) -> usize {
-            if let Some(ref fpc) = self.fpc {
-                self.phase += 1;
-                fpc.select_threshold(self.phase, self.config.k)
-            } else {
-                self.config.alpha_count()
-            }
-        }
-
-        /// The vote count the current round accepts on, without opening a new
-        /// one. For status and metrics; the round itself reads its count from
-        /// [`Wave::advance_round`].
+        /// Pure: asking does not move the phase on. It used to, which meant the
+        /// FPC schedule advanced once per vote rather than once per round.
         pub fn threshold(&self) -> usize {
             match self.fpc {
                 Some(ref fpc) => fpc.select_threshold(self.phase, self.config.k),
                 None => self.config.alpha_count(),
+            }
+        }
+
+        /// Move to the next FPC phase.
+        ///
+        /// This engine has no round boundary — `check_consensus` runs on every
+        /// vote — so a phase is currently a vote. That is the gap: FPC draws a
+        /// threshold per ROUND, and a round is a fresh sample of k validators.
+        /// Until a round loop exists, the advance is at least explicit and in
+        /// one place rather than hidden inside a getter.
+        fn advance_phase(&mut self) {
+            if self.fpc.is_some() {
+                self.phase += 1;
             }
         }
 
@@ -1514,7 +1066,7 @@ pub mod wave {
 
         /// Check if block is decided
         pub fn is_decided(&self, block_id: &ID) -> bool {
-            self.states.get(block_id).map_or(false, |s| s.decided)
+            self.states.get(block_id).is_some_and(|s| s.decided)
         }
 
         /// Get decision for a block
@@ -1538,95 +1090,61 @@ pub mod wave {
 
 pub mod quasar {
     use super::*;
+    use crate::cert::{ValidatorSet, Vote as CertVote, VoteVerifier};
 
-    use crate::bls;
-    use crate::finality::{Cert, Refusal};
-
-    /// Validator in the Quasar consensus
-    #[derive(Debug, Clone)]
-    pub struct Validator {
-        pub id: NodeID,
-        pub weight: u64,
-        pub active: bool,
-        /// A compressed G1 point, 48 bytes. The comment here read "96 bytes",
-        /// which is a signature, not a key.
-        pub bls_pubkey: Option<Vec<u8>>,
-        pub corona_pubkey: Option<Vec<u8>>,
-    }
-
-    /// The validator set, the round threshold, and the certificates this node
-    /// has proved.
+    /// Quasar finality: the certificate side of the engine.
     ///
-    /// Two identity widths meet here and they are not reconciled. The sampler's
-    /// `NodeID` is 32 bytes — this crate's `ID` — while a certificate names its
-    /// signers in the 20 bytes `luxfi/ids.NodeID` is and the wire carries. So
-    /// `add_validator` populates the sampling set and `register_key` populates
-    /// the signing set, and nothing converts between them, because there is no
-    /// honest conversion: a 32-byte ed25519 key is not a Lux node id. Until the
-    /// sampler is moved onto the 20-byte identity the network uses, the two sets
-    /// have to be populated from the same source by the caller.
+    /// It holds the one validator set — membership, stake and signing keys —
+    /// and it will only issue or accept a certificate whose signatures verify
+    /// under it. A vote from a member with no registered key contributes
+    /// nothing here, which is the fail-closed direction.
     pub struct QuasarConsensus {
-        validators: HashMap<NodeID, Validator>,
-        keys: bls::Registry,
+        validators: ValidatorSet,
         threshold: usize,
-        finalized: HashMap<finality::Id, Cert>,
+        /// Certificates this node issued, by the transport id of the block
+        /// they certify. The key is read off `cert.position.block_id`, never
+        /// carried beside it — a certificate cannot name one block and be filed
+        /// under another.
+        finalized: HashMap<ID, Certificate>,
     }
 
     impl QuasarConsensus {
         /// Create new Quasar consensus
         pub fn new(config: &QuasarConfig) -> Self {
             QuasarConsensus {
-                validators: HashMap::new(),
-                keys: bls::Registry::new(),
+                validators: ValidatorSet::new(),
                 threshold: config.alpha_count(),
                 finalized: HashMap::new(),
             }
         }
 
-        /// Register the signing key a certificate's signatures are checked
-        /// against. Refuses a key that is the wrong length, off the curve, off
-        /// the subgroup, or the identity — an identity key verifies a signature
-        /// over any message at all.
-        pub fn register_key(&mut self, node: finality::Node, compressed: &[u8]) -> bool {
-            self.keys.insert(node, compressed)
-        }
-
-        /// How many signing keys are registered.
-        pub fn key_count(&self) -> usize {
-            self.keys.len()
-        }
-
-        /// Add a validator
+        /// Register a validator this node has no signing key for.
+        ///
+        /// It is a member and it holds stake, so its ballots count toward
+        /// preference — but it cannot contribute to a certificate until its key
+        /// is known.
         pub fn add_validator(&mut self, id: NodeID, weight: u64) {
-            self.validators.insert(id.clone(), Validator {
-                id,
-                weight,
-                active: true,
-                bls_pubkey: None,
-                corona_pubkey: None,
-            });
+            self.validators.insert_unkeyed(*id.as_bytes(), weight);
         }
 
-        /// Add a validator with cryptographic keys
-        pub fn add_validator_with_keys(
+        /// Register a validator with the BLS key it signs with.
+        ///
+        /// An invalid key is refused rather than stored, so a registered key is
+        /// always one a signature can actually be checked against.
+        pub fn add_validator_with_key(
             &mut self,
             id: NodeID,
             weight: u64,
-            bls_pubkey: Option<Vec<u8>>,
-            corona_pubkey: Option<Vec<u8>>,
-        ) {
-            self.validators.insert(id.clone(), Validator {
-                id,
-                weight,
-                active: true,
-                bls_pubkey,
-                corona_pubkey,
-            });
+            bls_pubkey: &[u8],
+        ) -> Result<()> {
+            self.validators
+                .insert(*id.as_bytes(), weight, bls_pubkey)
+                .map_err(|e| ConsensusError::CryptoError(format!("{e:?}")))
         }
 
         /// Remove a validator
         pub fn remove_validator(&mut self, id: &NodeID) {
-            self.validators.remove(id);
+            self.validators.remove(id.as_bytes());
         }
 
         /// Get validator count
@@ -1634,43 +1152,106 @@ pub mod quasar {
             self.validators.len()
         }
 
+        /// Whether this node may count `id`'s ballot.
+        pub fn is_validator(&self, id: &NodeID) -> bool {
+            self.validators.contains(id.as_bytes())
+        }
+
+        /// The validator set, for verifying certificates against.
+        pub fn validators(&self) -> &ValidatorSet {
+            &self.validators
+        }
+
         /// Check if we have enough validators for consensus
         pub fn has_quorum(&self) -> bool {
             self.validators.len() >= self.threshold
         }
 
-        /// Record a certificate, once every signature in it has verified.
+        /// Issue a certificate for `position` from the votes that actually
+        /// support it.
         ///
-        /// The certificate carries its own position, and each signature is
-        /// checked against the signer's registered key over the message that
-        /// position derives — so a certificate is recorded because it was
-        /// proved, never because it was well-formed.
+        /// A vote counts only if its signature verifies under the voter's
+        /// registered key over `canonical_vote_message(position, true)`. So a
+        /// certificate is issued from evidence or not at all — unsigned ballots
+        /// produce `NoQuorum`, not an empty certificate that later verifies.
         ///
-        /// What stood here instead built a certificate out of unverified votes,
-        /// filled its signature field from an aggregator that could not decode
-        /// its own inputs, and offered a verifier whose only signature test was
-        /// that the field was non-empty. The aggregator wrote forty-eight zero
-        /// bytes on failure, which is not empty, so it always passed.
-        pub fn record(&mut self, cert: Cert) -> std::result::Result<(), Refusal> {
-            cert.verify(&self.keys)?;
-            self.finalized.insert(cert.position.canonical(), cert);
-            Ok(())
+        /// The signatures are kept, one per voter, exactly as Go keeps them.
+        /// They are not summed: an aggregate over summed keys is only sound
+        /// under proof of possession, which no registration on this network
+        /// supplies to this crate, and it is not a form Go can read.
+        pub fn create_certificate(
+            &mut self,
+            position: Position,
+            votes: &[Vote],
+        ) -> Result<Certificate> {
+            let message = canonical_vote_message(&position, true);
+
+            let mut accepted: Vec<CertVote> = Vec::new();
+            let mut seen: std::collections::HashSet<[u8; 32]> = std::collections::HashSet::new();
+
+            for v in votes.iter().filter(|v| v.prefer()) {
+                let id = *v.voter.as_bytes();
+                if !seen.insert(id) {
+                    continue;
+                }
+                if !self.validators.verify_vote(&id, &message, &v.signature, position.height) {
+                    continue;
+                }
+                accepted.push(CertVote {
+                    node_id: id,
+                    accept: true,
+                    signature: v.signature.clone(),
+                });
+            }
+
+            if accepted.len() < self.threshold {
+                return Err(ConsensusError::NoQuorum);
+            }
+
+            let block_id = ID::from(position.block_id);
+            // Assembly sorts and dedups, so the certificate satisfies the
+            // ordering clause by construction.
+            let cert = Certificate::assemble(
+                Finality::Quasar,
+                position,
+                self.threshold as u32,
+                &accepted,
+            )
+            .map_err(|e| ConsensusError::CryptoError(e.to_string()))?;
+
+            self.finalized.insert(block_id, cert.clone());
+            Ok(cert)
         }
 
-        /// Check a certificate against the registered validator keys without
-        /// recording it.
-        pub fn verify(&self, cert: &Cert) -> std::result::Result<(), Refusal> {
-            cert.verify(&self.keys)
+        /// Whether `cert` is evidence that its position was accepted.
+        ///
+        /// The whole rule, and only the rule: [`crate::cert::QuorumCert::
+        /// verify_weighted`] — version, type, tier, strictly increasing distinct
+        /// voters, every vote an ACCEPT, every signature checked against its own
+        /// signer's key over the message rebuilt from the certificate's own
+        /// position, and the tier's stake floor recomputed from this set.
+        ///
+        /// A certificate makes exactly one claim, its position, and every part
+        /// of that claim is signed. There is no header field beside it to
+        /// disagree with it, and no aggregate to check in place of the
+        /// signatures.
+        ///
+        /// The epoch height is zero because this set is epoch-independent: its
+        /// weights and membership do not vary with the argument (see the
+        /// `StakeSource` impl on `ValidatorSet`). A set that reads a P-chain
+        /// epoch must take that height from the caller.
+        pub fn verify_certificate(&self, cert: &Certificate) -> bool {
+            cert.verify_weighted(&self.validators, &self.validators, 0).is_ok()
         }
 
-        /// Whether a canonical block has a recorded certificate.
-        pub fn is_finalized(&self, canonical: &finality::Id) -> bool {
-            self.finalized.contains_key(canonical)
+        /// Check if a block has quantum finality
+        pub fn is_finalized(&self, block_id: &ID) -> bool {
+            self.finalized.contains_key(block_id)
         }
 
-        /// The recorded certificate for a canonical block.
-        pub fn certificate(&self, canonical: &finality::Id) -> Option<&Cert> {
-            self.finalized.get(canonical)
+        /// Get certificate for a block
+        pub fn get_certificate(&self, block_id: &ID) -> Option<&Certificate> {
+            self.finalized.get(block_id)
         }
     }
 
@@ -1692,7 +1273,7 @@ pub mod quasar {
 
         /// Register a chain
         pub fn register_chain(&mut self, chain_id: String) {
-            self.chains.entry(chain_id).or_insert_with(Vec::new);
+            self.chains.entry(chain_id).or_default();
         }
 
         /// Accept a block from a chain
@@ -1767,11 +1348,6 @@ pub mod engine {
             }
         }
 
-        /// Create with default config
-        pub fn default() -> Self {
-            QuasarEngine::new(QuasarConfig::default())
-        }
-
         /// Create testnet engine
         pub fn testnet() -> Self {
             QuasarEngine::new(QuasarConfig::testnet())
@@ -1810,15 +1386,31 @@ pub mod engine {
                 }
             }
 
-            // No certificate is issued here, and that is deliberate. A
-            // certificate binds a position — a chain id, a round, an execution
-            // state root, a validator set root — and this engine's block carries
-            // an id, a parent, a height and a payload. Nothing it can assemble
-            // is a statement the network signs, so what stood here manufactured
-            // a finality artifact out of a position it did not have and votes it
-            // had not checked. A caller holding a real position and the signing
-            // keys assembles the certificate; see `finality::Cert` and
-            // `QuasarConsensus::record`.
+            // Issue a certificate if the votes carry signatures that support
+            // one. They often will not — this engine's ballots are unsigned —
+            // and then there is no certificate, which is the honest outcome.
+            let position = {
+                let blocks = self.blocks.read().unwrap();
+                blocks.get(block_id).map(|block| Position {
+                    height: block.height,
+                    block_id: *block_id.as_bytes(),
+                    parent_id: *block.parent_id.as_bytes(),
+                    ..Position::default()
+                })
+            };
+            if let (Some(position), Some(votes)) =
+                (position, self.wave.state(block_id).map(|s| s.votes.clone()))
+            {
+                let _ = self.quasar.create_certificate(position, &votes);
+            }
+        }
+    }
+
+    /// The balanced configuration, as a trait impl rather than an inherent
+    /// method that shadows it — one `default`, and it is the standard one.
+    impl Default for QuasarEngine {
+        fn default() -> Self {
+            QuasarEngine::new(QuasarConfig::default())
         }
     }
 
@@ -1859,6 +1451,15 @@ pub mod engine {
                 }
             }
 
+            // Only members are counted. Without this the sample is whoever
+            // happened to send a message: nine unregistered node ids used to
+            // carry a block to Accepted against an engine holding no validators
+            // at all. An empty set now counts nobody, which is the direction to
+            // fail in.
+            if !self.quasar.is_validator(&vote.voter) {
+                return Err(ConsensusError::NotValidator);
+            }
+
             let block_id = vote.block_id.clone();
 
             // Record vote in Wave
@@ -1893,7 +1494,7 @@ pub mod engine {
         fn is_accepted(&self, id: &ID) -> bool {
             self.status.read().unwrap()
                 .get(id)
-                .map_or(false, |s| *s == Status::Accepted)
+                .is_some_and(|s| *s == Status::Accepted)
         }
 
         fn get_status(&self, id: &ID) -> Status {
@@ -1931,8 +1532,6 @@ pub mod engine {
         }
     }
 
-    // Legacy Chain type alias for backward compatibility
-    pub type Chain = QuasarEngine;
 }
 
 // ============= CONVENIENCE FUNCTIONS =============
@@ -2002,7 +1601,7 @@ mod tests {
         // Theta should be in range
         for phase in 0..1000 {
             let theta = fpc.theta(phase);
-            assert!(theta >= 0.5 && theta <= 0.8, "theta {} out of range", theta);
+            assert!((0.5..=0.8).contains(&theta), "theta {} out of range", theta);
         }
     }
 
@@ -2013,7 +1612,7 @@ mod tests {
 
         let threshold = fpc.select_threshold(0, k);
         // Should be between ceil(0.5 * 20) = 10 and ceil(0.8 * 20) = 16
-        assert!(threshold >= 10 && threshold <= 16);
+        assert!((10..=16).contains(&threshold));
     }
 
     #[test]

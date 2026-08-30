@@ -209,12 +209,12 @@ func CanonicalVoteMessage(pos VotePosition) []byte {
 }
 
 // CanonicalRejectMessage is the exact byte string a validator signs to vote
-// REJECT on a position — the twin of CanonicalVoteMessage, and the other half of
-// the signed-bytes standard. It differs from the accept message in the final
-// byte alone, which is what makes an accept signature unliftable to a reject and
-// the reverse. The engine verifies reject votes against it; it is exported so an
-// implementation in another language can be checked against both halves rather
-// than only the one a certificate happens to carry.
+// REJECT on a position — the accept=0 leg of the same layout. It is not a
+// certificate message: a finality cert proves ACCEPT and carries only accept
+// signatures. It exists because the accept byte is bound, so the two decisions
+// are distinct messages, and proving that is what the conformance corpus does:
+// a reject signature presented as an accept must fail, and a port that folded
+// the decision out of the message would pass every accept-only vector.
 func CanonicalRejectMessage(pos VotePosition) []byte {
 	return canonicalVoteMessageFor(pos, false)
 }
