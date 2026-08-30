@@ -682,3 +682,52 @@ fn assembly_refuses_to_under_fill() {
         Err(CertError::ThresholdZero)
     );
 }
+
+/// The issue path finalizes only what the accept rule accepts: a certificate
+/// that meets the vote COUNT but not the stake floor is refused, so
+/// `is_finalized` can never report a certificate `verify_certificate` rejects.
+/// Three dust-stake voters clear the count of three and fall far below the
+/// two-thirds floor of a set dominated by one heavy validator.
+#[test]
+fn the_issue_path_applies_the_stake_floor_not_only_the_count() {
+    use lux_consensus::{ConsensusError, NodeID, QuasarConfig, QuasarConsensus, VoteType};
+
+    let signers: Vec<Signer> = vec![
+        Signer::new(1, 1),
+        Signer::new(2, 1),
+        Signer::new(3, 1),
+        Signer::new(4, 10_000),
+    ];
+    let mut config = QuasarConfig::testnet();
+    config.k = 4;
+    config.alpha = 0.75; // threshold = 3, met by the three dust voters
+    let mut q = QuasarConsensus::new(&config);
+    for s in &signers {
+        q.add_validator_with_key(NodeID::from(s.id), s.weight, &s.public(), &s.pop())
+            .expect("register");
+    }
+
+    let pos = position();
+    let message = canonical_vote_message(&pos, true);
+    let ballots: Vec<lux_consensus::Vote> = signers[..3]
+        .iter()
+        .map(|s| {
+            lux_consensus::Vote::new(
+                lux_consensus::ID::from(pos.block_id),
+                VoteType::Preference,
+                NodeID::from(s.id),
+            )
+            .with_signature(s.sign(&message))
+        })
+        .collect();
+
+    // Count is met (3 of 3), stake is not (3 of 10_003, floor is > 6668).
+    assert!(matches!(
+        q.create_certificate(pos.clone(), &ballots),
+        Err(ConsensusError::NoQuorum)
+    ));
+    assert!(
+        !q.is_finalized(&lux_consensus::ID::from(pos.signed_identity())),
+        "nothing below the stake floor is finalized"
+    );
+}

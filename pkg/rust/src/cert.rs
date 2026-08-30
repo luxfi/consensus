@@ -424,15 +424,15 @@ impl QuorumCert {
 /// is the fail-closed direction: a missing key withholds a vote, it never
 /// admits one.
 ///
-/// **There is no aggregate verification here, and there must not be.** Summing
-/// the signers' keys and checking one signature against the sum is only sound
-/// when every registrant proved possession of its secret. Registration proves
-/// no such thing — see [`ValidatorSet::insert`] — so an attacker who registers
-/// `g1·x − Σ pk_others` makes the sum collapse to a key it alone can sign
-/// under, and one signature then stands for every named signer. `tests/
-/// rogue_key.rs` builds exactly that key and shows it buys nothing here: each
-/// signature is checked against exactly one public key, so a rogue registrant
-/// cannot even cast its own vote, having no secret for the key it published.
+/// **There is no aggregate verification here, and there must not be.** The
+/// network keeps one signature per voter and checks each against exactly one
+/// key — the form Go reads — so a certificate stays interoperable. The
+/// rogue-key attack on a summed key is closed twice over: [`ValidatorSet::insert`]
+/// now demands a proof of possession, so `g1·x − Σ pk_others` cannot be
+/// registered in the first place, having no secret to prove; and even were it
+/// present, each signature is checked against its own key, so it stands for no
+/// one but itself. `tests/rogue_key.rs` builds exactly that key and shows both:
+/// it is refused at registration, and its holder cannot sign under it.
 ///
 /// Go does not aggregate either — `engine/chain/cert.go`: "there is no
 /// aggregate field, because nothing is aggregated" — so an aggregate accept
