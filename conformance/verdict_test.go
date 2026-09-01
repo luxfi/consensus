@@ -247,7 +247,7 @@ func TestVerdictSectionIsPopulated(t *testing.T) {
 	if got, want := len(v.Finality), 8; got != want {
 		t.Errorf("%d finality cases, want %d — adding one is deliberate, losing one is not", got, want)
 	}
-	if got, want := len(v.Admission), 3; got != want {
+	if got, want := len(v.Admission), 4; got != want {
 		t.Errorf("%d admission cases, want %d", got, want)
 	}
 	if _, err := strconv.ParseUint(v.Epoch, 10, 64); err != nil {
