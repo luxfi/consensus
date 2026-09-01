@@ -107,7 +107,7 @@ func TestBlue_VoteGuard_CrashRestart_RefusesSiblingAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard(store1): %v", err)
 	}
-	e1, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
+	e1, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
 	A := newTestBlock(7, ids.Empty, "restart-A")
 	_ = trackProposal(e1, chainID, A, 0)
 
@@ -129,7 +129,7 @@ func TestBlue_VoteGuard_CrashRestart_RefusesSiblingAfterRestart(t *testing.T) {
 	}
 
 	// --- post-crash: engine 2 built on the reopened store REFUSES a conflicting sibling.
-	e2, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
+	e2, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
 	B := newTestBlock(7, ids.Empty, "restart-B")
 	if e2.reserveSlotForSign(7, B.id) {
 		t.Fatalf("POST-CRASH FORK: engine 2 signed a conflicting sibling B at height 7 after restart — the "+
@@ -175,7 +175,7 @@ func TestRed_CrossRestart_DecidedHeightUnsignable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard(store1): %v", err)
 	}
-	e1, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
+	e1, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
 	if !e1.reserveSlotForSign(H, A) {
 		t.Fatal("engine 1 must bind height H to A")
 	}
@@ -206,7 +206,7 @@ func TestRed_CrossRestart_DecidedHeightUnsignable(t *testing.T) {
 	// --- post-crash engine 2, built ONLY on the reopened store (NO SyncState hint), must
 	// still REFUSE a sibling at the decided-below-tip height H. This isolates the durable
 	// vote-guard FLOOR as the sole protection: no slot{H}, no certified frontier, no hint.
-	e2, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
+	e2, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
 	if fh, ok := e2.consensus.GetFinalizedHeight(); ok {
 		t.Fatalf("precondition: a freshly-booted engine's certified frontier must be (unset), got (%d,%v) — "+
 			"the whole point is that the gate cannot rely on it after a restart", fh, ok)
@@ -232,7 +232,7 @@ func TestRed_CrossRestart_DecidedHeightUnsignable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard(store3): %v", err)
 	}
-	e3, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store3))
+	e3, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store3))
 	e3.consensus.SyncQuasarFrontier(A2, H+1) // the boot re-seed from vm.LastQuasarHeight
 	if e3.reserveSlotForSign(H, B) {
 		t.Fatal("with a fresh vote-guard, the export (Quasar) frontier floor must still refuse a certified height H")
@@ -252,7 +252,7 @@ func TestRed_CrossRestart_DecidedHeightUnsignable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard(store4): %v", err)
 	}
-	e4, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store4))
+	e4, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store4))
 	e4.consensus.SyncQuasarFrontier(A2, H+1) // certified through H+1 …
 	if err := e4.consensus.SyncState(ids.GenerateTestID(), H+9); err != nil {
 		t.Fatalf("SyncState(nova head): %v", err)
@@ -319,7 +319,7 @@ func TestRed_LegacyGuard_BootFloorFromExportFrontier(t *testing.T) {
 	vm.blocks[tipID] = &mockBlock{id: tipID, height: T}
 
 	vs := newTestValidatorSet(5)
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store), WithVM(vm))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store), WithVM(vm))
 	// What the chain manager does on boot: re-seed the export frontier from the VM's DURABLE
 	// LastQuasarHeight. This is the ONLY local artifact that proves the network closed a height.
 	e.consensus.SyncQuasarFrontier(ids.GenerateTestID(), Q)
@@ -355,7 +355,7 @@ func TestRed_LegacyGuard_BootFloorFromExportFrontier(t *testing.T) {
 // in-memory map is rolled back (no un-persisted binding left behind).
 func TestBlue_VoteGuard_PersistFailure_FailsClosed(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(failingGuard{}))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(failingGuard{}))
 
 	if e.reserveSlotForSign(9, ids.GenerateTestID()) {
 		t.Fatal("reserveSlotForSign MUST fail closed (return false) when the durable write fails")
@@ -462,7 +462,7 @@ func TestBlue_VoteGuard_CorruptFileFailsClosed(t *testing.T) {
 // NEVER by letting a validator sign twice at one height.
 func TestVoteOnce_EpochBlind_OneSignaturePerHeight(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, _ := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, _ := newQuorumEngine(t, params5(), vs, 0, &recordingGossiper{})
 
 	const H = uint64(42)
 	A := ids.GenerateTestID()      // wrapped sibling (its own P-chain-height epoch R)

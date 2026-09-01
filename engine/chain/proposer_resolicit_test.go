@@ -29,7 +29,7 @@ import (
 // POST-FIX: second > first → GREEN.
 func TestProposerRebuild_ReSolicitsOwnUndecidedProposal(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	params := params5Prod()
+	params := params5()
 	params.RoundTO = 30 * time.Second // park the re-poll ticker: only the BUILD path may re-solicit
 	rec := &recordingGossiper{}
 	e, _ := newQuorumEngine(t, params, vs, 0, rec)
@@ -72,7 +72,7 @@ func TestProposerRebuild_ReSolicitsOwnUndecidedProposal(t *testing.T) {
 // gate is the belt-and-suspenders that keeps a finalized own block quiet).
 func TestProposerRebuild_DoesNotReSolicitDecidedProposal(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	params := params5Prod()
+	params := params5()
 	params.RoundTO = 30 * time.Second
 	rec := &recordingGossiper{}
 	e, chainID := newQuorumEngine(t, params, vs, 0, rec)

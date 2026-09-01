@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/ids"
 )
 
@@ -128,7 +129,32 @@ func (c *ChainConsensus) SetRecall(f func(ids.ID) (*Block, bool)) {
 }
 
 // NewChainConsensus creates a chain consensus engine.
+//
+// It is infallible by contract (every construction path funnels through here), so it
+// cannot report a bad quorum — instead it REFUSES to install a degenerate one. α is
+// the literal accept predicate (topological.go: `acceptVotes() >= c.alpha`), so
+// α ≤ 0 makes that predicate true on ZERO votes: every block self-finalizes on every
+// node with no quorum at all, and two nodes can self-finalize conflicting blocks. A
+// committee of k ≥ 1 always needs at least one vote, and can never need more votes
+// than it has members, so (k, α) is pinned into k ≥ 1, 1 ≤ α ≤ k here — the one place
+// the running predicate is armed.
+//
+// This is the STRUCTURAL floor (the predicate is not nonsense), not the Byzantine
+// policy floor. Whether a well-formed quorum is SAFE at this k is config's judgment
+// (config.BFTQuorumFloor, enforced by Parameters.Valid and by Transitive.Start, which
+// refuses to run an unsafe committee) — kept separate so a deliberate sub-BFT quorum
+// in a unit test still means exactly what it says, while no production engine can run
+// one.
 func NewChainConsensus(k, alpha, beta int) *ChainConsensus {
+	if k < 1 {
+		k = 1
+	}
+	if alpha < 1 {
+		alpha = 1
+	}
+	if alpha > k {
+		alpha = k
+	}
 	return &ChainConsensus{
 		k:      k,
 		alpha:  alpha,
@@ -555,8 +581,21 @@ func (c *ChainConsensus) K() int {
 // (k<1, alpha<1, or alpha>k) is ignored so a mis-derived call can never open a sub-quorum. The
 // engine only ever calls this to move the committee up toward the live count
 // (reclampCommitteeLocked, up-only), so a transient low read can never shrink the quorum here.
+//
+// It also refuses any α BELOW the Byzantine safety floor for the new k
+// (config.BFTQuorumFloor — the same bound Parameters.Valid enforces at config time).
+// Well-formed but UNSAFE re-clamps were previously accepted: k=4/α=2 passed the
+// 1 ≤ α ≤ k shape check while 2α−k = 0 < f+1 = 2, so two disjoint quorums could each
+// certify a conflicting block on a LIVE engine. Because the quorum here is DERIVED
+// from a live validator count rather than declared by a programmer, a mis-derivation
+// is a running safety event, so the floor is judged on every call. The legitimate
+// caller passes the ⅔ supermajority ⌊2k/3⌋+1, which is ≥ this floor at every k, so no
+// real re-clamp is refused.
 func (c *ChainConsensus) Reclamp(k, alpha int) {
 	if k < 1 || alpha < 1 || alpha > k {
+		return
+	}
+	if alpha < config.BFTQuorumFloor(k) {
 		return
 	}
 	c.mu.Lock()
