@@ -32,9 +32,10 @@ use blst::{
 };
 
 use lux_consensus::cert::{
-    pop_message, CertError, QuorumCert, ValidatorSet, Vote, VoteVerifier, DST, POP_DST,
+    CertError, NodeId, QuorumCert, ValidatorSet, Vote, VoteVerifier, DST,
 };
-use lux_consensus::finality::{canonical_vote_message, Finality, Id, Position};
+use lux_consensus::finality::{canonical_vote_message, Finality, Position};
+use lux_consensus::pop;
 use lux_consensus::quasar::QuasarConsensus;
 use lux_consensus::{NodeID, QuasarConfig};
 
@@ -77,14 +78,14 @@ fn sum_g1(keys: &[[u8; 48]], negate: bool) -> [u8; 48] {
 
 /// A validator, with the key it signs with.
 struct Honest {
-    id: Id,
+    id: NodeId,
     sk: SecretKey,
 }
 
 impl Honest {
     fn new(n: u8) -> Self {
         let sk = SecretKey::key_gen(&[n; 32], &[]).expect("key_gen");
-        let mut id = [0u8; 32];
+        let mut id = [0u8; 20];
         id[0] = n;
         Honest { id, sk }
     }
@@ -96,17 +97,14 @@ impl Honest {
     /// A genuine proof of possession — this validator holds the secret, so it
     /// can sign its own (node, key) under the proof-of-possession DST.
     fn pop(&self) -> Vec<u8> {
-        self.sk
-            .sign(&pop_message(&self.id, &self.pk()), POP_DST, &[])
-            .compress()
-            .to_vec()
+        pop::sign(&self.sk, &self.id, &self.pk())
     }
 }
 
 /// The attacker: a registered key it cannot sign under, and a secret whose real
 /// public key is the sum of everyone's.
 struct Rogue {
-    id: Id,
+    id: NodeId,
     pk: [u8; 48],
     sk: SecretKey,
 }
@@ -117,10 +115,7 @@ impl Rogue {
     /// key is the SUM (`target`), not the cancelling key `pk`, so this proof does
     /// not verify against `pk` — which is exactly why possession cannot be faked.
     fn forged_pop(&self) -> Vec<u8> {
-        self.sk
-            .sign(&pop_message(&self.id, &self.pk), POP_DST, &[])
-            .compress()
-            .to_vec()
+        pop::sign(&self.sk, &self.id, &self.pk)
     }
 }
 
@@ -130,7 +125,7 @@ fn forge_key(others: &[[u8; 48]], id_byte: u8) -> Rogue {
     let target = sk.sk_to_pk().compress();
     let minus_others = sum_g1(others, true);
     let pk = sum_g1(&[target, minus_others], false);
-    let mut id = [0u8; 32];
+    let mut id = [0u8; 20];
     id[0] = id_byte;
     Rogue { id, pk, sk }
 }
@@ -301,13 +296,9 @@ fn one_secret_key_cannot_be_registered_under_two_ids() {
 
     // The same key, a second id, and a valid proof of possession for that id —
     // still refused, because the key already belongs to the first.
-    let mut second = [0u8; 32];
+    let mut second = [0u8; 20];
     second[0] = 9;
-    let pop_second = h
-        .sk
-        .sign(&pop_message(&second, &h.pk()), POP_DST, &[])
-        .compress()
-        .to_vec();
+    let pop_second = pop::sign(&h.sk, &second, &h.pk());
     assert_eq!(
         set.insert(second, 100, &h.pk(), &pop_second),
         Err(CertError::DuplicateKey),
@@ -474,7 +465,7 @@ fn the_rogue_holder_cannot_sign_under_its_registered_key() {
 #[test]
 fn a_proof_for_one_node_does_not_register_the_key_under_another() {
     let h = Honest::new(1);
-    let mut other = [0u8; 32];
+    let mut other = [0u8; 20];
     other[0] = 2;
 
     let mut set = ValidatorSet::new();
@@ -496,7 +487,7 @@ fn a_vote_dst_signature_is_not_a_proof_of_possession() {
     let h = Honest::new(1);
     let vote_dst = h
         .sk
-        .sign(&pop_message(&h.id, &h.pk()), DST, &[])
+        .sign(&pop::message(&h.id, &h.pk()), DST, &[])
         .compress()
         .to_vec();
 
