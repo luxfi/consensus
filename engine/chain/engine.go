@@ -29,6 +29,12 @@ var (
 	// MUST be gated on a verifiable α-of-K quorum cert; without a verifier
 	// there is no way to tell a real quorum from forged votes. Fail-closed.
 	ErrQuorumVerifierRequired = errors.New("chain: multi-validator engine (K>1) requires a vote verifier for quorum-cert finality (use WithQuorumCert / WithVoteVerifier)")
+
+	// ErrInvalidParams is returned by Start when the engine's FINAL consensus
+	// parameters do not pass config.Parameters.Valid — an unsafe or degenerate
+	// quorum (α outside [1,K], AlphaConfidence below AlphaPreference, or α below
+	// the Byzantine overlap floor). It wraps the specific config error.
+	ErrInvalidParams = errors.New("chain: refusing to start with unsafe consensus parameters")
 )
 
 // -----------------------------------------------------------------------------
@@ -961,6 +967,22 @@ func (t *Transitive) Start(ctx context.Context, _ bool) error {
 
 	if t.started {
 		return ErrAlreadyStarted
+	}
+
+	// FAIL-CLOSED: refuse to RUN a committee whose quorum is not safe. Parameters.Valid
+	// is the one definition of a safe (K, α): α must be a real quorum (1 ≤ α ≤ K — α=0
+	// makes `acceptVotes() >= alpha` true on ZERO votes, so every block self-finalizes),
+	// the confidence quorum may not be weaker than the preference quorum, and α must
+	// clear the Byzantine overlap floor 2α−K ≥ f+1 so two quorums cannot certify
+	// conflicting blocks.
+	//
+	// The check lives HERE rather than in the constructors because options are applied
+	// AFTER config (NewWithConfig → opts), so WithParams can replace the params a
+	// constructor already validated. Start is the one point every engine passes through
+	// with its FINAL parameters, and it already returns an error, so this is the single
+	// non-bypassable seam — no second validation path to drift out of sync.
+	if err := t.params.ValidQuorum(); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidParams, err)
 	}
 
 	// FAIL-CLOSED: a multi-validator engine (K>1) MUST have a vote verifier so

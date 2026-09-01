@@ -112,7 +112,7 @@ func TestCatchup_SteersByAppliedHeadNotLedger(t *testing.T) {
 
 	// Serve the gap oldest-first, as the catch-up transport does.
 	for i, blk := range gap {
-		cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 3)
+		cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 4)
 		// The contiguity rule still holds: only the block at applied+1 finalizes on the
 		// spot; the rest are tracked so the fold can reach them. Neither outcome may be
 		// a silent skip, which is what this test exists to catch.
@@ -204,7 +204,7 @@ func TestReplay_RefusesABlockTheLedgerDidNotFinalize(t *testing.T) {
 	// gap[0] there, so this one is not ours however plausible it looks.
 	impostor := newTestBlock(N+1, tip.id, "impostor@N+1")
 	base.register(impostor)
-	certI := catchupCertFor(t, vs, chainID, impostor, []int{0, 1, 2, 3}, 3)
+	certI := catchupCertFor(t, vs, chainID, impostor, []int{0, 1, 2, 3}, 4)
 	if err := rt.AcceptCatchupBlock(context.Background(), impostor.bytes, certI); err == nil {
 		t.Fatal("replay accepted a block the ledger did not finalize at that height")
 	}
@@ -216,7 +216,7 @@ func TestReplay_RefusesABlockTheLedgerDidNotFinalize(t *testing.T) {
 	// refuse rather than assume.
 	stranger := newTestBlock(N-1, ids.GenerateTestID(), "stranger@N-1")
 	base.register(stranger)
-	certS := catchupCertFor(t, vs, chainID, stranger, []int{0, 1, 2, 3}, 3)
+	certS := catchupCertFor(t, vs, chainID, stranger, []int{0, 1, 2, 3}, 4)
 	_ = rt.AcceptCatchupBlock(context.Background(), stranger.bytes, certS)
 	if got := stranger.AcceptCalled(); got != 0 {
 		t.Fatalf("a block at a height the ledger cannot speak for reached the VM: Accept called %d times", got)
@@ -224,7 +224,7 @@ func TestReplay_RefusesABlockTheLedgerDidNotFinalize(t *testing.T) {
 
 	// The honest block at the same height is still accepted — the refusal above is about
 	// identity, not about replay being switched off.
-	certOK := catchupCertFor(t, vs, chainID, gap[0], []int{0, 1, 2, 3}, 3)
+	certOK := catchupCertFor(t, vs, chainID, gap[0], []int{0, 1, 2, 3}, 4)
 	if err := rt.AcceptCatchupBlock(context.Background(), gap[0].bytes, certOK); err != nil {
 		t.Fatalf("the finalized block at N+1 was refused: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestRecoveryIndex_RecordsTheRealHeightThroughTheFold(t *testing.T) {
 	// Finalize the gap through the real cert path — applyBranchFinalization runs, and its
 	// accept loop is what records recovery.
 	for _, blk := range gap {
-		cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 3)
+		cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 4)
 		if err := rt.AcceptCatchupBlock(context.Background(), blk.bytes, cert); err != nil {
 			t.Fatalf("finalize height %d: %v", blk.height, err)
 		}
@@ -411,7 +411,7 @@ func TestSeed_UnsetLedgerFoldsFromHintNotTip(t *testing.T) {
 		_ = rt.AcceptCatchupBlock(ctx, blk.bytes, nil)
 	}
 	top := gap[len(gap)-1]
-	certTop := catchupCertFor(t, vs, chainID, top, []int{0, 1, 2, 3}, 3)
+	certTop := catchupCertFor(t, vs, chainID, top, []int{0, 1, 2, 3}, 4)
 	if err := rt.AcceptCatchupBlock(ctx, top.bytes, certTop); err != nil {
 		t.Fatalf("one tip cert over a tracked run must finalize the whole run, got %v", err)
 	}
@@ -470,7 +470,7 @@ func TestSeed_UnsetLedgerRefusesAnUntrackedGap(t *testing.T) {
 		parent = top
 	}
 	base.register(top) // only the tip is fetchable/parseable; its ancestry is absent
-	certTop := catchupCertFor(t, vs, chainID, top, []int{0, 1, 2, 3}, 3)
+	certTop := catchupCertFor(t, vs, chainID, top, []int{0, 1, 2, 3}, 4)
 	if err := rt.AcceptCatchupBlock(ctx, top.bytes, certTop); err == nil {
 		t.Fatalf("a tip cert whose ancestry is neither tracked nor held must be refused, not seeded")
 	}

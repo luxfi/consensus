@@ -45,7 +45,7 @@ import (
 // by a higher finalize (isolating the durable decided-height gate from the in-memory belt).
 func TestFinalizeThenResign_DecidedHeightIsUnsignable(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, _ := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, _ := newQuorumEngine(t, params5(), vs, 0, &recordingGossiper{})
 
 	const H = uint64(42)
 	A := ids.GenerateTestID()  // the winner at height H (e.g. proposervm-wrapped)
