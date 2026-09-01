@@ -1,0 +1,281 @@
+// Copyright (C) 2019-2026, Lux Industries Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+//! Rust against Go, on the DECISION.
+//!
+//! `tests/conformance.rs` holds this crate to the bytes Go emits — the signed
+//! message, the certificate wire, the floors as numbers. That is necessary and
+//! it is not sufficient: an implementation can reproduce every byte and still
+//! finalize on the wrong number of signers, because encoding and deciding are
+//! different questions. A build carrying no weighted predicate at all passes a
+//! corpus that only ever asks it to encode.
+//!
+//! So this harness reads the `verdict` section and asks the other question. Each
+//! case states a validator set, the distinct signers a certificate carries and
+//! the rung it attests; Go recorded what its predicate decided, and this crate
+//! must decide the same. Nothing is restated here — the expectation is read from
+//! the corpus and the answer comes from `Cert::verify_weighted`.
+//!
+//! Signatures are not the subject. Every vote is resolved as correctly signed,
+//! exactly as the Go oracle did, so a case can only turn on the weighted half:
+//! the signer floor and the stake floor. Signature validity is its own dimension
+//! and `cert_conformance.rs` and `pop_conformance.rs` already hold it.
+
+use lux_consensus::cert::{
+    CertError, NodeId, QuorumCert, Registration, StakeSource, ValidatorSet, Vote, VoteVerifier,
+};
+use lux_consensus::finality::{Finality, Position};
+use serde_json::Value;
+
+fn corpus() -> Value {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../conformance/corpus.json");
+    let raw = std::fs::read_to_string(path).unwrap_or_else(|e| {
+        panic!("read {path}: {e} — regenerate with `go test ./conformance -update`")
+    });
+    serde_json::from_str(&raw).expect("corpus.json does not parse")
+}
+
+fn node(s: &str) -> NodeId {
+    let bytes = hex::decode(s).unwrap_or_else(|e| panic!("node id {s}: {e}"));
+    assert_eq!(bytes.len(), 20, "node id is {} bytes, want 20", bytes.len());
+    let mut out = [0u8; 20];
+    out.copy_from_slice(&bytes);
+    out
+}
+
+fn decimal(v: &Value, key: &str) -> u64 {
+    v[key]
+        .as_str()
+        .unwrap_or_else(|| panic!("{key} is not a decimal string"))
+        .parse()
+        .unwrap_or_else(|e| panic!("{key}: {e}"))
+}
+
+/// The validator set a case is weighed against, read straight from the row.
+struct Set {
+    seats: Vec<(NodeId, u64)>,
+}
+
+impl StakeSource for Set {
+    fn weight(&self, node: &NodeId, _: u64) -> u64 {
+        // An id outside the set carries no stake — an unknown voter must never
+        // be able to inflate a tally.
+        self.seats
+            .iter()
+            .find(|(id, _)| id == node)
+            .map_or(0, |(_, w)| *w)
+    }
+
+    fn total_stake(&self, _: u64) -> u64 {
+        self.seats.iter().map(|(_, w)| *w).sum()
+    }
+
+    fn validator_count(&self, _: u64) -> i64 {
+        self.seats.len() as i64
+    }
+}
+
+/// Resolves every vote as correctly signed, so the weighted half is the only
+/// thing a case can turn on. The Go oracle recorded these verdicts under exactly
+/// this assumption.
+struct Trust;
+
+impl VoteVerifier for Trust {
+    fn verify_vote(&self, _: &NodeId, _: &[u8], _: &[u8], _: u64) -> bool {
+        true
+    }
+}
+
+/// Names the clause a refusal came from, in the corpus's vocabulary.
+///
+/// Rust names the clause more finely than Go does: Go returns one
+/// `ErrQCBelowThreshold` for both an unresolved set and a short signer count,
+/// and one `ErrQCStakeBelowMajority` for both a zero total and a short tally.
+/// The mapping is where that equivalence is written down, so a real disagreement
+/// about the DECISION cannot hide inside a difference of vocabulary.
+fn refusal(rung: &str, err: &CertError) -> &'static str {
+    match err {
+        CertError::UnresolvedSet { .. }
+        | CertError::SignerFloor { .. }
+        | CertError::BelowThreshold { .. } => "belowThreshold",
+        CertError::StakeBelowMajority { .. } => "stakeBelowMajority",
+        CertError::StakeBelowSupermajority { .. } => "stakeBelowSupermajority",
+        // Go folds a zero total into the rung's own stake refusal.
+        CertError::StakeZero { .. } => {
+            if rung == "nova" {
+                "stakeBelowMajority"
+            } else {
+                "stakeBelowSupermajority"
+            }
+        }
+        CertError::ZeroWeight => "zeroWeight",
+        CertError::WeightOverflow => "weightOverflow",
+        other => panic!("a verdict the corpus cannot name: {other}"),
+    }
+}
+
+/// Every frozen finality verdict, decided again here.
+#[test]
+fn the_weighted_decision_is_the_one_go_made() {
+    let c = corpus();
+    let epoch = decimal(&c["verdict"], "epoch");
+    let cases = c["verdict"]["finality"]
+        .as_array()
+        .expect("corpus has no verdict.finality section");
+
+    for case in cases {
+        let name = case["name"].as_str().expect("case has no name");
+        let rung = case["rung"].as_str().expect("case has no rung");
+
+        let tier = match rung {
+            "nova" => Finality::Nova,
+            "quasar" => Finality::Quasar,
+            other => panic!("{name}: a certificate attests nova or quasar, not {other}"),
+        };
+
+        let seats: Vec<(NodeId, u64)> = case["set"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name}: no set"))
+            .iter()
+            .map(|s| {
+                (
+                    node(s["nodeID"].as_str().expect("seat has no nodeID")),
+                    decimal(s, "weight"),
+                )
+            })
+            .collect();
+        let set = Set { seats };
+
+        // The set the corpus states must be the set it says it states.
+        assert_eq!(
+            set.total_stake(epoch),
+            decimal(case, "total"),
+            "{name}: the recorded total is not the sum of the seats"
+        );
+
+        let votes: Vec<Vote> = case["signers"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name}: no signers"))
+            .iter()
+            .map(|s| Vote {
+                node_id: node(s.as_str().expect("signer is not a node id")),
+                accept: true,
+                signature: vec![0x01],
+            })
+            .collect();
+
+        let threshold = case["threshold"].as_u64().expect("case has no threshold") as u32;
+
+        // The decision does not depend on the position, which the corpus states
+        // outright — so the default one is as good as any and this harness needs
+        // to carry no position material at all.
+        let cert = QuorumCert::assemble(tier, Position::default(), threshold, &votes)
+            .unwrap_or_else(|e| panic!("{name}: assemble: {e}"));
+
+        let decided = cert.verify_weighted(&Trust, &set, epoch);
+        let accept = case["accept"].as_bool().expect("case has no accept");
+        let want = case["refusal"].as_str().expect("case has no refusal");
+
+        match decided {
+            Ok(()) => assert!(
+                accept,
+                "{name}: this crate accepted a certificate Go refused with {want}"
+            ),
+            Err(e) => {
+                assert!(
+                    !accept,
+                    "{name}: this crate refused ({e}) a certificate Go accepted"
+                );
+                assert_eq!(
+                    refusal(rung, &e),
+                    want,
+                    "{name}: refused on the wrong clause ({e})"
+                );
+            }
+        }
+    }
+
+    // A section that quietly lost its cases would let this test pass over an
+    // empty list, which is the failure mode the whole file exists to close.
+    assert_eq!(
+        cases.len(),
+        8,
+        "expected 8 frozen finality verdicts, checked {}",
+        cases.len()
+    );
+}
+
+/// The admission clauses this crate's door reaches.
+///
+/// The corpus records which door produced each verdict, because the standard has
+/// two and they do not enforce the same clauses. This crate ports `Register`, so
+/// it answers for those rows and states how many it answered — a runner that
+/// silently matched zero rows would report PASS while checking nothing.
+#[test]
+fn the_admission_decision_is_the_one_go_made() {
+    let c = corpus();
+    let cases = c["verdict"]["admission"]
+        .as_array()
+        .expect("corpus has no verdict.admission section");
+
+    let mut checked = 0;
+    for case in cases {
+        if case["door"].as_str() != Some("Register") {
+            continue;
+        }
+        let name = case["name"].as_str().expect("case has no name");
+
+        let registrations: Vec<_> = case["weights"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name}: no weights"))
+            .iter()
+            .enumerate()
+            .map(|(i, w)| {
+                let mut id = [0u8; 20];
+                id[16..].copy_from_slice(&((i as u32) + 1).to_be_bytes());
+                Registration {
+                    node: id,
+                    // Present and the right width, but not a point: the weight
+                    // clauses are reached before any key is read, and a real key
+                    // here would be pinning possession — which pop_conformance
+                    // already pins, once, on its own.
+                    public_key: vec![0xAB; 48],
+                    proof: vec![0xAB; 96],
+                    weight: w
+                        .as_str()
+                        .expect("weight is not a decimal")
+                        .parse()
+                        .unwrap(),
+                }
+            })
+            .collect();
+
+        let decided = ValidatorSet::register(registrations);
+        let admitted = case["admitted"].as_bool().expect("case has no admitted");
+        let want = case["refusal"].as_str().expect("case has no refusal");
+
+        match decided {
+            Ok(_) => assert!(
+                admitted,
+                "{name}: this crate admitted a set Go refused with {want}"
+            ),
+            Err(e) => {
+                assert!(
+                    !admitted,
+                    "{name}: this crate refused ({e}) a set Go admitted"
+                );
+                assert_eq!(
+                    refusal("", &e),
+                    want,
+                    "{name}: refused on the wrong clause ({e})"
+                );
+            }
+        }
+        checked += 1;
+    }
+
+    assert_eq!(
+        checked, 1,
+        "expected 1 row at this crate's door, checked {checked}"
+    );
+}

@@ -1,0 +1,384 @@
+// Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+// verdict.go — the finality DECISION as data.
+//
+// The rest of the corpus states what a validator signs and what a certificate
+// looks like on the wire. That is necessary and it is not sufficient: an
+// implementation can reproduce every byte here and still finalize on the wrong
+// number of signers, because encoding and deciding are different questions. The
+// failure this section exists to prevent already happened — a C++ build that
+// carried no weighted predicate at all reported PASS against a corpus that only
+// ever asked it to encode.
+//
+// So this section asks the other question. Each case states a validator set, the
+// distinct signers a certificate carries, and the rung it attests, and records
+// what the live predicate DECIDES about it. Nothing here restates the rule: the
+// accept flag and the refusal class are produced by running
+// chain.QuorumCert.VerifyWeighted and validators.Register, exactly as the
+// proof-of-possession vector records what pop.Verify returns. An edit to a
+// threshold moves these verdicts and the golden test fails at the source.
+//
+// SIGNATURES ARE NOT THE SUBJECT HERE. Every vote is resolved as correctly
+// signed, so the only thing a case can turn on is the weighted half — the signer
+// floor and the stake floor. Signature validity is its own dimension and it is
+// already frozen, in the vote cases, the cert cases and the proof-of-possession
+// vector. Braiding the two would mean a weighted rule could not be stated
+// without a key ceremony, and a runner that lacked one would report PASS by
+// skipping the case — which is the whole failure mode this section closes.
+package conformance
+
+import (
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
+	"errors"
+
+	"github.com/luxfi/consensus/config"
+	"github.com/luxfi/consensus/engine/chain"
+	validators "github.com/luxfi/consensus/validator"
+	"github.com/luxfi/ids"
+)
+
+// verdictEpoch is the P-chain epoch every case is decided at. The sets here do
+// not vary by height, so it changes no verdict; it is recorded because the
+// predicate reads its tally at an epoch and a case must be reproducible.
+const verdictEpoch = 7
+
+// Verdict is what the finality predicate DECIDES, as opposed to what the
+// encoder emits. Two doors, because a certificate is only as sound as the set it
+// is checked against: Finality is the certificate predicate, Admission is the
+// registration predicate that decides which sets exist at all.
+type Verdict struct {
+	Note      string          `json:"note"`
+	Epoch     string          `json:"epoch"`
+	Finality  []FinalityCase  `json:"finality"`
+	Admission []AdmissionCase `json:"admission"`
+}
+
+// Seat is one admitted validator: the identity that signs and the weight behind
+// it. Weight is a decimal string for the reason every uint64 here is — a set
+// near 2^64 loses precision in a JSON parser that keeps numbers as doubles.
+type Seat struct {
+	NodeID string `json:"nodeID"`
+	Weight string `json:"weight"`
+}
+
+// FinalityCase is one certificate weighed against one validator set at one rung.
+//
+// SignerFloor and StakeFloor are recorded alongside the verdict on purpose. They
+// are read off the same functions the predicate enforces, so a runner that
+// disagrees about the DECISION can say in one line whether it disagreed about
+// the count floor, the stake floor, or which of the two applies to that rung.
+type FinalityCase struct {
+	Name        string   `json:"name"`
+	Note        string   `json:"note"`
+	Rung        string   `json:"rung"`
+	Set         []Seat   `json:"set"`
+	Total       string   `json:"total"`
+	SignerFloor int      `json:"signerFloor"`
+	StakeFloor  string   `json:"stakeFloor"`
+	Threshold   uint32   `json:"threshold"`
+	Signers     []string `json:"signers"`
+	Voted       string   `json:"voted"`
+	Accept      bool     `json:"accept"`
+	Refusal     string   `json:"refusal"`
+}
+
+// AdmissionCase is one weight vector offered at the door.
+//
+// Door names the entry point that produced the verdict, because the standard has
+// two and they do not enforce the same clauses: Register admits a fresh
+// registration set and demands possession of every key; FlattenValidatorSet
+// reads a set the chain already admitted and therefore has no proof to check.
+// The weight clauses are common to both, and which one a case runs through is a
+// fact about the standard, so it is recorded rather than assumed.
+type AdmissionCase struct {
+	Name     string   `json:"name"`
+	Note     string   `json:"note"`
+	Door     string   `json:"door"`
+	Weights  []string `json:"weights"`
+	Admitted bool     `json:"admitted"`
+	Refusal  string   `json:"refusal"`
+}
+
+// seat is the node id of the i-th validator: the index in the last four bytes,
+// big-endian, everything above it zero. Ascending index is ascending node id, so
+// the order a case lists its signers in is the order the encoder emits them, and
+// a reader can name a seat without carrying a table of literals.
+func seat(i int) ids.NodeID {
+	var n ids.NodeID
+	binary.BigEndian.PutUint32(n[len(n)-4:], uint32(i))
+	return n
+}
+
+// first returns the lowest k seats — the signer set a case uses when it is
+// walking a quorum boundary one signer at a time.
+func first(k int) []int {
+	out := make([]int, 0, k)
+	for i := 1; i <= k; i++ {
+		out = append(out, i)
+	}
+	return out
+}
+
+// stake is the authoritative validator set a case is weighed against: seat i
+// holds stake[i-1]. It is the live StakeSource interface, so the predicate reads
+// this set through exactly the seam a node reads the P-chain through.
+type stake []uint64
+
+// Weight returns the seat's stake, or zero for an id outside the set — an
+// unknown voter must never be able to inflate a tally.
+func (s stake) Weight(id ids.NodeID, _ uint64) uint64 {
+	i := int(binary.BigEndian.Uint32(id[len(id)-4:])) - 1
+	if i < 0 || i >= len(s) {
+		return 0
+	}
+	return s[i]
+}
+
+// TotalStake returns the total active stake of the set.
+func (s stake) TotalStake(uint64) uint64 {
+	var total uint64
+	for _, w := range s {
+		total += w
+	}
+	return total
+}
+
+// ValidatorCount returns the number of distinct active validators.
+func (s stake) ValidatorCount(uint64) int { return len(s) }
+
+// trust resolves every vote as correctly signed. The weighted half is the
+// subject of this section; see the file comment for why the two are separated.
+type trust struct{}
+
+// VerifyVote reports every signature as valid.
+func (trust) VerifyVote(ids.NodeID, []byte, []byte, uint64) bool { return true }
+
+// keyShaped is a key that is present and the right width but is not a point. The
+// clauses this section is about are reached before any key is read, and a case
+// that carried a real key would be pinning possession — which the
+// proof-of-possession vector already pins, once, on its own.
+var keyShaped = bytes.Repeat([]byte{0xAB}, 48)
+
+// refusal names the clause a refusal came from, as a class rather than a
+// message, so an implementation can map it onto its own error type without
+// carrying Go's prose. A refusal the corpus cannot name is a hard failure: the
+// standard would otherwise record a decision no other implementation could
+// reproduce.
+func refusal(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, chain.ErrQCBelowThreshold):
+		return "belowThreshold"
+	case errors.Is(err, chain.ErrQCStakeBelowMajority):
+		return "stakeBelowMajority"
+	case errors.Is(err, chain.ErrQCStakeBelowSupermajority):
+		return "stakeBelowSupermajority"
+	case errors.Is(err, validators.ErrZeroWeight):
+		return "zeroWeight"
+	case errors.Is(err, validators.ErrWeightOverflow):
+		return "weightOverflow"
+	default:
+		panic("conformance: a verdict the corpus cannot name: " + err.Error())
+	}
+}
+
+// finality weighs one certificate and records what the live predicate decides.
+//
+// The cert's own threshold is set to the number of votes it carries, so the
+// tier-agnostic count clause always passes and the weighted half is the only
+// thing a case can turn on. That is the isolation the section is for: a runner
+// that fails one of these has failed the stake floor or the signer floor, not
+// the wire and not a signature.
+func finality(name, note string, rung chain.Finality, s stake, signers []int) FinalityCase {
+	votes := make([]chain.SignedVote, 0, len(signers))
+	names := make([]string, 0, len(signers))
+	var voted uint64
+	for _, i := range signers {
+		id := seat(i)
+		votes = append(votes, chain.SignedVote{NodeID: id, Accept: true, Signature: []byte{0x01}})
+		names = append(names, hex.EncodeToString(id[:]))
+		voted += s.Weight(id, verdictEpoch)
+	}
+
+	cert, err := chain.AssembleQuorumCert(spec(), rung, uint32(len(votes)), votes)
+	if err != nil {
+		panic("conformance: " + name + ": " + err.Error())
+	}
+
+	seats := make([]Seat, 0, len(s))
+	for i, w := range s {
+		id := seat(i + 1)
+		seats = append(seats, Seat{NodeID: hex.EncodeToString(id[:]), Weight: u64(w)})
+	}
+
+	total := s.TotalStake(verdictEpoch)
+	floor := config.HalfStakeFloor(total)
+	if rung == chain.Quasar {
+		floor = config.TwoThirdsStakeFloor(total)
+	}
+
+	// The decision, read from the live predicate — never restated here.
+	decided := cert.VerifyWeighted(trust{}, s, verdictEpoch)
+
+	return FinalityCase{
+		Name:        name,
+		Note:        note,
+		Rung:        rung.String(),
+		Set:         seats,
+		Total:       u64(total),
+		SignerFloor: chain.NovaSignerFloor(len(s)),
+		StakeFloor:  u64(floor),
+		Threshold:   cert.Threshold,
+		Signers:     names,
+		Voted:       u64(voted),
+		Accept:      decided == nil,
+		Refusal:     refusal(decided),
+	}
+}
+
+// register offers a weight vector at the registration door and records what the
+// door decides.
+func register(name, note string, ws []uint64) AdmissionCase {
+	rs := make([]validators.Registration, 0, len(ws))
+	for i, w := range ws {
+		rs = append(rs, validators.Registration{NodeID: seat(i + 1), Key: keyShaped, Weight: w})
+	}
+	_, err := validators.Register(rs)
+	return AdmissionCase{
+		Name:     name,
+		Note:     note,
+		Door:     "Register",
+		Weights:  decimals(ws),
+		Admitted: err == nil,
+		Refusal:  refusal(err),
+	}
+}
+
+// flatten offers a weight vector at the already-admitted door and records what it
+// decides. The map is an input to a function that sorts its keys internally, so
+// nothing about the output depends on iteration order.
+func flatten(name, note string, ws []uint64) AdmissionCase {
+	set := make(map[ids.NodeID]*validators.GetValidatorOutput, len(ws))
+	for i, w := range ws {
+		id := seat(i + 1)
+		set[id] = &validators.GetValidatorOutput{NodeID: id, Weight: w}
+	}
+	_, err := validators.FlattenValidatorSet(set)
+	return AdmissionCase{
+		Name:     name,
+		Note:     note,
+		Door:     "FlattenValidatorSet",
+		Weights:  decimals(ws),
+		Admitted: err == nil,
+		Refusal:  refusal(err),
+	}
+}
+
+// decimals renders a weight vector the way every other uint64 here is rendered.
+func decimals(ws []uint64) []string {
+	out := make([]string, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, u64(w))
+	}
+	return out
+}
+
+// verdicts is the section: every case decided by the live predicate.
+func verdicts() Verdict {
+	// Forty-one equal seats. The set is chosen because both rungs have a sharp
+	// edge on it and the two edges are seven seats apart — 21 for the majority,
+	// 28 for the supermajority — so an implementation that confuses one floor
+	// for the other cannot pass by accident, which it can on a small set where
+	// the two coincide.
+	equal41 := make(stake, 41)
+	for i := range equal41 {
+		equal41[i] = 1
+	}
+
+	// Four equal seats: the smallest Byzantine-tolerant committee, where the
+	// signer floor is 3 and a lone signer is below every gate.
+	equal4 := stake{1, 1, 1, 1}
+
+	// One holder of a stake majority and four registrations at the minimum. This
+	// is the shape the signer floor exists for.
+	whale := stake{100, 1, 1, 1, 1}
+
+	return Verdict{
+		Note: "what the predicate DECIDES, not what the encoder emits. Every vote is " +
+			"resolved as correctly signed, so a case turns on the weighted half alone: " +
+			"the distinct-signer floor and the stake floor. Nova (local execution) needs " +
+			"signers >= novaSignerFloor(n) AND voted > floor(total/2). Quasar (export) " +
+			"needs voted > floor(2*total/3) and carries NO signer floor of its own. The " +
+			"decision does not depend on the position the votes were cast over, so a runner " +
+			"may weigh these votes over any position its encoder can build.",
+		Epoch: u64(verdictEpoch),
+		Finality: []FinalityCase{
+			finality("nova_below_majority",
+				"twenty of forty-one equal seats: exactly the majority floor, and equality is not a quorum",
+				chain.Nova, equal41, first(20)),
+			finality("nova_majority",
+				"twenty-one of forty-one: one seat past the floor is the whole difference",
+				chain.Nova, equal41, first(21)),
+			finality("quasar_below_supermajority",
+				"twenty-seven of forty-one: exactly the supermajority floor, refused for the same reason",
+				chain.Quasar, equal41, first(27)),
+			finality("quasar_supermajority",
+				"twenty-eight of forty-one: the export edge. Note the same twenty-eight signers "+
+					"clear Nova seven seats earlier — the rungs are different authorizations",
+				chain.Quasar, equal41, first(28)),
+			finality("nova_one_of_four",
+				"one of four equal seats: below the signer floor of three, refused on the count "+
+					"before stake is ever read",
+				chain.Nova, equal4, first(1)),
+			finality("quasar_one_of_four",
+				"one of four equal seats at the export rung: refused on stake, which is the only "+
+					"floor this rung has",
+				chain.Quasar, equal4, first(1)),
+			finality("nova_whale_alone",
+				"the holder of a hundred of a hundred and four signs alone: a stake majority many "+
+					"times over, refused on the distinct-signer floor. Stake cannot buy a pass past "+
+					"the count — this is what stops a single holder self-igniting",
+				chain.Nova, whale, []int{1}),
+			finality("nova_whale_with_two",
+				"the same holder with two of the minimum registrations: the floor is met and the "+
+					"same stake now carries. The floor was the binding clause, not the stake",
+				chain.Nova, whale, []int{1, 2, 3}),
+
+			// TODO(R4): whale-alone at the EXPORT rung. On this set one signer
+			// holding 100 of 104 clears floor(2*104/3)=69 and the certificate is
+			// export-grade on one signature, because Quasar carries no
+			// distinct-signer floor of its own. Whether it should is an open
+			// design decision, not settled behaviour, so no expectation is frozen
+			// for it here. When R4 decides, the case belongs in this list.
+
+			// TODO(R5): the keyless denominator. TotalStake counts registrations
+			// that hold no key and therefore cannot sign, so the floor a quorum
+			// must clear is computed over stake that can never vote. Freezing a
+			// verdict for it needs signable_stake to exist first; until then the
+			// corpus would be pinning the arithmetic rather than the rule.
+		},
+		Admission: []AdmissionCase{
+			register("zero_weight",
+				"a set carrying a validator with no stake is refused whole, never trimmed: a "+
+					"signer that raises the count without raising the weight is exactly the "+
+					"disagreement the two floors exist to prevent. The seat with no stake sorts "+
+					"first, so the refusal lands before any key is read. There is no admitted "+
+					"counterpart here: past the zero-weight clause the door asks for possession, "+
+					"which is the proof-of-possession vector's question and not this one",
+				[]uint64{0, 5}),
+			flatten("weight_overflow",
+				"two seats whose stake sums past 2^64 are refused: a total that wrapped would make "+
+					"every floor read off it meaningless. Checked at the already-admitted door "+
+					"because Register demands possession of every key BEFORE it reaches its weight "+
+					"clause, so that clause cannot be reached without a key ceremony",
+				[]uint64{1 << 63, 1<<63 + 1}),
+			flatten("weight_fits",
+				"the same two seats one unit lower: the sum is representable and the set stands",
+				[]uint64{1 << 63, 1<<63 - 1}),
+		},
+	}
+}
