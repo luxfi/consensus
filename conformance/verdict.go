@@ -261,11 +261,18 @@ func register(name, note string, ws []uint64) AdmissionCase {
 // flatten offers a weight vector at the already-admitted door and records what it
 // decides. The map is an input to a function that sorts its keys internally, so
 // nothing about the output depends on iteration order.
+//
+// Every seat carries the same shaped key the registration door's cases carry, so
+// the two doors are offered the same material and the weight vector is the only
+// thing that varies. It has to be present: the clause that refuses a seat with
+// no stake is about a seat that could otherwise SIGN, and a keyless seat is
+// skipped before it can. It does not have to be a point — the weight clauses are
+// reached before any key is decoded, at both doors.
 func flatten(name, note string, ws []uint64) AdmissionCase {
 	set := make(map[ids.NodeID]*validators.GetValidatorOutput, len(ws))
 	for i, w := range ws {
 		id := seat(i + 1)
-		set[id] = &validators.GetValidatorOutput{NodeID: id, Weight: w}
+		set[id] = &validators.GetValidatorOutput{NodeID: id, PublicKey: keyShaped, Weight: w}
 	}
 	_, err := validators.FlattenValidatorSet(set)
 	return AdmissionCase{
@@ -369,6 +376,17 @@ func verdicts() Verdict {
 					"first, so the refusal lands before any key is read. There is no admitted "+
 					"counterpart here: past the zero-weight clause the door asks for possession, "+
 					"which is the proof-of-possession vector's question and not this one",
+				[]uint64{0, 5}),
+			flatten("zero_weight",
+				"the same weight vector at the OTHER door. A set the chain already admitted is "+
+					"read here, not admitted here, so this door forgives what it cannot check — a "+
+					"key it cannot decode is skipped rather than refused. It does not forgive a "+
+					"key with no stake behind it. That seat is a phantom signer: it raises the "+
+					"count of distinct signers the Nova floor is read against and adds nothing to "+
+					"the stake the same certificate is weighed by, which is the disagreement "+
+					"between how many signed and how much signed that both floors exist to "+
+					"prevent. A door that admitted it would leave the floor meaning one thing at "+
+					"registration and another here",
 				[]uint64{0, 5}),
 			flatten("weight_overflow",
 				"two seats whose stake sums past 2^64 are refused: a total that wrapped would make "+
