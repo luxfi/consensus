@@ -15,8 +15,8 @@
 
 use blst::min_pk::SecretKey;
 use lux_consensus::cert::{
-    CertError, NodeId, QuorumCert, StakeSource, ValidatorSet, Vote, VoteVerifier, DST,
-    SIGNATURE_LEN,
+    CertError, NodeId, QuorumCert, Registration, StakeSource, ValidatorSet, Vote, VoteVerifier,
+    DST, SIGNATURE_LEN,
 };
 use lux_consensus::finality::{canonical_vote_message, Finality, Position};
 use lux_consensus::pop;
@@ -925,5 +925,254 @@ fn the_issue_path_applies_the_stake_floor_not_only_the_count() {
     assert!(
         !q.is_finalized(&lux_consensus::ID::from(pos.signed_identity())),
         "nothing below the stake floor is finalized"
+    );
+}
+
+// ------------------------------------------------------------- the weight total
+
+/// Go's `Register` runs one clause after uniqueness that this port had dropped:
+/// `math.Add64` on the running total, refusing the WHOLE set if it overflows.
+/// Four validators of 2^63 sum to 2^65. Without the clause both sides of the
+/// weighted predicate clamp to `u64::MAX` — total AND voted — and
+/// `u64::MAX > floor(2·u64::MAX/3)`, so a certificate carrying half the stake
+/// reads as an export supermajority. The set that would do it is refused here,
+/// at the member whose weight the total cannot hold.
+#[test]
+fn a_set_whose_weights_overflow_is_refused_at_admission() {
+    let huge = 1u64 << 63;
+    let signers: Vec<Signer> = (1..=4).map(|i| Signer::new(i, huge)).collect();
+    let mut set = ValidatorSet::new();
+
+    let first = &signers[0];
+    set.insert(first.id, first.weight, &first.public(), &first.pop())
+        .expect("the first 2^63 fits");
+    assert_eq!(set.total_stake(0), huge);
+
+    // 2^63 + 2^63 is 2^64. Refused, and nothing of it is kept.
+    let second = &signers[1];
+    assert_eq!(
+        set.insert(second.id, second.weight, &second.public(), &second.pop()),
+        Err(CertError::WeightOverflow)
+    );
+    assert_eq!(set.len(), 1, "a refused registration is not a member");
+    assert_eq!(set.total_stake(0), huge, "nor does its weight count");
+    assert!(!set.can_verify(&second.id), "nor is its key registered");
+
+    // And through the whole-set door, for the same reason.
+    let registrations: Vec<Registration> = signers
+        .iter()
+        .map(|s| Registration {
+            node: s.id,
+            public_key: s.public().to_vec(),
+            proof: s.pop(),
+            weight: s.weight,
+        })
+        .collect();
+    assert_eq!(
+        ValidatorSet::register(registrations).unwrap_err(),
+        CertError::WeightOverflow
+    );
+}
+
+/// The unkeyed door counts weight toward the same total, so it carries the same
+/// clause — as Go's `FlattenValidatorSet` does, which checks the overflow before
+/// it even looks at the key.
+#[test]
+fn an_unkeyed_member_cannot_overflow_the_total_either() {
+    let mut set = ValidatorSet::new();
+    set.insert_unkeyed(node(1), u64::MAX).expect("the first fits");
+    assert_eq!(
+        set.insert_unkeyed(node(2), 1),
+        Err(CertError::WeightOverflow)
+    );
+    assert_eq!(set.len(), 1);
+    assert_eq!(set.total_stake(0), u64::MAX);
+}
+
+/// The largest representable set is admissible, and the total is exact at the
+/// boundary rather than clamped to it — a set that sums to `u64::MAX` is a real
+/// set, and only the member past it is refused. Retracting one frees exactly its
+/// weight, so the total stays the sum of what is actually there.
+#[test]
+fn the_total_is_exact_at_the_boundary_and_after_a_retraction() {
+    let mut set = ValidatorSet::new();
+    set.insert_unkeyed(node(1), u64::MAX - 10).expect("insert");
+    set.insert_unkeyed(node(2), 10).expect("insert");
+    assert_eq!(set.total_stake(0), u64::MAX);
+
+    assert_eq!(set.insert_unkeyed(node(3), 1), Err(CertError::WeightOverflow));
+
+    set.remove(&node(2));
+    assert_eq!(set.total_stake(0), u64::MAX - 10);
+    set.insert_unkeyed(node(3), 10).expect("the freed room is real");
+    assert_eq!(set.total_stake(0), u64::MAX);
+}
+
+/// The other half of the same clause, on the predicate side.
+///
+/// This is the exact certificate the missing clause admitted: four validators of
+/// 2^63, two of them voting — half the stake — read against a stake source that
+/// clamps, which is what the set itself used to do. The floor is computed from
+/// the total, so when both the total and the voted sum clamp to `u64::MAX` the
+/// comparison is `u64::MAX > floor(2·u64::MAX/3)` and QUASAR returns `Ok` on 50%.
+///
+/// It now returns the overflow instead. A sum that cannot be represented is not
+/// a sum, and the predicate says so rather than comparing two saturated numbers:
+/// no admitted set can reach it, so reaching it is evidence about the source.
+#[test]
+fn a_clamping_stake_source_is_refused_rather_than_read() {
+    /// The pre-fix arithmetic, kept whole so the difference is the fix and
+    /// nothing else: a total folded on demand with `saturating_add`.
+    struct Clamping {
+        weights: Vec<(NodeId, u64)>,
+    }
+    impl StakeSource for Clamping {
+        fn weight(&self, node: &NodeId, _epoch_height: u64) -> u64 {
+            self.weights
+                .iter()
+                .find(|(id, _)| id == node)
+                .map(|(_, w)| *w)
+                .unwrap_or(0)
+        }
+        fn total_stake(&self, _epoch_height: u64) -> u64 {
+            self.weights.iter().fold(0u64, |a, (_, w)| a.saturating_add(*w))
+        }
+        fn validator_count(&self, _epoch_height: u64) -> i64 {
+            self.weights.len() as i64
+        }
+    }
+
+    let huge = 1u64 << 63;
+    // Registered at a weight the set can hold, so the keys resolve and the
+    // signatures verify — the stake is the only thing under test.
+    let (signers, set) = committee(4, 1);
+    let clamping = Clamping {
+        weights: signers.iter().map(|s| (s.id, huge)).collect(),
+    };
+    assert_eq!(
+        clamping.total_stake(0),
+        u64::MAX,
+        "the source clamps, as the set used to"
+    );
+
+    // Two of four: half the stake, and every signature genuine.
+    let cert = valid_cert(&signers, 2, 2);
+    assert_eq!(cert.verify(&set, 0), Ok(()));
+    assert_eq!(
+        cert.verify_weighted(&set, &clamping, 0),
+        Err(CertError::WeightOverflow),
+        "half the stake is not two thirds of it, whatever the arithmetic clamps to"
+    );
+
+    // The same refusal one rung down, so neither tier reads a clamped total.
+    // Three of four, because Nova's signer floor is read before its stake and
+    // two would stop there — the stake clause has to be reached to be tested.
+    let pos = position();
+    let message = canonical_vote_message(&pos, true);
+    let votes: Vec<Vote> = signers[..3].iter().map(|s| s.vote(&message)).collect();
+    let nova = QuorumCert::assemble(Finality::Nova, pos, 3, &votes).expect("assemble");
+    assert_eq!(
+        nova.verify_weighted(&set, &clamping, 0),
+        Err(CertError::WeightOverflow)
+    );
+}
+
+// ------------------------------------------------------------ the whole-set door
+
+/// `register` admits the set or none of it. An inadmissible member fails the
+/// call, and the members that were already good do not survive it — which is the
+/// whole difference from a loop of `insert`, where they do, leaving a set whose
+/// `n` and total describe a set nobody registered.
+#[test]
+fn one_bad_registration_refuses_the_whole_set() {
+    let signers: Vec<Signer> = (1..=4).map(|i| Signer::new(i, 100)).collect();
+    let mut registrations: Vec<Registration> = signers
+        .iter()
+        .map(|s| Registration {
+            node: s.id,
+            public_key: s.public().to_vec(),
+            proof: s.pop(),
+            weight: s.weight,
+        })
+        .collect();
+    // The last one presents a proof bound to another node.
+    registrations[3].proof = signers[0].pop();
+
+    assert_eq!(
+        ValidatorSet::register(registrations.clone()).unwrap_err(),
+        CertError::PopInvalid
+    );
+
+    // The same registrations one at a time: three go in, and the caller is left
+    // holding a set of three where four were registered — n and the total both
+    // short, with nothing to say so. That is what the whole-set door removes.
+    let mut partial = ValidatorSet::new();
+    let mut refused = 0;
+    for r in &registrations {
+        if partial
+            .insert(r.node, r.weight, &r.public_key, &r.proof)
+            .is_err()
+        {
+            refused += 1;
+        }
+    }
+    assert_eq!((partial.len(), partial.total_stake(0), refused), (3, 300, 1));
+
+    // Repaired, the set is admitted whole.
+    registrations[3].proof = signers[3].pop();
+    let set = ValidatorSet::register(registrations).expect("register");
+    assert_eq!((set.len(), set.total_stake(0)), (4, 400));
+    for s in &signers {
+        assert!(set.can_verify(&s.id));
+    }
+}
+
+/// Which member a bad set is refused on is decided by node id, not by the order a
+/// caller happened to build its input — Go sorts before it checks for exactly
+/// this reason. Two nodes handed the same registrations in different orders must
+/// refuse the same set for the same reason, or they disagree about a set they
+/// both rejected.
+#[test]
+fn the_refusal_does_not_depend_on_the_input_order() {
+    let signers: Vec<Signer> = (1..=4).map(|i| Signer::new(i, 100)).collect();
+    let registration = |s: &Signer, weight: u64, proof: Vec<u8>| Registration {
+        node: s.id,
+        public_key: s.public().to_vec(),
+        proof,
+        weight,
+    };
+
+    // Two faults, at two node ids: node 2 stakes nothing, node 4 proves nothing.
+    // Sorted, node 2 is reached first, so ZeroWeight is the answer either way.
+    let low = registration(&signers[1], 0, signers[1].pop());
+    let high = registration(&signers[3], 100, signers[0].pop());
+    let good = registration(&signers[0], 100, signers[0].pop());
+
+    assert_eq!(
+        ValidatorSet::register(vec![good.clone(), low.clone(), high.clone()]).unwrap_err(),
+        CertError::ZeroWeight
+    );
+    assert_eq!(
+        ValidatorSet::register(vec![high, good, low]).unwrap_err(),
+        CertError::ZeroWeight,
+        "the same set refused on the same clause, whatever order it arrived in"
+    );
+}
+
+/// The proof path needs a key. Go's `Register` refuses a keyless registration
+/// rather than admitting a member that can never sign; a member this node holds
+/// no key for comes in through the unkeyed door instead.
+#[test]
+fn the_whole_set_door_refuses_a_keyless_registration() {
+    let s = Signer::new(1, 100);
+    assert_eq!(
+        ValidatorSet::register(vec![Registration {
+            node: s.id,
+            public_key: Vec::new(),
+            proof: s.pop(),
+            weight: 100,
+        }])
+        .unwrap_err(),
+        CertError::NoKey
     );
 }

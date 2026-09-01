@@ -86,7 +86,10 @@ node_modules
 pkg/rust/target
 .dev*
 
-# Language binding build artifacts
+# Language binding build artifacts. The Rust crates are one workspace, so cargo
+# writes to /target at the root; the per-crate paths predate that and are kept
+# for a crate built on its own.
+/target/
 pkg/rust/target/
 pkg/python/.venv/
 pkg/python/__pycache__/

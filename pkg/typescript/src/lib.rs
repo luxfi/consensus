@@ -22,6 +22,20 @@ use std::sync::{Arc, Mutex};
 // Import the Engine trait to access its methods
 use lux_consensus::Engine;
 
+/// The width of a node id, in bytes, taken from the core type rather than
+/// restated here.
+///
+/// A validator is named by the 20-byte NodeID the network names it by, and the
+/// proof of possession it registers with signs `node ‖ key` over exactly those
+/// 20 — so a binding that spelled its own width is a binding that can disagree
+/// with the standard it wraps. This is derived, so it cannot.
+///
+/// It must never be reached by truncating a wider id: cutting 32 bytes down to
+/// 20 maps distinct validators onto one identity, and one identity is one signer
+/// slot and one share of the weight. A hex string of the wrong length is
+/// refused, never trimmed.
+const NODE_ID_LEN: usize = std::mem::size_of::<lux_consensus::cert::NodeId>();
+
 // Re-use core types from lux-consensus
 use lux_consensus::{
     Block as CoreBlock,
@@ -66,7 +80,7 @@ impl BlockId {
 
     #[napi]
     pub fn to_hex(&self) -> String {
-        hex::encode(&self.inner)
+        hex::encode(self.inner)
     }
 
     #[napi]
@@ -80,10 +94,10 @@ impl BlockId {
     }
 }
 
-/// Node identifier (32-byte hex string)
+/// Node identifier (20-byte hex string)
 #[napi]
 pub struct NodeId {
-    inner: [u8; 32],
+    inner: [u8; NODE_ID_LEN],
 }
 
 #[napi]
@@ -92,17 +106,17 @@ impl NodeId {
     pub fn new(hex_string: String) -> Result<Self> {
         let bytes = hex::decode(&hex_string)
             .map_err(|e| Error::from_reason(format!("Invalid hex: {}", e)))?;
-        if bytes.len() != 32 {
-            return Err(Error::from_reason("Node ID must be 32 bytes"));
+        if bytes.len() != NODE_ID_LEN {
+            return Err(Error::from_reason("Node ID must be 20 bytes"));
         }
-        let mut arr = [0u8; 32];
+        let mut arr = [0u8; NODE_ID_LEN];
         arr.copy_from_slice(&bytes);
         Ok(NodeId { inner: arr })
     }
 
     #[napi]
     pub fn to_hex(&self) -> String {
-        hex::encode(&self.inner)
+        hex::encode(self.inner)
     }
 
     #[napi]
@@ -335,7 +349,7 @@ pub struct Vote {
     pub block_id: String,
     /// Vote type (0=Preference, 1=Commit, 2=Cancel)
     pub vote_type: u32,
-    /// Voter node ID (hex string)
+    /// Voter node ID (20-byte hex string)
     pub voter: String,
     /// Optional signature (hex string)
     pub signature: Option<String>,
@@ -348,8 +362,11 @@ impl Vote {
         let voter = hex::decode(&self.voter)
             .map_err(|e| Error::from_reason(format!("Invalid voter ID: {}", e)))?;
 
-        if block_id.len() != 32 || voter.len() != 32 {
-            return Err(Error::from_reason("IDs must be 32 bytes"));
+        if block_id.len() != 32 {
+            return Err(Error::from_reason("Block ID must be 32 bytes"));
+        }
+        if voter.len() != NODE_ID_LEN {
+            return Err(Error::from_reason("Voter node ID must be 20 bytes"));
         }
 
         let vote_type = match self.vote_type {
@@ -360,7 +377,7 @@ impl Vote {
         };
 
         let mut block_arr = [0u8; 32];
-        let mut voter_arr = [0u8; 32];
+        let mut voter_arr = [0u8; NODE_ID_LEN];
         block_arr.copy_from_slice(&block_id);
         voter_arr.copy_from_slice(&voter);
 
@@ -533,20 +550,25 @@ impl ConsensusEngine {
         Ok(engine.record_votes_batch(core_votes) as u32)
     }
 
-    /// Add a validator to the engine
+    /// Add a validator to the engine, by its 20-byte node id
     #[napi]
     pub fn add_validator(&self, node_id: String, weight: u32) -> Result<()> {
         let id_bytes = hex::decode(&node_id)
             .map_err(|e| Error::from_reason(format!("Invalid node ID: {}", e)))?;
-        if id_bytes.len() != 32 {
-            return Err(Error::from_reason("Node ID must be 32 bytes"));
+        if id_bytes.len() != NODE_ID_LEN {
+            return Err(Error::from_reason("Node ID must be 20 bytes"));
         }
-        let mut arr = [0u8; 32];
+        let mut arr = [0u8; NODE_ID_LEN];
         arr.copy_from_slice(&id_bytes);
 
         let mut engine = self.inner.lock()
             .map_err(|e| Error::from_reason(format!("Lock error: {}", e)))?;
-        engine.add_validator(CoreNodeID::from(arr), weight as u64);
+        // The core refuses a node already admitted, and a weight the set's total
+        // cannot hold. Dropping that answer would report a validator as added
+        // that is not in the set, so it is raised to the caller.
+        engine
+            .add_validator(CoreNodeID::from(arr), weight as u64)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(())
     }
 
@@ -679,12 +701,24 @@ mod tests {
         };
         engine.add_block(block.clone()).unwrap();
 
-        // Record votes (need ceil(0.6 * 5) = 3 votes for testnet)
-        for i in 0..5 {
+        // Nine distinct voters, and every one of them a registered member.
+        //
+        // Members, because only members are counted: an engine holding no
+        // validators counts nobody, which is the direction to fail in. Nine,
+        // because testnet is k=5, beta=5: the count opens at k votes, and the
+        // decision needs beta consecutive affirmative rounds after that — and a
+        // round in this engine is a vote, so 4 + 5. A repeat voter is ignored,
+        // so they have to be nine different validators.
+        for i in 0..9 {
+            engine
+                .add_validator(format!("{:02x}", i).repeat(NODE_ID_LEN), 100)
+                .unwrap();
+        }
+        for i in 0..9 {
             let vote = Vote {
                 block_id: "01".repeat(32),
                 vote_type: 0, // Preference
-                voter: format!("{:02x}", i).repeat(32),
+                voter: format!("{:02x}", i).repeat(NODE_ID_LEN),
                 signature: None,
             };
             engine.record_vote(vote).unwrap();
@@ -702,11 +736,42 @@ mod tests {
         assert!(id.is_zero());
     }
 
+    /// A node id is 20 bytes here because it is 20 bytes in the core, and a
+    /// wider one is REFUSED rather than trimmed. Trimming is the failure this
+    /// guards: 32 bytes cut to 20 maps distinct validators onto one identity,
+    /// which is one signer slot and one share of the weight for two operators —
+    /// so every door that takes a node id refuses the wrong width instead.
+    #[test]
+    fn a_node_id_is_twenty_bytes_and_a_wider_one_is_refused() {
+        assert_eq!(NODE_ID_LEN, 20);
+
+        let id = NodeId::new("ab".repeat(NODE_ID_LEN)).unwrap();
+        assert_eq!(id.to_hex(), "ab".repeat(NODE_ID_LEN));
+        assert_eq!(id.to_bytes().len(), NODE_ID_LEN);
+
+        assert!(NodeId::new("ab".repeat(32)).is_err(), "not truncated");
+        assert!(NodeId::new("ab".repeat(16)).is_err());
+
+        // The same width, at the other two doors a node id enters by.
+        let engine = ConsensusEngine::new(testnet_config()).unwrap();
+        assert!(engine.add_validator("aa".repeat(32), 100).is_err());
+        engine.add_validator("aa".repeat(NODE_ID_LEN), 100).unwrap();
+
+        let wide = Vote {
+            block_id: "01".repeat(32),
+            vote_type: 0,
+            voter: "bb".repeat(32),
+            signature: None,
+        };
+        assert!(wide.to_core().is_err());
+        assert!(Vote { voter: "bb".repeat(NODE_ID_LEN), ..wide }.to_core().is_ok());
+    }
+
     #[test]
     fn test_fpc_selector() {
         let selector = FpcSelector::new(0.5, 0.8, None).unwrap();
         let threshold = selector.threshold(0, 20);
-        assert!(threshold >= 10 && threshold <= 16);
+        assert!((10..=16).contains(&threshold));
     }
 
     #[test]

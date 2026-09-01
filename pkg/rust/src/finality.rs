@@ -202,10 +202,19 @@ pub fn equal_stake_quasar(n: i64) -> i64 {
 
 /// The minimum vote count that CAN reach the two-thirds-by-stake predicate for a
 /// weight vector: order heaviest first and count until the running stake first
-/// exceeds the floor. Returns 0 for an empty set or zero total — no stake model,
-/// fail closed.
+/// exceeds the floor. Returns 0 for an empty set, a zero total, or a vector with
+/// no representable total — no stake model, fail closed.
 pub fn weighted_quasar(weights: &[u64]) -> usize {
-    let total: u64 = weights.iter().copied().sum();
+    // Checked, and out the same door as a zero total. A vector summing past
+    // `u64::MAX` has no total, so it has no two thirds of one to size a count
+    // against. A plain sum would wrap to a SMALL total and hand back a count
+    // below the real stake quorum — a count gate sized under the predicate it
+    // exists to anticipate, which is the fail-open direction. No admitted set
+    // can be such a vector: `ValidatorSet::insert` refuses the sum at the door.
+    let total = match weights.iter().try_fold(0u64, |acc, &w| acc.checked_add(w)) {
+        Some(total) => total,
+        None => return 0,
+    };
     if total == 0 || weights.is_empty() {
         return 0;
     }
@@ -216,6 +225,7 @@ pub fn weighted_quasar(weights: &[u64]) -> usize {
     let mut count = 0usize;
     for w in sorted {
         count += 1;
+        // Bounded by `total`, which is representable, so the running sum is too.
         cum += w;
         if cum > floor {
             break;
@@ -267,5 +277,31 @@ impl Finality {
             Finality::Quasar => "quasar",
             Finality::Horizon => "horizon",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::weighted_quasar;
+
+    /// A weight vector with no representable total takes the fail-closed exit,
+    /// not the wrapped one. Two validators of 2^63 sum to 2^64: a plain sum
+    /// wraps that to 0 in release and panics in debug, and a wrapped total of 0
+    /// would hand `two_thirds_stake_floor` a floor the first voter clears — a
+    /// count gate of 1 for a set no count can finalize. One less than that pair
+    /// is a real total, and still counted exactly.
+    #[test]
+    fn a_weight_vector_with_no_total_is_fail_closed() {
+        assert_eq!(weighted_quasar(&[1 << 63, 1 << 63]), 0);
+        assert_eq!(weighted_quasar(&[u64::MAX, 1]), 0);
+        assert_eq!(weighted_quasar(&[u64::MAX / 2, u64::MAX / 2]), 2);
+        assert_eq!(weighted_quasar(&[u64::MAX]), 1);
+    }
+
+    /// The exits that were already there stay where they were.
+    #[test]
+    fn no_stake_model_is_zero() {
+        assert_eq!(weighted_quasar(&[]), 0);
+        assert_eq!(weighted_quasar(&[0, 0, 0]), 0);
     }
 }

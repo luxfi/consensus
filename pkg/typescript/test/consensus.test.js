@@ -148,13 +148,17 @@ describe('Lux Quasar Consensus SDK', () => {
 
   describe('NodeId', () => {
     it('should create from hex string', () => {
-      const hexId = 'ab'.repeat(32);
+      const hexId = 'ab'.repeat(20);
       const nodeId = new NodeId(hexId);
       assert.strictEqual(nodeId.toHex(), hexId);
     });
 
+    // A node id is 20 bytes, and a wider one is refused rather than trimmed:
+    // 32 cut down to 20 maps two validators onto one identity, which is one
+    // signer slot and one share of the weight for both of them.
     it('should reject wrong length', () => {
-      assert.throws(() => new NodeId('ab'.repeat(16)), /32 bytes/);
+      assert.throws(() => new NodeId('ab'.repeat(16)), /20 bytes/);
+      assert.throws(() => new NodeId('ab'.repeat(32)), /20 bytes/);
     });
   });
 
@@ -192,12 +196,18 @@ describe('Lux Quasar Consensus SDK', () => {
     it('should record votes and reach consensus', () => {
       const blockId = '01'.repeat(32);
 
-      // Record enough votes to reach quorum (testnet alpha=0.6, k=5, need ceil(0.6*5)=3 votes)
-      for (let i = 0; i < 5; i++) {
+      // Only members are counted, so the voters are registered first. Nine of
+      // them: testnet is k=5, beta=5, the count opens at k votes and the
+      // decision needs beta affirmative rounds after that, and a round here is
+      // a vote. A node id is 20 bytes = 40 hex characters.
+      for (let i = 0; i < 9; i++) {
+        engine.addValidator(i.toString(16).padStart(40, '0'), 100);
+      }
+      for (let i = 0; i < 9; i++) {
         const vote = {
           blockId: blockId,
           voteType: VoteType.Preference,
-          voter: i.toString(16).padStart(64, '0'),
+          voter: i.toString(16).padStart(40, '0'),
         };
         engine.recordVote(vote);
       }
@@ -222,13 +232,15 @@ describe('Lux Quasar Consensus SDK', () => {
         timestamp: Date.now(),
       });
 
-      // Create batch of votes
+      // Create batch of votes, from ten registered members
       const votes = [];
       for (let i = 0; i < 10; i++) {
+        const voter = (100 + i).toString(16).padStart(40, '0');
+        engine.addValidator(voter, 100);
         votes.push({
           blockId: blockId,
           voteType: VoteType.Preference,
-          voter: (100 + i).toString(16).padStart(64, '0'),
+          voter: voter,
         });
       }
 
@@ -237,9 +249,13 @@ describe('Lux Quasar Consensus SDK', () => {
     });
 
     it('should add validators', () => {
-      const nodeId = 'aa'.repeat(32);
+      const nodeId = 'aa'.repeat(20);
       // Should not throw
       engine.addValidator(nodeId, 100);
+
+      // The same node twice is refused, and a 32-byte id is not a node id.
+      assert.throws(() => engine.addValidator(nodeId, 100));
+      assert.throws(() => engine.addValidator('aa'.repeat(32), 100), /20 bytes/);
     });
 
     it('should get height', () => {
@@ -251,7 +267,7 @@ describe('Lux Quasar Consensus SDK', () => {
       const vote = {
         blockId: 'ff'.repeat(32),
         voteType: VoteType.Preference,
-        voter: '00'.repeat(32),
+        voter: '00'.repeat(20),
       };
       assert.throws(() => engine.recordVote(vote), /Block not found/);
     });
@@ -294,13 +310,16 @@ describe('Lux Quasar Consensus SDK', () => {
           assert.strictEqual(engine.getStatus(block.id), BlockStatus.Processing);
         }
 
-        // Vote on all blocks (need at least ceil(0.6*5)=3 votes for testnet)
+        // Vote on all blocks, from registered members — an engine holding no
+        // validators counts nobody
         for (const block of blocks) {
           for (let i = 0; i < 5; i++) {
+            const voter = (block.height * 10 + i).toString(16).padStart(40, '0');
+            engine.addValidator(voter, 100);
             engine.recordVote({
               blockId: block.id,
               voteType: VoteType.Preference,
-              voter: (block.height * 10 + i).toString(16).padStart(64, '0'),
+              voter: voter,
             });
           }
         }
@@ -333,12 +352,14 @@ describe('Lux Quasar Consensus SDK', () => {
           timestamp: Date.now(),
         });
 
-        // Need ceil(0.69*21) = 15 votes for mainnet
+        // Need ceil(0.69*21) = 15 votes for mainnet, all from members
         for (let i = 0; i < 21; i++) {
+          const voter = i.toString(16).padStart(40, '0');
+          engine.addValidator(voter, 100);
           engine.recordVote({
             blockId: blockId,
             voteType: VoteType.Preference,
-            voter: i.toString(16).padStart(64, '0'),
+            voter: voter,
           });
         }
 
@@ -377,12 +398,14 @@ describe('Lux Quasar Consensus SDK', () => {
           timestamp: Date.now(),
         });
 
-        // Vote to reach consensus
+        // Vote to reach consensus, from members
         for (let i = 0; i < 5; i++) {
+          const voter = i.toString(16).padStart(40, '0');
+          engine.addValidator(voter, 100);
           engine.recordVote({
             blockId: blockId,
             voteType: VoteType.Preference,
-            voter: i.toString(16).padStart(64, '0'),
+            voter: voter,
           });
         }
 
@@ -399,8 +422,9 @@ describe('Lux Quasar Consensus SDK', () => {
   });
 
   describe('Cross-Language Compatibility', () => {
-    it('should use 32-byte IDs for cross-language consensus', () => {
-      // Verify ID format matches Rust SDK
+    it('should use 32-byte block IDs for cross-language consensus', () => {
+      // Verify ID format matches Rust SDK. A block id is 32 bytes; a node id is
+      // 20 — see the NodeId suite — and the two are not interchangeable.
       const rustStyleId = 'deadbeef'.repeat(8);  // 32 bytes
       const blockId = new BlockId(rustStyleId);
       assert.strictEqual(blockId.toHex(), rustStyleId);
