@@ -10,9 +10,10 @@ fn make_id(b: u8) -> ID {
     ID::from(arr)
 }
 
-/// Helper to create a 32-byte NodeID from a single byte
+/// Helper to create a 20-byte NodeID from a single byte — a validator identity
+/// is 20 bytes, the width Go names a node by, and never a block id.
 fn make_node_id(b: u8) -> NodeID {
-    let mut arr = [0u8; 32];
+    let mut arr = [0u8; 20];
     arr[0] = b;
     NodeID::from(arr)
 }
@@ -62,7 +63,7 @@ fn test_consensus_flow() {
     // nobody, and an engine that counts them is sampling the network rather
     // than the validator set.
     for i in 0..3 {
-        chain.add_validator(make_node_id(i), 1);
+        chain.add_validator(make_node_id(i), 1).unwrap();
     }
 
     // Create and add a block
@@ -115,7 +116,7 @@ fn votes_from_outside_the_committee_are_refused() {
 
     // With a committee, its members are counted and a stranger still is not.
     for i in 0..3 {
-        chain.add_validator(make_node_id(i), 1);
+        chain.add_validator(make_node_id(i), 1).unwrap();
     }
     for i in 0..3 {
         let vote = Vote::new(block.id.clone(), VoteType::Preference, make_node_id(i));
@@ -157,7 +158,7 @@ fn test_full_quasar_flow() {
 
     // Add validators
     for i in 0..10 {
-        engine.add_validator(make_node_id(i), 1);
+        engine.add_validator(make_node_id(i), 1).unwrap();
     }
 
     // Create chain of blocks

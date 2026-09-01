@@ -15,14 +15,15 @@
 
 use blst::min_pk::SecretKey;
 use lux_consensus::cert::{
-    pop_message, CertError, QuorumCert, StakeSource, ValidatorSet, Vote, VoteVerifier, DST,
-    POP_DST, SIGNATURE_LEN,
+    CertError, NodeId, QuorumCert, StakeSource, ValidatorSet, Vote, VoteVerifier, DST,
+    SIGNATURE_LEN,
 };
-use lux_consensus::finality::{canonical_vote_message, Finality, Id, Position};
+use lux_consensus::finality::{canonical_vote_message, Finality, Position};
+use lux_consensus::pop;
 
 /// A validator: a key, an id, and a weight.
 struct Signer {
-    id: Id,
+    id: NodeId,
     sk: SecretKey,
     weight: u64,
 }
@@ -32,7 +33,7 @@ impl Signer {
     fn new(n: u8, weight: u64) -> Self {
         let ikm = [n; 32];
         let sk = SecretKey::key_gen(&ikm, &[]).expect("key_gen");
-        let mut id = [0u8; 32];
+        let mut id = [0u8; 20];
         id[0] = n;
         Signer { id, sk, weight }
     }
@@ -48,8 +49,7 @@ impl Signer {
     /// The proof of possession this validator presents at registration: a
     /// signature over its own (node, key) under the proof-of-possession DST.
     fn pop(&self) -> Vec<u8> {
-        let msg = pop_message(&self.id, &self.public());
-        self.sk.sign(&msg, POP_DST, &[]).compress().to_vec()
+        pop::sign(&self.sk, &self.id, &self.public())
     }
 
     fn vote(&self, message: &[u8]) -> Vote {
@@ -59,6 +59,13 @@ impl Signer {
             signature: self.sign(message),
         }
     }
+}
+
+/// A validator identity from one byte: 20 bytes, the width Go names a node by.
+fn node(n: u8) -> NodeId {
+    let mut id = [0u8; 20];
+    id[0] = n;
+    id
 }
 
 /// A committee of `n` equal-weight validators, ids ascending.
@@ -328,19 +335,35 @@ fn exactly_two_thirds_is_refused_and_one_more_passes() {
     assert_eq!(three.verify_weighted(&set, &set, 0), Ok(()));
 }
 
-/// A set with no stake cannot support a claim about a fraction of its stake.
+/// An epoch that resolves to no stake at all cannot support a claim about a
+/// fraction of its stake.
+///
+/// The signatures still verify — membership and stake are separate facts, read
+/// from separate sources, and this is the case where the weighing one is empty.
+/// It is stated against a stake source rather than by registering zero-weight
+/// validators, because registration now refuses those outright: see
+/// `a_zero_weight_signer_is_refused_at_registration`.
 #[test]
 fn zero_total_stake_fails_closed() {
-    let (signers, _) = committee(5, 0);
-    let mut set = ValidatorSet::new();
-    for s in &signers {
-        set.insert(s.id, 0, &s.public(), &s.pop()).expect("insert");
+    struct NoStake(i64);
+    impl StakeSource for NoStake {
+        fn weight(&self, _: &NodeId, _: u64) -> u64 {
+            0
+        }
+        fn total_stake(&self, _: u64) -> u64 {
+            0
+        }
+        fn validator_count(&self, _: u64) -> i64 {
+            self.0
+        }
     }
+
+    let (signers, set) = committee(5, 100);
     let cert = valid_cert(&signers, 4, 4);
 
     assert_eq!(cert.verify(&set, 0), Ok(()));
     assert_eq!(
-        cert.verify_weighted(&set, &set, 0),
+        cert.verify_weighted(&set, &NoStake(5), 0),
         Err(CertError::StakeZero { epoch_height: 0 })
     );
 }
@@ -391,7 +414,7 @@ fn nova_over_an_unresolved_set_fails_closed() {
     let (_, keys) = committee(5, 100);
     struct Empty;
     impl StakeSource for Empty {
-        fn weight(&self, _: &Id, _: u64) -> u64 {
+        fn weight(&self, _: &NodeId, _: u64) -> u64 {
             0
         }
         fn total_stake(&self, _: u64) -> u64 {
@@ -432,7 +455,7 @@ fn each_signature_is_checked_against_its_own_signer() {
 
     // A stranger in place of a member: the id resolves to no key.
     let mut stranger = cert.clone();
-    stranger.votes[3].node_id = [0xEE; 32];
+    stranger.votes[3].node_id = [0xEE; 20];
     assert_eq!(stranger.verify(&set, 0), Err(CertError::SigInvalid(3)));
 
     // One id repeated — the ordering clause catches it before any key is read.
@@ -484,15 +507,188 @@ fn every_byte_of_the_message_is_bound() {
 
 /// A key that is not a valid group element never enters the set, so there is no
 /// state in which a registered validator has nothing to verify against.
+///
+/// The error KIND is asserted, not merely the refusal: Go names which clause a
+/// registration died on, and a port that refuses everything for one reason is
+/// not the same standard.
 #[test]
 fn an_invalid_public_key_is_refused_at_registration() {
+    let s = Signer::new(1, 100);
     let mut set = ValidatorSet::new();
-    assert!(set.insert([1u8; 32], 100, &[0u8; 48], &[]).is_err());
-    assert!(set.insert([2u8; 32], 100, &[0xABu8; 48], &[]).is_err());
-    assert!(set.insert([3u8; 32], 100, &[], &[]).is_err());
+
+    // 48 bytes that are not a point, in the two shapes a wire decode produces.
+    assert_eq!(set.insert(node(1), 100, &[0u8; 48], &s.pop()), Err(CertError::KeyEncoding));
+    assert_eq!(set.insert(node(2), 100, &[0xABu8; 48], &s.pop()), Err(CertError::KeyEncoding));
     // A 96-byte signature offered where a 48-byte key belongs.
-    assert!(set.insert([4u8; 32], 100, &[0u8; 96], &[]).is_err());
+    assert_eq!(set.insert(node(4), 100, &[0u8; 96], &s.pop()), Err(CertError::KeyEncoding));
+    // No key at all is not a malformed key: it names the other door.
+    assert_eq!(set.insert(node(3), 100, &[], &s.pop()), Err(CertError::NoKey));
+
+    assert!(set.is_empty(), "nothing refused left a member behind");
+}
+
+// ---------------------------------------------------- the admission rule, by clause
+//
+// `ValidatorSet::insert` is the port of Go's `validators.Register`. These pin it
+// clause by clause and in its order, because the whole value of the rule is that
+// a registration the network refuses is refused here FOR THE SAME REASON.
+
+/// POSSESSION IS REQUIRED. A key is admitted only with a proof that this node
+/// holds its secret. Every proof that is not that one is refused, and the key
+/// never becomes a member — so `nova_signer_floor` counts holders of secrets.
+#[test]
+fn a_key_without_its_proof_is_refused() {
+    let s = Signer::new(1, 100);
+    let other = Signer::new(2, 100);
+
+    for (what, proof) in [
+        ("no proof at all", Vec::new()),
+        ("96 zero bytes", vec![0u8; SIGNATURE_LEN]),
+        ("96 bytes of garbage", vec![0xABu8; SIGNATURE_LEN]),
+        ("a proof one byte short", s.pop()[..95].to_vec()),
+        ("another validator's proof", other.pop()),
+        // The right secret, the right key, the WRONG node — the proof binds the
+        // identity, so it does not travel to a second one.
+        ("this key's proof, made for another node", pop::sign(&s.sk, &other.id, &s.public())),
+        // A signature by this secret over this preimage, in the VOTE domain.
+        // Collapse the two tags and this passes.
+        (
+            "a vote-domain signature over the proof preimage",
+            s.sk.sign(&pop::message(&s.id, &s.public()), DST, &[]).compress().to_vec(),
+        ),
+    ] {
+        let mut set = ValidatorSet::new();
+        assert_eq!(
+            set.insert(s.id, 100, &s.public(), &proof),
+            Err(CertError::PopInvalid),
+            "{what} was accepted as a proof of possession",
+        );
+        assert!(set.is_empty(), "{what} left a member behind");
+    }
+
+    // And the real proof is admitted, so the refusals above are the clause
+    // biting and not registration refusing everything.
+    let mut set = ValidatorSet::new();
+    assert_eq!(set.insert(s.id, 100, &s.public(), &s.pop()), Ok(()));
+    assert!(set.can_verify(&s.id));
+}
+
+/// ONE KEY, ONE NODE. A second node cannot claim a key already counted, even
+/// holding the secret and presenting a genuine proof for its own id — which is
+/// what makes a floor on distinct voters a floor on distinct signers rather than
+/// on ids one holder can mint at will.
+#[test]
+fn one_key_belongs_to_one_node() {
+    let s = Signer::new(1, 100);
+    let second = node(9);
+
+    let mut set = ValidatorSet::new();
+    set.insert(s.id, 100, &s.public(), &s.pop()).expect("first id");
+
+    // A genuine, node-bound proof for the second id — possession is satisfied,
+    // and uniqueness is what refuses it.
+    let proof = pop::sign(&s.sk, &second, &s.public());
+    assert_eq!(pop::verify(&second, &s.public(), &proof), Ok(()), "the proof is genuine");
+    assert_eq!(set.insert(second, 100, &s.public(), &proof), Err(CertError::DuplicateKey));
+
+    assert_eq!(set.len(), 1, "the second id never became a member");
+    assert!(!set.contains(&second));
+}
+
+/// ONE NODE, ONE KEY. A node is admitted exactly once, so one operator cannot
+/// occupy several signer slots and several shares of the weight — which
+/// possession cannot catch, because each of those proofs is genuine.
+#[test]
+fn one_node_holds_one_key() {
+    let a = Signer::new(1, 100);
+    let b = Signer::new(2, 100);
+
+    let mut set = ValidatorSet::new();
+    set.insert(a.id, 100, &a.public(), &a.pop()).expect("admitted");
+
+    // The same node under a SECOND key it genuinely holds.
+    let second = pop::sign(&b.sk, &a.id, &b.public());
+    assert_eq!(pop::verify(&a.id, &b.public(), &second), Ok(()), "the proof is genuine");
+    assert_eq!(set.insert(a.id, 100, &b.public(), &second), Err(CertError::DuplicateNode));
+
+    // The identical registration offered twice fails on the KEY axis first,
+    // which is the order Go iterates them in.
+    assert_eq!(set.insert(a.id, 100, &a.public(), &a.pop()), Err(CertError::DuplicateKey));
+
+    // Neither door restates a member: an unkeyed admission of a keyed node is
+    // refused, and so is the reverse — a re-admission cannot quietly de-key a
+    // validator or change its weight.
+    assert_eq!(set.insert_unkeyed(a.id, 5), Err(CertError::DuplicateNode));
+    set.insert_unkeyed(b.id, 5).expect("a new node, no key");
+    assert_eq!(set.insert(b.id, 100, &b.public(), &b.pop()), Err(CertError::DuplicateNode));
+
+    // Nothing moved.
+    assert_eq!(set.len(), 2);
+    assert_eq!(set.weight(&a.id, 0), 100);
+    assert_eq!(set.public_key(&a.id).map(|k| k.compress()), Some(a.public()));
+    assert!(!set.can_verify(&b.id));
+
+    // Re-keying is a retraction and a fresh admission, and nothing else: the old
+    // key is freed with the member, and the node comes back under the new one.
+    set.remove(&a.id);
+    assert!(!set.contains(&a.id));
+    set.insert(a.id, 100, &b.public(), &second).expect("re-admitted under a new key");
+    assert_eq!(set.public_key(&a.id).map(|k| k.compress()), Some(b.public()));
+}
+
+/// A KEYED SIGNER WITH NO STAKE is a phantom: it raises the count of distinct
+/// signers a floor is read against without raising the weight. Refused at the
+/// door, so the disagreement between "how many signed" and "how much signed"
+/// cannot be introduced by registration.
+#[test]
+fn a_zero_weight_signer_is_refused_at_registration() {
+    let s = Signer::new(1, 100);
+    let mut set = ValidatorSet::new();
+
+    assert_eq!(set.insert(s.id, 0, &s.public(), &s.pop()), Err(CertError::ZeroWeight));
     assert!(set.is_empty());
+
+    // The clause ORDER, pinned: a registration that is both weightless and
+    // unproven is refused for its weight, because Go checks the O(1) clause
+    // first and a port that reordered them would name a different reason — and
+    // would spend a pairing on a registration that was inadmissible on its face.
+    assert_eq!(set.insert(s.id, 0, &s.public(), &[]), Err(CertError::ZeroWeight));
+    // No key beats both, as it does in Go.
+    assert_eq!(set.insert(s.id, 0, &[], &[]), Err(CertError::NoKey));
+
+    // A member with no KEY may hold no stake: it can never sign, so it is no
+    // phantom signer — it only raises `n`, which is the direction that makes
+    // every floor harder rather than easier. Go's flatten carries these too.
+    set.insert_unkeyed(s.id, 0).expect("a keyless member may be weightless");
+    assert_eq!(set.len(), 1);
+    assert!(!set.can_verify(&s.id));
+}
+
+/// The proof registration checks is the NODE-BOUND one the network signs, and
+/// the node in it is the 20-byte NodeID: the preimage is `node ‖ key`, 68 bytes.
+///
+/// A proof made over the id padded to 32 bytes — the width this set used to name
+/// its validators by — is refused. So the two spellings are not both valid, and
+/// this crate's registration and `pop`'s frozen Go vectors are one standard.
+#[test]
+fn the_proof_is_bound_to_the_twenty_byte_identity() {
+    let s = Signer::new(1, 100);
+    assert_eq!(s.id.len(), 20);
+    assert_eq!(pop::message(&s.id, &s.public()).len(), 68);
+
+    let mut padded = Vec::new();
+    padded.extend_from_slice(&s.id);
+    padded.extend_from_slice(&[0u8; 12]); // the id as 32 bytes, zero-extended
+    padded.extend_from_slice(&s.public());
+    let wrong_width = s.sk.sign(&padded, pop::POP_DST, &[]).compress().to_vec();
+
+    let mut set = ValidatorSet::new();
+    assert_eq!(
+        set.insert(s.id, 100, &s.public(), &wrong_width),
+        Err(CertError::PopInvalid),
+        "a proof over the 32-byte spelling of the id was accepted",
+    );
+    assert_eq!(set.insert(s.id, 100, &s.public(), &s.pop()), Ok(()));
 }
 
 /// Assembly sorts and drops non-accepts, so an assembled cert satisfies the
@@ -507,7 +703,7 @@ fn assembly_is_canonical() {
     votes.reverse();
     votes.push(votes[0].clone()); // a duplicate
     votes.push(Vote {
-        node_id: [0x99; 32],
+        node_id: [0x99; 20],
         accept: false, // a reject
         signature: vec![0u8; SIGNATURE_LEN],
     });
@@ -594,7 +790,7 @@ fn the_engine_issues_certificates_only_from_signatures() {
 
     // A signer swapped for a stranger: the id resolves to no key.
     let mut swapped = cert.clone();
-    swapped.votes[3].node_id = [0xEEu8; 32];
+    swapped.votes[3].node_id = [0xEEu8; 20];
     assert!(!q.verify_certificate(&swapped));
 
     // Three of the four, which is the declared threshold but not the export
@@ -623,8 +819,8 @@ fn a_keyless_member_cannot_be_certified() {
         .unwrap();
     q.add_validator_with_key(NodeID::from(signers[1].id), 100, &signers[1].public(), &signers[1].pop())
         .unwrap();
-    q.add_validator(NodeID::from(signers[2].id), 100);
-    q.add_validator(NodeID::from(signers[3].id), 100);
+    q.add_validator(NodeID::from(signers[2].id), 100).unwrap();
+    q.add_validator(NodeID::from(signers[3].id), 100).unwrap();
 
     assert_eq!(q.validator_count(), 4);
     for s in &signers {
@@ -659,10 +855,10 @@ fn the_engine_refuses_an_invalid_key() {
 
     let mut q = QuasarConsensus::new(&QuasarConfig::testnet());
     assert!(q
-        .add_validator_with_key(NodeID::from([1u8; 32]), 100, &[0u8; 48], &[])
+        .add_validator_with_key(NodeID::from([1u8; 20]), 100, &[0u8; 48], &[])
         .is_err());
     assert_eq!(q.validator_count(), 0);
-    assert!(!q.is_validator(&NodeID::from([1u8; 32])));
+    assert!(!q.is_validator(&NodeID::from([1u8; 20])));
 }
 
 /// Assembly cannot manufacture a quorum it does not have.

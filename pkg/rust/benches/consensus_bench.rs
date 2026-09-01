@@ -14,8 +14,9 @@ use std::hint::black_box;
 use blst::min_pk::SecretKey;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
-use lux_consensus::cert::{pop_message, QuorumCert, ValidatorSet, Vote, DST, POP_DST};
-use lux_consensus::finality::{canonical_vote_message, Finality, Id, Position};
+use lux_consensus::cert::{NodeId, QuorumCert, ValidatorSet, Vote, DST};
+use lux_consensus::finality::{canonical_vote_message, Finality, Position};
+use lux_consensus::pop;
 use lux_consensus::{sha256, Engine, FpcSelector, QuasarConfig, QuasarEngine, VoteType};
 
 fn position() -> Position {
@@ -34,8 +35,8 @@ fn position() -> Position {
     }
 }
 
-fn node_id(n: usize) -> Id {
-    let mut id = [0u8; 32];
+fn node_id(n: usize) -> NodeId {
+    let mut id = [0u8; 20];
     id[..8].copy_from_slice(&(n as u64).to_be_bytes());
     id
 }
@@ -51,11 +52,8 @@ fn certified(n: usize) -> (ValidatorSet, QuorumCert) {
         ikm[..8].copy_from_slice(&(i as u64 + 1).to_be_bytes());
         let sk = SecretKey::key_gen(&ikm, &[]).expect("key_gen");
         let id = node_id(i);
-        let pop = sk
-            .sign(&pop_message(&id, &sk.sk_to_pk().compress()), POP_DST, &[])
-            .compress()
-            .to_vec();
-        set.insert(id, 100, &sk.sk_to_pk().compress(), &pop).expect("insert");
+        let proof = pop::sign(&sk, &id, &sk.sk_to_pk().compress());
+        set.insert(id, 100, &sk.sk_to_pk().compress(), &proof).expect("insert");
         votes.push(Vote {
             node_id: id,
             accept: true,
@@ -129,7 +127,7 @@ fn bench_ballots(c: &mut Criterion) {
                 let mut engine = QuasarEngine::new(config.clone());
                 engine.start().unwrap();
                 for i in 0..21 {
-                    engine.add_validator(lux_consensus::NodeID::from(node_id(i)), 1);
+                    engine.add_validator(lux_consensus::NodeID::from(node_id(i)), 1).unwrap();
                 }
                 let block = lux_consensus::Block::new(
                     lux_consensus::ID::from([11u8; 32]),

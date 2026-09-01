@@ -32,8 +32,13 @@ let block = Block::new(
 );
 engine.add(block.clone()).unwrap();
 
+// A validator is named by its 20-byte NodeID — never the 32-byte block id.
 for i in 0..20 {
-    let vote = Vote::new(block.id.clone(), VoteType::Preference, NodeID::from([i; 32]));
+    engine.add_validator(NodeID::from([i; 20]), 1).unwrap();
+}
+
+for i in 0..20 {
+    let vote = Vote::new(block.id.clone(), VoteType::Preference, NodeID::from([i; 20]));
     engine.record_vote(vote).unwrap();
 }
 

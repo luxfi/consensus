@@ -43,8 +43,9 @@
 //! ```
 
 use blst::min_pk::SecretKey;
-use lux_consensus::cert::{pop_message, QuorumCert, ValidatorSet, Vote, VoteVerifier, POP_DST};
-use lux_consensus::finality::{canonical_vote_message, Finality, Id, Position};
+use lux_consensus::cert::{NodeId, QuorumCert, ValidatorSet, Vote, VoteVerifier};
+use lux_consensus::finality::{canonical_vote_message, Finality, Position};
+use lux_consensus::pop;
 
 /// The position the Go program signed over.
 fn position() -> Position {
@@ -82,8 +83,11 @@ const GO_SIGNERS: [(&str, &str); 3] = [
     ),
 ];
 
-fn node_id(n: u8) -> Id {
-    let mut id = [0u8; 32];
+/// A validator identity: 20 bytes, the width Go names a node by. The node id
+/// enters no signed message, so these vectors are unchanged by its width — the
+/// Go message and the Go signatures below are the same bytes they always were.
+fn node_id(n: u8) -> NodeId {
+    let mut id = [0u8; 20];
     id[0] = n;
     id
 }
@@ -112,9 +116,9 @@ fn go_set() -> (ValidatorSet, Vec<Vote>) {
             pk_bytes,
             "signer {i}: Go's SecretKeyFromSeed and this crate's key_gen disagree on the seed",
         );
-        let pop = sk.sign(&pop_message(&id, &pk_bytes), POP_DST, &[]).compress().to_vec();
+        let proof = pop::sign(&sk, &id, &pk_bytes);
 
-        set.insert(id, 100, &pk_bytes, &pop)
+        set.insert(id, 100, &pk_bytes, &proof)
             .expect("Go public key rejected at registration");
         let signature = hex::decode(sig).unwrap();
         assert!(

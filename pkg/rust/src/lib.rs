@@ -27,7 +27,7 @@
 //!
 //!     // The committee. Only its members' ballots are counted.
 //!     for i in 0..20 {
-//!         engine.add_validator(NodeID::from([i; 32]), 1);
+//!         engine.add_validator(NodeID::from([i; 20]), 1).unwrap();
 //!     }
 //!
 //!     // Add a block
@@ -44,7 +44,7 @@
 //!         let vote = Vote::new(
 //!             block.id.clone(),
 //!             VoteType::Preference,
-//!             NodeID::from([i; 32]),
+//!             NodeID::from([i; 20]),
 //!         );
 //!         engine.record_vote(vote).unwrap();
 //!     }
@@ -149,8 +149,42 @@ pub mod types {
         }
     }
 
-    /// Node identifier (32 bytes)
-    pub type NodeID = ID;
+    /// A validator, by the 20-byte NodeID the network names it by.
+    ///
+    /// It is a type of its own and not an alias of [`ID`], because a node is not
+    /// a block. Go's `ids.NodeID` is 20 bytes and the proof of possession a
+    /// validator registers with signs `node ‖ key` over exactly those 20 — so a
+    /// set that named validators by the 32-byte block id would compute a
+    /// different preimage from the same registrant and could not check the
+    /// network's proofs at all. Being a distinct type, the two cannot be passed
+    /// for one another by accident.
+    ///
+    /// There is deliberately no lossy constructor. `ID::from_slice` pads and
+    /// truncates, which is convenient for a hash and is exactly the hazard here:
+    /// truncating 32 bytes into 20 maps distinct nodes onto one identity, and
+    /// one identity is one signer slot and one share of the weight. The only way
+    /// in is 20 bytes that are already 20 bytes.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub struct NodeID(pub crate::pop::NodeId);
+
+    impl NodeID {
+        pub fn as_bytes(&self) -> &crate::pop::NodeId {
+            &self.0
+        }
+    }
+
+    impl From<crate::pop::NodeId> for NodeID {
+        fn from(data: crate::pop::NodeId) -> Self {
+            NodeID(data)
+        }
+    }
+
+    impl fmt::Display for NodeID {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", hex::encode(self.0))
+        }
+    }
+
     pub type Hash = ID;
 
     /// Block status in consensus
@@ -571,7 +605,7 @@ pub mod photon {
 
         /// Update brightness based on vote success/failure
         pub fn illuminate(&mut self, id: &NodeID, success: bool) {
-            let current = self.lux.entry(id.clone()).or_insert(self.base);
+            let current = self.lux.entry(*id).or_insert(self.base);
 
             if success {
                 *current *= self.success_mult;
@@ -671,7 +705,7 @@ pub mod photon {
                 }
 
                 used[best_idx] = true;
-                selected.push(self.peers[best_idx].clone());
+                selected.push(self.peers[best_idx]);
             }
 
             selected
@@ -1123,9 +1157,12 @@ pub mod quasar {
         ///
         /// It is a member and it holds stake, so its ballots count toward
         /// preference — but it cannot contribute to a certificate until its key
-        /// is known.
-        pub fn add_validator(&mut self, id: NodeID, weight: u64) {
-            self.validators.insert_unkeyed(*id.as_bytes(), weight);
+        /// is known. A node already in the set is refused rather than restated:
+        /// one node, one admission, on this door as on the keyed one.
+        pub fn add_validator(&mut self, id: NodeID, weight: u64) -> Result<()> {
+            self.validators
+                .insert_unkeyed(*id.as_bytes(), weight)
+                .map_err(|e| ConsensusError::CryptoError(format!("{e:?}")))
         }
 
         /// Register a validator with the BLS key it signs with, and its proof
@@ -1194,7 +1231,8 @@ pub mod quasar {
             let message = canonical_vote_message(&position, true);
 
             let mut accepted: Vec<CertVote> = Vec::new();
-            let mut seen: std::collections::HashSet<[u8; 32]> = std::collections::HashSet::new();
+            let mut seen: std::collections::HashSet<crate::pop::NodeId> =
+                std::collections::HashSet::new();
 
             for v in votes.iter().filter(|v| v.prefer()) {
                 let id = *v.voter.as_bytes();
@@ -1380,9 +1418,10 @@ pub mod engine {
             QuasarEngine::new(QuasarConfig::mainnet())
         }
 
-        /// Add a validator
-        pub fn add_validator(&mut self, id: NodeID, weight: u64) {
-            self.quasar.add_validator(id, weight);
+        /// Add a validator this engine has no signing key for. Refused if it is
+        /// already a member — see `QuasarConsensus::add_validator`.
+        pub fn add_validator(&mut self, id: NodeID, weight: u64) -> Result<()> {
+            self.quasar.add_validator(id, weight)
         }
 
         /// Get configuration
@@ -1642,7 +1681,7 @@ mod tests {
         let config = QuasarConfig::testnet();
         let mut luminance = photon::Luminance::new(&config);
 
-        let node = NodeID::from([1u8; 32]);
+        let node = NodeID::from([1u8; 20]);
 
         // Initial brightness
         assert_eq!(luminance.brightness(&node), 1.0);
@@ -1686,7 +1725,7 @@ mod tests {
             let vote = Vote::new(
                 block_id.clone(),
                 VoteType::Preference,
-                NodeID::from([i; 32]),
+                NodeID::from([i; 20]),
             );
             wave.record_vote(vote);
         }
@@ -1706,7 +1745,7 @@ mod tests {
 
         // Add validators
         for i in 0..5 {
-            engine.add_validator(NodeID::from([i; 32]), 1);
+            engine.add_validator(NodeID::from([i; 20]), 1).unwrap();
         }
 
         // Add a block
@@ -1723,7 +1762,7 @@ mod tests {
             let vote = Vote::new(
                 block.id.clone(),
                 VoteType::Preference,
-                NodeID::from([i; 32]),
+                NodeID::from([i; 20]),
             );
             engine.record_vote(vote).unwrap();
         }
@@ -1743,7 +1782,7 @@ mod tests {
 
         // Add validators
         for i in 0..10 {
-            engine.add_validator(NodeID::from([i; 32]), 1);
+            engine.add_validator(NodeID::from([i; 20]), 1).unwrap();
         }
 
         // Create chain of blocks
@@ -1768,7 +1807,7 @@ mod tests {
                 let vote = Vote::new(
                     block.id.clone(),
                     VoteType::Preference,
-                    NodeID::from([i; 32]),
+                    NodeID::from([i; 20]),
                 );
                 engine.record_vote(vote).unwrap();
             }
