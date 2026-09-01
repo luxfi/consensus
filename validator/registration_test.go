@@ -404,3 +404,80 @@ func TestFlattenAndRegisterAgree(t *testing.T) {
 		}
 	}
 }
+
+// TestFlattenRefusesAKeyedSeatWithNoStake — the phantom signer, at the second
+// door. A seat that CAN sign and carries no stake raises the count of distinct
+// signers a floor is read against and contributes nothing to the weight the same
+// certificate is weighed by. Register has always refused it. This door admitted
+// it, so the clause the two doors are supposed to share meant one thing at
+// registration and another here.
+func TestFlattenRefusesAKeyedSeatWithNoStake(t *testing.T) {
+	in := map[ids.NodeID]*GetValidatorOutput{}
+	phantom, o := output(0x90, secret(t, 41), 0)
+	in[phantom] = o
+	n, o := output(0x91, secret(t, 42), 7)
+	in[n] = o
+
+	// What the unfixed door did with it, recorded so the change is visible: the
+	// upstream flatten is the behaviour this one carried, and it admits the
+	// phantom as a signer slot holding no stake.
+	loose, err := validators.FlattenValidatorSet(in)
+	if err != nil {
+		t.Fatalf("upstream flatten: %v", err)
+	}
+	var seen bool
+	for _, v := range loose.Validators {
+		if v.NodeIDs[0] == phantom {
+			seen = true
+			if v.Weight != 0 {
+				t.Fatalf("the phantom is not weightless upstream (%d) — reread this test", v.Weight)
+			}
+		}
+	}
+	if !seen {
+		t.Fatal("upstream no longer admits a keyed seat with no stake — reread this test")
+	}
+	if loose.TotalWeight != 7 {
+		t.Fatalf("upstream total %d, want 7: the phantom adds a signer and no weight", loose.TotalWeight)
+	}
+
+	// Ours refuses it, on the same clause and with the same sentinel Register
+	// returns, so a caller cannot tell the two doors apart by the error.
+	set, err := FlattenValidatorSet(in)
+	if !errors.Is(err, ErrZeroWeight) {
+		t.Fatalf("a keyed seat with no stake was admitted: %v", err)
+	}
+	// Refused whole, never trimmed: a set that silently loses a seat is a set
+	// whose weight no longer describes it.
+	if len(set.Validators) != 0 || set.TotalWeight != 0 {
+		t.Fatalf("a refused set leaked a partial result: %d validators, total %d",
+			len(set.Validators), set.TotalWeight)
+	}
+}
+
+// TestFlattenKeepsAKeylessSeatWithNoStake — the leniency this door deliberately
+// keeps. A seat with no key is skipped before the weight clause and never
+// becomes a signer, so a weightless one is not the phantom: it neither signs nor
+// weighs. Refusing it would halt a node over a member it merely holds no key
+// for, which is a fact about this node's view and not a defect in the set.
+func TestFlattenKeepsAKeylessSeatWithNoStake(t *testing.T) {
+	in := map[ids.NodeID]*GetValidatorOutput{}
+	n, o := output(0xA0, secret(t, 43), 11)
+	in[n] = o
+	keyless, o := output(0xA1, nil, 0)
+	in[keyless] = o
+
+	set, err := FlattenValidatorSet(in)
+	if err != nil {
+		t.Fatalf("a keyless seat with no stake was refused: %v", err)
+	}
+	if len(set.Validators) != 1 {
+		t.Fatalf("%d validators, want 1: a keyless seat is never a signer", len(set.Validators))
+	}
+	if set.Validators[0].NodeIDs[0] == keyless {
+		t.Fatal("a keyless seat became a signer")
+	}
+	if set.TotalWeight != 11 {
+		t.Fatalf("total weight %d, want 11", set.TotalWeight)
+	}
+}

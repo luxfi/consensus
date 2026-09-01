@@ -1207,6 +1207,17 @@
         "refusal": "zeroWeight"
       },
       {
+        "name": "zero_weight",
+        "note": "the same weight vector at the OTHER door. A set the chain already admitted is read here, not admitted here, so this door forgives what it cannot check — a key it cannot decode is skipped rather than refused. It does not forgive a key with no stake behind it. That seat is a phantom signer: it raises the count of distinct signers the Nova floor is read against and adds nothing to the stake the same certificate is weighed by, which is the disagreement between how many signed and how much signed that both floors exist to prevent. A door that admitted it would leave the floor meaning one thing at registration and another here",
+        "door": "FlattenValidatorSet",
+        "weights": [
+          "0",
+          "5"
+        ],
+        "admitted": false,
+        "refusal": "zeroWeight"
+      },
+      {
         "name": "weight_overflow",
         "note": "two seats whose stake sums past 2^64 are refused: a total that wrapped would make every floor read off it meaningless. Checked at the already-admitted door because Register demands possession of every key BEFORE it reaches its weight clause, so that clause cannot be reached without a key ceremony",
         "door": "FlattenValidatorSet",

@@ -279,3 +279,86 @@ fn the_admission_decision_is_the_one_go_made() {
         "expected 1 row at this crate's door, checked {checked}"
     );
 }
+
+/// The weight clause both of Go's doors enforce, checked at this crate's door.
+///
+/// Go has two doors and this crate has one. `Register` admits a fresh set and
+/// demands possession of every key; `FlattenValidatorSet` reads a set the chain
+/// already admitted, has no proof to check, and forgives a key it cannot decode.
+/// `ValidatorSet::insert` is the door here, and it demands possession — so most
+/// of what the corpus records at the already-admitted door is not answerable
+/// from this side, and the harness above skips it.
+///
+/// This row is the exception, for a precise reason: both doors refuse a keyed
+/// seat carrying no stake BEFORE any key material is read — Go checks it after
+/// the key is known to be present and before it is decoded, and `insert` checks
+/// it after `NoKey` and before `pop::verify`. A shaped key is therefore enough
+/// to reach the clause on either side, and the verdict Go froze is one this
+/// crate can be held to rather than one it merely skips.
+///
+/// The clause itself is the phantom signer: a seat that can sign and holds no
+/// stake raises the count of distinct signers a floor is read against and adds
+/// nothing to the weight the same certificate is weighed by.
+#[test]
+fn a_keyed_seat_with_no_stake_is_refused_at_either_door() {
+    let c = corpus();
+    let cases = c["verdict"]["admission"]
+        .as_array()
+        .expect("corpus has no verdict.admission section");
+
+    let mut checked = 0;
+    for case in cases {
+        if case["door"].as_str() != Some("FlattenValidatorSet")
+            || case["refusal"].as_str() != Some("zeroWeight")
+        {
+            continue;
+        }
+        let name = case["name"].as_str().expect("case has no name");
+
+        // Go refused the set; the row must say so, or this test would be
+        // holding the crate to an expectation the corpus does not state.
+        assert!(
+            !case["admitted"].as_bool().expect("case has no admitted"),
+            "{name}: a zeroWeight refusal that admitted the set"
+        );
+
+        let weights: Vec<u64> = case["weights"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name}: no weights"))
+            .iter()
+            .map(|w| w.as_str().expect("weight is not a decimal").parse().unwrap())
+            .collect();
+        assert!(
+            weights.contains(&0),
+            "{name}: a zeroWeight row with no weightless seat"
+        );
+
+        // Every weightless seat is refused on the weight clause, whichever
+        // position it holds — the seat, not the ordering, is what the clause is
+        // about. A shaped key reaches it: the clause runs before the key is read.
+        for (i, w) in weights.iter().enumerate() {
+            if *w != 0 {
+                continue;
+            }
+            let mut id = [0u8; 20];
+            id[16..].copy_from_slice(&((i as u32) + 1).to_be_bytes());
+
+            let mut set = ValidatorSet::new();
+            match set.insert(id, *w, &[0xAB; 48], &[0xAB; 96]) {
+                Ok(()) => panic!("{name}: seat {} carries no stake and was admitted", i + 1),
+                Err(e) => assert_eq!(
+                    refusal("", &e),
+                    "zeroWeight",
+                    "{name}: seat {} refused on the wrong clause ({e})",
+                    i + 1
+                ),
+            }
+        }
+        checked += 1;
+    }
+
+    assert_eq!(
+        checked, 1,
+        "expected 1 weightless-seat row at the already-admitted door, checked {checked}"
+    );
+}

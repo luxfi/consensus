@@ -47,7 +47,9 @@ import (
 	"sort"
 
 	"github.com/luxfi/consensus/config"
+	validators "github.com/luxfi/consensus/validator"
 	"github.com/luxfi/ids"
+	"github.com/luxfi/math"
 )
 
 // QuorumCertVersion is the wire/struct version of the engine-level quorum
@@ -460,9 +462,9 @@ func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) e
 		return fmt.Errorf("%w: total stake is zero at epoch height %d (value-height %d)",
 			ErrQCStakeBelowMajority, epochHeight, c.Position.Height)
 	}
-	var voted uint64
-	for i := range c.Votes {
-		voted += stake.Weight(c.Votes[i].NodeID, epochHeight)
+	voted, err := c.votedStake(stake, epochHeight)
+	if err != nil {
+		return err
 	}
 	halfFloor := config.HalfStakeFloor(total)
 	if voted <= halfFloor {
@@ -486,9 +488,9 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 		// No known stake at this epoch — cannot assert a supermajority. Fail closed.
 		return fmt.Errorf("%w: total stake is zero at epoch height %d (value-height %d)", ErrQCStakeBelowSupermajority, epochHeight, c.Position.Height)
 	}
-	var voted uint64
-	for i := range c.Votes {
-		voted += stake.Weight(c.Votes[i].NodeID, epochHeight)
+	voted, err := c.votedStake(stake, epochHeight)
+	if err != nil {
+		return err
 	}
 	// Strict supermajority by stake: accept iff voted > floor(2·total/3). The floor
 	// has one definition, config.TwoThirdsStakeFloor — the same function the live-set
@@ -501,6 +503,39 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 			ErrQCStakeBelowSupermajority, voted, total, twoThirdsFloor, c.Position.Height)
 	}
 	return nil
+}
+
+// votedStake is the summed stake of the certificate's voters — checked, and
+// refused rather than clamped.
+//
+// One function, because both rungs read the same tally and a floor is only as
+// honest as the number it is read against. The voters are a subset of the
+// members, so against any set Register or FlattenValidatorSet admitted this sum
+// is bounded by a total those doors already proved representable, and the
+// overflow is unreachable. Reaching it is therefore evidence about the
+// StakeSource, not about the votes: it says the source is reporting weights no
+// admitted set could hold, and a source that cannot state its own total is not
+// one a threshold can be read against.
+//
+// It must not wrap, and wrapping is what an unchecked loop does: Go's + is
+// modular, so a sum past 2^64 does not fail — it returns a DIFFERENT number and
+// the comparison proceeds as if nothing happened. The wrapped value can land
+// anywhere, above the floor included. Three voters at 2^63 wrap to 2^63, which
+// clears floor(total/2) for a total of 2^64−1 by one, and the certificate is
+// accepted on arithmetic rather than on votes. Monotone is not the property
+// that matters here; being the sum it claims to be is. Rust holds the same
+// clause in Cert::voted_stake, with checked_add over the same votes.
+func (c *QuorumCert) votedStake(stake StakeSource, epochHeight uint64) (uint64, error) {
+	var voted uint64
+	for i := range c.Votes {
+		sum, err := math.Add64(voted, stake.Weight(c.Votes[i].NodeID, epochHeight))
+		if err != nil {
+			return 0, fmt.Errorf("%w: cert tally at epoch %d: %w",
+				validators.ErrWeightOverflow, epochHeight, err)
+		}
+		voted = sum
+	}
+	return voted, nil
 }
 
 // AuthorizesExport reports whether this cert is export-grade finality (Quasar or
