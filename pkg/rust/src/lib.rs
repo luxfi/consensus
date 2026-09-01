@@ -66,6 +66,7 @@ pub mod finality;
 // The quorum certificate: the predicate that decides whether a block is
 // accepted. Held to `engine/chain/cert.go` by tests/cert.rs.
 pub mod cert;
+pub mod pop;
 
 /// SHA-256. The crate's one hash, from the BLS library already linked here.
 ///
