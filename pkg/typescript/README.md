@@ -47,13 +47,16 @@ engine.addBlock({
   timestamp: Date.now(),
 });
 
-// Record votes (need alpha votes for acceptance)
+// Register the validators, then vote. Only members are counted, and a node id
+// is 20 bytes — 40 hex characters.
 const config = testnetConfig();
-for (let i = 0; i < config.alpha; i++) {
+for (let i = 0; i < 9; i++) {
+  const voter = i.toString(16).padStart(40, '0');
+  engine.addValidator(voter, 100);
   engine.recordVote({
     blockId: blockId,
     voteType: VoteType.Preference,
-    voter: i.toString(16).padStart(64, '0'),
+    voter: voter,
   });
 }
 
@@ -142,7 +145,7 @@ interface Block {
 interface Vote {
   blockId: string;
   voteType: VoteType;
-  voter: string; // 32-byte hex
+  voter: string; // 20-byte hex — a node id, not a block id
   signature?: string;
 }
 

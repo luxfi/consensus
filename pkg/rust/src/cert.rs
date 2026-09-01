@@ -128,6 +128,18 @@ pub enum CertError {
     /// A proof of possession that is not a valid signature by this key over its
     /// own (node, key) message under [`crate::pop::POP_DST`].
     PopInvalid,
+    /// The set's weights sum past what a `u64` can hold. Go's
+    /// `ErrWeightOverflow`, and refused for the reason Go refuses it: every
+    /// threshold in this crate is read against the total, so a total that
+    /// cannot be represented is a total two thirds of which means nothing.
+    ///
+    /// It is the clause that keeps the two sides of the weighted predicate
+    /// honest. Were the sum merely clamped, a set summing past `u64::MAX`
+    /// would report `u64::MAX` staked AND `u64::MAX` voted, and
+    /// `u64::MAX > floor(2·u64::MAX/3)` — half the stake would read as an
+    /// export supermajority. So the set is refused at the door instead, and
+    /// the predicate never sees a number that is not the sum it claims to be.
+    WeightOverflow,
 }
 
 impl std::fmt::Display for CertError {
@@ -167,6 +179,7 @@ impl std::fmt::Display for CertError {
             CertError::DuplicateKey => write!(f, "public key is registered to more than one node"),
             CertError::DuplicateNode => write!(f, "node is registered more than once"),
             CertError::PopInvalid => write!(f, "proof of possession does not verify for this key"),
+            CertError::WeightOverflow => write!(f, "weight overflowed"),
         }
     }
 }
@@ -393,7 +406,7 @@ impl QuorumCert {
         if total == 0 {
             return Err(CertError::StakeZero { epoch_height });
         }
-        let voted = self.voted_stake(stake, epoch_height);
+        let voted = self.voted_stake(stake, epoch_height)?;
         let half = half_stake_floor(total);
         if voted <= half {
             return Err(CertError::StakeBelowMajority {
@@ -417,7 +430,7 @@ impl QuorumCert {
         if total == 0 {
             return Err(CertError::StakeZero { epoch_height });
         }
-        let voted = self.voted_stake(stake, epoch_height);
+        let voted = self.voted_stake(stake, epoch_height)?;
         let floor = two_thirds_stake_floor(total);
         if voted <= floor {
             return Err(CertError::StakeBelowSupermajority {
@@ -429,17 +442,44 @@ impl QuorumCert {
         Ok(())
     }
 
-    /// Summed stake of the certificate's voters, saturating.
+    /// Summed stake of the certificate's voters — checked, and refused rather
+    /// than clamped.
     ///
-    /// Saturating and not wrapping: a set whose weights sum past `u64::MAX`
-    /// must not wrap to a small number and read as below-threshold, nor wrap
-    /// past a floor. It is only reached on a set that cannot exist, and it
-    /// stays monotone if it ever is.
-    fn voted_stake(&self, stake: &dyn StakeSource, epoch_height: u64) -> u64 {
-        self.votes.iter().fold(0u64, |acc, v| {
-            acc.saturating_add(stake.weight(&v.node_id, epoch_height))
+    /// The voters are a subset of the members, so against any set this crate
+    /// admitted this sum is bounded by a total [`ValidatorSet::insert`] already
+    /// proved representable, and the overflow is unreachable. Reaching it is
+    /// therefore evidence about the [`StakeSource`], not about the votes: it
+    /// says the source is reporting weights that no admitted set could hold, and
+    /// a source that cannot state its own total is not one a threshold can be
+    /// read against.
+    ///
+    /// It must not clamp. Clamping pins BOTH sides of the predicate to
+    /// `u64::MAX`, and `u64::MAX > floor(2·u64::MAX/3)` — so a certificate
+    /// carrying half the stake would clear the export floor. Monotone is not
+    /// the property that matters here; being the sum it claims to be is.
+    fn voted_stake(&self, stake: &dyn StakeSource, epoch_height: u64) -> Result<u64, CertError> {
+        self.votes.iter().try_fold(0u64, |acc, v| {
+            acc.checked_add(stake.weight(&v.node_id, epoch_height))
+                .ok_or(CertError::WeightOverflow)
         })
     }
+}
+
+/// One validator asking to be counted: the identity it claims, the key it will
+/// sign under, the proof binding the two, and the weight staked behind it.
+///
+/// The field-for-field twin of Go's `validators.Registration`, and the input to
+/// [`ValidatorSet::register`] — the door for a set that arrives whole.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Registration {
+    /// The identity claimed, by the 20-byte NodeID the proof is bound to.
+    pub node: NodeId,
+    /// The BLS12-381 min_pk public key: compressed G1, 48 bytes.
+    pub public_key: Vec<u8>,
+    /// The node-bound proof of possession over `node ‖ key`: compressed G2, 96
+    /// bytes. See [`crate::pop`] for the preimage and the domain.
+    pub proof: Vec<u8>,
+    pub weight: u64,
 }
 
 /// A validator set: who is a member, what stake each carries, and the keys
@@ -489,11 +529,59 @@ pub struct ValidatorSet {
     /// Keyed on the canonical bytes re-derived from the DECODED point, never on
     /// the caller's input, so two spellings of one key cannot occupy two slots.
     owner: HashMap<[u8; PUBLIC_KEY_LEN], NodeId>,
+    /// The summed weight of every member, keyed or not.
+    ///
+    /// Established one admission at a time and never recomputed, because it is
+    /// the admission that decides whether it can be represented at all — see
+    /// the WEIGHT clause of [`ValidatorSet::insert`]. A total folded on demand
+    /// has to decide what to do about a sum it cannot hold, at a place with no
+    /// registration left to refuse; a total accumulated at the door already
+    /// knows, and the set that would have overflowed does not exist.
+    total: u64,
 }
 
 impl ValidatorSet {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Admit a whole set of registrations, or none of them. This is the port of
+    /// Go's `validators.Register`, and the way to build a set from input this
+    /// node did not produce — a genesis file, a peer, a chain read.
+    ///
+    /// [`ValidatorSet::insert`] admits ONE validator and reports on that one, so
+    /// it cannot give a set any property. A caller that inserts in a loop and
+    /// logs what failed is left holding a set that is missing a member: `n` is
+    /// short by one and the total is short by that member's stake, and those two
+    /// numbers are what every threshold in this crate is read against. Nothing
+    /// announces the loss — the set is well formed, just not the set that was
+    /// registered — so two nodes fed the same registrations disagree about the
+    /// floor while both believe they agree.
+    ///
+    /// So the set is admitted whole or not at all. One inadmissible registration
+    /// fails the call and no partial set escapes: the set under construction is
+    /// a local, and the caller receives either all of it or the first clause
+    /// that failed.
+    ///
+    /// Registrations are sorted by node id before any is checked, exactly as Go
+    /// sorts them and with the same stable sort, so WHICH duplicate a set is
+    /// refused on does not depend on the order a caller happened to build its
+    /// input. One bad set is one error, everywhere.
+    ///
+    /// The input is taken by value. Go clones its slice so the sort cannot be
+    /// seen by the caller; here the caller has given the registrations up, so
+    /// there is no caller-visible slice to protect and no copy to make.
+    ///
+    /// Every registration must carry a key: this is the proof path, and Go's
+    /// `Register` refuses a keyless one for the same reason. A member this node
+    /// holds no key for comes in through [`ValidatorSet::insert_unkeyed`].
+    pub fn register(mut registrations: Vec<Registration>) -> Result<Self, CertError> {
+        registrations.sort_by_key(|r| r.node);
+        let mut set = Self::new();
+        for r in &registrations {
+            set.insert(r.node, r.weight, &r.public_key, &r.proof)?;
+        }
+        Ok(set)
     }
 
     /// Admit a validator: the identity it claims, the key it will sign under,
@@ -532,7 +620,13 @@ impl ValidatorSet {
     /// or weight behind a caller that thought it was adding one.
     ///
     /// Nothing is written unless every clause passes: a refused registration
-    /// leaves no membership, no key and no ownership behind.
+    /// leaves no membership, no key and no ownership behind. That is a promise
+    /// about THIS registration and only this one — the set is left exactly as it
+    /// was, which for a caller admitting several in a loop means it is left
+    /// holding the ones that already went in. A set built from input this node
+    /// did not produce wants [`ValidatorSet::register`], which is all-or-nothing
+    /// over the whole set; this door is the incremental one, for a membership
+    /// change to a set that is already live.
     pub fn insert(
         &mut self,
         node: NodeId,
@@ -576,10 +670,20 @@ impl ValidatorSet {
         if self.weights.contains_key(&node) {
             return Err(CertError::DuplicateNode);
         }
+        // WEIGHT, last — the clause Go runs last, for the reason it runs it at
+        // all. `checked_add`, so a set whose weights sum past `u64::MAX` is
+        // refused here rather than clamped downstream, where clamping both the
+        // total and the votes pins them equal and lets half the stake read as
+        // two thirds of it.
+        let total = self
+            .total
+            .checked_add(weight)
+            .ok_or(CertError::WeightOverflow)?;
 
         self.keys.insert(node, pk);
         self.weights.insert(node, weight);
         self.owner.insert(canonical, node);
+        self.total = total;
         Ok(())
     }
 
@@ -597,7 +701,16 @@ impl ValidatorSet {
         if self.weights.contains_key(&node) {
             return Err(CertError::DuplicateNode);
         }
+        // The same WEIGHT clause. An unkeyed member cannot sign, but its stake
+        // is counted in the total every threshold is read against — Go's
+        // `FlattenValidatorSet` adds it and checks the same overflow — so it can
+        // overflow the total exactly as a keyed one can.
+        let total = self
+            .total
+            .checked_add(weight)
+            .ok_or(CertError::WeightOverflow)?;
         self.weights.insert(node, weight);
+        self.total = total;
         Ok(())
     }
 
@@ -611,7 +724,12 @@ impl ValidatorSet {
         if let Some(old) = self.keys.remove(node) {
             self.owner.remove(&old.compress());
         }
-        self.weights.remove(node);
+        // The total is the sum of the weights still present, so it loses exactly
+        // what the map loses. It was added to the total when the member was
+        // admitted, so the subtraction is exact and cannot go below zero.
+        if let Some(weight) = self.weights.remove(node) {
+            self.total -= weight;
+        }
     }
 
     /// The number of members, keyed or not — the `n` every threshold is read
@@ -672,7 +790,7 @@ impl StakeSource for ValidatorSet {
     }
 
     fn total_stake(&self, _epoch_height: u64) -> u64 {
-        self.weights.values().fold(0u64, |a, w| a.saturating_add(*w))
+        self.total
     }
 
     fn validator_count(&self, _epoch_height: u64) -> i64 {

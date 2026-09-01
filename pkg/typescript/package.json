@@ -1,6 +1,6 @@
 {
   "name": "@luxfi/consensus",
-  "version": "1.22.0",
+  "version": "1.22.1",
   "description": "Lux Consensus SDK for TypeScript/Node.js - Native performance with type safety",
   "main": "index.js",
   "types": "index.d.ts",

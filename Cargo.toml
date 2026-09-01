@@ -1,0 +1,16 @@
+# The Rust side of this repository, as one workspace.
+#
+# `pkg/typescript` path-depends on `pkg/rust`, so they are already one unit; the
+# workspace is that fact written down. Built separately they could disagree —
+# and did: narrowing the node id from 32 bytes to 20 in `pkg/rust` left
+# `pkg/typescript` unable to compile at all, and nothing said so, because
+# nothing built both. One `cargo test` here builds both.
+[workspace]
+resolver = "2"
+members = ["pkg/rust", "pkg/typescript"]
+
+# Profiles apply to a whole workspace, so they live at its root. These are the
+# settings the napi binding shipped with; a member's own `[profile]` is ignored.
+[profile.release]
+lto = true
+strip = true

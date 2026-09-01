@@ -79,7 +79,7 @@ export interface Vote {
   blockId: string
   /** Vote type (0=Preference, 1=Commit, 2=Cancel) */
   voteType: number
-  /** Voter node ID (hex string) */
+  /** Voter node ID (20-byte hex string) */
   voter: string
   /** Optional signature (hex string) */
   signature?: string
@@ -105,7 +105,7 @@ export declare class BlockId {
   toBytes(): Array<number>
   isZero(): boolean
 }
-/** Node identifier (32-byte hex string) */
+/** Node identifier (20-byte hex string) */
 export declare class NodeId {
   constructor(hexString: string)
   toHex(): string
@@ -153,7 +153,7 @@ export declare class ConsensusEngine {
   getStatus(blockId: string): BlockStatus
   /** Process multiple votes in batch (optimized) */
   recordVotesBatch(votes: Array<Vote>): number
-  /** Add a validator to the engine */
+  /** Add a validator to the engine, by its 20-byte node id */
   addValidator(nodeId: string, weight: number): void
   /** Get the current configuration */
   getConfig(): QuasarConfig
