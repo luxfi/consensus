@@ -59,7 +59,6 @@ Demonstrates REAL block finalization:
 
 Shows actual timing: typically <100μs for block processing.
 
-### Part 3: Horizon DAG Finality Algorithms
 
 Tests all 7 critical Horizon algorithms:
 

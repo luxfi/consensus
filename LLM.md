@@ -31,7 +31,6 @@ post-quantum finality. All sub-protocols live in `protocol/`.
 
 **Linear (Nova)**: Photon -> Wave -> Focus -> Ray -> Sink
 
-**DAG (Nebula)**: Photon -> Wave (per frontier vertex) -> Flare (cert/skip) -> Horizon (safe prefix) -> Field (commit) -> Committer
 
 ### ConsensusCert envelope (CANONICAL — supersedes the Groth16 `QuasarCert` narrative below)
 

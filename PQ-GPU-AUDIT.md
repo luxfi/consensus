@@ -117,14 +117,12 @@ API extension.
 `protocol/quasar/doc.go` before:
 
 ```go
-// Inter-node transport uses ZAP (github.com/luxfi/zap) with optional PQ-TLS 1.3
 // (Go 1.26 ML-KEM-768 default). GPU acceleration is aspirational.
 ```
 
 after:
 
 ```go
-// Inter-node transport uses ZAP (github.com/luxfi/zap) with optional PQ-TLS 1.3
 // (Go 1.26 ML-KEM-768 default).
 //
 // GPU acceleration: this package composes BLS (crypto/bls), ML-DSA

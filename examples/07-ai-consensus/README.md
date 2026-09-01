@@ -195,7 +195,6 @@ decision, err := agent.ProposeDecision(ctx, blockData, context)
 // 2. Wave amplification  
 // 3. Focus convergence
 // 4. Prism validation
-// 5. Horizon finalization
 ```
 
 ### 3. Validate Proposal
