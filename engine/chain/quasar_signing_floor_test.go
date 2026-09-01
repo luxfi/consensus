@@ -38,7 +38,7 @@ func TestQuasarFloor_NovaAcceptDoesNotCloseHeights(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard: %v", err)
 	}
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
 
 	const H = uint64(500)
 	A := ids.GenerateTestID()
@@ -81,7 +81,7 @@ func TestQuasarFloor_PromotionAdvancesFloorAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard: %v", err)
 	}
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
 
 	const Q = uint64(300)
 	// Bind two heights below the new floor and one above it, so the compaction is observable.
@@ -139,7 +139,7 @@ func TestQuasarFloor_PromotionAdvancesFloorAtomically(t *testing.T) {
 // records disagree about what is closed.
 func TestQuasarFloor_GuardWriteFailureWithholdsExport(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(failingGuard{}))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(failingGuard{}))
 
 	const Q = uint64(77)
 	err := e.compactVoteGuardThroughQuasar(Q)
@@ -166,7 +166,7 @@ func TestQuasarFloor_ImportIsRecoveryHintNotDecision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard: %v", err)
 	}
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
 
 	const imported = uint64(1098726) // an import head far above the local floor
 	if err := e.consensus.SyncState(ids.GenerateTestID(), imported); err != nil {
@@ -204,7 +204,7 @@ func TestQuasarFloor_RestartKeepsFloorAtQuasarNotNova(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard(store1): %v", err)
 	}
-	e1, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
+	e1, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
 
 	// Certified through Q.
 	if err := e1.compactVoteGuardThroughQuasar(Q); err != nil {
@@ -231,7 +231,7 @@ func TestQuasarFloor_RestartKeepsFloorAtQuasarNotNova(t *testing.T) {
 		t.Fatalf("the durable floor came back at %d, but only %d was ⅔-certified. A restarted node must "+
 			"not carry a refusal above the height its peers agree on", got, Q)
 	}
-	e2, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
+	e2, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
 
 	// The certified prefix stays closed forever.
 	if e2.reserveSlotForSign(Q, ids.GenerateTestID()) {

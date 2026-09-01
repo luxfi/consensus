@@ -458,12 +458,13 @@ func TestEngine_DoesNotAcceptWithoutQuorum(t *testing.T) {
 
 // TestEngine_AcceptsAfterQuorum verifies blocks ARE accepted after sufficient votes
 func TestEngine_AcceptsAfterQuorum(t *testing.T) {
-	// Use smaller parameters for testing (K=5, Alpha=3, Beta=2)
-	// This means we need 3 out of 5 votes for quorum
+	// Small committee for testing: K=5, α=4, Beta=2 — 4 of 5 votes for quorum
+	// (α=4 is the Byzantine floor at K=5; α=3 lets two disjoint quorums overlap
+	// in a single node, so one faulty validator can certify both sides of a fork).
 	engine := newTestEngineParams(config.Parameters{
 		K:               5,
-		AlphaPreference: 3,
-		AlphaConfidence: 3,
+		AlphaPreference: 4,
+		AlphaConfidence: 4,
 		Beta:            2,
 	})
 	ctx := context.Background()
@@ -650,8 +651,8 @@ func TestHandleVote_IgnoresUnknownBlocks(t *testing.T) {
 func TestHandleVote_ProcessesKnownBlocks(t *testing.T) {
 	engine := newTestEngineParams(config.Parameters{
 		K:               5,
-		AlphaPreference: 3,
-		AlphaConfidence: 3,
+		AlphaPreference: 4,
+		AlphaConfidence: 4,
 		Beta:            2,
 	})
 	ctx := context.Background()
@@ -852,11 +853,11 @@ func TestProcessVote_AcceptFalseDoesNotAccept(t *testing.T) {
 // exercised via a follower-shaped pending entry (IsOwnProposal=false).
 func TestEngine_RejectsWithInsufficientSupport(t *testing.T) {
 
-	// Use smaller parameters (K=5, Alpha=3, Beta=2)
+	// Small committee for testing: K=5, α=4 (the Byzantine floor at K=5), Beta=2
 	engine := newTestEngineParams(config.Parameters{
 		K:               5,
-		AlphaPreference: 3,
-		AlphaConfidence: 3,
+		AlphaPreference: 4,
+		AlphaConfidence: 4,
 		Beta:            2,
 	})
 	ctx := context.Background()

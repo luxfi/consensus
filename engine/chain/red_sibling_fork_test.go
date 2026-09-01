@@ -59,7 +59,7 @@ func injectVotes(e *Transitive, vs *testValidatorSet, pos VotePosition, voters .
 // -----------------------------------------------------------------------------
 func TestRed_LosingSiblingHoldsValidCert_NoVoteOnceDiscipline(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	params := params5Prod() // K=5, alpha=4
+	params := params5() // K=5, alpha=4
 	e, chainID := newQuorumEngine(t, params, vs, 0, &recordingGossiper{})
 
 	A := newTestBlock(1, ids.Empty, "sibling-A")
@@ -131,7 +131,7 @@ func TestRed_LosingSiblingHoldsValidCert_NoVoteOnceDiscipline(t *testing.T) {
 // -----------------------------------------------------------------------------
 func TestRed_CrossNodeFork_TwoValidSiblings_OppositeArrivalOrder(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	params := params5Prod() // K=5, alpha=4
+	params := params5() // K=5, alpha=4
 
 	e1, chain1 := newQuorumEngine(t, params, vs, 0, &recordingGossiper{})
 	e2, chain2 := newQuorumEngine(t, params, vs, 1, &recordingGossiper{})

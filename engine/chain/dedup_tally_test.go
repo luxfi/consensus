@@ -28,7 +28,7 @@ import (
 // α=4-of-5 that is a self-assembled quorum).
 func TestPlainTallyCountsDistinctVotersOnly(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 	alpha := e.consensus.Alpha()
 	if alpha < 2 {
 		t.Fatalf("precondition: α must be a real quorum, got %d", alpha)
@@ -77,7 +77,7 @@ func TestPlainTallyCountsDistinctVotersOnly(t *testing.T) {
 // Without it one validator can veto a block alone by answering twice.
 func TestRejectTallyCountsDistinctVotersOnly(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 
 	blk := newTestBlock(4243, ids.GenerateTestID(), "replayed-reject")
 	pos := trackFollowedBlock(e, chainID, blk)

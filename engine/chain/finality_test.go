@@ -19,8 +19,16 @@ import (
 )
 
 // params5 is a 5-validator config: K=5, alpha=3 (BFT 3-of-5).
+// params5 is the five-validator committee every engine test runs on: K=5, α=4.
+// α=4 is the Byzantine floor at K=5 (2·4−5 = 3 ≥ f+1 = 2 with f=1) and is exactly
+// what FeasibleParams(Local, 5) — the live setting on all three nets — derives.
+//
+// It used to be α=3, which is fork-able: two disjoint 3-of-5 quorums overlap in a
+// SINGLE node, so one Byzantine validator (f=1 at K=5) can sign both and produce two
+// valid certs for conflicting blocks. Nothing caught it because no constructor
+// validated its parameters; the engine now refuses to start on it.
 func params5() config.Parameters {
-	return config.Parameters{K: 5, AlphaPreference: 3, AlphaConfidence: 3, Beta: 2}
+	return config.Parameters{K: 5, AlphaPreference: 4, AlphaConfidence: 4, Beta: 2}
 }
 
 // -----------------------------------------------------------------------------
@@ -378,14 +386,15 @@ func TestLiveness_NoFreezeUnderLateChits(t *testing.T) {
 func TestLiveness_DroppedProposerChitsStillFinalizeViaPeerCert(t *testing.T) {
 	vs := newTestValidatorSet(5)
 
-	// Proposer assembles a real cert (3 of 5 signed accepts) out-of-band.
+	// Proposer assembles a real cert (4 of 5 signed accepts — the α=4 quorum) out-of-band.
 	chainID := ids.GenerateTestID()
 	blk := newTestBlock(9, ids.Empty, "cert-relayed")
 	pos := VotePosition{ChainID: chainID, Height: blk.height, Round: 0, BlockID: blk.id, ParentID: blk.parentID}
-	cert, err := AssembleQuorumCert(pos, Quasar, 3, []SignedVote{
+	cert, err := AssembleQuorumCert(pos, Quasar, 4, []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
+		{NodeID: vs.nodeID(3), Accept: true, Signature: vs.sign(3, pos)},
 	})
 	if err != nil {
 		t.Fatalf("assemble cert: %v", err)

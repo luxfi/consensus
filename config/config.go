@@ -43,6 +43,14 @@ var (
 	// faulty validator forking the chain — exactly the round-1 hole.
 	ErrAlphaBelowBFTQuorum = errors.New("consensus: alpha quorum too small for K to be Byzantine-safe (need 2*AlphaPreference - K >= floor((K-1)/3)+1)")
 
+	// ErrAlphaConfidenceBelowPreference is returned by Valid() when the confidence
+	// quorum is smaller than the preference quorum. Confidence is the STRONGER
+	// commitment — a block may not become confident on fewer votes than it needed
+	// to become preferred — so AlphaConfidence < AlphaPreference inverts the ladder
+	// and lets the confidence round finalize on a quorum the preference round
+	// already rejected.
+	ErrAlphaConfidenceBelowPreference = errors.New("consensus: AlphaConfidence must be >= AlphaPreference (the confidence quorum can never be weaker than the preference quorum)")
+
 	// ErrKTooLowForValue is returned by ValidateForValueNetwork when a value /
 	// PoS chain is configured with K<4. K=3 tolerates f=⌊2/3⌋=0 Byzantine
 	// validators — i.e. NO fault tolerance — so a single Byzantine validator can
@@ -302,13 +310,82 @@ func (p Parameters) ByzantineFaultTolerance() int {
 // bftQuorumFloor returns the minimum integer accept quorum α for safety at this
 // K: the smallest α with 2α − K ≥ f + 1, i.e. α ≥ ⌈(K + f + 1)/2⌉.
 func (p Parameters) bftQuorumFloor() int {
-	f := p.ByzantineFaultTolerance()
-	return (p.K + f + 1 + 1) / 2 // ceil((K+f+1)/2)
+	return BFTQuorumFloor(p.K)
+}
+
+// BFTQuorumFloor is the smallest integer accept quorum α that is SAFE at sample
+// size k: the least α satisfying the overlap bound 2α − k ≥ f + 1 with
+// f = ⌊(k−1)/3⌋, i.e. α = ⌈(k + f + 1)/2⌉.
+//
+// This is the ONE definition of "how weak may a quorum be". Valid() rejects any
+// AlphaPreference below it, and the engine refuses to INSTALL a quorum below it
+// (NewChainConsensus / Reclamp), so a config that never reaches Valid() still
+// cannot arm a sub-quorum accept predicate. k < 1 yields 1: no committee ever
+// runs with α=0, which would accept on zero votes.
+//
+// It is the safety FLOOR, not the ⅔ supermajority the committee sizer picks
+// (⌊2k/3⌋+1, which is ≥ this and sometimes strictly above it — k=3 → floor 2 vs
+// ⅔ 3). Presets sit at or above the floor and are left exactly as tuned.
+func BFTQuorumFloor(k int) int {
+	if k < 1 {
+		return 1
+	}
+	f := (k - 1) / 3
+	return (k + f + 1 + 1) / 2 // ceil((k+f+1)/2)
 }
 
 // Validate validates parameters (compatibility method)
 func (p Parameters) Validate() error {
 	return p.Valid()
+}
+
+// ValidQuorum judges the INTEGER quorum — K, AlphaPreference, AlphaConfidence —
+// and nothing else. These are the only parameters the chain engine actually counts
+// toward finality, so they carry the whole safety argument, while the rest of what
+// Valid checks (the descriptive Alpha ratio, block timings, queue sizes) is
+// well-formedness. Splitting them lets the engine enforce SAFETY at Start without
+// also demanding fields that have no bearing on whether a quorum can fork.
+//
+// Valid calls this, so there is one definition and the two can never drift.
+//
+// The three invariants:
+//
+//   - 1 ≤ AlphaPreference ≤ K, and the same for AlphaConfidence. α is the literal
+//     accept predicate (`acceptVotes() >= alpha`), so α=0 satisfies it with ZERO
+//     votes: every block self-finalizes on every node with no quorum at all, and two
+//     nodes independently self-finalize conflicting blocks. There is no "unset" α —
+//     a K≥1 committee always needs at least one vote — so 0 is a mis-derivation, not
+//     a default.
+//
+//   - AlphaConfidence ≥ AlphaPreference. Confidence is the stronger commitment; it
+//     may not be reached on fewer votes than preference required.
+//
+//   - 2·AlphaPreference − K ≥ f+1 with f = ⌊(K−1)/3⌋ (equivalently AlphaPreference ≥
+//     BFTQuorumFloor(K)). Two α-quorums must overlap in more than f nodes, else two
+//     disjoint quorums can each certify a conflicting block and the chain forks.
+//
+// Because AlphaConfidence ≥ AlphaPreference, the floor binds both α's at once.
+func (p Parameters) ValidQuorum() error {
+	if p.K < 1 {
+		return ErrInvalidK
+	}
+	if p.AlphaPreference < 1 || p.AlphaPreference > p.K {
+		return ErrParametersInvalid
+	}
+	if p.AlphaConfidence < 1 || p.AlphaConfidence > p.K {
+		return ErrParametersInvalid
+	}
+	if p.AlphaConfidence < p.AlphaPreference {
+		return fmt.Errorf("%w: AlphaConfidence=%d < AlphaPreference=%d",
+			ErrAlphaConfidenceBelowPreference, p.AlphaConfidence, p.AlphaPreference)
+	}
+	f := p.ByzantineFaultTolerance()
+	if 2*p.AlphaPreference-p.K < f+1 {
+		return fmt.Errorf("%w: K=%d AlphaPreference=%d f=%d (2*%d-%d=%d < %d)",
+			ErrAlphaBelowBFTQuorum, p.K, p.AlphaPreference, f,
+			p.AlphaPreference, p.K, 2*p.AlphaPreference-p.K, f+1)
+	}
+	return nil
 }
 
 // Valid validates parameters with threshold enforcement
@@ -331,32 +408,10 @@ func (p Parameters) Valid() error {
 		return ErrRoundTimeoutTooLow
 	}
 
-	// Only validate other fields if they are set (non-zero)
-	if p.AlphaPreference != 0 && (p.AlphaPreference < 0 || p.AlphaPreference > p.K) {
-		return ErrParametersInvalid
-	}
-	if p.AlphaConfidence != 0 && (p.AlphaConfidence < 0 || p.AlphaConfidence > p.K) {
-		return ErrParametersInvalid
-	}
-
-	// BFT QUORUM FLOOR — the integer accept quorum (AlphaPreference, the α that
-	// the chain engine actually counts toward finality) must be large enough
-	// that two α-quorums overlap in more than f honest validators:
-	//
-	//	2·AlphaPreference − K ≥ ⌊(K-1)/3⌋ + 1
-	//
-	// Without this a config can finalize on a quorum that two conflicting
-	// certs/decisions can both reach (the K=3/α=2 family with f silently 0 is
-	// the boundary; anything weaker forks outright). Checked only when an
-	// integer α is set (AlphaPreference>0); a chain that runs the float α path
-	// derives AlphaPreference from K before reaching the engine.
-	if p.AlphaPreference > 0 {
-		f := p.ByzantineFaultTolerance()
-		if 2*p.AlphaPreference-p.K < f+1 {
-			return fmt.Errorf("%w: K=%d AlphaPreference=%d f=%d (2*%d-%d=%d < %d)",
-				ErrAlphaBelowBFTQuorum, p.K, p.AlphaPreference, f,
-				p.AlphaPreference, p.K, 2*p.AlphaPreference-p.K, f+1)
-		}
+	// The integer QUORUM — the safety-critical subset, defined once in ValidQuorum
+	// and enforced independently by the engine at Start.
+	if err := p.ValidQuorum(); err != nil {
+		return err
 	}
 	if p.BetaVirtuous < 0 {
 		return ErrParametersInvalid

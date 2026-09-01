@@ -227,13 +227,18 @@ func TestValidate(t *testing.T) {
 			wantErr: ErrRoundTimeoutTooLow,
 		},
 		{
+			// K=5 → α=4 (⌊2·5/3⌋+1, which is also the BFT floor for K=5). The
+			// integer α is required for a config to be valid at all — a params
+			// value with AlphaPreference=0 is a zero-vote quorum, not a default.
 			name: "1ms blocks are valid",
 			params: Parameters{
-				K:         5,
-				Alpha:     0.69, // 69% threshold
-				Beta:      4,    // Adjusted for 69%
-				RoundTO:   5 * time.Millisecond,
-				BlockTime: 1 * time.Millisecond,
+				K:               5,
+				Alpha:           0.69, // 69% threshold
+				Beta:            4,    // Adjusted for 69%
+				AlphaPreference: 4,
+				AlphaConfidence: 4,
+				RoundTO:         5 * time.Millisecond,
+				BlockTime:       1 * time.Millisecond,
 			},
 			wantErr: nil,
 		},

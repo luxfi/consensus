@@ -37,23 +37,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/consensus/engine/chain/block"
 	"github.com/luxfi/ids"
 )
-
-// params5Prod returns the PRODUCTION 5-validator quorum params: K=5, α=4
-// (⌊2·5/3⌋+1 — what bftCommittee derives for a 5-node value network, see
-// dynamic_test.go which asserts K5/α4). The finality_test.go params5() uses α=3
-// for legacy count tests; the liveness/safety properties here must hold at the
-// REAL production threshold where the 4 healthy nodes are the EXACT quorum (zero
-// margin — the mainnet condition after a 5th validator forks/wedges).
-func params5Prod() config.Parameters {
-	p := params5()
-	p.AlphaPreference = 4
-	p.AlphaConfidence = 4
-	return p
-}
 
 // reSolicitProbe is a BlockProposer that records how many times the engine
 // re-solicits votes for each block (RequestVotes), and fires an optional hook on
@@ -138,7 +124,7 @@ func driveRePoll(e *Transitive, cycles int) {
 // every pass.
 func TestProposerLiveness_UndecidedOwnProposal_NeverAbandoned(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	params := params5Prod()
+	params := params5()
 	params.RoundTO = 10 * time.Second // park the background ticker; we drive re-poll manually
 	rec := &recordingGossiper{}
 	e, chainID := newQuorumEngine(t, params, vs, 0, rec)
@@ -181,7 +167,7 @@ func TestProposerLiveness_UndecidedOwnProposal_NeverAbandoned(t *testing.T) {
 // point — i.e. only post-fix. The wedged/forked 5th validator (node 4) never votes.
 func TestProposerLiveness_LateHonestVote_FinalizesViaPersistentRePoll(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	params := params5Prod()
+	params := params5()
 	params.RoundTO = 10 * time.Second
 	rec := &recordingGossiper{}
 	e, chainID := newQuorumEngine(t, params, vs, 0, rec)
@@ -231,7 +217,7 @@ func TestProposerLiveness_LateHonestVote_FinalizesViaPersistentRePoll(t *testing
 // manufactures a vote or lowers the majority threshold).
 func TestProposerSafety_SubQuorumNeverFinalizes_EvenWithPersistentRePoll(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	params := params5Prod()
+	params := params5()
 	params.RoundTO = 10 * time.Second
 	rec := &recordingGossiper{}
 	e, chainID := newQuorumEngine(t, params, vs, 0, rec)
@@ -262,7 +248,7 @@ func TestProposerSafety_SubQuorumNeverFinalizes_EvenWithPersistentRePoll(t *test
 // forged votes never push a sub-majority over the accept threshold.
 func TestProposerSafety_ForgedAndOutOfSetVotes_NeverCount(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	params := params5Prod()
+	params := params5()
 	params.RoundTO = 10 * time.Second
 	rec := &recordingGossiper{}
 	e, chainID := newQuorumEngine(t, params, vs, 0, rec)
@@ -346,7 +332,7 @@ func (m *prefRecordingVM) setPrefCount(id ids.ID) int {
 // the engine steers the VM to the just-built tip after building.
 func TestProposerStorm_AdvancesBuildPreferenceAfterOwnBuild(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	params := params5Prod() // K=5 → the proposerWired (multi-validator) build path
+	params := params5() // K=5 → the proposerWired (multi-validator) build path
 	params.RoundTO = 10 * time.Second
 	rec := &recordingGossiper{}
 	e, _ := newQuorumEngine(t, params, vs, 0, rec)
@@ -375,7 +361,7 @@ func TestProposerStorm_AdvancesBuildPreferenceAfterOwnBuild(t *testing.T) {
 // block finalizes per height; persistent re-solicitation cannot fork the chain.
 func TestProposerSafety_PersistentRePoll_NoDoubleFinalizeAtHeight(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	params := params5Prod()
+	params := params5()
 	params.RoundTO = 10 * time.Second
 	rec := &recordingGossiper{}
 	e, chainID := newQuorumEngine(t, params, vs, 0, rec)

@@ -89,11 +89,17 @@ func TestParameterValidation(t *testing.T) {
 		expectedErr error
 	}{
 		{
+			// The integer α is REQUIRED, not optional: AlphaPreference is what the
+			// chain engine counts toward finality, so omitting it (leaving 0) is a
+			// quorum of zero, not "unspecified". K=20 → α=14 (the DefaultParams
+			// tuning, at the BFT floor for K=20).
 			name: "Valid 69% threshold",
 			params: Parameters{
-				K:     20,
-				Alpha: 0.69,
-				Beta:  14,
+				K:               20,
+				Alpha:           0.69,
+				Beta:            14,
+				AlphaPreference: 14,
+				AlphaConfidence: 14,
 			},
 			expectedErr: nil,
 		},
