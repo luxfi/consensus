@@ -48,6 +48,7 @@ type Corpus struct {
 	Version   uint16      `json:"version"`
 	Vote      Vote        `json:"vote"`
 	Cert      Cert        `json:"cert"`
+	Verdict   Verdict     `json:"verdict"`
 	Ladder    []Rung      `json:"ladder"`
 	Threshold Threshold   `json:"threshold"`
 	Committee []Committee `json:"committee"`
@@ -251,6 +252,7 @@ func Build() Corpus {
 			},
 			Cases: certCases(),
 		},
+		Verdict:   verdicts(),
 		Ladder:    ladder(),
 		Threshold: thresholds(),
 		Committee: committees(),
