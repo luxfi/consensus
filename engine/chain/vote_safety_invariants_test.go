@@ -222,7 +222,7 @@ func (g *countingGuard) setFailure(err error) {
 // predicate and finality is forgeable.
 func TestSafety_UnsignedVoteIsNeverTallied(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 
 	// PRECONDITION: this is a genuine multi-validator configuration. On K==1 the
 	// verifier is bypassed by design (the sole validator's self-vote is the quorum),
@@ -374,7 +374,7 @@ func TestSafety_GuardIdempotency_SameCanonical(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	path := filepath.Join(t.TempDir(), "vote-guard")
 	guard := newCountingGuard(t, path)
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(guard))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(guard))
 
 	const H = uint64(1098192) // the real mainnet halt height
 	A := ids.GenerateTestID()
@@ -447,7 +447,7 @@ func TestSafety_ConflictingBinding_RefusedAndStatePreserved(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	path := filepath.Join(t.TempDir(), "vote-guard")
 	guard := newCountingGuard(t, path)
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(guard))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(guard))
 
 	const H = uint64(4242)
 	A := ids.GenerateTestID()
@@ -535,7 +535,7 @@ func TestSafety_NoBindingSilentlyDropped(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	path := filepath.Join(t.TempDir(), "vote-guard")
 	guard := newCountingGuard(t, path)
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(guard))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(guard))
 
 	const Q = uint64(1000)
 	heights := []uint64{Q - 100, Q - 1, Q, Q + 1, Q + 50}
@@ -642,7 +642,7 @@ func TestSafety_FailClosedPersist_MemoryNeverAheadOfDisk(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	path := filepath.Join(t.TempDir(), "vote-guard")
 	guard := newCountingGuard(t, path)
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(guard))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(guard))
 
 	const H1, H2, H3 = uint64(700), uint64(701), uint64(702)
 	A := ids.GenerateTestID()
@@ -782,7 +782,7 @@ func TestSafety_SlotKeyIsHeightOnly(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	path := filepath.Join(t.TempDir(), "vote-guard")
 	guard := newCountingGuard(t, path)
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{},
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{},
 		WithVoteGuard(guard), WithValidatorSetRoot(epochSetRoots{}))
 
 	const H = uint64(7) // the real fresh-net double-finalization height

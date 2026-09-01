@@ -25,7 +25,7 @@ import (
 // processed whether or not this node ever polled the sender.
 func TestAuthVote_StrangerMovesTheAcceptTally(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 	alpha := e.consensus.Alpha()
 
 	blk := newTestBlock(90001, ids.GenerateTestID(), "stranger-accept")
@@ -66,7 +66,7 @@ func TestAuthVote_StrangerMovesTheAcceptTally(t *testing.T) {
 // errors, its preference is filed as that stranger's REJECT.
 func TestAuthVote_StrangerMovesTheRejectTally(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 	alpha := e.consensus.Alpha()
 
 	blk := newTestBlock(90002, ids.GenerateTestID(), "stranger-reject")
@@ -91,7 +91,7 @@ func TestAuthVote_StrangerMovesTheRejectTally(t *testing.T) {
 // consensus position. Transport identity is not a substitute for that proof.
 func TestAuthVote_ValidatorsWithoutSignaturesAreRefused(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 	alpha := e.consensus.Alpha()
 
 	blk := newTestBlock(90003, ids.GenerateTestID(), "control")

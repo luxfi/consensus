@@ -178,7 +178,7 @@ func TestVerifyCatchupCertificate_ReadOnlyCryptographicFrontierGate(t *testing.T
 	rt, chainID, _ := newCatchupRuntime(t, vs, 0, vm)
 	blk := newTestBlock(42, ids.GenerateTestID(), "certified-frontier")
 	vm.register(blk)
-	cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 3)
+	cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 4)
 
 	if err := rt.VerifyCatchupCertificate(context.Background(), blk.bytes, cert); err != nil {
 		t.Fatalf("valid 4-of-5 certified frontier rejected: %v", err)
@@ -221,7 +221,7 @@ func TestCatchup_BehindNodeConvergesViaCertPath(t *testing.T) {
 	// Feed each (block, cert) oldest-first, as the node-side catch-up transport
 	// delivers fetched ancestors. Each cert is a genuine 4-of-5 (≥⅔ stake) witness.
 	for i, blk := range gap {
-		cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 3)
+		cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 4)
 		if err := rt.AcceptCatchupBlock(context.Background(), blk.bytes, cert); err != nil {
 			t.Fatalf("gap[%d] (height %d) cert-accept failed: %v", i, blk.height, err)
 		}
@@ -282,7 +282,7 @@ func TestCatchup_RejectsForgedAndSubQuorumCerts(t *testing.T) {
 					{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 					{NodeID: vs.nodeID(3), Accept: true, Signature: vs.sign(3, pos)},
 				}
-				qc, err := AssembleQuorumCert(pos, Quasar, 3, votes)
+				qc, err := AssembleQuorumCert(pos, Quasar, 4, votes)
 				if err != nil {
 					t.Fatalf("assemble forged: %v", err)
 				}
@@ -291,11 +291,15 @@ func TestCatchup_RejectsForgedAndSubQuorumCerts(t *testing.T) {
 			},
 		},
 		{
-			// Sub-quorum by stake: 3 of 5 validators clears the count predicate
-			// (count=3 ≥ α=3) but 3/5 = 60% ≤ ⅔, so VerifyWeighted's strict
-			// supermajority fails and nothing finalizes. This is the gap between a
-			// headcount quorum and a stake quorum, enforced through catch-up.
-			name: "sub-quorum-stake",
+			// Sub-quorum: 3 signers on a chain running α=4. Both quorum clauses
+			// refuse it — the count never reaches α, and 3/5 = 60% ≤ ⅔ fails
+			// VerifyWeighted's strict stake supermajority.
+			//
+			// At a Byzantine-valid α the COUNT gate is the stronger of the two under
+			// equal stake (α=4 ⇒ 80% > ⅔), so "count passes while stake fails" is not
+			// constructible here; that gap is exercised with SKEWED stake in
+			// nova_quasar_matrix_test.go, where four of five vote holding only 40%.
+			name: "sub-quorum",
 			cert: func(t *testing.T, vs *testValidatorSet, chainID ids.ID, blk *verifyOnceBlock) []byte {
 				return catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2}, 3)
 			},
@@ -364,7 +368,7 @@ func TestCatchup_OutOfOrderRefusedThenInOrderConverges(t *testing.T) {
 	// license a non-contiguous finalize.
 	ooo := newTestBlock(N+2, gap[0].id, "ooo@N+2")
 	vm.register(ooo)
-	certOoo := catchupCertFor(t, vs, chainID, ooo, []int{0, 1, 2, 3}, 3)
+	certOoo := catchupCertFor(t, vs, chainID, ooo, []int{0, 1, 2, 3}, 4)
 	if err := rt.AcceptCatchupBlock(context.Background(), ooo.bytes, certOoo); err == nil {
 		t.Fatal("a height-N+2 block was accepted while finalized at N, bypassing the contiguity guard")
 	}
@@ -378,7 +382,7 @@ func TestCatchup_OutOfOrderRefusedThenInOrderConverges(t *testing.T) {
 	// Now apply N+1 then N+2 in order and both finalize. The earlier refusal was the
 	// contiguity guard, not a stuck path.
 	for i, blk := range gap {
-		cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 3)
+		cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 4)
 		if err := rt.AcceptCatchupBlock(context.Background(), blk.bytes, cert); err != nil {
 			t.Fatalf("in-order gap[%d] (height %d) cert-accept failed: %v", i, blk.height, err)
 		}
@@ -409,7 +413,7 @@ func TestCatchup_CertForBlockServesWhatWasFinalized(t *testing.T) {
 		t.Fatal("CertForBlock returned a cert for an unfinalized block")
 	}
 
-	cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 3)
+	cert := catchupCertFor(t, vs, chainID, blk, []int{0, 1, 2, 3}, 4)
 	if err := rt.AcceptCatchupBlock(context.Background(), blk.bytes, cert); err != nil {
 		t.Fatalf("finalize N+1: %v", err)
 	}

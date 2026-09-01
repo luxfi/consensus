@@ -77,7 +77,7 @@ func TestCatchupAcceptRefusesFarPastEpoch(t *testing.T) {
 
 	attack := newEpochBlock(N+1, 5, parent.id, "catchup-attack-epoch5")
 	vm.register(attack)
-	cert := catchupCertAt(t, vs, chainID, attack.height, attack.id, attack.parentID, []int{0, 1, 2, 3}, 3)
+	cert := catchupCertAt(t, vs, chainID, attack.height, attack.id, attack.parentID, []int{0, 1, 2, 3}, 4)
 
 	err := rt.AcceptCatchupBlock(context.Background(), attack.Bytes(), cert)
 	if err == nil {
@@ -116,7 +116,7 @@ func TestCatchupAcceptAdmitsForwardEpoch(t *testing.T) {
 
 	forward := newEpochBlock(N+1, 101, parent.id, "catchup-forward-epoch101")
 	vm.register(forward)
-	cert := catchupCertAt(t, vs, chainID, forward.height, forward.id, forward.parentID, []int{0, 1, 2, 3}, 3)
+	cert := catchupCertAt(t, vs, chainID, forward.height, forward.id, forward.parentID, []int{0, 1, 2, 3}, 4)
 
 	if err := rt.AcceptCatchupBlock(context.Background(), forward.Bytes(), cert); err != nil {
 		t.Fatalf("a block whose epoch advances past its parent's must be admitted: %v", err)
@@ -144,7 +144,7 @@ func TestCatchupAcceptRefusesStrippedEpoch(t *testing.T) {
 
 	stripped := newEpochBlock(N+1, 0, parent.id, "catchup-stripped-epoch0")
 	vm.register(stripped)
-	cert := catchupCertAt(t, vs, chainID, stripped.height, stripped.id, stripped.parentID, []int{0, 1, 2, 3}, 3)
+	cert := catchupCertAt(t, vs, chainID, stripped.height, stripped.id, stripped.parentID, []int{0, 1, 2, 3}, 4)
 
 	if err := rt.AcceptCatchupBlock(context.Background(), stripped.Bytes(), cert); err == nil {
 		t.Fatal("epoch 0 under a parent at 42 is a regression to the genesis set and must be refused")

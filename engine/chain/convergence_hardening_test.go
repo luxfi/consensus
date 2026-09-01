@@ -19,14 +19,14 @@ import (
 func TestConvergence_SettleWindow_OperatorOverride(t *testing.T) {
 	vs := newTestValidatorSet(5)
 
-	p := params5Prod()
+	p := params5()
 	p.ConvergenceSettleWindow = 1500 * time.Millisecond
 	e, _ := newQuorumEngine(t, p, vs, 0, &recordingGossiper{})
 	if got := e.convergenceSettleWindow(); got != 1500*time.Millisecond {
 		t.Fatalf("operator settle override not honored: got %s want 1.5s", got)
 	}
 
-	p2 := params5Prod()
+	p2 := params5()
 	p2.ConvergenceSettleWindow = 5 * time.Millisecond // misconfigured near-zero
 	e2, _ := newQuorumEngine(t, p2, vs, 0, &recordingGossiper{})
 	if got := e2.convergenceSettleWindow(); got < 150*time.Millisecond {
@@ -41,7 +41,7 @@ func TestConvergence_SettleWindow_OperatorOverride(t *testing.T) {
 // (conservative, so the normal path cannot be starved).
 func TestConvergence_ParentProvenLoser_ExcludesDeadBranch(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, _ := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, _ := newQuorumEngine(t, params5(), vs, 0, &recordingGossiper{})
 
 	lowID := ids.ID{0x01}  // H-1 sibling with the LOWEST canonical → the winner
 	highID := ids.ID{0xff} // H-1 sibling with a higher canonical → the loser

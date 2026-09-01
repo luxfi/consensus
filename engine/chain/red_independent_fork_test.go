@@ -50,7 +50,7 @@ import (
 // TestRedIndep_ReserveSlotUnit pins the funnel's exact contract.
 func TestRedIndep_ReserveSlotUnit(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, _ := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, _ := newQuorumEngine(t, params5(), vs, 0, &recordingGossiper{})
 
 	X := ids.GenerateTestID()
 	Y := ids.GenerateTestID()
@@ -98,7 +98,7 @@ func TestRedIndep_ReserveSlotUnit(t *testing.T) {
 // FAILS (verified against a neutered build).
 func TestRedIndep_OwnVoteRefusedForSibling(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngine(t, params5(), vs, 0, &recordingGossiper{})
 	self := vs.nodeID(0)
 
 	A := newTestBlock(1, ids.Empty, "own-A")
@@ -193,7 +193,7 @@ func TestRedIndep_ByzantineForkThreshold(t *testing.T) {
 	for k := 1; k <= 3; k++ {
 		t.Run("equivocators="+itoa(k), func(t *testing.T) {
 			vs := newTestValidatorSet(n)
-			e, chainID := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
+			e, chainID := newQuorumEngine(t, params5(), vs, 0, &recordingGossiper{})
 
 			A := newTestBlock(1, ids.Empty, "thr-A")
 			B := newTestBlock(1, ids.Empty, "thr-B")
@@ -239,7 +239,7 @@ func TestRedIndep_ByzantineForkThreshold(t *testing.T) {
 // committedSlot map is race-free.
 func TestRedIndep_ReserveSlotConcurrent(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, _ := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, _ := newQuorumEngine(t, params5(), vs, 0, &recordingGossiper{})
 
 	const G = 64
 	const height = uint64(1234)
@@ -298,7 +298,7 @@ func TestRedIndep_ReserveSlotConcurrent(t *testing.T) {
 // (c) makes the decided height permanently unsignable.
 func TestRedIndep_CommittedSlotLeak_LocalFinalizePrunes(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngine(t, params5(), vs, 0, &recordingGossiper{})
 
 	A := newTestBlock(1, ids.Empty, "leak-A")
 	posA := trackProposal(e, chainID, A, 0) // binds committedSlot[{1}]=A; own vote recorded

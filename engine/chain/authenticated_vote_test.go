@@ -13,7 +13,7 @@ import (
 // turn an unsigned Chits preference into a cryptographic vote.
 func TestAuthenticatedVote_IsRefused(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 	alpha := e.consensus.Alpha()
 	if e.consensus.K() <= 1 || e.voteVerifier == nil {
 		t.Fatal("precondition: the gate only exists on a K>1 chain with a verifier")
@@ -37,7 +37,7 @@ func TestAuthenticatedVote_IsRefused(t *testing.T) {
 // unsigned transport messages can produce a certificate witness.
 func TestAuthenticatedVote_NeverBuildsACert(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 
 	blk := newTestBlock(16822, ids.GenerateTestID(), "nova-only")
 	trackFollowedBlock(e, chainID, blk)
@@ -58,7 +58,7 @@ func TestAuthenticatedVote_NeverBuildsACert(t *testing.T) {
 // unexported precisely so no decoded value can carry it.
 func TestAuthenticatedVote_PayloadOriginStillRefused(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 
 	blk := newTestBlock(16823, ids.GenerateTestID(), "payload-origin")
 	pos := trackFollowedBlock(e, chainID, blk)
@@ -79,7 +79,7 @@ func TestAuthenticatedVote_PayloadOriginStillRefused(t *testing.T) {
 // removed unsigned acceptance path.
 func TestAuthenticatedVote_ReplaysRemainRefused(t *testing.T) {
 	vs := newTestValidatorSet(5)
-	e, chainID := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, chainID := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 	alpha := e.consensus.Alpha()
 
 	blk := newTestBlock(16824, ids.GenerateTestID(), "authenticated-replay")

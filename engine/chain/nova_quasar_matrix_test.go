@@ -157,6 +157,10 @@ func TestNovaQuasarMatrix_SingleValidatorSelfIgnites(t *testing.T) {
 	rec := &recordingGossiper{}
 	p := dyn5()
 	p.K = 1
+	// A committee of one has a quorum of one. Shrinking K without shrinking α left
+	// α=4 on a 1-node chain — a quorum no committee of that size can ever reach.
+	p.AlphaPreference = 1
+	p.AlphaConfidence = 1
 	e, _ := newQuorumEngineOpts(t, p, vs, 0, rec, WithStakeWeighting(vs))
 
 	blk := newTestBlock(1, ids.Empty, "solo")
@@ -484,7 +488,7 @@ func TestNovaQuasarMatrix_Equivocation_TwoNovaNeverTwoQuasar(t *testing.T) {
 	const n = 5
 	const alpha = 4 // ⅔ export count for n=5
 	vs := newTestValidatorSet(n)
-	e, cid := newQuorumEngine(t, params5Prod(), vs, 0, &recordingGossiper{})
+	e, cid := newQuorumEngine(t, params5(), vs, 0, &recordingGossiper{})
 
 	A := newTestBlock(1, ids.Empty, "equiv-A")
 	B := newTestBlock(1, ids.Empty, "equiv-B")

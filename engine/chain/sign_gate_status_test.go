@@ -60,7 +60,7 @@ func TestSignGateStatus_GuardConfigured(t *testing.T) {
 	vs := newTestValidatorSet(5)
 
 	// --- no guard: memory-only.
-	noGuard, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{})
+	noGuard, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{})
 	st := noGuard.SignGateStatus()
 	if st.GuardConfigured {
 		t.Fatalf("GuardConfigured must be false with no VoteGuardStore wired, got %+v", st)
@@ -75,7 +75,7 @@ func TestSignGateStatus_GuardConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard: %v", err)
 	}
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
 	st = e.SignGateStatus()
 	if !st.GuardConfigured {
 		t.Fatalf("GuardConfigured must be true once a VoteGuardStore is wired, got %+v", st)
@@ -118,7 +118,7 @@ func TestSignGateStatus_PersistCounters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard: %v", err)
 	}
-	ok, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
+	ok, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
 	if st := ok.SignGateStatus(); st.PersistAttempts != 0 || st.PersistSuccesses != 0 || st.PersistFailures != 0 {
 		t.Fatalf("no durable write has happened yet — all counters must be zero: %+v", st)
 	}
@@ -147,7 +147,7 @@ func TestSignGateStatus_PersistCounters(t *testing.T) {
 
 	// --- a store whose durable write always fails: attempt + failure, no success, and the
 	// signature is refused (fail-closed, unchanged behaviour).
-	bad, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(failingGuard{}))
+	bad, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(failingGuard{}))
 	if bad.reserveSlotForSign(11, ids.GenerateTestID()) {
 		t.Fatal("a failed durable write must still REFUSE the signature (fail-closed) — the " +
 			"observability must not have changed the decision")
@@ -175,7 +175,7 @@ func TestSignGateStatus_LoadedBootState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard(store1): %v", err)
 	}
-	e1, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
+	e1, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
 	if st := e1.SignGateStatus(); st.LoadedBindingCount != 0 || st.LoadedFinalizedThrough != 0 {
 		t.Fatalf("a fresh store must report a genesis boot state (0 bindings, floor 0): %+v", st)
 	}
@@ -201,7 +201,7 @@ func TestSignGateStatus_LoadedBootState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard(store2): %v", err)
 	}
-	e2, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
+	e2, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store2))
 	st = e2.SignGateStatus()
 	if st.LoadedFinalizedThrough != 5 {
 		t.Fatalf("LoadedFinalizedThrough must be the floor recovered at open (5), got %d: %+v",
@@ -229,7 +229,7 @@ func TestExplainHeight_Binding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard: %v", err)
 	}
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
 
 	const H = uint64(31)
 	ex := e.ExplainHeight(H)
@@ -273,7 +273,7 @@ func TestExplainHeight_CertifiedFloor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard: %v", err)
 	}
-	e, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
+	e, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store))
 
 	// --- floor 0: nothing is closed yet (height 0 itself is at the floor).
 	if ex := e.ExplainHeight(1); ex.BelowCertifiedFloor || ex.CertifiedFloor != 0 {
@@ -338,7 +338,7 @@ func TestSignGateBootState_LoggedOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenVoteGuard(store1): %v", err)
 	}
-	seed, _ := newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
+	seed, _ := newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{}, WithVoteGuard(store1))
 	if !seed.reserveSlotForSign(8, ids.GenerateTestID()) {
 		t.Fatal("bind at height 8 must be permitted")
 	}
@@ -352,7 +352,7 @@ func TestSignGateBootState_LoggedOnce(t *testing.T) {
 		t.Fatalf("OpenVoteGuard(store2): %v", err)
 	}
 	cl := newCapturingLogger()
-	newQuorumEngineOpts(t, params5Prod(), vs, 0, &recordingGossiper{},
+	newQuorumEngineOpts(t, params5(), vs, 0, &recordingGossiper{},
 		WithVoteGuard(store2), WithLogger(cl))
 
 	lines := cl.linesContaining("sign-gate boot state")
