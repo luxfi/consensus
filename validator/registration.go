@@ -175,6 +175,14 @@ func Register(rs []Registration) (CanonicalValidatorSet, error) {
 // An undecodable key is skipped rather than refused, exactly as upstream: this
 // function reads a set it did not admit, and refusing the whole set on one bad
 // key would trade a signer for a halt. Strictness belongs at admission.
+//
+// A key with NO STAKE behind it is refused, not skipped, and that is not the
+// same trade. Skipping a bad key costs a signer the set was going to lose
+// anyway; a keyed seat carrying zero weight is a signer the set gains for free
+// — it counts toward the distinct-signer floor and contributes nothing to the
+// stake floor, which is precisely the disagreement between "how many signed" and
+// "how much signed" that the two floors exist to prevent. Register refuses it
+// with the same ErrZeroWeight, so the two doors agree on the clause they share.
 func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalValidatorSet, error) {
 	// Iterate in node-id order. The upstream ranged over the map and sorted at the
 	// end, which is fine for a total but not for an error: which duplicate pair a
@@ -202,6 +210,22 @@ func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalVa
 		}
 		if len(vdr.PublicKey) == 0 {
 			continue
+		}
+		// ZERO WEIGHT, on a validator that CAN sign. The same clause Register
+		// runs, at the same point in the order — after the key is known to be
+		// present and before it is decoded — because it is the same phantom: an
+		// entry that raises the count of distinct signers a floor is read
+		// against without raising the weight. Both doors have to refuse it or
+		// the floor means one thing at admission and another here.
+		//
+		// A KEYLESS member with no stake is not that phantom and is not refused:
+		// it was skipped above, so it never becomes a signer, and it neither
+		// signs nor weighs. That is the one leniency this door keeps, and it is
+		// deliberate — it is the door for a set the chain already admitted, and
+		// a member this node holds no key for is a fact about the node's view,
+		// not a defect in the set. A key with no stake behind it is a defect.
+		if vdr.Weight == 0 {
+			return CanonicalValidatorSet{}, fmt.Errorf("%w: %s", ErrZeroWeight, nodeID)
 		}
 		pk, err := bls.PublicKeyFromCompressedBytes(vdr.PublicKey)
 		if err != nil {
