@@ -313,7 +313,13 @@ impl QuorumCert {
     /// The count-only predicate: every structural clause, plus a valid signature
     /// from each of at least `threshold` distinct voters.
     ///
-    /// This is NOT a standalone accept rule, and must not be used as one. The
+    /// A CERTIFICATE IS A RECORD, NOT A CAPABILITY. Every field on it is public
+    /// and anyone may build one that says anything; holding one authorises
+    /// nothing. What authorises is [`Self::verify_weighted`], and EVERY acceptor
+    /// runs it — this, the count-only predicate, is the structural pre-filter
+    /// inside it.
+    ///
+    /// So it is NOT a standalone accept rule, and must not be used as one. The
     /// `threshold` it counts against is a field of the certificate — the
     /// certificate names its own quorum — so on its own this clears a 1-of-n
     /// certificate that declares `threshold: 1`. It is a building block:
