@@ -19,7 +19,8 @@ use lux_consensus::cert::{
     DST, SIGNATURE_LEN,
 };
 use lux_consensus::finality::{
-    canonical_vote_message, two_thirds_count, two_thirds_stake_floor, Finality, Position,
+    canonical_vote_message, nova_signer_floor, signer_floor, two_thirds_count,
+    two_thirds_stake_floor, Finality, Position,
 };
 use lux_consensus::pop;
 
@@ -97,12 +98,32 @@ fn position() -> Position {
     }
 }
 
-/// A valid Quasar certificate from the first `k` members of the committee.
+/// A valid Quasar certificate from the first `k` members of the committee,
+/// declaring `threshold` as its quorum. The structural clauses are what it is
+/// for: `verify` counts against the declaration, so a case about ordering or a
+/// signature states what the certificate claims and moves on.
 fn valid_cert(signers: &[Signer], k: usize, threshold: u32) -> QuorumCert {
     let pos = position();
     let message = canonical_vote_message(&pos, true);
     let votes: Vec<Vote> = signers[..k].iter().map(|s| s.vote(&message)).collect();
     QuorumCert::assemble(Finality::Quasar, pos, threshold, &votes).expect("assemble")
+}
+
+/// A certificate from the first `k` of a committee of `n`, declaring the quorum
+/// that set DERIVES for `tier` — the only threshold `verify_weighted` admits.
+///
+/// Assembly runs at the vote count and the declaration is stamped after, because
+/// the two are different questions: a certificate below its set's floor is one no
+/// honest assembler can build and one every verifier must still refuse, so stating
+/// it means building it the way an adversary would. The ordering and dedup clauses
+/// still run.
+fn declaring(signers: &[Signer], tier: Finality, n: i64, k: usize) -> QuorumCert {
+    let pos = position();
+    let message = canonical_vote_message(&pos, true);
+    let votes: Vec<Vote> = signers[..k].iter().map(|s| s.vote(&message)).collect();
+    let mut c = QuorumCert::assemble(tier, pos, votes.len() as u32, &votes).expect("assemble");
+    c.threshold = signer_floor(tier, n) as u32;
+    c
 }
 
 // ---------------------------------------------------------------- the happy path
@@ -325,11 +346,26 @@ fn a_count_quorum_without_the_stake_is_refused() {
 /// export at all, which would make the passing half of this case untestable.
 #[test]
 fn exactly_two_thirds_is_refused_and_one_more_passes() {
-    // Six validators of 100. floor(2·600/3) = 400, so 400 must fail.
-    let (signers, set) = committee(6, 100);
-    let four = valid_cert(&signers, 4, 4);
+    // Six validators summing to 600, LOPSIDED: five of eighty and one of two
+    // hundred. floor(2·600/3) = 400, so the five light seats hold exactly two
+    // thirds and must fail — while five signatures already meet the count floor
+    // floor(2·6/3)+1 = 5, so the stake half is the only thing left to decide it.
+    // On an equal six the two halves bind at the same edge and neither can be
+    // seen alone; the weights are uneven here for exactly that reason.
+    let signers: Vec<Signer> = (1..=6u8)
+        .map(|i| Signer::new(i, if i == 6 { 200 } else { 80 }))
+        .collect();
+    let mut set = ValidatorSet::new();
+    for s in &signers {
+        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
+    }
+    assert_eq!(set.signer_stake(0), 600);
+    assert_eq!(two_thirds_stake_floor(600), 400);
+
+    let five = declaring(&signers, Finality::Quasar, 6, 5);
+    assert_eq!(five.voter_count(), two_thirds_count(6), "the count floor is met");
     assert_eq!(
-        four.verify_weighted(&set, &set, 0),
+        five.verify_weighted(&set, &set, 0),
         Err(CertError::StakeBelowSupermajority {
             voted: 400,
             signer: 600,
@@ -337,8 +373,8 @@ fn exactly_two_thirds_is_refused_and_one_more_passes() {
         })
     );
 
-    let five = valid_cert(&signers, 5, 5);
-    assert_eq!(five.verify_weighted(&set, &set, 0), Ok(()));
+    let six = declaring(&signers, Finality::Quasar, 6, 6);
+    assert_eq!(six.verify_weighted(&set, &set, 0), Ok(()));
 }
 
 /// An epoch that resolves to no stake at all cannot support a claim about a
@@ -387,21 +423,22 @@ fn nova_needs_both_the_majority_and_the_signer_floor() {
         set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
     }
 
-    let pos = position();
-    let message = canonical_vote_message(&pos, true);
+    let message = canonical_vote_message(&position(), true);
 
     // The stake majority holder, alone.
-    let alone =
-        QuorumCert::assemble(Finality::Nova, pos.clone(), 1, &[signers[0].vote(&message)]).unwrap();
-    assert_eq!(alone.verify(&set, 0), Ok(()));
+    let alone = declaring(&signers, Finality::Nova, 5, 1);
+    // The SIGNATURE is real, which is what this line is for. The certificate is
+    // below the floor it declares, so `verify` answers for it too — the same
+    // clause, one step earlier.
+    let lone = signers[0].vote(&message);
+    assert!(set.verify_vote(&lone.node_id, &message, &lone.signature, 0));
     assert_eq!(
         alone.verify_weighted(&set, &set, 0),
-        Err(CertError::SignerFloor { have: 1, need: 3, n: 5 })
+        Err(CertError::BelowThreshold { have: 1, need: 3 })
     );
 
     // Three signers including it: floor met, and 998 of 1000 is a majority.
-    let votes: Vec<Vote> = signers[..3].iter().map(|s| s.vote(&message)).collect();
-    let three = QuorumCert::assemble(Finality::Nova, pos, 3, &votes).unwrap();
+    let three = declaring(&signers, Finality::Nova, 5, 3);
     assert_eq!(three.verify_weighted(&set, &set, 0), Ok(()));
 }
 
@@ -1074,13 +1111,15 @@ fn a_clamping_stake_source_is_refused_rather_than_read() {
         "the source clamps, as the set used to"
     );
 
-    // Two of four: half the stake, and every signature genuine.
-    let cert = valid_cert(&signers, 2, 2);
+    // Three of four: the export count floor is met, so the certificate reaches the
+    // tally and the tally is the only thing left to decide it. Every signature is
+    // genuine — the stake is what is under test.
+    let cert = declaring(&signers, Finality::Quasar, 4, 3);
     assert_eq!(cert.verify(&set, 0), Ok(()));
     assert_eq!(
         cert.verify_weighted(&set, &clamping, 0),
         Err(CertError::WeightOverflow),
-        "half the stake is not two thirds of it, whatever the arithmetic clamps to"
+        "a clamped total is not a total, whatever fraction of it the votes reach"
     );
 
     // The same refusal one rung down, so neither tier reads a clamped total.
@@ -1226,17 +1265,26 @@ fn a_lone_holder_of_two_thirds_cannot_export() {
     // The premise: the stake half is satisfied outright. floor(2·104/3) = 69.
     assert_eq!(two_thirds_stake_floor(104), 69);
 
+    // The certificate declares the floor this set derives — four — so a one-signer
+    // and a three-signer certificate are each SHORT OF THEIR OWN DECLARED QUORUM,
+    // and the count clause names them with that floor in the `need` field. It is
+    // the same number the rung enforces, reached one clause earlier: once the
+    // declaration must equal the derived floor, counting against the declaration
+    // IS counting against the floor.
     assert_eq!(
-        valid_cert(&signers, 1, 1).verify_weighted(&set, &set, 0),
-        Err(CertError::SignerFloor { have: 1, need: 4, n: 5 }),
+        declaring(&signers, Finality::Quasar, 5, 1).verify_weighted(&set, &set, 0),
+        Err(CertError::BelowThreshold { have: 1, need: 4 }),
     );
     // Three is still one short of floor(2·5/3)+1 = 4, and the stake is untouched.
     assert_eq!(
-        valid_cert(&signers, 3, 3).verify_weighted(&set, &set, 0),
-        Err(CertError::SignerFloor { have: 3, need: 4, n: 5 }),
+        declaring(&signers, Finality::Quasar, 5, 3).verify_weighted(&set, &set, 0),
+        Err(CertError::BelowThreshold { have: 3, need: 4 }),
     );
     // At the floor the same stake carries: the count was the binding clause.
-    assert_eq!(valid_cert(&signers, 4, 4).verify_weighted(&set, &set, 0), Ok(()));
+    assert_eq!(
+        declaring(&signers, Finality::Quasar, 5, 4).verify_weighted(&set, &set, 0),
+        Ok(())
+    );
 }
 
 /// Neither half is sufficient. The four light members meet the count floor
@@ -1295,7 +1343,7 @@ fn an_export_certificate_over_an_unresolved_set_fails_closed() {
     }
 
     let (signers, set) = committee(4, 100);
-    let cert = valid_cert(&signers, 4, 4);
+    let cert = declaring(&signers, Finality::Quasar, 4, 4);
     // Against the real set this certificate exports.
     assert_eq!(cert.verify_weighted(&set, &set, 0), Ok(()));
     assert_eq!(
@@ -1353,7 +1401,7 @@ fn keyless_stake_is_in_no_floor_and_export_still_reaches() {
     );
 
     // The whole signing set signs, and the export rung admits it.
-    let cert = valid_cert(&signers, 6, 6);
+    let cert = declaring(&signers, Finality::Quasar, set.signer_count(0), 6);
     assert!(cert.voter_count() >= two_thirds_count(set.signer_count(0)));
     assert_eq!(cert.verify(&set, 0), Ok(()));
     assert_eq!(
@@ -1362,16 +1410,16 @@ fn keyless_stake_is_in_no_floor_and_export_still_reaches() {
         "export refused with every signer in the set agreeing"
     );
 
-    // And the rung is still a rung: four of six is short of two thirds of the
-    // stake that can sign, so the floor was moved off the spectator, not removed.
-    let four = valid_cert(&signers, 4, 4);
+    // And the rung is still a rung: four of six does not reach the export quorum
+    // this set derives, so the floor was moved off the spectator and not removed.
+    // Over six EQUAL signers the two halves of the rule bind at the same edge —
+    // five signatures and more than four hundred are the same bar in two units —
+    // so this row is answered by the count. `exactly_two_thirds_is_refused_and_
+    // one_more_passes` is the lopsided set where the stake half binds alone.
+    let four = declaring(&signers, Finality::Quasar, set.signer_count(0), 4);
     assert_eq!(
         four.verify_weighted(&set, &set, 0),
-        Err(CertError::StakeBelowSupermajority {
-            voted: 400,
-            signer: 600,
-            need_above: 400,
-        })
+        Err(CertError::BelowThreshold { have: 4, need: 5 })
     );
 }
 
@@ -1411,7 +1459,8 @@ fn keyless_seats_are_in_no_count_floor_either() {
         "the roll floor is within reach of four signers; nothing is stranded"
     );
 
-    let cert = valid_cert(&signers, 4, 4);
+    let n = set.signer_count(0);
+    let cert = declaring(&signers, Finality::Quasar, n, 4);
     assert_eq!(
         cert.verify_weighted(&set, &set, 0),
         Ok(()),
@@ -1421,8 +1470,13 @@ fn keyless_seats_are_in_no_count_floor_either() {
 
     // The rung is still a rung, and its edge is sharp on the signer denominator:
     // three signers sit exactly ON the floor and carry, two sit below it.
-    assert_eq!(valid_cert(&signers, 3, 3).verify_weighted(&set, &set, 0), Ok(()));
-    assert!(valid_cert(&signers, 2, 2).verify_weighted(&set, &set, 0).is_err());
+    assert_eq!(
+        declaring(&signers, Finality::Quasar, n, 3).verify_weighted(&set, &set, 0),
+        Ok(())
+    );
+    assert!(declaring(&signers, Finality::Quasar, n, 2)
+        .verify_weighted(&set, &set, 0)
+        .is_err());
 }
 
 // ------------------------------------------------------ the Byzantine committee
@@ -1443,7 +1497,7 @@ fn keyless_seats_are_in_no_count_floor_either() {
 fn an_export_certificate_needs_a_byzantine_committee() {
     for n in 1..4u8 {
         let (signers, set) = committee(n, 100);
-        let cert = valid_cert(&signers, n as usize, u32::from(n));
+        let cert = declaring(&signers, Finality::Quasar, i64::from(n), usize::from(n));
 
         // Both quorum floors are MET, so neither can be what refuses it.
         assert!(cert.voter_count() >= two_thirds_count(set.signer_count(0)), "n={n}");
@@ -1465,7 +1519,7 @@ fn an_export_certificate_needs_a_byzantine_committee() {
     // ban on small chains certifying anything.
     let (signers, set) = committee(4, 100);
     assert_eq!(
-        valid_cert(&signers, 4, 4).verify_weighted(&set, &set, 0),
+        declaring(&signers, Finality::Quasar, 4, 4).verify_weighted(&set, &set, 0),
         Ok(()),
         "the minimum Byzantine committee cannot export"
     );
@@ -1481,11 +1535,7 @@ fn an_export_certificate_needs_a_byzantine_committee() {
 fn nova_ignites_below_the_byzantine_committee() {
     for n in 1..4u8 {
         let (signers, set) = committee(n, 100);
-        let pos = position();
-        let message = canonical_vote_message(&pos, true);
-        let votes: Vec<Vote> = signers.iter().map(|s| s.vote(&message)).collect();
-        let cert = QuorumCert::assemble(Finality::Nova, pos, u32::from(n), &votes)
-            .expect("assemble");
+        let cert = declaring(&signers, Finality::Nova, i64::from(n), usize::from(n));
         assert_eq!(
             cert.verify_weighted(&set, &set, 0),
             Ok(()),
@@ -1514,5 +1564,103 @@ fn a_keyless_member_named_as_a_voter_is_refused() {
     assert!(
         matches!(cert.verify(&set, 0), Err(CertError::SigInvalid(_))),
         "a vote from a member with no registered key must not verify"
+    );
+}
+
+// ------------------------------------------------- derived authority (finding-3)
+
+/// A certificate states its quorum; it does not choose it.
+///
+/// The floor a certificate is counted against is a function of the SET it is
+/// weighed against and the RUNG it attests. The threshold field carries that
+/// number so a reader knows what was required, and `verify_weighted` checks the
+/// field against what the set actually derives — so the field is a claim, never a
+/// value the verifier adopts.
+///
+/// Without the clause the field is load-bearing, because `verify`'s last clause
+/// counts distinct valid accepts against the certificate's OWN threshold: one
+/// declaring 1 clears it on a single signature.
+#[test]
+fn a_certificate_may_not_declare_a_quorum_the_set_does_not_derive() {
+    let (signers, set) = committee(4, 100);
+
+    // The honest certificate: four of four, declaring what the set derives.
+    let honest = declaring(&signers, Finality::Quasar, 4, 4);
+    assert_eq!(honest.threshold, two_thirds_count(4) as u32);
+    assert_eq!(honest.verify_weighted(&set, &set, 0), Ok(()));
+
+    // The same votes, under-claiming. Every signature still verifies and the stake
+    // is still unanimous — the ONLY thing wrong is the number the certificate names.
+    let mut under = declaring(&signers, Finality::Quasar, 4, 4);
+    under.threshold = 1;
+    assert_eq!(
+        under.verify_weighted(&set, &set, 0),
+        Err(CertError::ThresholdNotDerived { declared: 1, derived: 3, n: 4 }),
+    );
+
+    // And an over-claim, for the same reason in the other direction: a certificate
+    // asserting a quorum this set does not require is still naming a number that is
+    // not the set's. Four signatures clear a declared four, so the count clause has
+    // nothing to say and this is refused by the derived clause alone.
+    let mut over = declaring(&signers, Finality::Quasar, 4, 4);
+    over.threshold = 4;
+    assert_eq!(
+        over.verify_weighted(&set, &set, 0),
+        Err(CertError::ThresholdNotDerived { declared: 4, derived: 3, n: 4 }),
+    );
+}
+
+/// The rule is one rule and not an export special case.
+#[test]
+fn the_accept_rung_derives_its_quorum_the_same_way() {
+    let (signers, set) = committee(5, 100);
+
+    let honest = declaring(&signers, Finality::Nova, 5, 3);
+    assert_eq!(honest.threshold, nova_signer_floor(5) as u32);
+    assert_eq!(honest.verify_weighted(&set, &set, 0), Ok(()));
+
+    let mut under = declaring(&signers, Finality::Nova, 5, 3);
+    under.threshold = 1;
+    assert_eq!(
+        under.verify_weighted(&set, &set, 0),
+        Err(CertError::ThresholdNotDerived { declared: 1, derived: 3, n: 5 }),
+    );
+}
+
+/// One definition of the floor, and a rung that is not an accept tier gets none.
+#[test]
+fn the_signer_floor_is_the_rungs_own_arithmetic() {
+    for n in 1..=64i64 {
+        assert_eq!(signer_floor(Finality::Nova, n), nova_signer_floor(n), "n={n}");
+        assert_eq!(signer_floor(Finality::Quasar, n), two_thirds_count(n), "n={n}");
+    }
+    for rung in [Finality::Photon, Finality::Wave, Finality::Horizon] {
+        assert_eq!(signer_floor(rung, 41), 0, "{rung:?} is not an accept rung");
+    }
+}
+
+/// An unresolved set derives no floor, so nothing is compared against it and the
+/// rung's own clause refuses the certificate under the name it has always carried.
+/// Stepping aside is not a pass.
+#[test]
+fn an_unresolved_set_is_not_named_by_the_derived_clause() {
+    struct Unresolved;
+    impl StakeSource for Unresolved {
+        fn weight(&self, _: &NodeId, _: u64) -> u64 {
+            10
+        }
+        fn signer_stake(&self, _: u64) -> u64 {
+            10
+        }
+        fn signer_count(&self, _: u64) -> i64 {
+            0
+        }
+    }
+    let (signers, set) = committee(4, 100);
+    let mut cert = declaring(&signers, Finality::Quasar, 4, 4);
+    cert.threshold = 1; // whatever it says, an unknown set has no number to check it against
+    assert_eq!(
+        cert.verify_weighted(&set, &Unresolved, 0),
+        Err(CertError::UnresolvedSet { n: 0 }),
     );
 }

@@ -77,6 +77,11 @@ type Seat struct {
 // the count floor, the stake floor, or which of the two applies to that rung.
 // BOTH are the rung's own: Nova's count floor saturates at three, Quasar's is
 // the export supermajority in seats and grows with the set.
+// Threshold is what the certificate DECLARES its quorum to be, and every honest
+// case declares SignerFloor — the floor the rung derives over this set. It is a
+// recorded field rather than a derived one because the derived-authority rows
+// declare something else on purpose, and a runner has to be handed the number the
+// certificate carried in order to reach the same verdict.
 type FinalityCase struct {
 	Name        string   `json:"name"`
 	Note        string   `json:"note"`
@@ -244,6 +249,8 @@ func refusal(err error) string {
 	switch {
 	case err == nil:
 		return ""
+	case errors.Is(err, chain.ErrQCThresholdNotDerived):
+		return "thresholdNotDerived"
 	case errors.Is(err, chain.ErrQCBelowThreshold):
 		return "belowThreshold"
 	case errors.Is(err, chain.ErrQCStakeBelowMajority):
@@ -259,14 +266,26 @@ func refusal(err error) string {
 	}
 }
 
-// finality weighs one certificate and records what the live predicate decides.
+// finality weighs one certificate that declares the quorum its set DERIVES —
+// what an honest assembler stamps on it — and records what the live predicate
+// decides.
 //
-// The cert's own threshold is set to the number of votes it carries, so the
-// tier-agnostic count clause always passes and the weighted half is the only
-// thing a case can turn on. That is the isolation the section is for: a runner
-// that fails one of these has failed the stake floor or the signer floor, not
-// the wire and not a signature.
+// The declared threshold is not a free variable any more. A certificate's floor
+// is a function of the set and the rung, and the predicate now refuses one that
+// declares any other number, so "the count clause is neutralised by declaring the
+// vote count" is no longer a thing a case may do. What isolates the weighted half
+// here is that every vote is resolved as correctly signed and every certificate
+// declares the one threshold it is allowed to: a runner that fails one of these
+// has failed a floor, not the wire and not a signature.
 func finality(name, note string, rung chain.Finality, s stake, signers []int) FinalityCase {
+	return weigh(name, note, rung, s, signers,
+		chain.SignerFloor(rung, s.SignerCount(verdictEpoch)))
+}
+
+// weigh is the body: one certificate, declaring `declared`, weighed against one
+// set at one rung. Cases that pass anything but the derived floor are stating the
+// derived-authority attack — a certificate naming a quorum of its own choosing.
+func weigh(name, note string, rung chain.Finality, s stake, signers []int, declared uint32) FinalityCase {
 	votes := make([]chain.SignedVote, 0, len(signers))
 	names := make([]string, 0, len(signers))
 	var voted uint64
@@ -277,10 +296,16 @@ func finality(name, note string, rung chain.Finality, s stake, signers []int) Fi
 		voted += s.Weight(id, verdictEpoch)
 	}
 
+	// Assembled at the vote count so the canonical ordering and dedup clauses run,
+	// then stamped with what this case's certificate DECLARES. Assembly is not the
+	// subject here — a verifier is handed a byte string claiming a threshold, and
+	// an honest assembler cannot even build the under-quorum certificates a
+	// verifier must still refuse.
 	cert, err := chain.AssembleQuorumCert(spec(), rung, uint32(len(votes)), votes)
 	if err != nil {
 		panic("conformance: " + name + ": " + err.Error())
 	}
+	cert.Threshold = declared
 
 	seats := make([]Seat, 0, len(s))
 	for i, m := range s {
@@ -298,11 +323,14 @@ func finality(name, note string, rung chain.Finality, s stake, signers []int) Fi
 	total := s.SignerStake(verdictEpoch)
 	n := s.SignerCount(verdictEpoch)
 	floor := config.HalfStakeFloor(total)
-	signerFloor := chain.NovaSignerFloor(n)
 	if rung == chain.Quasar {
 		floor = config.TwoThirdsStakeFloor(total)
-		signerFloor = config.TwoThirdsCount(n)
 	}
+	// Read from the engine's own definition, never restated: signerFloor is the
+	// number the derived-authority clause compares a certificate's declaration
+	// against, so a corpus that computed it a second way could freeze a floor the
+	// predicate does not enforce.
+	signerFloor := int(chain.SignerFloor(rung, n))
 
 	// The decision, read from the live predicate — never restated here.
 	decided := cert.VerifyWeighted(trust{set: s}, s, verdictEpoch)
@@ -430,7 +458,17 @@ func verdicts() Verdict {
 			"separately. n and total are read over the SIGNERS: a seat marked keyless holds " +
 			"stake, can never sign, and is in neither denominator. The decision does not " +
 			"depend on the position the votes were cast over, so a runner may weigh these " +
-			"votes over any position its encoder can build.",
+			"votes over any position its encoder can build. DERIVED AUTHORITY, the clause "+
+			"every row above also states: a certificate DECLARES a threshold, and it must be "+
+			"exactly signerFloor — the floor the rung derives over this set. A certificate "+
+			"states its quorum; it does not choose it. Without that clause the field is "+
+			"load-bearing, because the tier-agnostic count clause counts distinct valid "+
+			"accepts against the certificate's OWN declaration, so one declaring 1 clears it "+
+			"on a single signature. Equality and not a lower bound: an over-claim names a bar "+
+			"this set does not set, and tolerating it would let a certificate redefine the "+
+			"rung upward exactly as tolerating an under-claim lets it redefine the rung down. "+
+			"The threshold field is recorded per row because three rows declare something "+
+			"else on purpose, and a runner must be handed the number the certificate carried.",
 		Epoch: u64(verdictEpoch),
 		Finality: []FinalityCase{
 			finality("nova_below_majority",
@@ -440,7 +478,12 @@ func verdicts() Verdict {
 				"twenty-one of forty-one: one seat past the floor is the whole difference",
 				chain.Nova, equal41, first(21)),
 			finality("quasar_below_supermajority",
-				"twenty-seven of forty-one: exactly the supermajority floor, refused for the same reason",
+				"twenty-seven of forty-one: exactly the supermajority floor, and equality is not "+
+					"a quorum here either. Over an EQUAL set the two halves of the export rule "+
+					"bind at the same edge, so the certificate is one signature short of the "+
+					"twenty-eight it declares and the count clause names it — the stake is "+
+					"equally short, and quasar_count_met_stake_short is the lopsided row where "+
+					"the stake half binds on its own",
 				chain.Quasar, equal41, first(27)),
 			finality("quasar_supermajority",
 				"twenty-eight of forty-one: the export edge. Note the same twenty-eight signers "+
@@ -451,8 +494,11 @@ func verdicts() Verdict {
 					"before stake is ever read",
 				chain.Nova, equal4, first(1)),
 			finality("quasar_one_of_four",
-				"one of four equal seats at the export rung: refused on stake, which is the only "+
-					"floor this rung has",
+				"one of four equal seats at the export rung. One signature is short of the "+
+					"three this set derives and one unit is short of two thirds of four, so "+
+					"both halves refuse and the count names it. The rung has TWO floors and "+
+					"this row clears neither; quasar_whale_alone isolates the count and "+
+					"quasar_count_met_stake_short isolates the stake",
 				chain.Quasar, equal4, first(1)),
 			finality("nova_whale_alone",
 				"the holder of a hundred of a hundred and four signs alone: a stake majority many "+
@@ -505,6 +551,65 @@ func verdicts() Verdict {
 					"thing that decides this row, and an implementation that moved only the "+
 					"count fails it. Seven members, six signers, above the committee floor",
 				chain.Quasar, keylessStake, first(6)),
+			// THE DERIVED-AUTHORITY ROWS. Everything above is a certificate that
+			// declares the quorum its set gives it; these three declare something
+			// else, which is the only remaining way a certificate could name its own
+			// authority. They are stated over the sets the rows above already use, so
+			// the only variable is the declaration.
+			weigh("quasar_threshold_underclaimed",
+				"THE UNDER-CLAIM. The accepting twenty-eight-of-forty-one certificate above, "+
+					"byte for byte, except that it declares a quorum of ONE. Every signature "+
+					"still verifies and the stake is still a supermajority; the only thing "+
+					"wrong is the number. It matters because the tier-agnostic count clause "+
+					"counts distinct valid accepts against the certificate's OWN declaration, "+
+					"so a declaration of one turns 'twenty-eight validators agreed' into 'one "+
+					"did' for any reader that has no validator set to check against. The floor "+
+					"a certificate is held to is a function of the SET and the RUNG, so the "+
+					"declaration is a claim to be checked and never a value to adopt",
+				chain.Quasar, equal41, first(28), 1),
+			weigh("quasar_threshold_overclaimed",
+				"THE OVER-CLAIM, refused for the same reason in the other direction. THIRTY of "+
+					"forty-one sign — a supermajority in seats and in stake, so this certificate "+
+					"would carry — and it declares a quorum of twenty-nine where the set derives "+
+					"twenty-eight. Thirty signatures clear twenty-nine, so the count clause has "+
+					"nothing to say and the ONLY thing refusing this row is the derived clause. "+
+					"That is the point of stating it: an over-claim ABOVE the vote count is "+
+					"already caught by counting, and one below it is caught by nothing else. A "+
+					"verifier that tolerated this would let a certificate redefine the rung "+
+					"upward exactly as tolerating the under-claim lets it redefine the rung "+
+					"down. Neither direction is the set's number, so the rule is equality",
+				chain.Quasar, equal41, first(30), 29),
+			weigh("nova_threshold_underclaimed",
+				"THE UNDER-CLAIM at the accept rung, because the rule is one rule and not an "+
+					"export special case. Twenty-one of forty-one carry a stake majority and "+
+					"the certificate declares a quorum of one; the accept rung derives three "+
+					"over this set — its count floor saturates — and three is what the "+
+					"certificate must say",
+				chain.Nova, equal41, first(21), 1),
+
+			// THE STAKE HALF, ISOLATED, at each rung. Over an EQUAL set the count and
+			// the stake bind at the same edge, so neither can be seen alone there;
+			// these two are lopsided on purpose. The whale abstains and the minimum
+			// registrations sign, so the quorum is present in SEATS and nowhere near
+			// present in weight — which is the clause a count-only implementation
+			// passes every other row without ever running.
+			finality("quasar_count_met_stake_short",
+				"Four of five sign and the holder of a hundred of a hundred and four is not "+
+					"among them. Four distinct signers meet floor(2*5/3)+1, so the export count "+
+					"floor is satisfied outright and the certificate declares exactly it — and "+
+					"four units of stake does not exceed floor(2*104/3)=69, so the row is "+
+					"refused on STAKE alone. It is the mirror of quasar_whale_alone, which has "+
+					"the stake and not the seats; between them the two halves of the export "+
+					"rule are each shown binding on their own",
+				chain.Quasar, whale, []int{2, 3, 4, 5}),
+			finality("nova_count_met_stake_short",
+				"The same shape one rung down. Three of the minimum registrations sign while "+
+					"the whale abstains: three distinct signers meet the accept rung's "+
+					"saturating floor of three, and three units of a hundred and four is not a "+
+					"strict majority of the stake, so the row is refused on STAKE. Nova reads "+
+					"its majority in weight and not in heads, and this is the row that says so",
+				chain.Nova, whale, []int{2, 3, 4}),
+
 			finality("quasar_keyless_count",
 				"THE KEYLESS DENOMINATOR, count half, isolated. Four seats of a hundred "+
 					"hold keys; two more hold one unit each and no key. The keyless weight "+

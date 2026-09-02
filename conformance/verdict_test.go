@@ -103,6 +103,12 @@ func TestVerdictsStatedOutright(t *testing.T) {
 			t.Fatalf("%s: a certificate attests nova or quasar, not %q", c.Name, c.Rung)
 		}
 
+		// DERIVED AUTHORITY, transcribed: whatever the floors say, a certificate that
+		// declares a quorum other than the one its set derives is refused. It is
+		// ANDed last because it is an independent clause and not a re-reading of
+		// either floor — every row it decides clears both.
+		want = want && uint32(floor) == c.Threshold
+
 		if c.Accept != want {
 			t.Errorf("%s: corpus says accept=%v, the transcribed rule says %v "+
 				"(rung=%s n=%d signers=%d floor=%d voted=%s total=%s)",
@@ -158,10 +164,64 @@ func TestVerdictTallyIsTheSignersSum(t *testing.T) {
 			t.Errorf("%s: recorded tally %s is not the sum of its signers' weights %s",
 				c.Name, c.Voted, sum)
 		}
-		if uint32(len(c.Signers)) != c.Threshold {
-			t.Errorf("%s: threshold %d is not the vote count %d — the count clause is "+
-				"supposed to be satisfied so the weighted half is what decides",
-				c.Name, c.Threshold, len(c.Signers))
+	}
+}
+
+// TestVerdictThresholdIsDerived is the derived-authority invariant, stated
+// independently of the generator: a certificate's declared quorum is a function
+// of the SET and the RUNG, so every honest row must declare exactly the floor the
+// corpus records for it. The rows that declare anything else are the ones whose
+// whole subject is the declaration, and they are required to be refused BY the
+// derived clause — a row that mis-declared and was refused for some other reason
+// would leave the clause untested.
+func TestVerdictThresholdIsDerived(t *testing.T) {
+	misdeclared := 0
+	for _, c := range Build().Verdict.Finality {
+		derived := uint32(c.SignerFloor)
+		if c.Threshold == derived {
+			continue
+		}
+		misdeclared++
+		if c.Accept {
+			t.Errorf("%s: declares %d where the set derives %d and was ACCEPTED — a certificate "+
+				"named its own quorum", c.Name, c.Threshold, derived)
+		}
+		if c.Refusal != "thresholdNotDerived" {
+			t.Errorf("%s: declares %d where the set derives %d but was refused as %q — the "+
+				"derived clause never ran on the row that exists to run it",
+				c.Name, c.Threshold, derived, c.Refusal)
+		}
+	}
+	if misdeclared == 0 {
+		t.Error("no row states a certificate declaring a quorum of its own; the derived clause " +
+			"is frozen by nothing and could be deleted without a failing case")
+	}
+}
+
+// TestVerdictSignerFloorIsTheRungs holds the recorded floor to the rung's own
+// arithmetic over the SIGNERS — the number both the predicate and the declaration
+// are read against, so a corpus that recorded a third number would be telling a
+// runner the wrong one.
+func TestVerdictSignerFloorIsTheRungs(t *testing.T) {
+	for _, c := range Build().Verdict.Finality {
+		n := 0
+		for _, s := range c.Set {
+			if !s.Keyless {
+				n++
+			}
+		}
+		// Transcribed, never called: this guard shares no code with the floors it
+		// checks, which is the whole reason it exists beside the golden file.
+		want := n/2 + 1
+		if want > 3 {
+			want = 3
+		}
+		if c.Rung == "quasar" {
+			want = 2*n/3 + 1
+		}
+		if c.SignerFloor != want {
+			t.Errorf("%s: signer floor %d over %d signers, the %s rung derives %d",
+				c.Name, c.SignerFloor, n, c.Rung, want)
 		}
 	}
 }
@@ -474,7 +534,7 @@ func TestAdmissionWeightRulesStatedOutright(t *testing.T) {
 func TestVerdictSectionIsPopulated(t *testing.T) {
 	v := Build().Verdict
 
-	if got, want := len(v.Finality), 13; got != want {
+	if got, want := len(v.Finality), 18; got != want {
 		t.Errorf("%d finality cases, want %d — adding one is deliberate, losing one is not", got, want)
 	}
 	if got, want := len(v.Admission), 4; got != want {

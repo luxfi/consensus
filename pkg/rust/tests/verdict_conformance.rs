@@ -143,6 +143,7 @@ fn refusal(rung: &str, err: &CertError) -> &'static str {
                 "stakeBelowSupermajority"
             }
         }
+        CertError::ThresholdNotDerived { .. } => "thresholdNotDerived",
         CertError::ZeroWeight => "zeroWeight",
         CertError::WeightOverflow => "weightOverflow",
         other => panic!("a verdict the corpus cannot name: {other}"),
@@ -211,8 +212,16 @@ fn the_weighted_decision_is_the_one_go_made() {
         // The decision does not depend on the position, which the corpus states
         // outright — so the default one is as good as any and this harness needs
         // to carry no position material at all.
-        let cert = QuorumCert::assemble(tier, Position::default(), threshold, &votes)
+        //
+        // Assembled at the vote count and then stamped with what the row's
+        // certificate DECLARES, because the two are different questions. A row
+        // below the floor its set derives is a certificate no honest assembler can
+        // build and one every verifier must still refuse, so stating it means
+        // building it the way an adversary would. The ordering and dedup clauses
+        // still run.
+        let mut cert = QuorumCert::assemble(tier, Position::default(), votes.len() as u32, &votes)
             .unwrap_or_else(|e| panic!("{name}: assemble: {e}"));
+        cert.threshold = threshold;
 
         let decided = cert.verify_weighted(&Trust(set.clone()), &set, epoch);
         let accept = case["accept"].as_bool().expect("case has no accept");
@@ -241,8 +250,8 @@ fn the_weighted_decision_is_the_one_go_made() {
     // empty list, which is the failure mode the whole file exists to close.
     assert_eq!(
         cases.len(),
-        13,
-        "expected 13 frozen finality verdicts, checked {}",
+        18,
+        "expected 18 frozen finality verdicts, checked {}",
         cases.len()
     );
 }

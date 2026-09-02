@@ -55,10 +55,7 @@ func TestNovaTallyRefusesAWrappingStakeSource(t *testing.T) {
 	for _, i := range []int{0, 1, 2} {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, Nova, 3, votes)
-	if err != nil {
-		t.Fatalf("assemble: %v", err)
-	}
+	cert := certDeclaring(t, pos, Nova, 5, votes)
 
 	// The count clause must be satisfied, or the case would be refused before
 	// the tally is ever read and would prove nothing about it.
@@ -83,7 +80,7 @@ func TestNovaTallyRefusesAWrappingStakeSource(t *testing.T) {
 	}
 
 	// And the predicate refuses it, on the tally rather than on the floor.
-	err = cert.VerifyWeighted(vs, src, epoch)
+	err := cert.VerifyWeighted(vs, src, epoch)
 	if !errors.Is(err, validators.ErrWeightOverflow) {
 		t.Fatalf("a wrapping tally cleared the Nova majority: %v", err)
 	}
@@ -99,16 +96,23 @@ func TestQuasarTallyRefusesAWrappingStakeSource(t *testing.T) {
 	pos := VotePosition{ChainID: ids.GenerateTestID(), Height: 1, BlockID: ids.GenerateTestID()}
 	const epoch = uint64(1)
 
+	// Two seats hold a weight that wraps when summed, and two hold a unit each so
+	// the certificate reaches the export rung's DISTINCT-SIGNER floor of four. The
+	// count clause has to be satisfied or the tally is never read, and a row about
+	// the tally that is answered by the count proves nothing about the tally.
 	const w = uint64(1)<<63 + 7_000_000_000_000_000_000
-	src := wrappingStake(vs, 5, map[int]uint64{0: w, 1: w})
+	src := wrappingStake(vs, 5, map[int]uint64{0: w, 1: w, 2: 1, 3: 1})
 
-	votes := make([]SignedVote, 0, 2)
-	for _, i := range []int{0, 1} {
+	votes := make([]SignedVote, 0, 4)
+	for _, i := range []int{0, 1, 2, 3} {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, Quasar, 2, votes)
-	if err != nil {
-		t.Fatalf("assemble: %v", err)
+	// Declaring the floor the five-signer set derives, so the row reaches the tally
+	// rather than being answered by a threshold the certificate named for itself.
+	cert := certDeclaring(t, pos, Quasar, 5, votes)
+	if floor := int(SignerFloor(Quasar, src.SignerCount(epoch))); cert.VoterCount() < floor {
+		t.Fatalf("this set does not reach the export signer floor (%d of %d), so the tally is never read",
+			cert.VoterCount(), floor)
 	}
 
 	var wrapped uint64
@@ -120,7 +124,7 @@ func TestQuasarTallyRefusesAWrappingStakeSource(t *testing.T) {
 			"fail-open left to demonstrate", wrapped, got)
 	}
 
-	err = cert.VerifyWeighted(vs, src, epoch)
+	err := cert.VerifyWeighted(vs, src, epoch)
 	if !errors.Is(err, validators.ErrWeightOverflow) {
 		t.Fatalf("a wrapping tally cleared the export supermajority: %v", err)
 	}
@@ -153,10 +157,7 @@ func TestTallyStillSumsASetThatFits(t *testing.T) {
 	for _, i := range []int{0, 1, 2, 3} {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, Quasar, uint32(minBFTCommittee), votes)
-	if err != nil {
-		t.Fatalf("assemble: %v", err)
-	}
+	cert := certDeclaring(t, pos, Quasar, minBFTCommittee, votes)
 	if err := cert.VerifyWeighted(vs, src, epoch); err != nil {
 		t.Fatalf("a set that fits was refused: %v", err)
 	}

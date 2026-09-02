@@ -3232,7 +3232,17 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	n, _ := t.effectiveCommittee(epochHeight)
 	novaThreshold := NovaQuorum(n)
 	if t.stakeSource != nil {
-		novaThreshold = NovaSignerFloor(n)
+		// DERIVED AUTHORITY, read over the SIGNING SET — the same n VerifyWeighted
+		// derives its floor from, not the sample committee. effectiveCommittee sizes
+		// how many peers a ROUND asks; a certificate's floor is a property of the set
+		// that can sign it, and the two are different numbers whenever K is clamped or
+		// floored away from the live count. Declaring one and being checked against the
+		// other is an assembler that disagrees with its own verifier: at three signers
+		// effectiveCommittee floors K to four and stamps a floor of three, while the
+		// set derives two, and the certificate this node just built would be refused by
+		// the node it is sent to. This is the export path's rule (attestation.go reads
+		// SignerCount for the same reason) applied to the accept rung.
+		novaThreshold = int(SignerFloor(Nova, t.stakeSource.SignerCount(epochHeight)))
 	}
 	if novaThreshold <= 0 {
 		return nil

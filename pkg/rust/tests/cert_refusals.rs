@@ -18,7 +18,7 @@ use blst::min_pk::SecretKey;
 use lux_consensus::cert::{
     CertError, NodeId, QuorumCert, StakeSource, ValidatorSet, Vote, VoteVerifier, DST,
 };
-use lux_consensus::finality::{canonical_vote_message, Finality, Position};
+use lux_consensus::finality::{canonical_vote_message, signer_floor, Finality, Position};
 use lux_consensus::pop;
 
 /// A validator: a key, an id, and a weight. Deterministic per `n`, so a failure
@@ -84,11 +84,17 @@ fn position() -> Position {
     }
 }
 
-fn cert(signers: &[Signer], k: usize, threshold: u32, tier: Finality) -> QuorumCert {
+/// A certificate from the first `k` of a committee of `n`, declaring the quorum
+/// that set DERIVES for `tier` — the only threshold `verify_weighted` admits, so
+/// every row below turns on the clause it is about and not on a number the
+/// certificate named for itself.
+fn cert(signers: &[Signer], k: usize, n: i64, tier: Finality) -> QuorumCert {
     let pos = position();
     let message = canonical_vote_message(&pos, true);
     let votes: Vec<Vote> = signers[..k].iter().map(|s| s.vote(&message)).collect();
-    QuorumCert::assemble(tier, pos, threshold, &votes).expect("assemble")
+    let mut c = QuorumCert::assemble(tier, pos, votes.len() as u32, &votes).expect("assemble");
+    c.threshold = signer_floor(tier, n) as u32;
+    c
 }
 
 // -------------------------------------------------------- the accept rung's stake
@@ -131,7 +137,7 @@ impl StakeSource for Fabricated<'_> {
 #[test]
 fn nova_fails_closed_when_the_source_reports_no_signer_stake() {
     let (signers, set) = committee(5, 100);
-    let c = cert(&signers, 4, 4, Finality::Nova);
+    let c = cert(&signers, 4, 5, Finality::Nova);
 
     let source = Fabricated {
         set: &set,
@@ -348,15 +354,26 @@ fn every_refusal_names_its_own_clause_and_carries_its_numbers() {
 /// discriminant would satisfy the first and fail an operator at the second.
 #[test]
 fn a_real_shortfall_reports_the_stake_it_actually_had() {
-    let (signers, set) = committee(5, 100);
-    // Three of five: 300 staked, and floor(2·500/3) is 333.
-    let text = cert(&signers, 3, 3, Finality::Quasar)
+    // One holder of a hundred and four minimum registrations. The four light seats
+    // sign: that MEETS the export count floor floor(2·5/3)+1 = 4, so the refusal is
+    // the stake clause and the numbers in it are the tally, the signer stake and
+    // the floor — four of a hundred and four against floor(2·104/3) = 69. An equal
+    // set cannot state this row: there the count and the stake bind at one edge.
+    let signers: Vec<Signer> = (1..=5u8)
+        .map(|i| Signer::new(i, if i == 1 { 100 } else { 1 }))
+        .collect();
+    let mut set = ValidatorSet::new();
+    for sgn in &signers {
+        set.insert(sgn.id, sgn.weight, &sgn.public(), &sgn.pop()).expect("insert");
+    }
+
+    let text = cert(&signers[1..], 4, 5, Finality::Quasar)
         .verify_weighted(&set, &set, 0)
-        .expect_err("three of five is not an export supermajority")
+        .expect_err("four minimum registrations are not an export supermajority")
         .to_string();
 
     assert!(
-        text.contains("300") && text.contains("500") && text.contains("333"),
+        text.contains('4') && text.contains("104") && text.contains("69"),
         "the refusal {text:?} does not say how short the quorum was"
     );
 }

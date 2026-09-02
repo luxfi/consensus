@@ -34,6 +34,12 @@ import "errors"
 // finalize in response to it.
 var ErrNoVerifiedQC = errors.New("chain: no verified quorum cert for block — not final (liveness retry, not an accept)")
 
+// ErrExportNeedsStake is the derived-authority refusal at the minting door: an
+// export-grade authority token was asked for with no stake source to derive the
+// rung's floors from. Export finality is a claim about a validator set; without
+// one there is nothing to make the claim against, so there is nothing to mint.
+var ErrExportNeedsStake = errors.New("chain: an export-tier cert cannot be minted without a stake source — its floors are derived from the validator set, and there is no set here")
+
 // VerifiedQuorumCert is proof that a block met the finality predicate: α distinct
 // validators signed ACCEPT over the exact position AND (on a stake-weighted
 // chain) those voters hold a strict ⅔ supermajority of stake at the cert's
@@ -42,9 +48,9 @@ var ErrNoVerifiedQC = errors.New("chain: no verified quorum cert for block — n
 //
 // The wrapped cert is unexported. There is deliberately NO exported field and NO
 // exported raw constructor: a VerifiedQuorumCert can be produced ONLY by
-// BuildVerifiedQuorumCert (which verifies) or BuildSingleValidatorCert (the
-// 1-of-1 quorum for K==1). A zero VerifiedQuorumCert{} carries a nil cert and is
-// rejected by AcceptWithCert — so even a zero literal cannot finalize anything.
+// BuildVerifiedQuorumCert, which verifies. A zero VerifiedQuorumCert{} carries a
+// nil cert and is rejected by AcceptWithCert — so even a zero literal cannot
+// finalize anything.
 type VerifiedQuorumCert struct {
 	// qc is the verified witness. Unexported: unforgeable outside this file.
 	// nil ⇒ the zero value ⇒ NOT a finality authority (AcceptWithCert refuses it).
@@ -68,12 +74,19 @@ func (v VerifiedQuorumCert) Cert() *QuorumCert { return v.qc }
 //
 //	verifier    — the chain's VoteVerifier (BLS / ML-DSA / secp256k1). nil ⇒ fail closed.
 //	stake       — the chain's StakeSource. Non-nil ⇒ stake-weighted (VerifyWeighted,
-//	              tier-selected). nil ⇒ count-only Verify (equal-stake chains only; the
-//	              chain MUST enforce the equal-stake admission invariant).
+//	              tier-selected). nil ⇒ count-only Verify, and then Nova only: an
+//	              export tier with no stake source is refused (ErrExportNeedsStake),
+//	              because its floors are DERIVED from the set and there is no set.
+//	              The count-only road is for equal-stake chains, which MUST enforce
+//	              the equal-stake admission invariant.
 //	tier        — Nova (local-execution majority) or Quasar (export ⅔-by-stake); selects
 //	              which threshold VerifyWeighted enforces.
-//	alpha       — the count floor the votes must reach to assemble (NovaQuorum for Nova,
-//	              the ⅔ count for Quasar).
+//	alpha       — the quorum floor the cert will DECLARE, and it must be the floor the
+//	              set derives: SignerFloor(tier, stake.SignerCount(epochHeight)). It is
+//	              a parameter because the caller assembles before the set is consulted,
+//	              not because the caller may choose it — VerifyWeighted refuses a cert
+//	              whose declared threshold is not the derived one, so an alpha that
+//	              disagrees with the set yields no token.
 //	epochHeight — the P-chain epoch the per-voter pubkeys, set-root and stake tally
 //	              are all read at (MEDIUM-1).
 //	pos         — the consensus position the votes (and the cert) bind to.
@@ -94,6 +107,26 @@ func BuildVerifiedQuorumCert(
 ) (VerifiedQuorumCert, error) {
 	if verifier == nil {
 		return VerifiedQuorumCert{}, ErrNoVerifiedQC
+	}
+	// DERIVED AUTHORITY at the minting door. An export cert's floors are read off
+	// the validator set — how much stake agreed, how many signers, how big the set
+	// is at all. With no stake source there is no set to read them from, and the
+	// only predicate left is the count-only Verify, which counts votes against the
+	// number the CERT declares. That road can mint a Quasar token over one signer:
+	// pass alpha 1 and one vote and the assemble clause and the count clause are
+	// both satisfied by the same self-declared 1. Nothing downstream re-checks —
+	// AcceptWithCert trusts the token, which is the whole point of the token.
+	//
+	// So the export rung is refused here rather than weakened there. The count-only
+	// road remains open at Nova, which authorizes local execution the chain can
+	// still reorg away and is documented as equal-stake only; it may never carry a
+	// rung a bridge reads. Asked through Finality.AuthorizesExport, so the rule
+	// covers every export tier that exists and every one that is added — this is not
+	// a list of tier names to keep in step with another list somewhere else.
+	if tier.AuthorizesExport() {
+		if stake == nil {
+			return VerifiedQuorumCert{}, errors.Join(ErrNoVerifiedQC, ErrExportNeedsStake)
+		}
 	}
 	cert, err := AssembleQuorumCert(pos, tier, alpha, votes)
 	if err != nil {

@@ -112,11 +112,11 @@ func TestWeighted_VerifyWeightedThreshold(t *testing.T) {
 		for _, i := range idx {
 			votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 		}
-		c, err := AssembleQuorumCert(pos, Quasar, uint32(len(idx)), votes)
-		if err != nil {
-			t.Fatalf("assemble: %v", err)
-		}
-		return c
+		// The certificate declares the floor the four-seat set DERIVES for the export
+		// rung, which is the only threshold VerifyWeighted admits. A two-signer row is
+		// then a certificate short of its own quorum, which is what a two-signer export
+		// certificate is.
+		return certDeclaring(t, pos, Quasar, 4, votes)
 	}
 
 	// The stake maps are height-independent, so the epoch height passed to

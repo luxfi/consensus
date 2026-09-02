@@ -110,7 +110,39 @@ var (
 	ErrQCStakeBelowSupermajority = errors.New("chain: cert voters' stake below 2/3 of signer stake (count quorum reached but not stake-weighted supermajority)")
 	ErrQCStakeBelowMajority      = errors.New("chain: nova cert voters' stake is not a strict majority of signer stake at the epoch")
 	ErrQCUnknownTier             = errors.New("chain: quorum cert finality tier is not Nova or Quasar (a cert attests exactly one of the two accept/export tiers)")
+	// ErrQCThresholdNotDerived is the derived-authority refusal: the cert declares
+	// a quorum floor that is not the one this validator set derives for the tier
+	// the cert attests. A cert may state its floor; it may not CHOOSE it.
+	ErrQCThresholdNotDerived = errors.New("chain: quorum cert threshold is not the floor the validator set derives for its tier (a cert states its quorum, it does not choose it)")
 )
+
+// SignerFloor is the number of DISTINCT signers a cert must carry to attest
+// `tier` over a set of n signers. It is the whole of a certificate's authority
+// in seats, and it is a function of the set and the rung — never of the cert.
+//
+// One definition, read in three places: the assembler picks alpha from it, the
+// weighted predicate enforces it, and the derived-threshold clause compares the
+// cert's own declaration against it. A second spelling anywhere is how a
+// certificate acquires a quorum of its own choosing.
+//
+//   - Nova   → NovaSignerFloor(n), which saturates at three: the local-execution
+//     rung must stay reachable on a small chain, and it is reorgable.
+//   - Quasar → config.TwoThirdsCount(n) = ⌊2n/3⌋+1, the export supermajority read
+//     in seats — the same supermajority the stake clause reads in weight.
+//
+// An unknown tier has no floor, so it gets none: 0 is returned and every caller
+// treats it as a refusal. n<1 is an unresolved set, refused by the predicate
+// before this is consulted.
+func SignerFloor(tier Finality, n int) uint32 {
+	switch tier {
+	case Nova:
+		return uint32(NovaSignerFloor(n))
+	case Quasar:
+		return uint32(config.TwoThirdsCount(n))
+	default:
+		return 0
+	}
+}
 
 // SignedVote is one validator's signed ACCEPT decision over a consensus
 // position. It is the atom a QuorumCert is assembled from. The signature is
@@ -446,11 +478,16 @@ func (f ValidatorSetRootFunc) ValidatorSetRoot(height uint64) ids.ID { return f(
 //     "how much stake agreed" is not enough: it must also be how MANY, out of enough
 //     parties for a supermajority to carry a fault budget at all.
 //
-// The tier is read from the cert, but the threshold is re-derived from the authoritative
-// validator set rather than taken from the cert's self-declared Threshold, so a cert
-// cannot forge its tier upward: a Nova set of votes relabeled Quasar fails the ⅔-by-stake
-// check, and a Quasar cert relabeled Nova merely under-claims. An unknown tier fails
-// closed.
+// The tier is read from the cert, but every floor is derived from the authoritative
+// validator set rather than taken from the cert, so a cert cannot forge its tier upward:
+// a Nova set of votes relabeled Quasar fails the ⅔-by-stake check, and a Quasar cert
+// relabeled Nova merely under-claims. An unknown tier fails closed.
+//
+// DERIVED AUTHORITY, stated once and enforced here: the cert's own Threshold must EQUAL
+// SignerFloor(tier, n) — the floor this set gives this rung. A certificate may state its
+// quorum; it may not choose it. That is what makes the field inert: Verify counts votes
+// against it, so a cert declaring 1 would otherwise clear the count clause on one
+// signature, and only the floors below would stand between that and finality.
 //
 // A nil stake source means no stake model is supplied — the caller uses Verify instead
 // and is responsible for the equal-stake admission invariant documented on the engine.
@@ -462,6 +499,33 @@ func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, ep
 	}
 	if stake == nil {
 		return fmt.Errorf("%w: stake source nil", ErrQCStakeBelowSupermajority)
+	}
+	// DERIVED AUTHORITY. A certificate states the quorum it was built to; the SET
+	// decides what that quorum is. The two must be the same number, so the field
+	// carries no authority of its own — it is a claim this clause checks, never a
+	// value the verifier adopts.
+	//
+	// Without it the field is load-bearing on the count-only road: Verify's last
+	// clause counts distinct valid accepts against the cert's OWN Threshold, so a
+	// cert declaring 1 clears it on one signature. The weighted floors below then
+	// catch that, which is why this was a divergence rather than a forgery — but
+	// only Go and Rust asked the weaker question. C++ has always demanded the
+	// derived floor exactly (QuorumCertEngine::verify_cert), so the same cert was
+	// accepted by two implementations and refused by the third. One rule now.
+	//
+	// EQUALITY, not a lower bound. An over-claim is a certificate asserting a
+	// quorum this set does not require, and a verifier that tolerated it would be
+	// letting a cert redefine the rung upward exactly as tolerating an under-claim
+	// lets it redefine the rung downward. Neither direction is the set's number.
+	//
+	// An unresolved set (n<1) derives no floor, so nothing is compared against it
+	// and the rung's own clause refuses the cert by the name it has always been
+	// refused under. Skipping here is not a pass: both rungs fail closed on n<1.
+	if n := stake.SignerCount(epochHeight); n >= 1 {
+		if floor := SignerFloor(c.Tier, n); c.Threshold != floor {
+			return fmt.Errorf("%w: cert declares %d, a set of %d signers derives %d for %s at epoch %d",
+				ErrQCThresholdNotDerived, c.Threshold, n, floor, c.Tier, epochHeight)
+		}
 	}
 	switch c.Tier {
 	case Nova:
@@ -501,7 +565,7 @@ func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) e
 		return fmt.Errorf("%w: nova tier over an unresolved validator set (n=%d) at epoch %d",
 			ErrQCBelowThreshold, n, epochHeight)
 	}
-	if floor := NovaSignerFloor(n); c.VoterCount() < floor {
+	if floor := int(SignerFloor(Nova, n)); c.VoterCount() < floor {
 		return fmt.Errorf("%w: nova cert has %d distinct voters, need at least %d of %d at epoch %d",
 			ErrQCBelowThreshold, c.VoterCount(), floor, n, epochHeight)
 	}
@@ -619,7 +683,7 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 			"Byzantine committee f=⌊(n−1)/3⌋ is 0 and a two-thirds supermajority tolerates no "+
 			"fault, at epoch %d", ErrQCBelowThreshold, n, minBFTCommittee, epochHeight)
 	}
-	if floor := config.TwoThirdsCount(n); c.VoterCount() < floor {
+	if floor := int(SignerFloor(Quasar, n)); c.VoterCount() < floor {
 		return fmt.Errorf("%w: quasar cert has %d distinct voters, need at least %d of %d at epoch %d",
 			ErrQCBelowThreshold, c.VoterCount(), floor, n, epochHeight)
 	}

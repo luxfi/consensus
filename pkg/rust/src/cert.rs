@@ -42,9 +42,8 @@ use blst::min_pk::{PublicKey, Signature};
 use blst::BLST_ERROR;
 
 use crate::finality::{
-    canonical_vote_message, half_stake_floor, nova_signer_floor, two_thirds_count,
-    two_thirds_stake_floor, Finality, Position, MIN_BFT_COMMITTEE, QC_FINALITY,
-    QUORUM_CERT_VERSION,
+    canonical_vote_message, half_stake_floor, signer_floor, two_thirds_stake_floor, Finality,
+    Position, MIN_BFT_COMMITTEE, QC_FINALITY, QUORUM_CERT_VERSION,
 };
 use crate::pop::{self, PopError};
 
@@ -137,6 +136,15 @@ pub enum CertError {
     /// A proof of possession that is not a valid signature by this key over its
     /// own (node, key) message under [`crate::pop::POP_DST`].
     PopInvalid,
+    /// The certificate declares a quorum floor that is not the one this validator
+    /// set derives for the rung it attests. A certificate may STATE its quorum; it
+    /// may not choose it. Go's `ErrQCThresholdNotDerived`.
+    ///
+    /// Equality, not a lower bound: an over-claim asserts a quorum this set does
+    /// not require, and tolerating it would let a certificate redefine the rung
+    /// upward exactly as tolerating an under-claim lets it redefine the rung down.
+    /// Neither direction is the set's number.
+    ThresholdNotDerived { declared: u32, derived: i64, n: i64 },
     /// The set's weights sum past what a `u64` can hold. Go's
     /// `ErrWeightOverflow`, and refused for the reason Go refuses it: every
     /// threshold in this crate is read against the total, so a total that
@@ -193,6 +201,10 @@ impl std::fmt::Display for CertError {
             CertError::DuplicateKey => write!(f, "public key is registered to more than one node"),
             CertError::DuplicateNode => write!(f, "node is registered more than once"),
             CertError::PopInvalid => write!(f, "proof of possession does not verify for this key"),
+            CertError::ThresholdNotDerived { declared, derived, n } => write!(
+                f,
+                "cert declares threshold {declared}, a set of {n} signers derives {derived}"
+            ),
             CertError::WeightOverflow => write!(f, "weight overflowed"),
         }
     }
@@ -407,8 +419,10 @@ impl QuorumCert {
         Ok(())
     }
 
-    /// The full predicate: [`Self::verify`], then the tier's stake floor,
-    /// recomputed from the live set so a certificate can never declare its own.
+    /// The full predicate: [`Self::verify`], then the DERIVED authority — the
+    /// certificate's declared threshold must equal [`signer_floor`] for its rung
+    /// over this set — then the rung's stake and signer floors, all recomputed
+    /// from the live set so a certificate can never declare its own.
     pub fn verify_weighted(
         &self,
         verifier: &dyn VoteVerifier,
@@ -416,6 +430,33 @@ impl QuorumCert {
         epoch_height: u64,
     ) -> Result<(), CertError> {
         self.verify(verifier, epoch_height)?;
+        // DERIVED AUTHORITY. The certificate states the quorum it was built to; the
+        // SET decides what that quorum is. The two must be the same number, so the
+        // field carries no authority of its own — it is a claim this clause checks,
+        // never a value the verifier adopts.
+        //
+        // Without it the field is load-bearing on the count-only road: `verify`'s
+        // last clause counts distinct valid accepts against the certificate's OWN
+        // threshold, so one declaring 1 clears it on a single signature. The floors
+        // below then catch that, which is why this was a divergence rather than a
+        // forgery — but only Go and Rust asked the weaker question, while C++ has
+        // always demanded the derived floor exactly. One rule now.
+        //
+        // An unresolved set (n < 1) derives no floor, so nothing is compared against
+        // it and the rung's own clause refuses the certificate under the name it has
+        // always been refused by. Skipping here is not a pass: both rungs fail closed
+        // on n < 1.
+        let n = stake.signer_count(epoch_height);
+        if n >= 1 {
+            let derived = signer_floor(self.tier, n);
+            if i64::from(self.threshold) != derived {
+                return Err(CertError::ThresholdNotDerived {
+                    declared: self.threshold,
+                    derived,
+                    n,
+                });
+            }
+        }
         match self.tier {
             Finality::Nova => self.verify_nova_majority(stake, epoch_height),
             Finality::Quasar => self.verify_quasar_supermajority(stake, epoch_height),
@@ -439,7 +480,7 @@ impl QuorumCert {
         if n < 1 {
             return Err(CertError::UnresolvedSet { n });
         }
-        let floor = nova_signer_floor(n);
+        let floor = signer_floor(Finality::Nova, n);
         if self.voter_count() < floor {
             return Err(CertError::SignerFloor {
                 have: self.voter_count(),
@@ -537,7 +578,7 @@ impl QuorumCert {
                 need: MIN_BFT_COMMITTEE,
             });
         }
-        let need = two_thirds_count(n);
+        let need = signer_floor(Finality::Quasar, n);
         if self.voter_count() < need {
             return Err(CertError::SignerFloor {
                 have: self.voter_count(),
