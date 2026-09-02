@@ -19,7 +19,9 @@
 //! from. A receiver that re-derives the preimage is a second implementation of
 //! the derivation, and two derivations are how one node verifies a message the
 //! other never made. The position is recovered *from* the message, so the
-//! signed bytes and the read position cannot disagree.
+//! signed bytes and the read position cannot disagree. The C++ lane sends the
+//! block id alone and re-derives, which is the shape this one refuses; [`VOTE`]
+//! spells that divergence out and says which side owes the reconciliation.
 //!
 //! The transport identity — `block_id`, `parent_id` — is not signed and so is
 //! not carried; a decoded position leaves those empty, and re-encoding is
@@ -57,15 +59,36 @@ use crate::zap;
 /// space, one meaning: a link that ever carried both would dispatch a vote to
 /// the response path.
 ///
-/// 62 IS NOT UNCLAIMED EVERYWHERE. `luxfi/node`'s `mpc/pkg/transport` extends
-/// the same frame with its own 60..69 — `MsgMPCReady` is also 62 — so the id is
-/// free in the registry and taken on the MPC ring. Nothing here is wrong on the
-/// validator mesh, which carries votes and no MPC traffic and is where these
-/// frames travel; but "62 is free" is true of `api/zap` and not of every link,
-/// and a reader deciding where else to send a vote should know which. That
-/// extension also spells 64..69, above the `TYPE_MASK` ceiling, so its 64 is a
-/// bare [`zap::ERROR_FLAG`] — a registry-wide reconciliation is owed, and this
-/// end is not the place to spend it.
+/// THE TWO LANES DO NOT YET CARRY EACH OTHER'S VOTES, and the id is the smaller
+/// half of why. C++ frames `block_id(32) ‖ pubkey(48) ‖ sig(96)` — 188 payload
+/// bytes naming its signer by its 48-byte key — where this lane frames
+/// `signed_message(226) ‖ node(20) ‖ sig(96)`, 354 bytes naming its signer by
+/// the 20-byte NodeID a proof of possession binds. C++ signs the same
+/// [`canonical_vote_message`] and then sends only the block id, so its receiver
+/// rebuilds the preimage it checks — the second derivation this module refuses
+/// to have.
+///
+/// Two of the three have a standard to be held to, and this side is the one
+/// holding it: 0x11 is `MsgResponse` in the Go registry, and Go names a
+/// validator by the 20-byte `ids.NodeID` its proof of possession signs over.
+/// The third is this module's own rule. So the reconciliation is owed on the C++
+/// side — and until it is paid the two exchange frames neither can read, since
+/// each refuses the other's type id and, past that, the other's field widths.
+/// Nothing here should be read as saying they interoperate today.
+///
+/// 62 IS NOT UNCLAIMED EVERYWHERE. `github.com/luxfi/mpc`
+/// (`pkg/transport/wire.go`) extends the same frame with its own 60..69 —
+/// `MsgMPCReady` is also 62 — so the id is free in the registry and taken on the
+/// MPC ring. Nothing here is wrong on the validator mesh, which carries votes
+/// and no MPC traffic and is where these frames travel; and the MPC ring cannot
+/// be reached by accident either, since it listens on its own port behind
+/// mandatory PQ TLS 1.3 and closes any connection whose FIRST frame is not a
+/// `MsgMPCReady` carrying JSON — which a vote payload is not. But "62 is free"
+/// is true of `api/zap` and not of every link, and a reader deciding where else
+/// to send a vote should know which. That extension also spells 64..69, above
+/// the `TYPE_MASK` ceiling, so its 64 is a bare [`zap::ERROR_FLAG`] — a
+/// registry-wide reconciliation is owed, and this end is not the place to spend
+/// it.
 pub const VOTE: u8 = 62;
 
 /// The exact size of a vote frame payload: three length-prefixed fields.
