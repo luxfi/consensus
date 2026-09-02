@@ -216,6 +216,30 @@ pub fn two_thirds_count(n: i64) -> i64 {
     two_thirds_stake_floor(n as u64) as i64 + 1
 }
 
+/// The DISTINCT signers a certificate must carry to attest `tier` over a set of
+/// `n` signers — the whole of a certificate's authority in seats, and a function
+/// of the set and the rung, never of the certificate.
+///
+/// One definition, read in three places: the assembler picks its alpha from it,
+/// the weighted predicate enforces it, and the derived-threshold clause compares
+/// the certificate's own declaration against it. A second spelling anywhere is
+/// how a certificate acquires a quorum of its own choosing.
+///
+/// * Nova — [`nova_signer_floor`], which saturates at three: local execution has
+///   to stay reachable on a small chain, and it is reorgable.
+/// * Quasar — [`two_thirds_count`], the export supermajority read in seats, the
+///   same supermajority the stake clause reads in weight.
+///
+/// A rung that is not an accept tier has no floor and gets none: 0, which every
+/// caller reads as a refusal. Go's `chain.SignerFloor`.
+pub fn signer_floor(tier: Finality, n: i64) -> i64 {
+    match tier {
+        Finality::Nova => nova_signer_floor(n),
+        Finality::Quasar => two_thirds_count(n),
+        _ => 0,
+    }
+}
+
 /// The minimum vote count that CAN reach the two-thirds-by-stake predicate for a
 /// weight vector: order heaviest first and count until the running stake first
 /// exceeds the floor. Returns 0 for an empty set, a zero total, or a vector with
