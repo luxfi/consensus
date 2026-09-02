@@ -62,7 +62,7 @@ func TestNovaTallyRefusesAWrappingStakeSource(t *testing.T) {
 
 	// The count clause must be satisfied, or the case would be refused before
 	// the tally is ever read and would prove nothing about it.
-	if floor := NovaSignerFloor(src.ValidatorCount(epoch)); cert.VoterCount() < floor {
+	if floor := NovaSignerFloor(src.SignerCount(epoch)); cert.VoterCount() < floor {
 		t.Fatalf("this set does not reach the signer floor (%d of %d), so the tally is never read",
 			cert.VoterCount(), floor)
 	}
@@ -77,7 +77,7 @@ func TestNovaTallyRefusesAWrappingStakeSource(t *testing.T) {
 	if wrapped != half {
 		t.Fatalf("the tally no longer wraps to 2^63 (got %d) — reread this case", wrapped)
 	}
-	if got := config.HalfStakeFloor(src.TotalStake(epoch)); wrapped <= got {
+	if got := config.HalfStakeFloor(src.SignerStake(epoch)); wrapped <= got {
 		t.Fatalf("the wrapped tally %d no longer clears floor(total/2)=%d, so there is no "+
 			"fail-open left to demonstrate", wrapped, got)
 	}
@@ -115,7 +115,7 @@ func TestQuasarTallyRefusesAWrappingStakeSource(t *testing.T) {
 	for i := range cert.Votes {
 		wrapped += src.Weight(cert.Votes[i].NodeID, epoch)
 	}
-	if got := config.TwoThirdsStakeFloor(src.TotalStake(epoch)); wrapped <= got {
+	if got := config.TwoThirdsStakeFloor(src.SignerStake(epoch)); wrapped <= got {
 		t.Fatalf("the wrapped tally %d no longer clears floor(2*total/3)=%d, so there is no "+
 			"fail-open left to demonstrate", wrapped, got)
 	}
@@ -130,29 +130,30 @@ func TestQuasarTallyRefusesAWrappingStakeSource(t *testing.T) {
 // stricter. A set whose voters sum to exactly the widest representable total is
 // still tallied and still decided on its merits.
 func TestTallyStillSumsASetThatFits(t *testing.T) {
-	vs := newTestValidatorSet(3)
+	vs := newTestValidatorSet(minBFTCommittee)
 	pos := VotePosition{ChainID: ids.GenerateTestID(), Height: 1, BlockID: ids.GenerateTestID()}
 	const epoch = uint64(1)
 
 	const half = uint64(1) << 63
-	// Every seat carries stake and every seat signs. A weightless third seat would
-	// be refused by both admission doors (validators.ErrZeroWeight), and two of
-	// three signers is below the export count floor ⌊2·3/3⌋+1 = 3 — neither would
-	// reach the tally this test is about.
+	// Every seat carries stake and every seat signs. A weightless seat would be
+	// refused by both admission doors (validators.ErrZeroWeight), and a set below
+	// minBFTCommittee signers is refused by the export rung's committee clause —
+	// neither would reach the tally this test is about.
 	src := &stakeMap{
 		w: map[ids.NodeID]uint64{
 			vs.nodeID(0): half,
-			vs.nodeID(1): half - 2,
+			vs.nodeID(1): half - 3,
 			vs.nodeID(2): 1,
+			vs.nodeID(3): 1,
 		},
-		total: math.MaxUint64, // == half + (half-2) + 1, the widest total that fits
+		total: math.MaxUint64, // == half + (half-3) + 1 + 1, the widest total that fits
 	}
 
-	votes := make([]SignedVote, 0, 3)
-	for _, i := range []int{0, 1, 2} {
+	votes := make([]SignedVote, 0, minBFTCommittee)
+	for _, i := range []int{0, 1, 2, 3} {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, Quasar, 3, votes)
+	cert, err := AssembleQuorumCert(pos, Quasar, uint32(minBFTCommittee), votes)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}

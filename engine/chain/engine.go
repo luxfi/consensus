@@ -760,11 +760,18 @@ type Transitive struct {
 	acceptedPosMu sync.Mutex
 	acceptedPos   map[ids.ID]acceptedPos
 	// responsiveStakeNum/Den record the stake that voted on the most recently accepted block
-	// (numerator) out of the epoch's total (denominator) — the degraded-mode RPC signal
+	// (numerator) out of the epoch's SIGNER stake (denominator) — the degraded-mode RPC signal
 	// (responsiveStakePct + certificateAvailable). Guarded by t.mu. Zero denominator ⇒
 	// "unknown" (no stake-weighted accept observed yet).
-	responsiveStakeNum uint64
-	responsiveStakeDen uint64
+	//
+	// responsiveStakeCarried is the same epoch's CARRIED stake, recorded beside the
+	// denominator and never used as one. The floors are read over the signers, so the
+	// signers are what a certificate is measured against; carrying the other number is
+	// what makes the gap between the two visible to an operator instead of merely
+	// correct in the verifier.
+	responsiveStakeNum     uint64
+	responsiveStakeDen     uint64
+	responsiveStakeCarried uint64
 
 	// catchup (optional) is the engine's seam for runtime auto-recovery when it
 	// falls behind — see Catchup. When a gossiped child or a verified cert
@@ -4170,15 +4177,22 @@ func (t *Transitive) attestFinalizedVote(vote Vote, verifier VoteVerifier) {
 }
 
 // recordResponsiveStake stores the stake that voted on the latest accepted block (numerator)
-// out of the epoch total (denominator) — the degraded-mode RPC signal read by FinalityStatus.
+// out of the epoch SIGNER stake (denominator) — the degraded-mode RPC signal read by
+// FinalityStatus. The denominator is the one the quorum floors are read against, so the
+// ratio reported is the ratio a quorum actually has to clear.
+//
+// The epoch's CARRIED stake is recorded alongside, and is not a denominator of anything.
+// It is the second number FinalityStatus needs to report how much of the chain can sign at
+// all — a ratio that no floor reads and no operator can reconstruct from the first one.
 func (t *Transitive) recordResponsiveStake(stake StakeSource, votes []SignedVote, epochHeight uint64) {
 	if stake == nil {
 		return
 	}
-	total := stake.TotalStake(epochHeight)
+	total := stake.SignerStake(epochHeight)
 	if total == 0 {
 		return
 	}
+	carried := stake.CarriedStake(epochHeight)
 	var voted uint64
 	for i := range votes {
 		voted += stake.Weight(votes[i].NodeID, epochHeight)
@@ -4186,6 +4200,7 @@ func (t *Transitive) recordResponsiveStake(stake StakeSource, votes []SignedVote
 	t.mu.Lock()
 	t.responsiveStakeNum = voted
 	t.responsiveStakeDen = total
+	t.responsiveStakeCarried = carried
 	t.mu.Unlock()
 }
 
@@ -4218,9 +4233,19 @@ type FinalityStatus struct {
 	NovaHeight    uint64 // highest LOCALLY ACCEPTED (bare-majority) height — drives VM state; NOT exportable
 	QuasarHeight  uint64 // highest EXPORT-FINAL (⅔-by-stake) height — the ONLY certified/exportable height
 	HorizonHeight uint64 // highest PQ-sealed height (0 until the Horizon seal path is wired)
-	// ResponsiveStakePct is the stake that voted on the latest accepted block / total at its
-	// epoch (0..1); -1 when unknown (startup / no stake model).
+	// ResponsiveStakePct is the stake that voted on the latest accepted block / the SIGNER
+	// stake at its epoch (0..1); -1 when unknown (startup / no stake model). The denominator
+	// is the one the quorum floors are read against, so this is the ratio a quorum has to
+	// clear — and for that reason it says nothing about how much of the chain can sign.
 	ResponsiveStakePct float64
+	// SignerStakePct is the signer stake / the CARRIED stake at that epoch (0..1); -1 when
+	// unknown. It is the other half of the picture and no floor reads it. A chain whose
+	// members have lost their keys keeps certifying correctly at ⅔ of a shrinking
+	// denominator, so ResponsiveStakePct alone stays healthy the whole way down; this is
+	// the number that falls. Alarm on it: an export certified by a handful of signers
+	// holding a fraction of a per cent of what the chain carries is a set that has shrunk
+	// out from under its own finality, and it reads here as SignerStakePct near zero.
+	SignerStakePct float64
 	// CertificateAvailable reports whether a ⅔-stake (Quasar) cert is currently reachable —
 	// the responding stake STRICTLY exceeds the ⅔ floor.
 	CertificateAvailable bool
@@ -4244,13 +4269,23 @@ func (t *Transitive) FinalityStatus() FinalityStatus {
 	// AuthorizesIrreversibleSettlement) but the PQ seal path is left as-is — no frontier
 	// advances to Horizon yet.
 	t.mu.RLock()
-	num, den := t.responsiveStakeNum, t.responsiveStakeDen
+	num, den, carried := t.responsiveStakeNum, t.responsiveStakeDen, t.responsiveStakeCarried
 	t.mu.RUnlock()
 	if den == 0 {
-		s.ResponsiveStakePct = -1 // unknown: startup or no stake model — do not false-alarm degraded
+		// unknown: startup or no stake model — do not false-alarm degraded
+		s.ResponsiveStakePct = -1
+		s.SignerStakePct = -1
 		return s
 	}
 	s.ResponsiveStakePct = float64(num) / float64(den)
+	// Carried is never below the signer stake, so a source that reports it below is
+	// describing signers it does not carry and is reported as unknown rather than as a
+	// ratio above one.
+	if carried < den {
+		s.SignerStakePct = -1
+	} else {
+		s.SignerStakePct = float64(den) / float64(carried)
+	}
 	s.CertificateAvailable = num > config.TwoThirdsStakeFloor(den)
 	s.Degraded = !s.CertificateAvailable
 	return s

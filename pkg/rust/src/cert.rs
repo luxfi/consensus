@@ -43,7 +43,8 @@ use blst::BLST_ERROR;
 
 use crate::finality::{
     canonical_vote_message, half_stake_floor, nova_signer_floor, two_thirds_count,
-    two_thirds_stake_floor, Finality, Position, QC_FINALITY, QUORUM_CERT_VERSION,
+    two_thirds_stake_floor, Finality, Position, MIN_BFT_COMMITTEE, QC_FINALITY,
+    QUORUM_CERT_VERSION,
 };
 use crate::pop::{self, PopError};
 
@@ -104,10 +105,16 @@ pub enum CertError {
     SigInvalid(usize),
     BelowThreshold { have: u32, need: u32 },
     UnresolvedSet { n: i64 },
+    /// An EXPORT certificate over a signing set too small for a Byzantine
+    /// supermajority to mean anything: f = ⌊(n−1)/3⌋ is zero below
+    /// [`crate::finality::MIN_BFT_COMMITTEE`], so the certificate absorbs no fault
+    /// and one compromised key forges it. A floor on the SET, not on the voters —
+    /// Go folds it into `ErrQCBelowThreshold`.
+    MinCommittee { n: i64, need: i64 },
     SignerFloor { have: i64, need: i64, n: i64 },
     StakeZero { epoch_height: u64 },
-    StakeBelowMajority { voted: u64, total: u64, need_above: u64 },
-    StakeBelowSupermajority { voted: u64, total: u64, need_above: u64 },
+    StakeBelowMajority { voted: u64, signer: u64, need_above: u64 },
+    StakeBelowSupermajority { voted: u64, signer: u64, need_above: u64 },
     /// A public key that does not decode to a non-identity point of the right
     /// subgroup.
     KeyEncoding,
@@ -163,17 +170,22 @@ impl std::fmt::Display for CertError {
             CertError::UnresolvedSet { n } => {
                 write!(f, "cert over an unresolved validator set (n={n})")
             }
+            CertError::MinCommittee { n, need } => write!(
+                f,
+                "quasar over {n} signers, need at least {need} — below the minimum Byzantine \
+                 committee f=(n-1)/3 is 0 and a two-thirds supermajority tolerates no fault"
+            ),
             CertError::SignerFloor { have, need, n } => {
                 write!(f, "cert has {have} distinct voters, need {need} of {n}")
             }
             CertError::StakeZero { epoch_height } => {
                 write!(f, "total stake is zero at epoch height {epoch_height}")
             }
-            CertError::StakeBelowMajority { voted, total, need_above } => {
-                write!(f, "nova voted={voted} total={total}, need > {need_above}")
+            CertError::StakeBelowMajority { voted, signer, need_above } => {
+                write!(f, "nova voted={voted} signer={signer}, need > {need_above}")
             }
-            CertError::StakeBelowSupermajority { voted, total, need_above } => {
-                write!(f, "quasar voted={voted} total={total}, need > {need_above}")
+            CertError::StakeBelowSupermajority { voted, signer, need_above } => {
+                write!(f, "quasar voted={voted} signer={signer}, need > {need_above}")
             }
             CertError::KeyEncoding => write!(f, "public key does not decode to a valid point"),
             CertError::NoKey => write!(f, "registration carries no public key"),
@@ -207,10 +219,35 @@ pub trait VoteVerifier {
 
 /// The stake distribution at an epoch. Read at the epoch height the signatures
 /// were cast under, never at the value-chain height.
+///
+/// **The set is the signers, and only the signers.** Every number here is read
+/// over the validators that can actually produce a verifiable signature. A member
+/// the chain carries without a key is a spectator: it holds stake and can never
+/// cast a vote any verifier will accept. Counting it in the denominator raises the
+/// bar for everyone who CAN sign, by stake no quorum is able to reach — past a
+/// third of what the chain carries, `two_thirds_stake_floor` becomes unreachable
+/// and the export rung is stranded with the whole signing set agreeing.
+///
+/// This is the ⅔ rule read over the right set, not a weakening of it. Quorum
+/// intersection is untouched: two disjoint quorums each past ⅔ of the signer stake
+/// would sum past the whole of it. What changes is that the fault budget is no
+/// longer spent on parties known in advance to cast no vote — a key absent at the
+/// epoch is a KNOWN non-participant, and BFT's third is a budget for unknown ones.
+///
+/// The three projections must describe ONE set at ONE height. A source answering
+/// `signer_stake` over the signers and `signer_count` over every member states two
+/// different sets, and the two floors stop being one supermajority in two units.
 pub trait StakeSource {
+    /// The voting weight of `node`, or 0 for a stranger, a member outside the set,
+    /// or a member holding no key at this epoch — none of the three can put stake
+    /// behind a vote, so none may inflate a tally.
     fn weight(&self, node: &NodeId, epoch_height: u64) -> u64;
-    fn total_stake(&self, epoch_height: u64) -> u64;
-    fn validator_count(&self, epoch_height: u64) -> i64;
+    /// The stake held by validators that can sign — the denominator every stake
+    /// floor is read against.
+    fn signer_stake(&self, epoch_height: u64) -> u64;
+    /// The number of distinct validators that can sign — the `n` every count floor
+    /// is read against, over the same set as `signer_stake`.
+    fn signer_count(&self, epoch_height: u64) -> i64;
 }
 
 /// A certificate: one position, and the distinct signed accepts that carry it.
@@ -392,7 +429,7 @@ impl QuorumCert {
         stake: &dyn StakeSource,
         epoch_height: u64,
     ) -> Result<(), CertError> {
-        let n = stake.validator_count(epoch_height);
+        let n = stake.signer_count(epoch_height);
         if n < 1 {
             return Err(CertError::UnresolvedSet { n });
         }
@@ -404,16 +441,16 @@ impl QuorumCert {
                 n,
             });
         }
-        let total = stake.total_stake(epoch_height);
-        if total == 0 {
+        let signer = stake.signer_stake(epoch_height);
+        if signer == 0 {
             return Err(CertError::StakeZero { epoch_height });
         }
         let voted = self.voted_stake(stake, epoch_height)?;
-        let half = half_stake_floor(total);
+        let half = half_stake_floor(signer);
         if voted <= half {
             return Err(CertError::StakeBelowMajority {
                 voted,
-                total,
+                signer,
                 need_above: half,
             });
         }
@@ -421,9 +458,13 @@ impl QuorumCert {
     }
 
     /// Quasar: the summed stake of the distinct voters strictly exceeds
-    /// `floor(2·total/3)`, AND there are at least `two_thirds_count(n)` of them.
-    /// This is the export threshold — the only rung a bridge, a settlement, or a
-    /// cross-chain message may read.
+    /// `floor(2·signer/3)`, AND there are at least `two_thirds_count(n)` of them,
+    /// AND `n` is at least [`MIN_BFT_COMMITTEE`]. This is the export threshold —
+    /// the only rung a bridge, a settlement, or a cross-chain message may read.
+    ///
+    /// The third clause is a floor on the SET rather than on the voters, and the
+    /// other two do not imply it: a supermajority is only a Byzantine claim when
+    /// there is a fault budget for it to spend.
     ///
     /// Two independent predicates, neither sufficient alone, the same shape as
     /// Nova one rung up. Stake alone is not export-grade finality: a single
@@ -445,16 +486,16 @@ impl QuorumCert {
         stake: &dyn StakeSource,
         epoch_height: u64,
     ) -> Result<(), CertError> {
-        let total = stake.total_stake(epoch_height);
-        if total == 0 {
+        let signer = stake.signer_stake(epoch_height);
+        if signer == 0 {
             return Err(CertError::StakeZero { epoch_height });
         }
         let voted = self.voted_stake(stake, epoch_height)?;
-        let floor = two_thirds_stake_floor(total);
+        let floor = two_thirds_stake_floor(signer);
         if voted <= floor {
             return Err(CertError::StakeBelowSupermajority {
                 voted,
-                total,
+                signer,
                 need_above: floor,
             });
         }
@@ -464,9 +505,31 @@ impl QuorumCert {
         // reporting stake for a set it says is empty reaches this line. Two thirds
         // of no set is not a number, and `two_thirds_count(0)` is 1, which would
         // hand a lone signer a floor of one.
-        let n = stake.validator_count(epoch_height);
+        let n = stake.signer_count(epoch_height);
         if n < 1 {
             return Err(CertError::UnresolvedSet { n });
+        }
+        // The export rung's floor on the SET, which is a different quantity from
+        // its floor on the voters and is not implied by it. Byzantine tolerance is
+        // f = (n-1)/3, and that is 0 for n of one, two and three: below four
+        // signers a two-thirds supermajority tolerates no fault at all. Every
+        // signer is load-bearing, so a single compromised key is not one fault
+        // absorbed by a margin, it is a forged export certificate.
+        //
+        // The count clause below cannot catch it, because it is the supermajority
+        // of whatever set it is handed: `two_thirds_count(1)` is 1, so one
+        // signature over a one-signer set clears the count and the stake floors
+        // together. Reading both floors over the signers is what stops a spectator
+        // stranding a chain; it is not a way for a chain with three signers to
+        // export, and this is the clause that says so.
+        //
+        // Nova has no such floor and must not grow one: it authorizes only local
+        // execution the chain can still reorg away.
+        if n < MIN_BFT_COMMITTEE {
+            return Err(CertError::MinCommittee {
+                n,
+                need: MIN_BFT_COMMITTEE,
+            });
         }
         let need = two_thirds_count(n);
         if self.voter_count() < need {
@@ -575,6 +638,17 @@ pub struct ValidatorSet {
     /// registration left to refuse; a total accumulated at the door already
     /// knows, and the set that would have overflowed does not exist.
     total: u64,
+    /// The summed weight of the members that hold a key — the denominator every
+    /// threshold is read against, and never `total`.
+    ///
+    /// Kept beside `total` rather than derived from it, because the two answer
+    /// different questions and only one of them is a floor. `total` is what
+    /// admission checks for representability: a set is refused when the whole of
+    /// its weight cannot be held, whether or not the seat that overflows it can
+    /// sign. `signable` is what a quorum is measured against. Folding one out of
+    /// the other would tie a safety number to an admission number and let a
+    /// keyless registration move a floor.
+    signable: u64,
 }
 
 impl ValidatorSet {
@@ -717,20 +791,31 @@ impl ValidatorSet {
             .checked_add(weight)
             .ok_or(CertError::WeightOverflow)?;
 
+        // `signable` cannot overflow independently: it is a sub-sum of `total`,
+        // which the clause above has just proved representable.
+        let signable = self.signable + weight;
+
         self.keys.insert(node, pk);
         self.weights.insert(node, weight);
         self.owner.insert(canonical, node);
         self.total = total;
+        self.signable = signable;
         Ok(())
     }
 
     /// Admit a validator whose signing key this node does not have.
     ///
-    /// It is a member and it holds stake — so it raises `n`, and the floor
-    /// everyone else is read against — but it can never produce a signature this
-    /// set will accept. That is the fail-closed direction: a missing key
+    /// It is a member and it holds stake, and it can never produce a signature
+    /// this set will accept. That is the fail-closed direction: a missing key
     /// withholds a vote, it never admits one. Go's `FlattenValidatorSet` carries
-    /// exactly these, and counts their weight for the same reason.
+    /// exactly these.
+    ///
+    /// It moves NO floor. It is absent from `signer_stake` and from
+    /// `signer_count`, so it neither raises the stake a quorum must reach nor the
+    /// number of signatures it must carry. A spectator that could move either
+    /// would be raising a bar it is unable to help clear, and past a third of the
+    /// weight it would put the export rung permanently out of reach — the whole
+    /// signing set could agree and the certificate would still be refused.
     ///
     /// One node, one admission holds here too, so this cannot quietly de-key a
     /// member that already has one, nor restate its weight.
@@ -738,10 +823,12 @@ impl ValidatorSet {
         if self.weights.contains_key(&node) {
             return Err(CertError::DuplicateNode);
         }
-        // The same WEIGHT clause. An unkeyed member cannot sign, but its stake
-        // is counted in the total every threshold is read against — Go's
-        // `FlattenValidatorSet` adds it and checks the same overflow — so it can
-        // overflow the total exactly as a keyed one can.
+        // The same WEIGHT clause. An unkeyed member cannot sign, but its stake is
+        // part of what the set carries, and a set whose weights cannot be held is
+        // refused whether or not the seat that overflows it can sign — Go's
+        // `FlattenValidatorSet` adds it and checks the same overflow. `signable`
+        // is deliberately untouched: representability and quorum are different
+        // questions asked of different numbers.
         let total = self
             .total
             .checked_add(weight)
@@ -758,21 +845,41 @@ impl ValidatorSet {
     ///
     /// This is the one retraction, and so the one half of a re-key.
     pub fn remove(&mut self, node: &NodeId) {
+        // Whether it could sign has to be read BEFORE the key is dropped, because
+        // it decides which of the two sums loses this weight.
+        let was_keyed = self.keys.contains_key(node);
         if let Some(old) = self.keys.remove(node) {
             self.owner.remove(&old.compress());
         }
-        // The total is the sum of the weights still present, so it loses exactly
-        // what the map loses. It was added to the total when the member was
-        // admitted, so the subtraction is exact and cannot go below zero.
+        // Each sum is the weight still present under it, so each loses exactly
+        // what its map loses. The weight was added when the member was admitted,
+        // so both subtractions are exact and neither can go below zero.
         if let Some(weight) = self.weights.remove(node) {
             self.total -= weight;
+            if was_keyed {
+                self.signable -= weight;
+            }
         }
     }
 
-    /// The number of members, keyed or not — the `n` every threshold is read
-    /// against.
+    /// The number of members, keyed or not.
+    ///
+    /// This is the membership roll, and it is deliberately NOT the `n` a floor is
+    /// read against — that is `StakeSource::signer_count`, over the seats that can
+    /// sign. The two differ by exactly the members admitted through
+    /// [`ValidatorSet::insert_unkeyed`].
     pub fn len(&self) -> usize {
         self.weights.len()
+    }
+
+    /// The summed weight of every member, keyed or not — what the set CARRIES.
+    ///
+    /// It is the number admission checks for representability: a set whose weights
+    /// cannot be held is refused whether or not the seat that overflows it can
+    /// sign. It is NOT a floor, and no threshold is read against it — see
+    /// `StakeSource::signer_stake` for the one that is.
+    pub fn carried(&self) -> u64 {
+        self.total
     }
 
     pub fn is_empty(&self) -> bool {
@@ -822,15 +929,26 @@ impl VoteVerifier for ValidatorSet {
 }
 
 impl StakeSource for ValidatorSet {
+    /// A keyless member weighs nothing here. It is a member — `len` counts it and
+    /// `contains` finds it — but it cannot put stake behind a vote, and a tally is
+    /// a sum over votes.
     fn weight(&self, node: &NodeId, _epoch_height: u64) -> u64 {
+        if !self.keys.contains_key(node) {
+            return 0;
+        }
         self.weights.get(node).copied().unwrap_or(0)
     }
 
-    fn total_stake(&self, _epoch_height: u64) -> u64 {
-        self.total
+    /// The stake behind the keys: `total` less whatever came in through
+    /// [`ValidatorSet::insert_unkeyed`].
+    fn signer_stake(&self, _epoch_height: u64) -> u64 {
+        self.signable
     }
 
-    fn validator_count(&self, _epoch_height: u64) -> i64 {
-        self.weights.len() as i64
+    /// The seats that can sign. `len` is the membership and is deliberately not
+    /// this: a count floor read over members would demand more signatures than the
+    /// set is able to produce.
+    fn signer_count(&self, _epoch_height: u64) -> i64 {
+        self.keys.len() as i64
     }
 }

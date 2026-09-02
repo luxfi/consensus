@@ -51,38 +51,69 @@ fn decimal(v: &Value, key: &str) -> u64 {
         .unwrap_or_else(|e| panic!("{key}: {e}"))
 }
 
+/// One seat of a case's set: who, how much, and whether it holds a key.
+///
+/// A seat the corpus marks `keyless` is a member the chain carries and no
+/// verifier will ever accept a signature from. It is in the row so a reader can
+/// see what the case is about, and it is in NO floor's denominator.
+#[derive(Clone)]
+struct Seat {
+    id: NodeId,
+    weight: u64,
+    keyless: bool,
+}
+
 /// The validator set a case is weighed against, read straight from the row.
+#[derive(Clone)]
 struct Set {
-    seats: Vec<(NodeId, u64)>,
+    seats: Vec<Seat>,
+}
+
+impl Set {
+    fn find(&self, node: &NodeId) -> Option<&Seat> {
+        self.seats.iter().find(|s| &s.id == node)
+    }
+
+    /// What the set CARRIES: every seat, keyed or not. Not a floor — it is here
+    /// so the keyless case can state the number it would have been measured
+    /// against had the denominator been the membership roll.
+    fn carried(&self) -> u64 {
+        self.seats.iter().map(|s| s.weight).sum()
+    }
 }
 
 impl StakeSource for Set {
     fn weight(&self, node: &NodeId, _: u64) -> u64 {
         // An id outside the set carries no stake — an unknown voter must never
-        // be able to inflate a tally.
+        // be able to inflate a tally — and neither does a seat that holds no key,
+        // whose vote no verifier would accept.
+        self.find(node)
+            .filter(|s| !s.keyless)
+            .map_or(0, |s| s.weight)
+    }
+
+    fn signer_stake(&self, _: u64) -> u64 {
         self.seats
             .iter()
-            .find(|(id, _)| id == node)
-            .map_or(0, |(_, w)| *w)
+            .filter(|s| !s.keyless)
+            .map(|s| s.weight)
+            .sum()
     }
 
-    fn total_stake(&self, _: u64) -> u64 {
-        self.seats.iter().map(|(_, w)| *w).sum()
-    }
-
-    fn validator_count(&self, _: u64) -> i64 {
-        self.seats.len() as i64
+    fn signer_count(&self, _: u64) -> i64 {
+        self.seats.iter().filter(|s| !s.keyless).count() as i64
     }
 }
 
-/// Resolves every vote as correctly signed, so the weighted half is the only
-/// thing a case can turn on. The Go oracle recorded these verdicts under exactly
-/// this assumption.
-struct Trust;
+/// Resolves every vote FROM A SEAT THAT HOLDS A KEY as correctly signed, so the
+/// weighted half is the only thing a case can turn on. The Go oracle recorded
+/// these verdicts under exactly this assumption — including that a keyless seat
+/// has no signature to resolve, which is why it can never be a voter.
+struct Trust(Set);
 
 impl VoteVerifier for Trust {
-    fn verify_vote(&self, _: &NodeId, _: &[u8], _: &[u8], _: u64) -> bool {
-        true
+    fn verify_vote(&self, node: &NodeId, _: &[u8], _: &[u8], _: u64) -> bool {
+        self.0.find(node).is_some_and(|s| !s.keyless)
     }
 }
 
@@ -95,7 +126,11 @@ impl VoteVerifier for Trust {
 /// about the DECISION cannot hide inside a difference of vocabulary.
 fn refusal(rung: &str, err: &CertError) -> &'static str {
     match err {
+        // Go folds all three into ErrQCBelowThreshold: an unresolved set, a
+        // signing set below the minimum Byzantine committee, and a short signer
+        // count are one refusal class there and three variants here.
         CertError::UnresolvedSet { .. }
+        | CertError::MinCommittee { .. }
         | CertError::SignerFloor { .. }
         | CertError::BelowThreshold { .. } => "belowThreshold",
         CertError::StakeBelowMajority { .. } => "stakeBelowMajority",
@@ -133,24 +168,31 @@ fn the_weighted_decision_is_the_one_go_made() {
             other => panic!("{name}: a certificate attests nova or quasar, not {other}"),
         };
 
-        let seats: Vec<(NodeId, u64)> = case["set"]
+        let seats: Vec<Seat> = case["set"]
             .as_array()
             .unwrap_or_else(|| panic!("{name}: no set"))
             .iter()
-            .map(|s| {
-                (
-                    node(s["nodeID"].as_str().expect("seat has no nodeID")),
-                    decimal(s, "weight"),
-                )
+            .map(|s| Seat {
+                id: node(s["nodeID"].as_str().expect("seat has no nodeID")),
+                weight: decimal(s, "weight"),
+                // Absent means keyed, which is what every seat but the keyless
+                // vector's is.
+                keyless: s["keyless"].as_bool().unwrap_or(false),
             })
             .collect();
         let set = Set { seats };
 
-        // The set the corpus states must be the set it says it states.
+        // The set the corpus states must be the set it says it states — and the
+        // recorded total is the SIGNER stake, so a keyless seat's weight must be
+        // absent from it. On a set with no keyless seat the two readings coincide.
         assert_eq!(
-            set.total_stake(epoch),
+            set.signer_stake(epoch),
             decimal(case, "total"),
-            "{name}: the recorded total is not the sum of the seats"
+            "{name}: the recorded total is not the sum of the seats that can sign"
+        );
+        assert!(
+            set.carried() >= set.signer_stake(epoch),
+            "{name}: the signer stake exceeds what the set carries"
         );
 
         let votes: Vec<Vote> = case["signers"]
@@ -172,7 +214,7 @@ fn the_weighted_decision_is_the_one_go_made() {
         let cert = QuorumCert::assemble(tier, Position::default(), threshold, &votes)
             .unwrap_or_else(|e| panic!("{name}: assemble: {e}"));
 
-        let decided = cert.verify_weighted(&Trust, &set, epoch);
+        let decided = cert.verify_weighted(&Trust(set.clone()), &set, epoch);
         let accept = case["accept"].as_bool().expect("case has no accept");
         let want = case["refusal"].as_str().expect("case has no refusal");
 
@@ -199,8 +241,8 @@ fn the_weighted_decision_is_the_one_go_made() {
     // empty list, which is the failure mode the whole file exists to close.
     assert_eq!(
         cases.len(),
-        10,
-        "expected 10 frozen finality verdicts, checked {}",
+        13,
+        "expected 13 frozen finality verdicts, checked {}",
         cases.len()
     );
 }
