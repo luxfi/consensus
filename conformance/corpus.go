@@ -139,14 +139,17 @@ type StakeFloor struct {
 	NovaNeed   string `json:"novaNeed"`
 }
 
-// CountFloor pairs a live validator count with the count-side thresholds.
+// CountFloor pairs a live validator count with the count-side thresholds. Both
+// rungs have one: novaSignerFloor is Nova's, twoThirdsCount is Quasar's — the
+// export supermajority read in seats, and the floor a Quasar certificate's
+// distinct signers must reach whatever the stake distribution is.
 type CountFloor struct {
-	N                int `json:"n"`
-	NovaQuorum       int `json:"novaQuorum"`
-	NovaSignerFloor  int `json:"novaSignerFloor"`
-	NovaBeta         int `json:"novaBeta"`
-	CrashTolerance   int `json:"crashTolerance"`
-	EqualStakeQuasar int `json:"equalStakeQuasar"`
+	N               int `json:"n"`
+	NovaQuorum      int `json:"novaQuorum"`
+	NovaSignerFloor int `json:"novaSignerFloor"`
+	NovaBeta        int `json:"novaBeta"`
+	CrashTolerance  int `json:"crashTolerance"`
+	TwoThirdsCount  int `json:"twoThirdsCount"`
 }
 
 // Weighted is the minimum vote count that CAN reach the ⅔-by-stake predicate for
@@ -509,12 +512,12 @@ func thresholds() Threshold {
 	count := make([]CountFloor, 0, len(ns))
 	for _, n := range ns {
 		count = append(count, CountFloor{
-			N:                n,
-			NovaQuorum:       chain.NovaQuorum(n),
-			NovaSignerFloor:  chain.NovaSignerFloor(n),
-			NovaBeta:         chain.NovaBeta(n),
-			CrashTolerance:   chain.CrashTolerance(n),
-			EqualStakeQuasar: config.EqualStakeSupermajorityThreshold(n),
+			N:               n,
+			NovaQuorum:      chain.NovaQuorum(n),
+			NovaSignerFloor: chain.NovaSignerFloor(n),
+			NovaBeta:        chain.NovaBeta(n),
+			CrashTolerance:  chain.CrashTolerance(n),
+			TwoThirdsCount:  config.TwoThirdsCount(n),
 		})
 	}
 
@@ -550,8 +553,11 @@ func thresholds() Threshold {
 		Weighted: weighted,
 		StakeNote: "a quorum must STRICTLY EXCEED its floor. Quasar (export) needs voted > twoThirds; " +
 			"Nova (local execution) needs voted > half. Equality is not a quorum.",
-		CountNote: "novaSignerFloor is the count guard the stake predicate cannot give — a lone holder " +
-			"of a stake majority must not self-ignite. equalStakeQuasar is the ⅔ count for a uniform set.",
+		CountNote: "each rung carries a count floor, because a threshold read only in stake makes " +
+			"the number of parties that agreed one wherever stake is concentrated. novaSignerFloor " +
+			"stops a lone holder of a stake majority self-igniting; twoThirdsCount = floor(2n/3)+1 " +
+			"is the export supermajority in seats, and a Quasar cert must clear it AND the ⅔ stake " +
+			"floor. It is also the count the parameter sizer sets alpha to — one definition, both uses.",
 	}
 }
 

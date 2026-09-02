@@ -23,9 +23,13 @@ package chain
 //	          majority sustained NovaBeta rounds. Authorizes LOCAL execution only, and
 //	          is REORGABLE until Quasar: a lone equivocator can fork a bare majority,
 //	          so Nova is safe to act on locally (crash-fault model) but never to export.
-//	Quasar  : a ⅔-STAKE certificate exists — strict >2/3 of total stake by DISTINCT
-//	          signers (the one definition: config.TwoThirdsStakeFloor, enforced by
-//	          QuorumCert.VerifyWeighted). Byzantine-safe, exportable finality.
+//	Quasar  : a ⅔ certificate exists — strict >2/3 of total stake, held by at least
+//	          ⌊2n/3⌋+1 DISTINCT signers. One supermajority stated in two units
+//	          (config.TwoThirdsStakeFloor and config.TwoThirdsCount, derived from the
+//	          same arithmetic), and BOTH must hold, because Byzantine safety is a
+//	          claim about how many independent parties agreed and stake alone makes
+//	          that number one wherever stake is concentrated. Enforced by
+//	          QuorumCert.VerifyWeighted. Byzantine-safe, exportable finality.
 //	          Authorizes bridges, DEX settlement, cross-chain messages, validator-set
 //	          transitions.
 //	Horizon : a post-quantum signature seals the certificate — the event horizon,
@@ -52,7 +56,8 @@ func (f Finality) AuthorizesLocalExecution() bool { return f >= Nova }
 
 // AuthorizesExport reports whether a block may be exported as deterministically final
 // to a bridge, another chain, or an irreversible settlement — the safety boundary of
-// THE INVARIANT. Requires the ⅔ Quasar certificate (Byzantine-safe).
+// THE INVARIANT. Requires the ⅔ Quasar certificate: two thirds of the stake AND two
+// thirds of the seats (Byzantine-safe).
 func (f Finality) AuthorizesExport() bool { return f >= Quasar }
 
 // AuthorizesIrreversibleSettlement reports whether a block is quantum-irreversible —

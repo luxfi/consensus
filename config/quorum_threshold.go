@@ -77,8 +77,7 @@ func HalfStakeFloor(total uint64) uint64 {
 //	α = floor(2N/3) + 1
 //
 // which is what the live equal-stake networks use: N=5→4, N=11→8, N=21→15
-// (15, not 14: 14/21 = 66.67% does NOT strictly exceed ⅔). See
-// EqualStakeSupermajorityThreshold.
+// (15, not 14: 14/21 = 66.67% does NOT strictly exceed ⅔). See TwoThirdsCount.
 //
 // Returns 0 for an empty set or zero total stake (the caller treats that as
 // "no stake model" / fail-closed, mirroring VerifyWeighted's zero-total branch).
@@ -114,17 +113,37 @@ func WeightedSupermajorityThreshold(weights []uint64) int {
 	return count
 }
 
-// EqualStakeSupermajorityThreshold returns the minimum vote count for an
-// EQUAL-stake set of n validators whose cumulative stake strictly exceeds ⅔ —
-// i.e. WeightedSupermajorityThreshold over n unit weights. It is the closed form
+// TwoThirdsCount returns the ⅔ SUPERMAJORITY COUNT of n — the smallest number
+// of seats that is strictly more than two thirds of them:
 //
-//	α = floor(2n/3) + 1     (n ≥ 1)
+//	⌊2n/3⌋ + 1     (n ≥ 1)
 //
-// and is the threshold the live equal-stake networks (all current Lux nets) size
-// α to. n≤0 yields 1 (a degenerate single-acceptor floor). The result equals the
-// heaviest-first general computation for unit weights, so the two definitions
-// cannot diverge — proven in TestEqualStakeMatchesWeighted.
-func EqualStakeSupermajorityThreshold(n int) int {
+// It is the stake floor read in seats instead of stake, and it is derived from
+// the stake floor rather than restated: TwoThirdsStakeFloor(n)+1 over n unit
+// weights IS ⌊2n/3⌋+1. One arithmetic, so the count and the stake predicate
+// cannot drift. n≤0 yields 1 (a degenerate single-acceptor floor).
+//
+// It has two consumers and they are the same rule seen from two sides:
+//
+//   - The SIZER. FeasibleParams sets α to it, so a live equal-stake network's
+//     count gate is exactly the count that can reach the ⅔ stake predicate the
+//     cert verifier enforces. n=5→4, n=11→8, n=21→15 (15, not 14: 14/21 does
+//     NOT strictly exceed ⅔), n=41→28.
+//   - The FLOOR. QuorumCert.VerifyWeighted demands this many DISTINCT signers on
+//     a Quasar (export) cert, whatever the stake distribution — the guard the
+//     stake predicate cannot give. Without it a single validator holding ⅔ of
+//     the stake mints export-grade finality on ONE signature, which is the
+//     Quasar twin of the self-ignition the Nova signer floor exists to stop.
+//     The two are independent predicates and neither is sufficient alone: an
+//     export cert must clear BOTH ⅔ stake and this count.
+//
+// The name is the VALUE, not either use: on an equal-stake set it is the count
+// a supermajority takes, and on a skewed one it is still the count a
+// supermajority takes — which is precisely why it binds where the stake
+// predicate alone does not. For unit weights it equals the heaviest-first
+// general computation, so the two definitions cannot diverge — proven in
+// TestEqualStakeMatchesWeighted.
+func TwoThirdsCount(n int) int {
 	if n <= 0 {
 		return 1
 	}
@@ -158,7 +177,7 @@ func liveTimingFor(networkID uint32) (time.Duration, time.Duration) {
 // every peer and α has real Byzantine slack:
 //
 //	K = n                                    (sample every live validator)
-//	α = max( EqualStakeSupermajorityThreshold(n),   // strict >⅔ stake (the cert floor)
+//	α = max( TwoThirdsCount(n),                     // strict >⅔ stake (the cert floor)
 //	         bftQuorumFloor(K) )                     // 2α−K ≥ f+1 overlap (never below)
 //
 // α is the strict-⅔ stake threshold DERIVED from the cert verifier's rule
@@ -187,7 +206,7 @@ func FeasibleParams(networkID uint32, n int) Parameters {
 	// [0.71, 0.75] — inside the [0.66, 1.0] window Valid() demands. Clamps against
 	// those three bounds could never fire, so they are not here to be reasoned
 	// about; TestFeasibleParamsNeedsNoClamping holds the ground.
-	alpha := EqualStakeSupermajorityThreshold(k)
+	alpha := TwoThirdsCount(k)
 
 	blockTime, roundTO := liveTimingFor(networkID)
 

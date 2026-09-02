@@ -6,16 +6,19 @@
 // The golden file alone would let a changed threshold be re-blessed with
 // -update and disappear. So the boundaries are also stated OUTRIGHT here,
 // transcribed from the spec and recomputed in arbitrary precision, sharing no
-// code with config.HalfStakeFloor, config.TwoThirdsStakeFloor or
-// chain.NovaSignerFloor:
+// code with config.HalfStakeFloor, config.TwoThirdsStakeFloor,
+// config.TwoThirdsCount or chain.NovaSignerFloor:
 //
 //	Nova   accepts iff signers >= min(floor(n/2)+1, 3) and 2*voted > total
-//	Quasar accepts iff                                     3*voted > 2*total
+//	Quasar accepts iff signers >= floor(2*n/3)+1       and 3*voted > 2*total
 //
-// Both are the strict forms. "voted > floor(total/2)" and "2*voted > total" are
-// the same predicate over the integers, as are "voted > floor(2*total/3)" and
-// "3*voted > 2*total" — but the multiplied forms cannot share an off-by-one with
-// the production floors, which is the point of writing them this way.
+// Both stake halves are the strict forms. "voted > floor(total/2)" and
+// "2*voted > total" are the same predicate over the integers, as are
+// "voted > floor(2*total/3)" and "3*voted > 2*total" — but the multiplied forms
+// cannot share an off-by-one with the production floors, which is the point of
+// writing them this way. The two count floors are written out for the same
+// reason, and they are deliberately different shapes: Nova's saturates at three,
+// Quasar's is the supermajority itself and grows with the set.
 package conformance
 
 import (
@@ -44,25 +47,32 @@ func TestVerdictsStatedOutright(t *testing.T) {
 		voted := bigOf(t, c.Voted)
 		signers := len(c.Signers)
 
-		// The signer floor, transcribed: the majority of the minimal BFT
-		// committee of four, capped by the majority of the live set so a
-		// genuinely small chain is not made unsatisfiable.
-		floor := n/2 + 1
-		if floor > 3 {
-			floor = 3
-		}
-
+		var floor int
 		var want bool
 		switch c.Rung {
 		case "nova":
+			// The Nova signer floor, transcribed: the majority of the minimal
+			// BFT committee of four, capped by the majority of the live set so
+			// a genuinely small chain is not made unsatisfiable.
+			floor = n/2 + 1
+			if floor > 3 {
+				floor = 3
+			}
 			// 2*voted > total
 			twice := new(big.Int).Lsh(voted, 1)
 			want = signers >= floor && twice.Cmp(total) > 0
 		case "quasar":
+			// The export signer floor, transcribed as the smallest integer
+			// strictly greater than two thirds of n. Written as a search rather
+			// than as floor(2n/3)+1 so it cannot share an off-by-one with the
+			// production closed form either: it is the definition, not the
+			// formula.
+			for floor = 0; 3*floor <= 2*n; floor++ {
+			}
 			// 3*voted > 2*total
 			thrice := new(big.Int).Mul(voted, big.NewInt(3))
 			twice := new(big.Int).Lsh(total, 1)
-			want = thrice.Cmp(twice) > 0
+			want = signers >= floor && thrice.Cmp(twice) > 0
 		default:
 			t.Fatalf("%s: a certificate attests nova or quasar, not %q", c.Name, c.Rung)
 		}
@@ -71,6 +81,13 @@ func TestVerdictsStatedOutright(t *testing.T) {
 			t.Errorf("%s: corpus says accept=%v, the transcribed rule says %v "+
 				"(rung=%s n=%d signers=%d floor=%d voted=%s total=%s)",
 				c.Name, c.Accept, want, c.Rung, n, signers, floor, c.Voted, c.Total)
+		}
+		// The floor the corpus RECORDS must be the floor the rule states — a row
+		// that decided correctly while advertising the other rung's floor would
+		// tell a foreign runner the wrong number about the clause it just failed.
+		if c.SignerFloor != floor {
+			t.Errorf("%s: corpus records signerFloor=%d, the transcribed %s floor is %d",
+				c.Name, c.SignerFloor, c.Rung, floor)
 		}
 		if c.Accept != (c.Refusal == "") {
 			t.Errorf("%s: accept=%v but refusal=%q — a decision and its reason disagree",
@@ -188,17 +205,78 @@ func TestExportSitsAboveLocalExecution(t *testing.T) {
 	}
 }
 
-// TestOnlyNovaCarriesASignerFloor — the export rung's refusals must never be
-// count refusals, because Quasar has no signer floor of its own. This is the
-// asymmetry R4 is about; freezing it here means the day a floor is added to the
-// export rung, this test names it rather than a foreign node six months later.
-func TestOnlyNovaCarriesASignerFloor(t *testing.T) {
-	for _, c := range Build().Verdict.Finality {
-		if c.Rung == "quasar" && c.Refusal == "belowThreshold" {
-			t.Errorf("%s: the export rung refused on the count floor, which it does not have",
-				c.Name)
+// TestStakeCannotBuyExportEither is the same safety property one rung up, and it
+// is the one R4 added: a holder of a ⅔ STAKE supermajority must not be able to
+// mint an EXPORT certificate alone. Export finality is a claim that a Byzantine
+// supermajority of independent parties agreed; a certificate one key can produce
+// is not that claim however much stake stands behind the key.
+//
+// The refusal must land on the COUNT. A stake refusal here would mean the lone
+// signer never held ⅔ in the first place and the case proved nothing about the
+// floor.
+func TestStakeCannotBuyExportEither(t *testing.T) {
+	c := findFinality(t, "quasar_whale_alone")
+
+	if c.Rung != "quasar" {
+		t.Fatalf("the export whale case attests %q", c.Rung)
+	}
+	if len(c.Signers) != 1 {
+		t.Fatalf("the lone-signer case carries %d signers", len(c.Signers))
+	}
+	// The lone signer really does clear the ⅔ STAKE floor — otherwise the case
+	// would be refused by the stake clause and would prove nothing about the count.
+	thrice := new(big.Int).Mul(bigOf(t, c.Voted), big.NewInt(3))
+	twice := new(big.Int).Lsh(bigOf(t, c.Total), 1)
+	if thrice.Cmp(twice) <= 0 {
+		t.Fatalf("the lone signer holds %s of %s — not a ⅔ stake supermajority, so this "+
+			"case does not test the export signer floor", c.Voted, c.Total)
+	}
+	if c.Accept {
+		t.Error("a lone holder of a ⅔ stake supermajority minted an export certificate: " +
+			"the export signer floor did not run")
+	}
+	if c.Refusal != "belowThreshold" {
+		t.Errorf("refused with %q, want belowThreshold — a stake refusal here would mean "+
+			"the count floor was never reached", c.Refusal)
+	}
+
+	// The same stake, once the floor is met, carries. This is what pins the
+	// refusal above to the COUNT and not to some second stake rule.
+	with := findFinality(t, "quasar_whale_with_three")
+	if !with.Accept {
+		t.Error("the same holder with the export floor met did not carry; the floor is not " +
+			"the binding clause")
+	}
+	if len(with.Signers) != c.SignerFloor {
+		t.Errorf("the carrying case has %d signers and the floor is %d — the accepting side "+
+			"must sit exactly ON the floor or the edge is not sharp",
+			len(with.Signers), c.SignerFloor)
+	}
+}
+
+// TestBothRungsCarryASignerFloor — neither rung may be decided by stake alone.
+// A rung whose count floor is dropped stops asking how many parties agreed and
+// starts asking only how much stake did, which is one signature wherever stake
+// is concentrated. Both floors are therefore stated positively here, so removing
+// either fails at the source rather than at a foreign node six months later.
+func TestBothRungsCarryASignerFloor(t *testing.T) {
+	for _, rung := range []string{"nova", "quasar"} {
+		if !hasRefusal(t, rung, "belowThreshold") {
+			t.Errorf("%s has no case refused on its count floor: a rung with no count "+
+				"refusal in the corpus is a rung whose floor nothing holds", rung)
 		}
 	}
+}
+
+// hasRefusal reports whether a rung has at least one case refused on a clause.
+func hasRefusal(t *testing.T, rung, class string) bool {
+	t.Helper()
+	for _, c := range Build().Verdict.Finality {
+		if c.Rung == rung && c.Refusal == class {
+			return true
+		}
+	}
+	return false
 }
 
 // TestAdmissionWeightRulesStatedOutright recomputes the two weight clauses of
@@ -244,7 +322,7 @@ func TestAdmissionWeightRulesStatedOutright(t *testing.T) {
 func TestVerdictSectionIsPopulated(t *testing.T) {
 	v := Build().Verdict
 
-	if got, want := len(v.Finality), 8; got != want {
+	if got, want := len(v.Finality), 10; got != want {
 		t.Errorf("%d finality cases, want %d — adding one is deliberate, losing one is not", got, want)
 	}
 	if got, want := len(v.Admission), 4; got != want {
@@ -252,6 +330,35 @@ func TestVerdictSectionIsPopulated(t *testing.T) {
 	}
 	if _, err := strconv.ParseUint(v.Epoch, 10, 64); err != nil {
 		t.Errorf("epoch %q is not a height: %v", v.Epoch, err)
+	}
+
+	// A case is named by (name, door) at the admission section and by name at
+	// the finality one, and a runner looks a case up by that key. Two rows
+	// sharing a key are two different questions with one answer: the runner
+	// finds whichever comes first and reports PASS having silently skipped the
+	// other. Both doors legitimately answer for the same weight vector — the
+	// zero-weight rows are deliberately named alike — so the admission key is
+	// the PAIR, and it is the pair that has to be unique.
+	seenAdmission := map[[2]string]bool{}
+	for _, c := range v.Admission {
+		key := [2]string{c.Name, c.Door}
+		if seenAdmission[key] {
+			t.Errorf("two admission cases named %q at the %s door: a runner keyed on the "+
+				"pair answers one of them and skips the other", c.Name, c.Door)
+		}
+		seenAdmission[key] = true
+		if c.Door == "" {
+			t.Errorf("admission case %q names no door: the two doors do not enforce the "+
+				"same clauses, so which one decided is part of the verdict", c.Name)
+		}
+	}
+	seenFinality := map[string]bool{}
+	for _, c := range v.Finality {
+		if seenFinality[c.Name] {
+			t.Errorf("two finality cases named %q: findFinality answers the first and the "+
+				"second is never weighed", c.Name)
+		}
+		seenFinality[c.Name] = true
 	}
 
 	// Both sides of every rung are represented. A section of refusals alone
