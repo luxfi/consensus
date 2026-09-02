@@ -283,13 +283,13 @@ func TestVerifiedQuorumCertUnforgeableOutsideBuilder(t *testing.T) {
 		t.Fatal("zero VerifiedQuorumCert must be empty (no embedded cert)")
 	}
 
-	// 2) Builder REFUSES a sub-quorum (3 votes, α=4): no token minted.
+	// 2) Builder REFUSES a sub-quorum (3 votes against a derived floor of 4): no token.
 	sub := []SignedVote{
 		{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 		{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 	}
-	if vc, err := BuildVerifiedQuorumCert(vs, equal, Quasar, 4, 1, pos, sub); err == nil || !vc.IsZero() {
+	if vc, err := BuildVerifiedQuorumCert(vs, equal, Quasar, 1, pos, sub); err == nil || !vc.IsZero() {
 		t.Fatalf("builder must refuse a sub-α vote set (got err=%v zero=%v)", err, vc.IsZero())
 	}
 
@@ -300,7 +300,7 @@ func TestVerifiedQuorumCertUnforgeableOutsideBuilder(t *testing.T) {
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 		{NodeID: vs.nodeID(3), Accept: true, Signature: vs.sign(3, pos)},
 	}
-	if vc, err := BuildVerifiedQuorumCert(vs, equal, Quasar, 4, 1, pos, forged); err == nil || !vc.IsZero() {
+	if vc, err := BuildVerifiedQuorumCert(vs, equal, Quasar, 1, pos, forged); err == nil || !vc.IsZero() {
 		t.Fatalf("builder must refuse a forged-signature vote set (got err=%v zero=%v)", err, vc.IsZero())
 	}
 
@@ -312,7 +312,7 @@ func TestVerifiedQuorumCertUnforgeableOutsideBuilder(t *testing.T) {
 		{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 		{NodeID: vs.nodeID(3), Accept: true, Signature: vs.sign(3, pos)},
 	}
-	vc, err := BuildVerifiedQuorumCert(vs, equal, Quasar, 4, 1, pos, good)
+	vc, err := BuildVerifiedQuorumCert(vs, equal, Quasar, 1, pos, good)
 	if err != nil || vc.IsZero() {
 		t.Fatalf("builder must mint a token for a real ⅔ quorum (err=%v zero=%v)", err, vc.IsZero())
 	}

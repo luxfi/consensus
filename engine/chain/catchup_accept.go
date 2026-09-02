@@ -271,23 +271,20 @@ func (rt *Runtime) VerifyCatchupCertificate(ctx context.Context, blockBytes, cer
 	t := rt.Transitive
 	t.mu.RLock()
 	chainID := t.chainID
-	floor := t.consensus.Alpha()
-	if cert.Tier == Nova {
-		// The live committee's majority. NovaSignerFloor saturates at 3 for every
-		// K, so it asked a committee of nine for three signatures — and this door
-		// is the mirror of the gossip one, so leaving it behind would keep the
-		// whole hole open on the catch-up path. One invariant, two doors.
-		floor = NovaQuorum(t.consensus.K())
-	}
 	setRootSource := t.setRootSource
 	t.mu.RUnlock()
 
+	// The clauses here bind the proof to THIS chain, THIS block and THIS canonical
+	// commitment. The quorum is not among them: it is one number with one definition
+	// and it is read in verifyCert below, which derives it from the set (or, with no
+	// stake source, from this node's own committee) and demands the certificate's
+	// declaration equal it. A second floor spelled here — the sample committee's
+	// majority, as it used to be — is a different quantity, and a door that asks for
+	// more than the gate refuses certificates the gate would admit. One invariant,
+	// one place, and this is the mirror of the gossip road for that reason.
 	if cert.Position.ChainID != chainID ||
 		cert.Position.Height != blk.Height() ||
-		certCanonical(cert) != canonicalIDOf(blk) ||
-		// The votes carried, not the number claimed: a self-declared threshold is
-		// a bar chosen by the party it constrains.
-		(floor > 0 && (cert.Threshold < uint32(floor) || cert.VoterCount() < floor)) {
+		certCanonical(cert) != canonicalIDOf(blk) {
 		return ErrCatchupCertRejected
 	}
 

@@ -192,46 +192,27 @@ func (rt *Runtime) HandleIncomingCert(certBytes []byte) bool {
 	if verifier == nil {
 		return false
 	}
-	// The cert's threshold must meet our own floor for its tier: a cert asserting a lower
-	// threshold than this chain requires for that tier is rejected even if its internal
-	// signatures verify. This is a cheap sub-quorum forgery filter; the authority is
-	// verifyCert → VerifyWeighted below, which re-derives the tier threshold from the
-	// validator set at the cert's epoch. A gossiped Nova cert legitimately carries a
-	// bare-majority threshold below the ⅔ Quasar floor, so the floor is tier-selected:
-	// NovaSignerFloor(K) for Nova, the ⅔ count Alpha() for Quasar. K/Alpha track the live
-	// committee (construction clamp + reclampCommitteeLocked), so both floors follow the
-	// live set. An unknown tier is left to verifyCert, which rejects fail-closed.
+	// NO FLOOR IS READ HERE. There used to be one — a cheap sub-quorum filter over
+	// the sample committee, K's majority for Nova and Alpha() for Quasar — and it
+	// was a THIRD spelling of a quantity that has one definition. A door in front of
+	// a gate may only ever refuse what the gate refuses, and this one could not: the
+	// gate derives the accept rung's floor from the SIGNING SET (SignerFloor, which
+	// saturates at three), while the door read the sample committee's majority, which
+	// grows. On nine validators the gate accepts a certificate declaring three and the
+	// door demanded five, so an honest certificate never reached the predicate that
+	// would have admitted it. The two numbers are different quantities and no amount of
+	// re-spelling makes them one.
 	//
-	// The Nova floor is the signer floor, not the count majority: on a stake-weighted chain
-	// the Nova majority is measured in stake, so a legitimate cert's self-declared threshold
-	// is the signer floor and a count-majority pre-filter here would drop it before the
-	// authoritative stake check ever ran. On an equal-stake chain the signer floor is ≤ the
-	// count majority every legitimate cert already carries, so the filter is unweakened.
-	floor := t.consensus.Alpha() // Quasar ⅔ count floor
-	if cert.Tier == Nova {
-		// The MAJORITY of the live committee, not NovaSignerFloor. That floor
-		// saturates at NovaQuorum(minBFTCommittee) = 3 for every K, so on a
-		// committee of nine it asked for three — and with no stake source wired
-		// nothing downstream re-derives the majority, leaving the cert's own
-		// declared Threshold as the whole bar. Three relayed votes then finalize
-		// on any committee, two disjoint triples both certify at one height with
-		// no validator equivocating, and a three-vote cert for a losing sibling
-		// jails three validators who each signed one block once.
-		floor = NovaQuorum(t.consensus.K())
-	}
-	// Against the votes the cert ACTUALLY carries, not the number it claims to
-	// need. A self-declared threshold is a security parameter chosen by the party
-	// the parameter is meant to constrain; quasar's own weighted verifier already
-	// refuses to let a cert be the sole source of its own bar.
-	if floor > 0 && (cert.Threshold < uint32(floor) || cert.VoterCount() < floor) {
-		if !rt.config.Logger.IsZero() {
-			rt.config.Logger.Warn("incoming cert: threshold below chain floor for its tier",
-				log.Stringer("blockID", cert.Position.BlockID),
-				log.Uint32("certThreshold", cert.Threshold),
-				log.Int("tierFloor", floor))
-		}
-		return false
-	}
+	// So the floor is read once, where it is authoritative: verifyCert, below and on
+	// every branch out of this function — the stake-weighted predicate when a stake
+	// source is wired, the count-only predicate against this node's own committee
+	// otherwise, and on either road the certificate's declared quorum must EQUAL the
+	// one this node derives. That is strictly stronger than any "at least" filter a
+	// door could have applied, so nothing is lost by not applying it twice.
+	//
+	// Nor is any work saved by refusing early: the dropped certificates were the ones
+	// carrying FEW votes, which are the cheap ones. A certificate carrying many costs
+	// what it always cost, and Verify stops at the first signature that fails.
 	if cert.Position.ChainID != chainID {
 		return false
 	}
@@ -669,7 +650,7 @@ func (t *Transitive) verifyCert(cert *QuorumCert, epochHeight uint64) error {
 		return err
 	}
 	if committee >= 1 {
-		if floor := Quorum(cert.Tier, committee); cert.Threshold != floor {
+		if floor := Quorum(cert.Tier, committee); int(cert.Threshold) != floor {
 			return fmt.Errorf("%w: cert declares %d, a committee of %d derives %d for %s at epoch %d",
 				ErrQCThresholdNotDerived, cert.Threshold, committee, floor, cert.Tier, epochHeight)
 		}

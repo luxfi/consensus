@@ -185,10 +185,9 @@ func TestPruneBelowDropsEveryHeightUnderTheWindow(t *testing.T) {
 // operator reads the other.
 func TestBuildVerifiedQuorumCertFailsClosed(t *testing.T) {
 	f := newCertFixture(t, 4)
-	alpha := uint32(NovaSignerFloor(4))
 
 	// The control: a verified token, and its cert is the one that was checked.
-	tok, err := BuildVerifiedQuorumCert(f.vs, f.stake, Nova, alpha, f.pos.Height, f.pos, f.votes[:3])
+	tok, err := BuildVerifiedQuorumCert(f.vs, f.stake, Nova, f.pos.Height, f.pos, f.votes[:3])
 	if err != nil {
 		t.Fatalf("BuildVerifiedQuorumCert: %v", err)
 	}
@@ -204,13 +203,13 @@ func TestBuildVerifiedQuorumCertFailsClosed(t *testing.T) {
 		{
 			holds: "no verifier is a refusal, never a token nothing checked",
 			build: func() (VerifiedQuorumCert, error) {
-				return BuildVerifiedQuorumCert(nil, f.stake, Nova, alpha, f.pos.Height, f.pos, f.votes[:3])
+				return BuildVerifiedQuorumCert(nil, f.stake, Nova, f.pos.Height, f.pos, f.votes[:3])
 			},
 		},
 		{
 			holds: "votes short of the count floor do not assemble",
 			build: func() (VerifiedQuorumCert, error) {
-				return BuildVerifiedQuorumCert(f.vs, f.stake, Nova, alpha, f.pos.Height, f.pos, f.votes[:1])
+				return BuildVerifiedQuorumCert(f.vs, f.stake, Nova, f.pos.Height, f.pos, f.votes[:1])
 			},
 			cause: ErrQCBelowThreshold,
 		},
@@ -219,20 +218,27 @@ func TestBuildVerifiedQuorumCertFailsClosed(t *testing.T) {
 			build: func() (VerifiedQuorumCert, error) {
 				short := f.stake
 				short.signerStake = 0
-				return BuildVerifiedQuorumCert(f.vs, short, Nova, alpha, f.pos.Height, f.pos, f.votes[:3])
+				return BuildVerifiedQuorumCert(f.vs, short, Nova, f.pos.Height, f.pos, f.votes[:3])
 			},
 			cause: ErrQCStakeBelowMajority,
 		},
 		{
-			holds: "with no stake source the count-only predicate still runs, and still refuses",
+			holds: "a signature that does not verify is not a token",
 			build: func() (VerifiedQuorumCert, error) {
 				bad := make([]SignedVote, 3)
 				copy(bad, f.votes[:3])
 				bad[0].Signature = append([]byte(nil), bad[0].Signature...)
 				bad[0].Signature[0] ^= 0xFF
-				return BuildVerifiedQuorumCert(f.vs, nil, Nova, alpha, f.pos.Height, f.pos, bad)
+				return BuildVerifiedQuorumCert(f.vs, f.stake, Nova, f.pos.Height, f.pos, bad)
 			},
 			cause: ErrQCSigInvalid,
+		},
+		{
+			holds: "with no set there is no floor, so there is nothing to mint",
+			build: func() (VerifiedQuorumCert, error) {
+				return BuildVerifiedQuorumCert(f.vs, nil, Nova, f.pos.Height, f.pos, f.votes[:3])
+			},
+			cause: ErrCertNeedsStake,
 		},
 	} {
 		t.Run(row.holds, func(t *testing.T) {

@@ -133,12 +133,20 @@ var (
 // An unknown tier has no floor, so it gets none: 0 is returned and every caller
 // treats it as a refusal. n<1 is an unresolved set, refused by the predicate
 // before this is consulted.
-func SignerFloor(tier Finality, n int) uint32 {
+//
+// Counted in an int, which is the width the set is counted in. A cert states its
+// quorum in a uint32, and a floor that does not fit one is a floor no cert can
+// state — so the number is carried at full width to HERE and narrowed only where
+// a cert is written. Narrowing first would wrap: ⌊2n/3⌋+1 passes 2^32 at about
+// six billion signers and a wrapped floor of 1 is a floor a lone signer meets.
+// Because the comparison below is made at full width, a mint that narrowed is
+// caught by it rather than believed.
+func SignerFloor(tier Finality, n int) int {
 	switch tier {
 	case Nova:
-		return uint32(NovaSignerFloor(n))
+		return NovaSignerFloor(n)
 	case Quasar:
-		return uint32(config.TwoThirdsCount(n))
+		return config.TwoThirdsCount(n)
 	default:
 		return 0
 	}
@@ -167,12 +175,12 @@ func SignerFloor(tier Finality, n int) uint32 {
 // count-only road assembleCertLocked declares NovaQuorum(n), which is 4 at six
 // signers where NovaSignerFloor is 3. Every K below six hides it, which is every K
 // the tests use.
-func Quorum(tier Finality, n int) uint32 {
+func Quorum(tier Finality, n int) int {
 	switch tier {
 	case Nova:
-		return uint32(NovaQuorum(n))
+		return NovaQuorum(n)
 	case Quasar:
-		return uint32(config.TwoThirdsCount(n))
+		return config.TwoThirdsCount(n)
 	default:
 		return 0
 	}
@@ -556,7 +564,7 @@ func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, ep
 	// and the rung's own clause refuses the cert by the name it has always been
 	// refused under. Skipping here is not a pass: both rungs fail closed on n<1.
 	if n := stake.SignerCount(epochHeight); n >= 1 {
-		if floor := SignerFloor(c.Tier, n); c.Threshold != floor {
+		if floor := SignerFloor(c.Tier, n); int(c.Threshold) != floor {
 			return fmt.Errorf("%w: cert declares %d, a set of %d signers derives %d for %s at epoch %d",
 				ErrQCThresholdNotDerived, c.Threshold, n, floor, c.Tier, epochHeight)
 		}
@@ -599,7 +607,7 @@ func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) e
 		return fmt.Errorf("%w: nova tier over an unresolved validator set (n=%d) at epoch %d",
 			ErrQCBelowThreshold, n, epochHeight)
 	}
-	if floor := int(SignerFloor(Nova, n)); c.VoterCount() < floor {
+	if floor := SignerFloor(Nova, n); c.VoterCount() < floor {
 		return fmt.Errorf("%w: nova cert has %d distinct voters, need at least %d of %d at epoch %d",
 			ErrQCBelowThreshold, c.VoterCount(), floor, n, epochHeight)
 	}
@@ -717,7 +725,7 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 			"Byzantine committee f=⌊(n−1)/3⌋ is 0 and a two-thirds supermajority tolerates no "+
 			"fault, at epoch %d", ErrQCBelowThreshold, n, minBFTCommittee, epochHeight)
 	}
-	if floor := int(SignerFloor(Quasar, n)); c.VoterCount() < floor {
+	if floor := SignerFloor(Quasar, n); c.VoterCount() < floor {
 		return fmt.Errorf("%w: quasar cert has %d distinct voters, need at least %d of %d at epoch %d",
 			ErrQCBelowThreshold, c.VoterCount(), floor, n, epochHeight)
 	}

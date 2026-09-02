@@ -3242,7 +3242,7 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 		// set derives two, and the certificate this node just built would be refused by
 		// the node it is sent to. This is the export path's rule (attestation.go reads
 		// SignerCount for the same reason) applied to the accept rung.
-		novaThreshold = int(SignerFloor(Nova, t.stakeSource.SignerCount(epochHeight)))
+		novaThreshold = SignerFloor(Nova, t.stakeSource.SignerCount(epochHeight))
 	}
 	if novaThreshold <= 0 {
 		return nil

@@ -413,34 +413,84 @@ number its own assembler declares. Every committee the test fixtures use is 4 or
 which is exactly where the two agree — `TestTheTwoRoadsDeriveTheNumberTheyDeclare`
 walks 1..64 so the divergence is stated rather than discovered at K=6 in production.
 
-Two corollaries, both load-bearing:
+Four corollaries, all load-bearing:
 
-- **The count-only road derives its floor too, and the two doors answer
-  differently because the threat differs.** `BuildVerifiedQuorumCert` MINTS a token
-  from raw votes against the CALLER's alpha, so with no set to check that alpha
-  against there is nothing to check at all: `chain.exportNeedsStake` refuses any
-  export tier outright there. `Transitive.verifyCert` ADMITS a certificate that
-  ARRIVED, carrying N real signatures from N distinct in-set validators — all that
-  was missing is that its declared quorum was its own. So the floor is derived
-  there too, from `effectiveCommittee`, which is that road's authoritative view of
-  its set. Not "an equal-stake chain cannot export", but "it may not export on a
-  quorum the certificate wrote for itself". Without either clause a gossiped Quasar
-  cert declaring a quorum of ONE, over one signature, reached `AcceptWithCert`.
-  That committee view is weaker than a stake source (it is K, the sample size), and
-  that asymmetry is why the minting door refuses export on this road rather than
-  weighing it: a configured committee is strong enough to CHECK a declaration and
-  not strong enough to ORIGINATE one. The price, and it is real: with no stake model
-  the committee is configured, so this road now needs the fleet to agree on K — two
-  nodes that disagree about their committee disagree about which certificates exist,
-  where before any declaration was admitted and they interoperated by accident.
-  Rust and C++ need no such clause — their weighted verifiers take a set by
-  reference, so the absent case is unrepresentable rather than checked.
-- **The assembler reads the same n the verifier does.** `assembleCertLocked`
+- **Minting states no quorum, and mints nothing without a set.**
+  `BuildVerifiedQuorumCert` took the floor as an ARGUMENT — the caller's alpha —
+  and on the count-only road nothing re-derived it: one vote and an alpha of one
+  minted an authority token on a chain of five, while a certificate carrying those
+  exact bytes was refused on arrival. So there is no argument. The floor is
+  `SignerFloor(tier, SignerCount(epoch))`, read at the door, and a `nil` stake
+  source is `ErrCertNeedsStake` at BOTH rungs: a floor is a property of the set,
+  and with no set there is no floor and nothing to mint. This is what Rust's
+  `Tally::cert` and `QuasarConsensus::create_certificate` and C++'s
+  `Cert::verify_weighted` already had by their types — each takes a set by
+  reference, so the absent case is unrepresentable rather than checked — and Go
+  now agrees by rule where they agree by construction.
+- **The arrival roads read NO floor of their own.** `HandleIncomingCert` and
+  `VerifyCatchupCertificate` each carried a cheap pre-filter over the sample
+  committee — `NovaQuorum(K)` for Nova, `Alpha()` for Quasar — in front of
+  `verifyCert`. That is a THIRD spelling of a quantity with one definition, and it
+  is a different quantity: the gate derives the accept rung's floor from the
+  SIGNING SET, where `NovaSignerFloor` saturates at three, while the door read the
+  committee's majority, which grows with K. At six seats the gate accepts a
+  certificate declaring three and the door demanded four; at eleven it demanded
+  six; and where the set is smaller than the committee the door asked a set of
+  three for the four-seat committee's three when the set derives two. An honest
+  certificate — the exact bytes the node's own assembler produces — never reached
+  the predicate that would have admitted it. **A door in front of a gate may only
+  refuse what the gate refuses**, so the doors are gone and the floor is read once,
+  where it is authoritative. Nothing is lost: the gate demands EQUALITY with the
+  derived floor, which is strictly stronger than any "at least" a door applied, and
+  no work is saved by refusing early — the dropped certificates were the ones
+  carrying FEW votes, which are the cheap ones.
+  `TestTheDoorAdmitsWhatTheGateAdmits` walks the sizes where the two numbers part.
+- **`verifyCert` derives on the arrival road's own terms.** It ADMITS a
+  certificate that arrived carrying N real signatures from N distinct in-set
+  validators — all that was missing is that its declared quorum was its own. With a
+  stake source it is `VerifyWeighted`; without one the floor comes from
+  `effectiveCommittee`, that road's authoritative view of its set. Not "an
+  equal-stake chain cannot export", but "it may not export on a quorum the
+  certificate wrote for itself". Without the clause a gossiped Quasar cert
+  declaring a quorum of ONE, over one signature, reached `AcceptWithCert`. That
+  committee view is weaker than a stake source (it is K, the sample size), and that
+  asymmetry is why the MINTING door refuses without a set rather than weighing a
+  configured number: a committee is strong enough to CHECK a declaration and not
+  strong enough to ORIGINATE one. The price, and it is real: with no stake model the
+  committee is configured, so this road now needs the fleet to agree on K — two
+  nodes that disagree about their committee disagree about which certificates
+  exist, where before any declaration was admitted and they interoperated by
+  accident.
+- **Every assembler reads the same n the verifier does.** `assembleCertLocked`
   derives Nova's declared floor from `stakeSource.SignerCount`, not from
   `effectiveCommittee` (which sizes the SAMPLE and is floored at
   `minBFTCommittee`). At three signers the two disagreed — the sampler said three,
   the set said two — so a node would have built a certificate its own peers refuse.
-  `attestation.go` already read `SignerCount` for the export rung.
+  `attestation.go`'s export trigger reads `SignerFloor(Quasar, SignerCount)`, the
+  same function, so the trigger and the rule cannot part.
+
+`SignerFloor` and `Quorum` return `int`, not `uint32`: the floor is counted at the
+width the SET is counted at, and narrowed only where a certificate is written.
+Narrowing first wraps — `⌊2n/3⌋+1` passes 2³² at about six billion signers, and a
+wrapped floor of 1 is a floor a lone signer meets. Because the derived clause
+compares at full width, a mint that narrowed is caught by it rather than believed.
+
+**Five things produce the authority token**, and every one of them runs the full
+predicate first or has no votes to run it on:
+
+1. `BuildVerifiedQuorumCert` — the exported minting door, from raw votes over a set.
+2. `HandleIncomingCert` — a gossiped certificate, through `verifyCert`.
+3. `VerifyCatchupCertificate` → `AcceptCatchupBlock` — the same, on the catch-up road.
+4. `assembleVerifiedCertLocked` → `assembleCertLocked` — the engine's own assembly,
+   which verifies before it caches.
+5. `buildSingleValidatorCertLocked` — the K==1 road, and the one that is NOT a
+   predicate: on a genuinely single-validator chain it synthesizes a zero-vote Nova
+   token from the position, because the sole validator's own accept IS the quorum
+   and there is no other party to protect against. It is fenced three ways — both
+   callers gate on `K()==1`, it prefers a real signed 1-of-1 whenever one
+   assembles, and it returns the ZERO token (which `AcceptWithCert` refuses) once
+   the live count passes one on a chain that has finalized anything. It is Nova
+   only, so it is never an export door.
 
 Both numbers are read over the SIGNERS: `signer` is `StakeSource.SignerStake` and
 `n` is `StakeSource.SignerCount`, never the membership roll. A member the chain
@@ -548,15 +598,20 @@ point. They are walls behind walls, they are correct, and chasing them costs an
 afternoon each — so they are written down instead.
 
 - `cert.go` `verifyNovaMajority`/`verifyQuasarSupermajority`'s COUNT clauses
-  (`VoterCount() < SignerFloor(...)`), since the derived-threshold rule landed.
-  `Verify` proves `count >= Threshold` and the derived clause proves
-  `Threshold == SignerFloor`, so `count >= SignerFloor` follows and neither clause
-  can fire. They are kept deliberately: they are where the floor is DEFINED for a
-  reader, and they are the guard that survives any future change to the
-  declaration rule — removing them would leave the count floor resting entirely on
-  a clause about a wire field. Rust and C++ carry the same redundancy for the same
-  reason. This is why the corpus's under-quorum rows are now named `belowThreshold`
-  by `Verify` rather than by the rung.
+  (`VoterCount() < SignerFloor(...)`) — **unreachable under an IDEMPOTENT source,
+  and not otherwise.** `Verify` proves `count >= Threshold` and the derived clause
+  proves `Threshold == SignerFloor(n)`, so `count >= SignerFloor(n)` follows — but
+  each clause reads `SignerCount` for itself, and a source that answers the two
+  reads differently makes them two numbers. Red raced 3,600 pairs against a source
+  that moves between reads; in 1,924 of them these count clauses were the ONLY
+  clause that refused, and they refused fail-closed. So they are not dead code kept
+  for a reader: they are the guard that survives a set moving under the predicate,
+  and they are where the floor is DEFINED. Rust and C++ carry the same redundancy
+  for the same reason. The ISSUE road has no such race — `Tally::cert` reads the
+  count once and answers every clause of one issue with it — because there the two
+  numbers would be the assembler disagreeing with itself. This is also why the
+  corpus's under-quorum rows are now named `belowThreshold` by `Verify` rather than
+  by the rung.
 - `cert.go` `VerifyWeighted`'s `default:` unknown-tier arm. `Verify` runs first
   and refuses any tier outside {Nova, Quasar}, so the switch below it never sees
   one. `TestATierIsRefusedByVerifyBeforeVerifyWeightedSeesIt` pins that ORDER, so
@@ -565,7 +620,9 @@ afternoon each — so they are written down instead.
 - `pop.go` `Verify`'s canonical re-compress check, and `Verify`'s own
   `Message` error. `bls.PublicKeyFromCompressedBytes` is canonical — probed over
   all 256 spellings of byte 0 and every single-bit flip of a real key, zero
-  decode to a point that re-compresses differently — and the width was checked
+  decode to a point that re-compresses differently — a property of the RE-CAPTURE,
+  where 9 of the 13 probe inputs were rewritten, and not of a run that happened to
+  find none — and the width was checked
   two lines above. Rust's `pop.rs:83` and C++'s `bls.cpp:145` are the same wall.
 - `registration.go` `Register`'s decode after `pop.Verify` succeeded, which
   decoded the same bytes. C++ marks its twin `unreachable: pop_verify decoded it`.

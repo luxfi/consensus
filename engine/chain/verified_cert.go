@@ -13,19 +13,37 @@
 // finalize a block is Transitive.AcceptWithCert, and it CANNOT be called without
 // a VerifiedQuorumCert value.
 //
-// A VerifiedQuorumCert is UNFORGEABLE outside this file: its only field (qc) is
-// unexported, so no other package — and no other file in this package by
-// accident — can construct a non-zero one with a struct literal. The sole
-// producer is BuildVerifiedQuorumCert, which runs the full stake-weighted
-// predicate (QuorumCert.VerifyWeighted, the strict >⅔-of-stake gate) before it
-// will wrap a cert. A raw α-of-K COUNT ("enough voters responded",
+// A VerifiedQuorumCert is UNFORGEABLE outside this package: its only field (qc) is
+// unexported, so no other package can construct a non-zero one with a struct
+// literal. FIVE things produce it, and every one either runs the full predicate
+// first or has no votes to run it on:
+//
+//  1. BuildVerifiedQuorumCert — the exported minting door, from raw votes over a set.
+//  2. HandleIncomingCert — a gossiped certificate, through verifyCert.
+//  3. VerifyCatchupCertificate/AcceptCatchupBlock — the same, on the catch-up road.
+//  4. assembleVerifiedCertLocked → assembleCertLocked — the engine's own assembly,
+//     which verifies before it caches.
+//  5. buildSingleValidatorCertLocked — the K==1 road, and the one that is not a
+//     predicate: on a genuinely single-validator chain it synthesizes a zero-vote
+//     Nova token, because the sole validator's own accept IS the quorum and there
+//     is no other party to protect against. Fenced three ways (both callers gate on
+//     K()==1, a real signed 1-of-1 is preferred whenever one assembles, and the
+//     zero token is returned once the live count passes one on a chain that has
+//     finalized anything), and Nova only, so it is never an export door.
+//
+// 2 through 4 promote through wrapVerifiedCert, which is unexported and refuses
+// nil — there is no exported escape hatch that skips verification. A raw α-of-K
+// COUNT ("enough voters responded",
 // consensus.IsAccepted, "enough pending callbacks") is a LIVENESS signal only:
 // it may trigger TryAccept, but it can never itself produce a VerifiedQuorumCert
 // and therefore can never finalize. This is the structural form of HIGH-3: the
 // count road is no longer an acceptance authority — it is a retry signal.
 package chain
 
-import "errors"
+import (
+	"errors"
+	"math"
+)
 
 // ErrNoVerifiedQC is returned by TryAccept when no verified quorum certificate
 // exists for the block yet. It is NOT an error condition to log loudly — it is
@@ -34,46 +52,18 @@ import "errors"
 // finalize in response to it.
 var ErrNoVerifiedQC = errors.New("chain: no verified quorum cert for block — not final (liveness retry, not an accept)")
 
-// ErrExportNeedsStake is the derived-authority refusal at the minting door: an
-// export-grade authority token was asked for with no stake source to derive the
-// rung's floors from. Export finality is a claim about a validator set; without
-// one there is nothing to make the claim against, so there is nothing to mint.
-var ErrExportNeedsStake = errors.New("chain: an export-tier cert cannot be minted without a stake source — its floors are derived from the validator set, and there is no set here")
+// ErrCertNeedsStake is the derived-authority refusal at the minting door: a
+// certificate was asked for with no stake source to derive its floor from. Every
+// floor a certificate declares and is held to is a function of the validator set
+// and the rung; with no set there is no floor, and a caller naming one in its
+// place is the certificate choosing its own quorum with an extra step.
+var ErrCertNeedsStake = errors.New("chain: a cert cannot be minted without a stake source — the floor it declares is derived from the validator set, and there is no set here")
 
-// exportNeedsStake is the rule "no set, no export", in one place.
-//
-// An export certificate's floors are read off the validator set — how much stake
-// agreed, how many signers, how big the set is at all — and the derived-threshold
-// clause is read off it too. With no stake source none of those numbers exist, and
-// the only predicate left is the count-only Verify, which counts votes against the
-// number the CERTIFICATE declares. That road mints a Quasar token over one signer:
-// one vote, a declared threshold of one, and both the assemble clause and the count
-// clause are satisfied by the same 1. Nothing downstream re-checks, because
-// AcceptWithCert trusts the token — which is the whole point of the token.
-//
-// The accept rung keeps the count-only road. It authorizes local execution the chain
-// can still reorg away, and the road is documented as equal-stake-only — a chain that
-// weighs nothing has to be able to make progress on something.
-//
-// THIS DOOR ONLY. The other producer of the token, Transitive.verifyCert, admits a
-// certificate that ARRIVED — carrying signatures from distinct in-set validators,
-// every one of them checked — so the thing missing there was never the votes, only
-// that the certificate named its own quorum. It DERIVES the floor from the node's
-// live committee instead of refusing the rung, which is what lets an equal-stake
-// deployment keep exporting. Here there are no arrived signatures to weigh: the
-// caller hands over raw votes AND the alpha to count them against, so with no set
-// there is nothing to check the caller against and refusing is the only answer. Two
-// doors, one principle, and the difference between them is what the doors are.
-//
-// Asked through Finality.AuthorizesExport, so this covers every export tier that
-// exists and every one that is added: it is not a list of tier names to keep in step
-// with another list somewhere else.
-func exportNeedsStake(tier Finality, stake StakeSource) error {
-	if stake == nil && tier.AuthorizesExport() {
-		return ErrExportNeedsStake
-	}
-	return nil
-}
+// ErrCertFloorUnstatable is the refusal for a floor no certificate can carry: a
+// tier with no floor at all (an unknown rung), a set that derives none (n<1), or —
+// at about six billion signers — a floor past what the certificate's uint32
+// threshold can hold. Narrowing it would wrap to a number a lone signer meets.
+var ErrCertFloorUnstatable = errors.New("chain: the floor this set derives for this tier is not a quorum a cert can state")
 
 // VerifiedQuorumCert is proof that a block met the finality predicate: α distinct
 // validators signed ACCEPT over the exact position AND (on a stake-weighted
@@ -104,38 +94,46 @@ func (v VerifiedQuorumCert) Cert() *QuorumCert { return v.qc }
 
 // BuildVerifiedQuorumCert assembles a quorum certificate from the collected
 // SIGNED accept votes and verifies it under the FULL finality predicate before
-// wrapping it. It is the sole multi-validator producer of the finality
-// authority token.
+// wrapping it. It is the exported producer of the finality authority token.
 //
 //	verifier    — the chain's VoteVerifier (BLS / ML-DSA / secp256k1). nil ⇒ fail closed.
-//	stake       — the chain's StakeSource. Non-nil ⇒ stake-weighted (VerifyWeighted,
-//	              tier-selected). nil ⇒ count-only Verify, and then Nova only: an
-//	              export tier with no stake source is refused (ErrExportNeedsStake),
-//	              because its floors are DERIVED from the set and there is no set.
-//	              The count-only road is for equal-stake chains, which MUST enforce
-//	              the equal-stake admission invariant.
+//	stake       — the chain's StakeSource: the set this certificate's floor is read
+//	              off. nil ⇒ ErrCertNeedsStake, at BOTH rungs. See below.
 //	tier        — Nova (local-execution majority) or Quasar (export ⅔-by-stake); selects
-//	              which threshold VerifyWeighted enforces.
-//	alpha       — the quorum floor the cert will DECLARE, and it must be the floor the
-//	              set derives: SignerFloor(tier, stake.SignerCount(epochHeight)). It is
-//	              a parameter because the caller assembles before the set is consulted,
-//	              not because the caller may choose it — VerifyWeighted refuses a cert
-//	              whose declared threshold is not the derived one, so an alpha that
-//	              disagrees with the set yields no token.
+//	              which floor is derived and which stake clause VerifyWeighted enforces.
 //	epochHeight — the P-chain epoch the per-voter pubkeys, set-root and stake tally
 //	              are all read at (MEDIUM-1).
 //	pos         — the consensus position the votes (and the cert) bind to.
 //	votes       — the collected SIGNED accept records (caller has already filtered
 //	              to those whose signature verified; Assemble+Verify re-check).
 //
+// NO CALLER STATES A QUORUM. The floor is SignerFloor(tier, n) over the set as it
+// stands at this epoch, read here and now, and it is what the certificate carries.
+// It was an argument once, and the argument was the hole: on the count-only road
+// nothing re-derived it, so one vote and an alpha of one minted an authority token
+// on a chain of five while the same certificate arriving over the wire was refused.
+// A door that can be opened with a number the caller chose is not a door. Now there
+// is nothing to state, so there is nothing to disagree with — the shape Rust's
+// Tally::cert and the C++ engine already have.
+//
+// NO SET, NO CERTIFICATE, at both rungs. A floor is a property of the set; with no
+// stake source there is no set, no floor and nothing to check a would-be quorum
+// against. This is where the arrival road and the minting road part, and the
+// difference is what the roads are: Transitive.verifyCert admits a certificate that
+// ALREADY carries checked signatures from distinct in-set validators, so with no
+// stake source it can still derive a floor from this node's own committee and hold
+// the declaration to it. Here there are no arrived signatures — the caller hands
+// over raw votes — so a configured committee would be checking the caller against
+// the caller. An equal-stake chain mints through the engine, whose committee is its
+// own, or supplies a uniform StakeSource; both are a set.
+//
 // Returns the zero VerifiedQuorumCert and ErrNoVerifiedQC (wrapping the precise
-// predicate failure) if a verified ⅔-stake quorum is not yet present — this is
-// the LIVENESS answer, never a force. NEVER weakens VerifyWeighted.
+// predicate failure) if a verified quorum is not yet present — this is the
+// LIVENESS answer, never a force. NEVER weakens VerifyWeighted.
 func BuildVerifiedQuorumCert(
 	verifier VoteVerifier,
 	stake StakeSource,
 	tier Finality,
-	alpha uint32,
 	epochHeight uint64,
 	pos VotePosition,
 	votes []SignedVote,
@@ -143,25 +141,29 @@ func BuildVerifiedQuorumCert(
 	if verifier == nil {
 		return VerifiedQuorumCert{}, ErrNoVerifiedQC
 	}
-	// No set, no export — the rule, asked at the minting door before any work.
-	if err := exportNeedsStake(tier, stake); err != nil {
-		return VerifiedQuorumCert{}, errors.Join(ErrNoVerifiedQC, err)
+	if stake == nil {
+		return VerifiedQuorumCert{}, errors.Join(ErrNoVerifiedQC, ErrCertNeedsStake)
 	}
-	cert, err := AssembleQuorumCert(pos, tier, alpha, votes)
+	// The floor, derived. An unknown tier derives 0 and an unresolved set derives a
+	// number no honest assembler could have meant, so both land here rather than in a
+	// certificate. The upper bound is the width a certificate states its quorum in:
+	// SignerFloor counts at full width precisely so this narrowing is a decision and
+	// not an accident.
+	alpha := SignerFloor(tier, stake.SignerCount(epochHeight))
+	if alpha < 1 || alpha > math.MaxUint32 {
+		return VerifiedQuorumCert{}, errors.Join(ErrNoVerifiedQC, ErrCertFloorUnstatable)
+	}
+	cert, err := AssembleQuorumCert(pos, tier, uint32(alpha), votes)
 	if err != nil {
 		// Quorum not assembled yet (sub-threshold / not-yet-arrived). Liveness:
 		// keep waiting. Wrap the precise cause for diagnosis, present
 		// ErrNoVerifiedQC to the caller's control flow.
 		return VerifiedQuorumCert{}, errors.Join(ErrNoVerifiedQC, err)
 	}
-	// THE finality predicate. Stake-weighted (strict >⅔) when a stake source is
-	// wired; count-only Verify otherwise. Either way the cert must clear it
-	// before it can wrap into the authority token.
-	if stake != nil {
-		if err := cert.VerifyWeighted(verifier, stake, epochHeight); err != nil {
-			return VerifiedQuorumCert{}, errors.Join(ErrNoVerifiedQC, err)
-		}
-	} else if err := cert.Verify(verifier, epochHeight); err != nil {
+	// THE finality predicate — the strict stake floors, the rung's signer floor, and
+	// the derived-threshold clause, which re-reads the set and so re-checks the very
+	// number this function just stamped. Nothing wraps without clearing it.
+	if err := cert.VerifyWeighted(verifier, stake, epochHeight); err != nil {
 		return VerifiedQuorumCert{}, errors.Join(ErrNoVerifiedQC, err)
 	}
 	return VerifiedQuorumCert{qc: cert}, nil
