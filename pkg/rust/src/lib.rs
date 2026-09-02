@@ -13,6 +13,10 @@
 //! - **Photon**: Light-based validator sampling with luminance tracking
 //! - **Focus**: Confidence accumulation through β consecutive rounds
 //! - **Quasar**: Post-quantum finality with hybrid BLS + Pulsar signatures
+//! - **Vote**: A signed vote on the wire, and the tally that turns arriving
+//!   votes into a certificate the whole `cert` predicate has already passed
+//! - **Zap**: The transport frame those votes travel under — the same wire Go
+//!   and C++ speak
 //!
 //! ## Example
 //!
@@ -68,6 +72,16 @@ pub mod finality;
 pub mod cert;
 pub mod pop;
 
+// The vote plane: what one validator puts on the wire, and the tally that turns
+// what arrives into a certificate. It states no accept rule of its own — the
+// rule is `cert`'s, and `vote::Tally::cert` is the only door out of a tally.
+pub mod vote;
+
+// The ZAP transport frame the vote plane travels under — the same wire Go's
+// `luxfi/api/zap` writes and `luxcpp/zap` reads. Layer A only: nothing in it
+// knows what a vote is.
+pub mod zap;
+
 /// SHA-256. The crate's one hash, from the BLS library already linked here.
 ///
 /// Every derivation the network agrees on runs through this — there is no
@@ -95,6 +109,7 @@ pub use crate::focus::*;
 pub use crate::wave::*;
 pub use crate::quasar::*;
 pub use crate::engine::*;
+pub use crate::vote::{SignedVote, Slot, Tally, VoteTransport, VOTE};
 
 // ============= TYPES MODULE =============
 
