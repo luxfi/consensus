@@ -46,20 +46,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/ids"
 )
-
-// quasarQuorum is the BFT count floor α = ⌊2n/3⌋+1 over the LIVE committee size n. There is no
-// static K/α: n comes from the validator set at the block's epoch each height, so the quorum
-// tracks the live set (a 1-of-1 for n=1, 2-of-2 for n=2, ⌊2n/3⌋+1 thereafter). The authoritative
-// gate is still ⅔-by-STAKE (VerifyWeighted); this count floor makes the assembled cert satisfy
-// the count clause too, and selects when to attempt assembly.
-func quasarQuorum(n int) int {
-	if n < 1 {
-		return 1
-	}
-	return 2*n/3 + 1
-}
 
 // attestKey identifies the finality subject: (height, inner canonical execution id). The outer
 // envelope id is ABSENT by construction — attestation is post-Accept, over the inner block.
@@ -187,10 +176,13 @@ func (q *QuasarAttestor) Ingest(pos VotePosition, epoch uint64, att SignedVote) 
 	cp.Signature = append([]byte(nil), att.Signature...)
 	b.votes[att.NodeID] = cp
 
-	// Try to emit once the count floor is reached; the AUTHORITATIVE gate is ⅔-by-stake
-	// (VerifyWeighted). n is the LIVE committee at the epoch (no static K/α).
+	// Try to emit once the export count floor ⌊2n/3⌋+1 is reached. n is the LIVE committee
+	// at the epoch (no static K/α), so the quorum tracks the live set each height. The gate
+	// is VerifyWeighted below, which enforces this same count AND the ⅔-by-stake predicate;
+	// this call is the assembly trigger, read from the one definition so the attestor cannot
+	// try to build a cert the verifier would refuse — nor stop trying before it would pass.
 	n := q.stake.ValidatorCount(epoch)
-	threshold := quasarQuorum(n)
+	threshold := config.TwoThirdsCount(n)
 	if len(b.votes) < threshold {
 		return nil, false, nil
 	}

@@ -143,9 +143,9 @@ fn count_thresholds_match_go() {
             "crashTolerance n={n}"
         );
         assert_eq!(
-            equal_stake_quasar(n),
-            row["equalStakeQuasar"].as_i64().unwrap(),
-            "equalStakeQuasar n={n}"
+            two_thirds_count(n),
+            row["twoThirdsCount"].as_i64().unwrap(),
+            "twoThirdsCount n={n}"
         );
     }
 

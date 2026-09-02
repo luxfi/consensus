@@ -11,6 +11,7 @@
 package chain
 
 import (
+	"github.com/luxfi/consensus/config"
 	"testing"
 
 	"github.com/luxfi/ids"
@@ -187,7 +188,7 @@ func TestAttestor_CertThresholdTracksTheLiveSet(t *testing.T) {
 		if cert == nil {
 			t.Fatalf("n=%d: the whole set attesting must certify", n)
 		}
-		if want := uint32(quasarQuorum(n)); cert.Threshold != want {
+		if want := uint32(config.TwoThirdsCount(n)); cert.Threshold != want {
 			t.Fatalf("n=%d: cert declares threshold %d, live floor is %d", n, cert.Threshold, want)
 		}
 		if err := cert.VerifyWeighted(vs, vs, pos.Height); err != nil {

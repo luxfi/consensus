@@ -51,7 +51,7 @@ func TestNovaQuorum_MajorityOverlap_CrashSafe(t *testing.T) {
 func TestNova_Below_Quasar(t *testing.T) {
 	strictlySeparatedAt := map[int]bool{3: true, 5: true} // deploy cases we assert are strict
 	for n := 1; n <= 1000; n++ {
-		quasar := config.EqualStakeSupermajorityThreshold(n) // ⌊2n/3⌋+1, the single ⅔ definition
+		quasar := config.TwoThirdsCount(n) // ⌊2n/3⌋+1, the single ⅔ definition
 		nova := NovaQuorum(n)
 		if nova > quasar {
 			t.Fatalf("n=%d: Nova majority %d exceeds Quasar ⅔ %d — tiers collapsed", n, nova, quasar)
@@ -63,8 +63,8 @@ func TestNova_Below_Quasar(t *testing.T) {
 	}
 	// The deploy case, spelled out: n=5 tolerates 2 crashes at Nova (3-of-5) but the
 	// exportable Quasar cert still needs 4-of-5 — the whole reason to keep them apart.
-	if NovaQuorum(5) != 3 || config.EqualStakeSupermajorityThreshold(5) != 4 {
-		t.Fatalf("n=5 deploy: Nova=%d Quasar=%d want 3 and 4", NovaQuorum(5), config.EqualStakeSupermajorityThreshold(5))
+	if NovaQuorum(5) != 3 || config.TwoThirdsCount(5) != 4 {
+		t.Fatalf("n=5 deploy: Nova=%d Quasar=%d want 3 and 4", NovaQuorum(5), config.TwoThirdsCount(5))
 	}
 }
 

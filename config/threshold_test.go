@@ -30,14 +30,14 @@ func TestEqualStakeClosedFormMatchesTheWeightedComputation(t *testing.T) {
 		for i := range unit {
 			unit[i] = 1
 		}
-		if closed, general := EqualStakeSupermajorityThreshold(n), WeightedSupermajorityThreshold(unit); closed != general {
+		if closed, general := TwoThirdsCount(n), WeightedSupermajorityThreshold(unit); closed != general {
 			t.Fatalf("n=%d: closed form %d, heaviest-first %d", n, closed, general)
 		}
 	}
 
 	// An unknown validator count still needs someone to accept, never zero.
 	for _, n := range []int{0, -1, -100} {
-		if got := EqualStakeSupermajorityThreshold(n); got != 1 {
+		if got := TwoThirdsCount(n); got != 1 {
 			t.Errorf("n=%d: threshold %d, want 1", n, got)
 		}
 	}

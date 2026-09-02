@@ -11,8 +11,10 @@
 //! The rule, stated once:
 //!
 //! > α distinct validators each produced a correctly signed ACCEPT over the same
-//! > canonical position, and the summed stake of those distinct voters strictly
-//! > exceeds the tier's floor.
+//! > canonical position, the summed stake of those distinct voters strictly
+//! > exceeds the tier's stake floor, and there are at least the tier's floor of
+//! > them. Both rungs carry both clauses, because a threshold read only in stake
+//! > reports one party wherever stake is concentrated in one.
 //!
 //! Two properties of the port are worth naming because they are what makes a
 //! certificate evidence rather than decoration.
@@ -40,8 +42,8 @@ use blst::min_pk::{PublicKey, Signature};
 use blst::BLST_ERROR;
 
 use crate::finality::{
-    canonical_vote_message, half_stake_floor, nova_signer_floor, two_thirds_stake_floor, Finality,
-    Position, QC_FINALITY, QUORUM_CERT_VERSION,
+    canonical_vote_message, half_stake_floor, nova_signer_floor, two_thirds_count,
+    two_thirds_stake_floor, Finality, Position, QC_FINALITY, QUORUM_CERT_VERSION,
 };
 use crate::pop::{self, PopError};
 
@@ -419,8 +421,25 @@ impl QuorumCert {
     }
 
     /// Quasar: the summed stake of the distinct voters strictly exceeds
-    /// `floor(2·total/3)`. This is the export threshold — the only rung a
-    /// bridge, a settlement, or a cross-chain message may read.
+    /// `floor(2·total/3)`, AND there are at least `two_thirds_count(n)` of them.
+    /// This is the export threshold — the only rung a bridge, a settlement, or a
+    /// cross-chain message may read.
+    ///
+    /// Two independent predicates, neither sufficient alone, the same shape as
+    /// Nova one rung up. Stake alone is not export-grade finality: a single
+    /// validator holding two thirds of the stake clears the stake floor on its
+    /// OWN signature, and a certificate one key can mint is not a claim that a
+    /// Byzantine supermajority of independent parties agreed. The count is the
+    /// guard the stake predicate cannot give, and it is the SAME supermajority
+    /// read in seats rather than in stake — derived from the same arithmetic, so
+    /// the two halves of the export rule cannot drift apart.
+    ///
+    /// Stake is read first. Both clauses must hold, so the order decides nothing
+    /// but which one a refusal is NAMED by, and on an equal-stake set the two are
+    /// the same bar in two units and bind together — where a stake refusal says
+    /// how far short the quorum fell. The count clause can bind ALONE only where
+    /// the weights are lopsided, so reaching it means the stake was there and the
+    /// signers were not.
     fn verify_quasar_supermajority(
         &self,
         stake: &dyn StakeSource,
@@ -437,6 +456,24 @@ impl QuorumCert {
                 voted,
                 total,
                 need_above: floor,
+            });
+        }
+        // An unresolved set fails closed, and does so here rather than at the top:
+        // a source reporting no validators alongside no stake is already refused
+        // above for the reason it has always been refused for, and only a source
+        // reporting stake for a set it says is empty reaches this line. Two thirds
+        // of no set is not a number, and `two_thirds_count(0)` is 1, which would
+        // hand a lone signer a floor of one.
+        let n = stake.validator_count(epoch_height);
+        if n < 1 {
+            return Err(CertError::UnresolvedSet { n });
+        }
+        let need = two_thirds_count(n);
+        if self.voter_count() < need {
+            return Err(CertError::SignerFloor {
+                have: self.voter_count(),
+                need,
+                n,
             });
         }
         Ok(())

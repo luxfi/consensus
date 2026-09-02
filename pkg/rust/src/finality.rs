@@ -190,10 +190,19 @@ pub fn crash_tolerance(n: i64) -> i64 {
     n - nova_quorum(n)
 }
 
-/// The export vote count for an equal-stake set of n validators: the closed form
-/// `floor(2n/3) + 1`. For n = 21 this is 15, not 14 — 14/21 does not strictly
-/// exceed two thirds.
-pub fn equal_stake_quasar(n: i64) -> i64 {
+/// The two-thirds SUPERMAJORITY COUNT of n — the smallest number of seats that is
+/// strictly more than two thirds of them, `floor(2n/3) + 1`. For n = 21 this is
+/// 15, not 14: 14/21 does not strictly exceed two thirds. Derived from
+/// [`two_thirds_stake_floor`] over n unit weights rather than restated, so the
+/// count and the stake predicate cannot drift.
+///
+/// Two consumers, one rule seen from two sides. It is the count a live
+/// equal-stake network sizes alpha to, and it is the floor on DISTINCT signers
+/// that [`crate::cert::QuorumCert::verify_weighted`] demands of an export
+/// certificate whatever the stake distribution — the guard the stake predicate
+/// cannot give, because two thirds of the stake is one signature wherever two
+/// thirds of the stake is one validator. Go's `config.TwoThirdsCount`.
+pub fn two_thirds_count(n: i64) -> i64 {
     if n <= 0 {
         return 1;
     }
@@ -204,6 +213,14 @@ pub fn equal_stake_quasar(n: i64) -> i64 {
 /// weight vector: order heaviest first and count until the running stake first
 /// exceeds the floor. Returns 0 for an empty set, a zero total, or a vector with
 /// no representable total — no stake model, fail closed.
+///
+/// This is a SIZER, not a floor. It answers "below how many votes is two thirds
+/// of this particular stake distribution unreachable", which is what a parameter
+/// sizer needs and is Go's `config.WeightedSupermajorityThreshold`. The floor a
+/// certificate is held to is [`two_thirds_count`] over the set SIZE, and it is
+/// deliberately the larger of the two on a skewed set: the whole point of the
+/// floor is that concentrated stake must not shrink the number of parties whose
+/// agreement export finality reports.
 pub fn weighted_quasar(weights: &[u64]) -> usize {
     // Checked, and out the same door as a zero total. A vector summing past
     // `u64::MAX` has no total, so it has no two thirds of one to size a count
