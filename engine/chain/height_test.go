@@ -44,10 +44,15 @@ func buildCertAtRound(t *testing.T, vs *testValidatorSet, chainID, blockID, pare
 	for i := 0; i < n; i++ {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
+	// The certificate declares the floor the SET derives for the export rung, which
+	// is the only threshold a receiving node admits — never the number of signatures
+	// this one happens to carry. Assembly runs at the vote count so an under-quorum
+	// certificate can still be stated; the declaration is stamped after.
 	cert, err := AssembleQuorumCert(pos, Quasar, uint32(n), votes)
 	if err != nil {
 		t.Fatalf("assemble cert (round %d): %v", round, err)
 	}
+	cert.Threshold = SignerFloor(Quasar, len(vs.ids))
 	b, err := cert.MarshalBinary()
 	if err != nil {
 		t.Fatalf("marshal cert (round %d): %v", round, err)
