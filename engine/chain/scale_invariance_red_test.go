@@ -87,8 +87,8 @@ func TestRedScale_BFTAlpha_ExactFormulaAndInvariantAtEveryScale(t *testing.T) {
 		bftInvariant(t, n, got, "bftAlpha")
 		// Cross-source agreement: the config closed form MUST match the engine's bftAlpha
 		// (they claim to be the SAME ⅔ definition; a drift here is a split-brain quorum).
-		if cf := config.EqualStakeSupermajorityThreshold(n); cf != got {
-			t.Errorf("DRIFT: config.EqualStakeSupermajorityThreshold(%d)=%d != bftAlpha(%d)=%d — two ⅔ definitions disagree", n, cf, n, got)
+		if cf := config.TwoThirdsCount(n); cf != got {
+			t.Errorf("DRIFT: config.TwoThirdsCount(%d)=%d != bftAlpha(%d)=%d — two ⅔ definitions disagree", n, cf, n, got)
 		}
 	}
 }

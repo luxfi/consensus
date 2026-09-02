@@ -83,8 +83,8 @@ pub fn sha256(input: &[u8]) -> [u8; 32] {
 
 // Re-export all public types
 pub use crate::finality::{
-    canonical_vote_message, crash_tolerance, equal_stake_quasar, half_stake_floor, nova_beta,
-    nova_quorum, nova_signer_floor, two_thirds_stake_floor, weighted_quasar, Finality, Position,
+    canonical_vote_message, crash_tolerance, half_stake_floor, nova_beta, nova_quorum,
+    nova_signer_floor, two_thirds_count, two_thirds_stake_floor, weighted_quasar, Finality, Position,
     QC_FINALITY, QUORUM_CERT_VERSION, VOTE_MESSAGE_LEN, VOTE_TAG,
 };
 pub use crate::types::*;

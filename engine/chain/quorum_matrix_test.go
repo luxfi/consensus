@@ -152,12 +152,18 @@ func TestBlue_QuorumMatrix_Unweighted(t *testing.T) {
 	}
 }
 
-// TestBlue_QuorumMatrix_Weighted proves the >⅔-BY-STAKE predicate is the finality gate on a PoS
+// TestBlue_QuorumMatrix_Weighted proves the >⅔-BY-STAKE predicate is A finality gate on a PoS
 // chain — NOT a raw voter count. Each no/yes pair has the SAME number of voters and differs ONLY in
 // the stake behind them, so a count-based quorum could not distinguish them. total=100 in every
 // case; the strict floor is ⌊2·100/3⌋ = 66, so 66 is rejected (exactly ⅔) and 67 is the first
-// accept. K=3 uses α=2 (fork-safe: any two 2-of-3 quorums intersect); the stake supermajority is
-// then the sole discriminator between two equal-count certs.
+// accept.
+//
+// Every pair runs on FOUR seats. The export rung's own count floor is ⌊2n/3⌋+1 — three of four,
+// and THREE OF THREE — so a three-seat set has no room for a pair that differs in stake at a
+// constant count: every two-signer certificate over it is refused on the count before stake is
+// ever the question. Four seats is the smallest set on which the stake half can be isolated, and
+// isolating it is what this test is for. The three-seat rows are kept, below, as what they now
+// demonstrate instead.
 func TestBlue_QuorumMatrix_Weighted(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -168,13 +174,21 @@ func TestBlue_QuorumMatrix_Weighted(t *testing.T) {
 		stake   uint64
 		expect  bool
 	}{
-		// [40,30,30]: SAME 2-voter count — 60 (two 30s) rejected; 70 (40+30) accepted. Stake decides.
-		{"w40-30-30/60/no", 3, []uint64{40, 30, 30}, 2, []int{1, 2}, 60, false},
-		{"w40-30-30/70/yes", 3, []uint64{40, 30, 30}, 2, []int{0, 1}, 70, true},
-		// [34,33,33]: the TIGHTEST boundary — 66 (two 33s, EXACTLY ⅔) rejected (strict >); 67 (34+33)
-		// accepted. Same 2-voter count both ways; a single stake unit flips the decision.
-		{"w34-33-33/66/no", 3, []uint64{34, 33, 33}, 2, []int{1, 2}, 66, false},
-		{"w34-33-33/67/yes", 3, []uint64{34, 33, 33}, 2, []int{0, 1}, 67, true},
+		// [40,30,29,1]: SAME 3-voter count — 60 (30+29+1) rejected; 71 (40+30+1) accepted. Stake decides.
+		{"w40-30-29-1/60/no", 4, []uint64{40, 30, 29, 1}, 3, []int{1, 2, 3}, 60, false},
+		{"w40-30-29-1/71/yes", 4, []uint64{40, 30, 29, 1}, 3, []int{0, 1, 3}, 71, true},
+		// [34,33,32,1]: the TIGHTEST boundary — 66 (33+32+1, EXACTLY ⅔) rejected (strict >); 67
+		// (34+32+1) accepted. Same 3-voter count both ways; a single stake unit flips the decision.
+		{"w34-33-32-1/66/no", 4, []uint64{34, 33, 32, 1}, 3, []int{1, 2, 3}, 66, false},
+		{"w34-33-32-1/67/yes", 4, []uint64{34, 33, 32, 1}, 3, []int{0, 2, 3}, 67, true},
+		// THE COUNT HALF, on three seats. Both rows hold MORE than two thirds of the stake and both
+		// are refused, because ⌊2·3/3⌋+1 = 3: a three-seat chain exports on three signatures or not
+		// at all. The chain's own α is set to 2 here so the runtime's threshold filter admits the
+		// certificate and the CERT's export floor is what refuses it — otherwise the row would only
+		// be re-proving the filter. This is the clause a stake-only export rung does not have, and
+		// its absence is what let a holder of two thirds mint export finality alone.
+		{"w40-30-30/70/twoOfThree/no", 3, []uint64{40, 30, 30}, 2, []int{0, 1}, 70, false},
+		{"w34-33-33/67/twoOfThree/no", 3, []uint64{34, 33, 33}, 2, []int{0, 1}, 67, false},
 		// [50,20,20,10] at a FORK-SAFE K=4 (α=3): node 0's 50 stake is PIVOTAL. Same 3-voter count
 		// both ways — WITHOUT node 0 the max is {1,2,3}=50 (≤66, rejected); WITH node 0 {0,1,3}=80
 		// (>66, accepted). Stake decides between two equal-count certs, and no 2-of-4 minority can

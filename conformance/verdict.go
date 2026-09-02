@@ -70,6 +70,8 @@ type Seat struct {
 // are read off the same functions the predicate enforces, so a runner that
 // disagrees about the DECISION can say in one line whether it disagreed about
 // the count floor, the stake floor, or which of the two applies to that rung.
+// BOTH are the rung's own: Nova's count floor saturates at three, Quasar's is
+// the export supermajority in seats and grows with the set.
 type FinalityCase struct {
 	Name        string   `json:"name"`
 	Note        string   `json:"note"`
@@ -215,10 +217,16 @@ func finality(name, note string, rung chain.Finality, s stake, signers []int) Fi
 		seats = append(seats, Seat{NodeID: hex.EncodeToString(id[:]), Weight: u64(w)})
 	}
 
+	// Both floors are the RUNG's. Recording Nova's count floor on a Quasar row
+	// would describe a clause the export rung does not enforce, and a runner
+	// reading it would be told the wrong number by the file that is supposed to
+	// tell it the right one.
 	total := s.TotalStake(verdictEpoch)
 	floor := config.HalfStakeFloor(total)
+	signerFloor := chain.NovaSignerFloor(len(s))
 	if rung == chain.Quasar {
 		floor = config.TwoThirdsStakeFloor(total)
+		signerFloor = config.TwoThirdsCount(len(s))
 	}
 
 	// The decision, read from the live predicate — never restated here.
@@ -230,7 +238,7 @@ func finality(name, note string, rung chain.Finality, s stake, signers []int) Fi
 		Rung:        rung.String(),
 		Set:         seats,
 		Total:       u64(total),
-		SignerFloor: chain.NovaSignerFloor(len(s)),
+		SignerFloor: signerFloor,
 		StakeFloor:  u64(floor),
 		Threshold:   cert.Threshold,
 		Signers:     names,
@@ -317,11 +325,13 @@ func verdicts() Verdict {
 	return Verdict{
 		Note: "what the predicate DECIDES, not what the encoder emits. Every vote is " +
 			"resolved as correctly signed, so a case turns on the weighted half alone: " +
-			"the distinct-signer floor and the stake floor. Nova (local execution) needs " +
-			"signers >= novaSignerFloor(n) AND voted > floor(total/2). Quasar (export) " +
-			"needs voted > floor(2*total/3) and carries NO signer floor of its own. The " +
-			"decision does not depend on the position the votes were cast over, so a runner " +
-			"may weigh these votes over any position its encoder can build.",
+			"the distinct-signer floor and the stake floor. BOTH rungs carry both. Nova " +
+			"(local execution) needs signers >= novaSignerFloor(n) AND voted > floor(total/2). " +
+			"Quasar (export) needs signers >= floor(2*n/3)+1 AND voted > floor(2*total/3) — " +
+			"the same supermajority in seats and in stake, and neither half is sufficient " +
+			"alone, because stake alone lets one holder of two thirds mint export finality " +
+			"on one signature. The decision does not depend on the position the votes were " +
+			"cast over, so a runner may weigh these votes over any position its encoder can build.",
 		Epoch: u64(verdictEpoch),
 		Finality: []FinalityCase{
 			finality("nova_below_majority",
@@ -354,13 +364,20 @@ func verdicts() Verdict {
 				"the same holder with two of the minimum registrations: the floor is met and the "+
 					"same stake now carries. The floor was the binding clause, not the stake",
 				chain.Nova, whale, []int{1, 2, 3}),
-
-			// TODO(R4): whale-alone at the EXPORT rung. On this set one signer
-			// holding 100 of 104 clears floor(2*104/3)=69 and the certificate is
-			// export-grade on one signature, because Quasar carries no
-			// distinct-signer floor of its own. Whether it should is an open
-			// design decision, not settled behaviour, so no expectation is frozen
-			// for it here. When R4 decides, the case belongs in this list.
+			finality("quasar_whale_alone",
+				"the same holder signs alone at the EXPORT rung. A hundred of a hundred and "+
+					"four clears floor(2*104/3)=69 outright, so the stake half of the export "+
+					"rule is satisfied many times over and the certificate is refused on the "+
+					"count: one signer where four are needed. This is the whole of the rung's "+
+					"claim — export finality is a statement that a Byzantine supermajority of "+
+					"PARTIES agreed, and a certificate one key can mint is not that statement "+
+					"however much stake stands behind the key",
+				chain.Quasar, whale, []int{1}),
+			finality("quasar_whale_with_three",
+				"the same holder with three of the minimum registrations: four distinct signers "+
+					"meet floor(2*5/3)+1 and the same stake now carries. The floor was the binding "+
+					"clause, not the stake — and one seat fewer is the case above",
+				chain.Quasar, whale, []int{1, 2, 3, 4}),
 
 			// TODO(R5): the keyless denominator. TotalStake counts registrations
 			// that hold no key and therefore cannot sign, so the floor a quorum

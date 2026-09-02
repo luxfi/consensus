@@ -199,8 +199,8 @@ fn the_weighted_decision_is_the_one_go_made() {
     // empty list, which is the failure mode the whole file exists to close.
     assert_eq!(
         cases.len(),
-        8,
-        "expected 8 frozen finality verdicts, checked {}",
+        10,
+        "expected 10 frozen finality verdicts, checked {}",
         cases.len()
     );
 }

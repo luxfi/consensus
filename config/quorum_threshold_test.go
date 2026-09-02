@@ -61,7 +61,7 @@ func TestEqualStakeMatchesWeighted(t *testing.T) {
 		for i := range ones {
 			ones[i] = 1
 		}
-		closed := EqualStakeSupermajorityThreshold(n)
+		closed := TwoThirdsCount(n)
 		general := WeightedSupermajorityThreshold(ones)
 		if closed != general {
 			t.Errorf("n=%d: closed form %d != general %d", n, closed, general)
@@ -118,7 +118,7 @@ func TestAlphaSatisfiesVerifyWeighted(t *testing.T) {
 		// EXCEPT where the BFT overlap floor raised α above the strict-⅔ minimum
 		// (only relevant if they differ; for equal stake strict-⅔ ≥ overlap, so
 		// they coincide and α−1 must fail).
-		if alpha == EqualStakeSupermajorityThreshold(n) {
+		if alpha == TwoThirdsCount(n) {
 			if alpha > 1 && uint64(alpha-1) > floor {
 				t.Errorf("n=%d: alpha-1=%d should NOT exceed ⅔ floor %d (alpha not minimal)", n, alpha-1, floor)
 			}

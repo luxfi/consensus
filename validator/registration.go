@@ -211,19 +211,35 @@ func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalVa
 		if len(vdr.PublicKey) == 0 {
 			continue
 		}
-		// ZERO WEIGHT, on a validator that CAN sign. The same clause Register
+		// ZERO WEIGHT, on a member that carries a key. The same clause Register
 		// runs, at the same point in the order — after the key is known to be
-		// present and before it is decoded — because it is the same phantom: an
-		// entry that raises the count of distinct signers a floor is read
-		// against without raising the weight. Both doors have to refuse it or
-		// the floor means one thing at admission and another here.
+		// present and before it is decoded — and the justification is that
+		// AGREEMENT, not the phantom argument on its own.
 		//
-		// A KEYLESS member with no stake is not that phantom and is not refused:
-		// it was skipped above, so it never becomes a signer, and it neither
-		// signs nor weighs. That is the one leniency this door keeps, and it is
-		// deliberate — it is the door for a set the chain already admitted, and
-		// a member this node holds no key for is a fact about the node's view,
-		// not a defect in the set. A key with no stake behind it is a defect.
+		// The phantom argument covers most of the ground: an entry that raises
+		// the count of distinct signers a floor is read against without raising
+		// the weight is exactly the disagreement between how many signed and how
+		// much signed that the count floors exist to prevent. But it does not
+		// cover all of it, and the gap is worth naming rather than glossing. A
+		// seat whose key is present and does NOT decode can never sign, so it is
+		// no phantom — and it is refused here anyway, because the weight is read
+		// before the key is. Deferring the weight clause until after the decode
+		// would close that gap and open a worse one: whether a set is admitted
+		// would then depend on which keys THIS node's crypto build could parse,
+		// and two nodes reading one set would disagree about whether it exists.
+		//
+		// So the clause is placed where Register places it and refuses what
+		// Register refuses. Both doors admit exactly the same sets, and the
+		// floors mean one thing at registration and the same thing here. That
+		// agreement is the property; the phantom is why the property is worth
+		// having.
+		//
+		// A KEYLESS member with no stake is not refused: it was skipped above, so
+		// it never becomes a signer, and it neither signs nor weighs. That is the
+		// one leniency this door keeps, and it is deliberate — it is the door for
+		// a set the chain already admitted, and a member this node holds no key
+		// for is a fact about the node's view, not a defect in the set. A key with
+		// no stake behind it is a defect.
 		if vdr.Weight == 0 {
 			return CanonicalValidatorSet{}, fmt.Errorf("%w: %s", ErrZeroWeight, nodeID)
 		}

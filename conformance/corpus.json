@@ -232,7 +232,7 @@
     ]
   },
   "verdict": {
-    "note": "what the predicate DECIDES, not what the encoder emits. Every vote is resolved as correctly signed, so a case turns on the weighted half alone: the distinct-signer floor and the stake floor. Nova (local execution) needs signers \u003e= novaSignerFloor(n) AND voted \u003e floor(total/2). Quasar (export) needs voted \u003e floor(2*total/3) and carries NO signer floor of its own. The decision does not depend on the position the votes were cast over, so a runner may weigh these votes over any position its encoder can build.",
+    "note": "what the predicate DECIDES, not what the encoder emits. Every vote is resolved as correctly signed, so a case turns on the weighted half alone: the distinct-signer floor and the stake floor. BOTH rungs carry both. Nova (local execution) needs signers \u003e= novaSignerFloor(n) AND voted \u003e floor(total/2). Quasar (export) needs signers \u003e= floor(2*n/3)+1 AND voted \u003e floor(2*total/3) — the same supermajority in seats and in stake, and neither half is sufficient alone, because stake alone lets one holder of two thirds mint export finality on one signature. The decision does not depend on the position the votes were cast over, so a runner may weigh these votes over any position its encoder can build.",
     "epoch": "7",
     "finality": [
       {
@@ -807,7 +807,7 @@
           }
         ],
         "total": "41",
-        "signerFloor": 3,
+        "signerFloor": 28,
         "stakeFloor": "27",
         "threshold": 27,
         "signers": [
@@ -1014,7 +1014,7 @@
           }
         ],
         "total": "41",
-        "signerFloor": 3,
+        "signerFloor": 28,
         "stakeFloor": "27",
         "threshold": 28,
         "signers": [
@@ -1190,6 +1190,83 @@
           "0000000000000000000000000000000000000003"
         ],
         "voted": "102",
+        "accept": true,
+        "refusal": ""
+      },
+      {
+        "name": "quasar_whale_alone",
+        "note": "the same holder signs alone at the EXPORT rung. A hundred of a hundred and four clears floor(2*104/3)=69 outright, so the stake half of the export rule is satisfied many times over and the certificate is refused on the count: one signer where four are needed. This is the whole of the rung's claim — export finality is a statement that a Byzantine supermajority of PARTIES agreed, and a certificate one key can mint is not that statement however much stake stands behind the key",
+        "rung": "quasar",
+        "set": [
+          {
+            "nodeID": "0000000000000000000000000000000000000001",
+            "weight": "100"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000002",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000003",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000004",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000005",
+            "weight": "1"
+          }
+        ],
+        "total": "104",
+        "signerFloor": 4,
+        "stakeFloor": "69",
+        "threshold": 1,
+        "signers": [
+          "0000000000000000000000000000000000000001"
+        ],
+        "voted": "100",
+        "accept": false,
+        "refusal": "belowThreshold"
+      },
+      {
+        "name": "quasar_whale_with_three",
+        "note": "the same holder with three of the minimum registrations: four distinct signers meet floor(2*5/3)+1 and the same stake now carries. The floor was the binding clause, not the stake — and one seat fewer is the case above",
+        "rung": "quasar",
+        "set": [
+          {
+            "nodeID": "0000000000000000000000000000000000000001",
+            "weight": "100"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000002",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000003",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000004",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000005",
+            "weight": "1"
+          }
+        ],
+        "total": "104",
+        "signerFloor": 4,
+        "stakeFloor": "69",
+        "threshold": 4,
+        "signers": [
+          "0000000000000000000000000000000000000001",
+          "0000000000000000000000000000000000000002",
+          "0000000000000000000000000000000000000003",
+          "0000000000000000000000000000000000000004"
+        ],
+        "voted": "103",
         "accept": true,
         "refusal": ""
       }
@@ -1421,7 +1498,7 @@
         "novaSignerFloor": 1,
         "novaBeta": 1,
         "crashTolerance": 0,
-        "equalStakeQuasar": 1
+        "twoThirdsCount": 1
       },
       {
         "n": 1,
@@ -1429,7 +1506,7 @@
         "novaSignerFloor": 1,
         "novaBeta": 1,
         "crashTolerance": 0,
-        "equalStakeQuasar": 1
+        "twoThirdsCount": 1
       },
       {
         "n": 2,
@@ -1437,7 +1514,7 @@
         "novaSignerFloor": 2,
         "novaBeta": 2,
         "crashTolerance": 0,
-        "equalStakeQuasar": 2
+        "twoThirdsCount": 2
       },
       {
         "n": 3,
@@ -1445,7 +1522,7 @@
         "novaSignerFloor": 2,
         "novaBeta": 2,
         "crashTolerance": 1,
-        "equalStakeQuasar": 3
+        "twoThirdsCount": 3
       },
       {
         "n": 4,
@@ -1453,7 +1530,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 1,
-        "equalStakeQuasar": 3
+        "twoThirdsCount": 3
       },
       {
         "n": 5,
@@ -1461,7 +1538,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 2,
-        "equalStakeQuasar": 4
+        "twoThirdsCount": 4
       },
       {
         "n": 6,
@@ -1469,7 +1546,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 2,
-        "equalStakeQuasar": 5
+        "twoThirdsCount": 5
       },
       {
         "n": 7,
@@ -1477,7 +1554,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 3,
-        "equalStakeQuasar": 5
+        "twoThirdsCount": 5
       },
       {
         "n": 8,
@@ -1485,7 +1562,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 3,
-        "equalStakeQuasar": 6
+        "twoThirdsCount": 6
       },
       {
         "n": 11,
@@ -1493,7 +1570,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 5,
-        "equalStakeQuasar": 8
+        "twoThirdsCount": 8
       },
       {
         "n": 20,
@@ -1501,7 +1578,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 9,
-        "equalStakeQuasar": 14
+        "twoThirdsCount": 14
       },
       {
         "n": 21,
@@ -1509,7 +1586,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 10,
-        "equalStakeQuasar": 15
+        "twoThirdsCount": 15
       },
       {
         "n": 22,
@@ -1517,7 +1594,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 10,
-        "equalStakeQuasar": 15
+        "twoThirdsCount": 15
       },
       {
         "n": 100,
@@ -1525,7 +1602,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 49,
-        "equalStakeQuasar": 67
+        "twoThirdsCount": 67
       },
       {
         "n": 1000,
@@ -1533,7 +1610,7 @@
         "novaSignerFloor": 3,
         "novaBeta": 2,
         "crashTolerance": 499,
-        "equalStakeQuasar": 667
+        "twoThirdsCount": 667
       }
     ],
     "weighted": [
@@ -1623,7 +1700,7 @@
       }
     ],
     "stakeNote": "a quorum must STRICTLY EXCEED its floor. Quasar (export) needs voted \u003e twoThirds; Nova (local execution) needs voted \u003e half. Equality is not a quorum.",
-    "countNote": "novaSignerFloor is the count guard the stake predicate cannot give — a lone holder of a stake majority must not self-ignite. equalStakeQuasar is the ⅔ count for a uniform set."
+    "countNote": "each rung carries a count floor, because a threshold read only in stake makes the number of parties that agreed one wherever stake is concentrated. novaSignerFloor stops a lone holder of a stake majority self-igniting; twoThirdsCount = floor(2n/3)+1 is the export supermajority in seats, and a Quasar cert must clear it AND the ⅔ stake floor. It is also the count the parameter sizer sets alpha to — one definition, both uses."
   },
   "committee": [
     {

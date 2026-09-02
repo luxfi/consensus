@@ -4,12 +4,13 @@
 // quorum.go — the NOVA-tier thresholds, as a clean function of the live count n.
 //
 // This file owns ONLY the Nova (β-ignition / local-execution) rung of the ladder
-// in finality.go. The QUASAR rung — the ⅔-stake certificate — has exactly ONE
-// definition and it is NOT here: it is config.TwoThirdsStakeFloor (the strict >2/3
-// stake predicate, overflow-safe) and config.EqualStakeSupermajorityThreshold (its
-// equal-stake vote count ⌊2n/3⌋+1), enforced by QuorumCert.VerifyWeighted over
-// DISTINCT signers. Nova must never re-express that threshold; it deliberately sits
-// BELOW it (majority < ⅔), because Nova authorizes local execution while Quasar
+// in finality.go. The QUASAR rung — the ⅔ certificate — has exactly ONE definition
+// and it is NOT here: config.TwoThirdsStakeFloor is its stake half (the strict >⅔
+// predicate, overflow-safe) and config.TwoThirdsCount is the SAME supermajority in
+// seats (⌊2n/3⌋+1), and QuorumCert.VerifyWeighted demands both over DISTINCT
+// signers. Nova must never re-express either; both of its floors deliberately sit
+// BELOW Quasar's (majority < ⅔, and NovaSignerFloor saturates at 3 where the export
+// count grows with n), because Nova authorizes local execution while Quasar
 // authorizes export.
 package chain
 
@@ -46,6 +47,14 @@ const minBFTCommittee = 4
 //
 // On an equal-stake set the stake majority already implies ⌊n/2⌋+1 signers, so this
 // floor never binds there; it binds exactly where the weights are lopsided.
+//
+// It is a SATURATING floor and the export rung's is not: Quasar demands
+// config.TwoThirdsCount(n) = ⌊2n/3⌋+1, which grows with the set. That difference is
+// the two rungs' different jobs. Nova is asking only "is this more than one party?"
+// before letting a block drive local execution it can still reorg away, so a small
+// constant answers it. Quasar is asking "did a Byzantine supermajority agree?"
+// before letting a block leave the chain irreversibly, and that question has no
+// answer smaller than the supermajority itself.
 func NovaSignerFloor(n int) int {
 	if q := NovaQuorum(n); q < NovaQuorum(minBFTCommittee) {
 		return q

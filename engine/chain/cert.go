@@ -394,9 +394,11 @@ func (f ValidatorSetRootFunc) ValidatorSetRoot(height uint64) ids.ID { return f(
 //     local-execution rung: it has to ignite at a bare majority, so a ⅔ threshold here
 //     would defeat its purpose. Crash-fault-safe by majority intersection, and not
 //     Byzantine-safe — that is Quasar's job.
-//   - Quasar → a strict >⅔ of total stake by distinct signers (config.TwoThirdsStakeFloor).
-//     This is the export rung, the Byzantine-safe finality bridges, DEX settlement,
-//     cross-chain messages and validator-set transitions consume.
+//   - Quasar → a strict >⅔ of total stake by distinct signers (config.TwoThirdsStakeFloor)
+//     plus a config.TwoThirdsCount(n) count of them — the same supermajority read in
+//     stake and in seats, and both must hold. This is the export rung, the Byzantine-safe
+//     finality bridges, DEX settlement, cross-chain messages and validator-set transitions
+//     consume, so "how much stake agreed" is not enough: it must also be how MANY.
 //
 // The tier is read from the cert, but the threshold is re-derived from the authoritative
 // validator set rather than taken from the cert's self-declared Threshold, so a cert
@@ -475,7 +477,32 @@ func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) e
 }
 
 // verifyQuasarSupermajority enforces the Quasar EXPORT threshold: the summed stake of the
-// cert's distinct voters STRICTLY exceeds two-thirds of the total stake at the epoch.
+// cert's distinct voters STRICTLY exceeds two-thirds of the total stake at the epoch, AND
+// there are at least config.TwoThirdsCount(n) of them.
+//
+// TWO INDEPENDENT PREDICATES, neither sufficient alone — the same shape as Nova, one rung
+// up. Stake alone is not export-grade finality: a single validator holding two thirds of the
+// stake clears the stake floor on its OWN signature, and a cert with one signer on it is a
+// cert one operator can mint, one key can forge and one compromise can move. Byzantine
+// safety is an argument about how many INDEPENDENT parties agreed; a threshold read only in
+// stake makes that number one wherever stake is concentrated, which is exactly where the
+// argument is needed. The count is the guard the stake predicate cannot give.
+//
+// The count is the stake floor read in SEATS: config.TwoThirdsCount(n) = ⌊2n/3⌋+1, derived
+// from the same config.TwoThirdsStakeFloor arithmetic, so the two halves of the export rule
+// have one definition between them and cannot drift. It is not a configured parameter — an
+// operator flag that could set it to 1 would put the whole guard back in the hands of the
+// party it constrains.
+//
+// ORDER: stake first, then the count. Both must pass, so the order decides nothing except
+// which clause a refusal is NAMED by, and stake is the more informative name here. On an
+// equal-stake set the two floors are the same bar in two units and bind together, and a
+// refusal that says "the stake was short" says how far short a quorum was; the count clause
+// can only ever bind ALONE where the weights are lopsided, so reaching it means the stake was
+// there and the signers were not — which is the whale, stated precisely. Nova orders the
+// other way for a substantive reason: its count floor is a LOWER, saturating, stake-
+// independent bar (NovaSignerFloor caps at 3), so it is a different question asked first,
+// not the same question in another unit.
 func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight uint64) error {
 	// The ⅔-by-stake tally is read at the block's P-chain epoch height — the same
 	// height the cert's set-root and the per-voter pubkeys are read at — rather than
@@ -501,6 +528,24 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 	if voted <= twoThirdsFloor {
 		return fmt.Errorf("%w: voted=%d total=%d (need > floor(2/3·total)=%d) at height %d",
 			ErrQCStakeBelowSupermajority, voted, total, twoThirdsFloor, c.Position.Height)
+	}
+	// The distinct-signer half of the export rule. Read from the same authoritative set
+	// the tally was read against, so a cert can no more declare its own count floor than
+	// its own stake floor.
+	//
+	// An unresolved set fails closed and does so HERE rather than at the top: a source
+	// reporting n<1 alongside a zero total is already refused by the stake clause above
+	// with the reason it has always been refused for, and only a source that reports no
+	// validators while reporting stake reaches this line. Two thirds of no set is not a
+	// number, and TwoThirdsCount(0)=1 would hand a lone signer a floor of one.
+	n := stake.ValidatorCount(epochHeight)
+	if n < 1 {
+		return fmt.Errorf("%w: quasar tier over an unresolved validator set (n=%d) at epoch %d",
+			ErrQCBelowThreshold, n, epochHeight)
+	}
+	if floor := config.TwoThirdsCount(n); c.VoterCount() < floor {
+		return fmt.Errorf("%w: quasar cert has %d distinct voters, need at least %d of %d at epoch %d",
+			ErrQCBelowThreshold, c.VoterCount(), floor, n, epochHeight)
 	}
 	return nil
 }

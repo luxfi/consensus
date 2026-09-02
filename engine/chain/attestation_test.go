@@ -13,6 +13,7 @@
 package chain
 
 import (
+	"github.com/luxfi/consensus/config"
 	"testing"
 
 	"github.com/luxfi/ids"
@@ -215,8 +216,8 @@ func TestQuasarQuorum_ScaleMatrix(t *testing.T) {
 	// (K1→1, K2→2, K4→3, K5→4, K21→15, K100→67). n=1 self, n=2 both-required.
 	cases := map[int]int{1: 1, 2: 2, 3: 3, 4: 3, 5: 4, 21: 15, 100: 67}
 	for n, want := range cases {
-		if got := quasarQuorum(n); got != want {
-			t.Fatalf("quasarQuorum(%d) = %d, want %d", n, got, want)
+		if got := config.TwoThirdsCount(n); got != want {
+			t.Fatalf("config.TwoThirdsCount(%d) = %d, want %d", n, got, want)
 		}
 	}
 	// Live-set derivation: an attestor sized to n=3 emits at 3 (not a static 4 or 15).
