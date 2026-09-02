@@ -232,7 +232,7 @@
     ]
   },
   "verdict": {
-    "note": "what the predicate DECIDES, not what the encoder emits. Every vote is resolved as correctly signed, so a case turns on the weighted half alone: the distinct-signer floor and the stake floor. BOTH rungs carry both. Nova (local execution) needs signers \u003e= novaSignerFloor(n) AND voted \u003e floor(total/2). Quasar (export) needs n \u003e= 4 AND signers \u003e= floor(2*n/3)+1 AND voted \u003e floor(2*total/3) — the same supermajority in seats and in stake, and neither half is sufficient alone, because stake alone lets one holder of two thirds mint export finality on one signature. The n \u003e= 4 clause is a floor on the SET and not on the voters: Byzantine tolerance is f = floor((n-1)/3), which is zero for n of one, two and three, so a two-thirds supermajority over such a set tolerates no fault and one compromised key forges it. Both quorum floors shrink with n and neither catches it — floor(2*1/3)+1 is 1 — so it is stated separately. n and total are read over the SIGNERS: a seat marked keyless holds stake, can never sign, and is in neither denominator. The decision does not depend on the position the votes were cast over, so a runner may weigh these votes over any position its encoder can build.",
+    "note": "what the predicate DECIDES, not what the encoder emits. Every vote is resolved as correctly signed, so a case turns on the weighted half alone: the distinct-signer floor and the stake floor. BOTH rungs carry both. Nova (local execution) needs signers \u003e= novaSignerFloor(n) AND voted \u003e floor(total/2). Quasar (export) needs n \u003e= 4 AND signers \u003e= floor(2*n/3)+1 AND voted \u003e floor(2*total/3) — the same supermajority in seats and in stake, and neither half is sufficient alone, because stake alone lets one holder of two thirds mint export finality on one signature. The n \u003e= 4 clause is a floor on the SET and not on the voters: Byzantine tolerance is f = floor((n-1)/3), which is zero for n of one, two and three, so a two-thirds supermajority over such a set tolerates no fault and one compromised key forges it. Both quorum floors shrink with n and neither catches it — floor(2*1/3)+1 is 1 — so it is stated separately. n and total are read over the SIGNERS: a seat marked keyless holds stake, can never sign, and is in neither denominator. The decision does not depend on the position the votes were cast over, so a runner may weigh these votes over any position its encoder can build. DERIVED AUTHORITY, the clause every row above also states: a certificate DECLARES a threshold, and it must be exactly signerFloor — the floor the rung derives over this set. A certificate states its quorum; it does not choose it. Without that clause the field is load-bearing, because the tier-agnostic count clause counts distinct valid accepts against the certificate's OWN declaration, so one declaring 1 clears it on a single signature. Equality and not a lower bound: an over-claim names a bar this set does not set, and tolerating it would let a certificate redefine the rung upward exactly as tolerating an under-claim lets it redefine the rung down. The threshold field is recorded per row because three rows declare something else on purpose, and a runner must be handed the number the certificate carried.",
     "epoch": "7",
     "finality": [
       {
@@ -408,7 +408,7 @@
         "total": "41",
         "signerFloor": 3,
         "stakeFloor": "20",
-        "threshold": 20,
+        "threshold": 3,
         "signers": [
           "0000000000000000000000000000000000000001",
           "0000000000000000000000000000000000000002",
@@ -608,7 +608,7 @@
         "total": "41",
         "signerFloor": 3,
         "stakeFloor": "20",
-        "threshold": 21,
+        "threshold": 3,
         "signers": [
           "0000000000000000000000000000000000000001",
           "0000000000000000000000000000000000000002",
@@ -638,7 +638,7 @@
       },
       {
         "name": "quasar_below_supermajority",
-        "note": "twenty-seven of forty-one: exactly the supermajority floor, refused for the same reason",
+        "note": "twenty-seven of forty-one: exactly the supermajority floor, and equality is not a quorum here either. Over an EQUAL set the two halves of the export rule bind at the same edge, so the certificate is one signature short of the twenty-eight it declares and the count clause names it — the stake is equally short, and quasar_count_met_stake_short is the lopsided row where the stake half binds on its own",
         "rung": "quasar",
         "set": [
           {
@@ -809,7 +809,7 @@
         "total": "41",
         "signerFloor": 28,
         "stakeFloor": "27",
-        "threshold": 27,
+        "threshold": 28,
         "signers": [
           "0000000000000000000000000000000000000001",
           "0000000000000000000000000000000000000002",
@@ -841,7 +841,7 @@
         ],
         "voted": "27",
         "accept": false,
-        "refusal": "stakeBelowSupermajority"
+        "refusal": "belowThreshold"
       },
       {
         "name": "quasar_supermajority",
@@ -1076,7 +1076,7 @@
         "total": "4",
         "signerFloor": 3,
         "stakeFloor": "2",
-        "threshold": 1,
+        "threshold": 3,
         "signers": [
           "0000000000000000000000000000000000000001"
         ],
@@ -1086,7 +1086,7 @@
       },
       {
         "name": "quasar_one_of_four",
-        "note": "one of four equal seats at the export rung: refused on stake, which is the only floor this rung has",
+        "note": "one of four equal seats at the export rung. One signature is short of the three this set derives and one unit is short of two thirds of four, so both halves refuse and the count names it. The rung has TWO floors and this row clears neither; quasar_whale_alone isolates the count and quasar_count_met_stake_short isolates the stake",
         "rung": "quasar",
         "set": [
           {
@@ -1109,13 +1109,13 @@
         "total": "4",
         "signerFloor": 3,
         "stakeFloor": "2",
-        "threshold": 1,
+        "threshold": 3,
         "signers": [
           "0000000000000000000000000000000000000001"
         ],
         "voted": "1",
         "accept": false,
-        "refusal": "stakeBelowSupermajority"
+        "refusal": "belowThreshold"
       },
       {
         "name": "nova_whale_alone",
@@ -1146,7 +1146,7 @@
         "total": "104",
         "signerFloor": 3,
         "stakeFloor": "52",
-        "threshold": 1,
+        "threshold": 3,
         "signers": [
           "0000000000000000000000000000000000000001"
         ],
@@ -1222,7 +1222,7 @@
         "total": "104",
         "signerFloor": 4,
         "stakeFloor": "69",
-        "threshold": 1,
+        "threshold": 4,
         "signers": [
           "0000000000000000000000000000000000000001"
         ],
@@ -1344,7 +1344,7 @@
         "total": "600",
         "signerFloor": 5,
         "stakeFloor": "400",
-        "threshold": 6,
+        "threshold": 5,
         "signers": [
           "0000000000000000000000000000000000000001",
           "0000000000000000000000000000000000000002",
@@ -1356,6 +1356,704 @@
         "voted": "600",
         "accept": true,
         "refusal": ""
+      },
+      {
+        "name": "quasar_threshold_underclaimed",
+        "note": "THE UNDER-CLAIM. The accepting twenty-eight-of-forty-one certificate above, byte for byte, except that it declares a quorum of ONE. Every signature still verifies and the stake is still a supermajority; the only thing wrong is the number. It matters because the tier-agnostic count clause counts distinct valid accepts against the certificate's OWN declaration, so a declaration of one turns 'twenty-eight validators agreed' into 'one did' for any reader that has no validator set to check against. The floor a certificate is held to is a function of the SET and the RUNG, so the declaration is a claim to be checked and never a value to adopt",
+        "rung": "quasar",
+        "set": [
+          {
+            "nodeID": "0000000000000000000000000000000000000001",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000002",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000003",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000004",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000005",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000006",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000007",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000008",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000009",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000a",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000b",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000c",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000d",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000e",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000f",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000010",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000011",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000012",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000013",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000014",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000015",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000016",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000017",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000018",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000019",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001a",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001b",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001c",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001d",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001e",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001f",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000020",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000021",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000022",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000023",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000024",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000025",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000026",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000027",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000028",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000029",
+            "weight": "1"
+          }
+        ],
+        "total": "41",
+        "signerFloor": 28,
+        "stakeFloor": "27",
+        "threshold": 1,
+        "signers": [
+          "0000000000000000000000000000000000000001",
+          "0000000000000000000000000000000000000002",
+          "0000000000000000000000000000000000000003",
+          "0000000000000000000000000000000000000004",
+          "0000000000000000000000000000000000000005",
+          "0000000000000000000000000000000000000006",
+          "0000000000000000000000000000000000000007",
+          "0000000000000000000000000000000000000008",
+          "0000000000000000000000000000000000000009",
+          "000000000000000000000000000000000000000a",
+          "000000000000000000000000000000000000000b",
+          "000000000000000000000000000000000000000c",
+          "000000000000000000000000000000000000000d",
+          "000000000000000000000000000000000000000e",
+          "000000000000000000000000000000000000000f",
+          "0000000000000000000000000000000000000010",
+          "0000000000000000000000000000000000000011",
+          "0000000000000000000000000000000000000012",
+          "0000000000000000000000000000000000000013",
+          "0000000000000000000000000000000000000014",
+          "0000000000000000000000000000000000000015",
+          "0000000000000000000000000000000000000016",
+          "0000000000000000000000000000000000000017",
+          "0000000000000000000000000000000000000018",
+          "0000000000000000000000000000000000000019",
+          "000000000000000000000000000000000000001a",
+          "000000000000000000000000000000000000001b",
+          "000000000000000000000000000000000000001c"
+        ],
+        "voted": "28",
+        "accept": false,
+        "refusal": "thresholdNotDerived"
+      },
+      {
+        "name": "quasar_threshold_overclaimed",
+        "note": "THE OVER-CLAIM, refused for the same reason in the other direction. THIRTY of forty-one sign — a supermajority in seats and in stake, so this certificate would carry — and it declares a quorum of twenty-nine where the set derives twenty-eight. Thirty signatures clear twenty-nine, so the count clause has nothing to say and the ONLY thing refusing this row is the derived clause. That is the point of stating it: an over-claim ABOVE the vote count is already caught by counting, and one below it is caught by nothing else. A verifier that tolerated this would let a certificate redefine the rung upward exactly as tolerating the under-claim lets it redefine the rung down. Neither direction is the set's number, so the rule is equality",
+        "rung": "quasar",
+        "set": [
+          {
+            "nodeID": "0000000000000000000000000000000000000001",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000002",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000003",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000004",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000005",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000006",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000007",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000008",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000009",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000a",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000b",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000c",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000d",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000e",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000f",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000010",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000011",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000012",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000013",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000014",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000015",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000016",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000017",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000018",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000019",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001a",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001b",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001c",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001d",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001e",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001f",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000020",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000021",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000022",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000023",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000024",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000025",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000026",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000027",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000028",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000029",
+            "weight": "1"
+          }
+        ],
+        "total": "41",
+        "signerFloor": 28,
+        "stakeFloor": "27",
+        "threshold": 29,
+        "signers": [
+          "0000000000000000000000000000000000000001",
+          "0000000000000000000000000000000000000002",
+          "0000000000000000000000000000000000000003",
+          "0000000000000000000000000000000000000004",
+          "0000000000000000000000000000000000000005",
+          "0000000000000000000000000000000000000006",
+          "0000000000000000000000000000000000000007",
+          "0000000000000000000000000000000000000008",
+          "0000000000000000000000000000000000000009",
+          "000000000000000000000000000000000000000a",
+          "000000000000000000000000000000000000000b",
+          "000000000000000000000000000000000000000c",
+          "000000000000000000000000000000000000000d",
+          "000000000000000000000000000000000000000e",
+          "000000000000000000000000000000000000000f",
+          "0000000000000000000000000000000000000010",
+          "0000000000000000000000000000000000000011",
+          "0000000000000000000000000000000000000012",
+          "0000000000000000000000000000000000000013",
+          "0000000000000000000000000000000000000014",
+          "0000000000000000000000000000000000000015",
+          "0000000000000000000000000000000000000016",
+          "0000000000000000000000000000000000000017",
+          "0000000000000000000000000000000000000018",
+          "0000000000000000000000000000000000000019",
+          "000000000000000000000000000000000000001a",
+          "000000000000000000000000000000000000001b",
+          "000000000000000000000000000000000000001c",
+          "000000000000000000000000000000000000001d",
+          "000000000000000000000000000000000000001e"
+        ],
+        "voted": "30",
+        "accept": false,
+        "refusal": "thresholdNotDerived"
+      },
+      {
+        "name": "nova_threshold_underclaimed",
+        "note": "THE UNDER-CLAIM at the accept rung, because the rule is one rule and not an export special case. Twenty-one of forty-one carry a stake majority and the certificate declares a quorum of one; the accept rung derives three over this set — its count floor saturates — and three is what the certificate must say",
+        "rung": "nova",
+        "set": [
+          {
+            "nodeID": "0000000000000000000000000000000000000001",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000002",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000003",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000004",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000005",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000006",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000007",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000008",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000009",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000a",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000b",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000c",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000d",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000e",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000000f",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000010",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000011",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000012",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000013",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000014",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000015",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000016",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000017",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000018",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000019",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001a",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001b",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001c",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001d",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001e",
+            "weight": "1"
+          },
+          {
+            "nodeID": "000000000000000000000000000000000000001f",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000020",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000021",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000022",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000023",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000024",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000025",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000026",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000027",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000028",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000029",
+            "weight": "1"
+          }
+        ],
+        "total": "41",
+        "signerFloor": 3,
+        "stakeFloor": "20",
+        "threshold": 1,
+        "signers": [
+          "0000000000000000000000000000000000000001",
+          "0000000000000000000000000000000000000002",
+          "0000000000000000000000000000000000000003",
+          "0000000000000000000000000000000000000004",
+          "0000000000000000000000000000000000000005",
+          "0000000000000000000000000000000000000006",
+          "0000000000000000000000000000000000000007",
+          "0000000000000000000000000000000000000008",
+          "0000000000000000000000000000000000000009",
+          "000000000000000000000000000000000000000a",
+          "000000000000000000000000000000000000000b",
+          "000000000000000000000000000000000000000c",
+          "000000000000000000000000000000000000000d",
+          "000000000000000000000000000000000000000e",
+          "000000000000000000000000000000000000000f",
+          "0000000000000000000000000000000000000010",
+          "0000000000000000000000000000000000000011",
+          "0000000000000000000000000000000000000012",
+          "0000000000000000000000000000000000000013",
+          "0000000000000000000000000000000000000014",
+          "0000000000000000000000000000000000000015"
+        ],
+        "voted": "21",
+        "accept": false,
+        "refusal": "thresholdNotDerived"
+      },
+      {
+        "name": "quasar_count_met_stake_short",
+        "note": "Four of five sign and the holder of a hundred of a hundred and four is not among them. Four distinct signers meet floor(2*5/3)+1, so the export count floor is satisfied outright and the certificate declares exactly it — and four units of stake does not exceed floor(2*104/3)=69, so the row is refused on STAKE alone. It is the mirror of quasar_whale_alone, which has the stake and not the seats; between them the two halves of the export rule are each shown binding on their own",
+        "rung": "quasar",
+        "set": [
+          {
+            "nodeID": "0000000000000000000000000000000000000001",
+            "weight": "100"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000002",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000003",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000004",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000005",
+            "weight": "1"
+          }
+        ],
+        "total": "104",
+        "signerFloor": 4,
+        "stakeFloor": "69",
+        "threshold": 4,
+        "signers": [
+          "0000000000000000000000000000000000000002",
+          "0000000000000000000000000000000000000003",
+          "0000000000000000000000000000000000000004",
+          "0000000000000000000000000000000000000005"
+        ],
+        "voted": "4",
+        "accept": false,
+        "refusal": "stakeBelowSupermajority"
+      },
+      {
+        "name": "nova_count_met_stake_short",
+        "note": "The same shape one rung down. Three of the minimum registrations sign while the whale abstains: three distinct signers meet the accept rung's saturating floor of three, and three units of a hundred and four is not a strict majority of the stake, so the row is refused on STAKE. Nova reads its majority in weight and not in heads, and this is the row that says so",
+        "rung": "nova",
+        "set": [
+          {
+            "nodeID": "0000000000000000000000000000000000000001",
+            "weight": "100"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000002",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000003",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000004",
+            "weight": "1"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000005",
+            "weight": "1"
+          }
+        ],
+        "total": "104",
+        "signerFloor": 3,
+        "stakeFloor": "52",
+        "threshold": 3,
+        "signers": [
+          "0000000000000000000000000000000000000002",
+          "0000000000000000000000000000000000000003",
+          "0000000000000000000000000000000000000004"
+        ],
+        "voted": "3",
+        "accept": false,
+        "refusal": "stakeBelowMajority"
       },
       {
         "name": "quasar_keyless_count",
@@ -1392,7 +2090,7 @@
         "total": "400",
         "signerFloor": 3,
         "stakeFloor": "266",
-        "threshold": 4,
+        "threshold": 3,
         "signers": [
           "0000000000000000000000000000000000000001",
           "0000000000000000000000000000000000000002",

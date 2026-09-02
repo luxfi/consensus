@@ -386,6 +386,33 @@ from the authoritative validator set at the cert's epoch:
 | Nova | n ≥ 1 | ≥ `chain.NovaSignerFloor(n)` | > `config.HalfStakeFloor(signer)` | local execution (reorgable) |
 | Quasar | n ≥ `minBFTCommittee` (4) | ≥ `config.TwoThirdsCount(n)` | > `config.TwoThirdsStakeFloor(signer)` | export — bridges, DEX, cross-chain |
 
+A certificate also DECLARES a quorum, in `QuorumCert.Threshold`, and that number
+must be exactly `chain.SignerFloor(tier, n)` — the floor the set derives for the
+rung. **A certificate states its quorum; it does not choose it.** Without the
+clause the field is load-bearing: `Verify`'s last clause counts distinct valid
+accepts against the certificate's OWN threshold, so one declaring 1 clears it on a
+single signature, and only the floors above stand between that and finality. The
+rule is EQUALITY, not a lower bound — an over-claim names a bar this set does not
+set, and tolerating it would let a certificate redefine the rung upward exactly as
+tolerating an under-claim lets it redefine the rung down. `SignerFloor` is the ONE
+definition (Rust `finality::signer_floor`, C++ `signer_floor(Tier, n)`), read by
+the rung predicates, by the assemblers, and by this clause, so the number enforced
+and the number declared cannot drift.
+
+Two corollaries, both load-bearing:
+
+- **No set, no export.** `BuildVerifiedQuorumCert` refuses any tier for which
+  `Finality.AuthorizesExport` holds when `stake` is nil (`ErrExportNeedsStake`).
+  The count-only road counts votes against the caller's own alpha, so an export
+  token could be minted over one signer with `alpha=1`. The accept rung keeps that
+  road — it authorizes only local execution the chain can reorg away.
+- **The assembler reads the same n the verifier does.** `assembleCertLocked`
+  derives Nova's declared floor from `stakeSource.SignerCount`, not from
+  `effectiveCommittee` (which sizes the SAMPLE and is floored at
+  `minBFTCommittee`). At three signers the two disagreed — the sampler said three,
+  the set said two — so a node would have built a certificate its own peers refuse.
+  `attestation.go` already read `SignerCount` for the export rung.
+
 Both numbers are read over the SIGNERS: `signer` is `StakeSource.SignerStake` and
 `n` is `StakeSource.SignerCount`, never the membership roll. A member the chain
 carries without a key is a spectator — it holds stake and can never cast a vote
@@ -491,6 +518,16 @@ Four statements in the consensus core are unreachable through any public entry
 point. They are walls behind walls, they are correct, and chasing them costs an
 afternoon each — so they are written down instead.
 
+- `cert.go` `verifyNovaMajority`/`verifyQuasarSupermajority`'s COUNT clauses
+  (`VoterCount() < SignerFloor(...)`), since the derived-threshold rule landed.
+  `Verify` proves `count >= Threshold` and the derived clause proves
+  `Threshold == SignerFloor`, so `count >= SignerFloor` follows and neither clause
+  can fire. They are kept deliberately: they are where the floor is DEFINED for a
+  reader, and they are the guard that survives any future change to the
+  declaration rule — removing them would leave the count floor resting entirely on
+  a clause about a wire field. Rust and C++ carry the same redundancy for the same
+  reason. This is why the corpus's under-quorum rows are now named `belowThreshold`
+  by `Verify` rather than by the rung.
 - `cert.go` `VerifyWeighted`'s `default:` unknown-tier arm. `Verify` runs first
   and refuses any tier outside {Nova, Quasar}, so the switch below it never sees
   one. `TestATierIsRefusedByVerifyBeforeVerifyWeightedSeesIt` pins that ORDER, so

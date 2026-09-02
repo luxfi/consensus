@@ -118,10 +118,10 @@ func TestKeylessStakeIsNotInTheDenominator(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: []byte{0x01}})
 	}
-	cert, err := AssembleQuorumCert(pos, Quasar, uint32(len(votes)), votes)
-	if err != nil {
-		t.Fatalf("assemble: %v", err)
-	}
+	// Declaring the floor the SIX SIGNERS derive, not the seven members: a
+	// certificate states the quorum its set gives it, and reading the declaration
+	// over the roll would be the same keyless bug one layer out.
+	cert := certDeclaring(t, pos, Quasar, 6, votes)
 
 	if err := cert.VerifyWeighted(alwaysValid{}, set, epoch); err != nil {
 		t.Fatalf("export refused with the whole signing set agreeing: %v\n"+
@@ -131,10 +131,7 @@ func TestKeylessStakeIsNotInTheDenominator(t *testing.T) {
 	// And the rung is still a rung: four of the six signers is short of two thirds
 	// of the stake that CAN sign, so the fix did not flatten the floor into an
 	// accept-anything.
-	short, err := AssembleQuorumCert(pos, Quasar, 4, votes[:4])
-	if err != nil {
-		t.Fatalf("assemble short: %v", err)
-	}
+	short := certDeclaring(t, pos, Quasar, 6, votes[:4])
 	if err := short.VerifyWeighted(alwaysValid{}, set, epoch); err == nil {
 		t.Fatal("four hundred of six hundred cleared the export floor; the rung is gone")
 	}
@@ -188,10 +185,10 @@ func TestKeylessCountIsNotInTheDenominator(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: []byte{0x01}})
 	}
-	cert, err := AssembleQuorumCert(pos, Quasar, uint32(len(votes)), votes)
-	if err != nil {
-		t.Fatalf("assemble: %v", err)
-	}
+	// Declaring the floor the FOUR SIGNERS derive — three — and not the five the
+	// six-member roll would ask for. That is the same denominator, read at the
+	// certificate's declaration rather than at the verifier's floor.
+	cert := certDeclaring(t, pos, Quasar, 4, votes)
 	if err := cert.VerifyWeighted(alwaysValid{}, set, epoch); err != nil {
 		t.Fatalf("export refused with all four signers agreeing: %v\n"+
 			"R5: the COUNT floor was read over seats that cannot sign", err)
@@ -199,17 +196,11 @@ func TestKeylessCountIsNotInTheDenominator(t *testing.T) {
 
 	// The rung is still a rung, and its edge is sharp on the signer denominator:
 	// three signers sit exactly ON ⌊2*4/3⌋+1 and carry, two sit below it and do not.
-	edge, err := AssembleQuorumCert(pos, Quasar, 3, votes[:3])
-	if err != nil {
-		t.Fatalf("assemble edge: %v", err)
-	}
+	edge := certDeclaring(t, pos, Quasar, 4, votes[:3])
 	if err := edge.VerifyWeighted(alwaysValid{}, set, epoch); err != nil {
 		t.Fatalf("three signers sit on the export floor and were refused: %v", err)
 	}
-	short, err := AssembleQuorumCert(pos, Quasar, 2, votes[:2])
-	if err != nil {
-		t.Fatalf("assemble short: %v", err)
-	}
+	short := certDeclaring(t, pos, Quasar, 4, votes[:2])
 	if err := short.VerifyWeighted(alwaysValid{}, set, epoch); err == nil {
 		t.Fatal("two of four signers cleared the export rung; the floor is gone")
 	}

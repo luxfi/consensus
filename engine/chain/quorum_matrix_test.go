@@ -49,10 +49,9 @@ func certFor(t *testing.T, vs *testValidatorSet, pos VotePosition, voters ...int
 	for _, i := range voters {
 		sv = append(sv, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, Quasar, uint32(len(voters)), sv)
-	if err != nil {
-		t.Fatalf("assemble cert %v: %v", voters, err)
-	}
+	// The certificate declares the floor the SET derives for the export rung, which
+	// is the only threshold the verifier on the other side of the wire admits.
+	cert := certDeclaring(t, pos, Quasar, len(vs.ids), sv)
 	b, err := cert.MarshalBinary()
 	if err != nil {
 		t.Fatalf("marshal cert: %v", err)
@@ -100,10 +99,7 @@ func decidesViaRuntimeCert(t *testing.T, n int, weights []uint64, alpha int, vot
 	for _, i := range voters {
 		sv = append(sv, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, Quasar, uint32(len(voters)), sv)
-	if err != nil {
-		t.Fatalf("assemble cert (voters=%v): %v", voters, err)
-	}
+	cert := certDeclaring(t, pos, Quasar, len(vs.ids), sv)
 	certBytes, err := cert.MarshalBinary()
 	if err != nil {
 		t.Fatalf("marshal cert: %v", err)
@@ -270,15 +266,12 @@ func TestBlue_QuorumMatrix_DuplicateAndEquivocation(t *testing.T) {
 			}
 		}
 		// the genuine 4-of-4 (>⅔ of four equal seats) finalizes.
-		real4, err := AssembleQuorumCert(pos, Quasar, 4, []SignedVote{
+		real4 := certDeclaring(t, pos, Quasar, len(vs.ids), []SignedVote{
 			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 			{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 			{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
 			{NodeID: vs.nodeID(3), Accept: true, Signature: vs.sign(3, pos)},
 		})
-		if err != nil {
-			t.Fatalf("assemble real: %v", err)
-		}
 		b, _ := real4.MarshalBinary()
 		if !rt.HandleIncomingCert(b) || blk.AcceptCalled() != 1 {
 			t.Fatalf("the genuine 4-of-4 (>⅔ stake) must finalize exactly once; accept=%d", blk.AcceptCalled())

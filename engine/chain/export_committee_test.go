@@ -45,6 +45,10 @@ func (s flatSet) unanimous(t *testing.T) *QuorumCert {
 	if err != nil {
 		t.Fatalf("assemble over %d seats: %v", s.n, err)
 	}
+	// The certificate declares the floor this set derives for the export rung — the
+	// only threshold VerifyWeighted admits — so a row that refuses is refused on the
+	// committee floor and not on a number the certificate chose for itself.
+	cert.Threshold = SignerFloor(Quasar, s.n)
 	return cert
 }
 
@@ -131,6 +135,7 @@ func TestExportCommitteeFloorLeavesNovaAlone(t *testing.T) {
 		if err != nil {
 			t.Fatalf("n=%d: assemble nova: %v", n, err)
 		}
+		cert.Threshold = SignerFloor(Nova, n)
 		if err := cert.VerifyWeighted(alwaysValid{}, set, 0); err != nil {
 			t.Errorf("n=%d: a unanimous NOVA certificate was refused (%v). Nova ignites "+
 				"local execution on a bare majority and has no Byzantine claim to protect; "+

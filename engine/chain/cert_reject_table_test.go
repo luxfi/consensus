@@ -86,13 +86,21 @@ func newCertFixture(t *testing.T, n int) certFixture {
 	return certFixture{vs: vs, pos: pos, votes: votes, stake: equalStake(vs)}
 }
 
-// cert assembles a certificate from the first k of the fixture's votes.
+// cert assembles a certificate from the first k of the fixture's votes and stamps
+// what it DECLARES as its quorum.
+//
+// Assembly runs at the vote count and the declaration is stamped after, because
+// the two are different questions and the rows below ask the second one: an
+// under-quorum certificate is one no honest assembler can build and one every
+// verifier must still refuse, so stating one means building it the way an
+// adversary would. The ordering and dedup clauses still run.
 func (f certFixture) cert(t *testing.T, tier Finality, threshold uint32, k int) *QuorumCert {
 	t.Helper()
-	c, err := AssembleQuorumCert(f.pos, tier, threshold, f.votes[:k])
+	c, err := AssembleQuorumCert(f.pos, tier, uint32(k), f.votes[:k])
 	if err != nil {
 		t.Fatalf("assemble %s cert over %d votes: %v", tier, k, err)
 	}
+	c.Threshold = threshold
 	return c
 }
 
@@ -335,7 +343,7 @@ func TestWeightedRefusalTable(t *testing.T) {
 		},
 		{
 			holds: "nova needs its distinct-signer floor, so a stake majority cannot self-ignite",
-			cert:  f.cert(t, Nova, 2, 2),
+			cert:  f.cert(t, Nova, uint32(NovaSignerFloor(4)), 2),
 			stake: honest,
 			want:  ErrQCBelowThreshold,
 		},
@@ -394,12 +402,17 @@ func TestNovaRefusesTheStakeWithoutTheSeats(t *testing.T) {
 		f.vs.nodeID(0): 97, f.vs.nodeID(1): 1, f.vs.nodeID(2): 1, f.vs.nodeID(3): 1,
 	}, signerStake: 100, signers: 4, carried: 100}
 
-	alone, err := AssembleQuorumCert(f.pos, Nova, 1, f.votes[0:1])
-	if err != nil {
-		t.Fatalf("assemble: %v", err)
-	}
-	if err := alone.Verify(f.vs, f.pos.Height); err != nil {
-		t.Fatalf("the lone-holder cert must be signature-valid: %v", err)
+	// The certificate declares the floor the four-seat set derives for the accept
+	// rung — the only threshold VerifyWeighted admits — so the row turns on the lone
+	// signature and not on a number the certificate chose for itself.
+	alone := certDeclaring(t, f.pos, Nova, 4, f.votes[0:1])
+	// The SIGNATURE is real, which is what this line is for: a row of refusals over
+	// a fixture that never signed anything proves only that the fixture is broken.
+	// The certificate itself no longer clears Verify — one signer is below the floor
+	// the set derives and the certificate declares — and that is the same clause the
+	// row is about, reached one step earlier.
+	if !f.vs.VerifyVote(f.votes[0].NodeID, CanonicalVoteMessage(f.pos), f.votes[0].Signature, f.pos.Height) {
+		t.Fatal("the lone-holder signature must verify, or the row proves nothing")
 	}
 	if err := alone.VerifyWeighted(f.vs, lopsided, f.pos.Height); !errors.Is(err, ErrQCBelowThreshold) {
 		t.Fatalf("a stake majority on one signature must not ignite nova, got %v", err)

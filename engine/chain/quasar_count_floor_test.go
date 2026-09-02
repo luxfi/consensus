@@ -213,11 +213,10 @@ func TestQuasarCountFloor_StakeCannotBuyExport(t *testing.T) {
 		for _, i := range idx {
 			votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 		}
-		c, err := AssembleQuorumCert(pos, Quasar, uint32(len(idx)), votes)
-		if err != nil {
-			t.Fatalf("assemble %v: %v", idx, err)
-		}
-		return c
+		// Declaring the floor the five-seat set derives — the only threshold the
+		// export rung admits — so every row below turns on the count or on the
+		// stake, never on a number the certificate named for itself.
+		return certDeclaring(t, pos, Quasar, 5, votes)
 	}
 
 	// The premise: the lone signer really does hold the stake supermajority, so a
