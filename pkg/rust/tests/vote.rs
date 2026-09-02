@@ -14,7 +14,7 @@
 //! not accept. It must not be able to. A tally holds votes; it states no accept
 //! rule; the rule is `cert`'s, and [`Tally::cert`] is the only door out of a
 //! tally and runs the whole of `verify_weighted` before it returns. The tests
-//! from `a_tally_cannot_declare_its_own_quorum` down are that property, one
+//! from `a_tally_derives_its_quorum_from_the_set` down are that property, one
 //! floor at a time: the stake supermajority, the distinct-signer count, the
 //! minimum Byzantine committee, and — through registration — the proof of
 //! possession that decides who may be counted at all.
@@ -24,7 +24,7 @@ use lux_consensus::cert::{
     CertError, NodeId, QuorumCert, StakeSource, ValidatorSet, VoteVerifier, DST,
 };
 use lux_consensus::finality::{
-    canonical_vote_message, half_stake_floor, nova_signer_floor, two_thirds_count,
+    canonical_vote_message, half_stake_floor, nova_signer_floor, signer_floor, two_thirds_count,
     two_thirds_stake_floor, Finality, Position, EMPTY, VOTE_MESSAGE_LEN,
 };
 use lux_consensus::pop::{self, NODE_LEN};
@@ -103,9 +103,10 @@ fn position() -> Position {
     }
 }
 
-/// A tally at [`EPOCH`], for the rung under test.
-fn tally(tier: Finality, threshold: u32) -> Tally {
-    Tally::new(position(), tier, threshold, EPOCH).expect("a tally opens")
+/// A tally at [`EPOCH`], for the rung under test. There is nothing else to
+/// state: the quorum is the set's, read when a certificate is asked for.
+fn tally(tier: Finality) -> Tally {
+    Tally::new(position(), tier, EPOCH).expect("a tally opens")
 }
 
 // ── The frame ───────────────────────────────────────────────────────
@@ -332,22 +333,23 @@ fn a_message_this_network_disowns_has_no_slot() {
 
 // ── What a tally will hold ──────────────────────────────────────────
 
+/// A tally opens at a rung a certificate can claim, or it does not open. That is
+/// the whole of what opening one can refuse — there is no threshold to state, so
+/// a quorum of nobody is not something a caller can ask for in the first place.
 #[test]
-fn a_quorum_of_nobody_is_not_a_tally() {
+fn a_tally_opens_only_at_an_accept_rung() {
     assert_eq!(
-        Tally::new(position(), Finality::Quasar, 0, EPOCH),
-        Err(VoteError::Cert(CertError::ThresholdZero)),
-    );
-    assert_eq!(
-        Tally::new(position(), Finality::Wave, 1, EPOCH),
+        Tally::new(position(), Finality::Wave, EPOCH),
         Err(VoteError::Cert(CertError::UnknownTier(Finality::Wave))),
     );
+    Tally::new(position(), Finality::Nova, EPOCH).expect("nova opens");
+    Tally::new(position(), Finality::Quasar, EPOCH).expect("quasar opens");
 }
 
 #[test]
 fn one_signer_counts_once() {
     let (s, set) = committee(2, 1);
-    let mut t = tally(Finality::Quasar, 2);
+    let mut t = tally(Finality::Quasar);
     let v = s[0].vote(&position(), true);
     assert!(t.add(&v, &set).expect("first"));
     assert!(
@@ -360,7 +362,7 @@ fn one_signer_counts_once() {
 #[test]
 fn a_reject_is_not_a_finality_vote() {
     let (s, set) = committee(1, 1);
-    let mut t = tally(Finality::Quasar, 1);
+    let mut t = tally(Finality::Quasar);
     assert_eq!(
         t.add(&s[0].vote(&position(), false), &set),
         Err(VoteError::NotAccept)
@@ -372,7 +374,7 @@ fn a_vote_for_another_position_does_not_count_here() {
     let (s, set) = committee(1, 1);
     let mut other = position();
     other.height += 1;
-    let mut t = tally(Finality::Quasar, 1);
+    let mut t = tally(Finality::Quasar);
     assert_eq!(
         t.add(&s[0].vote(&other, true), &set),
         Err(VoteError::Position)
@@ -385,7 +387,7 @@ fn a_forged_signature_is_refused() {
     // Node 0's identity carrying node 1's signature.
     let mut v = s[1].vote(&position(), true);
     v.node = s[0].id;
-    let mut t = tally(Finality::Quasar, 1);
+    let mut t = tally(Finality::Quasar);
     assert_eq!(t.add(&v, &set), Err(VoteError::Signature));
 }
 
@@ -395,7 +397,7 @@ fn a_forged_signature_is_refused() {
 fn a_signer_the_set_never_admitted_is_refused() {
     let (_, set) = committee(1, 1);
     let stranger = Signer::new(0xff, 1);
-    let mut t = tally(Finality::Quasar, 1);
+    let mut t = tally(Finality::Quasar);
     assert_eq!(
         t.add(&stranger.vote(&position(), true), &set),
         Err(VoteError::Signature)
@@ -413,7 +415,7 @@ fn a_keyless_member_cannot_be_counted() {
     set.insert_unkeyed(spectator.id, spectator.weight)
         .expect("a keyless member is a member");
 
-    let mut t = tally(Finality::Quasar, 1);
+    let mut t = tally(Finality::Quasar);
     assert_eq!(
         t.add(&spectator.vote(&position(), true), &set),
         Err(VoteError::Signature)
@@ -428,36 +430,44 @@ fn a_keyless_member_cannot_be_counted() {
 
 /// THE PROPERTY THIS MODULE EXISTS FOR.
 ///
-/// A tally is handed a threshold of one and one perfectly valid signature. The
-/// declared threshold is met; `assemble` is satisfied; the signature verifies.
-/// It still gets no certificate, because the floors are recomputed from the LIVE
-/// set and one signer of seven is not two thirds of anything.
+/// A tally is handed one perfectly valid signature over a set of seven, and its
+/// holder has no way to ask for a quorum of one — there is no argument for it.
+/// The number the certificate would carry is `signer_floor` over the set, five
+/// of seven, so the lone vote is refused by a floor the caller had no part in.
 #[test]
-fn a_tally_cannot_declare_its_own_quorum() {
+fn a_tally_derives_its_quorum_from_the_set() {
     let (s, set) = committee(7, 1);
-    let mut t = tally(Finality::Quasar, 1);
+    let mut t = tally(Finality::Quasar);
     assert!(t.add(&s[0].vote(&position(), true), &set).expect("held"));
 
     assert_eq!(
         t.cert(&set, &set),
-        Err(VoteError::Cert(CertError::StakeBelowSupermajority {
-            voted: 1,
-            signer: 7,
-            need_above: two_thirds_stake_floor(7),
+        Err(VoteError::Cert(CertError::BelowThreshold {
+            have: 1,
+            need: two_thirds_count(7) as u32,
         })),
-        "a threshold a caller declares is not a quorum the set agrees to",
+        "one of seven is not the quorum the set derives",
     );
+
+    // And the number the certificate ends up carrying is that same derived
+    // floor — the one every party checking it computes from the set it holds,
+    // rather than a value it reads off the certificate and believes.
+    for signer in s.iter().skip(1).take(4) {
+        assert!(t.add(&signer.vote(&position(), true), &set).expect("held"));
+    }
+    let cert = t.cert(&set, &set).expect("five of seven exports");
+    assert_eq!(i64::from(cert.threshold), signer_floor(Finality::Quasar, 7));
+    assert_eq!(cert.threshold, 5);
 }
 
 /// The rung certifies at the set's floor, and the vote before it is not enough.
 /// On an equal-weight set the two Quasar floors are one bar in two units, so the
 /// last vote crosses both at once.
 ///
-/// The declared threshold and the set's floor are two different bars, and BOTH
-/// are checked. A tally that declares the real floor is refused by its own
-/// declaration one vote short; a tally that declares less than the floor is
-/// refused by the SET at the same point. The second is the one that matters —
-/// the declaration is the caller's and the floor is not.
+/// There is ONE bar here where there used to be two. A tally carries no
+/// declaration beside the set's floor, so there is no arrangement of the two in
+/// which the caller's number is the one that decides: the certificate is built
+/// to the floor the set derives, or it is not built.
 #[test]
 fn a_quasar_tally_certifies_at_the_sets_floor_and_not_before() {
     let (s, set) = committee(7, 1);
@@ -465,56 +475,36 @@ fn a_quasar_tally_certifies_at_the_sets_floor_and_not_before() {
     assert_eq!(need, 5);
     let short = need as usize - 1;
 
-    // Declaring the floor: four votes fail the declaration, which is the earlier
-    // bar and so the one that names the refusal.
-    let mut declared = tally(Finality::Quasar, need as u32);
+    let mut t = tally(Finality::Quasar);
     for signer in s.iter().take(short) {
-        assert!(declared
-            .add(&signer.vote(&position(), true), &set)
-            .expect("held"));
+        assert!(t.add(&signer.vote(&position(), true), &set).expect("held"));
     }
     assert_eq!(
-        declared.cert(&set, &set),
+        t.cert(&set, &set),
         Err(VoteError::Cert(CertError::BelowThreshold {
             have: 4,
             need: 5
         })),
-        "four of seven does not meet a threshold of five",
+        "four of seven is not an export quorum, and nothing can ask for less",
     );
 
-    // Declaring one: the same four votes clear the declaration and are refused
-    // by the set's own floor, recomputed from it.
-    let mut undeclared = tally(Finality::Quasar, 1);
-    for signer in s.iter().take(short) {
-        assert!(undeclared
-            .add(&signer.vote(&position(), true), &set)
-            .expect("held"));
-    }
-    assert_eq!(
-        undeclared.cert(&set, &set),
-        Err(VoteError::Cert(CertError::StakeBelowSupermajority {
-            voted: 4,
-            signer: 7,
-            need_above: two_thirds_stake_floor(7),
-        })),
-        "four of seven is not an export quorum however little a tally asked for",
-    );
-
-    // The fifth vote crosses both bars at once.
-    assert!(declared
+    // The fifth vote crosses both floors at once.
+    assert!(t
         .add(&s[short].vote(&position(), true), &set)
         .expect("held"));
-    let cert = declared.cert(&set, &set).expect("five of seven exports");
+    let cert = t.cert(&set, &set).expect("five of seven exports");
     assert_eq!(cert.votes.len(), 5);
     assert_eq!(cert.tier, Finality::Quasar);
+    assert_eq!(cert.threshold, need as u32);
 }
 
-/// The distinct-signer floor binds ALONE where the weights are lopsided: one
-/// validator holding most of the stake clears the stake clause by itself and is
-/// still not a supermajority of signers. This is the clause the stake predicate
-/// cannot give, reached through the tally.
+/// The two export floors are independent, and on a lopsided set each binds
+/// alone: the whale holds the stake and not the seats, the small holders hold
+/// the seats and not the stake. Neither exports. This is why the rule is read in
+/// both units — two thirds of the stake is one signature wherever two thirds of
+/// the stake is one validator.
 #[test]
-fn stake_alone_does_not_export() {
+fn neither_stake_nor_seats_alone_exports() {
     let whale = Signer::new(1, 1_000);
     let rest: Vec<Signer> = (2..=7).map(|i| Signer::new(i, 1)).collect();
     let mut set = ValidatorSet::new();
@@ -523,20 +513,181 @@ fn stake_alone_does_not_export() {
             .expect("insert");
     }
 
-    let mut t = tally(Finality::Quasar, 1);
-    assert!(t.add(&whale.vote(&position(), true), &set).expect("held"));
-
-    // The whale's 1000 of 1006 is past floor(2·1006/3) = 670, so stake passes
-    // and the count clause is what refuses.
+    // Stake without seats. The whale's 1000 of 1006 is past floor(2·1006/3) =
+    // 670, so the stake clause would pass; one of seven is not the five seats
+    // the set derives, and the seat floor is what refuses.
     assert!(1_000 > two_thirds_stake_floor(1_006));
+    let mut alone = tally(Finality::Quasar);
+    assert!(alone
+        .add(&whale.vote(&position(), true), &set)
+        .expect("held"));
     assert_eq!(
-        t.cert(&set, &set),
-        Err(VoteError::Cert(CertError::SignerFloor {
+        alone.cert(&set, &set),
+        Err(VoteError::Cert(CertError::BelowThreshold {
             have: 1,
-            need: two_thirds_count(7),
-            n: 7
+            need: two_thirds_count(7) as u32,
         })),
-        "the stake was there and the signers were not",
+        "the stake was there and the seats were not",
+    );
+
+    // Seats without stake. Five of the seven signers is the seat floor exactly,
+    // so the certificate is built — and the stake clause refuses it on five
+    // units of 1006.
+    let mut small = tally(Finality::Quasar);
+    for s in rest.iter().take(5) {
+        assert!(small.add(&s.vote(&position(), true), &set).expect("held"));
+    }
+    assert_eq!(
+        small.cert(&set, &set),
+        Err(VoteError::Cert(CertError::StakeBelowSupermajority {
+            voted: 5,
+            signer: 1_006,
+            need_above: two_thirds_stake_floor(1_006),
+        })),
+        "the seats were there and the stake was not",
+    );
+}
+
+/// A DERIVED FLOOR IS THE LIVE ONE.
+///
+/// A floor read when the tally opened is a claim about a set that may no longer
+/// exist, and a set that SHRINKS strands a tally holding it: the pinned number
+/// counts validators who have gone. Nothing is pinned, so the same held votes
+/// are weighed against whichever set is live when the certificate is asked for —
+/// short of the ten's floor, a supermajority of the seven's.
+#[test]
+fn a_set_that_moves_under_a_tally_does_not_strand_it() {
+    let signers: Vec<Signer> = (1..=10).map(|i| Signer::new(i, 1)).collect();
+    let admit = |take: usize| -> ValidatorSet {
+        let mut set = ValidatorSet::new();
+        for s in signers.iter().take(take) {
+            set.insert(s.id, s.weight, &s.public(), &s.pop())
+                .expect("insert");
+        }
+        set
+    };
+    let wide = admit(10);
+    let narrow = admit(7); // three keys gone at the same epoch
+
+    let mut t = tally(Finality::Quasar);
+    for s in signers.iter().take(6) {
+        assert!(t.add(&s.vote(&position(), true), &wide).expect("held"));
+    }
+
+    // Against the ten, six seats are short of the seven that set derives.
+    assert_eq!(two_thirds_count(10), 7);
+    assert_eq!(
+        t.cert(&wide, &wide),
+        Err(VoteError::Cert(CertError::BelowThreshold {
+            have: 6,
+            need: 7
+        })),
+    );
+
+    // Against the seven, the same six votes are a supermajority, and the
+    // certificate carries the floor the seven derive rather than the ten's.
+    let cert = t.cert(&narrow, &narrow).expect("six of seven exports");
+    assert_eq!(i64::from(cert.threshold), signer_floor(Finality::Quasar, 7));
+    assert_eq!(cert.threshold, 5);
+    cert.verify_weighted(&narrow, &narrow, EPOCH)
+        .expect("and it verifies for anyone holding that set");
+}
+
+/// A SOURCE THAT CANNOT BE ANSWERED IS REFUSED, not rounded to one that can.
+///
+/// The floor is a count of seats and a certificate states it in 32 bits. A
+/// source claiming more signers than that can hold has claimed a set no
+/// certificate here can speak for; truncating the number would build one naming
+/// a quorum nobody derived. It fails closed instead, in the clause that names
+/// seats — which is also the honest reading, since four voters are not
+/// six quintillion.
+#[test]
+fn a_signer_count_past_the_certificates_field_is_refused() {
+    struct Absurd<'a>(&'a ValidatorSet);
+    impl StakeSource for Absurd<'_> {
+        fn weight(&self, n: &NodeId, h: u64) -> u64 {
+            self.0.weight(n, h)
+        }
+        fn signer_stake(&self, h: u64) -> u64 {
+            self.0.signer_stake(h)
+        }
+        fn signer_count(&self, _h: u64) -> i64 {
+            i64::MAX
+        }
+    }
+
+    let (s, set) = committee(4, 1);
+    let mut t = tally(Finality::Quasar);
+    for signer in &s {
+        assert!(t.add(&signer.vote(&position(), true), &set).expect("held"));
+    }
+    assert_eq!(
+        t.cert(&set, &Absurd(&set)),
+        Err(VoteError::Cert(CertError::SignerFloor {
+            have: 4,
+            need: two_thirds_count(i64::MAX),
+            n: i64::MAX,
+        })),
+    );
+}
+
+/// A REPLAY DOES NO PAIRING.
+///
+/// A vote that arrives twice is decided by the map and not by the curve: the
+/// already-held test runs before the signature check. A mesh replays and echoes
+/// as a matter of course, so a peer that could make every repeat cost a BLS
+/// verification would have found this node's CPU by sending one frame twice.
+#[test]
+fn a_replayed_vote_is_dropped_before_the_signature_check() {
+    use std::cell::Cell;
+
+    /// A verifier that counts what it was asked to check.
+    struct Counting<'a> {
+        inner: &'a ValidatorSet,
+        pairings: Cell<usize>,
+    }
+    impl VoteVerifier for Counting<'_> {
+        fn verify_vote(&self, n: &NodeId, m: &[u8], sig: &[u8], h: u64) -> bool {
+            self.pairings.set(self.pairings.get() + 1);
+            self.inner.verify_vote(n, m, sig, h)
+        }
+    }
+
+    let (s, set) = committee(4, 1);
+    let counting = Counting {
+        inner: &set,
+        pairings: Cell::new(0),
+    };
+    let v = s[0].vote(&position(), true);
+
+    let mut t = tally(Finality::Quasar);
+    assert!(t.add(&v, &counting).expect("first"));
+    assert_eq!(counting.pairings.get(), 1, "the first vote is verified");
+
+    for _ in 0..16 {
+        assert!(!t.add(&v, &counting).expect("a replay is not an error"));
+    }
+    assert_eq!(counting.pairings.get(), 1, "and no copy of it is");
+
+    // Including a copy carrying garbage where the signature was: a held signer's
+    // second frame is dropped on the lookup, so it never reaches the curve.
+    let mut forged = v.clone();
+    forged.signature = vec![0u8; 96];
+    assert!(!t.add(&forged, &counting).expect("still just a replay"));
+    assert_eq!(counting.pairings.get(), 1);
+    assert_eq!(t.len(), 1);
+
+    // What the tally holds is the FIRST signature, not the last frame — which is
+    // why dropping the copy unverified loses nothing.
+    for signer in s.iter().skip(1) {
+        assert!(t
+            .add(&signer.vote(&position(), true), &counting)
+            .expect("held"));
+    }
+    let cert = t.cert(&set, &set).expect("four of four exports");
+    assert_eq!(
+        cert.votes[0].signature, v.signature,
+        "the first signature stands"
     );
 }
 
@@ -546,7 +697,7 @@ fn stake_alone_does_not_export() {
 #[test]
 fn a_tally_cannot_export_below_the_minimum_committee() {
     let (s, set) = committee(3, 1);
-    let mut t = tally(Finality::Quasar, 3);
+    let mut t = tally(Finality::Quasar);
     for signer in &s {
         assert!(t.add(&signer.vote(&position(), true), &set).expect("held"));
     }
@@ -565,7 +716,7 @@ fn a_nova_tally_runs_the_nova_floors() {
     assert_eq!(nova_signer_floor(7), 3);
     assert_eq!(half_stake_floor(7), 3);
 
-    let mut t = tally(Finality::Nova, 1);
+    let mut t = tally(Finality::Nova);
     for signer in s.iter().take(3) {
         assert!(t.add(&signer.vote(&position(), true), &set).expect("held"));
     }
@@ -586,7 +737,7 @@ fn a_nova_tally_runs_the_nova_floors() {
 
     // And Nova's four is not Quasar's five: the same votes at the export rung
     // are refused.
-    let mut q = tally(Finality::Quasar, 1);
+    let mut q = tally(Finality::Quasar);
     for signer in s.iter().take(4) {
         assert!(q.add(&signer.vote(&position(), true), &set).expect("held"));
     }
@@ -625,7 +776,7 @@ fn a_rogue_key_never_reaches_a_tally() {
     );
 
     // So the identity resolves to nothing, and a tally holds nothing for it.
-    let mut t = tally(Finality::Quasar, 1);
+    let mut t = tally(Finality::Quasar);
     let forged = SignedVote {
         position: position(),
         accept: true,
@@ -642,11 +793,12 @@ fn a_rogue_key_never_reaches_a_tally() {
 #[test]
 fn the_certificate_a_tally_issues_verifies_for_a_third_party() {
     let (s, set) = committee(7, 1);
-    let mut t = tally(Finality::Quasar, two_thirds_count(7) as u32);
+    let mut t = tally(Finality::Quasar);
     for signer in s.iter().take(5) {
         assert!(t.add(&signer.vote(&position(), true), &set).expect("held"));
     }
     let cert = t.cert(&set, &set).expect("a quorum certifies");
+    assert_eq!(i64::from(cert.threshold), signer_floor(Finality::Quasar, 7));
 
     // A party that never saw the tally, holding only the set.
     cert.verify_weighted(&set, &set, EPOCH)
@@ -707,7 +859,7 @@ fn a_tally_reads_one_epoch_on_both_sides() {
     };
 
     // At the epoch the tally opened at, everything resolves.
-    let mut here = Tally::new(position(), Finality::Quasar, 5, EPOCH).expect("tally");
+    let mut here = Tally::new(position(), Finality::Quasar, EPOCH).expect("tally");
     for signer in s.iter().take(5) {
         assert!(here
             .add(&signer.vote(&position(), true), &live)
@@ -718,7 +870,7 @@ fn a_tally_reads_one_epoch_on_both_sides() {
     // A tally opened at another height reads that height on the SIGNATURE side:
     // no key resolves there, so nothing is even held, and the refusal is the
     // signature clause rather than a quorum one.
-    let mut elsewhere = Tally::new(position(), Finality::Quasar, 5, EPOCH + 1).expect("tally");
+    let mut elsewhere = Tally::new(position(), Finality::Quasar, EPOCH + 1).expect("tally");
     assert_eq!(elsewhere.epoch_height(), EPOCH + 1);
     assert_eq!(
         elsewhere.add(&s[0].vote(&position(), true), &live),
@@ -766,7 +918,7 @@ fn the_transport_is_a_seam_the_caller_fills() {
 
     // An implementation may echo a vote back to its origin; the tally
     // deduplicates by signer, so a self-echo costs nothing.
-    let mut t = tally(Finality::Quasar, 4);
+    let mut t = tally(Finality::Quasar);
     let sent = wire.0.borrow();
     for v in sent.iter().chain(sent.iter()) {
         t.add(v, &set).expect("held or already held");

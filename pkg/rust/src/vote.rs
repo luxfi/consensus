@@ -35,14 +35,16 @@
 //! and the minimum Byzantine committee, recomputed every time. There is no door
 //! out of here that skips it: [`Tally::cert`] is the only way to obtain a
 //! certificate from a tally, and it runs the full predicate before it returns
-//! one. A quorum a caller merely declares is not a quorum.
+//! one. And a caller states no threshold to begin with: [`Tally::cert`] reads
+//! the rung's floor off the set at the moment it issues, so there is no
+//! declaration for the set to disagree with.
 
 use std::collections::BTreeMap;
 
 use crate::cert::{CertError, NodeId, QuorumCert, StakeSource, Vote, VoteVerifier, SIGNATURE_LEN};
 use crate::finality::{
-    canonical_vote_message, Finality, Id, Position, EMPTY, QC_FINALITY, QUORUM_CERT_VERSION,
-    VOTE_MESSAGE_LEN, VOTE_TAG,
+    canonical_vote_message, signer_floor, Finality, Id, Position, EMPTY, QC_FINALITY,
+    QUORUM_CERT_VERSION, VOTE_MESSAGE_LEN, VOTE_TAG,
 };
 use crate::pop::NODE_LEN;
 use crate::zap;
@@ -336,10 +338,15 @@ pub trait VoteTransport {
 ///
 /// Holding is not accepting. Whether the held votes are a quorum is decided by
 /// [`QuorumCert::verify_weighted`] against the live set, inside [`Tally::cert`],
-/// which is the only way out — see the module note. The `threshold` a tally
-/// carries is the certificate's own declared field and a caller's stopping
-/// condition; it is a floor UNDER the real floors and can never stand in for
-/// them.
+/// which is the only way out — see the module note.
+///
+/// A TALLY STATES NO THRESHOLD. There is no field for one and no argument that
+/// sets one: [`Tally::cert`] reads [`signer_floor`] over the set as it stands
+/// when the certificate is issued, and that number is what the certificate
+/// carries. So a caller cannot ask for a lower bar — and cannot pin a higher one
+/// either, which matters as much: a floor fixed when the tally opened is a floor
+/// from a set that may no longer exist, and it would strand a tally holding a
+/// real quorum of the set that does.
 ///
 /// ONE TALLY, ONE EPOCH. The epoch height is fixed when the tally opens and both
 /// the signature check and the stake read use it. A tally that verified under
@@ -350,7 +357,6 @@ pub trait VoteTransport {
 pub struct Tally {
     position: Position,
     tier: Finality,
-    threshold: u32,
     epoch_height: u64,
     message: Vec<u8>,
     votes: BTreeMap<NodeId, Vec<u8>>,
@@ -359,27 +365,19 @@ pub struct Tally {
 impl Tally {
     /// A tally for one position at one rung, at one epoch.
     ///
-    /// A threshold of zero is a quorum of nobody, and a rung that is not Nova or
-    /// Quasar is not a rung a certificate can claim; both are refused here so no
-    /// later step has to, and both are refused with the clause
-    /// [`QuorumCert::verify`] would have refused them with.
-    pub fn new(
-        position: Position,
-        tier: Finality,
-        threshold: u32,
-        epoch_height: u64,
-    ) -> Result<Self, VoteError> {
+    /// A rung that is not Nova or Quasar is not a rung a certificate can claim,
+    /// and is refused here so no later step has to, with the clause
+    /// [`QuorumCert::verify`] would have refused it with. It is the only thing
+    /// left to refuse: the quorum is the set's, and it is read when the
+    /// certificate is issued rather than promised now.
+    pub fn new(position: Position, tier: Finality, epoch_height: u64) -> Result<Self, VoteError> {
         if tier != Finality::Nova && tier != Finality::Quasar {
             return Err(CertError::UnknownTier(tier).into());
-        }
-        if threshold == 0 {
-            return Err(CertError::ThresholdZero.into());
         }
         let message = canonical_vote_message(&position, true);
         Ok(Tally {
             position,
             tier,
-            threshold,
             epoch_height,
             message,
             votes: BTreeMap::new(),
@@ -397,10 +395,6 @@ impl Tally {
 
     pub fn tier(&self) -> Finality {
         self.tier
-    }
-
-    pub fn threshold(&self) -> u32 {
-        self.threshold
     }
 
     /// The epoch every signature here was checked under, and the epoch its
@@ -421,6 +415,12 @@ impl Tally {
     /// Hold one vote. `Ok(true)` when it was newly recorded, `Ok(false)` when
     /// that signer was already held — the first signature from a signer stands,
     /// so an equivocating peer cannot displace what it already said.
+    ///
+    /// The already-held test runs BEFORE the signature check, because the check
+    /// is a BLS pairing and the test is a map lookup. A vote arriving off a mesh
+    /// is replayed and echoed as a matter of course, and a peer that could make
+    /// every repeat cost a pairing would have found a way to spend this node's
+    /// CPU by sending the same frame twice.
     pub fn add(
         &mut self,
         vote: &SignedVote,
@@ -435,6 +435,12 @@ impl Tally {
         if vote.message() != self.message {
             return Err(VoteError::Position);
         }
+        // Held already, so nothing this frame carries can change the tally: the
+        // first signature stands whatever the second one is. Deciding that here
+        // is what keeps a replay off the pairing.
+        if self.votes.contains_key(&vote.node) {
+            return Ok(false);
+        }
         if !verifier.verify_vote(
             &vote.node,
             &self.message,
@@ -443,16 +449,23 @@ impl Tally {
         ) {
             return Err(VoteError::Signature);
         }
-        if self.votes.contains_key(&vote.node) {
-            return Ok(false);
-        }
         self.votes.insert(vote.node, vote.signature.clone());
         Ok(true)
     }
 
     /// The certificate these votes make — or the clause that refuses it.
     ///
-    /// The whole predicate runs here: [`QuorumCert::verify_weighted`] over the
+    /// The certificate's threshold is DERIVED here and now — [`signer_floor`]
+    /// for this rung over the set this source reports at this epoch — and it is
+    /// read at the moment of issue, not when the tally opened. That is the whole
+    /// of a certificate's authority in seats, and it is the set's number: there
+    /// is no argument by which a caller states it, so there is nothing for the
+    /// set to disagree with. Reading it late is what keeps a tally live across a
+    /// set that moves under it; a number pinned at open would be a claim about a
+    /// set that has since changed size, and every party checking the certificate
+    /// re-derives it from the set they see.
+    ///
+    /// The whole predicate then runs: [`QuorumCert::verify_weighted`] over the
     /// live set at this tally's epoch, which is [`QuorumCert::verify`] plus the
     /// rung's floors — for Quasar the stake supermajority, the distinct-signer
     /// count and [`crate::finality::MIN_BFT_COMMITTEE`]; for Nova the stake
@@ -478,7 +491,18 @@ impl Tally {
                 signature: signature.clone(),
             })
             .collect();
-        let cert = QuorumCert::assemble(self.tier, self.position.clone(), self.threshold, &votes)?;
+        let n = stake.signer_count(self.epoch_height);
+        let derived = signer_floor(self.tier, n);
+        // The floor is a count of seats and the certificate states it in a `u32`.
+        // A set claiming more signers than that can hold is not a set this tally
+        // holds a quorum of, and saying so in the clause that names seats is
+        // truer than truncating the number the certificate would carry.
+        let threshold = u32::try_from(derived).map_err(|_| CertError::SignerFloor {
+            have: self.votes.len() as i64,
+            need: derived,
+            n,
+        })?;
+        let cert = QuorumCert::assemble(self.tier, self.position.clone(), threshold, &votes)?;
         cert.verify_weighted(verifier, stake, self.epoch_height)?;
         Ok(cert)
     }
