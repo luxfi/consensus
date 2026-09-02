@@ -156,8 +156,15 @@ pub fn nova_quorum(n: i64) -> i64 {
     n / 2 + 1
 }
 
-/// The smallest Byzantine-fault-tolerant committee.
-const MIN_BFT_COMMITTEE: i64 = 4;
+/// The smallest Byzantine-fault-tolerant committee: the least n whose fault budget
+/// f = ⌊(n−1)/3⌋ reaches one. Below it a two-thirds supermajority tolerates no
+/// Byzantine fault at all.
+///
+/// Two consumers, one constant: [`nova_signer_floor`] saturates its count here so a
+/// lone node can never ignite, and [`crate::cert::QuorumCert::verify_weighted`]
+/// refuses an EXPORT certificate over a signing set smaller than this. Go's
+/// `engine/chain.minBFTCommittee`, C++'s `kMinBFTCommittee`.
+pub(crate) const MIN_BFT_COMMITTEE: i64 = 4;
 
 /// The minimum distinct signers a Nova certificate needs whatever the stake
 /// distribution. The Nova gate proper is a stake majority; this count is the

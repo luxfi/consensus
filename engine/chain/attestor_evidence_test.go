@@ -80,7 +80,7 @@ func TestAttestor_NilStakeIsRejectedNotFatal(t *testing.T) {
 		if r := recover(); r != nil {
 			t.Fatalf("Ingest PANICKED on a nil stake source: %v. The file documents this as "+
 				"rejected at emit time; a nil source instead reaches "+
-				"q.stake.ValidatorCount(epoch) on the first verified attestation. Every "+
+				"q.stake.SignerCount(epoch) on the first verified attestation. Every "+
 				"exported entry point here takes peer data, so a fail-closed path that is "+
 				"actually a nil dereference is a remote crash on any node wired without stake.", r)
 		}
@@ -179,7 +179,11 @@ func flipFirstBit(in []byte) []byte {
 // re-deriving it from the same set agrees. A cert that under-declares its own floor
 // is one an external consumer can be talked into accepting on fewer signatures.
 func TestAttestor_CertThresholdTracksTheLiveSet(t *testing.T) {
-	for _, n := range []int{1, 2, 4, 5, 7} {
+	// Below minBFTCommittee the export rung certifies nothing at all, so there is no
+	// artifact to declare a floor on — that clause is pinned in
+	// TestExportNeedsAByzantineCommittee and asserted on the producer in
+	// TestQuasarQuorum_ScaleMatrix. The sizes here are the ones that can certify.
+	for _, n := range []int{4, 5, 7} {
 		vs := newTestValidatorSet(n)
 		q := NewQuasarAttestor(vs, vs)
 		pos := attestPos(ids.GenerateTestID(), 3, ids.GenerateTestID())

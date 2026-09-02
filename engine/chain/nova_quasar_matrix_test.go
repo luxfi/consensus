@@ -80,6 +80,12 @@ func nMatrixParams(n int) config.Parameters {
 // forms only once a strict >⅔-stake DISTINCT-signer supermajority has attested. For odd n the
 // two thresholds differ (a degraded window where the chain produces Nova but does not certify
 // Quasar); for even n they coincide.
+//
+// Below minBFTCommittee the export tier does not form AT ALL, however unanimous the set. Nova
+// still ignites there — it authorizes local execution the chain can reorg away and is
+// crash-fault-safe by construction — so a two- or three-validator chain PRODUCES and never
+// CERTIFIES, which is the degraded window taken to its limit. f=⌊(n−1)/3⌋ is 0 for those sizes
+// and a certificate that tolerates no Byzantine fault is not an export claim.
 func TestNovaQuasarMatrix_Threshold_NovaMajority_QuasarTwoThirds(t *testing.T) {
 	for n := 2; n <= 5; n++ {
 		t.Run(fmt.Sprintf("n=%d_equal", n), func(t *testing.T) {
@@ -103,6 +109,17 @@ func TestNovaQuasarMatrix_Threshold_NovaMajority_QuasarTwoThirds(t *testing.T) {
 				for i := nq; i < tt; i++ {
 					e.ReceiveVote(vs.signedVote(i, pos))
 				}
+			}
+			if n < minBFTCommittee {
+				// Every validator has now attested and the export tier still does not
+				// form: there is no fault budget for a supermajority over this set to
+				// be about. Nova above already accepted, so the chain produces.
+				for i := tt; i < n; i++ {
+					e.ReceiveVote(vs.signedVote(i, pos))
+				}
+				mustNotQuasar(t, e, blk, 400*time.Millisecond, fmt.Sprintf(
+					"n=%d: unanimous, and below the minimum Byzantine committee → no export", n))
+				return
 			}
 			mustQuasar(t, e, blk, 2*time.Second, fmt.Sprintf("n=%d: ⅔ count=%d → Quasar export", n, tt))
 		})
@@ -150,8 +167,14 @@ func TestNovaQuasarMatrix_WeightedStake_NovaMajorityQuasarSupermajority(t *testi
 // -----------------------------------------------------------------------------
 
 // TestNovaQuasarMatrix_SingleValidatorSelfIgnites proves n=1 self-ignites Nova (NovaQuorum(1)=1)
-// through the single-validator path, and — since the sole validator IS a ⅔-stake supermajority —
-// also reaches Quasar. No peer exists to fork against, so this is sound.
+// through the single-validator path — and does NOT reach Quasar.
+//
+// The sole validator does hold a ⅔ stake supermajority, and it holds a ⅔ supermajority of the
+// seats too, so both of the export rung's quorum floors are satisfied by its own signature.
+// That is exactly why neither of them is the whole rule: a certificate one key can mint is not
+// a claim that a Byzantine supermajority of independent parties agreed, and at n=1 there are no
+// independent parties for the claim to be about. Nova, which authorizes only local execution
+// this node can still reorg away, is the rung a solo chain gets.
 func TestNovaQuasarMatrix_SingleValidatorSelfIgnites(t *testing.T) {
 	vs := newTestValidatorSet(1)
 	rec := &recordingGossiper{}
@@ -169,8 +192,10 @@ func TestNovaQuasarMatrix_SingleValidatorSelfIgnites(t *testing.T) {
 	_ = e.TryAccept(context.Background(), blk.id)
 	// The sole validator self-ignites: its own accept is the entire NovaQuorum(1)=1.
 	mustFinalize(t, e, blk, 2*time.Second, "n=1 self-ignites Nova")
-	// The sole validator is 100% stake > ⅔, so the block is export-final too.
-	mustQuasar(t, e, blk, 2*time.Second, "n=1 sole validator is a ⅔ supermajority → Quasar")
+	// And it stops there. One party is not a committee: f=⌊(1−1)/3⌋=0, so its unanimous
+	// certificate absorbs no fault and a single compromise forges export finality outright.
+	mustNotQuasar(t, e, blk, 400*time.Millisecond,
+		"n=1 holds every unit of stake and every seat, and is still not a Byzantine committee → no export")
 }
 
 // chainID recovers the engine's chain id (set via WithQuorumCert) for tests that did not capture

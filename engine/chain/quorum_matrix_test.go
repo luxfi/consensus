@@ -132,8 +132,22 @@ func seqN(m int) []int {
 
 // TestBlue_QuorumMatrix_Unweighted is the n=1..10 denominator sweep at the runtime level: exactly q
 // online DECIDES; q−1 online does NOT finalize and does NOT false-accept.
+//
+// The certs here are EXPORT certs, so the sweep starts where the export rung does. Below
+// minBFTCommittee signers a Byzantine supermajority is not a claim anything can make — f is 0
+// there — and the runtime refuses the whole size rather than a count within it; that clause is
+// pinned in TestExportNeedsAByzantineCommittee, and asserted here so the sweep says which sizes
+// it is a sweep OVER.
 func TestBlue_QuorumMatrix_Unweighted(t *testing.T) {
-	for n := 1; n <= 10; n++ {
+	for n := 1; n < minBFTCommittee; n++ {
+		t.Run(fmt.Sprintf("n%d_unanimous_no_export", n), func(t *testing.T) {
+			if decidesViaRuntimeCert(t, n, nil, quorumq(n), seqN(n)) {
+				t.Fatalf("n=%d: a unanimous export cert finalized over a set with no "+
+					"Byzantine fault budget", n)
+			}
+		})
+	}
+	for n := minBFTCommittee; n <= 10; n++ {
 		q := quorumq(n)
 		// exactly q online → DECIDES.
 		t.Run(fmt.Sprintf("n%d_%dof%d_yes", n, q, n), func(t *testing.T) {
@@ -225,12 +239,13 @@ func TestBlue_QuorumMatrix_Weighted(t *testing.T) {
 // quorum), and an EQUIVOCATING cert (two of the "signatures" are the same node) cannot manufacture
 // a quorum it does not have.
 func TestBlue_QuorumMatrix_DuplicateAndEquivocation(t *testing.T) {
-	// n=3, q=2 by stake (equal weights): a cert whose 2 "distinct" signers are actually node 0
-	// twice holds only ONE validator's stake (⅓) → MUST NOT finalize. The real 2-of-3 does.
+	// n=4, the smallest set the export rung certifies over: a cert whose 3 "distinct" signers
+	// are actually node 0 three times holds only ONE validator's stake (¼) → MUST NOT finalize.
+	// The genuine 4-of-4 does.
 	t.Run("duplicate-node-counts-once", func(t *testing.T) {
-		vs := newTestValidatorSet(3)
+		vs := newTestValidatorSet(4)
 		chainID := ids.GenerateTestID()
-		e := NewWithConfig(Config{Params: matrixParams(3, 2)},
+		e := NewWithConfig(Config{Params: matrixParams(4, 3)},
 			WithQuorumCert(chainID, vs.nodeID(0), vs, &recordingGossiper{}, vs.signerFor(0)),
 			WithStakeWeighting(vs))
 		if err := e.Start(context.Background(), true); err != nil {
@@ -242,29 +257,31 @@ func TestBlue_QuorumMatrix_DuplicateAndEquivocation(t *testing.T) {
 		trackVerifiedBlock(rt, blk, 0)
 		pos := VotePosition{ChainID: chainID, Height: 1, Round: 0, BlockID: blk.id, ParentID: ids.Empty}
 
-		// node 0 signing "twice" — the same NodeID repeated. Dedup ⇒ 1 distinct voter, ⅓ stake.
-		dup, err := AssembleQuorumCert(pos, Quasar, 2, []SignedVote{
+		// node 0 signing "three times" — the same NodeID repeated. Dedup ⇒ 1 distinct voter, ¼ stake.
+		dup, err := AssembleQuorumCert(pos, Quasar, 3, []SignedVote{
+			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 		})
 		if err == nil {
 			b, _ := dup.MarshalBinary()
 			if rt.HandleIncomingCert(b) || blk.AcceptCalled() != 0 {
-				t.Fatal("a duplicated single voter (⅓ stake) must NOT finalize a >⅔ quorum")
+				t.Fatal("a duplicated single voter (¼ stake) must NOT finalize a >⅔ quorum")
 			}
 		}
-		// the genuine 2-of-3 (nodes 0,1 = ⅔... need >⅔: nodes 0,1,2) finalizes.
-		real3, err := AssembleQuorumCert(pos, Quasar, 3, []SignedVote{
+		// the genuine 4-of-4 (>⅔ of four equal seats) finalizes.
+		real4, err := AssembleQuorumCert(pos, Quasar, 4, []SignedVote{
 			{NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, pos)},
 			{NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, pos)},
 			{NodeID: vs.nodeID(2), Accept: true, Signature: vs.sign(2, pos)},
+			{NodeID: vs.nodeID(3), Accept: true, Signature: vs.sign(3, pos)},
 		})
 		if err != nil {
 			t.Fatalf("assemble real: %v", err)
 		}
-		b, _ := real3.MarshalBinary()
+		b, _ := real4.MarshalBinary()
 		if !rt.HandleIncomingCert(b) || blk.AcceptCalled() != 1 {
-			t.Fatalf("the genuine 3-of-3 (>⅔ stake) must finalize exactly once; accept=%d", blk.AcceptCalled())
+			t.Fatalf("the genuine 4-of-4 (>⅔ stake) must finalize exactly once; accept=%d", blk.AcceptCalled())
 		}
 	})
 }
@@ -273,7 +290,9 @@ func TestBlue_QuorumMatrix_DuplicateAndEquivocation(t *testing.T) {
 // online decides, and (n−1) online decides IFF n−1 ≥ q (one validator down is tolerated exactly
 // when the quorum still fits).
 func TestBlue_QuorumMatrix_AllOnlineAndOneDown(t *testing.T) {
-	for n := 2; n <= 7; n++ {
+	// From the smallest set the export rung certifies at all; below it nothing decides,
+	// which TestBlue_QuorumMatrix_Unweighted asserts directly.
+	for n := minBFTCommittee; n <= 7; n++ {
 		q := quorumq(n)
 		all := decidesViaRuntimeCert(t, n, nil, q, seqN(n))
 		if !all {

@@ -58,14 +58,20 @@ func (e *epochStakeSource) Weight(nodeID ids.NodeID, height uint64) uint64 {
 	return w[nodeID]
 }
 
-func (e *epochStakeSource) TotalStake(height uint64) uint64 {
+func (e *epochStakeSource) SignerStake(height uint64) uint64 {
 	_, t := e.snapshotFor(height)
 	return t
 }
 
-func (e *epochStakeSource) ValidatorCount(height uint64) int {
+func (e *epochStakeSource) SignerCount(height uint64) int {
 	w, _ := e.snapshotFor(height)
 	return len(w)
+}
+
+// Every seat in a snapshot holds a key, so the set carries exactly what its signers hold.
+func (e *epochStakeSource) CarriedStake(height uint64) uint64 {
+	_, t := e.snapshotFor(height)
+	return t
 }
 
 // TestEpochBinding_CrossEpochCertRejected pins property (1): a cert is bound to

@@ -135,7 +135,7 @@ func (q *QuasarAttestor) Ingest(pos VotePosition, epoch uint64, att SignedVote) 
 	}
 	// A nil stake source is a configuration that cannot certify anything, and
 	// this is fail-closed by DESIGN. It has to be a rejection here, not a nil
-	// dereference at q.stake.ValidatorCount below: every entry point takes peer
+	// dereference at q.stake.SignerCount below: every entry point takes peer
 	// data, so the deref is a remote crash on any node wired without stake.
 	if q.stake == nil {
 		return nil, false, fmt.Errorf("quasar ingest: no stake source configured")
@@ -177,11 +177,15 @@ func (q *QuasarAttestor) Ingest(pos VotePosition, epoch uint64, att SignedVote) 
 	b.votes[att.NodeID] = cp
 
 	// Try to emit once the export count floor ⌊2n/3⌋+1 is reached. n is the LIVE committee
-	// at the epoch (no static K/α), so the quorum tracks the live set each height. The gate
-	// is VerifyWeighted below, which enforces this same count AND the ⅔-by-stake predicate;
-	// this call is the assembly trigger, read from the one definition so the attestor cannot
-	// try to build a cert the verifier would refuse — nor stop trying before it would pass.
-	n := q.stake.ValidatorCount(epoch)
+	// at the epoch (no static K/α), so the quorum tracks the live set each height. This call
+	// is the assembly TRIGGER and not the gate: it is read from the one definition of the
+	// count floor so the attestor never stops trying before the verifier would pass, and
+	// VerifyWeighted below is the sole authority on whether it does. That asymmetry is
+	// deliberate — the trigger is allowed to be looser than the rule and must never be
+	// tighter. It is looser at exactly one place: a set below minBFTCommittee reaches this
+	// count and is refused by the export rung's committee clause, so such a chain assembles
+	// and discards rather than emitting. One authority, and it is the verifier.
+	n := q.stake.SignerCount(epoch)
 	threshold := config.TwoThirdsCount(n)
 	if len(b.votes) < threshold {
 		return nil, false, nil

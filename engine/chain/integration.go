@@ -269,7 +269,7 @@ func (t *Transitive) effectiveCommittee(epochHeight uint64) (n, alpha int) {
 	// NEVER produce a lone-reachable α (the 1085013 self-finality fork the count floor prevents). An
 	// unresolved set (count ≤ 0) or a preset that already fits leaves the configured (K, α) — which
 	// the round-scoped 2α−n>f gate still guards.
-	if k, a, clamped := bftCommittee(n, t.stakeSource.ValidatorCount(epochHeight)); clamped {
+	if k, a, clamped := bftCommittee(n, t.stakeSource.SignerCount(epochHeight)); clamped {
 		return k, a
 	}
 	return n, alpha
