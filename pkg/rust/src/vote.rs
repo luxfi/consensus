@@ -101,6 +101,13 @@ pub const VOTE_PAYLOAD_LEN: usize = 4 + VOTE_MESSAGE_LEN + 4 + NODE_LEN + 4 + SI
 /// [`VoteError::Cert`] as the very values [`crate::cert`] names, so the version,
 /// the role, the tier and every floor have one vocabulary across both modules
 /// and a caller matching on them matches on one set of facts.
+///
+/// A vote plane that grows a refusal must be able to say so without breaking
+/// every caller that matches on this, so the enum is closed to exhaustive
+/// matching from outside: a downstream `match` carries a wildcard, and a new
+/// clause reaches it rather than a compile error. Nothing here is added lightly
+/// — but it is added before publication, because it can never be added after.
+#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VoteError {
     /// The bytes are not a vote: a field of the wrong width, a length that
