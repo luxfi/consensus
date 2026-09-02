@@ -80,44 +80,5 @@ fn rust_matches_the_go_pop_oracle_case_for_case() {
         }
         checked += 1;
     }
-    assert_eq!(checked, 13, "expected 13 frozen cases, checked {checked}");
-}
-
-// ------------------------------------------------- the width the corpus omits
-
-/// A key wider than 48 bytes is refused on the width clause.
-///
-/// The corpus freezes a 47-byte key and both a 95- and a 97-byte proof, but no
-/// 49-byte key, so this is the one width the oracle does not carry and the one a
-/// port could get wrong without the corpus noticing. It matters because the
-/// clause is `!=`, not `<`: a verifier that only guarded the short side would
-/// read the first 48 bytes of a longer buffer and check a proof against a
-/// PREFIX of what the registrant published — a different key from the one the
-/// registration names, admitted under the registrant's own proof.
-///
-/// Go's `pop.Verify` opens with `len(key) != KeyLen` and its own tests carry the
-/// long case; this is that case, on this side.
-#[test]
-fn a_key_wider_than_the_standard_is_refused_on_its_width() {
-    let sk = blst::min_pk::SecretKey::key_gen(&[3u8; 32], &[]).expect("key_gen");
-    let node: NodeId = [0x11; 20];
-    let key = sk.sk_to_pk().compress().to_vec();
-    let proof = pop::sign(&sk, &node, &key);
-
-    // The pair itself is good, so only the width can be what refuses it.
-    assert_eq!(pop::verify(&node, &key, &proof), Ok(()));
-
-    let mut too_long = key.clone();
-    too_long.push(0);
-    assert_eq!(
-        pop::verify(&node, &too_long, &proof),
-        Err(PopError::Key),
-        "a 49-byte key was read as its 48-byte prefix"
-    );
-
-    // The same clause on the proof, in the direction the corpus does carry, so
-    // the two widths are stated together rather than one being folded away.
-    let mut short_key = key;
-    short_key.pop();
-    assert_eq!(pop::verify(&node, &short_key, &proof), Err(PopError::Key));
+    assert_eq!(checked, 14, "expected 14 frozen cases, checked {checked}");
 }
