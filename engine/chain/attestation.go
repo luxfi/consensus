@@ -46,7 +46,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/luxfi/consensus/config"
 	"github.com/luxfi/ids"
 )
 
@@ -176,17 +175,19 @@ func (q *QuasarAttestor) Ingest(pos VotePosition, epoch uint64, att SignedVote) 
 	cp.Signature = append([]byte(nil), att.Signature...)
 	b.votes[att.NodeID] = cp
 
-	// Try to emit once the export count floor ⌊2n/3⌋+1 is reached. n is the LIVE committee
-	// at the epoch (no static K/α), so the quorum tracks the live set each height. This call
-	// is the assembly TRIGGER and not the gate: it is read from the one definition of the
-	// count floor so the attestor never stops trying before the verifier would pass, and
-	// VerifyWeighted below is the sole authority on whether it does. That asymmetry is
-	// deliberate — the trigger is allowed to be looser than the rule and must never be
-	// tighter. It is looser at exactly one place: a set below minBFTCommittee reaches this
-	// count and is refused by the export rung's committee clause, so such a chain assembles
-	// and discards rather than emitting. One authority, and it is the verifier.
+	// Try to emit once the export count floor is reached. n is the LIVE signing set at
+	// the epoch (no static K/α), so the quorum tracks the set each height. This call is
+	// the assembly TRIGGER and not the gate: it is read from the one definition of the
+	// floor — SignerFloor, the same function the verifier compares this certificate's
+	// declaration against — so the attestor never stops trying before the verifier would
+	// pass, and VerifyWeighted below is the sole authority on whether it does. That
+	// asymmetry is deliberate: the trigger is allowed to be looser than the rule and must
+	// never be tighter. It is looser at exactly one place: a set below minBFTCommittee
+	// reaches this count and is refused by the export rung's committee clause, so such a
+	// chain assembles and discards rather than emitting. One authority, and it is the
+	// verifier.
 	n := q.stake.SignerCount(epoch)
-	threshold := config.TwoThirdsCount(n)
+	threshold := SignerFloor(Quasar, n)
 	if len(b.votes) < threshold {
 		return nil, false, nil
 	}

@@ -279,7 +279,7 @@ func refusal(err error) string {
 // has failed a floor, not the wire and not a signature.
 func finality(name, note string, rung chain.Finality, s stake, signers []int) FinalityCase {
 	return weigh(name, note, rung, s, signers,
-		chain.SignerFloor(rung, s.SignerCount(verdictEpoch)))
+		uint32(chain.SignerFloor(rung, s.SignerCount(verdictEpoch))))
 }
 
 // weigh is the body: one certificate, declaring `declared`, weighed against one
@@ -330,7 +330,7 @@ func weigh(name, note string, rung chain.Finality, s stake, signers []int, decla
 	// number the derived-authority clause compares a certificate's declaration
 	// against, so a corpus that computed it a second way could freeze a floor the
 	// predicate does not enforce.
-	signerFloor := int(chain.SignerFloor(rung, n))
+	signerFloor := chain.SignerFloor(rung, n)
 
 	// The decision, read from the live predicate — never restated here.
 	decided := cert.VerifyWeighted(trust{set: s}, s, verdictEpoch)

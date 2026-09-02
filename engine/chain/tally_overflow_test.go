@@ -110,7 +110,7 @@ func TestQuasarTallyRefusesAWrappingStakeSource(t *testing.T) {
 	// Declaring the floor the five-signer set derives, so the row reaches the tally
 	// rather than being answered by a threshold the certificate named for itself.
 	cert := certDeclaring(t, pos, Quasar, 5, votes)
-	if floor := int(SignerFloor(Quasar, src.SignerCount(epoch))); cert.VoterCount() < floor {
+	if floor := SignerFloor(Quasar, src.SignerCount(epoch)); cert.VoterCount() < floor {
 		t.Fatalf("this set does not reach the export signer floor (%d of %d), so the tally is never read",
 			cert.VoterCount(), floor)
 	}

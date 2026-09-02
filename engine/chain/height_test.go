@@ -52,7 +52,7 @@ func buildCertAtRound(t *testing.T, vs *testValidatorSet, chainID, blockID, pare
 	if err != nil {
 		t.Fatalf("assemble cert (round %d): %v", round, err)
 	}
-	cert.Threshold = SignerFloor(Quasar, len(vs.ids))
+	cert.Threshold = uint32(SignerFloor(Quasar, len(vs.ids)))
 	b, err := cert.MarshalBinary()
 	if err != nil {
 		t.Fatalf("marshal cert (round %d): %v", round, err)
