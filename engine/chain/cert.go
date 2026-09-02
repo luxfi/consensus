@@ -754,7 +754,7 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 func (c *QuorumCert) votedStake(stake StakeSource, epochHeight uint64) (uint64, error) {
 	var voted uint64
 	for i := range c.Votes {
-		sum, err := math.Add64(voted, stake.Weight(c.Votes[i].NodeID, epochHeight))
+		sum, err := math.Add[uint64](voted, stake.Weight(c.Votes[i].NodeID, epochHeight))
 		if err != nil {
 			return 0, fmt.Errorf("%w: cert tally at epoch %d: %w",
 				validators.ErrWeightOverflow, epochHeight, err)
