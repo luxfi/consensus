@@ -237,6 +237,15 @@ func (s *testValidatorSet) SignerCount(_ uint64) int {
 	return len(s.ids)
 }
 
+// CarriedStake implements StakeSource: every member of the test set holds a key, so what
+// the set carries is what its signers hold. The two numbers part company only on a set with
+// a keyless member — see keyless_denominator_test.go for the one that has them.
+func (s *testValidatorSet) CarriedStake(_ uint64) uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return uint64(len(s.ids))
+}
+
 // setSimulatedValidatorCount forces SignerCount to report c (0 models the current-map Manager
 // unresolved at construction — the mainnet freeze). Call before the fleet builds.
 func (s *testValidatorSet) setSimulatedValidatorCount(c int) {

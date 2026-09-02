@@ -204,6 +204,17 @@ func (s stake) SignerCount(uint64) int {
 	return n
 }
 
+// CarriedStake returns every seat's weight, keyed or not — the membership roll's
+// stake. No floor is read against it, and a case exists precisely to state what
+// the two numbers are when they differ.
+func (s stake) CarriedStake(uint64) uint64 {
+	var total uint64
+	for _, m := range s {
+		total += m.weight
+	}
+	return total
+}
+
 // trust resolves every vote from a SEAT THAT HOLDS A KEY as correctly signed.
 // The weighted half is the subject of this section; see the file comment for why
 // the two are separated. A keyless seat is refused, because a signature under a
@@ -391,16 +402,35 @@ func verdicts() Verdict {
 	// read over the whole membership puts the export rung out of reach for good.
 	keylessThird := append(signers(100, 100, 100), spectator(200))
 
+	// Six seats that can sign and one that cannot, holding a third of the roll.
+	// The COUNT floor is the same number either way here — ⌊2·6/3⌋+1 and ⌊2·7/3⌋+1
+	// are both five — so the STAKE denominator is the only thing that decides it.
+	keylessStake := append(signers(100, 100, 100, 100, 100, 100), spectator(300))
+
+	// Four seats that can sign and two that cannot, holding one unit each. The
+	// keyless weight is a rounding error, so the stake floor is cleared under
+	// either denominator and only the COUNT can decide: ⌊2·4/3⌋+1 is three over
+	// the signers and ⌊2·6/3⌋+1 is five over the roll, and four signatures is
+	// every one this set is able to produce.
+	keylessCount := append(signers(100, 100, 100, 100), spectator(1), spectator(1))
+
 	return Verdict{
 		Note: "what the predicate DECIDES, not what the encoder emits. Every vote is " +
 			"resolved as correctly signed, so a case turns on the weighted half alone: " +
 			"the distinct-signer floor and the stake floor. BOTH rungs carry both. Nova " +
 			"(local execution) needs signers >= novaSignerFloor(n) AND voted > floor(total/2). " +
-			"Quasar (export) needs signers >= floor(2*n/3)+1 AND voted > floor(2*total/3) — " +
-			"the same supermajority in seats and in stake, and neither half is sufficient " +
-			"alone, because stake alone lets one holder of two thirds mint export finality " +
-			"on one signature. The decision does not depend on the position the votes were " +
-			"cast over, so a runner may weigh these votes over any position its encoder can build.",
+			"Quasar (export) needs n >= 4 AND signers >= floor(2*n/3)+1 AND voted > " +
+			"floor(2*total/3) — the same supermajority in seats and in stake, and neither " +
+			"half is sufficient alone, because stake alone lets one holder of two thirds " +
+			"mint export finality on one signature. The n >= 4 clause is a floor on the SET " +
+			"and not on the voters: Byzantine tolerance is f = floor((n-1)/3), which is zero " +
+			"for n of one, two and three, so a two-thirds supermajority over such a set " +
+			"tolerates no fault and one compromised key forges it. Both quorum floors shrink " +
+			"with n and neither catches it — floor(2*1/3)+1 is 1 — so it is stated " +
+			"separately. n and total are read over the SIGNERS: a seat marked keyless holds " +
+			"stake, can never sign, and is in neither denominator. The decision does not " +
+			"depend on the position the votes were cast over, so a runner may weigh these " +
+			"votes over any position its encoder can build.",
 		Epoch: u64(verdictEpoch),
 		Finality: []FinalityCase{
 			finality("nova_below_majority",
@@ -449,18 +479,45 @@ func verdicts() Verdict {
 				chain.Quasar, whale, []int{1, 2, 3, 4}),
 
 			finality("quasar_keyless_third",
-				"THE KEYLESS DENOMINATOR. Three seats of a hundred hold keys; a fourth "+
-					"holds two hundred and no key. Every seat that CAN sign does — a "+
-					"hundred per cent of the signing set — and the export rung admits it, "+
-					"because the floor is read over the three hundred that can sign and not "+
-					"the five hundred the chain carries. Read the other way this case is "+
-					"stranded and stays stranded: three hundred does not exceed "+
-					"floor(2*500/3)=333, and nothing the signers do can reach it, because "+
-					"the two hundred it falls short by is held by a member that can never "+
-					"cast a vote. A floor is a statement about the parties whose agreement "+
-					"it demands, so it is read over the parties who can agree. The count "+
-					"floor is read over the same three seats for the same reason",
+				"THE KEYLESS DENOMINATOR AND THE COMMITTEE FLOOR, on one set. Three seats "+
+					"of a hundred hold keys; a fourth holds two hundred and no key. The "+
+					"denominator is the signers, and the recorded floors say so outright: "+
+					"the stake floor is floor(2*300/3)=200 over the three hundred that can "+
+					"sign, not floor(2*500/3)=333 over the five hundred the chain carries. "+
+					"All three signers sign, so both quorum floors are cleared — three "+
+					"hundred exceeds two hundred, and three signers meet floor(2*3/3)+1=3. "+
+					"The certificate is REFUSED anyway, and on neither of them. Three parties "+
+					"are not a Byzantine committee: f=floor((3-1)/3)=0, so this unanimous "+
+					"certificate tolerates no fault at all and one compromised key among the "+
+					"three forges it. Reading the floors over the signers is what stops a "+
+					"spectator stranding a chain; it is not a way for a chain with three "+
+					"signers to export. Those are different claims and this row states both",
 				chain.Quasar, keylessThird, first(3)),
+			finality("quasar_keyless_stake",
+				"THE KEYLESS DENOMINATOR, stake half, isolated. Six seats of a hundred "+
+					"hold keys; a seventh holds three hundred and none. Every signer signs "+
+					"and the export rung admits it on six hundred of six hundred. Read over "+
+					"the roll it is stranded and stays stranded: six hundred does not exceed "+
+					"floor(2*900/3)=600, and nothing the signers do can reach it, because "+
+					"the shortfall is held by a member that can never cast a vote. The COUNT "+
+					"floor is deliberately the same number either way — floor(2*6/3)+1 and "+
+					"floor(2*7/3)+1 are both five — so the stake denominator is the only "+
+					"thing that decides this row, and an implementation that moved only the "+
+					"count fails it. Seven members, six signers, above the committee floor",
+				chain.Quasar, keylessStake, first(6)),
+			finality("quasar_keyless_count",
+				"THE KEYLESS DENOMINATOR, count half, isolated. Four seats of a hundred "+
+					"hold keys; two more hold one unit each and no key. The keyless weight "+
+					"is a rounding error on purpose, so the stake floor is cleared under "+
+					"EITHER denominator — four hundred exceeds floor(2*400/3)=266 and "+
+					"floor(2*402/3)=268 alike — and stake cannot be what decides. The count "+
+					"can: floor(2*4/3)+1 is three over the signers and floor(2*6/3)+1 is "+
+					"five over the roll, and four signatures is every one this set is able "+
+					"to produce. Read over the roll, two members holding two units between "+
+					"them strand the export rung of a chain whose four real validators all "+
+					"agree. This is the row a stake-only fix passes and a correct one must "+
+					"also pass",
+				chain.Quasar, keylessCount, first(4)),
 		},
 		Admission: []AdmissionCase{
 			register("zero_weight",

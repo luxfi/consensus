@@ -363,9 +363,12 @@ func (f VoteVerifierFunc) VerifyVote(nodeID ids.NodeID, message []byte, sig []by
 // unusable and the caller treats the cert as unverifiable. The engine binds the source
 // to the cert's position height so weights are read at the right epoch.
 //
-// The three projections must be over ONE set, read at ONE height. A source that
+// The three quorum projections must be over ONE set, read at ONE height. A source that
 // answers SignerStake over the signers and SignerCount over every member states two
 // different sets and the two floors stop being the same supermajority in two units.
+// CarriedStake is the fourth and it is deliberately NOT one of them: it is the
+// membership roll's weight, reported so the gap between the two sets is VISIBLE rather
+// than merely correct.
 type StakeSource interface {
 	// Weight returns the voting weight (stake) of nodeID at the given height, or
 	// 0 if nodeID is not an active SIGNING validator at that height — including a
@@ -385,6 +388,21 @@ type StakeSource interface {
 	// one identical set. 0 for an unresolved or empty set; the view-change then keeps
 	// the configured committee, guarded by the 2α−n>f bound.
 	SignerCount(height uint64) int
+	// CarriedStake returns the total stake the chain CARRIES at the given height:
+	// every member, keyed or not. NO floor is read against it and none may be — that
+	// is the whole of the keyless denominator rule, and reading a threshold here is
+	// the bug the rule exists to prevent.
+	//
+	// It is on the seam so the two numbers can be COMPARED. SignerStake alone is
+	// enough to decide a certificate and not enough to see the set shrink underneath
+	// one: a chain whose signable stake has fallen to a sliver of what it carries
+	// still certifies at ⅔ of the sliver, correctly and invisibly. Reporting both is
+	// what lets an operator alarm on that before it is an incident. Rust's
+	// ValidatorSet.carried and C++'s QuorumCertEngine::total_stake are this number.
+	//
+	// CarriedStake ≥ SignerStake always; a source reporting otherwise is describing
+	// signers it does not carry.
+	CarriedStake(height uint64) uint64
 }
 
 // ValidatorSetRootSource computes the commitment to the active weighted
@@ -422,9 +440,11 @@ func (f ValidatorSetRootFunc) ValidatorSetRoot(height uint64) ids.ID { return f(
 //     Byzantine-safe — that is Quasar's job.
 //   - Quasar → a strict >⅔ of signer stake by distinct signers (config.TwoThirdsStakeFloor)
 //     plus a config.TwoThirdsCount(n) count of them — the same supermajority read in
-//     stake and in seats, and both must hold. This is the export rung, the Byzantine-safe
-//     finality bridges, DEX settlement, cross-chain messages and validator-set transitions
-//     consume, so "how much stake agreed" is not enough: it must also be how MANY.
+//     stake and in seats, and both must hold — over a signing set of at least
+//     minBFTCommittee. This is the export rung, the Byzantine-safe finality bridges,
+//     DEX settlement, cross-chain messages and validator-set transitions consume, so
+//     "how much stake agreed" is not enough: it must also be how MANY, out of enough
+//     parties for a supermajority to carry a fault budget at all.
 //
 // The tier is read from the cert, but the threshold is re-derived from the authoritative
 // validator set rather than taken from the cert's self-declared Threshold, so a cert
@@ -504,7 +524,12 @@ func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) e
 
 // verifyQuasarSupermajority enforces the Quasar EXPORT threshold: the summed stake of the
 // cert's distinct voters STRICTLY exceeds two-thirds of the signer stake at the epoch, AND
-// there are at least config.TwoThirdsCount(n) of them.
+// there are at least config.TwoThirdsCount(n) of them, AND n is at least minBFTCommittee.
+//
+// The third clause is a floor on the SET rather than on the voters, and the other two do not
+// imply it: a supermajority is only a Byzantine claim when there is a fault budget for it to
+// spend, and f = ⌊(n−1)/3⌋ is zero below four signers. See the clause itself for why the
+// count floor cannot stand in for it.
 //
 // TWO INDEPENDENT PREDICATES, neither sufficient alone — the same shape as Nova, one rung
 // up. Stake alone is not export-grade finality: a single validator holding two thirds of the
@@ -568,6 +593,31 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 	if n < 1 {
 		return fmt.Errorf("%w: quasar tier over an unresolved validator set (n=%d) at epoch %d",
 			ErrQCBelowThreshold, n, epochHeight)
+	}
+	// The export rung's floor on the SET, which is a different quantity from its
+	// floor on the voters and is not implied by it. Byzantine tolerance is
+	// f = ⌊(n−1)/3⌋, and that is 0 for n of one, two and three: below four signers
+	// a ⅔ supermajority tolerates no fault at all. Every signer is load-bearing,
+	// so a single compromised key is not one fault absorbed by a margin, it is a
+	// forged export certificate. "Two thirds agreed" is a claim about a fault
+	// budget, and at n<4 there is no budget for the claim to be about.
+	//
+	// The count clause below cannot catch it, because it is the supermajority of
+	// whatever set it is handed: TwoThirdsCount(1)=1, so one signer over a
+	// one-signer set clears the count and the stake floors together and mints
+	// export finality. That is the shape the R5 denominator change made reachable
+	// — a set can now shrink to its signers, and shrinking is what this refuses to
+	// certify past.
+	//
+	// minBFTCommittee is the same constant bftCommittee floors committee SELECTION
+	// at, for the same reason and with the same arithmetic; this is that floor read
+	// at the certificate rather than at the sampler. Nova has no such clause and
+	// must not grow one: it authorizes only local execution it can still reorg
+	// away, and a small chain has to be able to make local progress.
+	if n < minBFTCommittee {
+		return fmt.Errorf("%w: quasar tier over %d signers, need at least %d — below the minimum "+
+			"Byzantine committee f=⌊(n−1)/3⌋ is 0 and a two-thirds supermajority tolerates no "+
+			"fault, at epoch %d", ErrQCBelowThreshold, n, minBFTCommittee, epochHeight)
 	}
 	if floor := config.TwoThirdsCount(n); c.VoterCount() < floor {
 		return fmt.Errorf("%w: quasar cert has %d distinct voters, need at least %d of %d at epoch %d",

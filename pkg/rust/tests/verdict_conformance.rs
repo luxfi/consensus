@@ -126,7 +126,11 @@ impl VoteVerifier for Trust {
 /// about the DECISION cannot hide inside a difference of vocabulary.
 fn refusal(rung: &str, err: &CertError) -> &'static str {
     match err {
+        // Go folds all three into ErrQCBelowThreshold: an unresolved set, a
+        // signing set below the minimum Byzantine committee, and a short signer
+        // count are one refusal class there and three variants here.
         CertError::UnresolvedSet { .. }
+        | CertError::MinCommittee { .. }
         | CertError::SignerFloor { .. }
         | CertError::BelowThreshold { .. } => "belowThreshold",
         CertError::StakeBelowMajority { .. } => "stakeBelowMajority",
@@ -237,8 +241,8 @@ fn the_weighted_decision_is_the_one_go_made() {
     // empty list, which is the failure mode the whole file exists to close.
     assert_eq!(
         cases.len(),
-        11,
-        "expected 11 frozen finality verdicts, checked {}",
+        13,
+        "expected 13 frozen finality verdicts, checked {}",
         cases.len()
     );
 }

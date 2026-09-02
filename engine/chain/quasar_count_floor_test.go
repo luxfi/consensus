@@ -157,7 +157,21 @@ func TestQuasarCountFloor_DoorAndVerifierAreOneRuleAtTwoSizes(t *testing.T) {
 // reading: it drives a real set to its first emission and verifies the artifact
 // through the full predicate, including the clause this file is about.
 func TestQuasarCountFloor_ProducerNeverBuildsARefusedCert(t *testing.T) {
-	for _, n := range []int{1, 2, 3, 4, 5, 7, 11, 21, 41} {
+	// Below the minimum Byzantine committee the two are still one rule, and the rule
+	// is "no export": the attestor reaches the count floor, assembles, and its own
+	// VerifyWeighted refuses — so nothing is emitted. Producer and verifier agree on
+	// the refusal exactly as they agree on the emissions below, which is the property
+	// this test is about and not an exception to it.
+	for n := 1; n < minBFTCommittee; n++ {
+		vs := newTestValidatorSet(n)
+		q := NewQuasarAttestor(vs, vs)
+		pos := attestPos(ids.GenerateTestID(), 1, ids.GenerateTestID())
+		if cert, _ := attestAll(t, q, vs, pos, 0, n); cert != nil {
+			t.Fatalf("n=%d: the producer emitted an export certificate the verifier refuses", n)
+		}
+	}
+
+	for _, n := range []int{4, 5, 7, 11, 21, 41} {
 		vs := newTestValidatorSet(n)
 		q := NewQuasarAttestor(vs, vs)
 		pos := attestPos(ids.GenerateTestID(), 1, ids.GenerateTestID())

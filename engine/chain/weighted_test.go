@@ -38,6 +38,7 @@ func newStakeMap(vs *testValidatorSet, weights ...uint64) *stakeMap {
 func (s *stakeMap) Weight(nodeID ids.NodeID, _ uint64) uint64 { return s.w[nodeID] }
 func (s *stakeMap) SignerStake(_ uint64) uint64               { return s.total }
 func (s *stakeMap) SignerCount(_ uint64) int                  { return len(s.w) }
+func (s *stakeMap) CarriedStake(_ uint64) uint64              { return s.total }
 
 // TestWeighted_LowStakeCoalitionRejected is the HIGH-3 core: 4 validators with
 // stake {97, 1, 1, 1} (total 100). A cert signed by the THREE low-stake nodes
