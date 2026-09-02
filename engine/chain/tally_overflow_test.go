@@ -130,29 +130,30 @@ func TestQuasarTallyRefusesAWrappingStakeSource(t *testing.T) {
 // stricter. A set whose voters sum to exactly the widest representable total is
 // still tallied and still decided on its merits.
 func TestTallyStillSumsASetThatFits(t *testing.T) {
-	vs := newTestValidatorSet(3)
+	vs := newTestValidatorSet(minBFTCommittee)
 	pos := VotePosition{ChainID: ids.GenerateTestID(), Height: 1, BlockID: ids.GenerateTestID()}
 	const epoch = uint64(1)
 
 	const half = uint64(1) << 63
-	// Every seat carries stake and every seat signs. A weightless third seat would
-	// be refused by both admission doors (validators.ErrZeroWeight), and two of
-	// three signers is below the export count floor ⌊2·3/3⌋+1 = 3 — neither would
-	// reach the tally this test is about.
+	// Every seat carries stake and every seat signs. A weightless seat would be
+	// refused by both admission doors (validators.ErrZeroWeight), and a set below
+	// minBFTCommittee signers is refused by the export rung's committee clause —
+	// neither would reach the tally this test is about.
 	src := &stakeMap{
 		w: map[ids.NodeID]uint64{
 			vs.nodeID(0): half,
-			vs.nodeID(1): half - 2,
+			vs.nodeID(1): half - 3,
 			vs.nodeID(2): 1,
+			vs.nodeID(3): 1,
 		},
-		total: math.MaxUint64, // == half + (half-2) + 1, the widest total that fits
+		total: math.MaxUint64, // == half + (half-3) + 1 + 1, the widest total that fits
 	}
 
-	votes := make([]SignedVote, 0, 3)
-	for _, i := range []int{0, 1, 2} {
+	votes := make([]SignedVote, 0, minBFTCommittee)
+	for _, i := range []int{0, 1, 2, 3} {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, Quasar, 3, votes)
+	cert, err := AssembleQuorumCert(pos, Quasar, uint32(minBFTCommittee), votes)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}

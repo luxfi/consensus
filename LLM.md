@@ -381,10 +381,10 @@ Both accept rungs carry a STAKE floor and a distinct-SIGNER floor, and neither
 half is sufficient alone. `QuorumCert.VerifyWeighted` enforces both, recomputed
 from the authoritative validator set at the cert's epoch:
 
-| rung | signers | stake | authorizes |
-|---|---|---|---|
-| Nova | ≥ `chain.NovaSignerFloor(n)` | > `config.HalfStakeFloor(signer)` | local execution (reorgable) |
-| Quasar | ≥ `config.TwoThirdsCount(n)` | > `config.TwoThirdsStakeFloor(signer)` | export — bridges, DEX, cross-chain |
+| rung | set | signers | stake | authorizes |
+|---|---|---|---|---|
+| Nova | n ≥ 1 | ≥ `chain.NovaSignerFloor(n)` | > `config.HalfStakeFloor(signer)` | local execution (reorgable) |
+| Quasar | n ≥ `minBFTCommittee` (4) | ≥ `config.TwoThirdsCount(n)` | > `config.TwoThirdsStakeFloor(signer)` | export — bridges, DEX, cross-chain |
 
 Both numbers are read over the SIGNERS: `signer` is `StakeSource.SignerStake` and
 `n` is `StakeSource.SignerCount`, never the membership roll. A member the chain
@@ -392,14 +392,54 @@ carries without a key is a spectator — it holds stake and can never cast a vot
 any verifier accepts — and counting it would raise a bar it cannot help clear.
 Past a third of what the chain carries, ⅔ becomes arithmetically unreachable and
 export is stranded with every signer agreeing; past a half, so is Nova. The corpus
-freezes this as `quasar_keyless_third`.
+freezes both halves separately, because a set can be stranded in stake or in
+seats: `quasar_keyless_stake` (six signers, a seventh member holding a third of
+the roll — the count floor is 5 either way, so only the stake denominator
+decides) and `quasar_keyless_count` (four signers, two members holding one unit
+each — the stake clears under either reading, so only the count denominator
+decides).
 
 This is the ⅔ rule read over the right set, not a weakening of it. Quorum
 intersection is untouched — two disjoint quorums each past ⅔ of the signer stake
 would sum past the whole of it — and the fault budget simply stops being spent on
-parties known in advance to cast no vote. C++ has always computed it this way:
-`QuorumCertEngine` keys its set by public key, so a spectator has no slot to
-occupy there.
+parties known in advance to cast no vote.
+
+### The export rung's third floor: the SET
+
+Reading both floors over the signers lets a set SHRINK to its signers, and a rung
+whose floors are read over n is satisfiable at every n — `TwoThirdsCount(1)` is 1,
+so one signer over a one-signer set clears the count and the stake floors
+together. Byzantine tolerance is `f = ⌊(n−1)/3⌋`, which is ZERO for n of one, two
+and three: such a certificate absorbs no fault, and one compromised key among its
+signers forges export finality outright.
+
+So the export rung refuses a signing set below `minBFTCommittee` — the same
+constant `bftCommittee` floors committee SELECTION at, read at the certificate
+instead of at the sampler. Nova has no such clause and must not grow one: it
+authorizes local execution the chain can still reorg away, and a small or
+partitioned chain has to be able to make progress. A chain with three validators
+therefore PRODUCES and never CERTIFIES; operators need n ≥ 4 to export with any
+fault tolerance at all. The corpus freezes this as `quasar_keyless_third`, whose
+three unanimous signers clear both quorum floors and are refused anyway.
+
+The C++ engine enforces the same shape from the other direction: `Validator` is a
+public key there and the set is keyed by one, so a spectator has no slot to
+occupy — and since a `PubKey` is a fixed array, presence proves nothing, so its
+constructor now runs `bls::key_validate` on every seat. A key that is not a
+canonical, in-subgroup, non-identity G1 point is refused at construction rather
+than admitted and silently unable to sign. "A validator is a signer" is enforced
+there, not assumed.
+
+### Carried stake vs signer stake, at the seam
+
+`StakeSource` reports both. `SignerStake`/`SignerCount` are the denominators every
+floor is read against; `CarriedStake` is the membership roll's weight and NO floor
+may read it. It exists so the gap is visible: a chain whose signable stake has
+fallen to a sliver of what it carries keeps certifying correctly at ⅔ of the
+sliver, and `ResponsiveStakePct` — which is voted/signer — stays healthy the whole
+way down. `FinalityStatus.SignerStakePct` (signer/carried) is the number that
+falls, and the one to alarm on. Rust's `ValidatorSet::carried`, C++'s
+`QuorumCertEngine::total_stake`.
 
 The reason for a count floor at all: a threshold read only in stake reports one
 party wherever the stake is concentrated in one validator. Two thirds of the stake

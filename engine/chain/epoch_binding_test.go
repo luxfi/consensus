@@ -68,6 +68,12 @@ func (e *epochStakeSource) SignerCount(height uint64) int {
 	return len(w)
 }
 
+// Every seat in a snapshot holds a key, so the set carries exactly what its signers hold.
+func (e *epochStakeSource) CarriedStake(height uint64) uint64 {
+	_, t := e.snapshotFor(height)
+	return t
+}
+
 // TestEpochBinding_CrossEpochCertRejected pins property (1): a cert is bound to
 // the validator-set-root it was signed under; mutating the cert's position root
 // to a different epoch's root makes every signature fail verification.

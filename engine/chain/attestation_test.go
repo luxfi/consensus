@@ -220,12 +220,26 @@ func TestQuasarQuorum_ScaleMatrix(t *testing.T) {
 			t.Fatalf("config.TwoThirdsCount(%d) = %d, want %d", n, got, want)
 		}
 	}
-	// Live-set derivation: an attestor sized to n=3 emits at 3 (not a static 4 or 15).
-	vs := newTestValidatorSet(3)
+	// Live-set derivation: an attestor sized to n=4 emits at 3 (not a static 4 or 15).
+	vs := newTestValidatorSet(4)
 	q := NewQuasarAttestor(vs, vs)
 	pos := attestPos(ids.GenerateTestID(), 1, ids.GenerateTestID())
-	cert, emitAt := attestAll(t, q, vs, pos, 0, 3)
+	cert, emitAt := attestAll(t, q, vs, pos, 0, 4)
 	if cert == nil || emitAt != 2 {
-		t.Fatalf("n=3 must emit at the 3rd attester (⌊2·3/3⌋+1=3), got cert=%v emitAt=%d", cert != nil, emitAt)
+		t.Fatalf("n=4 must emit at the 3rd attester (⌊2·4/3⌋+1=3), got cert=%v emitAt=%d", cert != nil, emitAt)
+	}
+
+	// And the count floor is not the only thing sizing the rung. Below the minimum
+	// Byzantine committee the export rung certifies NOTHING, whatever the count
+	// says: ⌊2·3/3⌋+1 is 3 and three unanimous attesters still produce no artifact,
+	// because f=⌊(n−1)/3⌋ is 0 there and the supermajority carries no fault budget.
+	for n := 1; n < minBFTCommittee; n++ {
+		small := newTestValidatorSet(n)
+		qs := NewQuasarAttestor(small, small)
+		posSmall := attestPos(ids.GenerateTestID(), 1, ids.GenerateTestID())
+		if c, _ := attestAll(t, qs, small, posSmall, 0, n); c != nil {
+			t.Fatalf("n=%d: the attestor emitted an export certificate over a set with no "+
+				"Byzantine fault budget", n)
+		}
 	}
 }

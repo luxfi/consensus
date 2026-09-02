@@ -43,7 +43,8 @@ use blst::BLST_ERROR;
 
 use crate::finality::{
     canonical_vote_message, half_stake_floor, nova_signer_floor, two_thirds_count,
-    two_thirds_stake_floor, Finality, Position, QC_FINALITY, QUORUM_CERT_VERSION,
+    two_thirds_stake_floor, Finality, Position, MIN_BFT_COMMITTEE, QC_FINALITY,
+    QUORUM_CERT_VERSION,
 };
 use crate::pop::{self, PopError};
 
@@ -104,6 +105,12 @@ pub enum CertError {
     SigInvalid(usize),
     BelowThreshold { have: u32, need: u32 },
     UnresolvedSet { n: i64 },
+    /// An EXPORT certificate over a signing set too small for a Byzantine
+    /// supermajority to mean anything: f = ⌊(n−1)/3⌋ is zero below
+    /// [`crate::finality::MIN_BFT_COMMITTEE`], so the certificate absorbs no fault
+    /// and one compromised key forges it. A floor on the SET, not on the voters —
+    /// Go folds it into `ErrQCBelowThreshold`.
+    MinCommittee { n: i64, need: i64 },
     SignerFloor { have: i64, need: i64, n: i64 },
     StakeZero { epoch_height: u64 },
     StakeBelowMajority { voted: u64, signer: u64, need_above: u64 },
@@ -163,6 +170,11 @@ impl std::fmt::Display for CertError {
             CertError::UnresolvedSet { n } => {
                 write!(f, "cert over an unresolved validator set (n={n})")
             }
+            CertError::MinCommittee { n, need } => write!(
+                f,
+                "quasar over {n} signers, need at least {need} — below the minimum Byzantine \
+                 committee f=(n-1)/3 is 0 and a two-thirds supermajority tolerates no fault"
+            ),
             CertError::SignerFloor { have, need, n } => {
                 write!(f, "cert has {have} distinct voters, need {need} of {n}")
             }
@@ -446,9 +458,13 @@ impl QuorumCert {
     }
 
     /// Quasar: the summed stake of the distinct voters strictly exceeds
-    /// `floor(2·signer/3)`, AND there are at least `two_thirds_count(n)` of them.
-    /// This is the export threshold — the only rung a bridge, a settlement, or a
-    /// cross-chain message may read.
+    /// `floor(2·signer/3)`, AND there are at least `two_thirds_count(n)` of them,
+    /// AND `n` is at least [`MIN_BFT_COMMITTEE`]. This is the export threshold —
+    /// the only rung a bridge, a settlement, or a cross-chain message may read.
+    ///
+    /// The third clause is a floor on the SET rather than on the voters, and the
+    /// other two do not imply it: a supermajority is only a Byzantine claim when
+    /// there is a fault budget for it to spend.
     ///
     /// Two independent predicates, neither sufficient alone, the same shape as
     /// Nova one rung up. Stake alone is not export-grade finality: a single
@@ -492,6 +508,28 @@ impl QuorumCert {
         let n = stake.signer_count(epoch_height);
         if n < 1 {
             return Err(CertError::UnresolvedSet { n });
+        }
+        // The export rung's floor on the SET, which is a different quantity from
+        // its floor on the voters and is not implied by it. Byzantine tolerance is
+        // f = (n-1)/3, and that is 0 for n of one, two and three: below four
+        // signers a two-thirds supermajority tolerates no fault at all. Every
+        // signer is load-bearing, so a single compromised key is not one fault
+        // absorbed by a margin, it is a forged export certificate.
+        //
+        // The count clause below cannot catch it, because it is the supermajority
+        // of whatever set it is handed: `two_thirds_count(1)` is 1, so one
+        // signature over a one-signer set clears the count and the stake floors
+        // together. Reading both floors over the signers is what stops a spectator
+        // stranding a chain; it is not a way for a chain with three signers to
+        // export, and this is the clause that says so.
+        //
+        // Nova has no such floor and must not grow one: it authorizes only local
+        // execution the chain can still reorg away.
+        if n < MIN_BFT_COMMITTEE {
+            return Err(CertError::MinCommittee {
+                n,
+                need: MIN_BFT_COMMITTEE,
+            });
         }
         let need = two_thirds_count(n);
         if self.voter_count() < need {

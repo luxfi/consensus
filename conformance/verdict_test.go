@@ -10,7 +10,15 @@
 // config.TwoThirdsCount or chain.NovaSignerFloor:
 //
 //	Nova   accepts iff signers >= min(floor(n/2)+1, 3) and 2*voted > total
-//	Quasar accepts iff signers >= floor(2*n/3)+1       and 3*voted > 2*total
+//	Quasar accepts iff n >= 4 and signers >= floor(2*n/3)+1 and 3*voted > 2*total
+//
+// n IS THE SIGNER COUNT — the seats of the row's set that hold a key — and never
+// len(set), the membership roll. It is recomputed here from the row's own seats
+// rather than taken from any field, because the denominator is the thing most
+// likely to be moved and a guard that transcribed the roll would re-bless a floor
+// moved onto it with -update. The corpus carries rows where the two readings give
+// DIFFERENT floors, so this is not a distinction without a difference; see
+// TestKeylessRowsBindBothDenominators, which fails if it ever becomes one.
 //
 // Both stake halves are the strict forms. "voted > floor(total/2)" and
 // "2*voted > total" are the same predicate over the integers, as are
@@ -42,7 +50,15 @@ func bigOf(t *testing.T, s string) *big.Int {
 // re-blessed in the same commit.
 func TestVerdictsStatedOutright(t *testing.T) {
 	for _, c := range Build().Verdict.Finality {
-		n := len(c.Set)
+		// The SIGNER count, counted here from the seats. A seat with no key holds
+		// stake and can never cast a vote, so it is in no floor's denominator —
+		// and this guard exists precisely to notice if a floor is moved onto it.
+		n := 0
+		for _, s := range c.Set {
+			if !s.Keyless {
+				n++
+			}
+		}
 		total := bigOf(t, c.Total)
 		voted := bigOf(t, c.Voted)
 		signers := len(c.Signers)
@@ -69,10 +85,20 @@ func TestVerdictsStatedOutright(t *testing.T) {
 			// formula.
 			for floor = 0; 3*floor <= 2*n; floor++ {
 			}
+			// The export rung's floor on the SET, transcribed the same way: the
+			// smallest committee that tolerates a Byzantine fault at all, i.e.
+			// the least n whose fault budget f = floor((n-1)/3) reaches one. It
+			// is a search and not the constant four for the reason above — and
+			// it is a separate clause because neither floor above implies it:
+			// both shrink with n, and at n=1 the count floor is 1.
+			committee := 1
+			for (committee-1)/3 < 1 {
+				committee++
+			}
 			// 3*voted > 2*total
 			thrice := new(big.Int).Mul(voted, big.NewInt(3))
 			twice := new(big.Int).Lsh(total, 1)
-			want = signers >= floor && thrice.Cmp(twice) > 0
+			want = n >= committee && signers >= floor && thrice.Cmp(twice) > 0
 		default:
 			t.Fatalf("%s: a certificate attests nova or quasar, not %q", c.Name, c.Rung)
 		}
@@ -254,6 +280,132 @@ func TestStakeCannotBuyExportEither(t *testing.T) {
 	}
 }
 
+// TestExportNeedsAByzantineCommittee — the export rung's floor on the SET, held
+// to the corpus.
+//
+// It is the clause neither quorum floor can express, because both are read over n
+// and both therefore shrink with it: over one signer, ⌊2·1/3⌋+1 is one signature
+// and ⌊2·w/3⌋ is two thirds of that signer's own stake. A rung whose floors are
+// satisfiable at every set size will certify a set of one, and a certificate that
+// tolerates no Byzantine fault is not the claim the export rung makes.
+//
+// The row must therefore refuse while BOTH quorum floors are met. A row that
+// refused on stake or on the count would say nothing about this clause.
+func TestExportNeedsAByzantineCommittee(t *testing.T) {
+	c := findFinality(t, "quasar_keyless_third")
+
+	if c.Rung != "quasar" {
+		t.Fatalf("the committee case attests %q", c.Rung)
+	}
+	n := 0
+	for _, s := range c.Set {
+		if !s.Keyless {
+			n++
+		}
+	}
+	if n >= 4 {
+		t.Fatalf("the case is weighed over %d signers, which is a Byzantine committee — "+
+			"it does not reach the clause", n)
+	}
+	// Both quorum floors are MET, so neither can be what refused it.
+	if len(c.Signers) < c.SignerFloor {
+		t.Fatalf("%d signers is below the recorded count floor %d, so this case is refused "+
+			"on the count and proves nothing about the committee clause",
+			len(c.Signers), c.SignerFloor)
+	}
+	thrice := new(big.Int).Mul(bigOf(t, c.Voted), big.NewInt(3))
+	twice := new(big.Int).Lsh(bigOf(t, c.Total), 1)
+	if thrice.Cmp(twice) <= 0 {
+		t.Fatalf("the signers hold %s of %s, which does not clear the stake floor — this "+
+			"case is refused on stake and proves nothing about the committee clause",
+			c.Voted, c.Total)
+	}
+	if c.Accept {
+		t.Error("a unanimous certificate over a set with no Byzantine fault budget was " +
+			"accepted at the EXPORT rung: one compromised key among those signers forges it")
+	}
+	if c.Refusal != "belowThreshold" {
+		t.Errorf("refused with %q, want belowThreshold", c.Refusal)
+	}
+
+	// And the floor is a floor, not a ban: the corpus carries export certificates
+	// that DO carry, over sets at or above the committee size.
+	for _, name := range []string{"quasar_supermajority", "quasar_keyless_stake", "quasar_keyless_count"} {
+		if a := findFinality(t, name); !a.Accept {
+			t.Errorf("%s does not carry; the committee clause has swallowed the rung", name)
+		}
+	}
+}
+
+// TestKeylessRowsBindBothDenominators — the corpus must make the SIGNER
+// denominator observable, in BOTH units.
+//
+// A denominator only binds where the two readings differ. Every set with no
+// keyless seat reads identically either way, and so does a keyless set whose two
+// readings happen to land on the same floor: with three signers on a roll of four,
+// ⌊2·3/3⌋+1 and ⌊2·4/3⌋+1 are both three, so the count half of such a row is
+// vacuous — it would pass an implementation that read the count over the roll.
+//
+// So the corpus has to carry a row that separates them in stake AND a row that
+// separates them in seats, or the guard above is transcribing a distinction the
+// evidence cannot detect. This test fails if either row is lost or flattened.
+func TestKeylessRowsBindBothDenominators(t *testing.T) {
+	stakeBinds, countBinds := "", ""
+
+	for _, c := range Build().Verdict.Finality {
+		if c.Rung != "quasar" {
+			continue
+		}
+		signerN, carried := 0, new(big.Int)
+		for _, s := range c.Set {
+			carried.Add(carried, bigOf(t, s.Weight))
+			if !s.Keyless {
+				signerN++
+			}
+		}
+		rollN := len(c.Set)
+		if rollN == signerN {
+			continue // no spectator: the two readings are one reading
+		}
+		total := bigOf(t, c.Total)
+		voted := bigOf(t, c.Voted)
+
+		// Would the ROLL denominator have decided this row differently? In stake:
+		// 3*voted > 2*carried is the same predicate over the roll's total.
+		thriceVoted := new(big.Int).Mul(voted, big.NewInt(3))
+		clearsSigner := thriceVoted.Cmp(new(big.Int).Lsh(total, 1)) > 0
+		clearsRoll := thriceVoted.Cmp(new(big.Int).Lsh(carried, 1)) > 0
+		if clearsSigner && !clearsRoll {
+			stakeBinds = c.Name
+		}
+		// In seats: the count floor over each denominator, by the same search the
+		// guard uses.
+		signerFloor, rollFloor := 0, 0
+		for ; 3*signerFloor <= 2*signerN; signerFloor++ {
+		}
+		for ; 3*rollFloor <= 2*rollN; rollFloor++ {
+		}
+		if len(c.Signers) >= signerFloor && len(c.Signers) < rollFloor {
+			countBinds = c.Name
+		}
+	}
+
+	if stakeBinds == "" {
+		t.Error("no row where the signer stake clears the export floor and the carried " +
+			"stake does not: the STAKE denominator is not exercised, and an implementation " +
+			"reading it over the membership roll would pass this corpus")
+	}
+	if countBinds == "" {
+		t.Error("no row where the signers meet the export count floor over their own number " +
+			"and fall short of it over the roll: the COUNT denominator is not exercised, and " +
+			"an implementation reading it over the membership roll would pass this corpus")
+	}
+	if stakeBinds != "" && countBinds != "" && stakeBinds == countBinds {
+		t.Errorf("%s is the only row binding either denominator; the two halves are pinned "+
+			"together and neither is isolated", stakeBinds)
+	}
+}
+
 // TestBothRungsCarryASignerFloor — neither rung may be decided by stake alone.
 // A rung whose count floor is dropped stops asking how many parties agreed and
 // starts asking only how much stake did, which is one signature wherever stake
@@ -322,7 +474,7 @@ func TestAdmissionWeightRulesStatedOutright(t *testing.T) {
 func TestVerdictSectionIsPopulated(t *testing.T) {
 	v := Build().Verdict
 
-	if got, want := len(v.Finality), 11; got != want {
+	if got, want := len(v.Finality), 13; got != want {
 		t.Errorf("%d finality cases, want %d — adding one is deliberate, losing one is not", got, want)
 	}
 	if got, want := len(v.Admission), 4; got != want {

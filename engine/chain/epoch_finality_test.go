@@ -136,6 +136,11 @@ func (s *epochValidatorSet) SignerCount(epochHeight uint64) int {
 	return len(st)
 }
 
+// Every member at an epoch holds a key here, so carried and signer stake coincide.
+func (s *epochValidatorSet) CarriedStake(epochHeight uint64) uint64 {
+	return s.SignerStake(epochHeight)
+}
+
 // ValidatorSetRoot is a deterministic commitment to the set@epoch — distinct per
 // epoch, Empty for an unknown/empty epoch. (A simple length+nodeid+stake fold;
 // the node's production source uses SHA-256, but any deterministic function of

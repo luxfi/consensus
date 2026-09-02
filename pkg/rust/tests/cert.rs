@@ -319,22 +319,26 @@ fn a_count_quorum_without_the_stake_is_refused() {
 
 /// Exactly two thirds is not a supermajority. The predicate is strict, and this
 /// is the boundary it turns on.
+///
+/// Six validators, so the boundary lands inside the set AND the set is a
+/// Byzantine committee — a three-validator set has the same boundary and cannot
+/// export at all, which would make the passing half of this case untestable.
 #[test]
 fn exactly_two_thirds_is_refused_and_one_more_passes() {
-    // Three validators of 100. floor(2·300/3) = 200, so 200 must fail.
-    let (signers, set) = committee(3, 100);
-    let two = valid_cert(&signers, 2, 2);
+    // Six validators of 100. floor(2·600/3) = 400, so 400 must fail.
+    let (signers, set) = committee(6, 100);
+    let four = valid_cert(&signers, 4, 4);
     assert_eq!(
-        two.verify_weighted(&set, &set, 0),
+        four.verify_weighted(&set, &set, 0),
         Err(CertError::StakeBelowSupermajority {
-            voted: 200,
-            signer: 300,
-            need_above: 200,
+            voted: 400,
+            signer: 600,
+            need_above: 400,
         })
     );
 
-    let three = valid_cert(&signers, 3, 3);
-    assert_eq!(three.verify_weighted(&set, &set, 0), Ok(()));
+    let five = valid_cert(&signers, 5, 5);
+    assert_eq!(five.verify_weighted(&set, &set, 0), Ok(()));
 }
 
 /// An epoch that resolves to no stake at all cannot support a claim about a
@@ -1290,8 +1294,8 @@ fn an_export_certificate_over_an_unresolved_set_fails_closed() {
         }
     }
 
-    let (signers, set) = committee(3, 100);
-    let cert = valid_cert(&signers, 3, 3);
+    let (signers, set) = committee(4, 100);
+    let cert = valid_cert(&signers, 4, 4);
     // Against the real set this certificate exports.
     assert_eq!(cert.verify_weighted(&set, &set, 0), Ok(()));
     assert_eq!(
@@ -1302,31 +1306,35 @@ fn an_export_certificate_over_an_unresolved_set_fails_closed() {
 
 // ------------------------------------------------------- the keyless denominator
 
-/// R5: a member that cannot sign moves no floor.
+/// R5, the STAKE half: a member that cannot sign moves no stake floor.
 ///
-/// Three validators hold a hundred each and a key; a fourth holds two hundred and
-/// no key, so two fifths of what the set carries belongs to a member that can
-/// never cast a vote — past the third at which a denominator read over the
-/// membership roll puts the export rung permanently out of reach.
+/// Six validators hold a hundred each and a key; a seventh holds three hundred
+/// and no key, so a third of what the set carries belongs to a member that can
+/// never cast a vote — the point at which a denominator read over the membership
+/// roll puts the export rung permanently out of reach.
+///
+/// The COUNT floor is deliberately the same number either way here — the smallest
+/// k with 3k>2n is five for both six and seven — so the stake denominator is the
+/// only thing that decides this case, and a fix that moved only the count fails it.
 ///
 /// Every validator that CAN sign does. That is the entire signing set and the
 /// strongest certificate this set is capable of producing: if it is refused, no
 /// certificate is ever accepted here and export finality is stranded for good.
-/// Read over the membership roll it IS refused — 300 does not exceed
-/// floor(2·500/3) = 333, and no quorum could ever reach 334, because the 200 it
+/// Read over the membership roll it IS refused — 600 does not exceed
+/// floor(2·900/3) = 600, and no quorum could ever reach 601, because the stake it
 /// falls short by is held by a spectator.
 #[test]
 fn keyless_stake_is_in_no_floor_and_export_still_reaches() {
-    let (signers, mut set) = committee(3, 100);
+    let (signers, mut set) = committee(6, 100);
     let mut spectator = [0u8; 20];
     spectator[0] = 200;
-    set.insert_unkeyed(spectator, 200).expect("a keyless member");
+    set.insert_unkeyed(spectator, 300).expect("a keyless member");
 
     // What the set carries, and what can actually sign.
-    assert_eq!(set.carried(), 500, "the chain carries five hundred");
-    assert_eq!(set.signer_stake(0), 300, "three hundred of it can sign");
-    assert_eq!(set.len(), 4, "four members");
-    assert_eq!(set.signer_count(0), 3, "three signers");
+    assert_eq!(set.carried(), 900, "the chain carries nine hundred");
+    assert_eq!(set.signer_stake(0), 600, "six hundred of it can sign");
+    assert_eq!(set.len(), 7, "seven members");
+    assert_eq!(set.signer_count(0), 6, "six signers");
     assert_eq!(set.weight(&spectator, 0), 0, "a spectator weighs nothing");
     assert!(!set.can_verify(&spectator));
 
@@ -1336,9 +1344,16 @@ fn keyless_stake_is_in_no_floor_and_export_still_reaches() {
         set.signer_stake(0) <= two_thirds_stake_floor(set.carried()),
         "fixture does not reproduce R5: the signing set clears the roll floor anyway"
     );
+    // And it isolates the STAKE half only if the count floor is the same number
+    // over the signers and over the roll.
+    assert_eq!(
+        two_thirds_count(set.signer_count(0)),
+        two_thirds_count(set.len() as i64),
+        "the count floors differ, so this case does not turn on stake alone"
+    );
 
     // The whole signing set signs, and the export rung admits it.
-    let cert = valid_cert(&signers, 3, 3);
+    let cert = valid_cert(&signers, 6, 6);
     assert!(cert.voter_count() >= two_thirds_count(set.signer_count(0)));
     assert_eq!(cert.verify(&set, 0), Ok(()));
     assert_eq!(
@@ -1347,17 +1362,137 @@ fn keyless_stake_is_in_no_floor_and_export_still_reaches() {
         "export refused with every signer in the set agreeing"
     );
 
-    // And the rung is still a rung: two of three is short of two thirds of the
+    // And the rung is still a rung: four of six is short of two thirds of the
     // stake that can sign, so the floor was moved off the spectator, not removed.
-    let two = valid_cert(&signers, 2, 2);
+    let four = valid_cert(&signers, 4, 4);
     assert_eq!(
-        two.verify_weighted(&set, &set, 0),
+        four.verify_weighted(&set, &set, 0),
         Err(CertError::StakeBelowSupermajority {
-            voted: 200,
-            signer: 300,
-            need_above: 200,
+            voted: 400,
+            signer: 600,
+            need_above: 400,
         })
     );
+}
+
+/// R5, the COUNT half, isolated: a member that cannot sign moves no count floor
+/// either.
+///
+/// Four validators hold a hundred each and a key; two more hold ONE each and no
+/// key. The keyless weight is a rounding error on purpose, so the stake floor is
+/// cleared under either denominator — 400 exceeds floor(2·400/3) = 266 and
+/// floor(2·402/3) = 268 alike — and stake cannot be what decides.
+///
+/// The count can. The smallest k with 3k>2n is three over the four signers and
+/// five over the roll of six, and four signatures is every one this set is able
+/// to produce. Read over the roll, two members holding two units between them
+/// strand the export rung of a chain whose four real validators all agree.
+#[test]
+fn keyless_seats_are_in_no_count_floor_either() {
+    let (signers, mut set) = committee(4, 100);
+    for i in 0..2u8 {
+        let mut spectator = [0u8; 20];
+        spectator[0] = 200 + i;
+        set.insert_unkeyed(spectator, 1).expect("a keyless member");
+    }
+
+    assert_eq!(set.signer_count(0), 4, "four signers");
+    assert_eq!(set.len(), 6, "six members");
+    assert_eq!(set.signer_stake(0), 400);
+    assert_eq!(set.carried(), 402);
+
+    // The stake half is satisfied under EITHER denominator, so it is not what
+    // decides — that is what makes this case about the count and nothing else.
+    assert!(set.signer_stake(0) > two_thirds_stake_floor(set.signer_stake(0)));
+    assert!(set.signer_stake(0) > two_thirds_stake_floor(set.carried()));
+    // And the two count floors really do differ, or the case proves nothing.
+    assert!(
+        two_thirds_count(set.len() as i64) > 4,
+        "the roll floor is within reach of four signers; nothing is stranded"
+    );
+
+    let cert = valid_cert(&signers, 4, 4);
+    assert_eq!(
+        cert.verify_weighted(&set, &set, 0),
+        Ok(()),
+        "export refused with all four signers agreeing: the COUNT floor was read \
+         over seats that cannot sign"
+    );
+
+    // The rung is still a rung, and its edge is sharp on the signer denominator:
+    // three signers sit exactly ON the floor and carry, two sit below it.
+    assert_eq!(valid_cert(&signers, 3, 3).verify_weighted(&set, &set, 0), Ok(()));
+    assert!(valid_cert(&signers, 2, 2).verify_weighted(&set, &set, 0).is_err());
+}
+
+// ------------------------------------------------------ the Byzantine committee
+
+/// The export rung's floor on the SET.
+///
+/// A supermajority is a claim about a fault budget: f = (n-1)/3 validators may be
+/// arbitrarily malicious and the rest still agree on one history. Below four
+/// signers that budget is ZERO. One, two or three parties produce a unanimous
+/// certificate carrying every unit of the signer stake, and it tolerates nothing
+/// — a single compromised key is not one fault absorbed by a margin, it is a
+/// forged export certificate every verifier accepts.
+///
+/// Neither quorum floor catches it, and that is the point: both are read over n,
+/// so both shrink with it. At n=1, `two_thirds_count(1)` is 1 and one signature is
+/// a supermajority of one, over a stake floor the same signature clears outright.
+#[test]
+fn an_export_certificate_needs_a_byzantine_committee() {
+    for n in 1..4u8 {
+        let (signers, set) = committee(n, 100);
+        let cert = valid_cert(&signers, n as usize, u32::from(n));
+
+        // Both quorum floors are MET, so neither can be what refuses it.
+        assert!(cert.voter_count() >= two_thirds_count(set.signer_count(0)), "n={n}");
+        assert!(
+            u64::from(n) * 100 > two_thirds_stake_floor(set.signer_stake(0)),
+            "n={n}: unanimity does not clear the stake floor, so this case does not \
+             reach the committee clause"
+        );
+
+        assert_eq!(
+            cert.verify_weighted(&set, &set, 0),
+            Err(CertError::MinCommittee { n: i64::from(n), need: 4 }),
+            "n={n}: a unanimous certificate over a set with no Byzantine fault budget \
+             minted export finality"
+        );
+    }
+
+    // And at the floor the same shape carries: this is a floor on the set, not a
+    // ban on small chains certifying anything.
+    let (signers, set) = committee(4, 100);
+    assert_eq!(
+        valid_cert(&signers, 4, 4).verify_weighted(&set, &set, 0),
+        Ok(()),
+        "the minimum Byzantine committee cannot export"
+    );
+}
+
+/// The clause belongs to the export rung and must not migrate down the ladder.
+///
+/// Nova authorizes LOCAL EXECUTION, which the chain can still reorg away, and is
+/// crash-fault-safe rather than Byzantine-safe by construction. A four-signer
+/// floor there would stop a small or a partitioned chain making any progress, in
+/// exchange for a guarantee the rung never offered.
+#[test]
+fn nova_ignites_below_the_byzantine_committee() {
+    for n in 1..4u8 {
+        let (signers, set) = committee(n, 100);
+        let pos = position();
+        let message = canonical_vote_message(&pos, true);
+        let votes: Vec<Vote> = signers.iter().map(|s| s.vote(&message)).collect();
+        let cert = QuorumCert::assemble(Finality::Nova, pos, u32::from(n), &votes)
+            .expect("assemble");
+        assert_eq!(
+            cert.verify_weighted(&set, &set, 0),
+            Ok(()),
+            "n={n}: a unanimous NOVA certificate was refused — the export rung's \
+             committee floor has leaked down a rung"
+        );
+    }
 }
 
 /// The spectator cannot buy its way into a tally by being named as a voter: it

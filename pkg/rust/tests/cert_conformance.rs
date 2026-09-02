@@ -158,14 +158,41 @@ fn go_signatures_verify_here() {
 /// The whole predicate over a certificate whose every signature was made by the
 /// Go implementation. This is a Rust node accepting a block that Go validators
 /// certified.
+///
+/// The frozen vectors are three signers, and three signers are not a Byzantine
+/// committee — f = (3-1)/3 is 0 — so the export rung refuses that set on its own
+/// terms, in Go and here alike. The vectors pin the CIPHERSUITE, not the size of
+/// a deployment, so the set they are weighed against gains a fourth validator
+/// that holds a key, holds stake and does not sign. Not one byte of the Go
+/// material moves: the same three signatures over the same message decide a real
+/// export certificate, three of four, which is what a Rust node checking a Go
+/// network's certificate actually does.
 #[test]
 fn a_go_signed_certificate_is_accepted() {
-    let (set, votes) = go_set();
-    let cert = QuorumCert::assemble(Finality::Quasar, position(), 3, &votes).expect("assemble");
+    let (mut set, votes) = go_set();
 
-    assert_eq!(cert.verify(&set, 0), Ok(()));
-    // 300 of 300 staked, strictly above floor(2·300/3) = 200.
-    assert_eq!(cert.verify_weighted(&set, &set, 0), Ok(()));
+    // Three of three is refused on the committee clause, not on either quorum
+    // floor: 300 of 300 clears floor(2·300/3) = 200 and three signers clear a
+    // count floor of three. The size is the thing that is wrong.
+    let three = QuorumCert::assemble(Finality::Quasar, position(), 3, &votes).expect("assemble");
+    assert_eq!(three.verify(&set, 0), Ok(()));
+    assert!(
+        three.verify_weighted(&set, &set, 0).is_err(),
+        "an export certificate over three signers has no Byzantine fault budget"
+    );
+
+    // A fourth validator, keyed and staked, that casts no vote. The certificate
+    // is unchanged.
+    let sk = SecretKey::key_gen(&[9u8; 32], &[]).expect("key_gen");
+    let pk = sk.sk_to_pk().compress();
+    let silent = node_id(9);
+    set.insert(silent, 100, &pk, &pop::sign(&sk, &silent, &pk))
+        .expect("a fourth validator");
+
+    // Three of four: the count floor is three, and 300 of 400 staked is strictly
+    // above floor(2·400/3) = 266.
+    assert_eq!(three.verify(&set, 0), Ok(()));
+    assert_eq!(three.verify_weighted(&set, &set, 0), Ok(()));
 }
 
 /// Go's signatures are checked one at a time here, because that is the only
