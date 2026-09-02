@@ -104,7 +104,6 @@ var (
 	ErrQCNotStrictlyIncreasing   = errors.New("chain: cert voters are not strictly increasing (duplicate or unsorted node id)")
 	ErrQCBelowThreshold          = errors.New("chain: distinct accept votes below quorum threshold (alpha)")
 	ErrQCVoteNotAccept           = errors.New("chain: cert carries a non-accept vote")
-	ErrQCVotePosition            = errors.New("chain: cert vote position does not match cert position")
 	ErrQCSigInvalid              = errors.New("chain: cert vote signature failed verification")
 	ErrQCVerifierNil             = errors.New("chain: vote verifier is nil; cannot verify a cert's signatures — fail closed")
 	ErrQCStakeBelowSupermajority = errors.New("chain: cert voters' stake below 2/3 of signer stake (count quorum reached but not stake-weighted supermajority)")
