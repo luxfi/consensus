@@ -107,8 +107,8 @@ var (
 	ErrQCVotePosition            = errors.New("chain: cert vote position does not match cert position")
 	ErrQCSigInvalid              = errors.New("chain: cert vote signature failed verification")
 	ErrQCVerifierNil             = errors.New("chain: vote verifier is nil; cannot verify a cert's signatures — fail closed")
-	ErrQCStakeBelowSupermajority = errors.New("chain: cert voters' stake below 2/3 of total stake (count quorum reached but not stake-weighted supermajority)")
-	ErrQCStakeBelowMajority      = errors.New("chain: nova cert voters' stake is not a strict majority of total stake at the epoch")
+	ErrQCStakeBelowSupermajority = errors.New("chain: cert voters' stake below 2/3 of signer stake (count quorum reached but not stake-weighted supermajority)")
+	ErrQCStakeBelowMajority      = errors.New("chain: nova cert voters' stake is not a strict majority of signer stake at the epoch")
 	ErrQCUnknownTier             = errors.New("chain: quorum cert finality tier is not Nova or Quasar (a cert attests exactly one of the two accept/export tiers)")
 )
 
@@ -337,28 +337,54 @@ func (f VoteVerifierFunc) VerifyVote(nodeID ids.NodeID, message []byte, sig []by
 // unequal stake the two are not the same predicate: a coalition of many low-stake
 // validators can reach "α distinct voters" while controlling a minority of stake.
 // When a value/PoS chain supplies a StakeSource, a cert finalizes only if both
-// hold: (count ≥ α) and (Σ voter stake ≥ ⅔ Σ total stake).
+// hold: (count ≥ α) and (Σ voter stake ≥ ⅔ Σ signer stake).
+//
+// THE SET IS THE SIGNERS, AND ONLY THE SIGNERS. Every number here is read over the
+// validators that can actually produce a verifiable signature at the epoch. A member
+// the chain carries without a key is a spectator: it holds stake, it may even be the
+// largest holder, and it can never cast a vote any verifier will accept. Counting a
+// spectator in the denominator is a category error with a consequence — it raises the
+// bar for everyone who CAN sign, by stake it is impossible for any quorum to reach.
+// Past a third of the total, ⅔ becomes unreachable and the export rung is stranded
+// with every signer in the set agreeing; past a half, so is Nova. The floors are read
+// against the parties whose agreement they are a statement about.
+//
+// This is not a weakening of the ⅔ rule, it is the rule read over the right set.
+// Quorum intersection is what safety rests on, and it holds unchanged: two disjoint
+// quorums each exceeding ⅔ of the signer stake would sum past the whole of it. What
+// changes is that the fault budget is no longer spent on parties that are known in
+// advance to cast no vote. A key absent at the epoch is a KNOWN non-participant, not
+// an unknown fault, and BFT's third is a budget for the unknown ones.
 //
 // Determinism and fail-closed: Weight is deterministic for a given (nodeID, epoch)
-// and returns 0 for an unknown or out-of-set voter, so such a voter contributes no
-// stake and cannot inflate the numerator. TotalStake is the epoch's total active
-// stake; if it is 0 the source is unusable and the caller treats the cert as
-// unverifiable. The engine binds the source to the cert's position height so
-// weights are read at the right epoch.
+// and returns 0 for an unknown voter, an out-of-set voter, or a member that holds no
+// key at that epoch, so such a voter contributes no stake and cannot inflate the
+// numerator. SignerStake is the epoch's total signer stake; if it is 0 the source is
+// unusable and the caller treats the cert as unverifiable. The engine binds the source
+// to the cert's position height so weights are read at the right epoch.
+//
+// The three projections must be over ONE set, read at ONE height. A source that
+// answers SignerStake over the signers and SignerCount over every member states two
+// different sets and the two floors stop being the same supermajority in two units.
 type StakeSource interface {
 	// Weight returns the voting weight (stake) of nodeID at the given height, or
-	// 0 if nodeID is not an active validator at that height.
+	// 0 if nodeID is not an active SIGNING validator at that height — including a
+	// member that is active but holds no key, whose vote no verifier will accept.
 	Weight(nodeID ids.NodeID, height uint64) uint64
-	// TotalStake returns the total active validator stake at the given height.
-	TotalStake(height uint64) uint64
-	// ValidatorCount returns the number of distinct active validators at the given
-	// height — the round-scoped view-change's BFT committee size n. Its POL and
-	// precommit both count distinct validators, so n is the live set, not the sample
-	// K. It is read from the same height-indexed set as Weight and TotalStake, so the
-	// count-quorum and the stake-quorum are over one identical set. 0 for an
-	// unresolved or empty set; the view-change then keeps the configured committee,
-	// guarded by the 2α−n>f bound.
-	ValidatorCount(height uint64) int
+	// SignerStake returns the total active stake held by validators that can sign
+	// at the given height — the denominator every stake floor is read against.
+	// Stake held by members with no key is excluded: it can never appear in the
+	// numerator, so counting it in the denominator only raises a bar no quorum
+	// could then clear.
+	SignerStake(height uint64) uint64
+	// SignerCount returns the number of distinct active validators that can sign at
+	// the given height — the round-scoped view-change's BFT committee size n. Its POL
+	// and precommit both count distinct signers, so n is the live signing set, not the
+	// sample K and not the membership roll. It is read from the same height-indexed
+	// set as Weight and SignerStake, so the count-quorum and the stake-quorum are over
+	// one identical set. 0 for an unresolved or empty set; the view-change then keeps
+	// the configured committee, guarded by the 2α−n>f bound.
+	SignerCount(height uint64) int
 }
 
 // ValidatorSetRootSource computes the commitment to the active weighted
@@ -389,12 +415,12 @@ func (f ValidatorSetRootFunc) ValidatorSetRoot(height uint64) ids.ID { return f(
 // tier-agnostic structural and signature predicate) and then enforces the threshold for
 // the cert's own tier:
 //
-//   - Nova → a strict majority of total stake by distinct signers (config.HalfStakeFloor)
+//   - Nova → a strict majority of signer stake by distinct signers (config.HalfStakeFloor)
 //     plus a NovaSignerFloor count, and deliberately not a supermajority. This is the
 //     local-execution rung: it has to ignite at a bare majority, so a ⅔ threshold here
 //     would defeat its purpose. Crash-fault-safe by majority intersection, and not
 //     Byzantine-safe — that is Quasar's job.
-//   - Quasar → a strict >⅔ of total stake by distinct signers (config.TwoThirdsStakeFloor)
+//   - Quasar → a strict >⅔ of signer stake by distinct signers (config.TwoThirdsStakeFloor)
 //     plus a config.TwoThirdsCount(n) count of them — the same supermajority read in
 //     stake and in seats, and both must hold. This is the export rung, the Byzantine-safe
 //     finality bridges, DEX settlement, cross-chain messages and validator-set transitions
@@ -431,7 +457,7 @@ func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, ep
 // voters hold a strict majority of stake at the epoch (config.HalfStakeFloor), and there
 // are at least NovaSignerFloor(n) of them. Both are recomputed from the authoritative
 // live set, so a cert can never self-declare a below-majority Nova threshold. An
-// unresolved set (n<1, or zero total stake) fails closed: a majority of an unknown set
+// unresolved set (n<1, or zero signer stake) fails closed: a majority of an unknown set
 // cannot be asserted, and NovaQuorum(0)=1 would otherwise let a lone node self-accept
 // while its view of the validator set is transiently empty.
 //
@@ -450,7 +476,7 @@ func (c *QuorumCert) VerifyWeighted(verifier VoteVerifier, stake StakeSource, ep
 // holding a stake majority would otherwise self-ignite. Stake majority and the floor are
 // two independent predicates, neither sufficient alone.
 func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) error {
-	n := stake.ValidatorCount(epochHeight)
+	n := stake.SignerCount(epochHeight)
 	if n < 1 {
 		return fmt.Errorf("%w: nova tier over an unresolved validator set (n=%d) at epoch %d",
 			ErrQCBelowThreshold, n, epochHeight)
@@ -459,25 +485,25 @@ func (c *QuorumCert) verifyNovaMajority(stake StakeSource, epochHeight uint64) e
 		return fmt.Errorf("%w: nova cert has %d distinct voters, need at least %d of %d at epoch %d",
 			ErrQCBelowThreshold, c.VoterCount(), floor, n, epochHeight)
 	}
-	total := stake.TotalStake(epochHeight)
-	if total == 0 {
-		return fmt.Errorf("%w: total stake is zero at epoch height %d (value-height %d)",
+	signer := stake.SignerStake(epochHeight)
+	if signer == 0 {
+		return fmt.Errorf("%w: signer stake is zero at epoch height %d (value-height %d)",
 			ErrQCStakeBelowMajority, epochHeight, c.Position.Height)
 	}
 	voted, err := c.votedStake(stake, epochHeight)
 	if err != nil {
 		return err
 	}
-	halfFloor := config.HalfStakeFloor(total)
+	halfFloor := config.HalfStakeFloor(signer)
 	if voted <= halfFloor {
-		return fmt.Errorf("%w: nova voted=%d total=%d (need > floor(total/2)=%d) at epoch %d",
-			ErrQCStakeBelowMajority, voted, total, halfFloor, epochHeight)
+		return fmt.Errorf("%w: nova voted=%d signer=%d (need > floor(signer/2)=%d) at epoch %d",
+			ErrQCStakeBelowMajority, voted, signer, halfFloor, epochHeight)
 	}
 	return nil
 }
 
 // verifyQuasarSupermajority enforces the Quasar EXPORT threshold: the summed stake of the
-// cert's distinct voters STRICTLY exceeds two-thirds of the total stake at the epoch, AND
+// cert's distinct voters STRICTLY exceeds two-thirds of the signer stake at the epoch, AND
 // there are at least config.TwoThirdsCount(n) of them.
 //
 // TWO INDEPENDENT PREDICATES, neither sufficient alone — the same shape as Nova, one rung
@@ -510,24 +536,24 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 	// unfinalized and which races ahead of the P-chain epoch. Reading the tally at
 	// the same epoch the signatures were cast under is what guarantees a validator
 	// whose vote is in the cert also contributes its epoch weight.
-	total := stake.TotalStake(epochHeight)
-	if total == 0 {
-		// No known stake at this epoch — cannot assert a supermajority. Fail closed.
-		return fmt.Errorf("%w: total stake is zero at epoch height %d (value-height %d)", ErrQCStakeBelowSupermajority, epochHeight, c.Position.Height)
+	signer := stake.SignerStake(epochHeight)
+	if signer == 0 {
+		// No known signer stake at this epoch — cannot assert a supermajority. Fail closed.
+		return fmt.Errorf("%w: signer stake is zero at epoch height %d (value-height %d)", ErrQCStakeBelowSupermajority, epochHeight, c.Position.Height)
 	}
 	voted, err := c.votedStake(stake, epochHeight)
 	if err != nil {
 		return err
 	}
-	// Strict supermajority by stake: accept iff voted > floor(2·total/3). The floor
+	// Strict supermajority by stake: accept iff voted > floor(2·signer/3). The floor
 	// has one definition, config.TwoThirdsStakeFloor — the same function the live-set
 	// parameter sizer derives α from (config.WeightedSupermajorityThreshold), so the
 	// count threshold the node sizes to can never drift from the stake predicate
 	// enforced here.
-	twoThirdsFloor := config.TwoThirdsStakeFloor(total)
+	twoThirdsFloor := config.TwoThirdsStakeFloor(signer)
 	if voted <= twoThirdsFloor {
-		return fmt.Errorf("%w: voted=%d total=%d (need > floor(2/3·total)=%d) at height %d",
-			ErrQCStakeBelowSupermajority, voted, total, twoThirdsFloor, c.Position.Height)
+		return fmt.Errorf("%w: voted=%d signer=%d (need > floor(2/3·signer)=%d) at height %d",
+			ErrQCStakeBelowSupermajority, voted, signer, twoThirdsFloor, c.Position.Height)
 	}
 	// The distinct-signer half of the export rule. Read from the same authoritative set
 	// the tally was read against, so a cert can no more declare its own count floor than
@@ -538,7 +564,7 @@ func (c *QuorumCert) verifyQuasarSupermajority(stake StakeSource, epochHeight ui
 	// with the reason it has always been refused for, and only a source that reports no
 	// validators while reporting stake reaches this line. Two thirds of no set is not a
 	// number, and TwoThirdsCount(0)=1 would hand a lone signer a floor of one.
-	n := stake.ValidatorCount(epochHeight)
+	n := stake.SignerCount(epochHeight)
 	if n < 1 {
 		return fmt.Errorf("%w: quasar tier over an unresolved validator set (n=%d) at epoch %d",
 			ErrQCBelowThreshold, n, epochHeight)

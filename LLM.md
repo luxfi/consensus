@@ -383,8 +383,23 @@ from the authoritative validator set at the cert's epoch:
 
 | rung | signers | stake | authorizes |
 |---|---|---|---|
-| Nova | ≥ `chain.NovaSignerFloor(n)` | > `config.HalfStakeFloor(total)` | local execution (reorgable) |
-| Quasar | ≥ `config.TwoThirdsCount(n)` | > `config.TwoThirdsStakeFloor(total)` | export — bridges, DEX, cross-chain |
+| Nova | ≥ `chain.NovaSignerFloor(n)` | > `config.HalfStakeFloor(signer)` | local execution (reorgable) |
+| Quasar | ≥ `config.TwoThirdsCount(n)` | > `config.TwoThirdsStakeFloor(signer)` | export — bridges, DEX, cross-chain |
+
+Both numbers are read over the SIGNERS: `signer` is `StakeSource.SignerStake` and
+`n` is `StakeSource.SignerCount`, never the membership roll. A member the chain
+carries without a key is a spectator — it holds stake and can never cast a vote
+any verifier accepts — and counting it would raise a bar it cannot help clear.
+Past a third of what the chain carries, ⅔ becomes arithmetically unreachable and
+export is stranded with every signer agreeing; past a half, so is Nova. The corpus
+freezes this as `quasar_keyless_third`.
+
+This is the ⅔ rule read over the right set, not a weakening of it. Quorum
+intersection is untouched — two disjoint quorums each past ⅔ of the signer stake
+would sum past the whole of it — and the fault budget simply stops being spent on
+parties known in advance to cast no vote. C++ has always computed it this way:
+`QuorumCertEngine` keys its set by public key, so a spectator has no slot to
+occupy there.
 
 The reason for a count floor at all: a threshold read only in stake reports one
 party wherever the stake is concentrated in one validator. Two thirds of the stake

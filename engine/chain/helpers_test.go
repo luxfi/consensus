@@ -160,11 +160,11 @@ type testValidatorSet struct {
 	// (≥3 of 5 here) ACTUAL Byzantine equivocators — f ≥ n/3, beyond the guarantee.
 	committed map[[2]uint64]ids.ID
 
-	// simValidatorCount, when simValidatorCountSet, OVERRIDES what ValidatorCount reports (the live
+	// simValidatorCount, when simValidatorCountSet, OVERRIDES what SignerCount reports (the live
 	// committee size the round-scoped view-change sizes its POL/precommit quorum to). Lets a test
 	// model the mainnet condition where the current-map Manager read 0 validators at construction:
 	// with a forced 0 the view-change cannot shrink the sample preset (K=21/α=15) and FREEZES (the
-	// pre-fix stall); unset, ValidatorCount reports the real len(ids).
+	// pre-fix stall); unset, SignerCount reports the real len(ids).
 	simValidatorCount    int
 	simValidatorCountSet bool
 }
@@ -217,18 +217,18 @@ func (s *testValidatorSet) Weight(nodeID ids.NodeID, _ uint64) uint64 {
 	return 0
 }
 
-// TotalStake implements StakeSource: the total active stake is the validator count
+// SignerStake implements StakeSource: the total active stake is the validator count
 // (equal unit weights). Non-zero for a non-empty set, so the stake-weighted check is
 // usable (a zero total would be treated as unusable / fail-closed by VerifyWeighted).
-func (s *testValidatorSet) TotalStake(_ uint64) uint64 {
+func (s *testValidatorSet) SignerStake(_ uint64) uint64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return uint64(len(s.ids))
 }
 
-// ValidatorCount implements StakeSource: the DISTINCT validator count (the live committee size the
+// SignerCount implements StakeSource: the DISTINCT validator count (the live committee size the
 // view-change sizes n/α to), unless a test forces a value via setSimulatedValidatorCount.
-func (s *testValidatorSet) ValidatorCount(_ uint64) int {
+func (s *testValidatorSet) SignerCount(_ uint64) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.simValidatorCountSet {
@@ -237,7 +237,7 @@ func (s *testValidatorSet) ValidatorCount(_ uint64) int {
 	return len(s.ids)
 }
 
-// setSimulatedValidatorCount forces ValidatorCount to report c (0 models the current-map Manager
+// setSimulatedValidatorCount forces SignerCount to report c (0 models the current-map Manager
 // unresolved at construction — the mainnet freeze). Call before the fleet builds.
 func (s *testValidatorSet) setSimulatedValidatorCount(c int) {
 	s.mu.Lock()

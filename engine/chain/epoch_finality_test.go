@@ -22,7 +22,7 @@
 //	    height, NOT its value-chain height. The block's value height is enormous
 //	    (10_000_000) while its P-chain epoch is small (7); the set is known ONLY at
 //	    epoch 7. If the engine (wrongly) read the value height, the set would be
-//	    empty → TotalStake 0 → ErrQCStakeBelowSupermajority → STALL. Finalizing
+//	    empty → SignerStake 0 → ErrQCStakeBelowSupermajority → STALL. Finalizing
 //	    proves the epoch height is used.
 //	(C) RESIDUAL-B: a validator that is in the set@epoch but ABSENT from the
 //	    "current" map still has its vote verified (pubkey resolved at the epoch),
@@ -122,7 +122,7 @@ func (s *epochValidatorSet) Weight(nodeID ids.NodeID, epochHeight uint64) uint64
 	return st[nodeID]
 }
 
-func (s *epochValidatorSet) TotalStake(epochHeight uint64) uint64 {
+func (s *epochValidatorSet) SignerStake(epochHeight uint64) uint64 {
 	_, st := s.at(epochHeight)
 	var total uint64
 	for _, w := range st {
@@ -131,7 +131,7 @@ func (s *epochValidatorSet) TotalStake(epochHeight uint64) uint64 {
 	return total
 }
 
-func (s *epochValidatorSet) ValidatorCount(epochHeight uint64) int {
+func (s *epochValidatorSet) SignerCount(epochHeight uint64) int {
 	_, st := s.at(epochHeight)
 	return len(st)
 }

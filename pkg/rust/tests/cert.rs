@@ -311,7 +311,7 @@ fn a_count_quorum_without_the_stake_is_refused() {
         cert.verify_weighted(&set, &set, 0),
         Err(CertError::StakeBelowSupermajority {
             voted: 4,
-            total: 1003,
+            signer: 1003,
             need_above: 668,
         })
     );
@@ -328,7 +328,7 @@ fn exactly_two_thirds_is_refused_and_one_more_passes() {
         two.verify_weighted(&set, &set, 0),
         Err(CertError::StakeBelowSupermajority {
             voted: 200,
-            total: 300,
+            signer: 300,
             need_above: 200,
         })
     );
@@ -352,10 +352,10 @@ fn zero_total_stake_fails_closed() {
         fn weight(&self, _: &NodeId, _: u64) -> u64 {
             0
         }
-        fn total_stake(&self, _: u64) -> u64 {
+        fn signer_stake(&self, _: u64) -> u64 {
             0
         }
-        fn validator_count(&self, _: u64) -> i64 {
+        fn signer_count(&self, _: u64) -> i64 {
             self.0
         }
     }
@@ -419,10 +419,10 @@ fn nova_over_an_unresolved_set_fails_closed() {
         fn weight(&self, _: &NodeId, _: u64) -> u64 {
             0
         }
-        fn total_stake(&self, _: u64) -> u64 {
+        fn signer_stake(&self, _: u64) -> u64 {
             0
         }
-        fn validator_count(&self, _: u64) -> i64 {
+        fn signer_count(&self, _: u64) -> i64 {
             0
         }
     }
@@ -948,7 +948,10 @@ fn a_set_whose_weights_overflow_is_refused_at_admission() {
     let first = &signers[0];
     set.insert(first.id, first.weight, &first.public(), &first.pop())
         .expect("the first 2^63 fits");
-    assert_eq!(set.total_stake(0), huge);
+    // Every seat here is keyed, so the two sums coincide — and both are checked,
+    // because it is their agreement on a keyed set that makes them meaningful.
+    assert_eq!(set.signer_stake(0), huge);
+    assert_eq!(set.carried(), huge);
 
     // 2^63 + 2^63 is 2^64. Refused, and nothing of it is kept.
     let second = &signers[1];
@@ -957,7 +960,7 @@ fn a_set_whose_weights_overflow_is_refused_at_admission() {
         Err(CertError::WeightOverflow)
     );
     assert_eq!(set.len(), 1, "a refused registration is not a member");
-    assert_eq!(set.total_stake(0), huge, "nor does its weight count");
+    assert_eq!(set.signer_stake(0), huge, "nor does its weight count");
     assert!(!set.can_verify(&second.id), "nor is its key registered");
 
     // And through the whole-set door, for the same reason.
@@ -976,9 +979,13 @@ fn a_set_whose_weights_overflow_is_refused_at_admission() {
     );
 }
 
-/// The unkeyed door counts weight toward the same total, so it carries the same
-/// clause — as Go's `FlattenValidatorSet` does, which checks the overflow before
-/// it even looks at the key.
+/// The unkeyed door counts weight toward what the set CARRIES, so it carries the
+/// same clause — as Go's `FlattenValidatorSet` does, which checks the overflow
+/// before it even looks at the key.
+///
+/// Representability and quorum are different questions here, and this pins both:
+/// the weight is in `carried` and refuses a set that cannot hold it, and it is
+/// absent from `signer_stake`, because a member that cannot sign moves no floor.
 #[test]
 fn an_unkeyed_member_cannot_overflow_the_total_either() {
     let mut set = ValidatorSet::new();
@@ -988,7 +995,13 @@ fn an_unkeyed_member_cannot_overflow_the_total_either() {
         Err(CertError::WeightOverflow)
     );
     assert_eq!(set.len(), 1);
-    assert_eq!(set.total_stake(0), u64::MAX);
+    assert_eq!(set.carried(), u64::MAX);
+    assert_eq!(
+        set.signer_stake(0),
+        0,
+        "no seat can sign, so no stake is behind any possible quorum"
+    );
+    assert_eq!(set.signer_count(0), 0);
 }
 
 /// The largest representable set is admissible, and the total is exact at the
@@ -1000,14 +1013,14 @@ fn the_total_is_exact_at_the_boundary_and_after_a_retraction() {
     let mut set = ValidatorSet::new();
     set.insert_unkeyed(node(1), u64::MAX - 10).expect("insert");
     set.insert_unkeyed(node(2), 10).expect("insert");
-    assert_eq!(set.total_stake(0), u64::MAX);
+    assert_eq!(set.carried(), u64::MAX);
 
     assert_eq!(set.insert_unkeyed(node(3), 1), Err(CertError::WeightOverflow));
 
     set.remove(&node(2));
-    assert_eq!(set.total_stake(0), u64::MAX - 10);
+    assert_eq!(set.carried(), u64::MAX - 10);
     set.insert_unkeyed(node(3), 10).expect("the freed room is real");
-    assert_eq!(set.total_stake(0), u64::MAX);
+    assert_eq!(set.carried(), u64::MAX);
 }
 
 /// The other half of the same clause, on the predicate side.
@@ -1036,10 +1049,10 @@ fn a_clamping_stake_source_is_refused_rather_than_read() {
                 .map(|(_, w)| *w)
                 .unwrap_or(0)
         }
-        fn total_stake(&self, _epoch_height: u64) -> u64 {
+        fn signer_stake(&self, _epoch_height: u64) -> u64 {
             self.weights.iter().fold(0u64, |a, (_, w)| a.saturating_add(*w))
         }
-        fn validator_count(&self, _epoch_height: u64) -> i64 {
+        fn signer_count(&self, _epoch_height: u64) -> i64 {
             self.weights.len() as i64
         }
     }
@@ -1052,7 +1065,7 @@ fn a_clamping_stake_source_is_refused_rather_than_read() {
         weights: signers.iter().map(|s| (s.id, huge)).collect(),
     };
     assert_eq!(
-        clamping.total_stake(0),
+        clamping.signer_stake(0),
         u64::MAX,
         "the source clamps, as the set used to"
     );
@@ -1118,12 +1131,12 @@ fn one_bad_registration_refuses_the_whole_set() {
             refused += 1;
         }
     }
-    assert_eq!((partial.len(), partial.total_stake(0), refused), (3, 300, 1));
+    assert_eq!((partial.len(), partial.signer_stake(0), refused), (3, 300, 1));
 
     // Repaired, the set is admitted whole.
     registrations[3].proof = signers[3].pop();
     let set = ValidatorSet::register(registrations).expect("register");
-    assert_eq!((set.len(), set.total_stake(0)), (4, 400));
+    assert_eq!((set.len(), set.signer_stake(0)), (4, 400));
     for s in &signers {
         assert!(set.can_verify(&s.id));
     }
@@ -1235,7 +1248,7 @@ fn meeting_the_count_without_the_stake_is_refused_too() {
 
     assert_eq!(
         cert.verify_weighted(&set, &set, 0),
-        Err(CertError::StakeBelowSupermajority { voted: 4, total: 104, need_above: 69 }),
+        Err(CertError::StakeBelowSupermajority { voted: 4, signer: 104, need_above: 69 }),
     );
 }
 
@@ -1269,10 +1282,10 @@ fn an_export_certificate_over_an_unresolved_set_fails_closed() {
         fn weight(&self, node: &NodeId, h: u64) -> u64 {
             self.0.weight(node, h)
         }
-        fn total_stake(&self, h: u64) -> u64 {
-            self.0.total_stake(h)
+        fn signer_stake(&self, h: u64) -> u64 {
+            self.0.signer_stake(h)
         }
-        fn validator_count(&self, _: u64) -> i64 {
+        fn signer_count(&self, _: u64) -> i64 {
             0
         }
     }
@@ -1284,5 +1297,87 @@ fn an_export_certificate_over_an_unresolved_set_fails_closed() {
     assert_eq!(
         cert.verify_weighted(&set, &Unresolved(set.clone()), 0),
         Err(CertError::UnresolvedSet { n: 0 }),
+    );
+}
+
+// ------------------------------------------------------- the keyless denominator
+
+/// R5: a member that cannot sign moves no floor.
+///
+/// Three validators hold a hundred each and a key; a fourth holds two hundred and
+/// no key, so two fifths of what the set carries belongs to a member that can
+/// never cast a vote — past the third at which a denominator read over the
+/// membership roll puts the export rung permanently out of reach.
+///
+/// Every validator that CAN sign does. That is the entire signing set and the
+/// strongest certificate this set is capable of producing: if it is refused, no
+/// certificate is ever accepted here and export finality is stranded for good.
+/// Read over the membership roll it IS refused — 300 does not exceed
+/// floor(2·500/3) = 333, and no quorum could ever reach 334, because the 200 it
+/// falls short by is held by a spectator.
+#[test]
+fn keyless_stake_is_in_no_floor_and_export_still_reaches() {
+    let (signers, mut set) = committee(3, 100);
+    let mut spectator = [0u8; 20];
+    spectator[0] = 200;
+    set.insert_unkeyed(spectator, 200).expect("a keyless member");
+
+    // What the set carries, and what can actually sign.
+    assert_eq!(set.carried(), 500, "the chain carries five hundred");
+    assert_eq!(set.signer_stake(0), 300, "three hundred of it can sign");
+    assert_eq!(set.len(), 4, "four members");
+    assert_eq!(set.signer_count(0), 3, "three signers");
+    assert_eq!(set.weight(&spectator, 0), 0, "a spectator weighs nothing");
+    assert!(!set.can_verify(&spectator));
+
+    // The fixture reproduces R5 only if the roll-denominator would have stranded
+    // it — otherwise this test proves nothing.
+    assert!(
+        set.signer_stake(0) <= two_thirds_stake_floor(set.carried()),
+        "fixture does not reproduce R5: the signing set clears the roll floor anyway"
+    );
+
+    // The whole signing set signs, and the export rung admits it.
+    let cert = valid_cert(&signers, 3, 3);
+    assert!(cert.voter_count() >= two_thirds_count(set.signer_count(0)));
+    assert_eq!(cert.verify(&set, 0), Ok(()));
+    assert_eq!(
+        cert.verify_weighted(&set, &set, 0),
+        Ok(()),
+        "export refused with every signer in the set agreeing"
+    );
+
+    // And the rung is still a rung: two of three is short of two thirds of the
+    // stake that can sign, so the floor was moved off the spectator, not removed.
+    let two = valid_cert(&signers, 2, 2);
+    assert_eq!(
+        two.verify_weighted(&set, &set, 0),
+        Err(CertError::StakeBelowSupermajority {
+            voted: 200,
+            signer: 300,
+            need_above: 200,
+        })
+    );
+}
+
+/// The spectator cannot buy its way into a tally by being named as a voter: it
+/// has no key, so `verify` refuses the certificate before any floor is read.
+#[test]
+fn a_keyless_member_named_as_a_voter_is_refused() {
+    let (signers, mut set) = committee(3, 100);
+    let ghost = Signer::new(9, 200);
+    // Admitted WITHOUT its key, so the set knows the stake and not the signer.
+    set.insert_unkeyed(ghost.id, 200).expect("a keyless member");
+
+    let pos = position();
+    let message = canonical_vote_message(&pos, true);
+    let mut votes: Vec<Vote> = signers[..2].iter().map(|s| s.vote(&message)).collect();
+    // A real signature under a key the set does not hold for it.
+    votes.push(ghost.vote(&message));
+    let cert = QuorumCert::assemble(Finality::Quasar, pos, 3, &votes).expect("assemble");
+
+    assert!(
+        matches!(cert.verify(&set, 0), Err(CertError::SigInvalid(_))),
+        "a vote from a member with no registered key must not verify"
     );
 }

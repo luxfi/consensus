@@ -4170,12 +4170,14 @@ func (t *Transitive) attestFinalizedVote(vote Vote, verifier VoteVerifier) {
 }
 
 // recordResponsiveStake stores the stake that voted on the latest accepted block (numerator)
-// out of the epoch total (denominator) — the degraded-mode RPC signal read by FinalityStatus.
+// out of the epoch SIGNER stake (denominator) — the degraded-mode RPC signal read by
+// FinalityStatus. The denominator is the one the quorum floors are read against, so the
+// ratio reported is the ratio a quorum actually has to clear.
 func (t *Transitive) recordResponsiveStake(stake StakeSource, votes []SignedVote, epochHeight uint64) {
 	if stake == nil {
 		return
 	}
-	total := stake.TotalStake(epochHeight)
+	total := stake.SignerStake(epochHeight)
 	if total == 0 {
 		return
 	}

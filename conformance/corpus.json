@@ -1269,6 +1269,42 @@
         "voted": "103",
         "accept": true,
         "refusal": ""
+      },
+      {
+        "name": "quasar_keyless_third",
+        "note": "THE KEYLESS DENOMINATOR. Three seats of a hundred hold keys; a fourth holds two hundred and no key. Every seat that CAN sign does — a hundred per cent of the signing set — and the export rung admits it, because the floor is read over the three hundred that can sign and not the five hundred the chain carries. Read the other way this case is stranded and stays stranded: three hundred does not exceed floor(2*500/3)=333, and nothing the signers do can reach it, because the two hundred it falls short by is held by a member that can never cast a vote. A floor is a statement about the parties whose agreement it demands, so it is read over the parties who can agree. The count floor is read over the same three seats for the same reason",
+        "rung": "quasar",
+        "set": [
+          {
+            "nodeID": "0000000000000000000000000000000000000001",
+            "weight": "100"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000002",
+            "weight": "100"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000003",
+            "weight": "100"
+          },
+          {
+            "nodeID": "0000000000000000000000000000000000000004",
+            "weight": "200",
+            "keyless": true
+          }
+        ],
+        "total": "300",
+        "signerFloor": 3,
+        "stakeFloor": "200",
+        "threshold": 3,
+        "signers": [
+          "0000000000000000000000000000000000000001",
+          "0000000000000000000000000000000000000002",
+          "0000000000000000000000000000000000000003"
+        ],
+        "voted": "300",
+        "accept": true,
+        "refusal": ""
       }
     ],
     "admission": [
