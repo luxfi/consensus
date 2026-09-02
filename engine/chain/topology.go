@@ -655,6 +655,61 @@ func (t *Transitive) verifyCert(cert *QuorumCert, epochHeight uint64) error {
 				ErrQCThresholdNotDerived, cert.Threshold, committee, floor, cert.Tier, epochHeight)
 		}
 	}
+	// The export rung's floor on the COMMITTEE, which the clause above cannot give.
+	// That one asks whether the declared quorum is the number this committee derives;
+	// this one asks whether the committee is large enough for the answer to mean
+	// anything. Byzantine tolerance is f = ⌊(n−1)/3⌋, and that is 0 at one, two and
+	// three members: a two-thirds supermajority of such a committee tolerates no fault,
+	// so every signer is load-bearing and one compromised key is not a fault absorbed by
+	// a margin, it is a forged export certificate.
+	//
+	// The derived clause shrinks with the committee and therefore cannot catch it —
+	// TwoThirdsCount(2) is 2, so two signatures over a two-member committee ARE the
+	// derived quorum, and the certificate passes as the one this node would have built.
+	//
+	// WHAT IT COST, which is more than one node's opinion of one certificate. A cert
+	// admitted here does not stop here: TryAccept hands the bytes to GossipCert, and
+	// applyBranchFinalization files them as the served catch-up proof. So a stake-less
+	// node that admitted a sub-BFT export cert then RE-GOSSIPED it and SERVED it to
+	// every straggler that asked — the node became a second source for a certificate
+	// carrying no fault budget. The floor stops the amplification at each hop, which is
+	// why it belongs at the arrival gate and not only at the accept.
+	//
+	// This is the same clause verifyQuasarSupermajority holds on the WEIGHTED road,
+	// read here against the committee because that is this road's authoritative view of
+	// its set: one rule, both roads, the same sentinel and the same TwoThirdsCount
+	// number, so the two refuse identically.
+	//
+	// Both roads are Go's, and that is the whole comparison — there is no third
+	// implementation to conform to here, because no other implementation HAS a
+	// stake-less accept road. Rust's Cert::verify is the structural predicate its
+	// weighted road runs first (verify_weighted calls it, then the floors), never an
+	// accept rule on its own; C++'s QuorumCertEngine::verify_cert fails closed on an
+	// empty stake model before it reads a vote. Go alone accepts with no stake source,
+	// so Go alone needed this clause, and it is Go's own weighted road it is being
+	// brought up to.
+	//
+	// Nova has no such floor and must not grow one — it authorizes only local execution
+	// the chain can still reorg away, and a small chain has to be able to make local
+	// progress.
+	//
+	// The predicate is AuthorizesExport and not an equality on Quasar. The weighted
+	// road is fail-closed by construction (its tier switch ends in ErrQCUnknownTier),
+	// and an equality here would be allow-by-omission: Horizon sits above Quasar on the
+	// ladder, so the day it becomes attestable a Horizon cert would cross this road
+	// with no floor at all. Reading the rung's own predicate makes that impossible
+	// rather than merely unlikely.
+	//
+	// The committee is never below one — NewChainConsensus floors k there and
+	// Parameters.Valid refuses K<1 — so the comparison guards a case a started engine
+	// cannot present. It is written as the full inequality anyway: this clause should
+	// be readable as "the export rung needs a Byzantine committee" without also having
+	// to know which invariant upstream keeps the number positive.
+	if cert.Tier.AuthorizesExport() && committee < minBFTCommittee {
+		return fmt.Errorf("%w: quasar cert over a committee of %d, need at least %d — below the "+
+			"minimum Byzantine committee f=⌊(n−1)/3⌋ is 0 and a two-thirds supermajority "+
+			"tolerates no fault, at epoch %d", ErrQCBelowThreshold, committee, minBFTCommittee, epochHeight)
+	}
 	return nil
 }
 
