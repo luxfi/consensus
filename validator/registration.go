@@ -137,7 +137,7 @@ func Register(rs []Registration) (CanonicalValidatorSet, error) {
 		byNode[r.NodeID] = struct{}{}
 
 		// WEIGHT, last.
-		sum, err := math.Add64(totalWeight, r.Weight)
+		sum, err := math.Add[uint64](totalWeight, r.Weight)
 		if err != nil {
 			return CanonicalValidatorSet{}, fmt.Errorf("%w: %w", ErrWeightOverflow, err)
 		}
@@ -204,7 +204,7 @@ func FlattenValidatorSet(vdrSet map[ids.NodeID]*GetValidatorOutput) (CanonicalVa
 		if vdr == nil {
 			continue
 		}
-		totalWeight, err = math.Add64(totalWeight, vdr.Weight)
+		totalWeight, err = math.Add[uint64](totalWeight, vdr.Weight)
 		if err != nil {
 			return CanonicalValidatorSet{}, fmt.Errorf("%w: %w", ErrWeightOverflow, err)
 		}
