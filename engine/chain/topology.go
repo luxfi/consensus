@@ -607,7 +607,9 @@ func (t *Transitive) finalizeLocalAliasFromVerifiedCert(cert *QuorumCert) (ids.I
 
 // verifyCert runs the full finality predicate — α distinct in-set signatures over the
 // cert's canonical position, stake-weighted to a strict ⅔ when a stake source is wired,
-// count-only otherwise. It is the single gate a cert passes before it counts either as
+// count-only otherwise, and on EITHER road the certificate's declared quorum must be
+// the floor this node DERIVES rather than one the certificate named for itself. It is
+// the single gate a cert passes before it counts either as
 // finality (the finalize path) or as equivocation evidence (the height-gate fork path):
 // a forged cert with junk signatures fails here and can neither finalize a block nor
 // slash a validator. epochHeight is the P-chain height the per-voter pubkeys and stake
@@ -616,6 +618,10 @@ func (t *Transitive) verifyCert(cert *QuorumCert, epochHeight uint64) error {
 	t.mu.RLock()
 	verifier := t.voteVerifier
 	stake := t.stakeSource
+	// Read under the same lock the sources are read under, and by the same function
+	// assembleCertLocked sizes its own floor with — so the number this node checks a
+	// declaration against is the number it would have declared itself.
+	committee, _ := t.effectiveCommittee(epochHeight)
 	t.mu.RUnlock()
 	if verifier == nil {
 		return ErrQCVerifierNil
@@ -623,7 +629,52 @@ func (t *Transitive) verifyCert(cert *QuorumCert, epochHeight uint64) error {
 	if stake != nil {
 		return cert.VerifyWeighted(verifier, stake, epochHeight)
 	}
-	return cert.Verify(verifier, epochHeight)
+	// THE COUNT-ONLY ROAD, and the derived rule still holds on it. Verify's last
+	// clause counts distinct valid accepts against the number the CERTIFICATE
+	// declares, so on its own this road promotes a Quasar certificate declaring a
+	// quorum of one over one signature — and wrapVerifiedCert hands that to
+	// AcceptWithCert, which trusts it. The hole the minting door just closed stood
+	// open one function away, on the road a certificate ARRIVES by.
+	//
+	// The floor is derived here too, from the node's own committee — what
+	// effectiveCommittee answers, and what this road's equal-stake admission
+	// invariant makes a signer count.
+	//
+	// The number is Quorum and NOT SignerFloor, because on this road the count IS the
+	// predicate rather than a guard standing beside a stake clause. They are the same
+	// at Quasar and diverge at Nova past five signers, and reading the weighted road's
+	// number here would make a node refuse its own certificates: assembleCertLocked
+	// declares NovaQuorum(n) on this road, which is 4 at six signers where
+	// NovaSignerFloor is 3. Every K below six hides it.
+	//
+	// This is what lets the equal-stake road keep the export rung: it is not that
+	// such a chain cannot export, it is that it may not export on a quorum the
+	// certificate wrote for itself. Refusing the rung outright here instead would
+	// retire that deployment, which is a larger decision than this clause is.
+	//
+	// THE PRICE, stated because it is real: with no stake model the committee is a
+	// CONFIGURED number, so this road now needs the fleet to agree on it. Before,
+	// any declaration was admitted and a node with a different K interoperated by
+	// accident; now two nodes that disagree about their committee disagree about
+	// which certificates exist. That is the cost of not letting a certificate name
+	// its own quorum, and it is why the MINTING door above refuses the export rung
+	// on this road rather than weighing it — a configured committee is a weaker
+	// authority than a stake source, strong enough to check a declaration against
+	// and not strong enough to originate one.
+	//
+	// AFTER Verify, as on the weighted road: the tier is answered first, so a
+	// wire-decoded certificate carrying a garbage tier byte is named by the tier
+	// clause and not by a floor derived for a rung that does not exist.
+	if err := cert.Verify(verifier, epochHeight); err != nil {
+		return err
+	}
+	if committee >= 1 {
+		if floor := Quorum(cert.Tier, committee); cert.Threshold != floor {
+			return fmt.Errorf("%w: cert declares %d, a committee of %d derives %d for %s at epoch %d",
+				ErrQCThresholdNotDerived, cert.Threshold, committee, floor, cert.Tier, epochHeight)
+		}
+	}
+	return nil
 }
 
 // reportCertEquivocation records that a second, conflicting finality cert was

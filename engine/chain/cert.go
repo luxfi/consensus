@@ -144,6 +144,40 @@ func SignerFloor(tier Finality, n int) uint32 {
 	}
 }
 
+// Quorum is the count a certificate must carry when the COUNT IS THE WHOLE
+// PREDICATE — the rung's own quorum in seats, with no stake clause beside it.
+// That is the count-only road: a chain with no stake model, where the certificate
+// is weighed by counting signatures and nothing else.
+//
+//   - Nova   → NovaQuorum(n) = ⌊n/2⌋+1, the majority.
+//   - Quasar → config.TwoThirdsCount(n) = ⌊2n/3⌋+1, the supermajority.
+//
+// IT IS NOT SignerFloor, and the difference is not drift — they are two different
+// quantities with two different jobs, and they coincide at exactly one rung:
+//
+//   - At Quasar both are TwoThirdsCount(n). The export supermajority is the same
+//     number whether it stands beside a stake clause or alone.
+//   - At Nova they diverge past five signers. SignerFloor is NovaSignerFloor, a
+//     SATURATING guard that caps at three because the weighted road already carries
+//     the majority in STAKE and only needs a floor to stop a lone whale igniting.
+//     With no stake clause there is nothing carrying the majority, so the count has
+//     to be the majority itself, and a saturating three is not one.
+//
+// Reading SignerFloor here would make a node refuse its own certificates: on the
+// count-only road assembleCertLocked declares NovaQuorum(n), which is 4 at six
+// signers where NovaSignerFloor is 3. Every K below six hides it, which is every K
+// the tests use.
+func Quorum(tier Finality, n int) uint32 {
+	switch tier {
+	case Nova:
+		return uint32(NovaQuorum(n))
+	case Quasar:
+		return uint32(config.TwoThirdsCount(n))
+	default:
+		return 0
+	}
+}
+
 // SignedVote is one validator's signed ACCEPT decision over a consensus
 // position. It is the atom a QuorumCert is assembled from. The signature is
 // over CanonicalVoteMessage(position) under a scheme the engine does not need

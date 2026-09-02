@@ -15,6 +15,7 @@
 package chain
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -65,6 +66,10 @@ func TestSignerFloorIsTheOneDefinition(t *testing.T) {
 			if got := SignerFloor(rung, n); got != 1 {
 				t.Fatalf("%s over n=%d derives %d, want 1 — an unresolved set has no bar to raise",
 					rung, n, got)
+			}
+			if got := Quorum(rung, n); got != 1 {
+				t.Fatalf("%s quorum over n=%d is %d, want 1 — the count-only road has the same "+
+					"answer for a set it cannot see", rung, n, got)
 			}
 		}
 	}
@@ -166,6 +171,146 @@ func TestCountOnlyRoadCannotMintExport(t *testing.T) {
 	}
 	if nova.IsZero() {
 		t.Fatal("a nova build that returned no error must carry a witness")
+	}
+}
+
+// TestGossipRoadDerivesItsFloorToo is the same PRINCIPLE at the other door, in
+// the form that door can carry.
+//
+// A certificate that ARRIVES is promoted to the authority token by verifyCert,
+// and on a chain with no stake source that gate fell to the count-only Verify —
+// which counts votes against the number the CERTIFICATE declares. So a gossiped
+// Quasar cert declaring a quorum of one, carrying one signature, was promoted and
+// finalized.
+//
+// The two doors answer differently and the difference is the threat, not an
+// oversight:
+//
+//   - MINTING an export token from raw votes takes the floor from the CALLER's
+//     alpha, so with no set to check it against there is nothing to check at all.
+//     Refused outright.
+//   - ADMITTING one that arrived checks N real signatures from N distinct in-set
+//     validators. What was missing was only that its declared quorum was its own.
+//     So the floor is derived here too — from the node's live committee, which is
+//     this road's authoritative view of its set — and the equal-stake deployment
+//     keeps the export rung it has always had. Not "such a chain cannot export",
+//     but "it may not export on a quorum the certificate wrote for itself".
+func TestGossipRoadDerivesItsFloorToo(t *testing.T) {
+	for _, rung := range []Finality{Quasar, Horizon} {
+		if err := exportNeedsStake(rung, nil); !errors.Is(err, ErrExportNeedsStake) {
+			t.Fatalf("%s with no stake source must be refused, got %v", rung, err)
+		}
+	}
+	if err := exportNeedsStake(Nova, nil); err != nil {
+		t.Fatalf("the accept rung keeps its count-only road: %v", err)
+	}
+	// With a set in hand the rule says nothing — it is about the absence, not the tier.
+	set := &stakeMap{w: map[ids.NodeID]uint64{}, total: 4}
+	for _, rung := range []Finality{Nova, Quasar, Horizon} {
+		if err := exportNeedsStake(rung, set); err != nil {
+			t.Fatalf("%s with a stake source must not be refused by this clause: %v", rung, err)
+		}
+	}
+
+	// AND THE OTHER DOOR, on a real stake-less engine. Its committee is K, and the
+	// export quorum over five seats is four — so a certificate declaring one is a
+	// certificate naming its own quorum, and a certificate declaring four is the
+	// one this node would have built.
+	vs := newTestValidatorSet(5)
+	chainID := ids.GenerateTestID()
+	e := NewWithConfig(Config{Params: params5()},
+		WithQuorumCert(chainID, vs.nodeID(0), vs, &recordingGossiper{}, vs.signerFor(0)))
+	if err := e.Start(context.Background(), true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+	if e.stakeSource != nil {
+		t.Fatal("this engine is supposed to have no stake model; the case tests the other road")
+	}
+
+	pos := VotePosition{ChainID: chainID, Height: 1, Round: 0, BlockID: ids.GenerateTestID()}
+	votes := make([]SignedVote, 0, 4)
+	for i := 0; i < 4; i++ {
+		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
+	}
+
+	honest, err := AssembleQuorumCert(pos, Quasar, Quorum(Quasar, 5), votes)
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	if err := e.verifyCert(honest, 1); err != nil {
+		t.Fatalf("a certificate declaring the quorum this committee derives must pass: %v", err)
+	}
+
+	forged := *honest
+	forged.Threshold = 1
+	if err := e.verifyCert(&forged, 1); !errors.Is(err, ErrQCThresholdNotDerived) {
+		t.Fatalf("a gossiped export cert naming its own quorum of one was admitted: %v", err)
+	}
+
+	// One signature under that declaration is the whole attack: before the clause,
+	// Verify counted one accept against a declared one and answered nil.
+	lone, err := AssembleQuorumCert(pos, Quasar, 1, votes[:1])
+	if err != nil {
+		t.Fatalf("assemble lone: %v", err)
+	}
+	if lone.Verify(vs, 1) != nil {
+		t.Fatal("the lone certificate must clear the structural predicate, or the case proves nothing")
+	}
+	if err := e.verifyCert(lone, 1); !errors.Is(err, ErrQCThresholdNotDerived) {
+		t.Fatalf("one signature under a self-named quorum of one was admitted: %v", err)
+	}
+}
+
+// TestTheTwoRoadsDeriveTheNumberTheyDeclare is the regression the K<6 fixtures
+// could not catch.
+//
+// There are TWO derived counts, because there are two predicates. SignerFloor is
+// the distinct-signer GUARD the weighted road carries beside a stake clause;
+// Quorum is the count that IS the predicate where no stake clause stands beside
+// it. They agree at Quasar and diverge at Nova past five signers, because
+// NovaSignerFloor SATURATES at three — correct as a guard on a road whose majority
+// is carried in stake, and wrong as a majority on a road that has only the count.
+//
+// Reading the wrong one on the count-only road makes a node refuse its OWN
+// certificates: the assembler declares NovaQuorum(n) there, which is 4 at six
+// signers where NovaSignerFloor is 3. Every committee the fixtures use is 4 or 5,
+// which is exactly where the two agree, so nothing in the suite would have said so.
+func TestTheTwoRoadsDeriveTheNumberTheyDeclare(t *testing.T) {
+	diverged := false
+	for n := 1; n <= 64; n++ {
+		// What the count-only assembler declares (engine.go, the nil-stake arm).
+		if got, want := Quorum(Nova, n), uint32(NovaQuorum(n)); got != want {
+			t.Fatalf("n=%d: the count-only road derives %d for nova, its assembler declares %d",
+				n, got, want)
+		}
+		// What the weighted assembler declares (engine.go, the stake arm).
+		if got, want := SignerFloor(Nova, n), uint32(NovaSignerFloor(n)); got != want {
+			t.Fatalf("n=%d: the weighted road derives %d for nova, its assembler declares %d",
+				n, got, want)
+		}
+		// The export rung is one number on both roads, and attestation.go declares it.
+		if Quorum(Quasar, n) != SignerFloor(Quasar, n) {
+			t.Fatalf("n=%d: the export supermajority reads as two different counts (%d, %d)",
+				n, Quorum(Quasar, n), SignerFloor(Quasar, n))
+		}
+		if Quorum(Nova, n) != SignerFloor(Nova, n) {
+			diverged = true
+		}
+	}
+	if !diverged {
+		t.Fatal("the two nova counts never diverged over 64 sizes — if that is now true they " +
+			"are one quantity and should be one function; if it is not, this test stopped looking")
+	}
+	// State the divergence outright at the size the fixtures never reach.
+	if Quorum(Nova, 6) != 4 || SignerFloor(Nova, 6) != 3 {
+		t.Fatalf("at six signers the count-only majority is %d and the weighted guard is %d, "+
+			"want 4 and 3", Quorum(Nova, 6), SignerFloor(Nova, 6))
+	}
+	for _, rung := range []Finality{Photon, Wave, Horizon} {
+		if Quorum(rung, 41) != 0 {
+			t.Fatalf("%s is not an accept rung and must derive no quorum", rung)
+		}
 	}
 }
 

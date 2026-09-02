@@ -40,6 +40,41 @@ var ErrNoVerifiedQC = errors.New("chain: no verified quorum cert for block — n
 // one there is nothing to make the claim against, so there is nothing to mint.
 var ErrExportNeedsStake = errors.New("chain: an export-tier cert cannot be minted without a stake source — its floors are derived from the validator set, and there is no set here")
 
+// exportNeedsStake is the rule "no set, no export", in one place.
+//
+// An export certificate's floors are read off the validator set — how much stake
+// agreed, how many signers, how big the set is at all — and the derived-threshold
+// clause is read off it too. With no stake source none of those numbers exist, and
+// the only predicate left is the count-only Verify, which counts votes against the
+// number the CERTIFICATE declares. That road mints a Quasar token over one signer:
+// one vote, a declared threshold of one, and both the assemble clause and the count
+// clause are satisfied by the same 1. Nothing downstream re-checks, because
+// AcceptWithCert trusts the token — which is the whole point of the token.
+//
+// The accept rung keeps the count-only road. It authorizes local execution the chain
+// can still reorg away, and the road is documented as equal-stake-only — a chain that
+// weighs nothing has to be able to make progress on something.
+//
+// THIS DOOR ONLY. The other producer of the token, Transitive.verifyCert, admits a
+// certificate that ARRIVED — carrying signatures from distinct in-set validators,
+// every one of them checked — so the thing missing there was never the votes, only
+// that the certificate named its own quorum. It DERIVES the floor from the node's
+// live committee instead of refusing the rung, which is what lets an equal-stake
+// deployment keep exporting. Here there are no arrived signatures to weigh: the
+// caller hands over raw votes AND the alpha to count them against, so with no set
+// there is nothing to check the caller against and refusing is the only answer. Two
+// doors, one principle, and the difference between them is what the doors are.
+//
+// Asked through Finality.AuthorizesExport, so this covers every export tier that
+// exists and every one that is added: it is not a list of tier names to keep in step
+// with another list somewhere else.
+func exportNeedsStake(tier Finality, stake StakeSource) error {
+	if stake == nil && tier.AuthorizesExport() {
+		return ErrExportNeedsStake
+	}
+	return nil
+}
+
 // VerifiedQuorumCert is proof that a block met the finality predicate: α distinct
 // validators signed ACCEPT over the exact position AND (on a stake-weighted
 // chain) those voters hold a strict ⅔ supermajority of stake at the cert's
@@ -108,25 +143,9 @@ func BuildVerifiedQuorumCert(
 	if verifier == nil {
 		return VerifiedQuorumCert{}, ErrNoVerifiedQC
 	}
-	// DERIVED AUTHORITY at the minting door. An export cert's floors are read off
-	// the validator set — how much stake agreed, how many signers, how big the set
-	// is at all. With no stake source there is no set to read them from, and the
-	// only predicate left is the count-only Verify, which counts votes against the
-	// number the CERT declares. That road can mint a Quasar token over one signer:
-	// pass alpha 1 and one vote and the assemble clause and the count clause are
-	// both satisfied by the same self-declared 1. Nothing downstream re-checks —
-	// AcceptWithCert trusts the token, which is the whole point of the token.
-	//
-	// So the export rung is refused here rather than weakened there. The count-only
-	// road remains open at Nova, which authorizes local execution the chain can
-	// still reorg away and is documented as equal-stake only; it may never carry a
-	// rung a bridge reads. Asked through Finality.AuthorizesExport, so the rule
-	// covers every export tier that exists and every one that is added — this is not
-	// a list of tier names to keep in step with another list somewhere else.
-	if tier.AuthorizesExport() {
-		if stake == nil {
-			return VerifiedQuorumCert{}, errors.Join(ErrNoVerifiedQC, ErrExportNeedsStake)
-		}
+	// No set, no export — the rule, asked at the minting door before any work.
+	if err := exportNeedsStake(tier, stake); err != nil {
+		return VerifiedQuorumCert{}, errors.Join(ErrNoVerifiedQC, err)
 	}
 	cert, err := AssembleQuorumCert(pos, tier, alpha, votes)
 	if err != nil {

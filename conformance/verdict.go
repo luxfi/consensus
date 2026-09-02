@@ -458,16 +458,16 @@ func verdicts() Verdict {
 			"separately. n and total are read over the SIGNERS: a seat marked keyless holds " +
 			"stake, can never sign, and is in neither denominator. The decision does not " +
 			"depend on the position the votes were cast over, so a runner may weigh these " +
-			"votes over any position its encoder can build. DERIVED AUTHORITY, the clause "+
-			"every row above also states: a certificate DECLARES a threshold, and it must be "+
-			"exactly signerFloor — the floor the rung derives over this set. A certificate "+
-			"states its quorum; it does not choose it. Without that clause the field is "+
-			"load-bearing, because the tier-agnostic count clause counts distinct valid "+
-			"accepts against the certificate's OWN declaration, so one declaring 1 clears it "+
-			"on a single signature. Equality and not a lower bound: an over-claim names a bar "+
-			"this set does not set, and tolerating it would let a certificate redefine the "+
-			"rung upward exactly as tolerating an under-claim lets it redefine the rung down. "+
-			"The threshold field is recorded per row because three rows declare something "+
+			"votes over any position its encoder can build. DERIVED AUTHORITY, the clause " +
+			"every row above also states: a certificate DECLARES a threshold, and it must be " +
+			"exactly signerFloor — the floor the rung derives over this set. A certificate " +
+			"states its quorum; it does not choose it. Without that clause the field is " +
+			"load-bearing, because the tier-agnostic count clause counts distinct valid " +
+			"accepts against the certificate's OWN declaration, so one declaring 1 clears it " +
+			"on a single signature. Equality and not a lower bound: an over-claim names a bar " +
+			"this set does not set, and tolerating it would let a certificate redefine the " +
+			"rung upward exactly as tolerating an under-claim lets it redefine the rung down. " +
+			"The threshold field is recorded per row because three rows declare something " +
 			"else on purpose, and a runner must be handed the number the certificate carried.",
 		Epoch: u64(verdictEpoch),
 		Finality: []FinalityCase{

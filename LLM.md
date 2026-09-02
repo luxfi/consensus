@@ -399,13 +399,42 @@ definition (Rust `finality::signer_floor`, C++ `signer_floor(Tier, n)`), read by
 the rung predicates, by the assemblers, and by this clause, so the number enforced
 and the number declared cannot drift.
 
+**TWO derived counts, because there are two predicates — and reading the wrong one
+makes a node refuse its own certificates.** `chain.SignerFloor` is the
+distinct-signer GUARD the weighted road carries beside a stake clause;
+`chain.Quorum` is the count that IS the predicate where no stake clause stands
+beside it (the count-only road). They agree at Quasar — the export supermajority is
+`TwoThirdsCount(n)` either way — and DIVERGE at Nova past five signers, because
+`NovaSignerFloor` saturates at three: correct as a guard on a road whose majority is
+carried in stake, and wrong as a majority on a road that has only the count. So
+`assembleCertLocked` declares `NovaSignerFloor(n)` on the stake arm and
+`NovaQuorum(n)` on the nil-stake arm, and each road's derived clause must read the
+number its own assembler declares. Every committee the test fixtures use is 4 or 5,
+which is exactly where the two agree — `TestTheTwoRoadsDeriveTheNumberTheyDeclare`
+walks 1..64 so the divergence is stated rather than discovered at K=6 in production.
+
 Two corollaries, both load-bearing:
 
-- **No set, no export.** `BuildVerifiedQuorumCert` refuses any tier for which
-  `Finality.AuthorizesExport` holds when `stake` is nil (`ErrExportNeedsStake`).
-  The count-only road counts votes against the caller's own alpha, so an export
-  token could be minted over one signer with `alpha=1`. The accept rung keeps that
-  road — it authorizes only local execution the chain can reorg away.
+- **The count-only road derives its floor too, and the two doors answer
+  differently because the threat differs.** `BuildVerifiedQuorumCert` MINTS a token
+  from raw votes against the CALLER's alpha, so with no set to check that alpha
+  against there is nothing to check at all: `chain.exportNeedsStake` refuses any
+  export tier outright there. `Transitive.verifyCert` ADMITS a certificate that
+  ARRIVED, carrying N real signatures from N distinct in-set validators — all that
+  was missing is that its declared quorum was its own. So the floor is derived
+  there too, from `effectiveCommittee`, which is that road's authoritative view of
+  its set. Not "an equal-stake chain cannot export", but "it may not export on a
+  quorum the certificate wrote for itself". Without either clause a gossiped Quasar
+  cert declaring a quorum of ONE, over one signature, reached `AcceptWithCert`.
+  That committee view is weaker than a stake source (it is K, the sample size), and
+  that asymmetry is why the minting door refuses export on this road rather than
+  weighing it: a configured committee is strong enough to CHECK a declaration and
+  not strong enough to ORIGINATE one. The price, and it is real: with no stake model
+  the committee is configured, so this road now needs the fleet to agree on K — two
+  nodes that disagree about their committee disagree about which certificates exist,
+  where before any declaration was admitted and they interoperated by accident.
+  Rust and C++ need no such clause — their weighted verifiers take a set by
+  reference, so the absent case is unrepresentable rather than checked.
 - **The assembler reads the same n the verifier does.** `assembleCertLocked`
   derives Nova's declared floor from `stakeSource.SignerCount`, not from
   `effectiveCommittee` (which sizes the SAMPLE and is floored at
