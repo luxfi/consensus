@@ -92,7 +92,15 @@ pub struct Vote {
 
 /// The first clause that failed. Every rejection names one; there is no bare
 /// `false` anywhere in this module.
+/// Why a certificate was refused.
+///
+/// `#[non_exhaustive]`: the floors a certificate is held to are facts about the
+/// protocol, and the protocol acquires facts — `ThresholdNotDerived` is one it
+/// acquired. Matching one clause at a time is what a caller wants; being broken
+/// by a clause that did not exist when the match was written is not. A caller that
+/// must handle every case writes a wildcard and keeps compiling.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CertError {
     Version { got: u16, want: u16 },
     Type { got: u8, want: u8 },

@@ -98,8 +98,8 @@ pub fn sha256(input: &[u8]) -> [u8; 32] {
 // Re-export all public types
 pub use crate::finality::{
     canonical_vote_message, crash_tolerance, half_stake_floor, nova_beta, nova_quorum,
-    nova_signer_floor, two_thirds_count, two_thirds_stake_floor, weighted_quasar, Finality, Position,
-    QC_FINALITY, QUORUM_CERT_VERSION, VOTE_MESSAGE_LEN, VOTE_TAG,
+    nova_signer_floor, signer_floor, two_thirds_count, two_thirds_stake_floor, weighted_quasar,
+    Finality, Position, QC_FINALITY, QUORUM_CERT_VERSION, VOTE_MESSAGE_LEN, VOTE_TAG,
 };
 pub use crate::types::*;
 pub use crate::errors::*;
@@ -448,8 +448,17 @@ pub mod errors {
     use std::error::Error;
     use std::fmt;
 
-    /// Consensus error type
+    use crate::cert::CertError;
+
+    /// Consensus error type.
+    ///
+    /// `#[non_exhaustive]`: a refusal is a fact about the protocol, and the
+    /// protocol acquires facts. Matching one arm at a time is what a caller wants;
+    /// being broken by a clause that did not exist when the match was written is
+    /// not. A caller that must handle every case writes a wildcard and keeps
+    /// compiling.
     #[derive(Debug)]
+    #[non_exhaustive]
     pub enum ConsensusError {
         BlockNotFound,
         InvalidBlock,
@@ -461,9 +470,24 @@ pub mod errors {
         Timeout,
         NotInitialized,
         AlreadyStarted,
+        /// A certificate clause refused, carried whole rather than flattened.
+        ///
+        /// The floors a certificate is held to each name a different fact — a
+        /// quorum the set does not derive, a stake majority the voters do not
+        /// hold, a signing set too small for a supermajority to absorb a fault —
+        /// and answering all of them with `NoQuorum` tells an operator only that
+        /// something did not reach something. Assembly says "not yet"; a floor
+        /// says which floor.
+        Cert(CertError),
         CryptoError(String),
         NetworkError(String),
         Other(String),
+    }
+
+    impl From<CertError> for ConsensusError {
+        fn from(e: CertError) -> Self {
+            ConsensusError::Cert(e)
+        }
     }
 
     impl fmt::Display for ConsensusError {
@@ -479,6 +503,7 @@ pub mod errors {
                 ConsensusError::Timeout => write!(f, "Operation timeout"),
                 ConsensusError::NotInitialized => write!(f, "Engine not initialized"),
                 ConsensusError::AlreadyStarted => write!(f, "Engine already started"),
+                ConsensusError::Cert(e) => write!(f, "Certificate refused: {e}"),
                 ConsensusError::CryptoError(msg) => write!(f, "Crypto error: {}", msg),
                 ConsensusError::NetworkError(msg) => write!(f, "Network error: {}", msg),
                 ConsensusError::Other(msg) => write!(f, "{}", msg),
@@ -1140,7 +1165,13 @@ pub mod wave {
 
 pub mod quasar {
     use super::*;
-    use crate::cert::{ValidatorSet, Vote as CertVote, VoteVerifier};
+    use crate::cert::{CertError, StakeSource, ValidatorSet, Vote as CertVote, VoteVerifier};
+
+    /// This set does not vary with a P-chain epoch — its membership and weights are
+    /// what they are (see the `StakeSource` impl on `ValidatorSet`) — so every clause
+    /// here reads it at the same height and that height is zero. A set that DOES read
+    /// an epoch takes the height from its caller.
+    const EPOCH: u64 = 0;
 
     /// Quasar finality: the certificate side of the engine.
     ///
@@ -1150,7 +1181,14 @@ pub mod quasar {
     /// nothing here, which is the fail-closed direction.
     pub struct QuasarConsensus {
         validators: ValidatorSet,
-        threshold: usize,
+        /// The configured accept quorum, and the ONLY thing it is: how many members
+        /// this node was told to expect before it is worth asking the set anything.
+        /// It is a readiness number, not a floor — no certificate is issued to it and
+        /// none is checked against it. A certificate's quorum is `signer_floor` over
+        /// the set, derived at the moment of issue, and the two must never be spelled
+        /// as one: `ceil(alpha * k)` is 3 on the testnet's committee of five, where
+        /// the set of five derives 4.
+        alpha: usize,
         /// Certificates this node issued, keyed by the signed identity of the
         /// position (`Position::signed_identity`) — the value every vote
         /// committed to, never the unsigned transport id. A certificate cannot
@@ -1163,7 +1201,7 @@ pub mod quasar {
         pub fn new(config: &QuasarConfig) -> Self {
             QuasarConsensus {
                 validators: ValidatorSet::new(),
-                threshold: config.alpha_count(),
+                alpha: config.alpha_count(),
                 finalized: HashMap::new(),
             }
         }
@@ -1175,9 +1213,7 @@ pub mod quasar {
         /// is known. A node already in the set is refused rather than restated:
         /// one node, one admission, on this door as on the keyed one.
         pub fn add_validator(&mut self, id: NodeID, weight: u64) -> Result<()> {
-            self.validators
-                .insert_unkeyed(*id.as_bytes(), weight)
-                .map_err(|e| ConsensusError::CryptoError(format!("{e:?}")))
+            Ok(self.validators.insert_unkeyed(*id.as_bytes(), weight)?)
         }
 
         /// Register a validator with the BLS key it signs with, and its proof
@@ -1195,9 +1231,7 @@ pub mod quasar {
             bls_pubkey: &[u8],
             pop: &[u8],
         ) -> Result<()> {
-            self.validators
-                .insert(*id.as_bytes(), weight, bls_pubkey, pop)
-                .map_err(|e| ConsensusError::CryptoError(format!("{e:?}")))
+            Ok(self.validators.insert(*id.as_bytes(), weight, bls_pubkey, pop)?)
         }
 
         /// Remove a validator
@@ -1220,9 +1254,13 @@ pub mod quasar {
             &self.validators
         }
 
-        /// Check if we have enough validators for consensus
+        /// Whether the set has grown to the committee this node was configured for.
+        ///
+        /// A readiness question about MEMBERSHIP, and deliberately not a statement
+        /// about any certificate: what a certificate must carry is derived from the
+        /// set when it is issued, and this number has no part in it.
         pub fn has_quorum(&self) -> bool {
-            self.validators.len() >= self.threshold
+            self.validators.len() >= self.alpha
         }
 
         /// Issue a certificate for `position` from the votes that actually
@@ -1264,7 +1302,34 @@ pub mod quasar {
                 });
             }
 
-            if accepted.len() < self.threshold {
+            // DERIVED, HERE AND NOW. The quorum this certificate carries is
+            // `signer_floor` for its rung over the set as it stands — the same number
+            // every party checking it computes for itself, which is what makes the two
+            // sides agree by construction rather than by luck.
+            //
+            // It was `ceil(alpha * k)`, the CONFIGURED accept quorum, and that number
+            // is about a committee while the floor is about a set. They part at every
+            // n != k, and the testnet parts at its own k: five validators, alpha 0.6,
+            // a stamped 3 against a derived 4 — so this engine issued a certificate
+            // its own `verify_certificate` refuses, and the refusal came back as
+            // `NoQuorum` over a set that held a unanimous one.
+            let n = self.validators.signer_count(EPOCH);
+            let derived = signer_floor(Finality::Quasar, n);
+            // The floor is a count of seats and a certificate states it in a `u32`. A
+            // set claiming more signers than that can hold is not a set this node
+            // holds a quorum of, and saying so in the clause that names seats is truer
+            // than truncating the number the certificate would carry.
+            let threshold = u32::try_from(derived).map_err(|_| {
+                ConsensusError::Cert(CertError::SignerFloor {
+                    have: accepted.len() as i64,
+                    need: derived,
+                    n,
+                })
+            })?;
+            // Not yet: the votes in hand do not reach the set's floor. This is the
+            // liveness answer and it reads the DERIVED number, so it can never stop
+            // short of a quorum the predicate below would have admitted.
+            if (accepted.len() as i64) < derived {
                 return Err(ConsensusError::NoQuorum);
             }
 
@@ -1275,20 +1340,15 @@ pub mod quasar {
             let key = ID::from(position.signed_identity());
             // Assembly sorts and dedups, so the certificate satisfies the
             // ordering clause by construction.
-            let cert = Certificate::assemble(
-                Finality::Quasar,
-                position,
-                self.threshold as u32,
-                &accepted,
-            )
-            .map_err(|e| ConsensusError::CryptoError(e.to_string()))?;
+            let cert = Certificate::assemble(Finality::Quasar, position, threshold, &accepted)?;
 
-            // Finalize only what the accept rule accepts. The count above is a
-            // cheap pre-gate; the authority is the stake floor, recomputed from
-            // the live set — so `is_finalized` can never report a certificate
-            // `verify_certificate` would reject.
-            cert.verify_weighted(&self.validators, &self.validators, 0)
-                .map_err(|_| ConsensusError::NoQuorum)?;
+            // Finalize only what the accept rule accepts. The count above is the
+            // liveness answer; the authority is this predicate — the derived clause,
+            // the stake floor and the signer floor, all recomputed from the set — so
+            // `is_finalized` can never report a certificate `verify_certificate` would
+            // reject. Its refusal is carried whole: which floor was not met is the
+            // answer, and `NoQuorum` is not that answer.
+            cert.verify_weighted(&self.validators, &self.validators, EPOCH)?;
 
             self.finalized.insert(key, cert.clone());
             Ok(cert)

@@ -1,6 +1,6 @@
 [package]
 name = "lux-consensus"
-version = "1.22.7"
+version = "1.23.0"
 edition = "2021"
 description = "Lux Consensus SDK — pure-Rust Quasar post-quantum probabilistic consensus (Wave / FPC / Photon / Focus / Quasar PQ finality via hybrid BLS12-381 + Pulsar = P3Q)"
 license-file = "LICENSE"
