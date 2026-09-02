@@ -4,6 +4,7 @@
 package chain
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -140,6 +141,132 @@ func TestExportCommitteeFloorLeavesNovaAlone(t *testing.T) {
 			t.Errorf("n=%d: a unanimous NOVA certificate was refused (%v). Nova ignites "+
 				"local execution on a bare majority and has no Byzantine claim to protect; "+
 				"the export rung's committee floor has leaked down a rung", n, err)
+		}
+	}
+}
+
+// countOnlyEngine is a real stake-less engine whose committee is exactly k.
+//
+// With no stake source effectiveCommittee answers the CONFIGURED K verbatim — no
+// clamp, no floor — so k IS the number verifyCert reads a declaration against, and
+// setting it is how a case names the committee it is asking about.
+func countOnlyEngine(t *testing.T, vs *testValidatorSet, k int) (*Transitive, ids.ID) {
+	t.Helper()
+	chainID := ids.GenerateTestID()
+	e := NewWithConfig(
+		Config{Params: config.Parameters{K: k, AlphaPreference: k, AlphaConfidence: k, Beta: 2}},
+		WithQuorumCert(chainID, vs.nodeID(0), vs, &recordingGossiper{}, vs.signerFor(0)))
+	if err := e.Start(context.Background(), true); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+	if e.stakeSource != nil {
+		t.Fatal("this engine is supposed to have no stake model; the case tests the count-only road")
+	}
+	if got, _ := e.effectiveCommittee(1); got != k {
+		t.Fatalf("the committee is %d and the case asked for %d — it is not testing the size it says it is", got, k)
+	}
+	return e, chainID
+}
+
+// arrival is a certificate as it ARRIVES: unanimous over the committee's k seats,
+// declaring the quorum that committee derives. Everything a certificate can be made
+// to satisfy is satisfied, so whatever refuses it refuses it on the committee.
+func arrival(t *testing.T, vs *testValidatorSet, chainID ids.ID, tier Finality, k int) *QuorumCert {
+	t.Helper()
+	pos := VotePosition{ChainID: chainID, Height: 9, Round: 1, BlockID: ids.GenerateTestID()}
+	votes := make([]SignedVote, 0, k)
+	for i := 0; i < k; i++ {
+		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
+	}
+	cert, err := AssembleQuorumCert(pos, tier, uint32(Quorum(tier, k)), votes)
+	if err != nil {
+		t.Fatalf("assemble %s over %d seats: %v", tier, k, err)
+	}
+	return cert
+}
+
+// TestExportCommitteeFloorHoldsOnTheCountOnlyRoad is the same floor as
+// TestExportNeedsAByzantineCommittee, on the OTHER road.
+//
+// There are two roads to the export rung and only one of them had this clause. The
+// weighted road reads the floor off the stake source (verifyQuasarSupermajority);
+// the count-only road — a chain with no stake model — reads its committee from
+// effectiveCommittee, and read NOTHING against it but the derived quorum. That
+// clause cannot catch a small committee, because it shrinks with it:
+// TwoThirdsCount(2) is 2, so two signatures over a two-member committee ARE the
+// number that committee derives and the certificate passes as the one this node
+// would have built itself.
+//
+// What passed there was export finality with a Byzantine budget of zero, and it did
+// not stop at the node that admitted it: TryAccept re-gossips the bytes and
+// applyBranchFinalization serves them as the catch-up proof, so one admission made
+// the node a second source for a certificate carrying no fault budget.
+//
+// It had to arrive from a peer and it took every key in the committee, which is why
+// this was a gap in Go's own uniformity rather than a live forgery. The road it
+// joins is Go's WEIGHTED road, pinned by the test above — same sentinel, same
+// TwoThirdsCount number. There is no third implementation in the comparison: Rust's
+// Cert::verify is the structural predicate its weighted road runs first, not an
+// accept rule, and C++'s verify_cert fails closed on an empty stake model, so
+// neither has a stake-less accept road for this clause to exist on.
+func TestExportCommitteeFloorHoldsOnTheCountOnlyRoad(t *testing.T) {
+	vs := newTestValidatorSet(minBFTCommittee)
+
+	for n := 1; n < minBFTCommittee; n++ {
+		e, chainID := countOnlyEngine(t, vs, n)
+		cert := arrival(t, vs, chainID, Quasar, n)
+
+		// Both clauses this road already had are MET. If either were short, the
+		// refusal below would prove nothing about the committee clause.
+		if err := cert.Verify(vs, 1); err != nil {
+			t.Fatalf("committee=%d: the certificate does not clear the structural predicate (%v), "+
+				"so this case never reaches the committee clause", n, err)
+		}
+		if floor := Quorum(Quasar, n); int(cert.Threshold) != floor {
+			t.Fatalf("committee=%d: the certificate declares %d where the committee derives %d, so "+
+				"the derived clause refuses it and the committee clause never runs", n, cert.Threshold, floor)
+		}
+
+		err := e.verifyCert(cert, 1)
+		if err == nil {
+			t.Errorf("committee=%d: a gossiped EXPORT certificate signed by every seat was ADMITTED. "+
+				"f=⌊(n−1)/3⌋ is %d there, so it tolerates no Byzantine fault and one compromised key "+
+				"forges irreversible finality — which this node would then re-gossip and serve on "+
+				"catch-up. Go's weighted road refuses it",
+				n, (n-1)/3)
+			continue
+		}
+		if !errors.Is(err, ErrQCBelowThreshold) {
+			t.Errorf("committee=%d: refused with %v, want ErrQCBelowThreshold — the weighted road's "+
+				"own sentinel, so the two Go roads refuse the same certificate by the same name", n, err)
+		}
+	}
+
+	// And at the floor the same shape carries: a floor on the committee, not a
+	// retirement of the road.
+	e, chainID := countOnlyEngine(t, vs, minBFTCommittee)
+	if err := e.verifyCert(arrival(t, vs, chainID, Quasar, minBFTCommittee), 1); err != nil {
+		t.Fatalf("committee=%d is the minimum Byzantine committee and its unanimous certificate "+
+			"was refused: %v", minBFTCommittee, err)
+	}
+}
+
+// TestCountOnlyCommitteeFloorLeavesNovaAlone — the clause belongs to the export
+// rung on this road too, and must not migrate down the ladder.
+//
+// Nova authorizes local execution the chain can still reorg away. A four-member
+// floor there would stop a small or partitioned stake-less chain making any
+// progress at all, in exchange for a guarantee the rung never offered.
+func TestCountOnlyCommitteeFloorLeavesNovaAlone(t *testing.T) {
+	vs := newTestValidatorSet(minBFTCommittee)
+
+	for n := 1; n < minBFTCommittee; n++ {
+		e, chainID := countOnlyEngine(t, vs, n)
+		if err := e.verifyCert(arrival(t, vs, chainID, Nova, n), 1); err != nil {
+			t.Errorf("committee=%d: a unanimous NOVA certificate was refused (%v). Nova ignites "+
+				"local execution and has no Byzantine claim to protect; the export rung's "+
+				"committee floor has leaked down a rung", n, err)
 		}
 	}
 }
