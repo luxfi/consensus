@@ -135,7 +135,7 @@ func (q *QuasarAttestor) Ingest(pos VotePosition, epoch uint64, att SignedVote) 
 	}
 	// A nil stake source is a configuration that cannot certify anything, and
 	// this is fail-closed by DESIGN. It has to be a rejection here, not a nil
-	// dereference at q.stake.ValidatorCount below: every entry point takes peer
+	// dereference at q.stake.SignerCount below: every entry point takes peer
 	// data, so the deref is a remote crash on any node wired without stake.
 	if q.stake == nil {
 		return nil, false, fmt.Errorf("quasar ingest: no stake source configured")
@@ -181,7 +181,7 @@ func (q *QuasarAttestor) Ingest(pos VotePosition, epoch uint64, att SignedVote) 
 	// is VerifyWeighted below, which enforces this same count AND the ⅔-by-stake predicate;
 	// this call is the assembly trigger, read from the one definition so the attestor cannot
 	// try to build a cert the verifier would refuse — nor stop trying before it would pass.
-	n := q.stake.ValidatorCount(epoch)
+	n := q.stake.SignerCount(epoch)
 	threshold := config.TwoThirdsCount(n)
 	if len(b.votes) < threshold {
 		return nil, false, nil

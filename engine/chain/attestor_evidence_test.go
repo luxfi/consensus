@@ -80,7 +80,7 @@ func TestAttestor_NilStakeIsRejectedNotFatal(t *testing.T) {
 		if r := recover(); r != nil {
 			t.Fatalf("Ingest PANICKED on a nil stake source: %v. The file documents this as "+
 				"rejected at emit time; a nil source instead reaches "+
-				"q.stake.ValidatorCount(epoch) on the first verified attestation. Every "+
+				"q.stake.SignerCount(epoch) on the first verified attestation. Every "+
 				"exported entry point here takes peer data, so a fail-closed path that is "+
 				"actually a nil dereference is a remote crash on any node wired without stake.", r)
 		}

@@ -62,6 +62,11 @@ type Verdict struct {
 type Seat struct {
 	NodeID string `json:"nodeID"`
 	Weight string `json:"weight"`
+	// Keyless marks a seat the chain carries without a signing key. It holds
+	// stake and can never sign, so it is in no floor's denominator — the field is
+	// omitted when false, so a set of ordinary seats reads exactly as it always
+	// did.
+	Keyless bool `json:"keyless,omitempty"`
 }
 
 // FinalityCase is one certificate weighed against one validator set at one rung.
@@ -124,39 +129,94 @@ func first(k int) []int {
 	return out
 }
 
+// member is one seat of a corpus set: the stake it holds, and whether it holds a
+// key. A member with no key is carried by the chain and counted by nothing — it
+// is the case the keyless vector is about.
+type member struct {
+	weight  uint64
+	keyless bool
+}
+
 // stake is the authoritative validator set a case is weighed against: seat i
 // holds stake[i-1]. It is the live StakeSource interface, so the predicate reads
 // this set through exactly the seam a node reads the P-chain through.
-type stake []uint64
+type stake []member
 
-// Weight returns the seat's stake, or zero for an id outside the set — an
-// unknown voter must never be able to inflate a tally.
-func (s stake) Weight(id ids.NodeID, _ uint64) uint64 {
-	i := int(binary.BigEndian.Uint32(id[len(id)-4:])) - 1
-	if i < 0 || i >= len(s) {
-		return 0
+// signers builds a set in which every seat holds a key — the shape every case
+// but the keyless one has.
+func signers(ws ...uint64) stake {
+	out := make(stake, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, member{weight: w})
 	}
-	return s[i]
+	return out
 }
 
-// TotalStake returns the total active stake of the set.
-func (s stake) TotalStake(uint64) uint64 {
+// spectator is a seat that holds stake and no key. It can never sign, so it is
+// in no floor's denominator — which is the whole of what the keyless case says.
+func spectator(w uint64) member { return member{weight: w, keyless: true} }
+
+// at resolves a node id to its seat index, or -1 for an id outside the set.
+func (s stake) at(id ids.NodeID) int {
+	i := int(binary.BigEndian.Uint32(id[len(id)-4:])) - 1
+	if i < 0 || i >= len(s) {
+		return -1
+	}
+	return i
+}
+
+// Weight returns the seat's stake, or zero for an id outside the set and zero
+// for a seat that holds no key — an unknown voter must never be able to inflate
+// a tally, and neither must a voter whose vote no verifier would accept.
+func (s stake) Weight(id ids.NodeID, _ uint64) uint64 {
+	i := s.at(id)
+	if i < 0 || s[i].keyless {
+		return 0
+	}
+	return s[i].weight
+}
+
+// SignerStake returns the stake held by the seats that can sign — the
+// denominator both floors are read against. A keyless seat's stake is absent
+// from it for the reason it is absent from every tally: no quorum can ever
+// contain it, so a floor computed over it is a bar raised against stake that
+// could never help clear it.
+func (s stake) SignerStake(uint64) uint64 {
 	var total uint64
-	for _, w := range s {
-		total += w
+	for _, m := range s {
+		if !m.keyless {
+			total += m.weight
+		}
 	}
 	return total
 }
 
-// ValidatorCount returns the number of distinct active validators.
-func (s stake) ValidatorCount(uint64) int { return len(s) }
+// SignerCount returns the number of distinct seats that can sign — read over
+// the same set as SignerStake, so the count floor and the stake floor are the
+// same supermajority in two units and not two supermajorities.
+func (s stake) SignerCount(uint64) int {
+	n := 0
+	for _, m := range s {
+		if !m.keyless {
+			n++
+		}
+	}
+	return n
+}
 
-// trust resolves every vote as correctly signed. The weighted half is the
-// subject of this section; see the file comment for why the two are separated.
-type trust struct{}
+// trust resolves every vote from a SEAT THAT HOLDS A KEY as correctly signed.
+// The weighted half is the subject of this section; see the file comment for why
+// the two are separated. A keyless seat is refused, because a signature under a
+// key that does not exist is not a signature a corpus may credit — it would let
+// a case state a quorum no implementation could ever assemble.
+type trust struct{ set stake }
 
-// VerifyVote reports every signature as valid.
-func (trust) VerifyVote(ids.NodeID, []byte, []byte, uint64) bool { return true }
+// VerifyVote reports a keyed seat's signature as valid and a keyless seat's as
+// what it is: absent.
+func (t trust) VerifyVote(id ids.NodeID, _ []byte, _ []byte, _ uint64) bool {
+	i := t.set.at(id)
+	return i >= 0 && !t.set[i].keyless
+}
 
 // keyShaped is a key that is present and the right width but is not a point. The
 // clauses this section is about are reached before any key is read, and a case
@@ -212,25 +272,29 @@ func finality(name, note string, rung chain.Finality, s stake, signers []int) Fi
 	}
 
 	seats := make([]Seat, 0, len(s))
-	for i, w := range s {
+	for i, m := range s {
 		id := seat(i + 1)
-		seats = append(seats, Seat{NodeID: hex.EncodeToString(id[:]), Weight: u64(w)})
+		seats = append(seats, Seat{NodeID: hex.EncodeToString(id[:]), Weight: u64(m.weight), Keyless: m.keyless})
 	}
 
 	// Both floors are the RUNG's. Recording Nova's count floor on a Quasar row
 	// would describe a clause the export rung does not enforce, and a runner
 	// reading it would be told the wrong number by the file that is supposed to
 	// tell it the right one.
-	total := s.TotalStake(verdictEpoch)
+	// n is the SIGNER count, never len(s): a seat that holds no key is not a party
+	// whose agreement a count floor is a statement about, and a floor read over the
+	// membership roll can demand more signatures than the set is able to produce.
+	total := s.SignerStake(verdictEpoch)
+	n := s.SignerCount(verdictEpoch)
 	floor := config.HalfStakeFloor(total)
-	signerFloor := chain.NovaSignerFloor(len(s))
+	signerFloor := chain.NovaSignerFloor(n)
 	if rung == chain.Quasar {
 		floor = config.TwoThirdsStakeFloor(total)
-		signerFloor = config.TwoThirdsCount(len(s))
+		signerFloor = config.TwoThirdsCount(n)
 	}
 
 	// The decision, read from the live predicate — never restated here.
-	decided := cert.VerifyWeighted(trust{}, s, verdictEpoch)
+	decided := cert.VerifyWeighted(trust{set: s}, s, verdictEpoch)
 
 	return FinalityCase{
 		Name:        name,
@@ -311,16 +375,21 @@ func verdicts() Verdict {
 	// the two coincide.
 	equal41 := make(stake, 41)
 	for i := range equal41 {
-		equal41[i] = 1
+		equal41[i] = member{weight: 1}
 	}
 
 	// Four equal seats: the smallest Byzantine-tolerant committee, where the
 	// signer floor is 3 and a lone signer is below every gate.
-	equal4 := stake{1, 1, 1, 1}
+	equal4 := signers(1, 1, 1, 1)
 
 	// One holder of a stake majority and four registrations at the minimum. This
 	// is the shape the signer floor exists for.
-	whale := stake{100, 1, 1, 1, 1}
+	whale := signers(100, 1, 1, 1, 1)
+
+	// Three seats that can sign and one that cannot, the keyless one holding two
+	// fifths of what the chain carries — past the third at which a denominator
+	// read over the whole membership puts the export rung out of reach for good.
+	keylessThird := append(signers(100, 100, 100), spectator(200))
 
 	return Verdict{
 		Note: "what the predicate DECIDES, not what the encoder emits. Every vote is " +
@@ -379,11 +448,19 @@ func verdicts() Verdict {
 					"clause, not the stake — and one seat fewer is the case above",
 				chain.Quasar, whale, []int{1, 2, 3, 4}),
 
-			// TODO(R5): the keyless denominator. TotalStake counts registrations
-			// that hold no key and therefore cannot sign, so the floor a quorum
-			// must clear is computed over stake that can never vote. Freezing a
-			// verdict for it needs signable_stake to exist first; until then the
-			// corpus would be pinning the arithmetic rather than the rule.
+			finality("quasar_keyless_third",
+				"THE KEYLESS DENOMINATOR. Three seats of a hundred hold keys; a fourth "+
+					"holds two hundred and no key. Every seat that CAN sign does — a "+
+					"hundred per cent of the signing set — and the export rung admits it, "+
+					"because the floor is read over the three hundred that can sign and not "+
+					"the five hundred the chain carries. Read the other way this case is "+
+					"stranded and stays stranded: three hundred does not exceed "+
+					"floor(2*500/3)=333, and nothing the signers do can reach it, because "+
+					"the two hundred it falls short by is held by a member that can never "+
+					"cast a vote. A floor is a statement about the parties whose agreement "+
+					"it demands, so it is read over the parties who can agree. The count "+
+					"floor is read over the same three seats for the same reason",
+				chain.Quasar, keylessThird, first(3)),
 		},
 		Admission: []AdmissionCase{
 			register("zero_weight",

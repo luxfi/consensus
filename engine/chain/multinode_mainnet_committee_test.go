@@ -15,7 +15,7 @@
 // (all agree on the tip, no fork — the live incident signature).
 //
 // The fix (integration.go viewCommittee): size the view-change committee from the SAME populated
-// ⅔-by-stake StakeSource the cert reads — n = ValidatorCount (5), α = bftAlpha(5) = 4 — so a POL
+// ⅔-by-stake StakeSource the cert reads — n = SignerCount (5), α = bftAlpha(5) = 4 — so a POL
 // forms at 4 prevotes → precommit → one ⅔-by-stake cert → finalize. The sample K=21 is left untouched
 // (the chain still boots past the mainnet K≥11 floor); only the round machine's committee shrinks.
 package chain
@@ -54,7 +54,7 @@ func TestViewChange_MainnetParams_5Validators_CommitteeFromStakeSource(t *testin
 		return blocks
 	}
 
-	// CONTROL — the mainnet freeze reproduced. ValidatorCount unresolved (0), as on the node whose
+	// CONTROL — the mainnet freeze reproduced. SignerCount unresolved (0), as on the node whose
 	// current-map Manager read 0 at construction: viewCommittee cannot shrink the sample preset, so
 	// the round machine runs at α=15. Five validators can cast at most five distinct prevotes, so no
 	// POL(winner) can ever form → NOTHING finalizes. Safety holds (no fork) — this is a pure liveness
@@ -73,7 +73,7 @@ func TestViewChange_MainnetParams_5Validators_CommitteeFromStakeSource(t *testin
 		}
 	})
 
-	// FIX — committee sized to the live validator set. Default ValidatorCount == len(ids) == 5, so
+	// FIX — committee sized to the live validator set. Default SignerCount == len(ids) == 5, so
 	// viewCommittee shrinks 21→5 and α = bftAlpha(5) = 4. The storm's lowest-canonical winner now
 	// gathers ≥4 prevotes → POL → precommit → one ⅔-by-stake cert → finalize. Must converge ALL five
 	// live nodes on a SINGLE head (no double-finalization).

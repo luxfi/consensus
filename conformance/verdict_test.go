@@ -322,7 +322,7 @@ func TestAdmissionWeightRulesStatedOutright(t *testing.T) {
 func TestVerdictSectionIsPopulated(t *testing.T) {
 	v := Build().Verdict
 
-	if got, want := len(v.Finality), 10; got != want {
+	if got, want := len(v.Finality), 11; got != want {
 		t.Errorf("%d finality cases, want %d — adding one is deliberate, losing one is not", got, want)
 	}
 	if got, want := len(v.Admission), 4; got != want {

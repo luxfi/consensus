@@ -208,7 +208,7 @@ func TestQuasarCountFloor_StakeCannotBuyExport(t *testing.T) {
 
 	// The premise: the lone signer really does hold the stake supermajority, so a
 	// refusal below can only be the count.
-	if voted, total := uint64(100), whale.TotalStake(epoch); voted <= config.TwoThirdsStakeFloor(total) {
+	if voted, total := uint64(100), whale.SignerStake(epoch); voted <= config.TwoThirdsStakeFloor(total) {
 		t.Fatalf("the whale holds %d of %d — not a ⅔ supermajority, so this test proves nothing",
 			voted, total)
 	}
@@ -259,4 +259,4 @@ func TestQuasarCountFloor_UnresolvedSetFailsClosed(t *testing.T) {
 // count floor has to fail closed on.
 type unresolvedCount struct{ *stakeMap }
 
-func (unresolvedCount) ValidatorCount(uint64) int { return 0 }
+func (unresolvedCount) SignerCount(uint64) int { return 0 }
