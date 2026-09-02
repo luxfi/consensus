@@ -408,10 +408,15 @@ not. Nova orders the other way because its count floor is a lower, saturating,
 stake-independent bar, a different question asked first.
 
 Liveness, held by `engine/chain/quasar_count_floor_test.go`: `QuasarAttestor` (the
-only producer of export certs) assembles at exactly `TwoThirdsCount(n)` attestations,
-and `FeasibleParams` sizes α — the floor `Runtime.HandleIncomingCert` applies to a
-gossiped Quasar cert — to the same number. Producer, gossip door and verifier all ask
-for one count, so the verifier's clause refuses nothing the engine can produce.
+only producer of export certs) assembles at exactly `TwoThirdsCount(n)` over the live
+set, which is the number the verifier recomputes — so the clause refuses nothing the
+engine can produce. The gossip door `Runtime.HandleIncomingCert` applies is
+`FeasibleParams`' α, and what is proven of it is `Alpha == TwoThirdsCount(p.K)`: the
+same function, read at the chain's K rather than at the live n. K and n are one number
+whenever the params were sized to the set that is running. Where they part the verifier
+is the authority — a door under it admits what the predicate then refuses, and a door
+over it is the gossip-admission bound the runtime already had, not something this
+clause added.
 
 ### Test Status
 - All tests pass except `TestQuantumBundle_ChainIntegrity` which is flaky

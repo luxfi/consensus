@@ -85,11 +85,13 @@ func TestQuasarCountFloor_SitsAboveNova(t *testing.T) {
 //
 // A certificate arriving from a peer meets the runtime's own tier floor first
 // (Runtime.HandleIncomingCert reads ChainConsensus.Alpha() for Quasar) and the
-// cert predicate second. Those are two numbers in two files, and if the first
-// were the smaller one there would be a window where a certificate is admitted
-// and then refused — the shape of an availability bug rather than a safety one.
-// FeasibleParams sizes α from the same function the verifier now enforces, so
-// there is no window: the door and the predicate ask for the same count.
+// cert predicate second. Those are two numbers in two files, and the risk is two
+// DEFINITIONS of the count rather than two readings of one.
+//
+// What is held here is exactly that: α == TwoThirdsCount(p.K). The door is sized by
+// the function the verifier enforces, so neither is a second rule. It is one rule
+// read at two set sizes — the door at the chain's K, the predicate at the live n —
+// and DoorAndVerifierAreOneRuleAtTwoSizes below says what follows when they differ.
 func TestQuasarCountFloor_SizerMatchesVerifier(t *testing.T) {
 	for _, networkID := range []uint32{constants.MainnetID, constants.TestnetID, 1337} {
 		for n := 1; n <= 1000; n++ {
@@ -97,6 +99,49 @@ func TestQuasarCountFloor_SizerMatchesVerifier(t *testing.T) {
 			if want := config.TwoThirdsCount(p.K); p.AlphaConfidence != want {
 				t.Fatalf("network=%d n=%d: α=%d, the export floor for K=%d is %d",
 					networkID, n, p.AlphaConfidence, p.K, want)
+			}
+		}
+	}
+}
+
+// TestQuasarCountFloor_DoorAndVerifierAreOneRuleAtTwoSizes reaches the case the
+// sizer test does not: K ≠ n.
+//
+// The door is fixed when the chain is built, from its K. The predicate is
+// recomputed per certificate from the set live at that cert's epoch. FeasibleParams
+// sets K = n, so the two are one number whenever the params were sized to the set
+// that is running, and they part only when the set has moved since.
+//
+// GROWN (K < n). TwoThirdsCount does not decrease, so the door is the looser of the
+// two and a certificate it admits is refused by the predicate afterwards, if at all.
+// This is the direction that matters to the clause this file adds: it cannot halt an
+// export the door let through, because the door is never the higher bar here.
+//
+// SHRUNK (K > n). The door is the stricter number and refuses first. That is the
+// runtime's gossip-admission bound, which reads the same before and after this
+// clause — the verifier's floor is not what refuses there. Asserted as the observed
+// shape, so a later change that inverts it has to say so.
+func TestQuasarCountFloor_DoorAndVerifierAreOneRuleAtTwoSizes(t *testing.T) {
+	for _, networkID := range []uint32{constants.MainnetID, constants.TestnetID, 1337} {
+		for _, configured := range []int{1, 2, 3, 4, 5, 7, 11, 21, 41, 100} {
+			p := config.FeasibleParams(networkID, configured)
+			door := p.AlphaConfidence
+			for live := 1; live <= 200; live++ {
+				verifier := config.TwoThirdsCount(live)
+				switch {
+				case p.K == live && door != verifier:
+					t.Fatalf("network=%d K=%d live=%d: one rule at one size gave two numbers, door=%d verifier=%d",
+						networkID, p.K, live, door, verifier)
+				case p.K < live && door > verifier:
+					t.Fatalf("network=%d K=%d live=%d: the set grew and the door became the higher bar "+
+						"(door=%d verifier=%d) — the count is no longer monotone and the door can now "+
+						"withhold an export the predicate would accept",
+						networkID, p.K, live, door, verifier)
+				case p.K > live && door < verifier:
+					t.Fatalf("network=%d K=%d live=%d: the set shrank and the door became the looser bar "+
+						"(door=%d verifier=%d), which is not the observed shape",
+						networkID, p.K, live, door, verifier)
+				}
 			}
 		}
 	}
