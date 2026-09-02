@@ -155,10 +155,16 @@ impl<'a> Reader<'a> {
     ///
     /// The end of the field is computed with `checked_add` because the length is
     /// a peer's 32-bit number and the position is ours. Where `usize` is 32 bits
-    /// the sum of the two can wrap, and a wrapped end is a SMALL index that is
-    /// in bounds — so an unchecked add would hand back a slice on the very input
-    /// it was meant to refuse. The width of a pointer is not a thing a wire
-    /// format gets to depend on.
+    /// the sum of the two can overflow, and an overflow is a PANIC wherever
+    /// overflow checks are on — so a peer that can announce a length can halt
+    /// the process, which is the attack.
+    ///
+    /// It is NOT an over-read. A wrapped end lands BELOW the cursor, and a range
+    /// whose start is past its end is one `get` answers `None` to, so the
+    /// unchecked version refuses the same bytes wherever it survives them at
+    /// all. The fix buys the refusal on a target where the alternative is
+    /// dying — the width of a pointer is not a thing a wire format gets to
+    /// depend on.
     pub fn bytes(&mut self) -> Option<&'a [u8]> {
         let n = self.u32()? as usize;
         let end = self.pos.checked_add(n)?;
@@ -253,9 +259,14 @@ mod tests {
         assert_eq!(r.bytes(), None);
     }
 
-    /// The refusal must not depend on `usize` being 64 bits wide. A length near
-    /// `u32::MAX` is refused for being longer than the payload, and it is the
-    /// bounds check that says so — not the accident that the sum happened to fit.
+    /// A length near `u32::MAX` over a five-byte payload is refused.
+    ///
+    /// On a 64-bit target — which is every target this suite runs on — that is
+    /// the whole of what this can say: the sum cannot overflow there, so what is
+    /// held is the bounds check and not the `checked_add`, and dropping the
+    /// `checked_add` leaves this green. The overflow it guards is a 32-bit
+    /// target's, no such target is in CI, and this test is the one that would
+    /// carry the property the day one is.
     #[test]
     fn a_length_that_would_wrap_the_cursor_is_refused() {
         for announced in [u32::MAX, u32::MAX - 1, 1 << 31, 1 << 24] {
