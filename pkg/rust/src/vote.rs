@@ -491,8 +491,20 @@ impl Tally {
                 signature: signature.clone(),
             })
             .collect();
-        let n = stake.signer_count(self.epoch_height);
-        let derived = signer_floor(self.tier, n);
+        // ONE READ, and every clause of this issue answers to it. The derive below
+        // takes the count, and `verify_weighted` then reads the count AGAIN to check
+        // the threshold the derive produced. A source that need not answer twice
+        // alike makes those two numbers, and the second refuses what the first built
+        // — a certificate rejected by the party that just assembled it, over nothing
+        // but the moment each clause asked. So the number is taken once, here, and
+        // `held` answers with it for the rest of the issue.
+        //
+        // Only the issue. The arrival road hands `verify_weighted` the source itself,
+        // and the rung's count clause reading it again is deliberate there: a
+        // certificate from elsewhere has no issue to be consistent with, and a set
+        // that moved under it is exactly what that clause refuses.
+        let held = Held { set: stake, n: stake.signer_count(self.epoch_height) };
+        let derived = signer_floor(self.tier, held.n);
         // The floor is a count of seats and the certificate states it in a `u32`.
         // A set claiming more signers than that can hold is not a set this tally
         // holds a quorum of, and saying so in the clause that names seats is
@@ -500,10 +512,32 @@ impl Tally {
         let threshold = u32::try_from(derived).map_err(|_| CertError::SignerFloor {
             have: self.votes.len() as i64,
             need: derived,
-            n,
+            n: held.n,
         })?;
         let cert = QuorumCert::assemble(self.tier, self.position.clone(), threshold, &votes)?;
-        cert.verify_weighted(verifier, stake, self.epoch_height)?;
+        cert.verify_weighted(verifier, &held, self.epoch_height)?;
         Ok(cert)
+    }
+}
+
+/// The set as one read, for the length of one issue.
+///
+/// Weight and stake pass straight through — each is read once and a copy of it
+/// would be a copy of nothing. The count is the number that is read twice, so it
+/// is the number this holds.
+struct Held<'a> {
+    set: &'a dyn StakeSource,
+    n: i64,
+}
+
+impl StakeSource for Held<'_> {
+    fn weight(&self, node: &NodeId, epoch_height: u64) -> u64 {
+        self.set.weight(node, epoch_height)
+    }
+    fn signer_stake(&self, epoch_height: u64) -> u64 {
+        self.set.signer_stake(epoch_height)
+    }
+    fn signer_count(&self, _epoch_height: u64) -> i64 {
+        self.n
     }
 }

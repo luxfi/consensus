@@ -884,10 +884,13 @@ fn a_keyless_member_cannot_be_certified() {
         })
         .collect();
 
-    // All four signed, but only two can be checked — below the threshold of 3.
+    // All four signed, but only two can be CHECKED, so the set that can sign is two —
+    // and two seats cannot carry an export supermajority at all: f = (n-1)/3 is zero
+    // below four, so the certificate would absorb no fault. The refusal names that
+    // clause rather than reporting that something did not reach something.
     assert!(matches!(
         q.create_certificate(pos, &votes),
-        Err(ConsensusError::NoQuorum)
+        Err(ConsensusError::Cert(CertError::MinCommittee { n: 2, need: 4 }))
     ));
 }
 
@@ -960,10 +963,17 @@ fn the_issue_path_applies_the_stake_floor_not_only_the_count() {
         })
         .collect();
 
-    // Count is met (3 of 3), stake is not (3 of 10_003, floor is > 6668).
+    // The count is met — the set of four derives a floor of three and three signed —
+    // and the stake is not: 3 of 10_003 against a floor of > 6668. The refusal says
+    // which floor, because "no quorum" would have said the count was short when the
+    // count was exactly right.
     assert!(matches!(
         q.create_certificate(pos.clone(), &ballots),
-        Err(ConsensusError::NoQuorum)
+        Err(ConsensusError::Cert(CertError::StakeBelowSupermajority {
+            voted: 3,
+            signer: 10_003,
+            need_above: 6668,
+        }))
     ));
     assert!(
         !q.is_finalized(&lux_consensus::ID::from(pos.signed_identity())),
@@ -1663,4 +1673,140 @@ fn an_unresolved_set_is_not_named_by_the_derived_clause() {
         cert.verify_weighted(&set, &Unresolved, 0),
         Err(CertError::UnresolvedSet { n: 0 }),
     );
+}
+
+// ------------------------------------------------ the issuer states no quorum
+
+/// A committee of `n` keyed validators at equal weight, under `config`.
+fn issuer(config: &lux_consensus::QuasarConfig, n: u8) -> (Vec<Signer>, lux_consensus::QuasarConsensus) {
+    use lux_consensus::{NodeID, QuasarConsensus};
+    let signers: Vec<Signer> = (1..=n).map(|i| Signer::new(i, 100)).collect();
+    let mut q = QuasarConsensus::new(config);
+    for s in &signers {
+        q.add_validator_with_key(NodeID::from(s.id), s.weight, &s.public(), &s.pop())
+            .expect("register");
+    }
+    (signers, q)
+}
+
+/// `voters` ballots for `pos`, each carrying its signer's signature.
+fn ballots(signers: &[Signer], pos: &Position, voters: usize) -> Vec<lux_consensus::Vote> {
+    use lux_consensus::{NodeID, VoteType};
+    let message = canonical_vote_message(pos, true);
+    signers[..voters]
+        .iter()
+        .map(|s| {
+            lux_consensus::Vote::new(
+                lux_consensus::ID::from(pos.block_id),
+                VoteType::Preference,
+                NodeID::from(s.id),
+            )
+            .with_signature(s.sign(&message))
+        })
+        .collect()
+}
+
+/// The engine issues certificates its own accept rule accepts.
+///
+/// It did not. `create_certificate` stamped `ceil(alpha * k)` — the CONFIGURED
+/// accept quorum, a number about a committee — while every floor the certificate
+/// is then held to is derived from the SET. The two part at every n != k, and the
+/// testnet parts at its own k: five validators, alpha 0.6, a stamped 3 against a
+/// derived 4. So the public issue path was dead on that preset for every set size,
+/// and its refusal came back as `NoQuorum` over a set holding a unanimous one.
+///
+/// The suite never said so because it only ever asked the DEFAULT preset at n=20,
+/// which is the one point where ceil(0.69 * 20) = 14 and two_thirds_count(20) = 14
+/// agree. The rows below are chosen to straddle that point.
+#[test]
+fn the_issuer_derives_its_certificates_quorum_from_the_set() {
+    use lux_consensus::QuasarConfig;
+
+    let mut parted = 0;
+    for config in [QuasarConfig::testnet(), QuasarConfig::default()] {
+        for n in [4u8, 5, 6, 7, 8, 20, 21] {
+            let derived = signer_floor(Finality::Quasar, i64::from(n));
+            // Equal weights, so the supermajority in stake and the supermajority in
+            // seats are the same count: exactly the derived floor carries both.
+            let voters = derived as usize;
+            if config.alpha_count() != voters {
+                parted += 1;
+            }
+
+            let (signers, mut q) = issuer(&config, n);
+            let pos = position();
+            let cert = q
+                .create_certificate(pos.clone(), &ballots(&signers, &pos, voters))
+                .unwrap_or_else(|e| {
+                    panic!("k={} n={n}: the issuer refused its own quorum: {e}", config.k)
+                });
+
+            assert_eq!(
+                i64::from(cert.threshold),
+                derived,
+                "k={} n={n}: the certificate declares a quorum the set does not derive",
+                config.k
+            );
+            assert!(
+                q.verify_certificate(&cert),
+                "k={} n={n}: the engine issued a certificate its own accept rule refuses",
+                config.k
+            );
+            assert!(
+                q.is_finalized(&lux_consensus::ID::from(pos.signed_identity())),
+                "k={} n={n}: a verified certificate was not filed",
+                config.k
+            );
+        }
+    }
+    assert!(
+        parted > 0,
+        "no row put the configured quorum at odds with the derived one — the rows stopped \
+         straddling the point where the two agree, and this test stopped looking"
+    );
+}
+
+/// The preset's own committee, stated on its own, because it is the sharpest case:
+/// an engine that cannot certify at the size it was configured for.
+#[test]
+fn the_testnet_preset_certifies_at_its_own_committee() {
+    use lux_consensus::QuasarConfig;
+
+    let config = QuasarConfig::testnet();
+    let derived = signer_floor(Finality::Quasar, i64::from(config.k as u8));
+    assert_eq!(
+        (config.alpha_count(), derived),
+        (3, 4),
+        "the case is stated on ceil(0.6 * 5) = 3 against two_thirds_count(5) = 4; \
+         if the preset moved, restate it"
+    );
+
+    let (signers, mut q) = issuer(&config, config.k as u8);
+    let pos = position();
+    let cert = q
+        .create_certificate(pos.clone(), &ballots(&signers, &pos, 5))
+        .expect("the testnet preset must certify over its own committee");
+    assert_eq!(i64::from(cert.threshold), derived);
+    assert!(q.verify_certificate(&cert));
+}
+
+/// One below the set's floor is the liveness answer, not a floor's refusal: the
+/// votes are not there yet, and nothing about them is wrong.
+#[test]
+fn one_short_of_the_derived_floor_is_not_yet() {
+    use lux_consensus::{ConsensusError, QuasarConfig};
+
+    let config = QuasarConfig::testnet();
+    let (signers, mut q) = issuer(&config, 5);
+    let pos = position();
+    let derived = signer_floor(Finality::Quasar, 5) as usize;
+
+    assert!(matches!(
+        q.create_certificate(pos.clone(), &ballots(&signers, &pos, derived - 1)),
+        Err(ConsensusError::NoQuorum)
+    ));
+    assert!(!q.is_finalized(&lux_consensus::ID::from(pos.signed_identity())));
+    assert!(q
+        .create_certificate(pos.clone(), &ballots(&signers, &pos, derived))
+        .is_ok());
 }
