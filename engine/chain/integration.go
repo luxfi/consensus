@@ -36,7 +36,9 @@ type NetworkConfig struct {
 	// Validators provides access to the validator set for peer sampling.
 	// If nil, the engine broadcasts to all peers (less efficient).
 	Validators ValidatorSampler
-	// Logger for consensus events
+	// Logger for consensus events. Optional: NewRuntime answers an unset one
+	// with log.Noop(), so a Runtime always holds a logger and the handlers can
+	// reach for it without asking whether it is there.
 	Logger log.Logger
 	// Gossiper broadcasts messages to validators
 	Gossiper Gossiper
@@ -296,6 +298,16 @@ func (t *Transitive) effectiveCommittee(epochHeight uint64) (n, alpha int) {
 //	if err := runtime.Start(ctx, true); err != nil { return err }
 //	go runtime.ForwardVMNotifications(toEngine)
 func NewRuntime(cfg NetworkConfig) *Runtime {
+	// A logger is optional to supply but never absent to use: the incoming vote,
+	// cert and block handlers each reach for it on their first line, before any
+	// validation. Answering an unset one here, once, is what lets every later
+	// site read it without first asking whether it is there. Noop is the same
+	// singleton the engine settles on in NewWithConfig, and it discards what it
+	// is given, so an unset logger stays as silent as the caller meant it to be.
+	if cfg.Logger == nil {
+		cfg.Logger = log.Noop()
+	}
+
 	// Use provided params or default
 	params := config.DefaultParams()
 	if cfg.Params != nil {
