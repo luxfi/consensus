@@ -152,10 +152,18 @@ impl<'a> Reader<'a> {
     /// The length is checked against what is left before anything is taken, so
     /// an announced length larger than the payload is a refusal and never an
     /// allocation.
+    ///
+    /// The end of the field is computed with `checked_add` because the length is
+    /// a peer's 32-bit number and the position is ours. Where `usize` is 32 bits
+    /// the sum of the two can wrap, and a wrapped end is a SMALL index that is
+    /// in bounds — so an unchecked add would hand back a slice on the very input
+    /// it was meant to refuse. The width of a pointer is not a thing a wire
+    /// format gets to depend on.
     pub fn bytes(&mut self) -> Option<&'a [u8]> {
         let n = self.u32()? as usize;
-        let s = self.data.get(self.pos..self.pos + n)?;
-        self.pos += n;
+        let end = self.pos.checked_add(n)?;
+        let s = self.data.get(self.pos..end)?;
+        self.pos = end;
         Some(s)
     }
 }
@@ -243,6 +251,22 @@ mod tests {
         let hostile = [0xffu8, 0xff, 0xff, 0xff, 0x01, 0x02];
         let mut r = Reader::new(&hostile);
         assert_eq!(r.bytes(), None);
+    }
+
+    /// The refusal must not depend on `usize` being 64 bits wide. A length near
+    /// `u32::MAX` is refused for being longer than the payload, and it is the
+    /// bounds check that says so — not the accident that the sum happened to fit.
+    #[test]
+    fn a_length_that_would_wrap_the_cursor_is_refused() {
+        for announced in [u32::MAX, u32::MAX - 1, 1 << 31, 1 << 24] {
+            let mut hostile = announced.to_be_bytes().to_vec();
+            hostile.extend_from_slice(b"short");
+            let mut r = Reader::new(&hostile);
+            assert_eq!(r.bytes(), None, "announced {announced}");
+            // And a refusal leaves the cursor where a caller can still see the
+            // remaining bytes, rather than past the end of the buffer.
+            assert!(r.remaining() <= hostile.len());
+        }
     }
 
     #[test]
