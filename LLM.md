@@ -483,6 +483,43 @@ clause added.
   change — needs a look from whoever owns the steer-site work.
 - Build: `GOWORK=off go build ./...`
 - Tests: `GOWORK=off go test -count=1 -short -timeout 300s ./...`
+- Coverage: `go test -covermode=count -coverprofile=c.out ./engine/chain/... ./validator/... ./config/... ./conformance/...`
+  then `go tool cover -func=c.out`. `make coverage-html` renders it.
+
+### The clauses coverage cannot reach, and why
+Four statements in the consensus core are unreachable through any public entry
+point. They are walls behind walls, they are correct, and chasing them costs an
+afternoon each — so they are written down instead.
+
+- `cert.go` `VerifyWeighted`'s `default:` unknown-tier arm. `Verify` runs first
+  and refuses any tier outside {Nova, Quasar}, so the switch below it never sees
+  one. `TestATierIsRefusedByVerifyBeforeVerifyWeightedSeesIt` pins that ORDER, so
+  a reordering that made the arm reachable fails a test rather than passing
+  quietly. Rust carries the identical dead arm at `cert.rs:416`.
+- `pop.go` `Verify`'s canonical re-compress check, and `Verify`'s own
+  `Message` error. `bls.PublicKeyFromCompressedBytes` is canonical — probed over
+  all 256 spellings of byte 0 and every single-bit flip of a real key, zero
+  decode to a point that re-compresses differently — and the width was checked
+  two lines above. Rust's `pop.rs:83` and C++'s `bls.cpp:145` are the same wall.
+- `registration.go` `Register`'s decode after `pop.Verify` succeeded, which
+  decoded the same bytes. C++ marks its twin `unreachable: pop_verify decoded it`.
+- `attestation.go` `Ingest`'s `AssembleQuorumCert` error: every input is already
+  known good there (Quasar tier, threshold ≥ 1, accept-only, map-distinct voters,
+  count ≥ threshold).
+
+Reachable only with a filesystem fault seam, which does not exist: the four I/O
+failure legs inside `writeFileAtomic` (write, sync, close, rename) and
+`fsyncDir`'s `Sync` error. The rest of both paths — a temp file that outlives a
+write, a destination whose directory is gone, a directory that cannot be opened
+— is covered.
+
+Not a coverage question but found by asking one: `ErrQCVotePosition` is declared
+in `cert.go` and returned by nothing. The var block above it says each error maps
+1:1 onto a predicate clause; that one maps onto no clause, because a vote that
+signed a different position fails as a bad SIGNATURE — the message is rebuilt
+from the cert's own position and never from the vote's, so there is nothing left
+to compare. A reader building a cross-implementation error corpus would take the
+comment at its word and look for the clause.
 
 ### Restart preserves state — a REAL assertion now (engine/chain)
 `TestRestartPreservesState` used to check only IsBootstrapped/HealthCheck flags
