@@ -135,20 +135,24 @@ func TestTallyStillSumsASetThatFits(t *testing.T) {
 	const epoch = uint64(1)
 
 	const half = uint64(1) << 63
+	// Every seat carries stake and every seat signs. A weightless third seat would
+	// be refused by both admission doors (validators.ErrZeroWeight), and two of
+	// three signers is below the export count floor ⌊2·3/3⌋+1 = 3 — neither would
+	// reach the tally this test is about.
 	src := &stakeMap{
 		w: map[ids.NodeID]uint64{
 			vs.nodeID(0): half,
-			vs.nodeID(1): half - 1,
-			vs.nodeID(2): 0,
+			vs.nodeID(1): half - 2,
+			vs.nodeID(2): 1,
 		},
-		total: math.MaxUint64, // == half + (half-1), the widest total that fits
+		total: math.MaxUint64, // == half + (half-2) + 1, the widest total that fits
 	}
 
-	votes := make([]SignedVote, 0, 2)
-	for _, i := range []int{0, 1} {
+	votes := make([]SignedVote, 0, 3)
+	for _, i := range []int{0, 1, 2} {
 		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, Quasar, 2, votes)
+	cert, err := AssembleQuorumCert(pos, Quasar, 3, votes)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}

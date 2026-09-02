@@ -18,7 +18,9 @@ use lux_consensus::cert::{
     CertError, NodeId, QuorumCert, Registration, StakeSource, ValidatorSet, Vote, VoteVerifier,
     DST, SIGNATURE_LEN,
 };
-use lux_consensus::finality::{canonical_vote_message, Finality, Position};
+use lux_consensus::finality::{
+    canonical_vote_message, two_thirds_count, two_thirds_stake_floor, Finality, Position,
+};
 use lux_consensus::pop;
 
 /// A validator: a key, an id, and a weight.
@@ -1174,5 +1176,113 @@ fn the_whole_set_door_refuses_a_keyless_registration() {
         }])
         .unwrap_err(),
         CertError::NoKey
+    );
+}
+
+// ------------------------------------------------- the export distinct-signer floor
+
+/// A skewed committee: the first member holds `heavy`, the rest hold one each.
+/// This is the shape the export count floor exists for.
+fn whale(n: u8, heavy: u64) -> (Vec<Signer>, ValidatorSet) {
+    let signers: Vec<Signer> = (1..=n)
+        .map(|i| Signer::new(i, if i == 1 { heavy } else { 1 }))
+        .collect();
+    let mut set = ValidatorSet::new();
+    for s in &signers {
+        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
+    }
+    (signers, set)
+}
+
+/// Stake cannot buy export finality.
+///
+/// One validator holds a hundred of a hundred and four — more than two thirds
+/// several times over — and signs alone. A rung that read only stake would export
+/// that certificate, which would make "Byzantine supermajority" a statement about
+/// one key. The count floor is what refuses it, and the refusal has to land on the
+/// COUNT: a stake refusal here would mean the lone signer never held two thirds
+/// and the case proved nothing.
+#[test]
+fn a_lone_holder_of_two_thirds_cannot_export() {
+    let (signers, set) = whale(5, 100);
+
+    // The premise: the stake half is satisfied outright. floor(2·104/3) = 69.
+    assert_eq!(two_thirds_stake_floor(104), 69);
+
+    assert_eq!(
+        valid_cert(&signers, 1, 1).verify_weighted(&set, &set, 0),
+        Err(CertError::SignerFloor { have: 1, need: 4, n: 5 }),
+    );
+    // Three is still one short of floor(2·5/3)+1 = 4, and the stake is untouched.
+    assert_eq!(
+        valid_cert(&signers, 3, 3).verify_weighted(&set, &set, 0),
+        Err(CertError::SignerFloor { have: 3, need: 4, n: 5 }),
+    );
+    // At the floor the same stake carries: the count was the binding clause.
+    assert_eq!(valid_cert(&signers, 4, 4).verify_weighted(&set, &set, 0), Ok(()));
+}
+
+/// Neither half is sufficient. The four light members meet the count floor
+/// exactly and hold four of a hundred and four, and they are refused on stake —
+/// the mirror of the case above, and together they are the whole rule.
+#[test]
+fn meeting_the_count_without_the_stake_is_refused_too() {
+    let (signers, set) = whale(5, 100);
+    let pos = position();
+    let message = canonical_vote_message(&pos, true);
+    let votes: Vec<Vote> = signers[1..].iter().map(|s| s.vote(&message)).collect();
+    let cert = QuorumCert::assemble(Finality::Quasar, pos, 4, &votes).expect("assemble");
+
+    assert_eq!(
+        cert.verify_weighted(&set, &set, 0),
+        Err(CertError::StakeBelowSupermajority { voted: 4, total: 104, need_above: 69 }),
+    );
+}
+
+/// The floor is the supermajority in seats, recomputed from its definition —
+/// the smallest k whose 3k strictly exceeds 2n — sharing no code with the closed
+/// form. It is never above the set, so it is never a rung nothing can satisfy.
+#[test]
+fn the_export_floor_is_the_supermajority_in_seats() {
+    for (n, want) in [(1, 1), (2, 2), (3, 3), (4, 3), (5, 4), (11, 8), (21, 15), (41, 28), (100, 67)] {
+        assert_eq!(two_thirds_count(n), want, "two_thirds_count({n})");
+    }
+    for n in 1i64..=1000 {
+        let mut k = 0i64;
+        while 3 * k <= 2 * n {
+            k += 1;
+        }
+        assert_eq!(two_thirds_count(n), k, "n={n}: the smallest k with 3k>2n");
+        assert!(k <= n, "n={n}: a floor of {k} is above the set");
+        // The same supermajority the stake half demands of n unit weights.
+        assert!(k as u64 > two_thirds_stake_floor(n as u64), "n={n}");
+    }
+}
+
+/// A source reporting stake for a set it says is empty has no set to read two
+/// thirds of. `two_thirds_count(0)` is 1, so computing the floor would hand a lone
+/// signer a floor of one; the case is refused instead.
+#[test]
+fn an_export_certificate_over_an_unresolved_set_fails_closed() {
+    struct Unresolved(ValidatorSet);
+    impl StakeSource for Unresolved {
+        fn weight(&self, node: &NodeId, h: u64) -> u64 {
+            self.0.weight(node, h)
+        }
+        fn total_stake(&self, h: u64) -> u64 {
+            self.0.total_stake(h)
+        }
+        fn validator_count(&self, _: u64) -> i64 {
+            0
+        }
+    }
+
+    let (signers, set) = committee(3, 100);
+    let cert = valid_cert(&signers, 3, 3);
+    // Against the real set this certificate exports.
+    assert_eq!(cert.verify_weighted(&set, &set, 0), Ok(()));
+    assert_eq!(
+        cert.verify_weighted(&set, &Unresolved(set.clone()), 0),
+        Err(CertError::UnresolvedSet { n: 0 }),
     );
 }

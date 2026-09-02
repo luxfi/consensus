@@ -12,6 +12,7 @@ package chain
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/luxfi/consensus/config"
@@ -94,10 +95,16 @@ func TestWeighted_LowStakeCoalitionRejected(t *testing.T) {
 	}
 }
 
-// TestWeighted_VerifyWeightedThreshold pins the strict >⅔ stake boundary on the
-// cert predicate directly (no engine), including the exactly-⅔ rejection.
+// TestWeighted_VerifyWeightedThreshold pins BOTH halves of the export rule on the
+// cert predicate directly (no engine): the strict >⅔ stake boundary including the
+// exactly-⅔ rejection, and the ⌊2n/3⌋+1 distinct-signer floor.
+//
+// Four seats, because the export count floor is ⌊2n/3⌋+1 and on three seats that
+// is three — every stake row would then be answered by the count before the stake
+// boundary was reached. On four it is three, so a three-signer certificate isolates
+// the stake half and a two-signer one isolates the count half.
 func TestWeighted_VerifyWeightedThreshold(t *testing.T) {
-	vs := newTestValidatorSet(3)
+	vs := newTestValidatorSet(4)
 	pos := VotePosition{ChainID: ids.GenerateTestID(), Height: 1, BlockID: ids.GenerateTestID()}
 	mkCert := func(idx ...int) *QuorumCert {
 		votes := make([]SignedVote, 0, len(idx))
@@ -115,15 +122,35 @@ func TestWeighted_VerifyWeightedThreshold(t *testing.T) {
 	// VerifyWeighted is the cert's position height (pos.Height); the predicate
 	// boundary under test is unchanged by the height-pinning refactor.
 	const epoch = uint64(1) // == pos.Height
-	// total=9, voters {0,1} hold 6 = exactly ⅔ → MUST be rejected (strict).
-	exactlyTwoThirds := &stakeMap{w: map[ids.NodeID]uint64{vs.nodeID(0): 3, vs.nodeID(1): 3, vs.nodeID(2): 3}, total: 9}
-	if err := mkCert(0, 1).VerifyWeighted(vs, exactlyTwoThirds, epoch); err == nil {
+	// total=9, voters {0,2,3} hold 3+2+1 = 6 = exactly ⅔ → MUST be rejected (strict).
+	// Three signers, so the count floor ⌊2·4/3⌋+1 = 3 is met and STAKE is what refuses.
+	exactlyTwoThirds := &stakeMap{w: map[ids.NodeID]uint64{
+		vs.nodeID(0): 3, vs.nodeID(1): 3, vs.nodeID(2): 2, vs.nodeID(3): 1}, total: 9}
+	err := mkCert(0, 2, 3).VerifyWeighted(vs, exactlyTwoThirds, epoch)
+	if err == nil {
 		t.Fatal("exactly ⅔ of stake must be rejected (need STRICT supermajority)")
 	}
-	// voters {0,1} hold 7/9 > ⅔ → accepted.
-	overTwoThirds := &stakeMap{w: map[ids.NodeID]uint64{vs.nodeID(0): 4, vs.nodeID(1): 3, vs.nodeID(2): 2}, total: 9}
-	if err := mkCert(0, 1).VerifyWeighted(vs, overTwoThirds, epoch); err != nil {
-		t.Fatalf("7/9 > ⅔ must be accepted: %v", err)
+	if !errors.Is(err, ErrQCStakeBelowSupermajority) {
+		t.Fatalf("exactly ⅔ must be refused on the STAKE clause, got %v", err)
+	}
+	// voters {0,1,3} hold 3+3+1 = 7/9 > ⅔ with three signers → accepted.
+	if err := mkCert(0, 1, 3).VerifyWeighted(vs, exactlyTwoThirds, epoch); err != nil {
+		t.Fatalf("7/9 > ⅔ on three signers must be accepted: %v", err)
+	}
+	// THE COUNT HALF. The SAME 7/9 stake, held by two signers instead of three, is
+	// refused — and refused on the count, not on stake, because the stake is there.
+	// Export finality says a Byzantine supermajority of PARTIES agreed; two of four
+	// is not that however the weights fall, and a rung that read only stake would
+	// export here. See config.TwoThirdsCount.
+	sameStakeFewerSigners := &stakeMap{w: map[ids.NodeID]uint64{
+		vs.nodeID(0): 4, vs.nodeID(1): 3, vs.nodeID(2): 1, vs.nodeID(3): 1}, total: 9}
+	err = mkCert(0, 1).VerifyWeighted(vs, sameStakeFewerSigners, epoch)
+	if !errors.Is(err, ErrQCBelowThreshold) {
+		t.Fatalf("two of four holding 7/9 must be refused on the export signer floor, got %v", err)
+	}
+	// One more signer over the same set clears it: the floor was the binding clause.
+	if err := mkCert(0, 1, 2).VerifyWeighted(vs, sameStakeFewerSigners, epoch); err != nil {
+		t.Fatalf("three of four holding 8/9 must be accepted: %v", err)
 	}
 	// nil stake source → fail closed (not silently count-only).
 	if err := mkCert(0, 1, 2).VerifyWeighted(vs, nil, epoch); err == nil {
