@@ -141,7 +141,11 @@ func (b *Bag[T]) Mode() (T, int) {
 // For example, if X is in this bag with count 5, and filterFunc(X) returns true,
 // then the returned bag contains X with count 5.
 func (b *Bag[T]) Filter(filterFunc func(T) bool) Bag[T] {
-	newBag := Bag[T]{}
+	// The quorum travels with the votes. A derived bag left at threshold zero
+	// answers Threshold() with every choice it holds, since every count clears
+	// zero — so a caller that split a bag and then asked which choices had
+	// reached quorum was told all of them.
+	newBag := Bag[T]{threshold: b.threshold}
 	for vote, count := range b.counts {
 		if filterFunc(vote) {
 			newBag.AddCount(vote, count)
@@ -157,7 +161,7 @@ func (b *Bag[T]) Filter(filterFunc func(T) bool) Bag[T] {
 // For example, if X is in this bag with count 5, and splitFunc(X) is false,
 // then the first returned bag has X in it with count 5.
 func (b *Bag[T]) Split(splitFunc func(T) bool) [2]Bag[T] {
-	splitVotes := [2]Bag[T]{}
+	splitVotes := [2]Bag[T]{{threshold: b.threshold}, {threshold: b.threshold}}
 	for vote, count := range b.counts {
 		if splitFunc(vote) {
 			splitVotes[1].AddCount(vote, count)
