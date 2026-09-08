@@ -71,6 +71,17 @@ pub fn message(node: &NodeId, key: &[u8]) -> Vec<u8> {
 /// Verify a node-bound proof of possession, in the order the standard fixes:
 /// encoding, then possession. A port of the Go oracle's `pop.Verify`.
 pub fn verify(node: &NodeId, key: &[u8], proof: &[u8]) -> Result<(), PopError> {
+    verify_over(&message(node, key), key, proof)
+}
+
+/// Verify a proof over ANY message, under the same two clauses in the same
+/// order: the encodings first, then the possession.
+///
+/// A node-bound proof is one message among several. A committee entitles a
+/// validator ON A CHAIN and signs the chain with it; a caller with a message
+/// of its own would otherwise restate these clauses, and a second statement of
+/// what a canonical key is is a second answer waiting to differ from this one.
+pub fn verify_over(message: &[u8], key: &[u8], proof: &[u8]) -> Result<(), PopError> {
     if key.len() != KEY_LEN {
         return Err(PopError::Key);
     }
@@ -91,8 +102,7 @@ pub fn verify(node: &NodeId, key: &[u8], proof: &[u8]) -> Result<(), PopError> {
     // here so an identity or non-subgroup proof is refused as a bad PROOF — the
     // encoding clause — exactly as the oracle does, not later as a failed pairing.
     sig.validate(true).map_err(|_| PopError::Proof)?;
-    let msg = message(node, key);
-    if sig.verify(true, &msg, POP_DST, &[], &pk, true) != BLST_ERROR::BLST_SUCCESS {
+    if sig.verify(true, message, POP_DST, &[], &pk, true) != BLST_ERROR::BLST_SUCCESS {
         return Err(PopError::Possession);
     }
     Ok(())
@@ -101,8 +111,69 @@ pub fn verify(node: &NodeId, key: &[u8], proof: &[u8]) -> Result<(), PopError> {
 /// Produce a node-bound proof for `node` under `secret`. The signing side of
 /// [`verify`]; used by registrants and by tests.
 pub fn sign(secret: &blst::min_pk::SecretKey, node: &NodeId, key: &[u8]) -> Vec<u8> {
-    secret
-        .sign(&message(node, key), POP_DST, &[])
-        .compress()
-        .to_vec()
+    sign_over(secret, &message(node, key))
+}
+
+/// Produce a proof over ANY message, under the same domain tag. The signing
+/// side of [`verify_over`], and the one place the tag is applied.
+pub fn sign_over(secret: &blst::min_pk::SecretKey, message: &[u8]) -> Vec<u8> {
+    secret.sign(message, POP_DST, &[]).compress().to_vec()
+}
+
+#[cfg(test)]
+mod general_message_tests {
+    use super::*;
+
+    fn keypair() -> (blst::min_pk::SecretKey, Vec<u8>) {
+        let sk = blst::min_pk::SecretKey::key_gen(&[7u8; 32], &[]).expect("key");
+        let pk = sk.sk_to_pk().compress().to_vec();
+        (sk, pk)
+    }
+
+    /// The node-bound pair is the general pair with one message. If these ever
+    /// disagree, a registration and a committee are checking different rules.
+    #[test]
+    fn the_node_bound_proof_is_the_general_one_over_its_own_message() {
+        let (sk, pk) = keypair();
+        let node: NodeId = [3u8; NODE_LEN];
+        let bound = sign(&sk, &node, &pk);
+        let general = sign_over(&sk, &message(&node, &pk));
+        assert_eq!(bound, general, "one proof, written two ways");
+        assert!(verify(&node, &pk, &general).is_ok());
+        assert!(verify_over(&message(&node, &pk), &pk, &bound).is_ok());
+    }
+
+    /// A proof for one message does not hold over another — which is the whole
+    /// reason a committee signs the chain it entitles a validator on.
+    #[test]
+    fn a_proof_does_not_carry_to_another_message() {
+        let (sk, pk) = keypair();
+        let node: NodeId = [3u8; NODE_LEN];
+        let here = [b"chain-a".as_slice(), &node, &pk].concat();
+        let elsewhere = [b"chain-b".as_slice(), &node, &pk].concat();
+        let proof = sign_over(&sk, &here);
+        assert!(verify_over(&here, &pk, &proof).is_ok());
+        assert_eq!(
+            verify_over(&elsewhere, &pk, &proof),
+            Err(PopError::Possession),
+            "a proof made for one chain entitles nothing on another"
+        );
+    }
+
+    /// The encoding clauses are the same clauses, in the same order: a bad key
+    /// is a bad key before any pairing runs.
+    #[test]
+    fn the_encoding_clauses_come_first_either_way() {
+        let (sk, pk) = keypair();
+        let msg = b"anything".as_slice();
+        let proof = sign_over(&sk, msg);
+        assert_eq!(
+            verify_over(msg, &pk[..KEY_LEN - 1], &proof),
+            Err(PopError::Key)
+        );
+        assert_eq!(
+            verify_over(msg, &pk, &proof[..PROOF_LEN - 1]),
+            Err(PopError::Proof)
+        );
+    }
 }

@@ -102,26 +102,54 @@ pub struct Vote {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CertError {
-    Version { got: u16, want: u16 },
-    Type { got: u8, want: u8 },
+    Version {
+        got: u16,
+        want: u16,
+    },
+    Type {
+        got: u8,
+        want: u8,
+    },
     UnknownTier(Finality),
     ThresholdZero,
     NoVotes,
     NotStrictlyIncreasing(usize),
     VoteNotAccept(usize),
     SigInvalid(usize),
-    BelowThreshold { have: u32, need: u32 },
-    UnresolvedSet { n: i64 },
+    BelowThreshold {
+        have: u32,
+        need: u32,
+    },
+    UnresolvedSet {
+        n: i64,
+    },
     /// An EXPORT certificate over a signing set too small for a Byzantine
     /// supermajority to mean anything: f = ⌊(n−1)/3⌋ is zero below
     /// [`crate::finality::MIN_BFT_COMMITTEE`], so the certificate absorbs no fault
     /// and one compromised key forges it. A floor on the SET, not on the voters —
     /// Go folds it into `ErrQCBelowThreshold`.
-    MinCommittee { n: i64, need: i64 },
-    SignerFloor { have: i64, need: i64, n: i64 },
-    StakeZero { epoch_height: u64 },
-    StakeBelowMajority { voted: u64, signer: u64, need_above: u64 },
-    StakeBelowSupermajority { voted: u64, signer: u64, need_above: u64 },
+    MinCommittee {
+        n: i64,
+        need: i64,
+    },
+    SignerFloor {
+        have: i64,
+        need: i64,
+        n: i64,
+    },
+    StakeZero {
+        epoch_height: u64,
+    },
+    StakeBelowMajority {
+        voted: u64,
+        signer: u64,
+        need_above: u64,
+    },
+    StakeBelowSupermajority {
+        voted: u64,
+        signer: u64,
+        need_above: u64,
+    },
     /// A public key that does not decode to a non-identity point of the right
     /// subgroup.
     KeyEncoding,
@@ -152,7 +180,11 @@ pub enum CertError {
     /// not require, and tolerating it would let a certificate redefine the rung
     /// upward exactly as tolerating an under-claim lets it redefine the rung down.
     /// Neither direction is the set's number.
-    ThresholdNotDerived { declared: u32, derived: i64, n: i64 },
+    ThresholdNotDerived {
+        declared: u32,
+        derived: i64,
+        n: i64,
+    },
     /// The set's weights sum past what a `u64` can hold. Go's
     /// `ErrWeightOverflow`, and refused for the reason Go refuses it: every
     /// threshold in this crate is read against the total, so a total that
@@ -197,11 +229,22 @@ impl std::fmt::Display for CertError {
             CertError::StakeZero { epoch_height } => {
                 write!(f, "total stake is zero at epoch height {epoch_height}")
             }
-            CertError::StakeBelowMajority { voted, signer, need_above } => {
+            CertError::StakeBelowMajority {
+                voted,
+                signer,
+                need_above,
+            } => {
                 write!(f, "nova voted={voted} signer={signer}, need > {need_above}")
             }
-            CertError::StakeBelowSupermajority { voted, signer, need_above } => {
-                write!(f, "quasar voted={voted} signer={signer}, need > {need_above}")
+            CertError::StakeBelowSupermajority {
+                voted,
+                signer,
+                need_above,
+            } => {
+                write!(
+                    f,
+                    "quasar voted={voted} signer={signer}, need > {need_above}"
+                )
             }
             CertError::KeyEncoding => write!(f, "public key does not decode to a valid point"),
             CertError::NoKey => write!(f, "registration carries no public key"),
@@ -209,7 +252,11 @@ impl std::fmt::Display for CertError {
             CertError::DuplicateKey => write!(f, "public key is registered to more than one node"),
             CertError::DuplicateNode => write!(f, "node is registered more than once"),
             CertError::PopInvalid => write!(f, "proof of possession does not verify for this key"),
-            CertError::ThresholdNotDerived { declared, derived, n } => write!(
+            CertError::ThresholdNotDerived {
+                declared,
+                derived,
+                n,
+            } => write!(
                 f,
                 "cert declares threshold {declared}, a set of {n} signers derives {derived}"
             ),
@@ -358,11 +405,7 @@ impl QuorumCert {
     /// 5. every vote is an ACCEPT
     /// 6. every signature verifies over the certificate's own position
     /// 7. the count of such votes meets the threshold
-    pub fn verify(
-        &self,
-        verifier: &dyn VoteVerifier,
-        epoch_height: u64,
-    ) -> Result<(), CertError> {
+    pub fn verify(&self, verifier: &dyn VoteVerifier, epoch_height: u64) -> Result<(), CertError> {
         if self.version != QUORUM_CERT_VERSION {
             return Err(CertError::Version {
                 got: self.version,
@@ -800,6 +843,31 @@ impl ValidatorSet {
         public_key: &[u8],
         proof: &[u8],
     ) -> Result<(), CertError> {
+        self.insert_over(
+            node,
+            weight,
+            public_key,
+            &pop::message(&node, public_key),
+            proof,
+        )
+    }
+
+    /// Admit a member whose proof is over a message of the caller's choosing.
+    ///
+    /// [`insert`] is this with the node-bound message, which is the only one a
+    /// registration uses. A committee entitles a validator ON A CHAIN and signs
+    /// the chain into its proof, so it has a message of its own — and every
+    /// other clause of admission, down to which duplicate is refused, must
+    /// still be the same clause. Two admission doors would be two answers to
+    /// who is in the set.
+    pub fn insert_over(
+        &mut self,
+        node: NodeId,
+        weight: u64,
+        public_key: &[u8],
+        message: &[u8],
+        proof: &[u8],
+    ) -> Result<(), CertError> {
         // NO KEY. Not a malformed key — no key. A validator with no key cannot
         // sign, so it cannot come through the proof path at all.
         if public_key.is_empty() {
@@ -816,7 +884,7 @@ impl ValidatorSet {
         // and it is the SAME function the Go oracle's frozen vectors pin. There
         // is one proof-of-possession implementation in this crate; registration
         // calls it rather than restating it, so the two cannot drift.
-        pop::verify(&node, public_key, proof).map_err(|e| match e {
+        pop::verify_over(message, public_key, proof).map_err(|e| match e {
             PopError::Key => CertError::KeyEncoding,
             PopError::Proof | PopError::Possession => CertError::PopInvalid,
         })?;
