@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 30
     env:
       GOWORK: off
@@ -51,7 +51,7 @@ jobs:
     needs: verify
     # Cross-compilation, all from the one Linux runner: the matrix sets GOOS and
     # GOARCH, it does not select a runner.
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -81,7 +81,7 @@ jobs:
 
   release:
     needs: build
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

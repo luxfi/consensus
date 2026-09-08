@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   test:
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -54,7 +54,7 @@ jobs:
         run: go test -v -race -timeout=40m -coverprofile=coverage.txt -covermode=atomic ./...
 
   lint:
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +65,7 @@ jobs:
 
   test-c:
     name: C library
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -80,7 +80,7 @@ jobs:
 
   test-rust:
     name: Rust FFI wrapper
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -97,7 +97,7 @@ jobs:
   build:
     # Cross-compilation, all from the one Linux runner: the matrix sets GOOS and
     # GOARCH, it does not select a runner.
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 20
     strategy:
       fail-fast: false
