@@ -186,7 +186,11 @@ fn a_sample_is_distinct_and_never_larger_than_the_set() {
         let mut distinct = drawn.clone();
         distinct.sort();
         distinct.dedup();
-        assert_eq!(distinct.len(), drawn.len(), "a peer was sampled twice at k={k}");
+        assert_eq!(
+            distinct.len(),
+            drawn.len(),
+            "a peer was sampled twice at k={k}"
+        );
 
         for d in &drawn {
             assert!(peers.contains(d), "a peer nobody registered was sampled");
@@ -217,7 +221,11 @@ fn the_same_state_draws_the_same_committee() {
 
     let first = sampler.sample(4);
     for _ in 0..8 {
-        assert_eq!(sampler.sample(4), first, "two draws from one state disagreed");
+        assert_eq!(
+            sampler.sample(4),
+            first,
+            "two draws from one state disagreed"
+        );
     }
 }
 

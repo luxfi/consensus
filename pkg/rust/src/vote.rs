@@ -503,7 +503,10 @@ impl Tally {
         // and the rung's count clause reading it again is deliberate there: a
         // certificate from elsewhere has no issue to be consistent with, and a set
         // that moved under it is exactly what that clause refuses.
-        let held = Held { set: stake, n: stake.signer_count(self.epoch_height) };
+        let held = Held {
+            set: stake,
+            n: stake.signer_count(self.epoch_height),
+        };
         let derived = signer_floor(self.tier, held.n);
         // The floor is a count of seats and the certificate states it in a `u32`.
         // A set claiming more signers than that can hold is not a set this tally

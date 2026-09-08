@@ -64,7 +64,8 @@ fn committee(n: u8, weight: u64) -> (Vec<Signer>, ValidatorSet) {
     let signers: Vec<Signer> = (1..=n).map(|i| Signer::new(i, weight)).collect();
     let mut set = ValidatorSet::new();
     for s in &signers {
-        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
+        set.insert(s.id, s.weight, &s.public(), &s.pop())
+            .expect("insert");
     }
     (signers, set)
 }
@@ -199,7 +200,11 @@ fn retracting_an_unkeyed_member_leaves_the_signable_stake_alone() {
 
     set.remove(&spectator);
 
-    assert_eq!(set.carried(), 400, "the carried total kept a departed member");
+    assert_eq!(
+        set.carried(),
+        400,
+        "the carried total kept a departed member"
+    );
     assert_eq!(
         set.signer_stake(0),
         400,
@@ -220,7 +225,11 @@ fn retracting_a_keyed_member_frees_both_the_stake_and_the_key() {
 
     set.remove(&departing.id);
 
-    assert_eq!(set.carried(), 300, "the carried total kept a departed signer");
+    assert_eq!(
+        set.carried(),
+        300,
+        "the carried total kept a departed signer"
+    );
     assert_eq!(
         set.signer_stake(0),
         300,
@@ -364,7 +373,8 @@ fn a_real_shortfall_reports_the_stake_it_actually_had() {
         .collect();
     let mut set = ValidatorSet::new();
     for sgn in &signers {
-        set.insert(sgn.id, sgn.weight, &sgn.public(), &sgn.pop()).expect("insert");
+        set.insert(sgn.id, sgn.weight, &sgn.public(), &sgn.pop())
+            .expect("insert");
     }
 
     let text = cert(&signers[1..], 4, 5, Finality::Quasar)

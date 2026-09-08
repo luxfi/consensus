@@ -53,7 +53,8 @@ fn certified(n: usize) -> (ValidatorSet, QuorumCert) {
         let sk = SecretKey::key_gen(&ikm, &[]).expect("key_gen");
         let id = node_id(i);
         let proof = pop::sign(&sk, &id, &sk.sk_to_pk().compress());
-        set.insert(id, 100, &sk.sk_to_pk().compress(), &proof).expect("insert");
+        set.insert(id, 100, &sk.sk_to_pk().compress(), &proof)
+            .expect("insert");
         votes.push(Vote {
             node_id: id,
             accept: true,
@@ -103,14 +104,7 @@ fn bench_assemble(c: &mut Criterion) {
     let (_, cert) = certified(21);
     let votes = cert.votes.clone();
     c.bench_function("cert_assemble_21", |b| {
-        b.iter(|| {
-            QuorumCert::assemble(
-                Finality::Quasar,
-                position(),
-                21,
-                black_box(&votes),
-            )
-        })
+        b.iter(|| QuorumCert::assemble(Finality::Quasar, position(), 21, black_box(&votes)))
     });
 }
 
@@ -127,7 +121,9 @@ fn bench_ballots(c: &mut Criterion) {
                 let mut engine = QuasarEngine::new(config.clone());
                 engine.start().unwrap();
                 for i in 0..21 {
-                    engine.add_validator(lux_consensus::NodeID::from(node_id(i)), 1).unwrap();
+                    engine
+                        .add_validator(lux_consensus::NodeID::from(node_id(i)), 1)
+                        .unwrap();
                 }
                 let block = lux_consensus::Block::new(
                     lux_consensus::ID::from([11u8; 32]),

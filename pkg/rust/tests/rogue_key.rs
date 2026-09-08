@@ -31,9 +31,7 @@ use blst::{
     blst_p1_from_affine, blst_p1_to_affine, blst_p1_uncompress, BLST_ERROR,
 };
 
-use lux_consensus::cert::{
-    CertError, NodeId, QuorumCert, ValidatorSet, Vote, VoteVerifier, DST,
-};
+use lux_consensus::cert::{CertError, NodeId, QuorumCert, ValidatorSet, Vote, VoteVerifier, DST};
 use lux_consensus::finality::{canonical_vote_message, Finality, Position};
 use lux_consensus::pop;
 use lux_consensus::quasar::QuasarConsensus;
@@ -261,7 +259,8 @@ fn the_rogue_key_cannot_register_without_possession() {
 
     let mut set = ValidatorSet::new();
     for h in &honest {
-        set.insert(h.id, 100, &h.pk(), &h.pop()).expect("honest registers");
+        set.insert(h.id, 100, &h.pk(), &h.pop())
+            .expect("honest registers");
     }
 
     // The best proof the attacker can make — by the one secret it holds, whose
@@ -272,7 +271,10 @@ fn the_rogue_key_cannot_register_without_possession() {
     );
     // No proof at all, and a well-formed proof over the wrong (someone else's)
     // key, are refused just the same.
-    assert_eq!(set.insert(rogue.id, 100, &rogue.pk, &[]), Err(CertError::PopInvalid));
+    assert_eq!(
+        set.insert(rogue.id, 100, &rogue.pk, &[]),
+        Err(CertError::PopInvalid)
+    );
     assert_eq!(
         set.insert(rogue.id, 100, &rogue.pk, &honest[0].pop()),
         Err(CertError::PopInvalid),
@@ -485,11 +487,10 @@ fn a_proof_for_one_node_does_not_register_the_key_under_another() {
 #[test]
 fn a_vote_dst_signature_is_not_a_proof_of_possession() {
     let h = Honest::new(1);
-    let vote_dst = h
-        .sk
-        .sign(&pop::message(&h.id, &h.pk()), DST, &[])
-        .compress()
-        .to_vec();
+    let vote_dst =
+        h.sk.sign(&pop::message(&h.id, &h.pk()), DST, &[])
+            .compress()
+            .to_vec();
 
     let mut set = ValidatorSet::new();
     assert_eq!(
@@ -522,7 +523,11 @@ fn the_identity_key_is_refused_before_the_proof() {
 #[test]
 fn signed_identity_uses_the_transport_id_only_in_the_degrade() {
     let mut p = position(); // canonical_id = [12; 32], block_id = [11; 32]
-    assert_eq!(p.signed_identity(), [12u8; 32], "non-degrade: the canonical id");
+    assert_eq!(
+        p.signed_identity(),
+        [12u8; 32],
+        "non-degrade: the canonical id"
+    );
     p.canonical_id = [0u8; 32]; // EMPTY
     assert_eq!(p.signed_identity(), [11u8; 32], "degrade: the transport id");
 }

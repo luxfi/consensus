@@ -16,11 +16,11 @@
 //! counted twice on the way into evidence.
 
 use blst::min_pk::SecretKey;
+use lux_consensus::pop;
 use lux_consensus::{
     canonical_vote_message, ConsensusError, Finality, NodeID, Position, QuasarConfig,
     QuasarConsensus, Vote, VoteType, ID,
 };
-use lux_consensus::pop;
 
 fn node_id(n: u8) -> NodeID {
     NodeID([n; 20])
@@ -56,7 +56,10 @@ fn the_block_id_pads_and_truncates_where_the_node_id_cannot() {
     // makes this constructor wrong for a validator.
     let a = ID::from_slice(&[7u8; 33]);
     let b = ID::from_slice(&[7u8; 34]);
-    assert_eq!(a, b, "truncation is lossy, and that is the point being stated");
+    assert_eq!(
+        a, b,
+        "truncation is lossy, and that is the point being stated"
+    );
 
     // Both `From` routes agree with the constructor they wrap.
     assert_eq!(ID::from([9u8; 32]), ID::new([9u8; 32]));
@@ -190,7 +193,11 @@ fn the_set_handed_out_is_the_set_that_decides() {
                 VoteType::Preference,
                 NodeID::from(s.id),
             )
-            .with_signature(s.sk.sign(&message, lux_consensus::cert::DST, &[]).compress().to_vec())
+            .with_signature(
+                s.sk.sign(&message, lux_consensus::cert::DST, &[])
+                    .compress()
+                    .to_vec(),
+            )
         })
         .collect();
 
@@ -236,12 +243,20 @@ fn a_validator_contributes_one_vote_to_the_evidence() {
             VoteType::Preference,
             NodeID::from(s.id),
         )
-        .with_signature(s.sk.sign(&message, lux_consensus::cert::DST, &[]).compress().to_vec())
+        .with_signature(
+            s.sk.sign(&message, lux_consensus::cert::DST, &[])
+                .compress()
+                .to_vec(),
+        )
     };
 
     // Two validators, one of them shouting: three ballots, two signers, and the
     // threshold is three.
-    let shouted = vec![ballot(&signers[0]), ballot(&signers[0]), ballot(&signers[1])];
+    let shouted = vec![
+        ballot(&signers[0]),
+        ballot(&signers[0]),
+        ballot(&signers[1]),
+    ];
     assert!(
         matches!(
             quasar.create_certificate(pos.clone(), &shouted),
@@ -255,7 +270,11 @@ fn a_validator_contributes_one_vote_to_the_evidence() {
     let cert = quasar
         .create_certificate(pos, &distinct)
         .expect("three distinct signers is a quorum");
-    assert_eq!(cert.votes.len(), 3, "the evidence carries one vote per signer");
+    assert_eq!(
+        cert.votes.len(),
+        3,
+        "the evidence carries one vote per signer"
+    );
 }
 
 /// A ballot against the block is not evidence for it. `create_certificate`
@@ -277,8 +296,11 @@ fn a_signed_cancel_is_not_evidence_of_acceptance() {
     let cancels: Vec<Vote> = signers
         .iter()
         .map(|s| {
-            Vote::new(ID::from(pos.block_id), VoteType::Cancel, NodeID::from(s.id))
-                .with_signature(s.sk.sign(&message, lux_consensus::cert::DST, &[]).compress().to_vec())
+            Vote::new(ID::from(pos.block_id), VoteType::Cancel, NodeID::from(s.id)).with_signature(
+                s.sk.sign(&message, lux_consensus::cert::DST, &[])
+                    .compress()
+                    .to_vec(),
+            )
         })
         .collect();
 
@@ -306,7 +328,9 @@ fn a_signed_cancel_is_not_evidence_of_acceptance() {
 /// this code, and a test of it would pass or fail by machine.
 #[test]
 fn a_generated_id_fills_every_lane() {
-    let draws: Vec<ID> = (0..16).map(|_| lux_consensus::generate_block_id()).collect();
+    let draws: Vec<ID> = (0..16)
+        .map(|_| lux_consensus::generate_block_id())
+        .collect();
 
     for lane in 0..4 {
         let range = lane * 8..(lane + 1) * 8;

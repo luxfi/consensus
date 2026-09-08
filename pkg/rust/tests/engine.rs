@@ -10,8 +10,8 @@
 //! started. Both are doors that failed open once.
 
 use lux_consensus::{
-    quick_start, ConsensusError, Engine, EventHorizon, NodeID, QuasarConfig,
-    QuasarConsensus, QuasarEngine, Status, VoteType, ID,
+    quick_start, ConsensusError, Engine, EventHorizon, NodeID, QuasarConfig, QuasarConsensus,
+    QuasarEngine, Status, VoteType, ID,
 };
 
 fn id(n: u8) -> ID {
@@ -66,7 +66,10 @@ fn nothing_enters_an_engine_that_was_never_started() {
 
     let vote = lux_consensus::new_vote(id(1), VoteType::Preference, voter(1));
     assert!(
-        matches!(engine.record_vote(vote), Err(ConsensusError::NotInitialized)),
+        matches!(
+            engine.record_vote(vote),
+            Err(ConsensusError::NotInitialized)
+        ),
         "a vote was counted by an unstarted engine"
     );
 }
@@ -109,7 +112,11 @@ fn stopping_shuts_the_doors_again() {
         Err(ConsensusError::NotInitialized)
     ));
     assert!(matches!(
-        engine.record_vote(lux_consensus::new_vote(id(1), VoteType::Preference, voter(1))),
+        engine.record_vote(lux_consensus::new_vote(
+            id(1),
+            VoteType::Preference,
+            voter(1)
+        )),
         Err(ConsensusError::NotInitialized)
     ));
 }
@@ -147,7 +154,11 @@ fn an_engine_with_no_validators_counts_nobody() {
     for i in 1..=9u8 {
         assert!(
             matches!(
-                engine.record_vote(lux_consensus::new_vote(id(1), VoteType::Preference, voter(i))),
+                engine.record_vote(lux_consensus::new_vote(
+                    id(1),
+                    VoteType::Preference,
+                    voter(i)
+                )),
                 Err(ConsensusError::NotValidator)
             ),
             "voter {i} was counted by an engine that holds no validators"
@@ -167,7 +178,11 @@ fn a_vote_for_an_unknown_block_is_refused() {
 
     assert!(
         matches!(
-            engine.record_vote(lux_consensus::new_vote(id(9), VoteType::Preference, voter(1))),
+            engine.record_vote(lux_consensus::new_vote(
+                id(9),
+                VoteType::Preference,
+                voter(1)
+            )),
             Err(ConsensusError::BlockNotFound)
         ),
         "a vote created a tally for a block nobody proposed"
@@ -219,13 +234,21 @@ fn members_carry_a_block_to_accepted_and_the_height_follows() {
 
     for i in 1..=3u8 {
         engine
-            .record_vote(lux_consensus::new_vote(id(1), VoteType::Preference, voter(i)))
+            .record_vote(lux_consensus::new_vote(
+                id(1),
+                VoteType::Preference,
+                voter(i),
+            ))
             .expect("a member's vote was refused");
     }
 
     assert!(engine.is_accepted(&id(1)), "three of three did not decide");
     assert_eq!(engine.get_status(&id(1)), Status::Accepted);
-    assert_eq!(engine.height(), 7, "the accepted height did not follow the block");
+    assert_eq!(
+        engine.height(),
+        7,
+        "the accepted height did not follow the block"
+    );
 }
 
 /// The same committee voting to cancel rejects the block instead. Accept and
@@ -275,7 +298,10 @@ fn there_is_no_quorum_until_the_set_reaches_it() {
 
     assert!(!quasar.has_quorum(), "an empty set reported a quorum");
     quasar.add_validator(voter(1), 100).expect("add_validator");
-    assert!(!quasar.has_quorum(), "one of a two-member quorum reported one");
+    assert!(
+        !quasar.has_quorum(),
+        "one of a two-member quorum reported one"
+    );
     quasar.add_validator(voter(2), 100).expect("add_validator");
     assert!(quasar.has_quorum());
 }
@@ -290,11 +316,18 @@ fn unsigned_ballots_finalize_nothing() {
     engine.add(block(1, 7)).expect("add");
     for i in 1..=3u8 {
         engine
-            .record_vote(lux_consensus::new_vote(id(1), VoteType::Preference, voter(i)))
+            .record_vote(lux_consensus::new_vote(
+                id(1),
+                VoteType::Preference,
+                voter(i),
+            ))
             .expect("record_vote");
     }
 
-    assert!(engine.is_accepted(&id(1)), "the preference did not converge");
+    assert!(
+        engine.is_accepted(&id(1)),
+        "the preference did not converge"
+    );
 
     let quasar = QuasarConsensus::new(&quorum_of_three());
     assert!(
@@ -314,7 +347,11 @@ fn the_horizon_ignores_a_block_from_an_unregistered_chain() {
     let mut horizon = EventHorizon::new(&quorum_of_three());
 
     horizon.accept_block("zoo", id(1));
-    assert_eq!(horizon.height(), 0, "an unregistered chain moved the height");
+    assert_eq!(
+        horizon.height(),
+        0,
+        "an unregistered chain moved the height"
+    );
 
     horizon.register_chain("zoo".to_string());
     horizon.accept_block("zoo", id(1));
@@ -368,7 +405,10 @@ fn every_engine_refusal_names_itself() {
     for (err, expected) in cases {
         let text = err.to_string();
         assert_eq!(text, expected, "{err:?} does not name itself");
-        assert!(!seen.contains(&text), "{text:?} names two different clauses");
+        assert!(
+            !seen.contains(&text),
+            "{text:?} names two different clauses"
+        );
         seen.push(text);
     }
 
@@ -381,7 +421,10 @@ fn every_engine_refusal_names_itself() {
         ConsensusError::NetworkError("peer gone".into()).to_string(),
         "Network error: peer gone"
     );
-    assert_eq!(ConsensusError::Other("anything".into()).to_string(), "anything");
+    assert_eq!(
+        ConsensusError::Other("anything".into()).to_string(),
+        "anything"
+    );
 }
 
 /// A vote is a preference for the block or against it, and the two commit types
@@ -417,7 +460,11 @@ fn a_block_short_of_a_quorum_is_in_flight_and_not_rejected() {
     // Two of a committee of three: fewer than k, so no round has closed.
     for i in 1..=2u8 {
         engine
-            .record_vote(lux_consensus::new_vote(id(1), VoteType::Preference, voter(i)))
+            .record_vote(lux_consensus::new_vote(
+                id(1),
+                VoteType::Preference,
+                voter(i),
+            ))
             .expect("record_vote");
     }
 
@@ -433,9 +480,18 @@ fn a_block_short_of_a_quorum_is_in_flight_and_not_rejected() {
 /// diff applied to the wrong field.
 #[test]
 fn an_engine_runs_the_configuration_it_was_given() {
-    assert_eq!(QuasarEngine::testnet().config().k, QuasarConfig::testnet().k);
-    assert_eq!(QuasarEngine::mainnet().config().k, QuasarConfig::mainnet().k);
-    assert_eq!(QuasarEngine::default().config().k, QuasarConfig::default().k);
+    assert_eq!(
+        QuasarEngine::testnet().config().k,
+        QuasarConfig::testnet().k
+    );
+    assert_eq!(
+        QuasarEngine::mainnet().config().k,
+        QuasarConfig::mainnet().k
+    );
+    assert_eq!(
+        QuasarEngine::default().config().k,
+        QuasarConfig::default().k
+    );
 
     // The three are genuinely different committees, so the presets are not one
     // config under three names.

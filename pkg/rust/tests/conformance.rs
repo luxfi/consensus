@@ -17,13 +17,16 @@ use serde_json::Value;
 
 fn corpus() -> Value {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../conformance/corpus.json");
-    let raw = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("read {path}: {e} — regenerate with `go test ./conformance -update`"));
+    let raw = std::fs::read_to_string(path).unwrap_or_else(|e| {
+        panic!("read {path}: {e} — regenerate with `go test ./conformance -update`")
+    });
     serde_json::from_str(&raw).expect("corpus.json does not parse")
 }
 
 fn id(v: &Value, key: &str) -> Id {
-    let s = v[key].as_str().unwrap_or_else(|| panic!("case has no {key}"));
+    let s = v[key]
+        .as_str()
+        .unwrap_or_else(|| panic!("case has no {key}"));
     let bytes = hex::decode(s).unwrap_or_else(|e| panic!("{key}: {e}"));
     let mut out = EMPTY;
     assert_eq!(bytes.len(), 32, "{key} is {} bytes, want 32", bytes.len());
@@ -83,7 +86,10 @@ fn signed_messages_match_go() {
         let accept = case["accept"].as_bool().unwrap();
         let got = hex::encode(canonical_vote_message(&pos, accept));
         let want = case["message"].as_str().unwrap();
-        assert_eq!(got, want, "vote case {name}: this crate signs different bytes than the network");
+        assert_eq!(
+            got, want,
+            "vote case {name}: this crate signs different bytes than the network"
+        );
     }
 }
 
@@ -130,13 +136,21 @@ fn count_thresholds_match_go() {
 
     for row in c["threshold"]["count"].as_array().expect("no count rows") {
         let n = row["n"].as_i64().unwrap();
-        assert_eq!(nova_quorum(n), row["novaQuorum"].as_i64().unwrap(), "novaQuorum n={n}");
+        assert_eq!(
+            nova_quorum(n),
+            row["novaQuorum"].as_i64().unwrap(),
+            "novaQuorum n={n}"
+        );
         assert_eq!(
             nova_signer_floor(n),
             row["novaSignerFloor"].as_i64().unwrap(),
             "novaSignerFloor n={n}"
         );
-        assert_eq!(nova_beta(n), row["novaBeta"].as_i64().unwrap(), "novaBeta n={n}");
+        assert_eq!(
+            nova_beta(n),
+            row["novaBeta"].as_i64().unwrap(),
+            "novaBeta n={n}"
+        );
         assert_eq!(
             crash_tolerance(n),
             row["crashTolerance"].as_i64().unwrap(),
@@ -149,7 +163,10 @@ fn count_thresholds_match_go() {
         );
     }
 
-    for row in c["threshold"]["weighted"].as_array().expect("no weighted rows") {
+    for row in c["threshold"]["weighted"]
+        .as_array()
+        .expect("no weighted rows")
+    {
         let weights: Vec<u64> = row["weights"]
             .as_array()
             .unwrap()
@@ -180,7 +197,11 @@ fn ladder_matches_go() {
         Finality::Quasar,
         Finality::Horizon,
     ];
-    assert_eq!(rungs.len(), all.len(), "the ladder has a different number of rungs");
+    assert_eq!(
+        rungs.len(),
+        all.len(),
+        "the ladder has a different number of rungs"
+    );
 
     for (row, rung) in rungs.iter().zip(all.iter().copied()) {
         assert_eq!(row["name"].as_str().unwrap(), rung.name());
@@ -207,7 +228,10 @@ fn ladder_matches_go() {
 
     // Stated outright, not read from the corpus: nothing below Quasar leaves the
     // chain. If the corpus were re-blessed with this inverted, this still fails.
-    assert!(!Finality::Nova.authorizes_export(), "Nova must never authorize export");
+    assert!(
+        !Finality::Nova.authorizes_export(),
+        "Nova must never authorize export"
+    );
     assert!(Finality::Nova.authorizes_local_execution());
     assert!(Finality::Quasar.authorizes_export());
     assert!(!Finality::Quasar.authorizes_irreversible_settlement());
@@ -227,7 +251,10 @@ fn certificate_header_matches_go() {
             case["length"].as_u64().unwrap() as usize,
             "{name}: recorded length disagrees with the recorded bytes"
         );
-        assert!(wire.len() > 4, "{name}: certificate is too short to carry a header");
+        assert!(
+            wire.len() > 4,
+            "{name}: certificate is too short to carry a header"
+        );
 
         assert_eq!(
             u16::from_be_bytes([wire[0], wire[1]]),

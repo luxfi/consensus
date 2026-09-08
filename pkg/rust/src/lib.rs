@@ -62,7 +62,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
-
 // The finality standard: the bytes a validator signs and the thresholds that
 // decide. Held to the Go definitions by tests/conformance.rs.
 pub mod finality;
@@ -96,20 +95,20 @@ pub fn sha256(input: &[u8]) -> [u8; 32] {
 }
 
 // Re-export all public types
+pub use crate::engine::*;
+pub use crate::errors::*;
 pub use crate::finality::{
     canonical_vote_message, crash_tolerance, half_stake_floor, nova_beta, nova_quorum,
     nova_signer_floor, signer_floor, two_thirds_count, two_thirds_stake_floor, weighted_quasar,
     Finality, Position, QC_FINALITY, QUORUM_CERT_VERSION, VOTE_MESSAGE_LEN, VOTE_TAG,
 };
-pub use crate::types::*;
-pub use crate::errors::*;
+pub use crate::focus::*;
 pub use crate::fpc::*;
 pub use crate::photon::*;
-pub use crate::focus::*;
-pub use crate::wave::*;
 pub use crate::quasar::*;
-pub use crate::engine::*;
+pub use crate::types::*;
 pub use crate::vote::{SignedVote, Slot, Tally, VoteTransport, VOTE};
+pub use crate::wave::*;
 
 // ============= TYPES MODULE =============
 
@@ -302,36 +301,33 @@ pub mod types {
     pub type Certificate = crate::cert::QuorumCert;
 
     /// Security level for Corona post-quantum crypto
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    #[derive(Default)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub enum SecurityLevel {
-        Low = 2,    // Corona Level 2
+        Low = 2, // Corona Level 2
         #[default]
         Medium = 3, // Corona Level 3 - Default
-        High = 5,   // Corona Level 5
+        High = 5, // Corona Level 5
     }
-
-    
 
     /// Quasar consensus configuration
     #[derive(Debug, Clone)]
     pub struct QuasarConfig {
         // Wave parameters
-        pub k: usize,               // Sample/committee size
-        pub alpha: f64,             // Fixed threshold ratio (0.5-0.8)
-        pub beta: u32,              // Consecutive rounds for finality
+        pub k: usize,                // Sample/committee size
+        pub alpha: f64,              // Fixed threshold ratio (0.5-0.8)
+        pub beta: u32,               // Consecutive rounds for finality
         pub round_timeout: Duration, // Round timeout
 
         // FPC parameters
-        pub enable_fpc: bool,       // Enable FPC adaptive thresholds
-        pub theta_min: f64,         // Minimum FPC threshold (0.5)
-        pub theta_max: f64,         // Maximum FPC threshold (0.8)
-        pub fpc_seed: [u8; 32],     // PRF seed for FPC
+        pub enable_fpc: bool,   // Enable FPC adaptive thresholds
+        pub theta_min: f64,     // Minimum FPC threshold (0.5)
+        pub theta_max: f64,     // Maximum FPC threshold (0.8)
+        pub fpc_seed: [u8; 32], // PRF seed for FPC
 
         // Photon parameters
-        pub base_luminance: f64,    // Base luminance in lux (100.0)
-        pub max_luminance: f64,     // Maximum luminance (1000.0)
-        pub min_luminance: f64,     // Minimum luminance (10.0)
+        pub base_luminance: f64,     // Base luminance in lux (100.0)
+        pub max_luminance: f64,      // Maximum luminance (1000.0)
+        pub min_luminance: f64,      // Minimum luminance (10.0)
         pub success_multiplier: f64, // Success brightens (1.1)
         pub failure_multiplier: f64, // Failure dims (0.9)
 
@@ -554,7 +550,6 @@ pub mod fpc {
             }
         }
 
-
         /// θ for a phase, from the PRF the network runs.
         ///
         /// `θ(phase) = θ_min + sha256(seed ‖ be64(phase))[0..8] / (2⁶⁴−1) · (θ_max − θ_min)`
@@ -573,8 +568,7 @@ pub mod fpc {
 
             // Big-endian, first 8 bytes — the same window and order Go reads.
             let hash_u64 = u64::from_be_bytes([
-                hash[0], hash[1], hash[2], hash[3],
-                hash[4], hash[5], hash[6], hash[7],
+                hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
             ]);
             let normalized = (hash_u64 as f64) / (u64::MAX as f64);
 
@@ -713,7 +707,8 @@ pub mod photon {
             let k = k.min(self.peers.len());
 
             // Calculate weights based on luminance
-            let weights: Vec<f64> = self.peers
+            let weights: Vec<f64> = self
+                .peers
                 .iter()
                 .map(|p| self.luminance.brightness(p))
                 .collect();
@@ -786,8 +781,8 @@ pub mod focus {
     /// votes above the alpha threshold.
     #[derive(Debug)]
     pub struct Focus<ID: Eq + std::hash::Hash + Clone> {
-        threshold: u32,     // β - consecutive rounds needed
-        alpha: f64,         // Ratio threshold
+        threshold: u32, // β - consecutive rounds needed
+        alpha: f64,     // Ratio threshold
         states: HashMap<ID, FocusState>,
     }
 
@@ -915,7 +910,9 @@ pub mod focus {
 
         /// Get decision for an item
         pub fn decision(&self, id: &ID) -> Decision {
-            self.states.get(id).map_or(Decision::Undecided, |s| s.decision)
+            self.states
+                .get(id)
+                .map_or(Decision::Undecided, |s| s.decision)
         }
 
         /// Get current confidence level
@@ -1041,8 +1038,7 @@ pub mod wave {
         pub fn record_vote(&mut self, vote: Vote) -> bool {
             let block_id = vote.block_id.clone();
 
-            let state = self.states.entry(block_id.clone())
-                .or_default();
+            let state = self.states.entry(block_id.clone()).or_default();
 
             if state.decided {
                 return false;
@@ -1146,7 +1142,9 @@ pub mod wave {
 
         /// Get decision for a block
         pub fn decision(&self, block_id: &ID) -> Decision {
-            self.states.get(block_id).map_or(Decision::Undecided, |s| s.decision)
+            self.states
+                .get(block_id)
+                .map_or(Decision::Undecided, |s| s.decision)
         }
 
         /// Reset state for a block
@@ -1231,7 +1229,9 @@ pub mod quasar {
             bls_pubkey: &[u8],
             pop: &[u8],
         ) -> Result<()> {
-            Ok(self.validators.insert(*id.as_bytes(), weight, bls_pubkey, pop)?)
+            Ok(self
+                .validators
+                .insert(*id.as_bytes(), weight, bls_pubkey, pop)?)
         }
 
         /// Remove a validator
@@ -1292,7 +1292,10 @@ pub mod quasar {
                 if !seen.insert(id) {
                     continue;
                 }
-                if !self.validators.verify_vote(&id, &message, &v.signature, position.height) {
+                if !self
+                    .validators
+                    .verify_vote(&id, &message, &v.signature, position.height)
+                {
                     continue;
                 }
                 accepted.push(CertVote {
@@ -1372,7 +1375,8 @@ pub mod quasar {
         /// `StakeSource` impl on `ValidatorSet`). A set that reads a P-chain
         /// epoch must take that height from the caller.
         pub fn verify_certificate(&self, cert: &Certificate) -> bool {
-            cert.verify_weighted(&self.validators, &self.validators, 0).is_ok()
+            cert.verify_weighted(&self.validators, &self.validators, 0)
+                .is_ok()
         }
 
         /// Whether the position with this signed identity has quantum finality.
@@ -1628,13 +1632,17 @@ pub mod engine {
         }
 
         fn is_accepted(&self, id: &ID) -> bool {
-            self.status.read().unwrap()
+            self.status
+                .read()
+                .unwrap()
                 .get(id)
                 .is_some_and(|s| *s == Status::Accepted)
         }
 
         fn get_status(&self, id: &ID) -> Status {
-            self.status.read().unwrap()
+            self.status
+                .read()
+                .unwrap()
                 .get(id)
                 .copied()
                 .unwrap_or(Status::Unknown)
@@ -1667,7 +1675,6 @@ pub mod engine {
             Ok(())
         }
     }
-
 }
 
 // ============= CONVENIENCE FUNCTIONS =============
@@ -1704,7 +1711,7 @@ pub fn generate_block_id() -> ID {
         state ^= state >> 7;
         state ^= state << 17;
         let chunk = state.to_le_bytes();
-        bytes[i*8..(i+1)*8].copy_from_slice(&chunk);
+        bytes[i * 8..(i + 1) * 8].copy_from_slice(&chunk);
     }
 
     ID::new(bytes)
@@ -1824,12 +1831,7 @@ mod tests {
         }
 
         // Add a block
-        let block = Block::new(
-            ID::from([1u8; 32]),
-            ID::zero(),
-            1,
-            b"test".to_vec(),
-        );
+        let block = Block::new(ID::from([1u8; 32]), ID::zero(), 1, b"test".to_vec());
         engine.add(block.clone()).unwrap();
 
         // Record votes
@@ -1861,15 +1863,17 @@ mod tests {
         }
 
         // Create chain of blocks
-        let blocks: Vec<Block> = (1..=3).map(|height| {
-            let mut id = [0u8; 32];
-            id[0] = height as u8;
-            let mut parent_id = [0u8; 32];
-            if height > 1 {
-                parent_id[0] = (height - 1) as u8;
-            }
-            Block::new(ID::from(id), ID::from(parent_id), height, vec![])
-        }).collect();
+        let blocks: Vec<Block> = (1..=3)
+            .map(|height| {
+                let mut id = [0u8; 32];
+                id[0] = height as u8;
+                let mut parent_id = [0u8; 32];
+                if height > 1 {
+                    parent_id[0] = (height - 1) as u8;
+                }
+                Block::new(ID::from(id), ID::from(parent_id), height, vec![])
+            })
+            .collect();
 
         // Add blocks
         for block in &blocks {

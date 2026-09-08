@@ -56,7 +56,13 @@ fn an_undecided_round_resets_confidence() {
 /// round is itself evidence for the new preference.
 #[test]
 fn an_opposing_round_switches_preference_and_restarts_at_one() {
-    let flip = [Some(true), Some(true), Some(false), Some(false), Some(false)];
+    let flip = [
+        Some(true),
+        Some(true),
+        Some(false),
+        Some(false),
+        Some(false),
+    ];
     assert_eq!(run(&flip, 3), Some((4, Decision::Reject)));
 
     // Restarting at one, not zero: three NOs after the switch, the switch
@@ -72,8 +78,7 @@ fn an_opposing_round_switches_preference_and_restarts_at_one() {
 /// keeps changing its mind about does not become final by attrition.
 #[test]
 fn alternating_rounds_never_decide() {
-    let alternating: Vec<Option<bool>> =
-        (0..1000).map(|i| Some(i % 2 == 0)).collect();
+    let alternating: Vec<Option<bool>> = (0..1000).map(|i| Some(i % 2 == 0)).collect();
     assert_eq!(run(&alternating, 2), None);
 }
 

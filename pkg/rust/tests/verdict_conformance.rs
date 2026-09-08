@@ -377,7 +377,12 @@ fn a_keyed_seat_with_no_stake_is_refused_at_either_door() {
             .as_array()
             .unwrap_or_else(|| panic!("{name}: no weights"))
             .iter()
-            .map(|w| w.as_str().expect("weight is not a decimal").parse().unwrap())
+            .map(|w| {
+                w.as_str()
+                    .expect("weight is not a decimal")
+                    .parse()
+                    .unwrap()
+            })
             .collect();
         assert!(
             weights.contains(&0),

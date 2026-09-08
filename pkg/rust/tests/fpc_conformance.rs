@@ -117,7 +117,10 @@ fn each_phase_draws_independently() {
 
     for (phase, _, _, _) in GO {
         let t = s.theta(phase);
-        assert!((0.5..=0.8).contains(&t), "phase {phase}: θ={t} out of range");
+        assert!(
+            (0.5..=0.8).contains(&t),
+            "phase {phase}: θ={t} out of range"
+        );
     }
 }
 
@@ -131,6 +134,8 @@ fn a_different_seed_is_a_different_schedule() {
     other[31] ^= 0x01;
     let b = FpcSelector::new(0.5, 0.8, other);
 
-    let differ = (0..16).filter(|&p| a.theta(p).to_bits() != b.theta(p).to_bits()).count();
+    let differ = (0..16)
+        .filter(|&p| a.theta(p).to_bits() != b.theta(p).to_bits())
+        .count();
     assert_eq!(differ, 16, "one flipped seed bit left a phase unchanged");
 }

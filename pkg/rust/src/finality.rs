@@ -115,7 +115,11 @@ pub fn canonical_vote_message(pos: &Position, accept: bool) -> Vec<u8> {
     // signed and the bytes finalized cannot drift apart. See
     // `Position::signed_identity`.
     let canonical = pos.signed_identity();
-    let parent = if pos.parent_canonical_id == EMPTY { &pos.parent_id } else { &pos.parent_canonical_id };
+    let parent = if pos.parent_canonical_id == EMPTY {
+        &pos.parent_id
+    } else {
+        &pos.parent_canonical_id
+    };
     buf.extend_from_slice(&canonical);
     buf.extend_from_slice(parent);
 

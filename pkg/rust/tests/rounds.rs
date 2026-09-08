@@ -61,7 +61,11 @@ fn a_validator_votes_once_per_block() {
     }
 
     let state = wave.state(&id(1)).expect("state");
-    assert_eq!(state.yes_count, 1, "one voter was counted {} times", state.yes_count);
+    assert_eq!(
+        state.yes_count, 1,
+        "one voter was counted {} times",
+        state.yes_count
+    );
     assert_eq!(state.votes.len(), 1);
     assert!(!wave.is_decided(&id(1)));
 }
@@ -81,7 +85,10 @@ fn fewer_than_k_answers_is_not_a_round() {
         "confidence accumulated before k answers were in"
     );
 
-    assert!(wave.record_vote(yes(1, 3)), "k answers did not close the round");
+    assert!(
+        wave.record_vote(yes(1, 3)),
+        "k answers did not close the round"
+    );
     assert!(wave.is_decided(&id(1)));
     assert_eq!(wave.decision(&id(1)), Decision::Accept);
 }
@@ -163,13 +170,24 @@ fn asking_for_the_threshold_does_not_advance_the_phase() {
     let phase = wave.phase();
     let first = wave.threshold();
     for _ in 0..20 {
-        assert_eq!(wave.threshold(), first, "the threshold moved while being read");
+        assert_eq!(
+            wave.threshold(),
+            first,
+            "the threshold moved while being read"
+        );
     }
-    assert_eq!(wave.phase(), phase, "reading the threshold advanced the phase");
+    assert_eq!(
+        wave.phase(),
+        phase,
+        "reading the threshold advanced the phase"
+    );
 
     // A vote is what advances it — the round, not the question.
     wave.record_vote(yes(1, 1));
-    assert!(wave.phase() > phase, "a recorded vote did not advance the phase");
+    assert!(
+        wave.phase() > phase,
+        "a recorded vote did not advance the phase"
+    );
 }
 
 /// With FPC off the threshold is the configured count and the phase never moves,
@@ -202,7 +220,10 @@ fn an_unheard_of_block_is_undecided_and_holds_no_state() {
 
     // Opening a tally for it is explicit, and starts empty.
     let state = wave.get_or_create_state(&id(9));
-    assert_eq!((state.yes_count, state.no_count, state.confidence), (0, 0, 0));
+    assert_eq!(
+        (state.yes_count, state.no_count, state.confidence),
+        (0, 0, 0)
+    );
     assert!(!state.decided);
     assert!(wave.state(&id(9)).is_some());
 }
@@ -262,13 +283,20 @@ fn beta_consecutive_ratios_decide_and_a_middling_round_resets() {
 
     // 2 of 4 is 0.5, which is neither above alpha nor below 1-alpha: no quorum.
     assert!(!focus.update(1, 2, 4));
-    assert_eq!(focus.confidence(&1), 0, "a middling round did not reset the run");
+    assert_eq!(
+        focus.confidence(&1),
+        0,
+        "a middling round did not reset the run"
+    );
     assert!(!focus.is_decided(&1));
 
     for _ in 0..2 {
         assert!(!focus.update(1, 4, 4));
     }
-    assert!(focus.update(1, 4, 4), "three consecutive rounds did not decide");
+    assert!(
+        focus.update(1, 4, 4),
+        "three consecutive rounds did not decide"
+    );
     assert!(focus.is_decided(&1));
     assert_eq!(focus.decision(&1), Decision::Accept);
 }
@@ -295,7 +323,10 @@ fn a_decided_item_does_not_reopen() {
     let settled = focus.decision(&1);
 
     for _ in 0..5 {
-        assert!(!focus.update(1, 0, 4), "a decided item reported a new decision");
+        assert!(
+            !focus.update(1, 0, 4),
+            "a decided item reported a new decision"
+        );
     }
     assert_eq!(focus.decision(&1), settled);
     assert_eq!(focus.state(&1).expect("state").last_ratio, 1.0);
@@ -337,7 +368,10 @@ fn a_run_inside_the_window_accumulates_normally() {
 
     assert!(!focus.update(1, 4, 4));
     assert!(!focus.update(1, 4, 4));
-    assert!(focus.update(1, 4, 4), "three rounds inside the window did not decide");
+    assert!(
+        focus.update(1, 4, 4),
+        "three rounds inside the window did not decide"
+    );
     assert!(focus.is_decided(&1));
     assert_eq!(focus.decision(&1), Decision::Accept);
 }

@@ -76,7 +76,8 @@ fn committee(n: u8, weight: u64) -> (Vec<Signer>, ValidatorSet) {
     let signers: Vec<Signer> = (1..=n).map(|i| Signer::new(i, weight)).collect();
     let mut set = ValidatorSet::new();
     for s in &signers {
-        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
+        set.insert(s.id, s.weight, &s.public(), &s.pop())
+            .expect("insert");
     }
     (signers, set)
 }
@@ -192,7 +193,10 @@ fn votes_signed_over_another_position_are_refused() {
     elsewhere.height += 1;
     let other_message = canonical_vote_message(&elsewhere, true);
 
-    let votes: Vec<Vote> = signers[..4].iter().map(|s| s.vote(&other_message)).collect();
+    let votes: Vec<Vote> = signers[..4]
+        .iter()
+        .map(|s| s.vote(&other_message))
+        .collect();
     let cert = QuorumCert::assemble(Finality::Quasar, position(), 4, &votes).expect("assemble");
 
     assert_eq!(cert.verify(&set, 0), Err(CertError::SigInvalid(0)));
@@ -210,7 +214,7 @@ fn a_reject_signature_cannot_pass_as_an_accept() {
         .iter()
         .map(|s| Vote {
             node_id: s.id,
-            accept: true, // claims accept
+            accept: true,                       // claims accept
             signature: s.sign(&reject_message), // signed reject
         })
         .collect();
@@ -228,7 +232,10 @@ fn a_duplicate_voter_is_refused() {
     let mut cert = valid_cert(&signers, 4, 4);
     cert.votes[1] = cert.votes[0].clone();
 
-    assert_eq!(cert.verify(&set, 0), Err(CertError::NotStrictlyIncreasing(1)));
+    assert_eq!(
+        cert.verify(&set, 0),
+        Err(CertError::NotStrictlyIncreasing(1))
+    );
 }
 
 /// Order is part of the certificate. Without it the same votes have many
@@ -239,7 +246,10 @@ fn a_reordered_certificate_is_refused() {
     let mut cert = valid_cert(&signers, 4, 4);
     cert.votes.reverse();
 
-    assert_eq!(cert.verify(&set, 0), Err(CertError::NotStrictlyIncreasing(1)));
+    assert_eq!(
+        cert.verify(&set, 0),
+        Err(CertError::NotStrictlyIncreasing(1))
+    );
 }
 
 /// A finality certificate witnesses acceptance. A reject vote inside one is a
@@ -292,7 +302,10 @@ fn a_wrong_version_or_type_is_refused() {
 
     let mut cert = valid_cert(&signers, 4, 4);
     cert.qc_type = 9;
-    assert_eq!(cert.verify(&set, 0), Err(CertError::Type { got: 9, want: 1 }));
+    assert_eq!(
+        cert.verify(&set, 0),
+        Err(CertError::Type { got: 9, want: 1 })
+    );
 }
 
 #[test]
@@ -319,7 +332,8 @@ fn a_count_quorum_without_the_stake_is_refused() {
         .collect();
     let mut set = ValidatorSet::new();
     for s in &signers {
-        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
+        set.insert(s.id, s.weight, &s.public(), &s.pop())
+            .expect("insert");
     }
 
     let cert = valid_cert(&signers, 4, 4);
@@ -357,13 +371,18 @@ fn exactly_two_thirds_is_refused_and_one_more_passes() {
         .collect();
     let mut set = ValidatorSet::new();
     for s in &signers {
-        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
+        set.insert(s.id, s.weight, &s.public(), &s.pop())
+            .expect("insert");
     }
     assert_eq!(set.signer_stake(0), 600);
     assert_eq!(two_thirds_stake_floor(600), 400);
 
     let five = declaring(&signers, Finality::Quasar, 6, 5);
-    assert_eq!(five.voter_count(), two_thirds_count(6), "the count floor is met");
+    assert_eq!(
+        five.voter_count(),
+        two_thirds_count(6),
+        "the count floor is met"
+    );
     assert_eq!(
         five.verify_weighted(&set, &set, 0),
         Err(CertError::StakeBelowSupermajority {
@@ -420,7 +439,8 @@ fn nova_needs_both_the_majority_and_the_signer_floor() {
         .collect();
     let mut set = ValidatorSet::new();
     for s in &signers {
-        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
+        set.insert(s.id, s.weight, &s.public(), &s.pop())
+            .expect("insert");
     }
 
     let message = canonical_vote_message(&position(), true);
@@ -504,7 +524,10 @@ fn each_signature_is_checked_against_its_own_signer() {
     // One id repeated — the ordering clause catches it before any key is read.
     let mut dup = cert.clone();
     dup.votes[1].node_id = dup.votes[0].node_id;
-    assert_eq!(dup.verify(&set, 0), Err(CertError::NotStrictlyIncreasing(1)));
+    assert_eq!(
+        dup.verify(&set, 0),
+        Err(CertError::NotStrictlyIncreasing(1))
+    );
 
     // Zero, garbage, and the wrong length.
     for bad in [
@@ -560,12 +583,24 @@ fn an_invalid_public_key_is_refused_at_registration() {
     let mut set = ValidatorSet::new();
 
     // 48 bytes that are not a point, in the two shapes a wire decode produces.
-    assert_eq!(set.insert(node(1), 100, &[0u8; 48], &s.pop()), Err(CertError::KeyEncoding));
-    assert_eq!(set.insert(node(2), 100, &[0xABu8; 48], &s.pop()), Err(CertError::KeyEncoding));
+    assert_eq!(
+        set.insert(node(1), 100, &[0u8; 48], &s.pop()),
+        Err(CertError::KeyEncoding)
+    );
+    assert_eq!(
+        set.insert(node(2), 100, &[0xABu8; 48], &s.pop()),
+        Err(CertError::KeyEncoding)
+    );
     // A 96-byte signature offered where a 48-byte key belongs.
-    assert_eq!(set.insert(node(4), 100, &[0u8; 96], &s.pop()), Err(CertError::KeyEncoding));
+    assert_eq!(
+        set.insert(node(4), 100, &[0u8; 96], &s.pop()),
+        Err(CertError::KeyEncoding)
+    );
     // No key at all is not a malformed key: it names the other door.
-    assert_eq!(set.insert(node(3), 100, &[], &s.pop()), Err(CertError::NoKey));
+    assert_eq!(
+        set.insert(node(3), 100, &[], &s.pop()),
+        Err(CertError::NoKey)
+    );
 
     assert!(set.is_empty(), "nothing refused left a member behind");
 }
@@ -592,12 +627,17 @@ fn a_key_without_its_proof_is_refused() {
         ("another validator's proof", other.pop()),
         // The right secret, the right key, the WRONG node — the proof binds the
         // identity, so it does not travel to a second one.
-        ("this key's proof, made for another node", pop::sign(&s.sk, &other.id, &s.public())),
+        (
+            "this key's proof, made for another node",
+            pop::sign(&s.sk, &other.id, &s.public()),
+        ),
         // A signature by this secret over this preimage, in the VOTE domain.
         // Collapse the two tags and this passes.
         (
             "a vote-domain signature over the proof preimage",
-            s.sk.sign(&pop::message(&s.id, &s.public()), DST, &[]).compress().to_vec(),
+            s.sk.sign(&pop::message(&s.id, &s.public()), DST, &[])
+                .compress()
+                .to_vec(),
         ),
     ] {
         let mut set = ValidatorSet::new();
@@ -626,13 +666,21 @@ fn one_key_belongs_to_one_node() {
     let second = node(9);
 
     let mut set = ValidatorSet::new();
-    set.insert(s.id, 100, &s.public(), &s.pop()).expect("first id");
+    set.insert(s.id, 100, &s.public(), &s.pop())
+        .expect("first id");
 
     // A genuine, node-bound proof for the second id — possession is satisfied,
     // and uniqueness is what refuses it.
     let proof = pop::sign(&s.sk, &second, &s.public());
-    assert_eq!(pop::verify(&second, &s.public(), &proof), Ok(()), "the proof is genuine");
-    assert_eq!(set.insert(second, 100, &s.public(), &proof), Err(CertError::DuplicateKey));
+    assert_eq!(
+        pop::verify(&second, &s.public(), &proof),
+        Ok(()),
+        "the proof is genuine"
+    );
+    assert_eq!(
+        set.insert(second, 100, &s.public(), &proof),
+        Err(CertError::DuplicateKey)
+    );
 
     assert_eq!(set.len(), 1, "the second id never became a member");
     assert!(!set.contains(&second));
@@ -647,36 +695,57 @@ fn one_node_holds_one_key() {
     let b = Signer::new(2, 100);
 
     let mut set = ValidatorSet::new();
-    set.insert(a.id, 100, &a.public(), &a.pop()).expect("admitted");
+    set.insert(a.id, 100, &a.public(), &a.pop())
+        .expect("admitted");
 
     // The same node under a SECOND key it genuinely holds.
     let second = pop::sign(&b.sk, &a.id, &b.public());
-    assert_eq!(pop::verify(&a.id, &b.public(), &second), Ok(()), "the proof is genuine");
-    assert_eq!(set.insert(a.id, 100, &b.public(), &second), Err(CertError::DuplicateNode));
+    assert_eq!(
+        pop::verify(&a.id, &b.public(), &second),
+        Ok(()),
+        "the proof is genuine"
+    );
+    assert_eq!(
+        set.insert(a.id, 100, &b.public(), &second),
+        Err(CertError::DuplicateNode)
+    );
 
     // The identical registration offered twice fails on the KEY axis first,
     // which is the order Go iterates them in.
-    assert_eq!(set.insert(a.id, 100, &a.public(), &a.pop()), Err(CertError::DuplicateKey));
+    assert_eq!(
+        set.insert(a.id, 100, &a.public(), &a.pop()),
+        Err(CertError::DuplicateKey)
+    );
 
     // Neither door restates a member: an unkeyed admission of a keyed node is
     // refused, and so is the reverse — a re-admission cannot quietly de-key a
     // validator or change its weight.
     assert_eq!(set.insert_unkeyed(a.id, 5), Err(CertError::DuplicateNode));
     set.insert_unkeyed(b.id, 5).expect("a new node, no key");
-    assert_eq!(set.insert(b.id, 100, &b.public(), &b.pop()), Err(CertError::DuplicateNode));
+    assert_eq!(
+        set.insert(b.id, 100, &b.public(), &b.pop()),
+        Err(CertError::DuplicateNode)
+    );
 
     // Nothing moved.
     assert_eq!(set.len(), 2);
     assert_eq!(set.weight(&a.id, 0), 100);
-    assert_eq!(set.public_key(&a.id).map(|k| k.compress()), Some(a.public()));
+    assert_eq!(
+        set.public_key(&a.id).map(|k| k.compress()),
+        Some(a.public())
+    );
     assert!(!set.can_verify(&b.id));
 
     // Re-keying is a retraction and a fresh admission, and nothing else: the old
     // key is freed with the member, and the node comes back under the new one.
     set.remove(&a.id);
     assert!(!set.contains(&a.id));
-    set.insert(a.id, 100, &b.public(), &second).expect("re-admitted under a new key");
-    assert_eq!(set.public_key(&a.id).map(|k| k.compress()), Some(b.public()));
+    set.insert(a.id, 100, &b.public(), &second)
+        .expect("re-admitted under a new key");
+    assert_eq!(
+        set.public_key(&a.id).map(|k| k.compress()),
+        Some(b.public())
+    );
 }
 
 /// A KEYED SIGNER WITH NO STAKE is a phantom: it raises the count of distinct
@@ -688,21 +757,28 @@ fn a_zero_weight_signer_is_refused_at_registration() {
     let s = Signer::new(1, 100);
     let mut set = ValidatorSet::new();
 
-    assert_eq!(set.insert(s.id, 0, &s.public(), &s.pop()), Err(CertError::ZeroWeight));
+    assert_eq!(
+        set.insert(s.id, 0, &s.public(), &s.pop()),
+        Err(CertError::ZeroWeight)
+    );
     assert!(set.is_empty());
 
     // The clause ORDER, pinned: a registration that is both weightless and
     // unproven is refused for its weight, because Go checks the O(1) clause
     // first and a port that reordered them would name a different reason — and
     // would spend a pairing on a registration that was inadmissible on its face.
-    assert_eq!(set.insert(s.id, 0, &s.public(), &[]), Err(CertError::ZeroWeight));
+    assert_eq!(
+        set.insert(s.id, 0, &s.public(), &[]),
+        Err(CertError::ZeroWeight)
+    );
     // No key beats both, as it does in Go.
     assert_eq!(set.insert(s.id, 0, &[], &[]), Err(CertError::NoKey));
 
     // A member with no KEY may hold no stake: it can never sign, so it is no
     // phantom signer — it only raises `n`, which is the direction that makes
     // every floor harder rather than easier. Go's flatten carries these too.
-    set.insert_unkeyed(s.id, 0).expect("a keyless member may be weightless");
+    set.insert_unkeyed(s.id, 0)
+        .expect("a keyless member may be weightless");
     assert_eq!(set.len(), 1);
     assert!(!set.can_verify(&s.id));
 }
@@ -810,7 +886,9 @@ fn the_engine_issues_certificates_only_from_signatures() {
         })
         .collect();
 
-    let cert = q.create_certificate(pos.clone(), &signed).expect("certificate");
+    let cert = q
+        .create_certificate(pos.clone(), &signed)
+        .expect("certificate");
     assert_eq!(cert.votes.len(), 4);
     assert_eq!(cert.tier, Finality::Quasar);
     assert!(q.verify_certificate(&cert));
@@ -858,10 +936,20 @@ fn a_keyless_member_cannot_be_certified() {
     let mut q = QuasarConsensus::new(&config);
 
     // Two keyed, two not.
-    q.add_validator_with_key(NodeID::from(signers[0].id), 100, &signers[0].public(), &signers[0].pop())
-        .unwrap();
-    q.add_validator_with_key(NodeID::from(signers[1].id), 100, &signers[1].public(), &signers[1].pop())
-        .unwrap();
+    q.add_validator_with_key(
+        NodeID::from(signers[0].id),
+        100,
+        &signers[0].public(),
+        &signers[0].pop(),
+    )
+    .unwrap();
+    q.add_validator_with_key(
+        NodeID::from(signers[1].id),
+        100,
+        &signers[1].public(),
+        &signers[1].pop(),
+    )
+    .unwrap();
     q.add_validator(NodeID::from(signers[2].id), 100).unwrap();
     q.add_validator(NodeID::from(signers[3].id), 100).unwrap();
 
@@ -890,7 +978,10 @@ fn a_keyless_member_cannot_be_certified() {
     // clause rather than reporting that something did not reach something.
     assert!(matches!(
         q.create_certificate(pos, &votes),
-        Err(ConsensusError::Cert(CertError::MinCommittee { n: 2, need: 4 }))
+        Err(ConsensusError::Cert(CertError::MinCommittee {
+            n: 2,
+            need: 4
+        }))
     ));
 }
 
@@ -1040,7 +1131,8 @@ fn a_set_whose_weights_overflow_is_refused_at_admission() {
 #[test]
 fn an_unkeyed_member_cannot_overflow_the_total_either() {
     let mut set = ValidatorSet::new();
-    set.insert_unkeyed(node(1), u64::MAX).expect("the first fits");
+    set.insert_unkeyed(node(1), u64::MAX)
+        .expect("the first fits");
     assert_eq!(
         set.insert_unkeyed(node(2), 1),
         Err(CertError::WeightOverflow)
@@ -1066,11 +1158,15 @@ fn the_total_is_exact_at_the_boundary_and_after_a_retraction() {
     set.insert_unkeyed(node(2), 10).expect("insert");
     assert_eq!(set.carried(), u64::MAX);
 
-    assert_eq!(set.insert_unkeyed(node(3), 1), Err(CertError::WeightOverflow));
+    assert_eq!(
+        set.insert_unkeyed(node(3), 1),
+        Err(CertError::WeightOverflow)
+    );
 
     set.remove(&node(2));
     assert_eq!(set.carried(), u64::MAX - 10);
-    set.insert_unkeyed(node(3), 10).expect("the freed room is real");
+    set.insert_unkeyed(node(3), 10)
+        .expect("the freed room is real");
     assert_eq!(set.carried(), u64::MAX);
 }
 
@@ -1101,7 +1197,9 @@ fn a_clamping_stake_source_is_refused_rather_than_read() {
                 .unwrap_or(0)
         }
         fn signer_stake(&self, _epoch_height: u64) -> u64 {
-            self.weights.iter().fold(0u64, |a, (_, w)| a.saturating_add(*w))
+            self.weights
+                .iter()
+                .fold(0u64, |a, (_, w)| a.saturating_add(*w))
         }
         fn signer_count(&self, _epoch_height: u64) -> i64 {
             self.weights.len() as i64
@@ -1184,7 +1282,10 @@ fn one_bad_registration_refuses_the_whole_set() {
             refused += 1;
         }
     }
-    assert_eq!((partial.len(), partial.signer_stake(0), refused), (3, 300, 1));
+    assert_eq!(
+        (partial.len(), partial.signer_stake(0), refused),
+        (3, 300, 1)
+    );
 
     // Repaired, the set is admitted whole.
     registrations[3].proof = signers[3].pop();
@@ -1255,7 +1356,8 @@ fn whale(n: u8, heavy: u64) -> (Vec<Signer>, ValidatorSet) {
         .collect();
     let mut set = ValidatorSet::new();
     for s in &signers {
-        set.insert(s.id, s.weight, &s.public(), &s.pop()).expect("insert");
+        set.insert(s.id, s.weight, &s.public(), &s.pop())
+            .expect("insert");
     }
     (signers, set)
 }
@@ -1310,7 +1412,11 @@ fn meeting_the_count_without_the_stake_is_refused_too() {
 
     assert_eq!(
         cert.verify_weighted(&set, &set, 0),
-        Err(CertError::StakeBelowSupermajority { voted: 4, signer: 104, need_above: 69 }),
+        Err(CertError::StakeBelowSupermajority {
+            voted: 4,
+            signer: 104,
+            need_above: 69
+        }),
     );
 }
 
@@ -1319,7 +1425,17 @@ fn meeting_the_count_without_the_stake_is_refused_too() {
 /// form. It is never above the set, so it is never a rung nothing can satisfy.
 #[test]
 fn the_export_floor_is_the_supermajority_in_seats() {
-    for (n, want) in [(1, 1), (2, 2), (3, 3), (4, 3), (5, 4), (11, 8), (21, 15), (41, 28), (100, 67)] {
+    for (n, want) in [
+        (1, 1),
+        (2, 2),
+        (3, 3),
+        (4, 3),
+        (5, 4),
+        (11, 8),
+        (21, 15),
+        (41, 28),
+        (100, 67),
+    ] {
         assert_eq!(two_thirds_count(n), want, "two_thirds_count({n})");
     }
     for n in 1i64..=1000 {
@@ -1386,7 +1502,8 @@ fn keyless_stake_is_in_no_floor_and_export_still_reaches() {
     let (signers, mut set) = committee(6, 100);
     let mut spectator = [0u8; 20];
     spectator[0] = 200;
-    set.insert_unkeyed(spectator, 300).expect("a keyless member");
+    set.insert_unkeyed(spectator, 300)
+        .expect("a keyless member");
 
     // What the set carries, and what can actually sign.
     assert_eq!(set.carried(), 900, "the chain carries nine hundred");
@@ -1510,7 +1627,10 @@ fn an_export_certificate_needs_a_byzantine_committee() {
         let cert = declaring(&signers, Finality::Quasar, i64::from(n), usize::from(n));
 
         // Both quorum floors are MET, so neither can be what refuses it.
-        assert!(cert.voter_count() >= two_thirds_count(set.signer_count(0)), "n={n}");
+        assert!(
+            cert.voter_count() >= two_thirds_count(set.signer_count(0)),
+            "n={n}"
+        );
         assert!(
             u64::from(n) * 100 > two_thirds_stake_floor(set.signer_stake(0)),
             "n={n}: unanimity does not clear the stake floor, so this case does not \
@@ -1519,7 +1639,10 @@ fn an_export_certificate_needs_a_byzantine_committee() {
 
         assert_eq!(
             cert.verify_weighted(&set, &set, 0),
-            Err(CertError::MinCommittee { n: i64::from(n), need: 4 }),
+            Err(CertError::MinCommittee {
+                n: i64::from(n),
+                need: 4
+            }),
             "n={n}: a unanimous certificate over a set with no Byzantine fault budget \
              minted export finality"
         );
@@ -1605,7 +1728,11 @@ fn a_certificate_may_not_declare_a_quorum_the_set_does_not_derive() {
     under.threshold = 1;
     assert_eq!(
         under.verify_weighted(&set, &set, 0),
-        Err(CertError::ThresholdNotDerived { declared: 1, derived: 3, n: 4 }),
+        Err(CertError::ThresholdNotDerived {
+            declared: 1,
+            derived: 3,
+            n: 4
+        }),
     );
 
     // And an over-claim, for the same reason in the other direction: a certificate
@@ -1616,7 +1743,11 @@ fn a_certificate_may_not_declare_a_quorum_the_set_does_not_derive() {
     over.threshold = 4;
     assert_eq!(
         over.verify_weighted(&set, &set, 0),
-        Err(CertError::ThresholdNotDerived { declared: 4, derived: 3, n: 4 }),
+        Err(CertError::ThresholdNotDerived {
+            declared: 4,
+            derived: 3,
+            n: 4
+        }),
     );
 }
 
@@ -1633,7 +1764,11 @@ fn the_accept_rung_derives_its_quorum_the_same_way() {
     under.threshold = 1;
     assert_eq!(
         under.verify_weighted(&set, &set, 0),
-        Err(CertError::ThresholdNotDerived { declared: 1, derived: 3, n: 5 }),
+        Err(CertError::ThresholdNotDerived {
+            declared: 1,
+            derived: 3,
+            n: 5
+        }),
     );
 }
 
@@ -1641,8 +1776,16 @@ fn the_accept_rung_derives_its_quorum_the_same_way() {
 #[test]
 fn the_signer_floor_is_the_rungs_own_arithmetic() {
     for n in 1..=64i64 {
-        assert_eq!(signer_floor(Finality::Nova, n), nova_signer_floor(n), "n={n}");
-        assert_eq!(signer_floor(Finality::Quasar, n), two_thirds_count(n), "n={n}");
+        assert_eq!(
+            signer_floor(Finality::Nova, n),
+            nova_signer_floor(n),
+            "n={n}"
+        );
+        assert_eq!(
+            signer_floor(Finality::Quasar, n),
+            two_thirds_count(n),
+            "n={n}"
+        );
     }
     for rung in [Finality::Photon, Finality::Wave, Finality::Horizon] {
         assert_eq!(signer_floor(rung, 41), 0, "{rung:?} is not an accept rung");
@@ -1678,7 +1821,10 @@ fn an_unresolved_set_is_not_named_by_the_derived_clause() {
 // ------------------------------------------------ the issuer states no quorum
 
 /// A committee of `n` keyed validators at equal weight, under `config`.
-fn issuer(config: &lux_consensus::QuasarConfig, n: u8) -> (Vec<Signer>, lux_consensus::QuasarConsensus) {
+fn issuer(
+    config: &lux_consensus::QuasarConfig,
+    n: u8,
+) -> (Vec<Signer>, lux_consensus::QuasarConsensus) {
     use lux_consensus::{NodeID, QuasarConsensus};
     let signers: Vec<Signer> = (1..=n).map(|i| Signer::new(i, 100)).collect();
     let mut q = QuasarConsensus::new(config);
@@ -1738,7 +1884,10 @@ fn the_issuer_derives_its_certificates_quorum_from_the_set() {
             let cert = q
                 .create_certificate(pos.clone(), &ballots(&signers, &pos, voters))
                 .unwrap_or_else(|e| {
-                    panic!("k={} n={n}: the issuer refused its own quorum: {e}", config.k)
+                    panic!(
+                        "k={} n={n}: the issuer refused its own quorum: {e}",
+                        config.k
+                    )
                 });
 
             assert_eq!(
