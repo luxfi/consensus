@@ -165,3 +165,14 @@ exclude google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824
 // so CI can fetch modules from proxy.golang.org without sibling clones.
 // See CROSS-REPO-VERSION-PIN.md for the SHA → tag mapping at the
 // March 3, 2026 PQ Consensus Architecture Freeze.
+
+// v1.36.2 does not name one body of code. proxy.golang.org and sum.golang.org
+// hold the content it was published with and always will, because a published
+// version is immutable to them; GitHub serves something else. Builds through
+// the proxy and builds that go direct therefore disagree, and the direct ones
+// only look fine because GOPRIVATE skips the checksum database — so this is a
+// checksum SECURITY ERROR waiting for the first consumer who builds without it.
+//
+// The answer to a moved tag is a new version, never a re-pointed one. Use
+// v1.36.3 or later.
+retract v1.36.2
