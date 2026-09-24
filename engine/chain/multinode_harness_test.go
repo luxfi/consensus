@@ -183,6 +183,24 @@ func newSimVM() *simVM {
 	return vm
 }
 
+// proposerMark opens a payload that names its proposer, so a sim block states one the
+// way a proposervm block does (Proposer). Blocks without it name none.
+const proposerMark = "proposer:"
+
+// proposedBy is a payload naming node as the block's proposer.
+func proposedBy(node ids.NodeID, rest string) string {
+	return proposerMark + string(node[:]) + rest
+}
+
+func (b *simBlock) Proposer() ids.NodeID {
+	var node ids.NodeID
+	if len(b.payload) < len(proposerMark)+len(node) || string(b.payload[:len(proposerMark)]) != proposerMark {
+		return ids.EmptyNodeID
+	}
+	copy(node[:], b.payload[len(proposerMark):])
+	return node
+}
+
 func (vm *simVM) setToBuild(b *simBlock) {
 	vm.mu.Lock()
 	vm.toBuild = b
@@ -513,6 +531,13 @@ type simNet struct {
 func newSimNet(t *testing.T, n int, params config.Parameters) *simNet {
 	t.Helper()
 	vs := newTestValidatorSet(n)
+	return newSimNetStaked(t, vs, vs, params)
+}
+
+// newSimNetStaked is newSimNet over a given validator set, weighed by `stake`.
+func newSimNetStaked(t *testing.T, vs *testValidatorSet, stake StakeSource, params config.Parameters) *simNet {
+	t.Helper()
+	n := len(vs.ids)
 	bus := newSimBus()
 	chainID := ids.GenerateTestID()
 	net := &simNet{t: t, vs: vs, bus: bus, chain: chainID}
@@ -537,7 +562,7 @@ func newSimNet(t *testing.T, n int, params config.Parameters) *simNet {
 			Params:           &params,
 			VoteVerifier:     vs,
 			VoteSigner:       vs.signerFor(i),
-			StakeSource:      vs,
+			StakeSource:      stake,
 			ValidatorSetRoot: nil,
 			// Catchup gives the engine its runtime auto-recovery path (requestCatchup →
 			// RequestAncestors). With it nil, a healed but behind node can never re-fetch the
@@ -589,6 +614,17 @@ func (net *simNet) build(i int, blk *simBlock) {
 // down marks node i DOWN: it stops sending (bus won't route to it) and drops all
 // inbound. Models a crashed / partitioned validator.
 func (net *simNet) down(i int) { net.nodes[i].setUp(false) }
+
+// up brings node i back: it receives and sends again, holding what it held.
+func (net *simNet) up(i int) { net.nodes[i].setUp(true) }
+
+// send delivers blk as if node `from` pushed it to each of `to` alone — how a faulty
+// proposer shows different blocks to different validators. `from` need not be up.
+func (net *simNet) send(from int, blk *simBlock, to ...int) {
+	for _, i := range to {
+		net.nodes[i].enqueue(busMsg{kind: msgBlock, from: net.nodes[from].nodeID, payload: blk.Bytes()})
+	}
+}
 
 // finalizedEverywhere reports whether EVERY currently-up node has finalized blk at
 // its height (emergent agreement), and whether any up node finalized a DIFFERENT

@@ -774,6 +774,24 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 		return nil, err
 	}
 
+	// A relayed copy of a block already here is not executed again: a block is recorded
+	// only after it verifies, so a tracked or finalized one needs neither. It still asks
+	// for a parent this node lacks, from the peer that sent it — the self-heal a behind
+	// node rides (followVerifiedBlock), rate-limited in claimCatchupLocked.
+	if rt.Transitive.seen(blk.ID()) {
+		rt.requestCatchup(blk.ParentID(), fromNodeID)
+		return blk, nil
+	}
+	// No room at its height (roomLocked): refused before it runs. followVerifiedBlock
+	// weighs it again, and decides, once it has verified.
+	if !rt.Transitive.hasRoom(blk, fromNodeID) {
+		if !rt.config.Logger.IsZero() {
+			rt.config.Logger.Debug("no room for a sibling at its height — not executing it",
+				log.Stringer("blockID", blk.ID()), log.Uint64("height", blk.Height()), log.Stringer("from", fromNodeID))
+		}
+		return blk, nil
+	}
+
 	// Verify the block
 	if err := blk.Verify(ctx); err != nil {
 		if !rt.config.Logger.IsZero() {
@@ -838,7 +856,6 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 // The caller holds rt.fastFollowMu.
 func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fromNodeID ids.NodeID) {
 	blockID := blk.ID()
-	childEpoch := pChainHeightOf(blk) // epoch for the weighted set (MEDIUM-1)
 
 	// RECEIVE-SIDE EPOCH GATE (HIGH-1, predicate a — monotonicity): refuse to
 	// track or vote for a gossiped block whose stamped P-chain epoch height
@@ -885,36 +902,54 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	// orphan below so it finalizes the moment its parent lands.
 	rt.requestCatchup(blk.ParentID(), fromNodeID)
 
-	consensusBlock := &Block{
-		id:           blockID,
-		parentID:     blk.ParentID(),
-		height:       blk.Height(),
-		timestamp:    blk.Timestamp().Unix(),
-		data:         blk.Bytes(),
-		pChainHeight: childEpoch,
-	}
-	setCanonicalFromVM(consensusBlock, blk) // stamp the inner execution commitment
+	consensusBlock := newConsensusBlock(blk) // position, epoch, inner execution commitment
+	who := proposerOf(blk, fromNodeID)
 
-	// Add to consensus tracking (idempotent: AddBlock errors if already present).
-	_ = rt.Transitive.consensus.AddBlock(ctx, consensusBlock)
-
-	rt.Transitive.mu.Lock()
-	// Only presence matters: an already-tracked block keeps the entry it has,
-	// and a new one gets a fresh PendingBlock. The looked-up value was never
-	// read (ineffassign), so it is not bound.
-	if _, exists := rt.Transitive.pendingBlocks[blockID]; !exists {
-		rt.Transitive.pendingBlocks[blockID] = &PendingBlock{
+	// TRACK IT, within the sibling caps. An already-tracked block keeps the entry it has.
+	// A new one takes the room roomLocked gives it — displacing the highest block nothing
+	// holds when its height is full — or is let go: the block, never its proposer.
+	t := rt.Transitive
+	var displaced block.Block
+	var pushes []push
+	t.mu.Lock()
+	if _, exists := t.pendingBlocks[blockID]; !exists {
+		ok, out := t.roomLocked(consensusBlock, who)
+		if !ok {
+			t.mu.Unlock()
+			_ = blk.Reject(ctx)
+			if !rt.config.Logger.IsZero() {
+				rt.config.Logger.Debug("follow: no room for a sibling at its height — let go",
+					log.Stringer("blockID", blockID), log.Uint64("height", blk.Height()), log.Stringer("proposer", who))
+			}
+			return
+		}
+		if out != ids.Empty {
+			if pb := t.pendingBlocks[out]; pb != nil {
+				displaced = pb.VMBlock
+			}
+			t.dropPendingBlockLocked(out)
+			t.consensus.Drop(out)
+		}
+		_ = t.consensus.AddBlock(ctx, consensusBlock)
+		t.pendingBlocks[blockID] = &PendingBlock{
 			ConsensusBlock: consensusBlock,
 			VMBlock:        blk,
 			ProposedAt:     time.Now(),
-			VoteCount:      0,
-			Decided:        false,
-			IsOwnProposal:  false,
+			proposer:       who,
 		}
+		// PASS IT ON, once: a peer its proposer never reached, or sent a different
+		// sibling, holds it too before its settle window closes — so every honest node
+		// weighs the same siblings. Then the blocks this node holds a stake in at the
+		// slot, since whoever built this one had not seen them (hurryLocked).
+		pushes = append([]push{{id: blockID, data: blk.Bytes()}}, t.hurryLocked(consensusBlock)...)
 	}
-	signer := rt.Transitive.voteSigner
-	verifier := rt.Transitive.voteVerifier
-	rt.Transitive.mu.Unlock()
+	signer := t.voteSigner
+	verifier := t.voteVerifier
+	t.mu.Unlock()
+	if displaced != nil {
+		_ = displaced.Reject(ctx)
+	}
+	t.send(ctx, pushes)
 
 	// ARRIVAL-ORDER EPOCH BOUND. This block is now a TRACKED parent. Any orphan child
 	// admitted earlier — before this parent existed, so with nothing to regress against
@@ -1092,6 +1127,30 @@ func (rt *Runtime) emitConvergedVote(_ context.Context, height uint64, parentID 
 		if voteBytes, encErr := encodeSignedVote(nodeID, sig); encErr == nil {
 			qg.BroadcastVote(chainID, rt.config.NetworkID, winnerID, voteBytes)
 		}
+	}
+}
+
+// Restate implements ConvergenceVoter: it broadcasts this node's standing signed vote
+// on blockID again, when it holds one. A vote goes out once when it is cast, so a
+// validator that was down then never counts it; the retry and a hurried push say it
+// again (send). The block itself went out just before, so the receiver can verify it.
+func (rt *Runtime) Restate(blockID ids.ID) {
+	t := rt.Transitive
+	t.mu.RLock()
+	var sig []byte
+	if pb, ok := t.pendingBlocks[blockID]; ok {
+		if sv, ok := pb.certVotes[t.nodeID]; ok {
+			sig = sv.Signature
+		}
+	}
+	nodeID, chainID := t.nodeID, t.chainID
+	t.mu.RUnlock()
+	qg, ok := rt.config.Gossiper.(QuorumGossiper)
+	if len(sig) == 0 || !ok {
+		return
+	}
+	if voteBytes, err := encodeSignedVote(nodeID, sig); err == nil {
+		qg.BroadcastVote(chainID, rt.config.NetworkID, blockID, voteBytes)
 	}
 }
 

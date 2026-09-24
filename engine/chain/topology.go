@@ -75,9 +75,14 @@ func decodeSignedVote(data []byte) (ids.NodeID, []byte, error) {
 // validator's broadcast. The vote is bound to a blockID (carried by the gossip
 // envelope); the engine rebuilds the canonical message from its own tracked
 // position for that block and verifies the signature before counting the vote.
-// A vote for a block we are not tracking is dropped (we cannot know its
-// position to verify against — the proposer's block gossip carries that, and
-// arrives via HandleIncomingBlock).
+// A vote for a block this node does not hold cannot be verified yet: the frame
+// carries no position, and the block is what supplies it. Such a vote is parked
+// (bufferVoteLocked, bounded) and verified like any live vote when the block lands
+// (drainBufferedVotes). Its voter pushes the block it signed just before the vote
+// (send), so a vote that outruns its block on the wire is the ordinary reorder, and
+// dropping it would hide from a validator back from a gap the votes the winner rule
+// reads. Parking fetches nothing: a block the network decided is fetched with its
+// certificate (HandleIncomingCert), on the one catch-up claim per block id.
 //
 // Returns true iff the vote verified and was counted toward the block's cert.
 func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
@@ -110,9 +115,23 @@ func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
 		// bare-majority accept — so route a verified accept for it to the late-attestation path
 		// (handleVote → attestFinalizedVote → the Quasar attestor) to complete the export cert.
 		// Verify against the remembered accepted position: the exact bytes the accept votes
-		// signed. An unknown or aged-out block drops.
+		// signed. A block neither pending nor remembered is one this node does not hold:
+		// the vote is parked, and verified when the block lands.
 		ap, remembered := t.lookupAcceptedPos(blockID)
-		if !remembered || !verifier.VerifyVote(nodeID, CanonicalVoteMessage(ap.pos), sig, ap.epoch) {
+		if !remembered {
+			v := Vote{BlockID: blockID, NodeID: nodeID, Accept: true, Signature: sig}
+			t.mu.Lock()
+			_, landed := t.pendingBlocks[blockID]
+			if !landed {
+				t.bufferVoteLocked(v)
+			}
+			t.mu.Unlock()
+			if landed {
+				t.ReceiveVote(v) // it landed meanwhile: handleVote verifies it
+			}
+			return false
+		}
+		if !verifier.VerifyVote(nodeID, CanonicalVoteMessage(ap.pos), sig, ap.epoch) {
 			return false
 		}
 		t.ReceiveVote(Vote{

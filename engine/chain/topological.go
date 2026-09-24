@@ -434,6 +434,17 @@ func (c *ChainConsensus) DropEpochRegressedChildren(parentID ids.ID) []ids.ID {
 	return dropped
 }
 
+// Drop removes one tracked, undecided block — a sibling displaced at a full height
+// (roomLocked) — so the tree holds only what the engine tracks. A child it had is
+// left an orphan, as DropEpochRegressedChildren leaves one; the engine never displaces
+// a block a tracked block builds on.
+func (c *ChainConsensus) Drop(id ids.ID) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.blocks, id)
+	delete(c.tips, id)
+}
+
 // ForcePreference reaffirms the engine's preferred tip after a VM SetPreference
 // failure. It exists for the case where SetPreference fails after a block was
 // accepted: left alone, the VM and the engine hold different chain tips and each

@@ -644,6 +644,37 @@ from the cert's own position and never from the vote's, so there is nothing left
 to compare. A reader building a cross-implementation error corpus would take the
 comment at its word and look for the clause.
 
+### Siblings at one height (engine/chain)
+One signature per height, no rounds, no locks. The rules, where they live:
+- **Winner** (`convergedWinnerAtHeightLocked`): lowest canonical among the live
+  siblings that can still reach α — the ⅔ floor, `SignerFloor(Quasar, n)` plus
+  the ⅔ stake clause — counting each sibling's verified votes (`certVotes`) plus
+  every signer not yet heard from at the height (`canReachLocked`). No sibling
+  can: the lowest, and Nova (bare majority) may still decide it.
+  `parentIsProvenLoserLocked` reads the same winner.
+- **Build** (`buildBlocksLocked` → `besideLocked`, K>1): nothing proposed beside a
+  live sibling at its slot, or at a height this node signed for another block.
+  A vote frame carries no position (topology.go), so a vote for a block this
+  node lacks is parked (`HandleIncomingVote` → `bufferVoteLocked`, no fetch —
+  its voter pushes the block just before the vote) and verified when the block
+  lands; the landed block gates the build as a live sibling.
+- **Retry** (`rePollAllPending` → `send`): pushes this node's own proposal AND the
+  block it signed, then restates its vote (`ConvergenceVoter.Restate`). A new
+  sibling beside either brings that push forward (`hurryLocked`): sent now,
+  backoff back to base, no attempt, once a settle window per block.
+- **Relay**: a gossiped block taken up is pushed on once (`followVerifiedBlock`),
+  so both halves of a split proposal hold both before they settle. A seen
+  (tracked/finalized) id skips Verify in `HandleIncomingBlock`.
+- **Caps** (`roomLocked`): 4 undecided blocks a proposer (`proposerOf`: the
+  block's `Proposer()`, else the sending peer), 64 a height; past either the
+  highest block nothing holds (own, voted, signed, or built on) is displaced
+  (`ChainConsensus.Drop` + VM Reject), and only by a lower one; a block a
+  parked vote verifiably names always has room. Checked before Verify and
+  again after. Refused per block, never per proposer.
+- **Settle** (`snapshotVotableSlotsLocked`): from the latest sibling, until one
+  deadline per height — a settle window after the first arrival (`t.opened`).
+Tests: `siblings_test.go` (all four fail on 5ba68171).
+
 ### Restart preserves state — a REAL assertion now (engine/chain)
 `TestRestartPreservesState` used to check only IsBootstrapped/HealthCheck flags
 across Stop/Start — an engine that dropped every accepted block on Stop still

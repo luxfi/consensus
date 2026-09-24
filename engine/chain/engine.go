@@ -250,6 +250,16 @@ type PendingBlock struct {
 	// signature verifies (handleVote), so an own-proposal finalizes only on a
 	// real α-of-K cert (K>1) or the 1-of-1 force (K==1), never on self-promises.
 	IsOwnProposal bool
+
+	// proposer is the validator whose window the block was proposed in, as the
+	// verified block states it (proposerOf), else the peer it arrived from; this
+	// node for its own. The sibling caps count blocks per proposer (roomLocked).
+	proposer ids.NodeID
+
+	// lastHurry is when a sibling arriving beside this block last brought its push
+	// forward (hurryLocked). At most once a settle window, so a stream of siblings
+	// costs one push a window, not one per sibling.
+	lastHurry time.Time
 }
 
 // -----------------------------------------------------------------------------
@@ -569,6 +579,11 @@ type Transitive struct {
 
 	certByDecision  map[ids.ID][]byte
 	certServedOrder []ids.ID
+
+	// opened remembers when the first block at each undecided height arrived: the one
+	// settle deadline per height runs from it (snapshotVotableSlotsLocked). Written only
+	// there, under t.mu; a height leaves it once nothing undecided is tracked there.
+	opened map[uint64]time.Time
 
 	// recoveredAt names, per finalized HEIGHT, the outer block id this node finalized
 	// there — the deep index catch-up replay reads when the ledger's own byHeight has
@@ -1638,6 +1653,14 @@ const (
 	// bound). Happy-path keys are removed on drain (the block arrived) or on decide,
 	// so this ceiling is only ever approached under adversarial junk.
 	maxBufferedVoteBlocks = 1024
+
+	// maxSiblingsPerProposer and maxSiblingsPerHeight bound the undecided blocks
+	// tracked at one height: from one proposer, and in all. A proposer builds once a
+	// height, so one is the ordinary case. Past either bound the HIGHEST id no vote
+	// holds goes, never the lowest, so no validator drops the block the others
+	// converge on, and one proposer's blocks never crowd out another's (roomLocked).
+	maxSiblingsPerProposer = 4
+	maxSiblingsPerHeight   = 64
 )
 
 // rePollLoopWithCtx is the LIVENESS retry that prevents a terminal first-poll
@@ -1771,9 +1794,10 @@ func (t *Transitive) convergenceLoopWithCtx(ctx context.Context) {
 //  1. re-attempts finalization (tryFinalizeBlock) — idempotent; assembles +
 //     gossips the cert if α signed votes are now present, so a follower that
 //     missed the proposer's single cert-gossip still finalizes; and
-//  2. if this node PROPOSED the block and a proposer transport is wired, re-issues
-//     RequestVotes — re-sending the PushQuery so a laggard/peer that missed the
-//     first poll receives the block + vote request again and can sign.
+//  2. if this node PROPOSED or SIGNED the block, pushes it again (send) — the
+//     PushQuery a laggard that missed the first one needs to sign — and says this
+//     node's vote on it again, so a validator that was down when the vote went out
+//     counts it.
 //
 // Single-validator (K==1) engines never stall here (their own accept is the
 // quorum, finalized synchronously), so the re-poll is a no-op for them.
@@ -1799,6 +1823,7 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 		blockID   ids.ID
 		blockData []byte
 		ownProp   bool
+		signed    bool // this node's vote is on it: said again, beside the block
 	}
 	var dueBlocks []due
 	// certFetches are blocks abandoned by the re-poll cap whose cert we must pull.
@@ -1895,9 +1920,9 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 		if pending.VMBlock != nil {
 			data = pending.VMBlock.Bytes()
 		}
-		dueBlocks = append(dueBlocks, due{blockID: blockID, blockData: data, ownProp: pending.IsOwnProposal})
+		_, signed := pending.certVotes[t.nodeID]
+		dueBlocks = append(dueBlocks, due{blockID: blockID, blockData: data, ownProp: pending.IsOwnProposal, signed: signed})
 	}
-	proposer := t.proposer
 	catchup := t.catchup
 	t.mu.Unlock()
 
@@ -1920,17 +1945,42 @@ func (t *Transitive) rePollAllPending(ctx context.Context, base time.Duration) {
 		// this assembles + gossips the cert and commits now. Idempotent.
 		t.tryFinalizeBlock(ctx, d.blockID)
 
-		// (2) Proposer re-poll: re-send the vote request so a laggard re-receives
-		// the block and votes. Only the proposer polls peers (followers learn the
-		// block via gossip and broadcast their own votes); a follower short of
-		// quorum recovers via the cert-gossip path that step (1) re-runs, or via
-		// catch-up if it is behind the block's parent. The backoff above bounds how
-		// often this fires; the cap stops it entirely for a terminally stuck block.
-		if d.ownProp && proposer != nil {
-			_ = proposer.RequestVotes(ctx, VoteRequest{
-				BlockID:   d.blockID,
-				BlockData: d.blockData,
-			})
+		// (2) Push the block again so a laggard re-receives it and votes: this
+		// node's own proposal, and the block this node signed. The backoff above
+		// bounds how often this fires; the cap stops it for a stuck gossiped block.
+		//
+		// (3) Say this node's vote on it again. A vote is broadcast once, so a
+		// validator that was down when it went out never counts it, and the winner
+		// rule (convergedWinnerAtHeightLocked) reads the votes a validator has seen.
+		// The block goes first, so a receiver can verify the vote against it.
+		if d.ownProp || d.signed {
+			t.send(ctx, []push{{id: d.blockID, data: d.blockData, vote: d.signed}})
+		}
+	}
+}
+
+// push is a block this node sends to the validators again, and whether its standing
+// vote on it goes along.
+type push struct {
+	id   ids.ID
+	data []byte
+	vote bool
+}
+
+// send pushes each block to the validators — a PushQuery carrying its bytes — and,
+// where this node signed it, says that vote again after it, so a receiver holds the
+// block the vote is verified against. The one push both the scheduled retry
+// (rePollAllPending) and a hurried one (hurryLocked) make. Called with t.mu released.
+func (t *Transitive) send(ctx context.Context, pushes []push) {
+	t.mu.RLock()
+	proposer, voter := t.proposer, t.convergenceVoter
+	t.mu.RUnlock()
+	for _, p := range pushes {
+		if proposer != nil {
+			_ = proposer.RequestVotes(ctx, VoteRequest{BlockID: p.id, BlockData: p.data})
+		}
+		if p.vote && voter != nil {
+			voter.Restate(p.id)
 		}
 	}
 }
@@ -2770,38 +2820,11 @@ func slotCanonical(pos VotePosition) ids.ID {
 // Runtime (which owns the sign+gossip path); nil in single-engine tests.
 type ConvergenceVoter interface {
 	RunSettlePass(ctx context.Context)
+	// Restate broadcasts this node's standing signed vote on blockID again, when
+	// it holds one. Called with t.mu released.
+	Restate(blockID ids.ID)
 }
 
-// convergedWinnerAtHeightLocked returns the block THIS node must place its one
-// per-height accept signature on at the (height, parentID) fork slot: the LOWEST
-// slotCanonical among tracked, undecided, non-abandoned sibling blocks extending
-// parentID at that height, plus the count of such siblings. The tie-break is the
-// signed canonical id (the exact identity a cert binds), so every honest node with
-// the same tracked set selects the IDENTICAL winner and their one-vote-per-height
-// signatures converge onto it. Abandoned blocks (a dead proposer's sibling that
-// stopped being re-solicited) are excluded, so the winner advances to the
-// lowest-canonical LIVE sibling — the f=1 self-heal. Caller holds t.mu.
-//
-// GRINDABILITY (RED M-grind, a testnet/mainnet gate — NOT a safety or halt break):
-// the tie-break is the block's content hash (CanonicalID), which the PROPOSER controls.
-// A validator eligible at a CONTESTED height can grind ~2^k block variants in the settle
-// window to obtain the lowest canonical and make every honest node converge on ITS block
-// — a censorship/MEV lever. It is bounded to MULTI-PROPOSER CONTENTION only: at a
-// height with a single proposervm-eligible proposer (the steady state) there are no
-// siblings to win, so the grind buys nothing; it bites only during the fresh-net /
-// down-designated-proposer transient. Progress and single-block finality are UNAFFECTED
-// (one block per height still finalizes). The grind-RESISTANT replacement is a tie-break
-// the proposer cannot bias — a VRF over height‖parentID keyed to the staking key, or the
-// proposervm eligibility VRF already carried in the wrapped block — which requires
-// plumbing the proposer's VRF output into the consensus Block (a node-layer change) and
-// is the tracked follow-up before adversarial-validator mainnet promotion.
-// candidates. The VIEW-CHANGE path passes true: abandonment only stops rePoll's RequestVotes
-// re-solicitation (spam control), it is a PER-NODE decision (each node abandons on its own
-// attempt clock), so excluding abandoned siblings would make different nodes compute a
-// DIFFERENT lowest-canonical winner from the SAME sibling set → prevotes never align → no POL
-// → the distributed liveness stall. Counting every live (undecided) sibling keeps the winner
-// globally identical, which is what lets α aligned prevotes form. The LEGACY path passes false
-// (unchanged behaviour). Never manufactures a vote or bypasses the α-of-K cert → safety intact.
 // canonicalRep is the block's own EXECUTION identity — its inner canonicalID, or its
 // outer id for a bare (non-wrapped) block. Two proposervm wrappers of the SAME inner
 // block share this: they are ALIASES, not forks. Fork-choice keys on this, never the
@@ -2826,81 +2849,179 @@ func (b *Block) parentCanonicalRep() ids.ID {
 	return b.parentID
 }
 
+// convergedWinnerAtHeightLocked returns the block THIS node must place its one
+// per-height accept signature on at the (height, parentID) fork slot, plus the count of
+// tracked, undecided siblings there. Caller holds t.mu.
+//
+// The winner is the LOWEST canonical (then lowest outer id) among the siblings that can
+// still reach α — the certificate's ⅔ floor, SignerFloor(Quasar) — given the verified
+// votes this node has seen: a sibling's own voters plus every signer not yet heard from
+// at this height (canReachLocked). That is arithmetic over signed votes, the same on
+// every node that has seen them; it is not a lock and holds nothing. With no vote seen
+// every sibling can reach α and the lowest wins. What the arithmetic removes is the
+// split in which a validator that missed a height comes back holding a lower sibling
+// than the one the others signed, and signs it, so that neither reaches α.
+//
+// Every live sibling counts, abandoned or not: abandonment is a per-node clock, and
+// letting it change the candidates would let two nodes pick different winners.
+//
+// When NO sibling can reach α the lowest wins, as before. That split is left to Nova,
+// the bare-majority accept rung (assembleCertLocked), which may still decide one of
+// them; under one signature per height nothing else recovers it — the exposure
+// convergenceSettleWindow states at engine.go:1739.
+//
+// GRINDABILITY: the tie-break is the proposer-controlled content hash, so a proposer
+// eligible at a CONTESTED height can grind a low canonical and steer which sibling wins
+// among those that can reach α. It bites only under multi-proposer contention; one
+// proposer has no sibling to beat. A tie-break the proposer cannot bias (the proposervm
+// eligibility VRF) needs the VRF output carried into the consensus Block.
 func (t *Transitive) convergedWinnerAtHeightLocked(height uint64, parentID ids.ID) (ids.ID, int, bool) {
-	// Resolve the target parent's CANONICAL identity so canonical-equivalent parent
-	// wrappers (same inner block, different outer envelope) collapse to one group. An
-	// unaccepted (possibly forked) parent is tracked in pendingBlocks and resolves to its
-	// canonical; the accepted tip (height floor+1's parent) is not tracked, is single/
-	// un-forked, and its children are matched by the outer parentID branch below.
-	parentCanon := parentID
-	if ppb, ok := t.pendingBlocks[parentID]; ok && ppb.ConsensusBlock != nil {
-		parentCanon = ppb.ConsensusBlock.canonicalRep()
+	parentCanon := t.parentCanonLocked(parentID)
+	type sibling struct {
+		id, canon ids.ID
+		epoch     uint64
 	}
-	var winner, winnerCanon ids.ID
-	count := 0
+	var siblings []sibling
+	// voters[canon] are the verified signers of each sibling (wrappers of one inner
+	// block share theirs); heard is every signer seen at this HEIGHT, whatever the
+	// parent, since a validator signs once a height.
+	voters := make(map[ids.ID]map[ids.NodeID]struct{})
+	heard := make(map[ids.NodeID]struct{})
 	for id, pb := range t.pendingBlocks {
 		cb := pb.ConsensusBlock
-		if cb == nil || pb.Decided {
+		if cb == nil || pb.Decided || cb.height != height {
 			continue
 		}
-		// Group by (height, parent CANONICAL) — alias-collapsing. Match a child whose
-		// parent is the target outer id (accepted tip, single wrapper) OR whose parent is
-		// canonical-equivalent to it (a forked pending parent's other wrappers).
-		if cb.height != height || (cb.parentID != parentID && cb.parentCanonicalRep() != parentCanon) {
+		for node := range pb.certVotes {
+			heard[node] = struct{}{}
+		}
+		if !inSlot(cb, height, parentID, parentCanon) {
 			continue
 		}
 		canon := cb.canonicalRep()
-		count++
-		// Deterministic representative: lowest canonical, then lowest OUTER id as the
-		// tie-break. EQUAL-canonical aliases MUST resolve to the SAME winner on every
-		// node — Go map iteration is randomized, so without the outer-id tie-break the
-		// winner among equal canonicals is nondeterministic and prevotes never align.
-		if winner == ids.Empty || canon.Compare(winnerCanon) < 0 ||
-			(canon == winnerCanon && id.Compare(winner) < 0) {
-			winner, winnerCanon = id, canon
+		siblings = append(siblings, sibling{id: id, canon: canon, epoch: cb.pChainHeight})
+		for node := range pb.certVotes {
+			if voters[canon] == nil {
+				voters[canon] = make(map[ids.NodeID]struct{})
+			}
+			voters[canon][node] = struct{}{}
+		}
+	}
+	if len(siblings) == 0 {
+		return ids.Empty, 0, false
+	}
+	var winner, winnerCanon, lowest, lowestCanon ids.ID
+	for _, s := range siblings {
+		// Deterministic representative: lowest canonical, then lowest OUTER id, so
+		// equal-canonical aliases resolve to the SAME winner on every node whatever
+		// order the map ranges in.
+		if lowest == ids.Empty || before(s.canon, s.id, lowestCanon, lowest) {
+			lowest, lowestCanon = s.id, s.canon
+		}
+		if !t.canReachLocked(s.epoch, voters[s.canon], heard) {
+			continue
+		}
+		if winner == ids.Empty || before(s.canon, s.id, winnerCanon, winner) {
+			winner, winnerCanon = s.id, s.canon
 		}
 	}
 	if winner == ids.Empty {
-		return ids.Empty, 0, false
+		winner = lowest
 	}
-	return winner, count, true
+	return winner, len(siblings), true
 }
 
-// parentIsProvenLoserLocked reports whether parentID has DEFINITIVELY lost the
-// convergence at its OWN height: a tracked, non-abandoned SIBLING of parentID (same
-// height, same grandparent) carries a strictly-lower signed-canonical. Such a parent is
-// on a branch every honest node is converging AWAY from, so a height-H block extending it
-// can never finalize; binding this node's one height-H signature to it would waste the
-// vote under the height-only vote-once rule and could STALL height H — the transient
-// H-1-fork case (N1). Conservative on purpose: an UNTRACKED parent (the finalized tip, or
-// a block this node is behind) returns false — it cannot be PROVEN a loser and must not be
-// filtered, or the normal H = finalizedHeight+1 path would itself stall. Caller holds t.mu.
+// canReachLocked reports whether a sibling signed by `mine` can still gather the ⅔
+// certificate at epoch when every signer not in `heard` — the signers already seen at
+// its height, each of which has spent its one signature there — signs it too. Both of
+// the certificate's floors must stay within reach: SignerFloor(Quasar, n) in seats and,
+// on a stake-weighted chain, more than TwoThirdsStakeFloor of the signing stake. n is
+// the signing set (StakeSource.SignerCount), else the committee K. Caller holds t.mu.
+func (t *Transitive) canReachLocked(epoch uint64, mine, heard map[ids.NodeID]struct{}) bool {
+	if len(heard) == 0 {
+		return true // nothing spent: every signer is open, and α ≤ n
+	}
+	n := 0
+	if t.stakeSource != nil {
+		n = t.stakeSource.SignerCount(epoch)
+	}
+	if n <= 0 && t.consensus != nil {
+		n = t.consensus.K()
+	}
+	if n <= 0 {
+		return true
+	}
+	open := n - len(heard)
+	if open < 0 {
+		open = 0
+	}
+	if len(mine)+open < SignerFloor(Quasar, n) {
+		return false
+	}
+	if t.stakeSource == nil {
+		return true
+	}
+	total := t.stakeSource.SignerStake(epoch)
+	var have, spent uint64
+	for node := range heard {
+		w := t.stakeSource.Weight(node, epoch)
+		spent += w
+		if _, ok := mine[node]; ok {
+			have += w
+		}
+	}
+	if spent > total {
+		spent = total
+	}
+	return have+(total-spent) > config.TwoThirdsStakeFloor(total)
+}
+
+// before orders siblings the one way every node must: lowest canonical, then lowest
+// outer id.
+func before(canon, id, thanCanon, thanID ids.ID) bool {
+	if c := canon.Compare(thanCanon); c != 0 {
+		return c < 0
+	}
+	return id.Compare(thanID) < 0
+}
+
+// inSlot reports whether cb sits at the (height, parent) fork slot: a child of the
+// parent's outer id, or of any wrapper of the same inner parent (parentCanon), so
+// canonical-equivalent parent wrappers form one group.
+func inSlot(cb *Block, height uint64, parentID, parentCanon ids.ID) bool {
+	return cb.height == height && (cb.parentID == parentID || cb.parentCanonicalRep() == parentCanon)
+}
+
+// parentCanonLocked resolves a slot's parent to its canonical identity: a tracked
+// (unaccepted, possibly forked) parent by its inner id, so its wrappers collapse to one
+// group; the untracked accepted tip by its own id. Caller holds t.mu.
+func (t *Transitive) parentCanonLocked(parentID ids.ID) ids.ID {
+	if ppb, ok := t.pendingBlocks[parentID]; ok && ppb.ConsensusBlock != nil {
+		return ppb.ConsensusBlock.canonicalRep()
+	}
+	return parentID
+}
+
+// parentIsProvenLoserLocked reports whether parentID has lost the convergence at its
+// OWN height: the winner at its slot, by the rule every node applies
+// (convergedWinnerAtHeightLocked), is another block. A height-H block extending it is on
+// a branch honest nodes converge away from, so binding this node's one height-H
+// signature to it would waste the vote under the height-only vote-once rule (N1). An
+// UNTRACKED parent (the finalized tip, or a block this node is behind) or a decided one
+// returns false: it cannot be proven a loser, and filtering it would stall the normal
+// path. Caller holds t.mu.
 func (t *Transitive) parentIsProvenLoserLocked(parentID ids.ID) bool {
 	pb, ok := t.pendingBlocks[parentID]
-	if !ok || pb.ConsensusBlock == nil {
+	if !ok || pb.ConsensusBlock == nil || pb.Decided {
 		return false
 	}
 	p := pb.ConsensusBlock
-	pc := p.canonicalRep()
-	gpCanon := p.parentCanonicalRep()
-	for sibID, sib := range t.pendingBlocks {
-		cb := sib.ConsensusBlock
-		if cb == nil || sib.rePollAbandoned || sibID == parentID {
-			continue
-		}
-		// Same-slot sibling test by CANONICAL grandparent (alias-collapsing), so a sibling
-		// built on a different wrapper of the same grandparent still counts.
-		if cb.height != p.height || (cb.parentID != p.parentID && cb.parentCanonicalRep() != gpCanon) {
-			continue
-		}
-		sc := cb.canonicalRep()
-		// An equal-canonical block is an ALIAS of the parent (sc == pc ⇒ not < 0), never a
-		// competitor — only a strictly-lower canonical proves the parent lost.
-		if sc.Compare(pc) < 0 {
-			return true // a strictly-lower-canonical sibling of the parent exists ⇒ parent lost
-		}
+	w, _, ok := t.convergedWinnerAtHeightLocked(p.height, p.parentID)
+	if !ok {
+		return false
 	}
-	return false
+	wb := t.pendingBlocks[w]
+	return wb != nil && wb.ConsensusBlock.canonicalRep() != p.canonicalRep()
 }
 
 // votableSlot identifies one (height, parentID) fork slot the settle pass may need to
@@ -2918,7 +3039,7 @@ type votableSlot struct {
 // stable. The settle window is the whole point: it is what lets every honest node see
 // the SAME sibling set before it binds its one signature, so they all pick the SAME
 // lowest-canonical winner instead of racing to bind their own first-seen block. Caller
-// holds t.mu (and takes slotMu internally to read committedSlot).
+// holds t.mu for writing (and takes slotMu internally to read committedSlot).
 func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 	// Read the set of already-signed heights once, under slotMu.
 	// Read the consensus decided floor BEFORE slotMu so this method never holds slotMu
@@ -2952,6 +3073,32 @@ func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 	// contended gossip) the node keeps waiting, and it binds its one signature only after
 	// the sibling set has gone quiet. That is what makes every honest node vote the SAME
 	// lowest-canonical winner instead of racing to bind an incomplete set.
+	//
+	// Until ONE deadline per height: a settle window after the first block at that
+	// height arrived, whoever proposed it. Honest siblings gossip in well inside it; a
+	// block arriving past it still counts toward the winner but restarts nothing. So a
+	// proposer streaming siblings can hold this node's vote about one window, not for
+	// as long as it keeps sending. The first arrival is remembered (t.opened) rather
+	// than re-read from the tracked set, so a displaced sibling cannot move it later.
+	if t.opened == nil {
+		t.opened = make(map[uint64]time.Time)
+	}
+	live := make(map[uint64]struct{})
+	for _, pb := range t.pendingBlocks {
+		cb := pb.ConsensusBlock
+		if cb == nil || pb.Decided {
+			continue
+		}
+		live[cb.height] = struct{}{}
+		if t0, ok := t.opened[cb.height]; !ok || pb.ProposedAt.Before(t0) {
+			t.opened[cb.height] = pb.ProposedAt
+		}
+	}
+	for h := range t.opened {
+		if _, ok := live[h]; !ok {
+			delete(t.opened, h)
+		}
+	}
 	latest := make(map[votableSlot]time.Time)
 	for _, pb := range t.pendingBlocks {
 		cb := pb.ConsensusBlock
@@ -2985,8 +3132,12 @@ func (t *Transitive) snapshotVotableSlotsLocked() []votableSlot {
 			// fall through: re-offer this bound-but-unvoted slot for the re-sign fallback
 		}
 		s := votableSlot{height: cb.height, parentID: cb.parentID}
-		if t1, ok := latest[s]; !ok || pb.ProposedAt.After(t1) {
-			latest[s] = pb.ProposedAt
+		at := pb.ProposedAt
+		if closes := t.opened[cb.height].Add(settle); at.After(closes) {
+			at = closes
+		}
+		if t1, ok := latest[s]; !ok || at.After(t1) {
+			latest[s] = at
 		}
 	}
 	var out []votableSlot
@@ -4616,6 +4767,22 @@ func (t *Transitive) buildBlocksLocked(ctx context.Context) error {
 			continue
 		}
 
+		// Nothing beside a live sibling. A block already live at this slot is the one to
+		// certify; building next to it can only take a signature from it, which is how a
+		// validator back from a gap holds a height against the block the others signed.
+		// Nor at a height this node has signed: it could never sign what it built. The
+		// build is steered to the deepest verified block (HeldBuildTip), so this refuses
+		// what a stale preference still builds. Votes naming a block this node lacks do
+		// not gate here: a vote verifies only against the block it names (its frame
+		// carries no position, topology.go), so such a vote is parked until the block
+		// its voter pushes beside it lands (HandleIncomingVote, send) — and a landed
+		// block is a live sibling, which gates the build.
+		if t.consensus.K() > 1 && t.besideLocked(consensusBlock) {
+			t.log.Debug("built block sits beside a live sibling or at a signed height — not proposing it",
+				"blkID", vmBlock.ID(), "height", vmBlock.Height(), "parentID", vmBlock.ParentID())
+			continue
+		}
+
 		// Verify BEFORE consensus — prevents accepting invalid blocks in K=1 mode
 		// where self-vote causes immediate acceptance. If Verify fails, the block
 		// is never added to consensus, so IsAccepted cannot return true for it.
@@ -4826,6 +4993,181 @@ func (t *Transitive) dropPendingBlockLocked(id ids.ID) {
 		}
 	}
 	delete(t.pendingBlocks, id)
+}
+
+// newConsensusBlock is the consensus view of a VM block: its identity, position, epoch
+// and inner execution commitment.
+func newConsensusBlock(blk block.Block) *Block {
+	cb := &Block{
+		id:           blk.ID(),
+		parentID:     blk.ParentID(),
+		height:       blk.Height(),
+		timestamp:    blk.Timestamp().Unix(),
+		data:         blk.Bytes(),
+		pChainHeight: pChainHeightOf(blk),
+	}
+	setCanonicalFromVM(cb, blk)
+	return cb
+}
+
+// proposerOf names the validator whose window blk was proposed in, as a proposervm
+// block states it (block.SignedBlock.Proposer, checked by its Verify), else the peer
+// it arrived from.
+func proposerOf(blk block.Block, from ids.NodeID) ids.NodeID {
+	if s, ok := blk.(interface{ Proposer() ids.NodeID }); ok {
+		if p := s.Proposer(); p != ids.EmptyNodeID {
+			return p
+		}
+	}
+	return from
+}
+
+// seen reports whether blockID is tracked or finalized here. A block is recorded
+// only after it verifies, so a seen one needs neither its execution nor its
+// tracking again.
+func (t *Transitive) seen(blockID ids.ID) bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	_, pending := t.pendingBlocks[blockID]
+	_, final := t.finalizedByCert[blockID]
+	return pending || final
+}
+
+// hasRoom reports whether a parsed, not yet verified block would have room at its
+// height (roomLocked), so a block the caps refuse is never executed.
+func (t *Transitive) hasRoom(blk block.Block, from ids.NodeID) bool {
+	cb := newConsensusBlock(blk)
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	ok, _ := t.roomLocked(cb, proposerOf(blk, from))
+	return ok
+}
+
+// besideLocked reports whether cb would sit beside a live sibling — an undecided
+// tracked block at its (height, parent) slot — or at a height this node has already
+// signed for another block. buildBlocksLocked proposes neither. Caller holds t.mu.
+func (t *Transitive) besideLocked(cb *Block) bool {
+	if bound, ok := t.committedCanonical(cb.height); ok && bound != cb.canonicalRep() {
+		return true
+	}
+	parentCanon := t.parentCanonLocked(cb.parentID)
+	for id, pb := range t.pendingBlocks {
+		if id != cb.id && pb.ConsensusBlock != nil && !pb.Decided &&
+			inSlot(pb.ConsensusBlock, cb.height, cb.parentID, parentCanon) {
+			return true
+		}
+	}
+	return false
+}
+
+// roomLocked reports whether cb, proposed by `who`, has room among the undecided blocks
+// tracked at its height, and which tracked block it displaces (ids.Empty for none).
+// Past maxSiblingsPerProposer of that proposer's blocks, or maxSiblingsPerHeight in
+// all, the HIGHEST block nothing holds goes — held is this node's own, one a verified
+// vote names (this node's included), the block it signed, or one a tracked block builds
+// on — and only for a lower one, so the lowest ids stay. A block a verified vote names
+// always has room. The block is refused, never its proposer: the next one it sends is
+// weighed on its own. Caller holds t.mu (read).
+func (t *Transitive) roomLocked(cb *Block, who ids.NodeID) (bool, ids.ID) {
+	var theirs, all []ids.ID
+	parents := make(map[ids.ID]struct{})
+	for id, pb := range t.pendingBlocks {
+		b := pb.ConsensusBlock
+		if b == nil || pb.Decided {
+			continue
+		}
+		parents[b.parentID] = struct{}{}
+		if b.height != cb.height || id == cb.id {
+			continue
+		}
+		all = append(all, id)
+		if pb.proposer == who {
+			theirs = append(theirs, id)
+		}
+	}
+	var full []ids.ID
+	switch {
+	case len(theirs) >= maxSiblingsPerProposer:
+		full = theirs
+	case len(all) >= maxSiblingsPerHeight:
+		full = all
+	default:
+		return true, ids.Empty
+	}
+	bound, _ := t.committedCanonical(cb.height)
+	var highest, highestCanon ids.ID
+	for _, id := range full {
+		pb := t.pendingBlocks[id]
+		canon := pb.ConsensusBlock.canonicalRep()
+		if _, child := parents[id]; child || pb.IsOwnProposal || len(pb.certVotes) > 0 || canon == bound {
+			continue
+		}
+		if highest == ids.Empty || before(highestCanon, highest, canon, id) {
+			highest, highestCanon = id, canon
+		}
+	}
+	if t.namedLocked(cb) {
+		return true, highest
+	}
+	if highest != ids.Empty && before(cb.canonicalRep(), cb.id, highestCanon, highest) {
+		return true, highest
+	}
+	return false, ids.Empty
+}
+
+// namedLocked reports whether a vote parked for cb — a vote that outran its block
+// (handleVote) — verifies against cb's position. Caller holds t.mu (read).
+func (t *Transitive) namedLocked(cb *Block) bool {
+	parked := t.bufferedVotes[cb.id]
+	if len(parked) == 0 || t.voteVerifier == nil {
+		return false
+	}
+	msg := canonicalVoteMessageFor(t.blockPositionLocked(&PendingBlock{ConsensusBlock: cb}, cb.id), true)
+	for _, v := range parked {
+		if v.Accept && len(v.Signature) > 0 && t.voteVerifier.VerifyVote(v.NodeID, msg, v.Signature, cb.pChainHeight) {
+			return true
+		}
+	}
+	return false
+}
+
+// hurryLocked brings forward the push of the blocks this node holds a stake in at cb's
+// slot — its own proposal, and the block it signed — now that cb has gone live beside
+// them: whoever proposed cb has not seen them, or it would not have built. They go out
+// now, not on a backoff a quiet height let grow to maxRePollBackoff, and that backoff
+// starts again from its base. It is no attempt: rePollAttempts counts the schedule.
+// Once a settle window per block, so a stream of siblings costs one push a window.
+// The pushes are returned for send, which runs with t.mu released. Caller holds t.mu.
+//
+// A block's own backoff starts at its base when it is first tracked, so the first
+// sibling at a height is re-pushed on the base schedule by construction; this is the
+// part of the retry that a later sibling brings forward.
+func (t *Transitive) hurryLocked(cb *Block) []push {
+	parentCanon := t.parentCanonLocked(cb.parentID)
+	bound, _ := t.committedCanonical(cb.height)
+	now := time.Now()
+	settle := t.convergenceSettleWindow()
+	var out []push
+	for id, pb := range t.pendingBlocks {
+		b := pb.ConsensusBlock
+		if id == cb.id || b == nil || pb.Decided || !inSlot(b, cb.height, cb.parentID, parentCanon) {
+			continue
+		}
+		_, signed := pb.certVotes[t.nodeID]
+		if !pb.IsOwnProposal && !signed && b.canonicalRep() != bound {
+			continue
+		}
+		if now.Sub(pb.lastHurry) < settle {
+			continue
+		}
+		pb.lastHurry, pb.lastRePoll, pb.rePollBackoff = now, now, 0
+		var data []byte
+		if pb.VMBlock != nil {
+			data = pb.VMBlock.Bytes()
+		}
+		out = append(out, push{id: id, data: data, vote: signed || b.canonicalRep() == bound})
+	}
+	return out
 }
 
 // -----------------------------------------------------------------------------
