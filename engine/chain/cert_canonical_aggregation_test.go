@@ -42,15 +42,13 @@ func wrapperOf(inner, parentCanon, execRoot, payloadRoot ids.ID, height uint64) 
 }
 
 // TestFix3_WrapperSplit_CertAssemblesAcrossOuterEnvelopes is the fail-without/pass-with.
-// Two validators sign the SAME inner block under DIFFERENT outer wrappers; each wrapper's
-// certVotes holds only ONE vote (below α=2). With per-outer aggregation the cert never
-// assembles (the stall). With per-canonical aggregation it MUST assemble from both.
+// Four validators sign the SAME inner block under two DIFFERENT outer wrappers; each
+// wrapper's certVotes holds two votes, below the ⅔ floor of four. With per-outer
+// aggregation the cert never assembles (the stall). With per-canonical aggregation it
+// MUST assemble from all four.
 func TestFix3_WrapperSplit_CertAssemblesAcrossOuterEnvelopes(t *testing.T) {
-	vs := newTestValidatorSet(3)
-	e, _ := newQuorumEngine(t, config.LocalParams(), vs, 0, &recordingGossiper{}) // K=3, α=2
-	if a := e.consensus.Alpha(); a != 2 {
-		t.Fatalf("precondition: this test needs α=2, got α=%d", a)
-	}
+	vs := newTestValidatorSet(5)
+	e, _ := newQuorumEngine(t, params5(), vs, 0, &recordingGossiper{}) // K=5, ⅔ floor 4
 
 	inner := ids.GenerateTestID()
 	parentCanon := ids.GenerateTestID()
@@ -84,16 +82,20 @@ func TestFix3_WrapperSplit_CertAssemblesAcrossOuterEnvelopes(t *testing.T) {
 		t.Fatal("two wrappers of one inner block MUST sign byte-identical vote messages")
 	}
 
-	// Validator 0 signs wrapper A; validator 1 signs wrapper B. Each vote lands in a
+	// Validators 0,1 sign wrapper A; validators 2,3 sign wrapper B. Each vote lands in a
 	// DIFFERENT outer-keyed pending block.
 	e.mu.Lock()
-	e.recordCertVoteLocked(pa, Vote{BlockID: wa.id, NodeID: vs.nodeID(0), Accept: true, Signature: vs.sign(0, posA)})
-	e.recordCertVoteLocked(pb, Vote{BlockID: wb.id, NodeID: vs.nodeID(1), Accept: true, Signature: vs.sign(1, posB)})
+	for _, i := range []int{0, 1} {
+		e.recordCertVoteLocked(pa, Vote{BlockID: wa.id, NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, posA)})
+	}
+	for _, i := range []int{2, 3} {
+		e.recordCertVoteLocked(pb, Vote{BlockID: wb.id, NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, posB)})
+	}
 
-	// FAIL-WITHOUT precondition: neither wrapper alone holds α=2 votes.
-	if len(pa.certVotes) != 1 || len(pb.certVotes) != 1 {
+	// FAIL-WITHOUT precondition: neither wrapper alone holds the four votes the floor needs.
+	if len(pa.certVotes) != 2 || len(pb.certVotes) != 2 {
 		e.mu.Unlock()
-		t.Fatalf("each wrapper must hold exactly ONE vote (A=%d, B=%d) — else the test proves nothing",
+		t.Fatalf("each wrapper must hold exactly TWO votes (A=%d, B=%d) — else the test proves nothing",
 			len(pa.certVotes), len(pb.certVotes))
 	}
 
@@ -103,14 +105,14 @@ func TestFix3_WrapperSplit_CertAssemblesAcrossOuterEnvelopes(t *testing.T) {
 	e.mu.Unlock()
 
 	if certA == nil {
-		t.Fatal("WRAPPER-SPLIT STALL: no cert assembled from wrapper A — the two per-wrapper " +
-			"votes for the same inner block failed to aggregate (α=2 unreachable per-outer)")
+		t.Fatal("WRAPPER-SPLIT STALL: no cert assembled from wrapper A — the per-wrapper " +
+			"votes for the same inner block failed to aggregate (the floor of four unreachable per-outer)")
 	}
-	if len(certA.Votes) != 2 {
-		t.Fatalf("cert must aggregate BOTH validators' votes across wrappers, got %d voters", len(certA.Votes))
+	if len(certA.Votes) != 4 {
+		t.Fatalf("cert must aggregate all four validators' votes across wrappers, got %d voters", len(certA.Votes))
 	}
-	if certB == nil || len(certB.Votes) != 2 {
-		t.Fatal("aggregation must be symmetric: wrapper B must also assemble the 2-vote cert")
+	if certB == nil || len(certB.Votes) != 4 {
+		t.Fatal("aggregation must be symmetric: wrapper B must also assemble the 4-vote cert")
 	}
 	// The assembled cert must VERIFY (the signatures are over the shared canonical message).
 	if err := certA.Verify(vs, 0); err != nil {

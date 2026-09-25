@@ -92,11 +92,9 @@ func trackedFrom(n *simNode, height uint64, who ids.NodeID) int {
 // window opens before the signed block reaches it. It builds B, lower than A. The
 // height decides only if it signs A: B cannot reach α, and A can.
 //
-// Go's accept rung is a strict stake majority, so the rows put "one short" where Go
-// counts it: three seats holding exactly half the stake (α four seats, as the ⅔
-// certificate counts), and two of five at equal stake (the majority is three). The
-// third row is rule 2 on its own: a validator holding A when its window opens
-// proposes nothing beside it.
+// A block is accepted on the ⅔ certificate, four of five seats, so three signing A
+// leave it one short. The second row is rule 2 on its own: a validator holding A when
+// its window opens proposes nothing beside it.
 func TestSiblings_ReturningValidatorSignsTheBlockThatCanReachAlpha(t *testing.T) {
 	for _, row := range []struct {
 		name    string
@@ -104,9 +102,8 @@ func TestSiblings_ReturningValidatorSignsTheBlockThatCanReachAlpha(t *testing.T)
 		signers []int // up while A is signed; everyone else is down
 		holds   bool  // the returning seat holds A before its window opens
 	}{
-		{"three sign A and hold half the stake", []uint64{1, 1, 1, 1, 2}, []int{0, 1, 2}, false},
-		{"two sign A at equal stake", []uint64{1, 1, 1, 1, 1}, []int{0, 1}, false},
-		{"the returning seat holds A when its window opens", []uint64{1, 1, 1, 1, 2}, []int{0, 1, 2}, true},
+		{"three sign A", []uint64{1, 1, 1, 1, 1}, []int{0, 1, 2}, false},
+		{"the returning seat holds A when its window opens", []uint64{1, 1, 1, 1, 1}, []int{0, 1, 2}, true},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			vs := newTestValidatorSet(5)
@@ -236,9 +233,13 @@ func TestSiblings_JunkIsRefusedPerBlockAndCapped(t *testing.T) {
 
 // A faulty proposer streams siblings every third of a settle window, each below the
 // highest of the lowest four it has sent, so each one takes room. The settle window
-// runs from the latest block until one deadline for the height, so the validators
-// sign about one window after the first block, and the height decides while the
-// stream goes on.
+// runs from the latest block until one deadline for the height, so every validator
+// signs within about two windows of the first block while the stream goes on.
+//
+// Whether the height then decides is not asserted: a block the stream lands between
+// two validators' signatures can be the lower one for the later signer, and at five
+// seats with one faulty the ⅔ certificate needs all four honest signatures on one
+// block. That split is the exposure one signature per height keeps.
 func TestSiblings_StreamingProposerHoldsTheVoteAboutOneWindow(t *testing.T) {
 	vs := newTestValidatorSet(5)
 	params := siblingParams()
@@ -286,16 +287,22 @@ func TestSiblings_StreamingProposerHoldsTheVoteAboutOneWindow(t *testing.T) {
 	}()
 	defer func() { close(stop); <-done }()
 
+	began := time.Now()
 	if !waitFor(8*settle, func() bool {
-		heads := net.headsAtHeight(1)
-		if len(heads) != 1 {
-			return false
+		for _, i := range honest {
+			if !net.nodes[i].rt.hasSignedHeight(1) {
+				return false
+			}
 		}
-		for _, c := range heads {
-			return c == len(honest)
-		}
-		return false
+		return true
 	}) {
-		t.Fatalf("height 1 undecided %s after a stream began: heads=%v", 8*settle, net.headsAtHeight(1))
+		t.Fatalf("a validator had not signed height 1 %s after a stream began", 8*settle)
+	}
+	// Two settle windows, a convergence tick, and scheduling slack.
+	if held := time.Since(began); held > 3*settle {
+		t.Fatalf("the stream held the vote %s; one deadline a height bounds it near two windows (%s)", held, 2*settle)
+	}
+	if heads := net.headsAtHeight(1); len(heads) > 1 {
+		t.Fatalf("two blocks decided at height 1: %v", heads)
 	}
 }

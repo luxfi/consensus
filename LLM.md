@@ -383,8 +383,19 @@ from the authoritative validator set at the cert's epoch:
 
 | rung | set | signers | stake | authorizes |
 |---|---|---|---|---|
-| Nova | n ≥ 1 | ≥ `chain.NovaSignerFloor(n)` | > `config.HalfStakeFloor(signer)` | local execution (reorgable) |
-| Quasar | n ≥ `minBFTCommittee` (4) | ≥ `config.TwoThirdsCount(n)` | > `config.TwoThirdsStakeFloor(signer)` | export — bridges, DEX, cross-chain |
+| Nova | n ≥ 1 | ≥ `chain.NovaSignerFloor(n)` | > `config.HalfStakeFloor(signer)` | nothing in engine/chain (a statement, not a finality proof) |
+| Quasar | n ≥ `minBFTCommittee` (4) | ≥ `config.TwoThirdsCount(n)` | > `config.TwoThirdsStakeFloor(signer)` | acceptance (VM.Accept, the ledger's decided height) and export |
+
+**A block is accepted only on the Quasar (⅔) certificate.** `assembleCertLocked`
+mints at Quasar; `verifyCert` refuses any other tier on every arrival road
+(gossip, catch-up, evidence); `acceptWithCertCore` refuses a below-⅔ token when
+K>1. The one exception is a sole validator (K==1) on its synthesized 1-of-1.
+Two ⅔ certificates at one height share 2α−n > f signers; two majority ones share
+one, so a single equivocator could decide two blocks at a height on a bare
+majority. A set of 2 or 3 signers accepts nothing (no fault budget); a sole
+validator does. **Upgrade: every validator of a chain moves to this rule
+together** — a node on the old rule accepts on a majority certificate this rule
+refuses, and the two cannot share a height.
 
 A certificate also DECLARES a quorum, in `QuorumCert.Threshold`, and that number
 must be exactly `chain.SignerFloor(tier, n)` — the floor the set derives for the
@@ -646,34 +657,52 @@ comment at its word and look for the clause.
 
 ### Siblings at one height (engine/chain)
 One signature per height, no rounds, no locks. The rules, where they live:
-- **Winner** (`convergedWinnerAtHeightLocked`): lowest canonical among the live
-  siblings that can still reach α — the ⅔ floor, `SignerFloor(Quasar, n)` plus
-  the ⅔ stake clause — counting each sibling's verified votes (`certVotes`) plus
-  every signer not yet heard from at the height (`canReachLocked`). No sibling
-  can: the lowest, and Nova (bare majority) may still decide it.
+- **Winner** (`convergedWinnerAtHeightLocked`), in two tiers: the lowest
+  canonical among the live siblings that can still reach α — the ⅔ floor a
+  block is accepted on, `SignerFloor(Quasar, n)` plus the ⅔ stake clause —
+  counting each sibling's verified votes (`certVotes`) plus every signer not yet
+  heard from at the height (`canReachLocked`); only if none can, the lowest of
+  all (nothing can then be accepted there; the split is permanent).
   `parentIsProvenLoserLocked` reads the same winner.
 - **Build** (`buildBlocksLocked` → `besideLocked`, K>1): nothing proposed beside a
   live sibling at its slot, or at a height this node signed for another block.
   A vote frame carries no position (topology.go), so a vote for a block this
-  node lacks is parked (`HandleIncomingVote` → `bufferVoteLocked`, no fetch —
-  its voter pushes the block just before the vote) and verified when the block
-  lands; the landed block gates the build as a live sibling.
+  node lacks is parked (`HandleIncomingVote(from, …)` → `parkableLocked` →
+  `bufferVoteLocked`, no fetch — its voter pushes the block just before the
+  vote) and verified when the block lands; the landed block gates the build as
+  a live sibling. Parked only when the vote names the authenticated sender,
+  the sender is a validator, and the signature is the scheme's length (the
+  verifier's `SignatureLen()`; none stated parks nothing); 4 per voter; dropped
+  once the height they were parked at is decided (`expireParkedLocked`);
+  `namedLocked` checks at most 4 per arriving block.
 - **Retry** (`rePollAllPending` → `send`): pushes this node's own proposal AND the
   block it signed, then restates its vote (`ConvergenceVoter.Restate`). A new
   sibling beside either brings that push forward (`hurryLocked`): sent now,
   backoff back to base, no attempt, once a settle window per block.
-- **Relay**: a gossiped block taken up is pushed on once (`followVerifiedBlock`),
-  so both halves of a split proposal hold both before they settle. A seen
-  (tracked/finalized) id skips Verify in `HandleIncomingBlock`.
+- **Relay**: a gossiped block taken up is pushed on once when it is its
+  proposer's first at its height (blocks stating no proposer count as one
+  proposer) (`followVerifiedBlock`), so both halves of a split proposal hold
+  both before they settle; later blocks from the proposer are not. Relaying
+  only once a height holds two siblings leaves the split undetected — no seat
+  holds both — and halts the height 10/10 (`TestSiblings_ProposerShows…`,
+  `TestEquivocation_HalvesDecideOneBlock`). A seen (tracked/finalized) id skips
+  Verify in `HandleIncomingBlock`.
 - **Caps** (`roomLocked`): 4 undecided blocks a proposer (`proposerOf`: the
-  block's `Proposer()`, else the sending peer), 64 a height; past either the
+  block's `Proposer()`; a block stating none — P-/X-Chain — is charged to no
+  sender, since a sender may be passing on another's block), 64 a height; past either the
   highest block nothing holds (own, voted, signed, or built on) is displaced
   (`ChainConsensus.Drop` + VM Reject), and only by a lower one; a block a
   parked vote verifiably names always has room. Checked before Verify and
   again after. Refused per block, never per proposer.
 - **Settle** (`snapshotVotableSlotsLocked`): from the latest sibling, until one
   deadline per height — a settle window after the first arrival (`t.opened`).
-Tests: `siblings_test.go` (all four fail on 5ba68171).
+  Exposure kept: a sibling landing between two validators' signatures can be
+  the lower one for the later signer, and at 5 seats with 1 faulty the ⅔
+  certificate needs all 4 honest signatures on one block, so a proposer that
+  streams siblings can leave a height undecided for good (no rounds).
+Tests: `siblings_test.go` (all four fail on 5ba68171), `equivocation_test.go`
+(one equivocator decides no two blocks at a height; before the ⅔ accept rule the
+partition case forked every run on 5ba68171 and v1.36.94).
 
 ### Restart preserves state — a REAL assertion now (engine/chain)
 `TestRestartPreservesState` used to check only IsBootstrapped/HealthCheck flags

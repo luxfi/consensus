@@ -252,8 +252,9 @@ type PendingBlock struct {
 	IsOwnProposal bool
 
 	// proposer is the validator whose window the block was proposed in, as the
-	// verified block states it (proposerOf), else the peer it arrived from; this
-	// node for its own. The sibling caps count blocks per proposer (roomLocked).
+	// verified block states it (proposerOf); this node for its own; ids.EmptyNodeID
+	// when the block states none. The sibling caps count blocks per proposer
+	// (roomLocked), and a block is passed on only as its proposer's first at its height.
 	proposer ids.NodeID
 
 	// lastHurry is when a sibling arriving beside this block last brought its push
@@ -844,6 +845,9 @@ type Transitive struct {
 	// never evicting an existing one). Drained on track, deleted on decide — it
 	// cannot leak.
 	bufferedVotes map[ids.ID][]Vote
+	// parkedAt is, per block with parked votes, the height this node stood at when the
+	// first was parked; expireParkedLocked drops them once that height is decided.
+	parkedAt map[ids.ID]uint64
 
 	// requestMissing is the engine's hook into the runtime's catch-up TRANSPORT
 	// (Runtime.requestCatchup): "I am missing block `id` — fetch it from `from`".
@@ -1661,6 +1665,13 @@ const (
 	// converge on, and one proposer's blocks never crowd out another's (roomLocked).
 	maxSiblingsPerProposer = 4
 	maxSiblingsPerHeight   = 64
+
+	// maxParkedPerVoter bounds the votes one validator has parked for blocks this node
+	// does not hold (bufferVoteLocked); maxNamedChecks bounds how many parked votes one
+	// arriving block has checked against it (namedLocked). Each verification runs
+	// under t.mu, so an arrival costs at most this many.
+	maxParkedPerVoter = 4
+	maxNamedChecks    = 4
 )
 
 // rePollLoopWithCtx is the LIVENESS retry that prevents a terminal first-poll
@@ -2425,10 +2436,33 @@ func (t *Transitive) handleVote(vote Vote) {
 //     IDs are already parked, the new key is dropped (we never evict an existing
 //     key — the simplest sound bound; existing keys drain on track or delete on
 //     decide).
+//   - Per-voter cap: a validator parks at most maxParkedPerVoter votes in all. An
+//     honest one signs once a height, so its parked votes are the few heights a
+//     receiver may be behind; past the cap a new one is dropped.
+//   - Expiry: a block's parked votes are dropped once the height this node stood at
+//     when the first of them was parked is decided (expireParkedLocked).
 func (t *Transitive) bufferVoteLocked(vote Vote) (accepted bool) {
 	existing, seen := t.bufferedVotes[vote.BlockID]
 	if !seen && len(t.bufferedVotes) >= maxBufferedVoteBlocks {
 		return false // total distinct-block ceiling reached — fail closed
+	}
+	mine := 0
+	for id, votes := range t.bufferedVotes {
+		for i := range votes {
+			if votes[i].NodeID == vote.NodeID && id != vote.BlockID {
+				mine++
+			}
+		}
+	}
+	if mine >= maxParkedPerVoter {
+		return false
+	}
+	if !seen {
+		if t.parkedAt == nil {
+			t.parkedAt = make(map[ids.ID]uint64)
+		}
+		h, _ := t.consensus.GetFinalizedHeight()
+		t.parkedAt[vote.BlockID] = h + 1
 	}
 	// Dedup by NodeID (dual of certVotes): if this validator already has a vote
 	// parked for this block, replace it in place — never append a second. This is
@@ -2444,6 +2478,42 @@ func (t *Transitive) bufferVoteLocked(vote Vote) (accepted bool) {
 	}
 	t.bufferedVotes[vote.BlockID] = append(existing, vote)
 	return true
+}
+
+// expireParkedLocked drops the votes parked for blocks whose height is decided: a
+// block's votes were parked while this node stood at parkedAt, and once the ledger is
+// past that height they can only name a block that lost or one already accepted,
+// which a certificate carries. Called from the finalizer. Caller holds t.mu.
+func (t *Transitive) expireParkedLocked(decided uint64) {
+	for id, at := range t.parkedAt {
+		if _, ok := t.bufferedVotes[id]; !ok || at <= decided {
+			delete(t.bufferedVotes, id)
+			delete(t.parkedAt, id)
+		}
+	}
+}
+
+// parkableLocked reports whether a vote for a block this node does not hold may be
+// parked: it names `from`, the transport-authenticated sender, as its signer; `from`
+// is a validator at the newest epoch tracked here; and its signature is the length
+// the verifier's scheme fixes (a verifier that states none parks nothing). Parked
+// votes are unverified until their block lands, so nobody parks a vote on another's
+// behalf, nor one no validator could have signed. Caller holds t.mu.
+func (t *Transitive) parkableLocked(from, voter ids.NodeID, sig []byte) bool {
+	if from != voter || t.stakeSource == nil {
+		return false
+	}
+	sized, ok := t.voteVerifier.(interface{ SignatureLen() int })
+	if !ok || len(sig) != sized.SignatureLen() {
+		return false
+	}
+	var epoch uint64
+	for _, pb := range t.pendingBlocks {
+		if cb := pb.ConsensusBlock; cb != nil && cb.pChainHeight > epoch {
+			epoch = cb.pChainHeight
+		}
+	}
+	return t.stakeSource.Weight(voter, epoch) > 0
 }
 
 // drainBufferedVotes replays every vote parked for blockID now that the block is
@@ -2853,8 +2923,9 @@ func (b *Block) parentCanonicalRep() ids.ID {
 // per-height accept signature on at the (height, parentID) fork slot, plus the count of
 // tracked, undecided siblings there. Caller holds t.mu.
 //
-// The winner is the LOWEST canonical (then lowest outer id) among the siblings that can
-// still reach α — the certificate's ⅔ floor, SignerFloor(Quasar) — given the verified
+// The winner is chosen in two tiers. First, the LOWEST canonical (then lowest outer id)
+// among the siblings that can still reach α — the ⅔ floor a block is accepted on,
+// SignerFloor(Quasar) (assembleCertLocked) — given the verified
 // votes this node has seen: a sibling's own voters plus every signer not yet heard from
 // at this height (canReachLocked). That is arithmetic over signed votes, the same on
 // every node that has seen them; it is not a lock and holds nothing. With no vote seen
@@ -2865,10 +2936,11 @@ func (b *Block) parentCanonicalRep() ids.ID {
 // Every live sibling counts, abandoned or not: abandonment is a per-node clock, and
 // letting it change the candidates would let two nodes pick different winners.
 //
-// When NO sibling can reach α the lowest wins, as before. That split is left to Nova,
-// the bare-majority accept rung (assembleCertLocked), which may still decide one of
-// them; under one signature per height nothing else recovers it — the exposure
-// convergenceSettleWindow states at engine.go:1739.
+// Second, only when NO sibling can reach α, the lowest of them all. Nothing can then be
+// accepted at this height whichever block this node signs — acceptance is the ⅔ floor
+// and no sibling can reach it — so the choice only has to be the same on every node.
+// Such a split is the exposure Go keeps: under one signature per height nothing
+// recovers it (convergenceSettleWindow, engine.go:1750).
 //
 // GRINDABILITY: the tie-break is the proposer-controlled content hash, so a proposer
 // eligible at a CONTESTED height can grind a low canonical and steer which sibling wins
@@ -3364,38 +3436,29 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 	// The epoch height pins every per-voter pubkey resolution + the stake tally to
 	// the SAME P-chain height the position's set-root commits to (MEDIUM-1).
 	epochHeight := t.epochHeightLocked(pending)
-	// NOVA ACCEPT THRESHOLD — a bare majority, NOT the ⅔ Quasar floor. This is the SOLE gate on
-	// VM.Accept (local execution): it must ignite at 3 of 5 so production continues when up to
-	// ⌊(n−1)/2⌋ crash faults keep the ⅔-stake quorum unreachable (the "survive 3/5" mandate; the
-	// ⅔ bftAlpha=4-of-5 froze the fleet the instant a 2nd node dropped). The ⅔-by-stake QUASAR
-	// EXPORT cert is a SEPARATE, trailing artifact (the attestation sidecar promoteQuasarLocked),
-	// NEVER gated here — accept (Nova) and export (Quasar) are decomplected tiers.
+	// THE ACCEPT THRESHOLD IS THE ⅔ CERTIFICATE. This is the SOLE gate on VM.Accept: a block is
+	// accepted, and the ledger's decided height moves, only on a certificate whose signers
+	// hold more than two thirds of the signing stake and number at least TwoThirdsCount(n),
+	// over a set of at least minBFTCommittee — the Quasar rung, VerifyWeighted below. Two
+	// such certificates at one height share 2α−n > f signers, so conflicting ones need more
+	// than f equivocators. A bare majority shares 2α−n = 1: one equivocator could put a
+	// majority certificate on each of two blocks at one height, and each half of the
+	// committee would execute a different one.
 	//
-	// The majority is read in STAKE when a stake source is wired, and the authority for it is
-	// VerifyWeighted below — so the count here is only NovaSignerFloor, the lone-node guard.
-	// Read as a head-count it is purchasable: registration is open at minValidatorStake, and
-	// each entry raises ⌊n/2⌋+1 whether or not it ever votes, so a set of five validators plus
-	// a minimum-stake sixth tolerates one loss where five alone tolerate two.
-	// With NO stake source (equal-stake / dev) there is no stake predicate to be the authority,
-	// so the count majority NovaQuorum(n) stays the whole gate — the two agree on equal stake.
-	// `n` is the live committee sized by effectiveCommittee — clamped to the resolved set AND
-	// floored at the minimal BFT committee.
+	// With a stake source the floor is read over the SIGNING SET, the n VerifyWeighted
+	// derives its floor from. With none (equal-stake / dev) the count is the whole
+	// predicate, Quorum(Quasar, n) over the live committee, and the committee must be at
+	// least minBFTCommittee for the certificate to carry a fault budget (verifyCert holds
+	// arrivals to the same). A sole validator (K==1) accepts on its own synthesized
+	// certificate instead (buildSingleValidatorCertLocked).
 	n, _ := t.effectiveCommittee(epochHeight)
-	novaThreshold := NovaQuorum(n)
+	threshold := Quorum(Quasar, n)
 	if t.stakeSource != nil {
-		// DERIVED AUTHORITY, read over the SIGNING SET — the same n VerifyWeighted
-		// derives its floor from, not the sample committee. effectiveCommittee sizes
-		// how many peers a ROUND asks; a certificate's floor is a property of the set
-		// that can sign it, and the two are different numbers whenever K is clamped or
-		// floored away from the live count. Declaring one and being checked against the
-		// other is an assembler that disagrees with its own verifier: at three signers
-		// effectiveCommittee floors K to four and stamps a floor of three, while the
-		// set derives two, and the certificate this node just built would be refused by
-		// the node it is sent to. This is the export path's rule (attestation.go reads
-		// SignerCount for the same reason) applied to the accept rung.
-		novaThreshold = SignerFloor(Nova, t.stakeSource.SignerCount(epochHeight))
+		threshold = SignerFloor(Quasar, t.stakeSource.SignerCount(epochHeight))
+	} else if n < minBFTCommittee {
+		return nil
 	}
-	if novaThreshold <= 0 {
+	if threshold <= 0 {
 		return nil
 	}
 
@@ -3438,22 +3501,18 @@ func (t *Transitive) assembleCertLocked(pending *PendingBlock, blockID ids.ID) *
 			}
 		}
 	}
-	if uint32(len(verified)) < uint32(novaThreshold) {
+	if uint32(len(verified)) < uint32(threshold) {
 		return nil
 	}
-	cert, err := AssembleQuorumCert(pos, Nova, uint32(novaThreshold), verified)
+	cert, err := AssembleQuorumCert(pos, Quasar, uint32(threshold), verified)
 	if err != nil {
 		return nil
 	}
-	// Defence in depth: the Nova cert we just built must verify under our own verifier
-	// before we treat it as a finality witness (catches any assembly invariant drift).
-	// Assemble already enforced distinctness + threshold. On a stake-weighted chain
-	// VerifyWeighted selects the NOVA tier — signatures + a strict COUNT majority of the
-	// live set, DELIBERATELY NOT ⅔-by-stake — so acceptance ignites at a bare majority even
-	// when the absent minority holds the stake majority (that is the whole point of Nova;
-	// the ⅔-stake gate lives ONLY on the trailing Quasar cert). On a chain with no stake
-	// source (equal-stake/dev) the tier-agnostic count-only Verify enforces the same
-	// NovaQuorum count via the cert's own threshold.
+	// Defence in depth: the certificate just built must verify under this node's own
+	// verifier before it is a finality witness. On a stake-weighted chain VerifyWeighted
+	// holds it to the Quasar rung (⅔ of signer stake, TwoThirdsCount signers, a set of at
+	// least minBFTCommittee); with no stake source the count-only Verify holds it to the
+	// threshold derived above.
 	if t.stakeSource != nil {
 		if err := cert.VerifyWeighted(t.voteVerifier, t.stakeSource, epochHeight); err != nil {
 			return nil
@@ -3785,6 +3844,12 @@ func (t *Transitive) acceptWithCertCore(ctx context.Context, blockID ids.ID, cer
 	if cert.IsZero() {
 		// No verified witness ⇒ no finality. This is the structural guarantee:
 		// even an internal caller cannot finalize by passing a zero cert.
+		return ErrNoVerifiedQC
+	}
+	// Nor on a bare majority: with peers, a block is accepted only on the ⅔ certificate
+	// (assembleCertLocked, verifyCert). A sole validator's synthesized certificate
+	// (buildSingleValidatorCertLocked) is the one below-⅔ witness, and only at K==1.
+	if !cert.Cert().AuthorizesExport() && t.consensus.K() > 1 {
 		return ErrNoVerifiedQC
 	}
 
@@ -4600,6 +4665,7 @@ func (t *Transitive) applyBranchFinalization(ctx context.Context, plan Plan, cer
 			toReject = append(toReject, pending.VMBlock)
 		}
 	}
+	t.expireParkedLocked(highestAccepted)
 	// The height a cert certifies belongs to the CERT, not to whatever this call
 	// happened to accept. highestAccepted is the top of the blocks accepted right
 	// here, and it is ZERO whenever there was nothing left to accept — which is
@@ -4954,6 +5020,7 @@ func (t *Transitive) registerOrReuseOwnProposalLocked(consensusBlock *Block, vmB
 		ProposedAt:     time.Now(),
 		VoteCount:      1,
 		IsOwnProposal:  true,
+		proposer:       t.nodeID,
 	}
 	t.pendingBlocks[consensusBlock.id] = pb
 	t.pendingOwnProposals[key] = pb
@@ -5011,15 +5078,15 @@ func newConsensusBlock(blk block.Block) *Block {
 }
 
 // proposerOf names the validator whose window blk was proposed in, as a proposervm
-// block states it (block.SignedBlock.Proposer, checked by its Verify), else the peer
-// it arrived from.
-func proposerOf(blk block.Block, from ids.NodeID) ids.NodeID {
+// block states it (block.SignedBlock.Proposer, checked by its Verify), or
+// ids.EmptyNodeID for a block that states none (P- and X-Chain blocks). The peer a
+// block arrived from is not its proposer: it may be passing on another's block, and
+// nothing in the block says which, so no sender is charged for one.
+func proposerOf(blk block.Block) ids.NodeID {
 	if s, ok := blk.(interface{ Proposer() ids.NodeID }); ok {
-		if p := s.Proposer(); p != ids.EmptyNodeID {
-			return p
-		}
+		return s.Proposer()
 	}
-	return from
+	return ids.EmptyNodeID
 }
 
 // seen reports whether blockID is tracked or finalized here. A block is recorded
@@ -5035,11 +5102,11 @@ func (t *Transitive) seen(blockID ids.ID) bool {
 
 // hasRoom reports whether a parsed, not yet verified block would have room at its
 // height (roomLocked), so a block the caps refuse is never executed.
-func (t *Transitive) hasRoom(blk block.Block, from ids.NodeID) bool {
+func (t *Transitive) hasRoom(blk block.Block) bool {
 	cb := newConsensusBlock(blk)
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	ok, _ := t.roomLocked(cb, proposerOf(blk, from))
+	ok, _ := t.roomLocked(cb, proposerOf(blk))
 	return ok
 }
 
@@ -5062,8 +5129,9 @@ func (t *Transitive) besideLocked(cb *Block) bool {
 
 // roomLocked reports whether cb, proposed by `who`, has room among the undecided blocks
 // tracked at its height, and which tracked block it displaces (ids.Empty for none).
-// Past maxSiblingsPerProposer of that proposer's blocks, or maxSiblingsPerHeight in
-// all, the HIGHEST block nothing holds goes — held is this node's own, one a verified
+// Past maxSiblingsPerProposer of that proposer's blocks — a block that states no
+// proposer (who is ids.EmptyNodeID) is charged to nobody's — or maxSiblingsPerHeight
+// in all, the HIGHEST block nothing holds goes — held is this node's own, one a verified
 // vote names (this node's included), the block it signed, or one a tracked block builds
 // on — and only for a lower one, so the lowest ids stay. A block a verified vote names
 // always has room. The block is refused, never its proposer: the next one it sends is
@@ -5081,7 +5149,7 @@ func (t *Transitive) roomLocked(cb *Block, who ids.NodeID) (bool, ids.ID) {
 			continue
 		}
 		all = append(all, id)
-		if pb.proposer == who {
+		if who != ids.EmptyNodeID && pb.proposer == who {
 			theirs = append(theirs, id)
 		}
 	}
@@ -5116,14 +5184,18 @@ func (t *Transitive) roomLocked(cb *Block, who ids.NodeID) (bool, ids.ID) {
 }
 
 // namedLocked reports whether a vote parked for cb — a vote that outran its block
-// (handleVote) — verifies against cb's position. Caller holds t.mu (read).
+// (HandleIncomingVote) — verifies against cb's position, checking at most
+// maxNamedChecks of them. Caller holds t.mu (read).
 func (t *Transitive) namedLocked(cb *Block) bool {
 	parked := t.bufferedVotes[cb.id]
 	if len(parked) == 0 || t.voteVerifier == nil {
 		return false
 	}
 	msg := canonicalVoteMessageFor(t.blockPositionLocked(&PendingBlock{ConsensusBlock: cb}, cb.id), true)
-	for _, v := range parked {
+	for i, v := range parked {
+		if i >= maxNamedChecks {
+			break
+		}
 		if v.Accept && len(v.Signature) > 0 && t.voteVerifier.VerifyVote(v.NodeID, msg, v.Signature, cb.pChainHeight) {
 			return true
 		}

@@ -99,7 +99,7 @@ func TestAcceptedPos_RememberedBeforeFinalityIsVisible(t *testing.T) {
 	cert := VerifiedQuorumCert{qc: &QuorumCert{
 		Version:   QuorumCertVersion,
 		Type:      QCFinality,
-		Tier:      Nova,
+		Tier:      Quasar,
 		Position:  VotePosition{Height: 1, Round: 0, BlockID: finalID, ParentID: ids.Empty, CanonicalID: finalID},
 		Threshold: 1,
 	}}

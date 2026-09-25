@@ -372,17 +372,22 @@ func newArrivalFleet(t *testing.T, k, signers int) *arrivalFleet {
 	return f
 }
 
-// novaCert is the certificate an honest assembler on this chain produces: `voters`
-// signatures under the floor the SET derives, which is the number VerifyWeighted
-// demands and the only one it admits.
-func (f *arrivalFleet) novaCert(t *testing.T, blk *verifyOnceBlock, voters int) (*QuorumCert, []byte) {
+// cert is the certificate an honest assembler on this chain produces at the given tier:
+// `voters` signatures under the floor the SET derives for that tier, which is the number
+// VerifyWeighted demands and the only one it admits. With fewer voters than that floor it
+// declares what it carries.
+func (f *arrivalFleet) cert(t *testing.T, tier Finality, blk *verifyOnceBlock, voters int) (*QuorumCert, []byte) {
 	t.Helper()
 	pos := VotePosition{ChainID: f.chainID, Height: blk.height, Round: 0, BlockID: blk.id, ParentID: blk.parentID}
 	votes := make([]SignedVote, 0, voters)
 	for i := 0; i < voters; i++ {
 		votes = append(votes, SignedVote{NodeID: f.vs.nodeID(i), Accept: true, Signature: f.vs.sign(i, pos)})
 	}
-	cert, err := AssembleQuorumCert(pos, Nova, uint32(SignerFloor(Nova, f.stake.SignerCount(0))), votes)
+	floor := SignerFloor(tier, f.stake.SignerCount(0))
+	if voters < floor {
+		floor = voters // a short certificate states what it carries
+	}
+	cert, err := AssembleQuorumCert(pos, tier, uint32(floor), votes)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -393,60 +398,57 @@ func (f *arrivalFleet) novaCert(t *testing.T, blk *verifyOnceBlock, voters int) 
 	return cert, b
 }
 
-// TestTheDoorAdmitsWhatTheGateAdmits is the invariant a pre-filter has to keep and
-// could not: a certificate the finality predicate ACCEPTS must reach it.
+// TestTheDoorAdmitsWhatTheGateAdmits is the invariant a pre-filter has to keep: a
+// certificate the finality predicate ACCEPTS must reach it, on both arrival roads.
 //
-// Both arrival roads used to read a floor of their own before verifyCert ran — the
-// sample committee's majority for Nova, Alpha() for Quasar. That is a THIRD spelling
-// of a quantity with one definition, and it is a different quantity: the gate derives
-// the accept rung's floor from the SIGNING SET, where NovaSignerFloor SATURATES at
-// three, while the door read the committee's majority, which grows with K. At six
-// seats the gate accepts a certificate declaring three and the door demanded four; at
-// eleven it demanded six. And where the set is SMALLER than the committee the door
-// asked the set for more signatures than the set's own floor: three signers derive
-// two, and a door reading a committee of four asked for three.
-//
-// So an honest certificate — the exact bytes this fleet's own assembler produces —
-// never reached the predicate that would have admitted it. The rows below are the
-// sizes where the two numbers part; a door in front of the gate has to pass all of
-// them, and the arithmetic assertion is what makes each row non-vacuous.
+// The floor has one definition, read off the SIGNING SET, and it is a different
+// quantity from the sample committee's: where the set is SMALLER than the committee, the
+// committee's ⅔ asks for more signatures than the set's own floor. The rows are sizes
+// where the two numbers part, and the arithmetic assertion is what makes each row
+// non-vacuous. A certificate's tier and declared quorum are labels no signature covers,
+// so the door reads every certificate at the ⅔ floor: the same signatures labeled Nova
+// are admitted, and one signer fewer under either label is refused.
 func TestTheDoorAdmitsWhatTheGateAdmits(t *testing.T) {
 	for _, row := range []struct{ k, signers, voters int }{
-		// A set smaller than its committee: the floor is the SET's two, and the
-		// committee's majority is three.
-		{k: 4, signers: 3, voters: 2},
-		// Set == committee, past the point NovaSignerFloor saturates. The stake
-		// majority still needs more voters than the floor names, which is exactly
-		// why an honest certificate carries more signatures than it declares.
-		{k: 6, signers: 6, voters: 4},
-		{k: 9, signers: 9, voters: 5},
-		{k: 11, signers: 11, voters: 6},
+		{k: 5, signers: 4, voters: 3},
+		{k: 7, signers: 5, voters: 4},
+		{k: 11, signers: 9, voters: 7},
 	} {
 		t.Run(fmt.Sprintf("k=%d/signers=%d", row.k, row.signers), func(t *testing.T) {
 			f := newArrivalFleet(t, row.k, row.signers)
-			derived := SignerFloor(Nova, row.signers)
-			if NovaQuorum(row.k) <= derived {
-				t.Fatalf("vacuous: the committee majority %d must exceed the set's floor %d, "+
+			derived := SignerFloor(Quasar, row.signers)
+			if Quorum(Quasar, row.k) <= derived {
+				t.Fatalf("vacuous: the committee's ⅔ %d must exceed the set's floor %d, "+
 					"or this row proves nothing about a door reading the committee",
-					NovaQuorum(row.k), derived)
+					Quorum(Quasar, row.k), derived)
 			}
 
 			// THE GATE, on its own: the predicate accepts this certificate.
 			blk := newTestBlock(1, ids.Empty, "arrival")
 			trackVerifiedBlock(f.rt, blk, 0)
-			cert, wire := f.novaCert(t, blk, row.voters)
+			cert, wire := f.cert(t, Quasar, blk, row.voters)
 			if err := f.rt.Transitive.verifyCert(cert, 0); err != nil {
 				t.Fatalf("the finality predicate refused an honest certificate: %v", err)
 			}
 			if int(cert.Threshold) != derived {
 				t.Fatalf("the cert declares %d, the set derives %d", cert.Threshold, derived)
 			}
+			// The label is not what is signed: the same signatures labeled Nova clear the
+			// ⅔ floor, and one signer fewer does not.
+			nova, _ := f.cert(t, Nova, blk, row.voters)
+			if err := f.rt.Transitive.verifyCert(nova, 0); err != nil {
+				t.Fatalf("the door refused ⅔ of the set under a Nova label: %v", err)
+			}
+			short, _ := f.cert(t, Nova, blk, row.voters-1)
+			if err := f.rt.Transitive.verifyCert(short, 0); err == nil {
+				t.Fatalf("the door admitted %d of %d signers, below the ⅔ floor %d", row.voters-1, row.signers, derived)
+			}
 
 			// THE GOSSIP ROAD: it reaches the gate, and finalizes.
 			if !f.rt.HandleIncomingCert(wire) {
 				t.Fatalf("the gossip road dropped a certificate the predicate accepts — "+
-					"a door reading the committee's majority %d refuses the set's floor %d",
-					NovaQuorum(row.k), derived)
+					"a door reading the committee's ⅔ %d refuses the set's floor %d",
+					Quorum(Quasar, row.k), derived)
 			}
 			if got := blk.AcceptCalled(); got != 1 {
 				t.Fatalf("VM.Accept=%d want 1", got)
@@ -457,28 +459,31 @@ func TestTheDoorAdmitsWhatTheGateAdmits(t *testing.T) {
 			g := newArrivalFleet(t, row.k, row.signers)
 			far := newTestBlock(41, ids.GenerateTestID(), "arrival-frontier")
 			g.vm.register(far)
-			_, farWire := g.novaCert(t, far, row.voters)
+			_, farWire := g.cert(t, Quasar, far, row.voters)
 			if err := g.rt.VerifyCatchupCertificate(context.Background(), far.bytes, farWire); err != nil {
 				t.Fatalf("the catch-up road refused a certificate the predicate accepts: %v", err)
+			}
+			_, farShort := g.cert(t, Nova, far, row.voters-1)
+			if err := g.rt.VerifyCatchupCertificate(context.Background(), far.bytes, farShort); err == nil {
+				t.Fatalf("the catch-up road admitted %d of %d signers, below the ⅔ floor", row.voters-1, row.signers)
 			}
 		})
 	}
 }
 
-// TestTheArrivalRoadsRefuseAQuorumTheSetDoesNotDerive is the other half, and the
-// reason dropping the pre-filters costs nothing: what the door used to catch, the
-// gate catches — and catches harder, because the gate demands EQUALITY with the
-// derived floor where the door asked only for "at least".
+// TestTheArrivalRoadsRefuseAQuorumTheSetDoesNotDerive is the other half: the gate
+// demands EQUALITY with the derived floor, so a ⅔-labeled certificate naming its own
+// quorum — smaller or larger — is refused, and a Nova-labeled one is read at the ⅔
+// floor, which one signature does not reach.
 func TestTheArrivalRoadsRefuseAQuorumTheSetDoesNotDerive(t *testing.T) {
 	f := newArrivalFleet(t, 9, 9)
 	blk := newTestBlock(1, ids.Empty, "self-named")
 	trackVerifiedBlock(f.rt, blk, 0)
 
-	// One signature under a self-named quorum of one: what a door reading any
-	// "at least" floor also refused, stated the way an attacker builds it.
+	// One signature under a self-named quorum of one, stated the way an attacker builds it.
 	pos := VotePosition{ChainID: f.chainID, Height: 1, Round: 0, BlockID: blk.id, ParentID: ids.Empty}
-	lone, err := AssembleQuorumCert(pos, Nova, 1,
-		[]SignedVote{{NodeID: f.vs.nodeID(0), Accept: true, Signature: f.vs.sign(0, pos)}})
+	one := []SignedVote{{NodeID: f.vs.nodeID(0), Accept: true, Signature: f.vs.sign(0, pos)}}
+	lone, err := AssembleQuorumCert(pos, Quasar, 1, one)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -495,22 +500,29 @@ func TestTheArrivalRoadsRefuseAQuorumTheSetDoesNotDerive(t *testing.T) {
 	if f.rt.HandleIncomingCert(wire) || blk.AcceptCalled() != 0 {
 		t.Fatal("SAFETY BREAK: one signature under a self-named quorum finalized a block")
 	}
+	loneNova, err := AssembleQuorumCert(pos, Nova, 1, one)
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	if err := f.rt.Transitive.verifyCert(loneNova, 0); err == nil {
+		t.Fatal("one signature under a Nova label must be refused at the ⅔ floor")
+	}
 
-	// And an OVER-claim, which no "at least" door ever caught: a certificate
-	// declaring more than its set requires is naming a number that is not the
-	// set's, in the other direction.
-	honest, honestWire := f.novaCert(t, blk, 5)
+	// An OVER-claim: a certificate declaring more than its set requires is naming a
+	// number that is not the set's, in the other direction.
+	derived := SignerFloor(Quasar, 9)
+	honest, honestWire := f.cert(t, Quasar, blk, derived+1)
 	over := *honest
-	over.Threshold = uint32(NovaQuorum(9))
-	if int(over.Threshold) == SignerFloor(Nova, 9) {
+	over.Threshold = uint32(derived + 1)
+	if int(over.Threshold) == derived {
 		t.Fatal("vacuous: the over-claim must differ from the derived floor")
 	}
 	if err := f.rt.Transitive.verifyCert(&over, 0); !errors.Is(err, ErrQCThresholdNotDerived) {
 		t.Fatalf("an over-claim must be refused on the derived clause, got %v", err)
 	}
 
-	// The honest certificate, last, so the two refusals above are attributable to
-	// the number each names and not to the fixture.
+	// The honest certificate, last, so the refusals above are attributable to the number
+	// each carries and not to the fixture.
 	if !f.rt.HandleIncomingCert(honestWire) || blk.AcceptCalled() != 1 {
 		t.Fatal("control broke: the honest certificate must finalize")
 	}

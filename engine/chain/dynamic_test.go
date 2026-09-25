@@ -65,11 +65,11 @@ func TestFiveValidatorsAlphaFourFinalizes(t *testing.T) {
 	}
 }
 
-// TestThreeOfFiveRejected proves 3-of-5 is NON-finalizing under the dynamic
-// committee — exactly what the spec requires (3/5 = 60% < strict ⅔, and the cert
-// AND Parameters.Valid AND the BFT overlap bound all reject it). Proposer + 2
-// peers = 3 distinct < α=4 → never accepts.
-func TestThreeOfFiveNovaAcceptsExportPauses(t *testing.T) {
+// TestThreeOfFiveAcceptsNothing proves 3-of-5 is NON-finalizing under the dynamic
+// committee: 3/5 = 60% of equal stake, not more than ⅔, so the stake-weighted
+// certificate refuses it at both acceptance and export. Proposer + 2 peers = 3
+// distinct < α=4 → never accepts.
+func TestThreeOfFiveAcceptsNothing(t *testing.T) {
 	p := dyn5()
 	vs := newTestValidatorSet(5)
 	rec := &recordingGossiper{}
@@ -78,13 +78,12 @@ func TestThreeOfFiveNovaAcceptsExportPauses(t *testing.T) {
 	blk := newTestBlock(1, ids.Empty, "three-of-five")
 	pos := trackProposal(e, chainID, blk, 0)
 
-	// Two peer accepts → proposer + 2 = 3 = NovaQuorum(5), the v1.36 bare-majority accept.
+	// Two peer accepts → proposer + 2 = 3, a bare majority.
 	e.ReceiveVote(vs.signedVote(1, pos))
 	e.ReceiveVote(vs.signedVote(2, pos))
 
-	// NOVA: 3-of-5 is the bare majority — it accepts (local execution), the "survive 3/5" liveness.
-	mustFinalize(t, e, blk, 2*time.Second, "3-of-5 bare majority (Nova local accept)")
-	// QUASAR: 3 units of equal stake = 60% ≤ ⅔ — export pauses (certification degraded).
+	// 3 units of equal stake = 60% ≤ ⅔: neither accepted nor exported.
+	mustNotFinalize(t, e, blk, 2*time.Second, "3-of-5 bare majority (accept)")
 	mustNotQuasar(t, e, blk, 500*time.Millisecond, "3-of-5 = 60% stake (export gate)")
 	// The strict-⅔ floor confirms 3 units of stake do NOT exceed floor(2·5/3)=3.
 	if 3 > config.TwoThirdsStakeFloor(5) {
@@ -121,9 +120,10 @@ func TestOneLaggardStillFinalizes(t *testing.T) {
 
 // TestTwoLaggardsNoFalseFinality proves two non-responsive validators make the
 // quorum genuinely unreachable: proposer + 2 = 3 distinct < α=4, so the block
-// must NOT finalize. The engine never fabricates finality from a minority — a
-// real ⅓+ outage correctly halts (safety over liveness).
-func TestTwoLaggardsNovaContinuesExportPauses(t *testing.T) {
+// must NOT finalize. The engine never fabricates finality from a sub-⅔ set — a
+// real ⅓+ outage halts (safety over liveness) — and the block is accepted and
+// exported the moment a laggard returns and signs.
+func TestTwoLaggardsNoFalseFinality(t *testing.T) {
 	p := dyn5()
 	vs := newTestValidatorSet(5)
 	rec := &recordingGossiper{}
@@ -132,16 +132,18 @@ func TestTwoLaggardsNovaContinuesExportPauses(t *testing.T) {
 	blk := newTestBlock(1, ids.Empty, "two-laggards")
 	pos := trackProposal(e, chainID, blk, 0)
 
-	// Only validators 1,2 vote; 3 and 4 are laggards. Proposer + 2 = 3 = the Nova bare majority.
+	// Only validators 1,2 vote; 3 and 4 are laggards. Proposer + 2 = 3, a bare majority.
 	e.ReceiveVote(vs.signedVote(1, pos))
 	e.ReceiveVote(vs.signedVote(2, pos))
 
-	// NOVA: with 2 laggards the 3 live validators still accept — production SURVIVES the outage
-	// (the v1.36 "majority is enough" mandate). This is the exact case the old ⅔-accept froze.
-	mustFinalize(t, e, blk, 2*time.Second, "3 live of 5 (2 laggards) — Nova local accept")
-	// QUASAR: 60% stake ≤ ⅔ — certification pauses until a laggard returns (the degraded mode:
-	// production continues, export waits). No export cert forms from a sub-⅔ set.
+	// 60% stake ≤ ⅔: with 2 laggards nothing is accepted and nothing exported.
+	mustNotFinalize(t, e, blk, 2*time.Second, "3 live of 5 (2 laggards) (accept)")
 	mustNotQuasar(t, e, blk, 500*time.Millisecond, "2-laggard outage = 60% stake (export gate)")
+
+	// A laggard returns and signs: 80% > ⅔, accepted and exported at once.
+	e.ReceiveVote(vs.signedVote(3, pos))
+	mustFinalize(t, e, blk, 2*time.Second, "a laggard returns: 4 of 5 (accept)")
+	mustQuasar(t, e, blk, 2*time.Second, "a laggard returns: 4 of 5 (export)")
 }
 
 // TestSelfVoteCounts proves the proposer's OWN signed accept is one of the α
@@ -279,7 +281,7 @@ func (p *relayProposer) RequestVotes(_ context.Context, req VoteRequest) error {
 		if err != nil {
 			continue
 		}
-		rt.HandleIncomingVote(req.BlockID, vb)
+		rt.HandleIncomingVote(ids.EmptyNodeID, req.BlockID, vb)
 	}
 	p.mu.Lock()
 	p.delivered = true

@@ -74,18 +74,21 @@ func TestConsensus_AcceptRequiresQuorum(t *testing.T) {
 	blk := newTestBlock(1, ids.Empty, "needs-quorum")
 	pos := trackProposal(e, chainID, blk, 0)
 
-	// Two peer accepts (validators 1,2). Total distinct accepts = proposer(0) is
-	// counted in consensus via ProcessVote at proposal; here we feed signed peer
-	// votes. With alpha=3, two peers + proposer = 3 → quorum. But to isolate the
-	// "below quorum stays pending" property, first send only ONE peer.
+	// The proposer's own signed accept is recorded at proposal; here we feed signed
+	// peer votes. The floor is ⅔ of five, four signers. Two and three distinct
+	// accepts — a bare majority at three — must leave the block pending.
 	e.ReceiveVote(vs.signedVote(1, pos))
 	if waitFor(300*time.Millisecond, func() bool { return e.IsAccepted(blk.id) }) {
-		t.Fatal("SAFETY VIOLATION: block accepted with only 2 accepts (proposer+1) below alpha=3")
+		t.Fatal("SAFETY VIOLATION: block accepted with only 2 accepts (proposer+1)")
+	}
+	e.ReceiveVote(vs.signedVote(2, pos))
+	if waitFor(300*time.Millisecond, func() bool { return e.IsAccepted(blk.id) }) {
+		t.Fatal("SAFETY VIOLATION: block accepted on a bare majority of 3, below the ⅔ floor of 4")
 	}
 
-	// Now add the third distinct signer → alpha reached → MUST finalize, and a
+	// Now add the fourth distinct signer → the floor is reached → MUST finalize, and a
 	// cert MUST have been assembled+gossiped.
-	e.ReceiveVote(vs.signedVote(2, pos))
+	e.ReceiveVote(vs.signedVote(3, pos))
 	if !waitFor(2*time.Second, func() bool { return e.IsAccepted(blk.id) }) {
 		t.Fatal("LIVENESS: block did not finalize after alpha-of-K signed accepts arrived")
 	}
@@ -140,14 +143,14 @@ func TestConsensus_EquivocatingProposerCannotFinalizeBothForks(t *testing.T) {
 	posA := trackProposal(e, chainID, forkA, 0)
 	posB := trackProposal(e, chainID, forkB, 0)
 
-	// An honest α-of-K majority (3 of 5) can sign AT MOST ONE value per height.
-	// Model that: validators 1,2 sign fork A; validator 1 cannot ALSO be the
-	// third distinct signer of fork B (it already committed to A). Only
-	// validator 3 is left for B → B has proposer(0 self) + 3 = 2 distinct
-	// signers < alpha. A gets proposer(0) + 1 + 2 = 3 → finalizes; B does not.
+	// An honest validator signs AT MOST ONE value per height. Validators 1,2,3 sign
+	// fork A, which with the proposer's own accept is 4 — the ⅔ floor of five — and
+	// finalizes. Only validator 4 is left for B, and the proposer's one signature at
+	// the height went to A, so B holds a single signer and does not.
 	e.ReceiveVote(vs.signedVote(1, posA))
 	e.ReceiveVote(vs.signedVote(2, posA))
-	e.ReceiveVote(vs.signedVote(3, posB))
+	e.ReceiveVote(vs.signedVote(3, posA))
+	e.ReceiveVote(vs.signedVote(4, posB))
 
 	finalizedA := waitFor(2*time.Second, func() bool { return e.IsAccepted(forkA.id) })
 	// Give B the same window; it must NOT finalize.
@@ -160,7 +163,7 @@ func TestConsensus_EquivocatingProposerCannotFinalizeBothForks(t *testing.T) {
 		t.Fatal("fork A reached alpha-of-K and should finalize")
 	}
 	if finalizedB {
-		t.Fatal("SAFETY VIOLATION: fork B finalized without an alpha-of-K quorum (only 2 distinct signers)")
+		t.Fatal("SAFETY VIOLATION: fork B finalized without a ⅔ certificate (one distinct signer)")
 	}
 
 	// Cert audit: exactly one cert, for fork A, and it must verify.
@@ -370,6 +373,7 @@ func TestLiveness_NoFreezeUnderLateChits(t *testing.T) {
 	time.Sleep(120 * time.Millisecond)
 	e.ReceiveVote(vs.signedVote(1, pos))
 	e.ReceiveVote(vs.signedVote(2, pos))
+	e.ReceiveVote(vs.signedVote(3, pos))
 
 	// Now it finalizes — liveness restored WITHOUT self-finality.
 	if !waitFor(2*time.Second, func() bool { return e.IsAccepted(blk.id) }) {

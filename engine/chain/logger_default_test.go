@@ -73,7 +73,7 @@ func TestZeroLoggerRuntimeSurvivesMalformedRemoteInput(t *testing.T) {
 	ctx := context.Background()
 	for _, b := range garbage {
 		// Every remote-input path, on every shape. No panic is the assertion.
-		rt.HandleIncomingVote(ids.Empty, b)
+		rt.HandleIncomingVote(ids.EmptyNodeID, ids.Empty, b)
 		rt.HandleIncomingCert(b)
 		_, _ = rt.HandleIncomingBlock(ctx, b, ids.EmptyNodeID)
 	}
@@ -109,7 +109,7 @@ func TestNewRuntimeKeepsTheSuppliedLogger(t *testing.T) {
 	}
 
 	// And it is reached: a malformed vote is a logged event, not a silent one.
-	rt.HandleIncomingVote(ids.Empty, []byte{0x00})
+	rt.HandleIncomingVote(ids.EmptyNodeID, ids.Empty, []byte{0x00})
 	if supplied.count() == 0 {
 		t.Error("supplied logger was never written to on the malformed-vote path")
 	}

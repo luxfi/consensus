@@ -204,6 +204,10 @@ func (s *testValidatorSet) VerifyVote(nodeID ids.NodeID, message []byte, sig []b
 	return ed25519.Verify(pub, message, sig)
 }
 
+// SignatureLen is the length every vote signature in this set has (ed25519), which
+// the engine holds a parked vote to.
+func (s *testValidatorSet) SignatureLen() int { return ed25519.SignatureSize }
+
 // Weight implements StakeSource: every validator in the test set carries EQUAL unit
 // weight (1), so a count-α quorum is also a ⅔-stake supermajority — the test set is a
 // valid stake source for the value-DEX quorum-finality gate (Mode() requires one). An

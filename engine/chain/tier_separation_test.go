@@ -1,19 +1,15 @@
 // Copyright (C) 2019-2026, Lux Industries, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-// tier_separation_test.go — what makes a bare majority acceptable.
+// tier_separation_test.go — why a bare majority is not a certificate anything moves on.
 //
-// Nova ignites at ⌊n/2⌋+1. Two majorities of five share ONE validator, and one is
+// A Nova majority is ⌊n/2⌋+1. Two majorities of five share ONE validator, and one is
 // not more than f=1, so a single equivocator can hold certifying majorities on two
-// conflicting blocks. Nova is therefore not a Byzantine guarantee and finality.go
-// says so: it authorizes LOCAL execution and is reorgable until Quasar.
-//
-// That is a sound position only while nothing exportable reads a Nova-only height.
-// The export surfaces — bridges, settlement, the EVM's finalized/safe tags, warp —
-// subscribe through exactly one seam, the Quasar observer, and it fires only when a
-// ⅔-by-stake certificate forms. These pin the boundary at that seam, in both
-// directions: the arithmetic that says Nova cannot be trusted for export, and the
-// engine behaviour that keeps export from reading it.
+// conflicting blocks. A block is therefore accepted, and exported, only on the ⅔
+// certificate. The export surfaces — bridges, settlement, the EVM's finalized/safe
+// tags, warp — subscribe through exactly one seam, the Quasar observer. These pin the
+// boundary: the arithmetic that says a majority cannot be trusted, and the engine
+// behaviour that neither accepts nor exports on one.
 package chain
 
 import (
@@ -35,11 +31,11 @@ import (
 // n=4 being minBFTCommittee. At the sizes this fleet runs (5, 7, 9, 21, 100) they
 // separate and the overlap stops covering f: at n=5 two majorities share ONE
 // validator against f=1, so a single equivocator can hold a certifying majority on
-// each of two conflicting blocks. That is the whole reason Nova authorizes local
-// execution only.
+// each of two conflicting blocks. That is the whole reason no block is accepted on a
+// Nova certificate.
 //
 // This asserts the SHORTFALL. If it ever fails, Nova has become Byzantine-safe and
-// the reorgable-until-Quasar contract should be re-derived rather than inherited.
+// the accept rule should be re-derived rather than inherited.
 func TestTier_NovaMajorityIsNotByzantineSafe(t *testing.T) {
 	// Nova is never ABOVE the export floor, and two Nova majorities always meet —
 	// the crash-fault guarantee it does have. Both hold at every size.
@@ -100,14 +96,13 @@ func (s *exportSeam) last() (ids.ID, uint64) {
 	return s.canon[n-1], s.height[n-1]
 }
 
-// TestTier_ExportWaitsForTheSupermajority walks one block across the boundary.
+// TestTier_AcceptAndExportWaitForTheSupermajority walks one block across the boundary.
 //
-// Three of five is a Nova majority: the block executes and the VM accepts it. It is
-// NOT ⅔, so nothing exportable may see it. The fourth validator's vote arrives
-// after the block is already finalized — which is the ordinary case, since the
-// ⅔-th vote necessarily trails a bare-majority accept — and only then may the
-// export frontier move.
-func TestTier_ExportWaitsForTheSupermajority(t *testing.T) {
+// A certificate from three of five is a bare majority, one short of ⅔: it moves nothing —
+// the block is not accepted and nothing exportable sees it, since one equivocator could
+// put such a majority on each of two blocks at one height. The ⅔ certificate from four of
+// five then accepts the block and moves the export frontier in the same step.
+func TestTier_AcceptAndExportWaitForTheSupermajority(t *testing.T) {
 	const n = 5
 	vs := newTestValidatorSet(n)
 	chainID := ids.GenerateTestID()
@@ -127,55 +122,50 @@ func TestTier_ExportWaitsForTheSupermajority(t *testing.T) {
 	trackVerifiedBlock(rt, blk, 0)
 	pos := posFor(chainID, blk)
 
-	// THE NOVA ACCEPT — a bare majority, one short of the ⅔ export floor.
-	novaVoters := []int{0, 1, 2}
-	if got, want := len(novaVoters), NovaQuorum(n); got != want {
+	certFrom := func(tier Finality, voters []int) []byte {
+		t.Helper()
+		votes := make([]SignedVote, 0, len(voters))
+		for _, i := range voters {
+			votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
+		}
+		cert, err := AssembleQuorumCert(pos, tier, uint32(SignerFloor(tier, n)), votes)
+		if err != nil {
+			t.Fatalf("assemble %s cert: %v", tier, err)
+		}
+		b, err := cert.MarshalBinary()
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		return b
+	}
+
+	// THE BARE MAJORITY — a well-formed Nova certificate over three of five.
+	majority := []int{0, 1, 2}
+	if got, want := len(majority), NovaQuorum(n); got != want {
 		t.Fatalf("test setup: %d voters is not NovaQuorum(%d)=%d", got, n, want)
 	}
-	votes := make([]SignedVote, 0, len(novaVoters))
-	for _, i := range novaVoters {
-		votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
+	if rt.HandleIncomingCert(certFrom(Nova, majority)) {
+		t.Fatal("a bare-majority certificate was taken as finality")
 	}
-	cert, err := AssembleQuorumCert(pos, Nova, uint32(NovaQuorum(n)), votes)
-	if err != nil {
-		t.Fatalf("assemble nova cert: %v", err)
+	if got := blk.AcceptCalled(); got != 0 {
+		t.Fatalf("VM.Accept=%d on a bare majority: one equivocator could accept two blocks at this height", got)
 	}
-	certBytes, err := cert.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if !rt.HandleIncomingCert(certBytes) {
-		t.Fatal("control broke: a Nova majority must drive the local accept")
-	}
-	if got := blk.AcceptCalled(); got != 1 {
-		t.Fatalf("control broke: VM.Accept=%d want 1 — Nova authorizes local execution", got)
-	}
-
 	if seam.fired() != 0 {
 		c, h := seam.last()
-		t.Fatalf("EXPORT READ A NOVA-ONLY HEIGHT: the export seam fired for canonical %s at height "+
-			"%d on a %d-of-%d cert. That set holds %d/%d of stake, under the ⅔ floor, and Nova is "+
-			"reorgable by construction — a bridge, a settlement receipt or the EVM's finalized tag "+
-			"reading this height is reading a decision one equivocator can still overturn.",
-			c, h, len(novaVoters), n, len(novaVoters), n)
+		t.Fatalf("EXPORT READ A SUB-⅔ HEIGHT: the export seam fired for canonical %s at height %d on "+
+			"a %d-of-%d certificate, under the ⅔ floor.", c, h, len(majority), n)
 	}
 
-	// THE TRAILING VOTE — the fourth validator, arriving after finality. The block
-	// is no longer pending, so this exercises the late-attestation route.
-	sig := vs.sign(3, pos)
-	voteBytes, err := encodeSignedVote(vs.nodeID(3), sig)
-	if err != nil {
-		t.Fatalf("encode vote: %v", err)
+	// THE SUPERMAJORITY — four of five, past ⅔ of stake and seats.
+	if !rt.HandleIncomingCert(certFrom(Quasar, []int{0, 1, 2, 3})) {
+		t.Fatal("a ⅔ certificate must accept the block")
 	}
-	if !rt.HandleIncomingVote(blk.id, voteBytes) {
-		t.Fatal("a valid trailing accept vote for a finalized block must be counted toward export")
+	if got := blk.AcceptCalled(); got != 1 {
+		t.Fatalf("VM.Accept=%d on the ⅔ certificate, want 1", got)
 	}
-
 	if !waitFor(2*time.Second, func() bool { return seam.fired() > 0 }) {
-		t.Fatalf("EXPORT NEVER FORMED: 4 of %d — a ⅔-by-stake supermajority — attested and the "+
-			"export seam never fired. The trailing vote is the ordinary path to Quasar, since the "+
-			"⅔-th vote arrives after the bare-majority accept by construction; a height that "+
-			"cannot reach export is a height bridges and settlement can never consume.", n)
+		t.Fatalf("EXPORT NEVER FORMED: 4 of %d — a ⅔-by-stake supermajority — certified the block "+
+			"and the export seam never fired.", n)
 	}
 	gotCanon, gotHeight := seam.last()
 	if gotHeight != 1 || gotCanon != blk.id {

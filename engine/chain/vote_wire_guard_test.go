@@ -114,14 +114,14 @@ func TestAnUndecodableVoteIsDroppedNotCounted(t *testing.T) {
 	// the configuration this ingest path is written for.
 	rt.config.Logger = log.Noop()
 
-	if rt.HandleIncomingVote(ids.GenerateTestID(), []byte{0x01, 0x02}) {
+	if rt.HandleIncomingVote(ids.EmptyNodeID, ids.GenerateTestID(), []byte{0x01, 0x02}) {
 		t.Fatal("a frame the decoder refused was counted")
 	}
 	good, err := encodeSignedVote(ids.GenerateTestNodeID(), []byte("signature"))
 	if err != nil {
 		t.Fatalf("encodeSignedVote: %v", err)
 	}
-	if rt.HandleIncomingVote(ids.GenerateTestID(), good) {
+	if rt.HandleIncomingVote(ids.EmptyNodeID, ids.GenerateTestID(), good) {
 		t.Fatal("a well-formed vote was counted by an engine with no verifier wired")
 	}
 }

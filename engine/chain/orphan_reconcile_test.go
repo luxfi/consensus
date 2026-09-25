@@ -258,11 +258,11 @@ func TestAcceptWithCert_OrphanRefusal_ReconcilesInsteadOfHalting(t *testing.T) {
 	e.pendingBlocks[finalID] = &PendingBlock{ConsensusBlock: cb, VMBlock: mb(finalID, 1)}
 	e.mu.Unlock()
 
-	// Build the finality authority token (the K==1 degenerate 1-of-1 cert shape) naming finalID.
+	// Build the finality authority token (a ⅔-tier certificate) naming finalID.
 	cert := VerifiedQuorumCert{qc: &QuorumCert{
 		Version:   QuorumCertVersion,
 		Type:      QCFinality,
-		Tier:      Nova,
+		Tier:      Quasar,
 		Position:  VotePosition{Height: 1, Round: 0, BlockID: finalID, ParentID: ids.Empty, CanonicalID: finalID},
 		Threshold: 1,
 	}}

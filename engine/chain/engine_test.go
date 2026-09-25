@@ -717,9 +717,9 @@ func TestHandleVote_ProcessesKnownBlocks(t *testing.T) {
 // TestProcessVote_AcceptTrueIncrementsSupport verifies Accept=true votes count toward acceptance
 func TestProcessVote_AcceptTrueIncrementsSupport(t *testing.T) {
 	engine := newTestEngineParams(config.Parameters{
-		K:               3,
-		AlphaPreference: 2,
-		AlphaConfidence: 2,
+		K:               5,
+		AlphaPreference: 4,
+		AlphaConfidence: 4,
 		Beta:            1,
 	})
 	ctx := context.Background()
@@ -745,8 +745,8 @@ func TestProcessVote_AcceptTrueIncrementsSupport(t *testing.T) {
 		t.Fatalf("Notify failed: %v", err)
 	}
 
-	// Send SIGNED Accept votes to reach quorum (authenticated quorum path).
-	for i := 0; i < 3; i++ {
+	// Send SIGNED Accept votes to reach the ⅔ floor of five, four signers.
+	for i := 0; i < 4; i++ {
 		engine.ReceiveVote(signedVoteForEngine(engine, blk.id, ids.GenerateTestNodeID()))
 	}
 

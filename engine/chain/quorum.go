@@ -3,6 +3,10 @@
 
 // quorum.go — the NOVA-tier thresholds, as a clean function of the live count n.
 //
+// engine/chain accepts no block on a Nova certificate: a block is accepted only on the
+// Quasar (⅔) certificate (assembleCertLocked, verifyCert). These are the rung's numbers
+// as the certificate format and the conformance corpus define them.
+//
 // This file owns ONLY the Nova (β-ignition / local-execution) rung of the ladder
 // in finality.go. The QUASAR rung — the ⅔ certificate — has exactly ONE definition
 // and it is NOT here: config.TwoThirdsStakeFloor is its stake half (the strict >⅔

@@ -487,7 +487,7 @@ func (n *simNode) run() {
 			case msgBlock:
 				_, _ = n.rt.HandleIncomingBlock(ctx, m.payload, m.from)
 			case msgVote:
-				n.rt.HandleIncomingVote(m.blockID, m.payload)
+				n.rt.HandleIncomingVote(m.from, m.blockID, m.payload)
 			case msgCert:
 				n.rt.HandleIncomingCert(m.payload)
 			}

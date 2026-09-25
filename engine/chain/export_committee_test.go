@@ -114,14 +114,11 @@ func TestExportNeedsAByzantineCommittee(t *testing.T) {
 	}
 }
 
-// TestExportCommitteeFloorLeavesNovaAlone — the clause belongs to the export rung
-// and must not migrate down the ladder.
-//
-// Nova authorizes LOCAL EXECUTION, which the chain can still reorg away, and it is
-// crash-fault-safe rather than Byzantine-safe by construction. A four-signer floor
-// there would stop a small or a partitioned chain making any progress at all, in
-// exchange for a guarantee the rung never offered. Its own floor is
-// NovaSignerFloor, which saturates BELOW the committee size on purpose.
+// TestExportCommitteeFloorLeavesNovaAlone — the committee clause belongs to the ⅔
+// rung's predicate and does not migrate into the Nova rung's. The Nova predicate
+// (VerifyWeighted at the Nova tier) states a stake majority and keeps its own floor,
+// NovaSignerFloor. The engine accepts no block on it — verifyCert refuses the tier —
+// so this pins the predicate's definition, which the conformance corpus shares.
 func TestExportCommitteeFloorLeavesNovaAlone(t *testing.T) {
 	vs := newTestValidatorSet(minBFTCommittee)
 
@@ -138,9 +135,8 @@ func TestExportCommitteeFloorLeavesNovaAlone(t *testing.T) {
 		}
 		cert.Threshold = uint32(SignerFloor(Nova, n))
 		if err := cert.VerifyWeighted(alwaysValid{}, set, 0); err != nil {
-			t.Errorf("n=%d: a unanimous NOVA certificate was refused (%v). Nova ignites "+
-				"local execution on a bare majority and has no Byzantine claim to protect; "+
-				"the export rung's committee floor has leaked down a rung", n, err)
+			t.Errorf("n=%d: the Nova predicate refused a unanimous certificate (%v): the ⅔ "+
+				"rung's committee floor has leaked into the Nova predicate", n, err)
 		}
 	}
 }
@@ -252,21 +248,43 @@ func TestExportCommitteeFloorHoldsOnTheCountOnlyRoad(t *testing.T) {
 	}
 }
 
-// TestCountOnlyCommitteeFloorLeavesNovaAlone — the clause belongs to the export
-// rung on this road too, and must not migrate down the ladder.
-//
-// Nova authorizes local execution the chain can still reorg away. A four-member
-// floor there would stop a small or partitioned stake-less chain making any
-// progress at all, in exchange for a guarantee the rung never offered.
-func TestCountOnlyCommitteeFloorLeavesNovaAlone(t *testing.T) {
-	vs := newTestValidatorSet(minBFTCommittee)
+// TestCountOnlyRoadReadsANovaLabelAtTwoThirds — a block is accepted only on the ⅔
+// floor, on this road as on the weighted one. A certificate's tier and declared quorum
+// are labels no signature covers, so a Nova-labeled certificate is read at the ⅔ floor
+// this committee derives: below minBFTCommittee it is refused however unanimous, and at
+// or above it one signer short of TwoThirdsCount is refused and TwoThirdsCount signers
+// are admitted.
+func TestCountOnlyRoadReadsANovaLabelAtTwoThirds(t *testing.T) {
+	vs := newTestValidatorSet(minBFTCommittee + 1)
 
-	for n := 1; n < minBFTCommittee; n++ {
+	labeled := func(chainID ids.ID, k, signers int) *QuorumCert {
+		pos := VotePosition{ChainID: chainID, Height: 9, Round: 1, BlockID: ids.GenerateTestID()}
+		votes := make([]SignedVote, 0, signers)
+		for i := 0; i < signers; i++ {
+			votes = append(votes, SignedVote{NodeID: vs.nodeID(i), Accept: true, Signature: vs.sign(i, pos)})
+		}
+		cert, err := AssembleQuorumCert(pos, Nova, uint32(signers), votes)
+		if err != nil {
+			t.Fatalf("assemble nova over %d of %d: %v", signers, k, err)
+		}
+		return cert
+	}
+
+	for n := 1; n <= minBFTCommittee+1; n++ {
 		e, chainID := countOnlyEngine(t, vs, n)
-		if err := e.verifyCert(arrival(t, vs, chainID, Nova, n), 1); err != nil {
-			t.Errorf("committee=%d: a unanimous NOVA certificate was refused (%v). Nova ignites "+
-				"local execution and has no Byzantine claim to protect; the export rung's "+
-				"committee floor has leaked down a rung", n, err)
+		if n < minBFTCommittee {
+			if err := e.verifyCert(labeled(chainID, n, n), 1); err == nil {
+				t.Errorf("committee=%d: a unanimous Nova-labeled certificate was admitted below the "+
+					"minimum Byzantine committee", n)
+			}
+			continue
+		}
+		tt := Quorum(Quasar, n)
+		if err := e.verifyCert(labeled(chainID, n, tt-1), 1); err == nil {
+			t.Errorf("committee=%d: %d signers under a Nova label were admitted, below the ⅔ floor %d", n, tt-1, tt)
+		}
+		if err := e.verifyCert(labeled(chainID, n, tt), 1); err != nil {
+			t.Errorf("committee=%d: %d signers (the ⅔ floor) under a Nova label were refused: %v", n, tt, err)
 		}
 	}
 }

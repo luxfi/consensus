@@ -287,10 +287,12 @@ func TestBufferedVote_StillSignatureGated(t *testing.T) {
 
 	// Now prove the SAME block finalizes once GENUINE α votes arrive — the gate
 	// admits valid votes, so the refusal above was the signature check, not a
-	// stuck path. (followVerifiedBlock already cast self's vote 0; add 2 more for
-	// α=3.) These are tracked-block votes now, so the normal path counts them.
+	// stuck path. Four signers are the ⅔ floor of five. These are tracked-block
+	// votes now, so the normal path counts them.
 	rt.ReceiveVote(vs.signedVote(1, pos))
 	rt.ReceiveVote(vs.signedVote(2, pos))
+	rt.ReceiveVote(vs.signedVote(3, pos))
+	rt.ReceiveVote(vs.signedVote(4, pos))
 	if !waitFor(2*time.Second, func() bool { return rt.IsAccepted(blk.id) }) {
 		t.Fatalf("liveness: block did not finalize after GENUINE α votes (Accept=%d) — gate too strict",
 			blk.AcceptCalled())
@@ -330,10 +332,23 @@ func TestFetchNotFiredWhenBufferRejected(t *testing.T) {
 
 	attacker := ids.GenerateTestNodeID()
 
-	// Saturate the distinct-block buffer to EXACTLY its cap with distinct forged
-	// IDs. Each is a new key the buffer accepts, so each fires exactly one fetch.
-	for i := 0; i < maxBufferedVoteBlocks; i++ {
+	// One voter parks at most maxParkedPerVoter votes: its next is refused, and a
+	// refused vote fires no fetch.
+	for i := 0; i < maxParkedPerVoter; i++ {
 		e.handleVote(Vote{BlockID: ids.GenerateTestID(), NodeID: attacker, Accept: true, SignedAt: time.Now()})
+	}
+	if fetches != maxParkedPerVoter {
+		t.Fatalf("precondition: %d parked votes should each fire one fetch, got %d", maxParkedPerVoter, fetches)
+	}
+	e.handleVote(Vote{BlockID: ids.GenerateTestID(), NodeID: attacker, Accept: true, SignedAt: time.Now()})
+	if fetches != maxParkedPerVoter {
+		t.Fatalf("a vote past its voter's park cap fired a fetch (%d fetches)", fetches)
+	}
+
+	// Saturate the distinct-block buffer to EXACTLY its cap with distinct forged
+	// IDs and voters. Each is a new key the buffer accepts, so each fires one fetch.
+	for i := maxParkedPerVoter; i < maxBufferedVoteBlocks; i++ {
+		e.handleVote(Vote{BlockID: ids.GenerateTestID(), NodeID: ids.GenerateTestNodeID(), Accept: true, SignedAt: time.Now()})
 	}
 
 	e.mu.RLock()
@@ -351,7 +366,7 @@ func TestFetchNotFiredWhenBufferRejected(t *testing.T) {
 	// The buffer is full → bufferVoteLocked returns false for each → the fetch must
 	// be GATED OFF. The fetch counter must NOT advance.
 	for i := 0; i < 500; i++ {
-		e.handleVote(Vote{BlockID: ids.GenerateTestID(), NodeID: attacker, Accept: true, SignedAt: time.Now()})
+		e.handleVote(Vote{BlockID: ids.GenerateTestID(), NodeID: ids.GenerateTestNodeID(), Accept: true, SignedAt: time.Now()})
 	}
 
 	if fetches != fetchesAtCap {

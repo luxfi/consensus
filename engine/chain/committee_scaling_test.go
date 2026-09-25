@@ -3,17 +3,18 @@
 
 // committee_scaling_test.go — the owner's "prove each rung" gate: the BFT finality
 // committee scales 1→N with the LIVE validator set, and a genuine n-validator chain
-// FINALIZES a sibling storm at every rung n=1..5 with the correct effective (K,α).
+// resolves a sibling storm at every rung n=1..5 with the correct effective (K,α).
 //
 // The effective quorum is bftAlpha(n) = ⌊2n/3⌋+1 — the smallest integer STRICTLY
 // greater than ⅔ of n (config.TwoThirdsStakeFloor+1), the same rational threshold the
-// ⅔-by-stake cert enforces. That yields:
+// ⅔-by-stake cert enforces. A block is accepted only on that certificate over a set of at
+// least minBFTCommittee. That yields:
 //
-//	n=1 → 1-of-1   (single validator: its own accept IS the quorum — self-finalize is
+//	n=1 → 1-of-1   (single validator: its own synthesized certificate — self-finalize is
 //	               correct, there is no peer to fork against)
-//	n=2 → 2-of-2   (f=0; a 1-of-2 quorum violates the fail-closed bound 2α−n>f, so BOTH
-//	               must agree — safety before liveness)
-//	n=3 → 3-of-3   (>⅔ of 3 is 3; 2-of-3 is exactly ⅔, not a supermajority → excluded)
+//	n=2 → nothing  (f=0: a ⅔ certificate over two signers absorbs no fault, so no block
+//	               is accepted — safety before liveness)
+//	n=3 → nothing  (f=0, as n=2)
 //	n=4 → 3-of-4   (f=1; the classic 2f+1)
 //	n=5 → 4-of-5   (f=1; the mainnet C-Chain rung)
 //
@@ -64,17 +65,18 @@ func genuineParams(n int) config.Parameters {
 	return p
 }
 
-func TestCommitteeScaling_1through5_EachRungFinalizes(t *testing.T) {
+func TestCommitteeScaling_1through5_EachRungDecidesOrWaits(t *testing.T) {
 	type rung struct {
 		n         int
 		wantAlpha int
+		decides   bool
 	}
 	rungs := []rung{
-		{1, 1}, // 1-of-1 self-finalize
-		{2, 2}, // 2-of-2 (BFT-safe; 1-of-2 would violate 2α−n>f)
-		{3, 3}, // 3-of-3 (>⅔ of 3)
-		{4, 3}, // 3-of-4
-		{5, 4}, // 4-of-5 (mainnet rung)
+		{1, 1, true},  // 1-of-1 self-finalize
+		{2, 2, false}, // below minBFTCommittee: nothing accepted
+		{3, 3, false}, // below minBFTCommittee: nothing accepted
+		{4, 3, true},  // 3-of-4
+		{5, 4, true},  // 4-of-5 (mainnet rung)
 	}
 
 	for _, r := range rungs {
@@ -105,6 +107,16 @@ func TestCommitteeScaling_1through5_EachRungFinalizes(t *testing.T) {
 				net.build(i, blk)
 			}
 
+			if !r.decides {
+				// Below minBFTCommittee: every node signs, nothing is accepted, and so no
+				// two blocks are.
+				if waitFor(3*time.Second, func() bool { return len(net.headsAtHeight(1)) > 0 }) {
+					t.Fatalf("n=%d: a committee below %d accepted a block: heads=%v",
+						r.n, minBFTCommittee, net.headsAtHeight(1))
+				}
+				return
+			}
+
 			// FINALIZE: all n nodes must converge on a SINGLE head at height 1 (no fork, no
 			// double-finalization). stormAwaitSingleHead fails immediately on two distinct heads.
 			head := stormAwaitSingleHead(t, net, 1)
@@ -125,10 +137,9 @@ func TestCommitteeScaling_1through5_EachRungFinalizes(t *testing.T) {
 }
 
 // TestCommitteeScaling_N1_SelfFinalizesButN2NeedsBoth locks the two tricky low rungs the
-// owner called out: n=1 self-finalizes correctly (its own accept is the 1-of-1 quorum),
-// but n=2 must NOT self-finalize on one node's vote — the 2-of-2 quorum means a lone node
-// stays un-final (fail-closed) until its peer agrees. This is the safety boundary between
-// "genuine single validator" and "any larger set".
+// owner called out: n=1 self-finalizes correctly (its own synthesized certificate), but
+// n=2 must NOT self-finalize on one node's vote — a lone node stays un-final (fail-closed).
+// This is the safety boundary between "genuine single validator" and "any larger set".
 func TestCommitteeScaling_N1_SelfFinalizesButN2NeedsBoth(t *testing.T) {
 	// n=1: the sole validator finalizes its own block with no peer.
 	t.Run("n=1_self_finalizes", func(t *testing.T) {
@@ -143,9 +154,8 @@ func TestCommitteeScaling_N1_SelfFinalizesButN2NeedsBoth(t *testing.T) {
 		}
 	})
 
-	// n=2 with one peer DOWN: the lone up node holds α=2 unreachable (only its own vote) →
-	// it must NOT finalize (2-of-2 fail-closed). This is the anti-self-finality guard at the
-	// smallest multi-validator rung.
+	// n=2 with one peer DOWN: the lone up node holds only its own vote → it must NOT
+	// finalize. This is the anti-self-finality guard at the smallest multi-validator rung.
 	t.Run("n=2_lone_node_never_self_finalizes", func(t *testing.T) {
 		net := newSimNet(t, 2, genuineParams(2))
 		net.down(1) // peer offline: only node 0 is up

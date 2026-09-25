@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/luxfi/consensus/core/slashing"
@@ -76,16 +77,20 @@ func decodeSignedVote(data []byte) (ids.NodeID, []byte, error) {
 // envelope); the engine rebuilds the canonical message from its own tracked
 // position for that block and verifies the signature before counting the vote.
 // A vote for a block this node does not hold cannot be verified yet: the frame
-// carries no position, and the block is what supplies it. Such a vote is parked
-// (bufferVoteLocked, bounded) and verified like any live vote when the block lands
-// (drainBufferedVotes). Its voter pushes the block it signed just before the vote
-// (send), so a vote that outruns its block on the wire is the ordinary reorder, and
-// dropping it would hide from a validator back from a gap the votes the winner rule
-// reads. Parking fetches nothing: a block the network decided is fetched with its
-// certificate (HandleIncomingCert), on the one catch-up claim per block id.
+// carries no position, and the block is what supplies it. Such a vote is parked and
+// verified like any live vote when the block lands (drainBufferedVotes). Its voter
+// pushes the block it signed just before the vote (send), so a vote that outruns its
+// block on the wire is the ordinary reorder, and dropping it would hide from a
+// validator back from a gap the votes the winner rule reads. Parking fetches nothing:
+// a block the network decided is fetched with its certificate (HandleIncomingCert).
+//
+// Nothing unverified is parked on anyone's word but the voter's own (parkable): `from`
+// is the peer the transport authenticated, and a vote is parked only when it names
+// `from` as its signer, `from` is a validator, and its signature is the scheme's
+// length. The park is bounded per voter and expires by height (bufferVoteLocked).
 //
 // Returns true iff the vote verified and was counted toward the block's cert.
-func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
+func (rt *Runtime) HandleIncomingVote(from ids.NodeID, blockID ids.ID, voteBytes []byte) bool {
 	nodeID, sig, err := decodeSignedVote(voteBytes)
 	if err != nil {
 		if !rt.config.Logger.IsZero() {
@@ -122,7 +127,7 @@ func (rt *Runtime) HandleIncomingVote(blockID ids.ID, voteBytes []byte) bool {
 			v := Vote{BlockID: blockID, NodeID: nodeID, Accept: true, Signature: sig}
 			t.mu.Lock()
 			_, landed := t.pendingBlocks[blockID]
-			if !landed {
+			if !landed && t.parkableLocked(from, nodeID, sig) {
 				t.bufferVoteLocked(v)
 			}
 			t.mu.Unlock()
@@ -625,6 +630,28 @@ func (t *Transitive) verifyCert(cert *QuorumCert, epochHeight uint64) error {
 	t.mu.RUnlock()
 	if verifier == nil {
 		return ErrQCVerifierNil
+	}
+	// A certificate is a finality proof only at the ⅔ rung: that is what this node
+	// accepts a block on, re-gossips, serves, and reads as equivocation evidence. One
+	// equivocator can put a majority on each of two blocks at one height, and cannot
+	// put two thirds on both.
+	//
+	// The tier and the declared threshold are labels no signature covers (the vote
+	// message binds the position only, CanonicalVoteMessage), so they are read at the
+	// ⅔ rung here and the certificate is held to the floor this set derives for it:
+	// one assembled at the majority rung that carries two thirds of the signers is a
+	// finality proof, one carrying a bare majority is not. The certificate is
+	// relabeled in place, so what the caller accepts, re-gossips and serves says the
+	// rung it was checked at.
+	if cert != nil && cert.Tier == Nova {
+		floor := Quorum(Quasar, committee)
+		if stake != nil {
+			floor = SignerFloor(Quasar, stake.SignerCount(epochHeight))
+		}
+		if floor < 1 || floor > math.MaxUint32 {
+			return fmt.Errorf("%w: no two-thirds floor for this set at epoch %d", ErrQCBelowThreshold, epochHeight)
+		}
+		cert.Tier, cert.Threshold = Quasar, uint32(floor)
 	}
 	if stake != nil {
 		return cert.VerifyWeighted(verifier, stake, epochHeight)

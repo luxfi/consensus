@@ -784,7 +784,7 @@ func (rt *Runtime) HandleIncomingBlock(ctx context.Context, blockData []byte, fr
 	}
 	// No room at its height (roomLocked): refused before it runs. followVerifiedBlock
 	// weighs it again, and decides, once it has verified.
-	if !rt.Transitive.hasRoom(blk, fromNodeID) {
+	if !rt.Transitive.hasRoom(blk) {
 		if !rt.config.Logger.IsZero() {
 			rt.config.Logger.Debug("no room for a sibling at its height — not executing it",
 				log.Stringer("blockID", blk.ID()), log.Uint64("height", blk.Height()), log.Stringer("from", fromNodeID))
@@ -903,7 +903,7 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 	rt.requestCatchup(blk.ParentID(), fromNodeID)
 
 	consensusBlock := newConsensusBlock(blk) // position, epoch, inner execution commitment
-	who := proposerOf(blk, fromNodeID)
+	who := proposerOf(blk)
 
 	// TRACK IT, within the sibling caps. An already-tracked block keeps the entry it has.
 	// A new one takes the room roomLocked gives it — displacing the highest block nothing
@@ -931,17 +931,33 @@ func (rt *Runtime) followVerifiedBlock(ctx context.Context, blk block.Block, fro
 			t.consensus.Drop(out)
 		}
 		_ = t.consensus.AddBlock(ctx, consensusBlock)
+		// PASS IT ON when it is its proposer's first block here at its height (blocks
+		// that state no proposer count as one proposer): a peer the proposer never
+		// reached, or showed a different block, holds it too before its settle window
+		// closes, so every honest node weighs the same siblings. That is what keeps one
+		// proposer from splitting the committee between two blocks: each half signs
+		// what it holds when it settles, and a height no block can take to ⅔ is never
+		// decided. A proposer's later blocks at the height are not passed on, so a
+		// stream of them costs every node one relay a height.
+		first := true
+		for _, pb := range t.pendingBlocks {
+			if cb := pb.ConsensusBlock; cb != nil && !pb.Decided && cb.height == consensusBlock.height && pb.proposer == who {
+				first = false
+				break
+			}
+		}
 		t.pendingBlocks[blockID] = &PendingBlock{
 			ConsensusBlock: consensusBlock,
 			VMBlock:        blk,
 			ProposedAt:     time.Now(),
 			proposer:       who,
 		}
-		// PASS IT ON, once: a peer its proposer never reached, or sent a different
-		// sibling, holds it too before its settle window closes — so every honest node
-		// weighs the same siblings. Then the blocks this node holds a stake in at the
-		// slot, since whoever built this one had not seen them (hurryLocked).
-		pushes = append([]push{{id: blockID, data: blk.Bytes()}}, t.hurryLocked(consensusBlock)...)
+		if first {
+			pushes = append(pushes, push{id: blockID, data: blk.Bytes()})
+		}
+		// Then the blocks this node holds a stake in at the slot: whoever built this
+		// one had not seen them (hurryLocked).
+		pushes = append(pushes, t.hurryLocked(consensusBlock)...)
 	}
 	signer := t.voteSigner
 	verifier := t.voteVerifier

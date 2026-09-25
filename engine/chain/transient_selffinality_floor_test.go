@@ -132,14 +132,12 @@ func TestNewRuntime_TransientCountBootsFlooredCommittee(t *testing.T) {
 	}
 }
 
-// TestFlooredCommittee_NovaAcceptsAtMajorityQuasarAtTwoThirds carries the floor
-// through both tiers: a floored K=4/α=3 committee backed by a 5-validator stake source
-//   - halts on a lone self-vote (below the Nova majority NovaQuorum=3 — what the floor
-//     exists for: a single node can never accept),
-//   - Nova-accepts a 3-of-5 bare majority (local execution — surviving 3/5 keeps the
-//     chain live), but
-//   - reaches the export (Quasar) tier only at a 4-of-5 ⅔-stake supermajority.
-func TestFlooredCommittee_NovaAcceptsAtMajorityQuasarAtTwoThirds(t *testing.T) {
+// TestFlooredCommittee_AcceptsOnlyAtTwoThirds carries the floor through acceptance: a
+// floored K=4/α=3 committee backed by a 5-validator stake source
+//   - halts on a lone self-vote (what the floor exists for: a single node can never accept),
+//   - accepts nothing on a 3-of-5 bare majority (60% of stake, not more than ⅔), and
+//   - accepts and exports at once on a 4-of-5 ⅔-stake supermajority.
+func TestFlooredCommittee_AcceptsOnlyAtTwoThirds(t *testing.T) {
 	vs := newTestValidatorSet(5) // equal unit stake ⇒ ⅔-of-5 needs 4 voters
 	rec := &recordingGossiper{}
 	params := config.LocalBFTParams() // K=4/α=3 — the committee the transient floor produces
@@ -148,18 +146,17 @@ func TestFlooredCommittee_NovaAcceptsAtMajorityQuasarAtTwoThirds(t *testing.T) {
 	blk := newTestBlock(1, ids.Empty, "floored-halt")
 	pos := trackProposal(e, chainID, blk, 0) // inserts own proposal + records THIS node's (node 0) signed accept
 
-	// 1 self-vote — below the Nova majority (NovaQuorum(4)=3), so it halts: lone
-	// self-finality is what the floor prevents, and it stays prevented at the Nova tier.
-	mustNotFinalize(t, e, blk, 1200*time.Millisecond, "lone self-vote (below Nova majority)")
+	// 1 self-vote: lone self-finality is what the floor prevents.
+	mustNotFinalize(t, e, blk, 1200*time.Millisecond, "lone self-vote")
 
-	// 3 votes {0,1,2} — the bare majority NovaQuorum=3. Nova accepts (local execution). But 3/5 =
-	// 60% stake ≤ ⅔, so no Quasar export yet (the degraded mode).
+	// 3 votes {0,1,2}: a bare majority, 60% of stake ≤ ⅔ — neither accepted nor exported.
 	e.ReceiveVote(vs.signedVote(1, pos))
 	e.ReceiveVote(vs.signedVote(2, pos))
-	mustFinalize(t, e, blk, 2*time.Second, "3-of-5 bare majority (Nova local accept)")
+	mustNotFinalize(t, e, blk, 1200*time.Millisecond, "3-of-5 bare majority (accept)")
 	mustNotQuasar(t, e, blk, 500*time.Millisecond, "3-of-5 = 60% stake (export gate)")
 
-	// 4th vote {0,1,2,3} — 4/5 = 80% > ⅔. The export (Quasar) cert now forms.
+	// 4th vote {0,1,2,3}: 4/5 = 80% > ⅔ — accepted and exported in the same step.
 	e.ReceiveVote(vs.signedVote(3, pos))
-	mustQuasar(t, e, blk, 3*time.Second, "4-of-5 ⅔-stake supermajority (Quasar export)")
+	mustFinalize(t, e, blk, 3*time.Second, "4-of-5 ⅔-stake supermajority (accept)")
+	mustQuasar(t, e, blk, 3*time.Second, "4-of-5 ⅔-stake supermajority (export)")
 }

@@ -337,10 +337,15 @@ func TestRED_DoubleCountOneValidator_DoesNotReachAlpha(t *testing.T) {
 			"by replaying one validator's vote (VM.Accept=%d) — NodeID de-dup failed", blk.AcceptCalled())
 	}
 
-	// Sanity: a genuine THIRD distinct validator does finalize it (gate not stuck).
+	// Sanity: a third distinct validator is a bare majority and still does not finalize
+	// it; a fourth reaches the ⅔ floor of five and does (gate not stuck).
 	rt.ReceiveVote(vs.signedVote(2, pos))
+	if waitFor(500*time.Millisecond, func() bool { return rt.IsAccepted(blk.id) }) {
+		t.Fatalf("SAFETY VIOLATION: block finalized on three distinct validators, below the ⅔ floor of four")
+	}
+	rt.ReceiveVote(vs.signedVote(3, pos))
 	if !waitFor(2*time.Second, func() bool { return rt.IsAccepted(blk.id) }) {
-		t.Fatalf("liveness: block did not finalize once a 3rd DISTINCT validator voted (Accept=%d)",
+		t.Fatalf("liveness: block did not finalize once a 4th DISTINCT validator voted (Accept=%d)",
 			blk.AcceptCalled())
 	}
 }

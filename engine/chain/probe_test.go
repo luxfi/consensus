@@ -140,7 +140,7 @@ func TestRED_INT_LowStakeCoalition_GossipVoteEntry_DoesNotFinalize(t *testing.T)
 		if err != nil {
 			t.Fatalf("encode vote %d: %v", i, err)
 		}
-		if rt.HandleIncomingVote(blk.id, voteBytes) {
+		if rt.HandleIncomingVote(ids.EmptyNodeID, blk.id, voteBytes) {
 			accepted++
 		}
 	}
@@ -163,7 +163,7 @@ func TestRED_INT_LowStakeCoalition_GossipVoteEntry_DoesNotFinalize(t *testing.T)
 	if err != nil {
 		t.Fatalf("encode node4 vote: %v", err)
 	}
-	if !rt.HandleIncomingVote(blk.id, vb4) {
+	if !rt.HandleIncomingVote(ids.EmptyNodeID, blk.id, vb4) {
 		t.Fatalf("the 96-stake node's genuine vote must verify via the Gossip entry")
 	}
 	mustFinalize(t, rt.Transitive, blk, 2*time.Second, "96-stake node completes the Nova stake majority via Gossip")
@@ -223,10 +223,13 @@ func TestRED_INT_DoubleCount_SelfLowStake(t *testing.T) {
 			"(VM.Accept=%d) — distinct stake 2/100, distinct count 2", blk.AcceptCalled())
 	}
 
-	// ANTI-VACUITY: node0's genuine 96-stake vote tips {node4,node1,node0}=98/100>⅔.
+	// ANTI-VACUITY: node0's genuine 96-stake vote and two more 1-stake votes make four
+	// distinct signers — the ⅔ seat floor of five — holding 99/100 > ⅔ of the stake.
 	rt.ReceiveVote(vs.signedVote(0, pos))
+	rt.ReceiveVote(vs.signedVote(2, pos))
+	rt.ReceiveVote(vs.signedVote(3, pos))
 	if !waitFor(2*time.Second, func() bool { return rt.IsAccepted(blk.id) }) {
-		t.Fatalf("liveness: block did not finalize once the 96-stake node voted (Accept=%d)",
+		t.Fatalf("liveness: block did not finalize once the 96-stake node and a fourth signer voted (Accept=%d)",
 			blk.AcceptCalled())
 	}
 }

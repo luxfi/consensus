@@ -402,7 +402,7 @@ func deliverVotes(net *relayNetwork, proposer int, pos VotePosition, voters []in
 		if err != nil {
 			continue
 		}
-		rt.HandleIncomingVote(pos.BlockID, vb)
+		rt.HandleIncomingVote(ids.EmptyNodeID, pos.BlockID, vb)
 	}
 }
 
@@ -423,7 +423,7 @@ func TestRecovery_CertGateStillHolds_SubAlphaNeverFinalizes(t *testing.T) {
 	// re-poll loop running, this must NEVER finalize.
 	vb, _ := encodeSignedVote(vs.nodeID(1), vs.sign(1, pos))
 	rt := &Runtime{Transitive: e, config: NetworkConfig{ChainID: chainID, Logger: log.Noop()}}
-	rt.HandleIncomingVote(blk.id, vb)
+	rt.HandleIncomingVote(ids.EmptyNodeID, blk.id, vb)
 
 	if waitFor(300*time.Millisecond, func() bool { return e.IsAccepted(blk.id) }) {
 		t.Fatal("SAFETY: a sub-alpha block finalized — the cert gate was weakened by the recovery path")

@@ -194,6 +194,7 @@ func TestProposer_FinalizesOwnProposalAtQuorum(t *testing.T) {
 
 	e.ReceiveVote(vs.signedVote(1, pos))
 	e.ReceiveVote(vs.signedVote(2, pos))
+	e.ReceiveVote(vs.signedVote(3, pos))
 
 	if !waitFor(2*time.Second, func() bool { return e.IsAccepted(blk.id) }) {
 		t.Fatal("LIVENESS: own block did not finalize after alpha-of-K signed accepts")
